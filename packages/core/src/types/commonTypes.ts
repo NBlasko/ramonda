@@ -161,18 +161,27 @@ export interface RefusedOnFields {
 }
 
 /**
- * `value` on a `<select>`, which this framework does not have.
+ * The one tag whose meaning the framework cannot leave to the author: `<select>`.
  *
- * HTML keeps a select's choice on the chosen OPTION and nowhere else — there is no `value` content
- * attribute on a select at all. `<select value={x}>` is another library's invention, and supporting
- * it cost a second visit to every element in the diff to answer *which option* once the options
- * existed. `<option selected={x}>` says the same thing, needs none of that, and is the only spelling
- * a served page can carry: a browser shows the right option before any script runs.
+ * Every other element says what it is with its own attributes. A select says it with its CHILDREN —
+ * the choice is which option is chosen — and neither half of that can be written down honestly:
  *
- * A type rather than a diagnostic, so it is refused where it is written instead of at runtime.
+ * - On the element, before its options exist, there is nothing yet to choose from.
+ * - On an option, `selected` is a CLAIM. HTML settles competing claims by document order, and gives
+ *   a select holding none the first option it is handed. So what the attribute means depends on the
+ *   order the options reached the select, which is the diff's business — no author writes that order
+ *   and none can see it.
+ *
+ * `<Select value={x}>` says it once, on the element that owns the choice, and settles it once the
+ * options are in the element. `<option>` needs no counterpart: it has no choice to make, so it stays
+ * an ordinary tag, in a `<datalist>` as much as in a select.
+ *
+ * A required property, so writing the tag at all is the error and the property NAME is the message.
+ * Unlike the other refusals in this file, which are `Partial` and bite only when somebody writes the
+ * named attribute — here the tag itself is the mistake, so there is no spelling of it that passes.
  */
-export interface RefusedOnSelect {
-  value: "write `selected` on the option — `<option selected={x}>` — which is where HTML keeps a select's choice";
+export interface RefusedSelectTag {
+  "write <Select value={x}> — a plain <select> cannot say which option is chosen, because the choice is its children": never;
 }
 
 /**

@@ -117,6 +117,8 @@ describe("RMD029", () => {
             <video muted={"false" as never} />
             <details open={"false" as never} />
             <input required={"false" as never} />
+            {/* The tag is refused, and this is a diagnostic about its ATTRIBUTE — see RefusedSelectTag. */}
+            {/* @ts-expect-error */}
             <select multiple={"false" as never} />
           </div>
         );

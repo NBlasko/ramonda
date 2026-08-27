@@ -85,9 +85,49 @@ built once per field and reused, so spreading it on every render does not re-att
 The last row is deliberate: no single control holds an object, so asking for one is a mistake
 worth catching at compile time.
 
-**What `bind` cannot check** is which element you spread it onto. `<select {...bind} />` and
+**What `bind` cannot check** is which element you spread it onto. `<Select {...bind} />` and
 `<textarea {...bind} />` both type-check, because the attributes are the same and a type cannot
 see the tag. Either is fine when the field holds a string.
+
+### A choice lives on `<Select>`
+
+Every other control holds its own value. A select's value is which of its **children** is chosen, so
+`<select>` is a type error and you write `<Select>`. The options stay ordinary tags:
+
+```tsx
+import { Select } from "@ramonda/core";
+
+<Select value={this.choice} onchange={this.pick}>
+  <option value="a">A</option>
+  <option value="b">B</option>
+</Select>;
+```
+
+`<Select>` takes everything a `<select>` takes — `className`, `disabled`, `name`, `data-`, `aria-`,
+every event — and passes it straight through to the element.
+
+The reason the plain tag is refused is that `selected` on an option does not say one thing. HTML
+keeps the later of two `selected` options and gives a select with none the first option it holds, so
+what the attribute means depends on the order the options reach the select. You never write that
+order. `value` on the select is settled once the options are there and competes with nothing.
+
+A `multiple` select takes a list, and keeps every value in it:
+
+```tsx
+import { Select } from "@ramonda/core";
+
+<Select multiple value={this.picked}>
+  {this.all.map((v) => (
+    <option key={v} value={v}>
+      {v}
+    </option>
+  ))}
+</Select>;
+```
+
+On a server-rendered page the choice arrives as `selected` on the chosen option, because that is
+where HTML keeps it and a select has no `value` attribute to carry. The reader sees the right option
+before any script runs.
 
 ### Writing your own attributes
 

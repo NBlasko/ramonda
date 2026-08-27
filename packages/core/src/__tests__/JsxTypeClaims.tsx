@@ -1,3 +1,4 @@
+import { Select } from "../base/Select";
 import { Component } from "../base/Component";
 import { onDocument, onWindow } from "../base/decorators";
 
@@ -173,9 +174,13 @@ export class MaybeNames extends Component {
 /**
  * Controls are untouched, which is the other half of the worry.
  *
- * Nothing is REQUIRED on an `<input>`, a `<select>`, a `<textarea>` or anything else — the refused
- * names above are optional properties, so they only bite when somebody writes one. A form's spread
- * goes on exactly as it did.
+ * Nothing is REQUIRED on an `<input>`, a `<textarea>` or anything else — the refused NAMES above are
+ * optional properties, so they only bite when somebody writes one. A form's spread goes on exactly
+ * as it did.
+ *
+ * `<select>` is the exception, and deliberately so: it is refused as a TAG, which is a required
+ * property, so a spread cannot satisfy it either. `<Select>` takes the same spread and is the answer
+ * the error names.
  */
 export class ControlSpreads extends Component {
   render() {
@@ -184,7 +189,7 @@ export class ControlSpreads extends Component {
         <input {...bind} />
         <input {...bind} id="email" type="email" />
         <textarea {...bind} />
-        <select {...loose} />
+        <Select {...loose} value="a" />
         <input {...loose} />
         <div {...loose} />
         <form {...loose} />
@@ -347,34 +352,32 @@ export class RefusedEventDecoratorNames extends Component {
 }
 
 /**
- * A `<select>`'s choice goes on the OPTION, and the type says so where it is written.
+ * `<select>` is refused as a TAG, and the message is the property name TypeScript says is missing —
+ * so the error in the editor reads as the instruction.
  *
- * `<select value={x}>` is another library's invention: HTML has no `value` content attribute on a
- * select at all, which is why a served page carrying one shows the first option until a script
- * fixes it. Supporting it cost a second visit to every element in the diff to answer *which option*
- * once the options existed; refusing it costs a line, and the message is the type.
+ * It is the one element whose meaning is not in its own attributes: a select's state is which CHILD
+ * is chosen, and `selected` on an option is a claim HTML settles by document order, so plain markup
+ * means whatever the render order made it mean. `<Select value={x}>` says it once and is settled
+ * after the options exist. `<option>` itself is untouched.
  */
 declare const chosen: string;
 
-export const selectByOption = (
-  <select>
-    <option value="a" selected={chosen === "a"}>
-      A
-    </option>
-    <option value="b" selected={chosen === "b"}>
-      B
-    </option>
-  </select>
+export const chooser = (
+  <Select value={chosen}>
+    <option value="a">A</option>
+    <option value="b">B</option>
+  </Select>
 );
 
-// @ts-expect-error — a select's choice is not its own attribute; write `selected` on the option.
-export const selectByValue = <select value={chosen} />;
+// @ts-expect-error — the tag is refused; write <Select value={x}>.
+export const plainSelect = <select />;
 
-/** `multiple` is an ordinary attribute and stays one. */
+/** `<option>` is untouched: it has no choice to make, so it stays an ordinary tag. */
+export const plainOption = <option value="a">A</option>;
+
+/** `multiple` is an ordinary attribute, and its choice is a list rather than one value. */
 export const selectMultiple = (
-  <select multiple>
-    <option value="a" selected>
-      A
-    </option>
-  </select>
+  <Select multiple value={[chosen]}>
+    <option value="a">A</option>
+  </Select>
 );

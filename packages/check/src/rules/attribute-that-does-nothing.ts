@@ -28,21 +28,24 @@ import type { ElementRule } from "./rule";
  * JavaScript file. A type is a defence only while nobody casts it away, and an attribute that does
  * nothing is worth naming however somebody got there.
  *
- * ## TO ADD: `value` on a `<select>`
+ * ## TO ADD: two more, and one of them is a TAG rather than a name
  *
- * The seventh of exactly this kind, and not yet checked here. `<select>` has no `value` content
- * attribute — HTML keeps a select's choice on the chosen OPTION — so `<select value={x}>` writes an
- * attribute no browser reads: measured, a served page showed the FIRST option while the model said
- * another, and the right one appeared only when the bundle arrived.
+ * `selected` on an `<option>`. Not a dead name — `selected` is real HTML — but what it means depends
+ * on the order the options reached their select, and no author writes that order. HTML keeps the
+ * later of two claims and gives an unclaimed select the first option it holds, so the same markup
+ * means different things depending on how the render that produced it was reached. `@ramonda/core`
+ * refuses the plain `<select>` tag in `global.ts` (`RefusedSelectTag`, whose property NAME is the
+ * message TypeScript prints) and points at `<Select value={x}>`, which settles the choice once the
+ * options exist — but the option's own attribute is still writable, and this is where that would be
+ * named.
  *
- * `@ramonda/core` refuses it in `global.ts` (`RefusedOnSelect`, whose message is the spelling to
- * use), which is why this is a note rather than a gap: the type fires first. It belongs here for the
- * same reason the other six do — the type is a defence only while nobody casts it away.
+ * `indeterminate` on an `<input>`. Measured: the attribute is written into the markup, there is no
+ * such content attribute in HTML at all, and `.indeterminate` stays `false`. The purest member of
+ * the family — a name that does nothing, everywhere it appears — and the only one of the three that
+ * needs no tag to decide it.
  *
- * What it would report: tag `select`, attribute `value`, instead
- * "write `selected` on the option — `<option selected={x}>`". The one wrinkle the other six do not
- * have is that `value` is perfectly correct on an `<input>` and a `<textarea>`, so this entry has to
- * be keyed on the TAG as well as the name, which the issue shape already carries.
+ * The wrinkle the other six do not have is the tag: they are dead wherever they appear, and these
+ * are wrong only in one place. The issue shape already carries `tag`.
  */
 export interface AttributeThatDoesNothingIssue {
   /** The tag it was written on. */

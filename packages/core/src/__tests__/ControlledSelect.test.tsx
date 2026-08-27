@@ -1,37 +1,32 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
-import { Component } from "../base/Component";
+import { Component, Select } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 
 /**
  * A `<select>` is the one element whose own state is not a property of itself: it is which CHILD is
- * chosen. Attributes are applied before children, so both ways of saying it arrived too early —
- * `<select value={x}>` set `.value` on a select with no options, and `<option selected={x}>` set an
- * attribute on an option that was not in a select yet.
+ * chosen. `<Select value={x}>` says that once, on the element that owns the choice, and settles it
+ * once the options are in the element — told to the select on the client, written onto the chosen
+ * option on the server, which serializes markup and cannot carry a property.
  *
- * The second failed in a way that is this framework's own doing. `reorderChildren` walks BACKWARDS,
- * so the last option is inserted first, and a select with no selection takes the first option it is
- * handed. An option inserted afterwards carrying `selected` does not take it back. Measured before
- * the fix, with `b` asked for out of `a b c`: the attribute sat on `b`, the PROPERTY sat on `c`, and
- * the page showed `c`. Both spellings, written out or mapped.
- *
- * Nothing in this repository used a `<select>` — no test, no demo, no documentation example — which
- * is why five review rounds went past it.
+ * The plain `<select>` is refused by the types. `selected` on an option is a CLAIM: HTML keeps the
+ * later of two, and gives a select holding none the first option it is handed, so what it means
+ * depends on the order the options reached the select. Measured with `b` asked for out of `a b c`:
+ * the page showed `c`. `<option>` itself stays an ordinary tag — it has no choice to make.
  */
-
-class ByOption extends Component {
+class Chooser extends Component {
   @state choice = "b";
   render() {
     return (
-      <select id="s">
+      <Select id="s" value={this.choice}>
         {["a", "b", "c"].map((v) => (
-          <option key={v} value={v} selected={this.choice === v}>
+          <option key={v} value={v}>
             {v}
           </option>
         ))}
-      </select>
+      </Select>
     );
   }
 }
@@ -46,14 +41,14 @@ beforeEach(() => {
 });
 
 describe("a controlled select shows what the model says", () => {
-  test("on the FIRST render, said with selected on the option", async () => {
-    const app = await getDOM<ByOption>(<ByOption />);
+  test("on the FIRST render, when its options are built with it", async () => {
+    const app = await getDOM<Chooser>(<Chooser />);
     await app.settle();
     expect(shown(app.container)).toEqual({ value: "b", index: 1 });
   });
 
   test("and follows the model afterwards", async () => {
-    const app = await getDOM<ByOption>(<ByOption />);
+    const app = await getDOM<Chooser>(<Chooser />);
     await app.settle();
 
     app.instance.choice = "c";
@@ -73,13 +68,13 @@ describe("a controlled select shows what the model says", () => {
       }
       render() {
         return (
-          <select id="s" onchange={this.pick}>
+          <Select id="s" value={this.choice} onchange={this.pick}>
             {["a", "b", "c"].map((v) => (
-              <option key={v} value={v} selected={this.choice === v}>
+              <option key={v} value={v}>
                 {v}
               </option>
             ))}
-          </select>
+          </Select>
         );
       }
     }
@@ -106,13 +101,13 @@ describe("a controlled select shows what the model says", () => {
       render() {
         return (
           <div data-tick={String(this.tick)}>
-            <select id="s">
+            <Select id="s" value={this.choice}>
               {["a", "b", "c"].map((v) => (
-                <option key={v} value={v} selected={this.choice === v}>
+                <option key={v} value={v}>
                   {v}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         );
       }
@@ -126,47 +121,137 @@ describe("a controlled select shows what the model says", () => {
     await app.settle();
     expect(shown(app.container)).toEqual({ value: "b", index: 1 });
   });
+
+  /**
+   * Why the choice is settled on every render rather than only when the value changes.
+   *
+   * Putting an option into a live select makes HTML settle the selection again from what it can see,
+   * so a render that only ADDS an option can move it while the value stood still.
+   */
+  test("an option that appears later does not take the choice", async () => {
+    class Growing extends Component {
+      @state options = ["b", "c"];
+      render() {
+        return (
+          <Select id="s" value="b">
+            {this.options.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+
+    const app = await getDOM<Growing>(<Growing />);
+    await app.settle();
+    expect(shown(app.container)).toEqual({ value: "b", index: 0 });
+
+    app.instance.options = ["a", "b", "c"];
+    await app.settle();
+    expect(shown(app.container)).toEqual({ value: "b", index: 1 });
+  });
+
+  /** Where the chosen option sits changes nothing, which is the whole difference from `selected`. */
+  test("the chosen option can be anywhere in the list", async () => {
+    class Reversed extends Component {
+      render() {
+        return (
+          <Select id="s" value="c">
+            {["c", "b", "a"].map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        );
+      }
+    }
+
+    const app = await getDOM<Reversed>(<Reversed />);
+    await app.settle();
+    expect(shown(app.container)).toEqual({ value: "c", index: 0 });
+  });
+
+  /**
+   * Everything written on `<Select>` reaches the `<select>`, `data-` and `aria-` included.
+   *
+   * The props proxy has no `ownKeys` trap — a signal is made per KEY as that key is read, which is
+   * what lets a component depend on exactly the props it looked at — so `{...this.props}` spreads
+   * nothing at all. A wrapper written the obvious way drops every attribute its caller wrote, and
+   * this is the test that would catch it.
+   */
+  test("a Select is transparent: what you write on it lands on the element", async () => {
+    class Dressed extends Component {
+      @state wide = true;
+      render() {
+        return (
+          <Select
+            id="s"
+            value="a"
+            className={this.wide ? "wide" : "narrow"}
+            disabled
+            name="pick"
+            data-kind="picker"
+            aria-label="pick one"
+          >
+            <option value="a">a</option>
+          </Select>
+        );
+      }
+    }
+
+    const app = await getDOM<Dressed>(<Dressed />);
+    await app.settle();
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+
+    expect({
+      cls: select.className,
+      disabled: select.disabled,
+      name: select.name,
+      kind: select.getAttribute("data-kind"),
+      label: select.getAttribute("aria-label"),
+    }).toEqual({ cls: "wide", disabled: true, name: "pick", kind: "picker", label: "pick one" });
+
+    // And it stays transparent: a forwarded prop that changes is followed.
+    app.instance.wide = false;
+    await app.settle();
+    expect(select.className).toBe("narrow");
+  });
 });
 
 describe("what the server sends for a select", () => {
-  test("the option spelling reaches the markup, so a browser shows it before any JS runs", async () => {
-    const html = (await renderToString(<ByOption />)).replace(/<!--[^>]*-->/g, "");
+  test("the chosen option carries it, so a browser shows it before any JS runs", async () => {
+    /**
+     * A select has no `value` content attribute at all, so the server cannot write the choice where
+     * the author wrote it — `value="b"` on a `<select>` is markup a browser ignores. It goes where
+     * HTML keeps it, on the chosen option, which is the only half a served page can carry.
+     */
+    const html = (await renderToString(<Chooser />)).replace(/<!--[^>]*-->/g, "");
     const host = document.createElement("div");
     host.innerHTML = html;
 
-    expect(html).toContain('<option value="b" selected');
+    expect(html).toContain('<option value="b" selected=""');
     expect((host.querySelector("select") as HTMLSelectElement).value).toBe("b");
   });
 });
 
 describe("a served select, hydrated", () => {
   test("the reader sees the right option before any JS, and it stays after", async () => {
-    /**
-     * The whole point of putting the choice on the option: the page is correct while it is still
-     * just markup. Before this, a served select showed the first option and jumped to the right one
-     * when the bundle arrived.
-     *
-     * Adoption gets the same treatment as the build, because it is the other way in — children are
-     * adopted after attributes there too. Without that, the page was right for a reason nobody
-     * chose: the server's attribute set the option's selectedness while the markup was parsed, the
-     * attribute pass then removed the attribute, and what was left agreed with the model by accident.
-     */
-    const html = await renderToString(<ByOption />);
+    const html = await renderToString(<Chooser />);
     const container = document.createElement("div");
     document.body.appendChild(container);
     container.innerHTML = html;
 
-    const beforeJs = (container.querySelector("select") as HTMLSelectElement).value;
-    expect(beforeJs).toBe("b");
+    expect((container.querySelector("select") as HTMLSelectElement).value).toBe("b");
 
-    hydrateRoot(<ByOption />, container);
+    hydrateRoot(<Chooser />, container);
+    await Promise.resolve();
     await Promise.resolve();
 
     const select = container.querySelector("select") as HTMLSelectElement;
-    expect(select.value).toBe("b");
-    expect(select.selectedIndex).toBe(1);
-    // And the markup still says what the DOM does.
-    expect(select.querySelector('option[value="b"]')!.hasAttribute("selected")).toBe(true);
+    expect({ value: select.value, index: select.selectedIndex }).toEqual({ value: "b", index: 1 });
 
     container.remove();
   });
@@ -175,30 +260,24 @@ describe("a served select, hydrated", () => {
 describe("why attributes go on before the children", () => {
   test("a multiple select keeps every option the model picked", async () => {
     /**
-     * The question this answers: could ALL attributes simply be applied after the children, and the
-     * second visit disappear? The suite says yes — all 1337 tests pass either way — and the suite is
-     * wrong, in the same way it was wrong about `<select>` until an hour ago: nothing exercised the
-     * case that decides it.
+     * The case that decides the ordering. `multiple` changes how a select treats each option AS IT
+     * ARRIVES: without it, a select keeps one selection and discards the rest. Measured with the
+     * attribute applied after the children, asking for `b` and `c`: the page kept `c` alone.
      *
-     * `multiple` is that case. It changes how a select treats each option AS IT ARRIVES: without it,
-     * a select keeps one selection and discards the rest. Measured with the attribute applied after
-     * the children, asking for `b` and `c`: the page kept `c` alone.
-     *
-     * So neither ordering is right for everything — `multiple` has to be on before the options and
-     * `value` cannot be until after them — and two passes is the shape that follows, rather than a
-     * workaround for one element.
+     * So neither moment is right for everything — `multiple` has to be on before the options and the
+     * choice cannot be settled until after them.
      */
     class Multi extends Component {
       @state picked = ["b", "c"];
       render() {
         return (
-          <select id="s" multiple>
+          <Select id="s" multiple value={this.picked}>
             {["a", "b", "c"].map((v) => (
-              <option key={v} value={v} selected={this.picked.includes(v)}>
+              <option key={v} value={v}>
                 {v}
               </option>
             ))}
-          </select>
+          </Select>
         );
       }
     }

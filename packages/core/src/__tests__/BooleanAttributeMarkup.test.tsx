@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Component } from "../index";
+import { Component, Select } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
@@ -18,9 +18,9 @@ class Booleans extends Component {
       <div>
         <input id="a" disabled required readonly />
         <input id="b" type="checkbox" checked />
-        <select id="c" multiple>
+        <Select id="c" multiple value={[]}>
           <option value="x">x</option>
-        </select>
+        </Select>
         <video id="d" muted controls autoplay loop />
         <details id="e" open />
       </div>
