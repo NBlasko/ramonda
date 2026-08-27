@@ -12,6 +12,7 @@ import {
   filterVirtualChild,
   flattenEntries,
   listHostFor,
+  settleSelection,
   stampSlot,
 } from "../core/DiffAndMerge";
 import { isComponentClose, isComponentOpen, markerBlob } from "../core/componentMarker";
@@ -284,6 +285,19 @@ function hydrateElement(
   // rebuilds the page it just adopted.
   cursor[ORIGIN_SYM] = vnode[ORIGIN_SYM];
   hydrateChildren(vnode.children, placeholder, cursor);
+
+  /**
+   * The same rule the build path applies, because adoption is the other way in.
+   *
+   * A `<select>`'s choice is which child is selected, and children are adopted after attributes — so
+   * hydration has the ordering problem the build path has, and needed telling too. Without this the
+   * page happened to be right for a reason nobody chose: the server's `selected` attribute set the
+   * option's selectedness while the markup was parsed, then the attribute pass removed the attribute
+   * because the client's vnode carries the choice on the SELECT, and what was left agreed with the
+   * model by accident of how a browser treats a removed attribute.
+   */
+  if (cursor.nodeName === "SELECT") settleSelection(cursor as unknown as HTMLSelectElement, vnode);
+
   return nextOf(cursor);
 }
 

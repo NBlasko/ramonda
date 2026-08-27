@@ -173,7 +173,15 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
 
   if (name === "value") {
     enhancedNode.value = value;
-    enhancedNode.setAttribute(name, value);
+    /**
+     * The attribute too, because on an `<input>` it is the DEFAULT value and a server render has
+     * nowhere else to put it — except on a `<select>`, where HTML has no such attribute at all.
+     *
+     * Writing it there put an invalid attribute in every served page, saying something no browser
+     * reads. Where a select's choice really goes is `selected` on the chosen option, which
+     * `settleSelection` writes once the options exist.
+     */
+    if (enhancedNode.nodeName !== "SELECT") enhancedNode.setAttribute(name, value);
     return;
   }
 

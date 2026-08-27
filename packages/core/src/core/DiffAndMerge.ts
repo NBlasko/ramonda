@@ -536,10 +536,34 @@ function executeChangesOnStringNode(
  * just got wrong, and the attribute is what the render asked for. A `<select>` the user has picked
  * from is not disturbed, because a render that does not name a selection does nothing here.
  */
-function settleSelection(select: HTMLSelectElement, vnode: VNodeString): void {
+export function settleSelection(select: HTMLSelectElement, vnode: VNodeString): void {
   const wanted = vnode.attributes?.value;
   if (wanted != null) {
-    if (select.value !== String(wanted)) select.value = String(wanted);
+    const asString = String(wanted);
+    if (select.value !== asString) select.value = asString;
+
+    /**
+     * And written onto the OPTION, because that is the only place HTML keeps a select's choice.
+     *
+     * `<select>` has no `value` content attribute, so a value said that way reaches a served page as
+     * nothing at all: the markup carried `value="b"`, a browser ignored it, and the reader saw the
+     * first option until hydration corrected it. Measured — `renderToString` produced
+     * `<select value="b">` with no option marked, and a browser parsing that shows `A`.
+     *
+     * The property alone cannot fix it: `.selected` is not serialized, and the server builds its
+     * markup by serializing a real DOM. The attribute is, so the attribute is what has to say it.
+     *
+     * Kept in step rather than only added — an option that is no longer the chosen one gives it up,
+     * or a second render would leave two options claiming to be selected and the markup would say
+     * something the live DOM does not. Only written when it differs, so an ordinary re-render of an
+     * unchanged select touches nothing.
+     */
+    for (const option of select.options) {
+      const chosen = option.value === asString;
+      if (chosen === option.hasAttribute("selected")) continue;
+      if (chosen) option.setAttribute("selected", "");
+      else option.removeAttribute("selected");
+    }
     return;
   }
 

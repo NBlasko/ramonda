@@ -3,6 +3,7 @@ import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { renderToString } from "../hydration/ssr";
+import { hydrateRoot } from "../hydration/hydrate";
 
 /**
  * A `<select>` is the one element whose own state is not a property of itself: it is which CHILD is
@@ -145,22 +146,72 @@ describe("what the server sends for a select", () => {
     expect((host.querySelector("select") as HTMLSelectElement).value).toBe("b");
   });
 
-  test("the value spelling does NOT, and that gap is named rather than hidden", async () => {
+  test("and so does the value spelling, because the choice is written onto the option", async () => {
     /**
-     * `<select>` has no `value` content attribute, so a value said that way has nowhere to go in
-     * markup — the server writes `value="b"` and a browser ignores it, showing the first option
-     * until hydration corrects it. HTML expresses a select's choice as `selected` on the option, and
-     * that spelling works end to end.
+     * `<select>` has no `value` content attribute, so a value said that way had nowhere to go: the
+     * markup carried `value="b"`, a browser ignored it, and the reader saw `A` until hydration
+     * corrected it — a visible jump on a slow connection.
      *
-     * Left as it is rather than fixed here: making the server mark the matching option is a change
-     * to what the server emits, and this test is what makes the difference between the two spellings
-     * visible instead of leaving it to be discovered on a slow connection.
+     * The property cannot carry it either, since `.selected` is not serialized and the server builds
+     * its markup by serializing a real DOM. So the choice is written where HTML keeps it, on the
+     * option, and the invalid `value` attribute on the select is not written at all.
      */
     const html = (await renderToString(<ByValue />)).replace(/<!--[^>]*-->/g, "");
     const host = document.createElement("div");
     host.innerHTML = html;
 
-    expect(html).not.toContain("selected");
-    expect((host.querySelector("select") as HTMLSelectElement).value).toBe("a");
+    expect(html).toContain('<option value="b" selected');
+    // The attribute HTML has no meaning for is gone from the served page.
+    expect(html).not.toContain('<select id="s" value=');
+    expect((host.querySelector("select") as HTMLSelectElement).value).toBe("b");
+  });
+
+  test("a changed choice leaves exactly one option claiming to be selected", async () => {
+    /**
+     * The attribute is kept in step rather than only added. Two options carrying `selected` would be
+     * markup saying something the live DOM does not, and the second render is where that would
+     * happen.
+     */
+    const app = await getDOM<ByValue>(<ByValue />);
+    await app.settle();
+    app.instance.choice = "c";
+    await app.settle();
+
+    const marked = [...app.container.querySelectorAll("option")].filter((option) => option.hasAttribute("selected"));
+    expect(marked.map((option) => option.getAttribute("value"))).toEqual(["c"]);
+    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
+  });
+});
+
+describe("a served select, hydrated", () => {
+  test("the reader sees the right option before any JS, and it stays after", async () => {
+    /**
+     * The whole point of putting the choice on the option: the page is correct while it is still
+     * just markup. Before this, a served select showed the first option and jumped to the right one
+     * when the bundle arrived.
+     *
+     * Adoption gets the same treatment as the build, because it is the other way in — children are
+     * adopted after attributes there too. Without that, the page was right for a reason nobody
+     * chose: the server's attribute set the option's selectedness while the markup was parsed, the
+     * attribute pass then removed the attribute, and what was left agreed with the model by accident.
+     */
+    const html = await renderToString(<ByValue />);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html;
+
+    const beforeJs = (container.querySelector("select") as HTMLSelectElement).value;
+    expect(beforeJs).toBe("b");
+
+    hydrateRoot(<ByValue />, container);
+    await Promise.resolve();
+
+    const select = container.querySelector("select") as HTMLSelectElement;
+    expect(select.value).toBe("b");
+    expect(select.selectedIndex).toBe(1);
+    // And the markup still says what the DOM does.
+    expect(select.querySelector('option[value="b"]')!.hasAttribute("selected")).toBe(true);
+
+    container.remove();
   });
 });
