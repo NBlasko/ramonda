@@ -1381,7 +1381,7 @@ export function reorderChildren(
   }
 
   const keep = keptInOrder(current, fresh);
-  let keepIndex = 0;
+  let keepIndex = keep.length - 1;
   /**
    * Where an insertion lands when nothing of this run follows it.
    *
@@ -1396,30 +1396,17 @@ export function reorderChildren(
    * node the host's claim pool skips to, which is what keeps the two passes agreeing about which
    * nodes are whose.
    */
-  const reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
+  let reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
 
-  /**
-   * Forwards, because a parent may read its own children while they arrive.
-   *
-   * `<select>` does. Three fresh options where the second asks to be selected, handed over one at
-   * a time last-first: the third arrives alone, and a select holding one unselected option selects
-   * it. The second arrives claiming the same thing, and of two claims HTML keeps the one later in
-   * the document — still the third. The page shows an option nobody asked for. Whatever order the
-   * children are written in is the only order that means what was written, and a parent that reads
-   * them must be handed them that way.
-   *
-   * Going forwards costs nothing here, because a node that stays never moves: its place is settled
-   * before the walk starts. So a node that DOES move needs no anchor built up along the way — it
-   * belongs directly before the first node after it that stays, and before `reference` when none
-   * does. Nothing a later step places can change that, which is what lets the walk read forwards
-   * while still touching only the nodes `keptInOrder` left out.
-   */
-  for (let n = 0; n < length; n++) {
-    if (keepIndex < keep.length && keep[keepIndex] === n) {
-      keepIndex++;
-      continue;
+  for (let n = length - 1; n >= 0; n--) {
+    const node = orderedNodes[n];
+    if (keepIndex >= 0 && keep[keepIndex] === n) {
+      // Already in relative order: leave it, and let it anchor the ones before.
+      keepIndex--;
+    } else {
+      parent.insertBefore(node, reference);
     }
-    parent.insertBefore(orderedNodes[n], keepIndex < keep.length ? orderedNodes[keep[keepIndex]] : reference);
+    reference = node;
   }
 }
 

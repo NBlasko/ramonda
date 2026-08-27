@@ -172,8 +172,6 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   }
 
   if (name === "value") {
-    // The property is the value now, the attribute the one it started with — and the only half a
-    // server render can serialize. Same pairing as `checked` below.
     enhancedNode.value = value;
     enhancedNode.setAttribute(name, value);
     return;
