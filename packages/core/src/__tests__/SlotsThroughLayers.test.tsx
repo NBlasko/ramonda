@@ -50,19 +50,10 @@ class Leaf extends Component<{ tag: string; note?: string }> {
 }
 
 /**
- * A NOTE ON THE TYPE, because these two classes need a cast and a reader deserves the reason.
- *
- * `RamondaNode` is `RamondaAtom | RamondaAtom[]` — one level of array. `props.children` is itself an
- * array, so `[chrome, this.props.children]` is an array holding an array and TypeScript refuses it,
- * although the runtime handles it correctly (`generateRenderOutput` normalizes its output the way
- * every other children position is normalized).
- *
- * That gap is deliberate here rather than papered over: the tests below are about what the RUNTIME
- * does with a nested slot, and a typed app reaching this shape would first have to argue with the
- * compiler. Whether the type should widen to match is a separate decision.
- */
-/**
  * Passes its children through with optional chrome, written the way that KEEPS the slot.
+ *
+ * The array holds `this.props.children`, which is itself an array — the shape `RamondaNode` was
+ * widened to describe, and the plainest way to put a slot inside a range.
  *
  * `[cond ? <i/> : null, children]` and `cond ? [<i/>, children] : [children]` render the same two
  * shapes, and they are not the same thing to the diff: a slot is found again by its POSITION among
@@ -71,18 +62,16 @@ class Leaf extends Component<{ tag: string; note?: string }> {
  * and the difference between them is measured in its own test.
  */
 class Frame extends Component<{ chrome?: boolean; children?: RamondaNode }> {
-  render(): RamondaNode {
+  render() {
     // An ARRAY holding a slot: the shape that has no wrapper element to hide behind.
-    return [this.props.chrome ? <i id="chrome">chrome</i> : null, this.props.children] as RamondaNode;
+    return [this.props.chrome ? <i id="chrome">chrome</i> : null, this.props.children];
   }
 }
 
 /** The same two shapes, written as two different pieces of JSX. See the test that measures it. */
 class FrameBranching extends Component<{ chrome?: boolean; children?: RamondaNode }> {
-  render(): RamondaNode {
-    return (
-      this.props.chrome ? [<i id="chrome">chrome</i>, this.props.children] : [this.props.children]
-    ) as RamondaNode;
+  render() {
+    return this.props.chrome ? [<i id="chrome">chrome</i>, this.props.children] : [this.props.children];
   }
 }
 

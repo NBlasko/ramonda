@@ -242,8 +242,19 @@ type RamondaAtom = VNode | ListNode | string | undefined | null | boolean | numb
  * component owns a RANGE of nodes, so returning two siblings, or a list, or nothing at all, are all
  * ordinary answers. There is no wrapper to make N look like one, and no fragment tag to write —
  * the array IS the spelling.
+ *
+ * **Recursive, because a slot is a `RamondaNode` and a slot goes in an array.** It used to be
+ * `RamondaAtom | RamondaAtom[]` — one level — and that is one level short of the shape the two
+ * features here compose into: `props.children` is itself an array, so
+ * `return [<i class="chrome"/>, this.props.children]` is an array holding an array. The runtime
+ * handles it (`generateRenderOutput` normalizes its output exactly as every other children position
+ * is normalized), and the type refusing it meant the plainest way to wrap a slot in a range did not
+ * compile.
+ *
+ * Nothing reads this expecting flatness: `normalizeChildren` recurses, and it is what every path
+ * into the diff goes through.
  */
-export type RamondaNode = RamondaAtom | RamondaAtom[];
+export type RamondaNode = RamondaAtom | RamondaNode[];
 
 export declare class BaseComponent<P = DefaultProps> {
   public static readonly __isComponent = true;
