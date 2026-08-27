@@ -81,11 +81,10 @@ describe("composition inside a <tr>, where only <td> is legal", () => {
     expect(captured.codes).toEqual([]);
   });
 
-  test("@Host is inherited, so behaviour composes by extending", async () => {
+  test("the tag is inherited with the render, so behaviour composes by extending", async () => {
     // "Someone styled a <td> and we want to add to it, but it must stay a <td>."
-    // Reuse by nesting would need a fragment to hide the extra element. Here the
-    // subclass IS the same one element — HOST_META is a static, so it comes down
-    // the chain.
+    // The tag is written in render(), so a subclass inherits it by inheriting the render and
+    // changes it by writing its own — and it is still exactly one <td>, with no wrapper to hide.
     class BaseCell extends Component<{ label?: string }> {
       protected decorate(v: string) {
         return v.toUpperCase();
