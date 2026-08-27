@@ -101,11 +101,23 @@ export function mountRoot(vnode: ComponentChild, container: ChildNode): void {
   const result = reconcileEntries([vnode], [], undefined, undefined, container, unclaimed);
   (container as EnhancedChildNode)[CHILD_RECORD] = result.entries;
 
-  // Appended rather than reordered: a root mount has an empty container and nothing to move, so
-  // there is no teardown for an insertion to race with.
+  /**
+   * Inserted before whatever the BUILD itself put in the container, not appended past it.
+   *
+   * "A root mount has an empty container" was the assumption, and it is wrong by the time this line
+   * runs: `reconcileEntries` above has already executed every `@created` in the tree, and a `Portal`
+   * aimed at this same container — `document.body`, or the app root — appends its anchors there
+   * during that call. Measured on `bootstrap(<App/>, host)` with a portal aimed at `host`: the page
+   * came out `|<pin>|<own><tail>`, the portal's block permanently in front of the app's own markup,
+   * and no later render healed it.
+   *
+   * There is still no teardown to race with, which is what the old note was really about — nothing
+   * has been unmounted here. Only the "empty" half was untrue.
+   */
   const ordered: ChildNode[] = [];
   flattenEntries(result.entries, ordered);
-  for (const child of ordered) container.appendChild(child);
+  const guest = firstHostedBlock(container);
+  for (const child of ordered) container.insertBefore(child, guest);
 }
 
 /**
@@ -286,7 +298,22 @@ export function refreshComponentRegion(component: BaseComponent): void {
   flattenEntries(region.entries, ordered);
 
   if (result.changed || unclaimed.length > 0) {
-    reorderChildren(parent, ordered, anchor, before);
+    /**
+     * The anchor is re-checked here, because the unmount above runs USER CODE.
+     *
+     * It is a NEIGHBOUR rather than one of this region's own nodes, and it has to be read before the
+     * unmount — that is the fault the comment above it records. But the window between the two is a
+     * `@destroyed`, and a `@destroyed` may take that neighbour out: a dropped child whose `Portal`
+     * aimed at this same parent disposes its block, and the block's opening anchor IS the node that
+     * was captured. Measured: `NotFoundError: The child can not be found in the parent`, thrown out
+     * of the re-render, with the markup this pass produced never reaching the page at all.
+     *
+     * A detached anchor answers the same question the empty case answers, so the search runs again
+     * rather than falling back to `null` — `null` means the end of the parent, which is what put
+     * fresh markup past every later sibling in the first place.
+     */
+    const stillThere = anchor === null || anchor.parentNode === (parent as unknown as ParentNode);
+    reorderChildren(parent, ordered, stillThere ? anchor : anchorAfterRegion(region, parent, ordered), before);
   }
 }
 

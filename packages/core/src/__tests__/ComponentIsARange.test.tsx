@@ -1,8 +1,9 @@
 import { describe, test, expect } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, findAll } from "../test/setup";
 import { state, mounted, destroyed } from "../base/decorators";
 import { Component } from "../base/Component";
 import { list } from "../base/list";
+import { Portal } from "../base/Portal";
 import { componentAt, componentsIn } from "../core/DiffAndMerge";
 import { COMPONENT_RUNTIME } from "../core/runtime";
 import { renderToString } from "../hydration/ssr";
@@ -482,5 +483,62 @@ describe("a region's node set is derived, not remembered", () => {
     } finally {
       window.removeEventListener("ramonda:dev-log", handler);
     }
+  });
+});
+
+describe("a self-render whose own teardown moves the ground under it", () => {
+  /**
+   * `refreshComponentRegion` reads its insertion anchor BEFORE unmounting, because afterwards a
+   * detached node answers `null` for `nextSibling` and that reads as the end of the parent. But the
+   * anchor is a NEIGHBOUR, not one of the region's own nodes, and the unmount runs user code — a
+   * `@destroyed` can take that neighbour away.
+   *
+   * The shape: a dropped child owns a `Portal` aimed at the SAME parent the range sits in, so the
+   * block's opening anchor is the captured node. Measured before the fix: `NotFoundError: The child
+   * can not be found in the parent`, thrown out of the re-render, with this pass's markup never
+   * reaching the page.
+   */
+  test("an anchor removed by a @destroyed is found again, not fallen back from", async () => {
+    class Ghost extends Component<{ target?: Element }> {
+      portal = this.use(Portal, (self: Ghost) => ({
+        children: <u id="ghost">g</u>,
+        target: self.props.target as Element,
+      }));
+      render() {
+        return <b id="ghostmark">gm</b>;
+      }
+    }
+
+    class Panel extends Component<{ target?: Element }> {
+      @state phase = 0;
+      render() {
+        return this.phase === 0
+          ? [<b id="mark">m</b>, <Ghost target={this.props.target} />]
+          : [<b id="mark">m</b>, <i id="other">o</i>];
+      }
+    }
+
+    class Shell extends Component {
+      @state ready = false;
+      slot: Element | undefined;
+      render() {
+        return <div id="wrap">{this.ready ? <Panel target={this.slot} /> : null}</div>;
+      }
+    }
+
+    const app = await getDOM<Shell>(<Shell />);
+    // The portal's target is the very element the Panel's range sits in.
+    app.instance.slot = app.container.querySelector("#wrap")!;
+    app.instance.ready = true;
+    await app.settle();
+
+    expect(app.container.querySelector("#ghost")).not.toBeNull();
+
+    const panel = findAll<Panel>(app.container, "Panel")[0]!;
+    panel.phase = 1;
+    await app.settle();
+
+    // No throw, and the markup this render asked for is in the page, in order.
+    expect(app.container.querySelector("#wrap")!.innerHTML).toBe('<b id="mark">m</b><i id="other">o</i>');
   });
 });

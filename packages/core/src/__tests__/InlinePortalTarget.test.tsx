@@ -3,6 +3,8 @@ import { getDOM, findAll, servedMarkup } from "../test/setup";
 import { state, destroyed, mounted } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Portal } from "../base/Portal";
+import { componentsIn } from "../core/DiffAndMerge";
+import { bootstrap, unmount } from "../index";
 
 /**
  * A `Portal` aimed at an element in the owner's OWN render — which is how "inline" is done, and
@@ -289,6 +291,58 @@ describe("a portal aimed inside its owner's render", () => {
     app.instance.reaim();
     await app.settle();
     expect(slot.querySelector("#pin")!.textContent).toBe(`pin${app.instance.tick}`);
+  });
+
+  test("a root mounted into a container its own build writes into", async () => {
+    /**
+     * "A root mount has an empty container" is what the append in `mountRoot` assumed, and it is
+     * untrue by the time that line runs: the reconcile above has already executed every `@created`
+     * in the tree, and a `Portal` aimed at THIS container appends its anchors there during that
+     * call. `bootstrap(app, document.body)` with a portal aimed at the body is the ordinary way to
+     * meet it.
+     *
+     * Measured before the fix: `|<pin>|<own><tail>` — the block permanently in front of the app's
+     * own markup, and no later render healed it.
+     */
+    class Pin extends Component {
+      render() {
+        return <b id="pin">PIN</b>;
+      }
+    }
+
+    class Rooted extends Component {
+      @state n = 0;
+      portal = this.use(Portal, () => ({ children: <Pin />, target: rootHost }));
+      render() {
+        return [<p id="own">own {String(this.n)}</p>, <i id="tail">tail</i>];
+      }
+    }
+
+    const rootHost = document.createElement("div");
+    document.body.appendChild(rootHost);
+
+    const shape = () =>
+      [...rootHost.childNodes].map((n) => (n.nodeType === 8 ? "|" : `<${(n as Element).id}>`)).join("");
+
+    try {
+      bootstrap(<Rooted />, rootHost);
+      await Promise.resolve();
+
+      // The app's own markup first, the guest after it.
+      expect(shape()).toBe("<own><tail>|<pin>|");
+
+      // And a re-render of the root keeps it that way.
+      const instance = componentsIn(rootHost)[0] as unknown as Rooted;
+      instance.n = 1;
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(shape()).toBe("<own><tail>|<pin>|");
+      expect(rootHost.querySelector("#own")!.textContent).toBe("own 1");
+    } finally {
+      unmount(rootHost);
+      rootHost.remove();
+    }
   });
 
   test("the server's markers wrap each range without swallowing the block", async () => {
