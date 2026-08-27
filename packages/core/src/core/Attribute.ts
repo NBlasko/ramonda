@@ -25,6 +25,85 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
 }
 
 /**
+ * The attributes that cannot be applied until the element's CHILDREN exist, applied once they do.
+ *
+ * Almost everything can go on an element the moment it is created, which is why the ordinary pass
+ * runs first and this one is a second visit. A few cannot, and they are not a quirk of one element:
+ * they are attributes whose meaning is *about the children*. A `<select>`'s value is which OPTION is
+ * chosen, so saying it to an empty select says nothing.
+ *
+ * Ordering the other way round would not do either, and that is what makes two passes the honest
+ * shape rather than a workaround. `multiple` has to be on the select BEFORE its options arrive — a
+ * single select takes the first option it is handed — so attributes-first is right for that one and
+ * wrong for `value`. Each attribute is applied when it can mean what it says.
+ *
+ * Called for every element, so the check is one `nodeName` comparison on the hot path. It lives here
+ * rather than in the diff because every other per-attribute rule lives here: the diff's business is
+ * which nodes exist and in what order, not what HTML makes of a name.
+ */
+export function applyLateAttributes(node: ChildNode, attributes: NodeAttributes): void {
+  if (node.nodeName === "SELECT") settleSelection(node as unknown as HTMLSelectElement, attributes);
+}
+
+/**
+ * Says which option is chosen, once the options are actually there.
+ *
+ * A `<select>` is the one element whose own state is not a property of itself: it is which CHILD is
+ * selected, and children are placed after attributes. So both spellings arrived too early —
+ * `<select value={x}>` set `.value` on a select with no options, and `<option selected={x}>` set the
+ * attribute on an option that was not in a select yet.
+ *
+ * The second failed for a reason that is this framework's own: `reorderChildren` walks BACKWARDS, so
+ * the LAST option is inserted first, and a select with no selection takes the first option it is
+ * given. The `selected` attribute on an option inserted afterwards does not take it back. Measured
+ * on `<option value="b" selected>` among three: the attribute sat on `b` while the PROPERTY sat on
+ * `c`, and the page showed `c`. Both spellings, mapped or written out.
+ *
+ * Re-asserted here, after the children are in place, from whichever spelling the author used —
+ * `value` on the select wins if it is there, because it is the more specific statement.
+ *
+ * Reading the ATTRIBUTE rather than the property is deliberate: the property is what the DOM has
+ * just got wrong, and the attribute is what the render asked for. A `<select>` the user has picked
+ * from is not disturbed, because a render that does not name a selection does nothing here.
+ */
+function settleSelection(select: HTMLSelectElement, attributes: NodeAttributes): void {
+  const wanted = attributes?.value;
+  if (wanted != null) {
+    const asString = String(wanted);
+    if (select.value !== asString) select.value = asString;
+
+    /**
+     * And written onto the OPTION, because that is the only place HTML keeps a select's choice.
+     *
+     * `<select>` has no `value` content attribute, so a value said that way reaches a served page as
+     * nothing at all: the markup carried `value="b"`, a browser ignored it, and the reader saw the
+     * first option until hydration corrected it. Measured — `renderToString` produced
+     * `<select value="b">` with no option marked, and a browser parsing that shows `A`.
+     *
+     * The property alone cannot fix it: `.selected` is not serialized, and the server builds its
+     * markup by serializing a real DOM. The attribute is, so the attribute is what has to say it.
+     *
+     * Kept in step rather than only added — an option that is no longer the chosen one gives it up,
+     * or a second render would leave two options claiming to be selected and the markup would say
+     * something the live DOM does not. Only written when it differs, so an ordinary re-render of an
+     * unchanged select touches nothing.
+     */
+    for (const option of select.options) {
+      const chosen = option.value === asString;
+      if (chosen === option.hasAttribute("selected")) continue;
+      if (chosen) option.setAttribute("selected", "");
+      else option.removeAttribute("selected");
+    }
+    return;
+  }
+
+  for (const option of select.options) {
+    const asked = option.hasAttribute("selected");
+    if (asked && !option.selected) option.selected = true;
+    else if (!asked && option.selected && select.selectedOptions.length > 1) option.selected = false;
+  }
+}
+/**
  * Lets go of a ref the JSX has stopped giving this element.
  *
  * `ref` is not a DOM attribute, so it is never among the PREVIOUS attributes read
@@ -172,16 +251,18 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   }
 
   if (name === "value") {
-    enhancedNode.value = value;
     /**
-     * The attribute too, because on an `<input>` it is the DEFAULT value and a server render has
-     * nowhere else to put it — except on a `<select>`, where HTML has no such attribute at all.
-     *
-     * Writing it there put an invalid attribute in every served page, saying something no browser
-     * reads. Where a select's choice really goes is `selected` on the chosen option, which
-     * `settleSelection` writes once the options exist.
+     * Not on a `<select>`, whose value means which OPTION is chosen and therefore cannot be said
+     * until the options exist — `applyLateAttributes` says it then. Setting the property here would
+     * be talking to an empty select, and the attribute would be invalid HTML in every served page:
+     * `<select>` has no `value` content attribute, so a browser reading one ignores it.
      */
-    if (enhancedNode.nodeName !== "SELECT") enhancedNode.setAttribute(name, value);
+    if (enhancedNode.nodeName === "SELECT") return;
+
+    enhancedNode.value = value;
+    // The attribute as well: on an `<input>` it is the DEFAULT value, and a server render has
+    // nowhere else to put it.
+    enhancedNode.setAttribute(name, value);
     return;
   }
 

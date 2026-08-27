@@ -1,6 +1,6 @@
 import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
 import { installClientRequestScope } from "./requestContext";
-import { applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
+import { applyChangesOnAttributes, applyLateAttributes, formatAttributes } from "../core/Attribute";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
 import { seedWatchProps } from "../helpers/watchProps";
 import { runComponentEffects } from "../reactivity/effect";
@@ -12,7 +12,6 @@ import {
   filterVirtualChild,
   flattenEntries,
   listHostFor,
-  settleSelection,
   stampSlot,
 } from "../core/DiffAndMerge";
 import { isComponentClose, isComponentOpen, markerBlob } from "../core/componentMarker";
@@ -287,16 +286,16 @@ function hydrateElement(
   hydrateChildren(vnode.children, placeholder, cursor);
 
   /**
-   * The same rule the build path applies, because adoption is the other way in.
+   * The same second pass the build path makes, because adoption is the other way into the same rule.
    *
-   * A `<select>`'s choice is which child is selected, and children are adopted after attributes — so
-   * hydration has the ordering problem the build path has, and needed telling too. Without this the
+   * Hydration adopts children after attributes exactly as building creates them after attributes, so
+   * an attribute whose meaning is about the children arrives too early here too. Without this the
    * page happened to be right for a reason nobody chose: the server's `selected` attribute set the
-   * option's selectedness while the markup was parsed, then the attribute pass removed the attribute
-   * because the client's vnode carries the choice on the SELECT, and what was left agreed with the
-   * model by accident of how a browser treats a removed attribute.
+   * option's selectedness while the markup was parsed, then the attribute pass removed it because
+   * the client's vnode carries the choice on the SELECT, and what was left agreed with the model by
+   * accident of how a removed attribute is treated.
    */
-  if (cursor.nodeName === "SELECT") settleSelection(cursor as unknown as HTMLSelectElement, vnode);
+  applyLateAttributes(cursor, vnode.attributes);
 
   return nextOf(cursor);
 }

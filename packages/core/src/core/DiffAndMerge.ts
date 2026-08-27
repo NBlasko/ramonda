@@ -1,5 +1,5 @@
 import { resolveStable } from "../helpers/common";
-import { applyChangesOnAttributes } from "./Attribute";
+import { applyChangesOnAttributes, applyLateAttributes } from "./Attribute";
 import type {
   BaseComponent,
   ComponentChild,
@@ -509,69 +509,10 @@ function executeChangesOnStringNode(
   unmountChildrenNodes(cloneChildren, false);
   if (orderedNodes !== null) reorderChildren(enhancedNode, orderedNodes);
 
-  // A `<select>` cannot know which option is chosen until its options exist. See `settleSelection`.
-  if (enhancedNode.nodeName === "SELECT") settleSelection(enhancedNode as HTMLSelectElement, vnode);
+  // A few attributes cannot be applied until the children exist. See `applyLateAttributes`.
+  applyLateAttributes(enhancedNode, vnode.attributes);
 
   return enhancedNode;
-}
-
-/**
- * Says which option is chosen, once the options are actually there.
- *
- * A `<select>` is the one element whose own state is not a property of itself: it is which CHILD is
- * selected, and children are placed after attributes. So both spellings arrived too early —
- * `<select value={x}>` set `.value` on a select with no options, and `<option selected={x}>` set the
- * attribute on an option that was not in a select yet.
- *
- * The second failed for a reason that is this framework's own: `reorderChildren` walks BACKWARDS, so
- * the LAST option is inserted first, and a select with no selection takes the first option it is
- * given. The `selected` attribute on an option inserted afterwards does not take it back. Measured
- * on `<option value="b" selected>` among three: the attribute sat on `b` while the PROPERTY sat on
- * `c`, and the page showed `c`. Both spellings, mapped or written out.
- *
- * Re-asserted here, after the children are in place, from whichever spelling the author used —
- * `value` on the select wins if it is there, because it is the more specific statement.
- *
- * Reading the ATTRIBUTE rather than the property is deliberate: the property is what the DOM has
- * just got wrong, and the attribute is what the render asked for. A `<select>` the user has picked
- * from is not disturbed, because a render that does not name a selection does nothing here.
- */
-export function settleSelection(select: HTMLSelectElement, vnode: VNodeString): void {
-  const wanted = vnode.attributes?.value;
-  if (wanted != null) {
-    const asString = String(wanted);
-    if (select.value !== asString) select.value = asString;
-
-    /**
-     * And written onto the OPTION, because that is the only place HTML keeps a select's choice.
-     *
-     * `<select>` has no `value` content attribute, so a value said that way reaches a served page as
-     * nothing at all: the markup carried `value="b"`, a browser ignored it, and the reader saw the
-     * first option until hydration corrected it. Measured — `renderToString` produced
-     * `<select value="b">` with no option marked, and a browser parsing that shows `A`.
-     *
-     * The property alone cannot fix it: `.selected` is not serialized, and the server builds its
-     * markup by serializing a real DOM. The attribute is, so the attribute is what has to say it.
-     *
-     * Kept in step rather than only added — an option that is no longer the chosen one gives it up,
-     * or a second render would leave two options claiming to be selected and the markup would say
-     * something the live DOM does not. Only written when it differs, so an ordinary re-render of an
-     * unchanged select touches nothing.
-     */
-    for (const option of select.options) {
-      const chosen = option.value === asString;
-      if (chosen === option.hasAttribute("selected")) continue;
-      if (chosen) option.setAttribute("selected", "");
-      else option.removeAttribute("selected");
-    }
-    return;
-  }
-
-  for (const option of select.options) {
-    const asked = option.hasAttribute("selected");
-    if (asked && !option.selected) option.selected = true;
-    else if (!asked && option.selected && select.selectedOptions.length > 1) option.selected = false;
-  }
 }
 
 function createElement(vnodeString: VNodeString): SVGElement | HTMLElement {
