@@ -5,6 +5,7 @@ import type {
   RefusedOnFields,
   RefusedOnForm,
   RefusedOnMeta,
+  RefusedOnSelect,
   SVGArgs,
 } from "./types/commonTypes";
 import type { RamondaNode, VNode } from "./types/vdom";
@@ -151,7 +152,7 @@ declare global {
       slot: RamondaArgs<HTMLSlotElement>;
       script: RamondaArgs<HTMLScriptElement>;
       section: RamondaArgs<HTMLElement>;
-      select: RamondaArgs<HTMLSelectElement> & Partial<RefusedOnFields>;
+      select: RamondaArgs<HTMLSelectElement> & Partial<RefusedOnFields> & Partial<RefusedOnSelect>;
       small: RamondaArgs<HTMLElement>;
       source: RamondaArgs<HTMLSourceElement>;
       span: RamondaArgs<HTMLSpanElement>;

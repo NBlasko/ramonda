@@ -21,22 +21,6 @@ import { hydrateRoot } from "../hydration/hydrate";
  * is why five review rounds went past it.
  */
 
-class ByValue extends Component {
-  @state choice = "b";
-  pick(e: Event) {
-    this.choice = (e.target as HTMLSelectElement).value;
-  }
-  render() {
-    return (
-      <select id="s" value={this.choice} onchange={this.pick}>
-        <option value="a">A</option>
-        <option value="b">B</option>
-        <option value="c">C</option>
-      </select>
-    );
-  }
-}
-
 class ByOption extends Component {
   @state choice = "b";
   render() {
@@ -62,46 +46,54 @@ beforeEach(() => {
 });
 
 describe("a controlled select shows what the model says", () => {
-  test("on the FIRST render, said with value on the select", async () => {
-    const app = await getDOM<ByValue>(<ByValue />);
-    await app.settle();
-    expect(shown(app.container)).toEqual({ value: "b", index: 1 });
-  });
-
   test("on the FIRST render, said with selected on the option", async () => {
     const app = await getDOM<ByOption>(<ByOption />);
     await app.settle();
     expect(shown(app.container)).toEqual({ value: "b", index: 1 });
   });
 
-  test("and follows the model afterwards, both ways", async () => {
-    for (const Which of [ByValue, ByOption] as const) {
-      const app = await getDOM<InstanceType<typeof Which>>(<Which />);
-      await app.settle();
-      app.instance.choice = "c";
-      await app.settle();
-      expect(shown(app.container)).toEqual({ value: "c", index: 2 });
+  test("and follows the model afterwards", async () => {
+    const app = await getDOM<ByOption>(<ByOption />);
+    await app.settle();
 
-      app.instance.choice = "a";
-      await app.settle();
-      expect(shown(app.container)).toEqual({ value: "a", index: 0 });
-      app.unmount();
-    }
+    app.instance.choice = "c";
+    await app.settle();
+    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
+
+    app.instance.choice = "a";
+    await app.settle();
+    expect(shown(app.container)).toEqual({ value: "a", index: 0 });
   });
 
-  test("a pick by the user reaches the model, and the model reasserts itself", async () => {
-    const app = await getDOM<ByValue>(<ByValue />);
+  test("a pick by the user is followed, and the model can put it back", async () => {
+    class Picked extends Component {
+      @state choice = "b";
+      pick(e: Event) {
+        this.choice = (e.target as HTMLSelectElement).value;
+      }
+      render() {
+        return (
+          <select id="s" onchange={this.pick}>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v} selected={this.choice === v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        );
+      }
+    }
+
+    const app = await getDOM<Picked>(<Picked />);
     await app.settle();
 
     const select = app.container.querySelector("#s") as HTMLSelectElement;
     select.value = "c";
     select.dispatchEvent(new Event("change", { bubbles: true }));
     await app.settle();
-
     expect(app.instance.choice).toBe("c");
-    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
 
-    // And a model that refuses the pick puts the select back, which is what "controlled" means.
+    // And a model that refuses the pick puts it back, which is what "controlled" means.
     app.instance.choice = "a";
     await app.settle();
     expect(shown(app.container)).toEqual({ value: "a", index: 0 });
@@ -145,42 +137,6 @@ describe("what the server sends for a select", () => {
     expect(html).toContain('<option value="b" selected');
     expect((host.querySelector("select") as HTMLSelectElement).value).toBe("b");
   });
-
-  test("and so does the value spelling, because the choice is written onto the option", async () => {
-    /**
-     * `<select>` has no `value` content attribute, so a value said that way had nowhere to go: the
-     * markup carried `value="b"`, a browser ignored it, and the reader saw `A` until hydration
-     * corrected it — a visible jump on a slow connection.
-     *
-     * The property cannot carry it either, since `.selected` is not serialized and the server builds
-     * its markup by serializing a real DOM. So the choice is written where HTML keeps it, on the
-     * option, and the invalid `value` attribute on the select is not written at all.
-     */
-    const html = (await renderToString(<ByValue />)).replace(/<!--[^>]*-->/g, "");
-    const host = document.createElement("div");
-    host.innerHTML = html;
-
-    expect(html).toContain('<option value="b" selected');
-    // The attribute HTML has no meaning for is gone from the served page.
-    expect(html).not.toContain('<select id="s" value=');
-    expect((host.querySelector("select") as HTMLSelectElement).value).toBe("b");
-  });
-
-  test("a changed choice leaves exactly one option claiming to be selected", async () => {
-    /**
-     * The attribute is kept in step rather than only added. Two options carrying `selected` would be
-     * markup saying something the live DOM does not, and the second render is where that would
-     * happen.
-     */
-    const app = await getDOM<ByValue>(<ByValue />);
-    await app.settle();
-    app.instance.choice = "c";
-    await app.settle();
-
-    const marked = [...app.container.querySelectorAll("option")].filter((option) => option.hasAttribute("selected"));
-    expect(marked.map((option) => option.getAttribute("value"))).toEqual(["c"]);
-    expect(shown(app.container)).toEqual({ value: "c", index: 2 });
-  });
 });
 
 describe("a served select, hydrated", () => {
@@ -195,7 +151,7 @@ describe("a served select, hydrated", () => {
      * chose: the server's attribute set the option's selectedness while the markup was parsed, the
      * attribute pass then removed the attribute, and what was left agreed with the model by accident.
      */
-    const html = await renderToString(<ByValue />);
+    const html = await renderToString(<ByOption />);
     const container = document.createElement("div");
     document.body.appendChild(container);
     container.innerHTML = html;
@@ -203,7 +159,7 @@ describe("a served select, hydrated", () => {
     const beforeJs = (container.querySelector("select") as HTMLSelectElement).value;
     expect(beforeJs).toBe("b");
 
-    hydrateRoot(<ByValue />, container);
+    hydrateRoot(<ByOption />, container);
     await Promise.resolve();
 
     const select = container.querySelector("select") as HTMLSelectElement;

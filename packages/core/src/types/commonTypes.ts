@@ -161,6 +161,21 @@ export interface RefusedOnFields {
 }
 
 /**
+ * `value` on a `<select>`, which this framework does not have.
+ *
+ * HTML keeps a select's choice on the chosen OPTION and nowhere else — there is no `value` content
+ * attribute on a select at all. `<select value={x}>` is another library's invention, and supporting
+ * it cost a second visit to every element in the diff to answer *which option* once the options
+ * existed. `<option selected={x}>` says the same thing, needs none of that, and is the only spelling
+ * a served page can carry: a browser shows the right option before any script runs.
+ *
+ * A type rather than a diagnostic, so it is refused where it is written instead of at runtime.
+ */
+export interface RefusedOnSelect {
+  value: "write `selected` on the option — `<option selected={x}>` — which is where HTML keeps a select's choice";
+}
+
+/**
  * The ways an element can be given a name, as a requirement rather than a suggestion.
  *
  * An image and a frame are the two things on a page that a reader who cannot see them has nothing

@@ -345,3 +345,36 @@ export class RefusedEventDecoratorNames extends Component {
     );
   }
 }
+
+/**
+ * A `<select>`'s choice goes on the OPTION, and the type says so where it is written.
+ *
+ * `<select value={x}>` is another library's invention: HTML has no `value` content attribute on a
+ * select at all, which is why a served page carrying one shows the first option until a script
+ * fixes it. Supporting it cost a second visit to every element in the diff to answer *which option*
+ * once the options existed; refusing it costs a line, and the message is the type.
+ */
+declare const chosen: string;
+
+export const selectByOption = (
+  <select>
+    <option value="a" selected={chosen === "a"}>
+      A
+    </option>
+    <option value="b" selected={chosen === "b"}>
+      B
+    </option>
+  </select>
+);
+
+// @ts-expect-error — a select's choice is not its own attribute; write `selected` on the option.
+export const selectByValue = <select value={chosen} />;
+
+/** `multiple` is an ordinary attribute and stays one. */
+export const selectMultiple = (
+  <select multiple>
+    <option value="a" selected>
+      A
+    </option>
+  </select>
+);

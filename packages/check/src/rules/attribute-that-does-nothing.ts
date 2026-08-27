@@ -27,6 +27,22 @@ import type { ElementRule } from "./rule";
  * the reasons the type is not the whole answer — a `@ts-ignore`, a base class loosened by a cast, a
  * JavaScript file. A type is a defence only while nobody casts it away, and an attribute that does
  * nothing is worth naming however somebody got there.
+ *
+ * ## TO ADD: `value` on a `<select>`
+ *
+ * The seventh of exactly this kind, and not yet checked here. `<select>` has no `value` content
+ * attribute — HTML keeps a select's choice on the chosen OPTION — so `<select value={x}>` writes an
+ * attribute no browser reads: measured, a served page showed the FIRST option while the model said
+ * another, and the right one appeared only when the bundle arrived.
+ *
+ * `@ramonda/core` refuses it in `global.ts` (`RefusedOnSelect`, whose message is the spelling to
+ * use), which is why this is a note rather than a gap: the type fires first. It belongs here for the
+ * same reason the other six do — the type is a defence only while nobody casts it away.
+ *
+ * What it would report: tag `select`, attribute `value`, instead
+ * "write `selected` on the option — `<option selected={x}>`". The one wrinkle the other six do not
+ * have is that `value` is perfectly correct on an `<input>` and a `<textarea>`, so this entry has to
+ * be keyed on the TAG as well as the name, which the issue shape already carries.
  */
 export interface AttributeThatDoesNothingIssue {
   /** The tag it was written on. */

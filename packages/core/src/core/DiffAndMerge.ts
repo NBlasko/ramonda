@@ -1,5 +1,5 @@
 import { resolveStable } from "../helpers/common";
-import { applyChangesOnAttributes, applyLateAttributes } from "./Attribute";
+import { applyChangesOnAttributes } from "./Attribute";
 import type {
   BaseComponent,
   ComponentChild,
@@ -498,7 +498,7 @@ function executeChangesOnStringNode(
   // inherited down the tree and survives the drain — see `createComponent`.
   const onServer = placeholderComponent?.[COMPONENT_RUNTIME]?.env === "server";
 
-  const late = applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer);
+  applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer);
 
   const vnodeChildren = vnode.children;
 
@@ -508,9 +508,6 @@ function executeChangesOnStringNode(
   // correctly-placed nodes look misplaced and cause pointless moves.
   unmountChildrenNodes(cloneChildren, false);
   if (orderedNodes !== null) reorderChildren(enhancedNode, orderedNodes);
-
-  // The attribute pass said it left something for after the children. See `applyLateAttributes`.
-  if (late) applyLateAttributes(enhancedNode, vnode.attributes);
 
   return enhancedNode;
 }

@@ -15,62 +15,13 @@ type NodeAttributes = Record<string, any>;
  * the loop below runs per attribute.
  */
 export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttributes: NodeAttributes, onServer = false) {
-  if (!("tagName" in enhancedNode)) return false;
+  if (!("tagName" in enhancedNode)) return;
 
   const previousAttributes = getAllFromNode(enhancedNode as EnhancedHTMLNode);
   const nextAttributes = formatAttributes(rawNextAttributes);
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
-
-  /**
-   * Whether anything was left for after the children — see `applyLateAttributes`.
-   *
-   * Answered here rather than asked there, so the caller pays a boolean instead of a call on every
-   * element it ever builds. The caller learns only THAT something waits, never what or why: which
-   * attribute means what is this file's business, and the diff's is which nodes exist and in what
-   * order.
-   */
-  return enhancedNode.nodeName === "SELECT" && rawNextAttributes?.value != null;
-}
-
-/**
- * `value` on a `<select>`, which is the one thing this package says that HTML has no way to.
- *
- * HTML keeps a select's choice on the chosen OPTION — `<option selected>` — and nowhere else: there
- * is no `value` content attribute on a select at all. `<select value={x}>` is a convenience this
- * package offers over that, and a convenience has to be translated somewhere.
- *
- * It cannot be translated in the ordinary attribute pass, because that runs before the options
- * exist and the answer is *which option*. So the attribute pass declines it and says so, and the
- * diff comes back here once the children are placed. That is the whole of the second visit — no
- * other attribute needs one, and nothing here corrects a mistake: the ordinary pass never made one.
- *
- * The spelling HTML does define needs nothing at all. An `<option selected>` works because a fresh
- * element is handed its children in document order; see `reorderChildren`.
- */
-export function applyLateAttributes(node: ChildNode, attributes: NodeAttributes): void {
-  const wanted = attributes?.value;
-  if (wanted == null) return;
-
-  const select = node as unknown as HTMLSelectElement;
-  const asString = String(wanted);
-  if (select.value !== asString) select.value = asString;
-
-  /**
-   * And written onto the OPTION, because that is where a served page can carry it.
-   *
-   * The property is not serialized, and the server builds its markup by serializing a real DOM — so
-   * without this the markup said nothing, a browser showed the first option, and the right one
-   * appeared only when the bundle arrived. Kept in step rather than only added: two options claiming
-   * to be selected would be markup saying something the live DOM does not.
-   */
-  for (const option of select.options) {
-    const chosen = option.value === asString;
-    if (chosen === option.hasAttribute("selected")) continue;
-    if (chosen) option.setAttribute("selected", "");
-    else option.removeAttribute("selected");
-  }
 }
 
 /**
@@ -221,14 +172,6 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   }
 
   if (name === "value") {
-    /**
-     * Not on a `<select>`, whose value means which OPTION is chosen and therefore cannot be said
-     * until the options exist — `applyLateAttributes` says it then. Setting the property here would
-     * be talking to an empty select, and the attribute would be invalid HTML in every served page:
-     * `<select>` has no `value` content attribute, so a browser reading one ignores it.
-     */
-    if (enhancedNode.nodeName === "SELECT") return;
-
     enhancedNode.value = value;
     // The attribute as well: on an `<input>` it is the DEFAULT value, and a server render has
     // nowhere else to put it.
