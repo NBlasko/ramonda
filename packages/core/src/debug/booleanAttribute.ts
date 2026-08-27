@@ -36,39 +36,7 @@ import { diagnose } from "./diagnostics";
  * category. `"false"` on a genuinely boolean attribute has no reading under which it was intended.
  */
 
-/**
- * The HTML boolean attributes, as the spec defines them: present means true.
- *
- * `aria-*` is deliberately absent. ARIA attributes are enumerated strings, not boolean attributes —
- * `aria-hidden="false"` is valid, meaningful, and the correct way to say "not hidden".
- */
-const BOOLEAN_ATTRIBUTES = new Set([
-  "allowfullscreen",
-  "async",
-  "autofocus",
-  "autoplay",
-  "checked",
-  "controls",
-  "default",
-  "defer",
-  "disabled",
-  "formnovalidate",
-  "hidden",
-  "inert",
-  "ismap",
-  "itemscope",
-  "loop",
-  "multiple",
-  "muted",
-  "nomodule",
-  "novalidate",
-  "open",
-  "playsinline",
-  "readonly",
-  "required",
-  "reversed",
-  "selected",
-]);
+import { BOOLEAN_ATTRIBUTES } from "../helpers/booleanAttributes";
 
 /** What the element will do, per attribute, so the report is about the outcome rather than the rule. */
 const OUTCOME: Record<string, string> = {

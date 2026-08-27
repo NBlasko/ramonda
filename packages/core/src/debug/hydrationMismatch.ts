@@ -1,5 +1,6 @@
 import { diagnose } from "./diagnostics";
 import type { BaseComponent } from "../types/vdom";
+import { BOOLEAN_ATTRIBUTES } from "../helpers/booleanAttributes";
 
 /**
  * DEV-only reporting for server/client render divergence (RMD007).
@@ -137,7 +138,15 @@ export function reportAttributeMismatches(
     const found = node.getAttribute(domName);
     if (found === null) continue;
 
-    const expected = String(value);
+    /**
+     * A boolean attribute is compared as the empty string, because that is what gets written.
+     *
+     * The vnode still says `true` here — this runs before the attribute pass, on purpose, so it can
+     * see the server's value before it is overwritten. Comparing the raw `true` against the served
+     * `checked=""` reported a divergence on markup both sides agree about, and the report named
+     * hydration for a difference in spelling. See `BOOLEAN_ATTRIBUTES`.
+     */
+    const expected = value === true && BOOLEAN_ATTRIBUTES.has(domName) ? "" : String(value);
     if (found === expected) continue;
 
     // `style` is compared by meaning: the server's copy came back through the
