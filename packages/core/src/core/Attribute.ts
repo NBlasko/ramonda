@@ -15,94 +15,64 @@ type NodeAttributes = Record<string, any>;
  * the loop below runs per attribute.
  */
 export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttributes: NodeAttributes, onServer = false) {
-  if (!("tagName" in enhancedNode)) return;
+  if (!("tagName" in enhancedNode)) return false;
 
   const previousAttributes = getAllFromNode(enhancedNode as EnhancedHTMLNode);
   const nextAttributes = formatAttributes(rawNextAttributes);
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
+
+  /**
+   * Whether anything was left for after the children — see `applyLateAttributes`.
+   *
+   * Answered here rather than asked there, so the caller pays a boolean instead of a call on every
+   * element it ever builds. The caller learns only THAT something waits, never what or why: which
+   * attribute means what is this file's business, and the diff's is which nodes exist and in what
+   * order.
+   */
+  return enhancedNode.nodeName === "SELECT" && rawNextAttributes?.value != null;
 }
 
 /**
- * The attributes that cannot be applied until the element's CHILDREN exist, applied once they do.
+ * `value` on a `<select>`, which is the one thing this package says that HTML has no way to.
  *
- * Almost everything can go on an element the moment it is created, which is why the ordinary pass
- * runs first and this one is a second visit. A few cannot, and they are not a quirk of one element:
- * they are attributes whose meaning is *about the children*. A `<select>`'s value is which OPTION is
- * chosen, so saying it to an empty select says nothing.
+ * HTML keeps a select's choice on the chosen OPTION — `<option selected>` — and nowhere else: there
+ * is no `value` content attribute on a select at all. `<select value={x}>` is a convenience this
+ * package offers over that, and a convenience has to be translated somewhere.
  *
- * Ordering the other way round would not do either, and that is what makes two passes the honest
- * shape rather than a workaround. `multiple` has to be on the select BEFORE its options arrive — a
- * single select takes the first option it is handed — so attributes-first is right for that one and
- * wrong for `value`. Each attribute is applied when it can mean what it says.
+ * It cannot be translated in the ordinary attribute pass, because that runs before the options
+ * exist and the answer is *which option*. So the attribute pass declines it and says so, and the
+ * diff comes back here once the children are placed. That is the whole of the second visit — no
+ * other attribute needs one, and nothing here corrects a mistake: the ordinary pass never made one.
  *
- * Called for every element, so the check is one `nodeName` comparison on the hot path. It lives here
- * rather than in the diff because every other per-attribute rule lives here: the diff's business is
- * which nodes exist and in what order, not what HTML makes of a name.
+ * The spelling HTML does define needs nothing at all. An `<option selected>` works because a fresh
+ * element is handed its children in document order; see `reorderChildren`.
  */
 export function applyLateAttributes(node: ChildNode, attributes: NodeAttributes): void {
-  if (node.nodeName === "SELECT") settleSelection(node as unknown as HTMLSelectElement, attributes);
-}
-
-/**
- * Says which option is chosen, once the options are actually there.
- *
- * A `<select>` is the one element whose own state is not a property of itself: it is which CHILD is
- * selected, and children are placed after attributes. So both spellings arrived too early —
- * `<select value={x}>` set `.value` on a select with no options, and `<option selected={x}>` set the
- * attribute on an option that was not in a select yet.
- *
- * The second failed for a reason that is this framework's own: `reorderChildren` walks BACKWARDS, so
- * the LAST option is inserted first, and a select with no selection takes the first option it is
- * given. The `selected` attribute on an option inserted afterwards does not take it back. Measured
- * on `<option value="b" selected>` among three: the attribute sat on `b` while the PROPERTY sat on
- * `c`, and the page showed `c`. Both spellings, mapped or written out.
- *
- * Re-asserted here, after the children are in place, from whichever spelling the author used —
- * `value` on the select wins if it is there, because it is the more specific statement.
- *
- * Reading the ATTRIBUTE rather than the property is deliberate: the property is what the DOM has
- * just got wrong, and the attribute is what the render asked for. A `<select>` the user has picked
- * from is not disturbed, because a render that does not name a selection does nothing here.
- */
-function settleSelection(select: HTMLSelectElement, attributes: NodeAttributes): void {
   const wanted = attributes?.value;
-  if (wanted != null) {
-    const asString = String(wanted);
-    if (select.value !== asString) select.value = asString;
+  if (wanted == null) return;
 
-    /**
-     * And written onto the OPTION, because that is the only place HTML keeps a select's choice.
-     *
-     * `<select>` has no `value` content attribute, so a value said that way reaches a served page as
-     * nothing at all: the markup carried `value="b"`, a browser ignored it, and the reader saw the
-     * first option until hydration corrected it. Measured — `renderToString` produced
-     * `<select value="b">` with no option marked, and a browser parsing that shows `A`.
-     *
-     * The property alone cannot fix it: `.selected` is not serialized, and the server builds its
-     * markup by serializing a real DOM. The attribute is, so the attribute is what has to say it.
-     *
-     * Kept in step rather than only added — an option that is no longer the chosen one gives it up,
-     * or a second render would leave two options claiming to be selected and the markup would say
-     * something the live DOM does not. Only written when it differs, so an ordinary re-render of an
-     * unchanged select touches nothing.
-     */
-    for (const option of select.options) {
-      const chosen = option.value === asString;
-      if (chosen === option.hasAttribute("selected")) continue;
-      if (chosen) option.setAttribute("selected", "");
-      else option.removeAttribute("selected");
-    }
-    return;
-  }
+  const select = node as unknown as HTMLSelectElement;
+  const asString = String(wanted);
+  if (select.value !== asString) select.value = asString;
 
+  /**
+   * And written onto the OPTION, because that is where a served page can carry it.
+   *
+   * The property is not serialized, and the server builds its markup by serializing a real DOM — so
+   * without this the markup said nothing, a browser showed the first option, and the right one
+   * appeared only when the bundle arrived. Kept in step rather than only added: two options claiming
+   * to be selected would be markup saying something the live DOM does not.
+   */
   for (const option of select.options) {
-    const asked = option.hasAttribute("selected");
-    if (asked && !option.selected) option.selected = true;
-    else if (!asked && option.selected && select.selectedOptions.length > 1) option.selected = false;
+    const chosen = option.value === asString;
+    if (chosen === option.hasAttribute("selected")) continue;
+    if (chosen) option.setAttribute("selected", "");
+    else option.removeAttribute("selected");
   }
 }
+
 /**
  * Lets go of a ref the JSX has stopped giving this element.
  *

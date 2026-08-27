@@ -278,7 +278,7 @@ function hydrateElement(
   }
 
   // Reconciling attributes attaches on* listeners and refs onto the server node.
-  applyChangesOnAttributes(cursor, vnode.attributes);
+  const late = applyChangesOnAttributes(cursor, vnode.attributes);
   // Adopted nodes come from parsed HTML, so they carry no origin. Without this
   // the first client update finds every node "built by someone else" and
   // rebuilds the page it just adopted.
@@ -295,7 +295,7 @@ function hydrateElement(
    * the client's vnode carries the choice on the SELECT, and what was left agreed with the model by
    * accident of how a removed attribute is treated.
    */
-  applyLateAttributes(cursor, vnode.attributes);
+  if (late) applyLateAttributes(cursor, vnode.attributes);
 
   return nextOf(cursor);
 }

@@ -498,7 +498,7 @@ function executeChangesOnStringNode(
   // inherited down the tree and survives the drain — see `createComponent`.
   const onServer = placeholderComponent?.[COMPONENT_RUNTIME]?.env === "server";
 
-  applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer);
+  const late = applyChangesOnAttributes(enhancedNode, vnode.attributes, onServer);
 
   const vnodeChildren = vnode.children;
 
@@ -509,8 +509,8 @@ function executeChangesOnStringNode(
   unmountChildrenNodes(cloneChildren, false);
   if (orderedNodes !== null) reorderChildren(enhancedNode, orderedNodes);
 
-  // A few attributes cannot be applied until the children exist. See `applyLateAttributes`.
-  applyLateAttributes(enhancedNode, vnode.attributes);
+  // The attribute pass said it left something for after the children. See `applyLateAttributes`.
+  if (late) applyLateAttributes(enhancedNode, vnode.attributes);
 
   return enhancedNode;
 }
@@ -1400,6 +1400,26 @@ export function reorderChildren(
    * nodes are whose.
    */
   let reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
+
+  /**
+   * Everything is new, so there is nothing to keep and the order is free to be the DOCUMENT's.
+   *
+   * The backwards walk below exists to move as few EXISTING nodes as possible, and when none of them
+   * exists yet it has nothing to be careful about: inserting the last node first and walking back
+   * puts the same nodes in the same places, at the same count of `insertBefore` calls. Measured
+   * identical, which is what makes this a free choice rather than a trade.
+   *
+   * And it is not only equivalent — for a `<select>` it is the difference between right and wrong.
+   * A select with no selection takes the first option it is HANDED, so building backwards gave it
+   * the last one and an `<option selected>` inserted afterwards could not take it back: measured on
+   * `a b c` asking for `b`, the attribute sat on `b` while the page showed `c`. Handing an element
+   * its children in the order the author wrote them is the fix for that, in the place where the
+   * order was decided, rather than a correction applied to the select afterwards.
+   */
+  if (fresh === length) {
+    for (let n = 0; n < length; n++) parent.insertBefore(orderedNodes[n], reference);
+    return;
+  }
 
   for (let n = length - 1; n >= 0; n--) {
     const node = orderedNodes[n];
