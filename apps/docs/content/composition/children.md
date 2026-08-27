@@ -73,21 +73,40 @@ That has a consequence worth knowing before you put state in a component you int
 is found again by its position, so two slots that trade content do not trade *instances*:
 
 ```tsx
-<Dialog
-  header={swapped ? <Row name="b" /> : <Row name="a" />}
-  footer={swapped ? <Row name="a" /> : <Row name="b" />}
-/>
+export class Toolbar extends Component {
+  @state swapped = false;
+
+  render() {
+    return (
+      <Dialog
+        header={this.swapped ? <Badge label="b" /> : <Badge label="a" />}
+        footer={this.swapped ? <Badge label="a" /> : <Badge label="b" />}
+      />
+    );
+  }
+}
 ```
 
-Flipping `swapped` looks like the two rows changed places. They did not: the `Row` in the header
+Flipping `swapped` looks like the two badges changed places. They did not: the `Badge` in the header
 stays where it is and is handed the other one's props, and the same for the footer. Nothing is
-created and nothing is destroyed — so whatever state each `Row` held stays in the header and the
+created and nothing is destroyed — so whatever state each `Badge` held stays in the header and the
 footer respectively, under new content.
 
 Give them a `key` when you mean the content to carry its state with it:
 
 ```tsx
-header={swapped ? <Row key="b" name="b" /> : <Row key="a" name="a" />}
+export class KeyedToolbar extends Component {
+  @state swapped = false;
+
+  render() {
+    return (
+      <Dialog
+        header={this.swapped ? <Badge key="b" label="b" /> : <Badge key="a" label="a" />}
+        footer={this.swapped ? <Badge key="a" label="a" /> : <Badge key="b" label="b" />}
+      />
+    );
+  }
+}
 ```
 
 Then the two are torn down and rebuilt in their new places, which is what moving actually costs.
@@ -98,14 +117,23 @@ A component may return several siblings, so it is natural to wrap a slot in an a
 condition *inside* the array rather than around it:
 
 ```tsx
+interface BusyProps {
+  busy: boolean;
+  children?: RamondaNode;
+}
+
 // keeps the slot
-render() {
-  return [this.props.busy ? <Spinner /> : null, this.props.children];
+export class Keeps extends Component<BusyProps> {
+  render() {
+    return [this.props.busy ? <Badge label="loading" /> : null, this.props.children];
+  }
 }
 
 // rebuilds it
-render() {
-  return this.props.busy ? [<Spinner />, this.props.children] : [this.props.children];
+export class Rebuilds extends Component<BusyProps> {
+  render() {
+    return this.props.busy ? [<Badge label="loading" />, this.props.children] : [this.props.children];
+  }
 }
 ```
 
