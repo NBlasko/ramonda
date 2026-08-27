@@ -7,8 +7,8 @@ import { reorderChildren } from "../core/DiffAndMerge";
  * `reorderChildren` is the sharp end of the children diff: it decides which nodes may stay where
  * they are and which have to be inserted, from a longest increasing subsequence over their current
  * positions. Everything about it is easy to get subtly wrong — an off-by-one in the LIS, the
- * mapping back through the freshly-built nodes it has to exclude, the anchor it walks backwards
- * from — and every one of those bugs looks the same from outside: rows in the wrong order, or a row
+ * mapping back through the freshly-built nodes it has to exclude, the anchor a trailing node lands
+ * on — and every one of those bugs looks the same from outside: rows in the wrong order, or a row
  * that keeps its DOM and loses its place.
  *
  * The suite around it tests the shapes somebody thought of. This tests four thousand nobody did.
@@ -73,6 +73,64 @@ describe("reorderChildren fuzz", () => {
       const want = target.map((n) => n.textContent).join(",");
       if (order(parent) !== want) {
         failures.push(`prev=${usePrevious} want [${want}] got [${order(parent)}]`);
+      }
+    }
+
+    expect(failures.slice(0, 5)).toEqual([]);
+  });
+
+  /**
+   * The order the children ARRIVE in, which is a second claim on top of the order they end in.
+   *
+   * A parent may read its own children as they come. `<select>` is the one HTML gives a rule to —
+   * an option handed over alone becomes the selection, so options delivered last-first choose the
+   * wrong one — but any parent that counts what it holds, or a custom element whose connected
+   * callback looks at its siblings, reads the same half-built state. The end order being right does
+   * not make the arrival order right, and only this can tell them apart.
+   *
+   * Asserted as the relative order of the nodes that moved: the ones that stay are never handed
+   * over at all, so they cannot appear here, and the rest must arrive in the order they were
+   * written.
+   */
+  test("the nodes that move arrive in the order they were written", () => {
+    const failures: string[] = [];
+
+    for (let trial = 0; trial < 4000; trial++) {
+      const existing = 1 + Math.floor(Math.random() * 7);
+      const { parent, nodes } = parentOf(existing);
+      const previousOrder = [...nodes];
+
+      const kept = nodes.filter(() => Math.random() > 0.25);
+      for (let i = kept.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [kept[i], kept[j]] = [kept[j], kept[i]];
+      }
+      const freshCount = Math.floor(Math.random() * 3);
+      const target: HTMLElement[] = [...kept];
+      for (let f = 0; f < freshCount; f++) {
+        const el = document.createElement("i");
+        el.textContent = `n${f}`;
+        target.splice(Math.floor(Math.random() * (target.length + 1)), 0, el);
+      }
+      if (target.length === 0) continue;
+
+      for (const node of nodes) if (!target.includes(node)) node.remove();
+      const stillThere = previousOrder.filter((n) => n.parentNode === parent);
+
+      const arrived: number[] = [];
+      const real = parent.insertBefore.bind(parent);
+      parent.insertBefore = ((node: Node, ref: Node | null) => {
+        arrived.push(target.indexOf(node as HTMLElement));
+        return real(node, ref);
+      }) as typeof parent.insertBefore;
+
+      reorderChildren(parent, target, null, trial % 2 === 0 ? stillThere : undefined);
+
+      for (let i = 1; i < arrived.length; i++) {
+        if (arrived[i] < arrived[i - 1]) {
+          failures.push(`arrived out of order: [${arrived.join(",")}]`);
+          break;
+        }
       }
     }
 

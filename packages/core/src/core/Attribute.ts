@@ -172,10 +172,8 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   }
 
   if (name === "value") {
-    // Both, because they say different things about the same element: the PROPERTY is the value
-    // right now, and the ATTRIBUTE is the one it started with — which is also the only half a
-    // server render can serialize. Writing one alone leaves a hydrated page disagreeing with the
-    // markup it adopted, the same pairing `checked` makes below.
+    // The property is the value now, the attribute the one it started with — and the only half a
+    // server render can serialize. Same pairing as `checked` below.
     enhancedNode.value = value;
     enhancedNode.setAttribute(name, value);
     return;
