@@ -215,3 +215,47 @@ describe("a served select, hydrated", () => {
     container.remove();
   });
 });
+
+describe("why attributes go on before the children", () => {
+  test("a multiple select keeps every option the model picked", async () => {
+    /**
+     * The question this answers: could ALL attributes simply be applied after the children, and the
+     * second visit disappear? The suite says yes — all 1337 tests pass either way — and the suite is
+     * wrong, in the same way it was wrong about `<select>` until an hour ago: nothing exercised the
+     * case that decides it.
+     *
+     * `multiple` is that case. It changes how a select treats each option AS IT ARRIVES: without it,
+     * a select keeps one selection and discards the rest. Measured with the attribute applied after
+     * the children, asking for `b` and `c`: the page kept `c` alone.
+     *
+     * So neither ordering is right for everything — `multiple` has to be on before the options and
+     * `value` cannot be until after them — and two passes is the shape that follows, rather than a
+     * workaround for one element.
+     */
+    class Multi extends Component {
+      @state picked = ["b", "c"];
+      render() {
+        return (
+          <select id="s" multiple>
+            {["a", "b", "c"].map((v) => (
+              <option key={v} value={v} selected={this.picked.includes(v)}>
+                {v}
+              </option>
+            ))}
+          </select>
+        );
+      }
+    }
+
+    const app = await getDOM<Multi>(<Multi />);
+    await app.settle();
+
+    const select = app.container.querySelector("#s") as HTMLSelectElement;
+    expect([...select.selectedOptions].map((option) => option.value)).toEqual(["b", "c"]);
+
+    // And it follows the model afterwards, still keeping more than one.
+    app.instance.picked = ["a", "c"];
+    await app.settle();
+    expect([...select.selectedOptions].map((option) => option.value)).toEqual(["a", "c"]);
+  });
+});
