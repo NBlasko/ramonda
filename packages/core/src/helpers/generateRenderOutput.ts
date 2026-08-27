@@ -1,8 +1,7 @@
 import type { BaseComponent, RamondaNode } from "../types/vdom";
 import { GLOBAL_RUNTIME } from "../core/runtime";
 import { displayName, isArray } from "./utils";
-import { HAS_REGION, COMPONENT_TYPE } from "./constants";
-import { isListNode, isVNode } from "../vdom/guards";
+import { normalizeChildren } from "../vdom/h";
 import { renderPhase } from "../debug/renderPhase";
 import { checkRenderStability, isStrictRender } from "../debug/renderStability";
 import { currentOrigin } from "../core/origin";
@@ -70,6 +69,22 @@ function buildRenderOutput(component: BaseComponent) {
   if (__DEV__) reportIfAsync(innerRendered, component);
 
   /**
+   * A promise is handed on RAW, so the diff still throws over it.
+   *
+   * `normalizeChildren` treats an object that is not a vnode as a mistake to report and drop —
+   * RMD037, and a hole in its place. That is right for `{someObject}` among children, and wrong
+   * here: an async `render()` is not a stray value in a slot, it is the component having no markup
+   * at all, and dropping it would turn a crash into a component that silently renders nothing. In
+   * production, where RMD060 does not run, that would be the ONLY thing that happened.
+   *
+   * So the promise goes through untouched and trips the diff exactly as it did before this function
+   * normalized anything. RMD060 above names it first, which is the half a reader needs.
+   */
+  if (typeof (innerRendered as { then?: unknown })?.then === "function") {
+    return [innerRendered];
+  }
+
+  /**
    * The children ARE the output. There is no wrapper.
    *
    * A component owns a range of its parent's children, so what `render()` returned goes straight
@@ -82,48 +97,33 @@ function buildRenderOutput(component: BaseComponent) {
    */
   const children = isArray(innerRendered) ? innerRendered : [innerRendered];
 
-  // render()'s output goes to the parent directly — it never passes through flattenMixedArray,
-  // which is where the marker is normally set. Without this, a list or a component returned
-  // straight from render() would reach the diff unmarked and be reconciled as if it were a single
-  // node. The scan is over the render's own children only, which is one item in the overwhelming
-  // majority of components.
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
-
-    // A component child owns a range of its own, so this render's own record has to exist.
-    if (isVNode(child) && child.type === COMPONENT_TYPE) {
-      (children as { [HAS_REGION]?: boolean })[HAS_REGION] = true;
-      continue;
-    }
-
-    if (isListNode(child)) {
-      (children as { [HAS_REGION]?: boolean })[HAS_REGION] = true;
-
-      // A `list()` descriptor returned STRAIGHT from render() — `return
-      // list({...})` rather than `<ul>{list({...})}</ul>` — has no owner yet,
-      // because only `normalizeChildren` stamps one and this path never goes
-      // through it. Without this the region has an undefined identity: it
-      // matches every other ownerless region, and its unbuilt `vnodes` reach
-      // the reorder pass. Measured as `insertBefore: parameter 1 is not of type
-      // 'Node'` — a crash, not a wrong render.
-      //
-      // Same composite identity `normalizeChildren` uses — origin plus position.
-      //
-      // Read from the COMPONENT rather than from `currentOrigin`, which by this
-      // line has already been restored: the try/finally above puts back the
-      // previous origin as soon as `render()` returns, and this runs after it.
-      // The id it used to read was therefore never this component's — it was
-      // whatever was on the stack outside, which is always 0, because a build is
-      // never entered while another render is in progress. Stable and unique per
-      // host, so nothing ever misbehaved; it simply was not the identity the
-      // comment claimed, and `h.ts` stamps the live origin — the component's id —
-      // for the wrapped `<ul>{list()}</ul>` form. Now the two agree.
-      // As in `h.ts`: the cast defeats `readonly` and nothing else, because this
-      // and that one are the only two lines allowed to stamp an owner.
-      if (child.owner === undefined) (child as { owner: unknown }).owner = `${component[GLOBAL_RUNTIME].id}:g${i}`;
-      // No `break`: with several lists each needs its own position.
-    }
-  }
-
-  return children;
+  /**
+   * Normalized exactly as any other children position is, and this is the fix for a crash.
+   *
+   * The output used to be SCANNED rather than normalized — one pass over the top level, marking
+   * `HAS_REGION` when it saw a component or a list, and stamping an ownerless `list()` descriptor.
+   * That covers a render whose output is flat, which is most of them. It does not cover a NESTED
+   * array, and the commonest nested array there is is `{this.props.children}`: `props.children` is
+   * itself an array, so `return [<i class="chrome"/>, this.props.children]` hands this function
+   * `[vnode, [vnode]]`.
+   *
+   * The inner array was neither flattened nor looked into, so the component inside it reached the
+   * element diff unmarked and threw the internal invariant: `<Payload> reached the element diff. A
+   * component is a region and is reconciled by reconcileEntries; the children array it arrived in
+   * was not marked as holding one.` An app-level crash, with a message written for whoever is
+   * working on the framework.
+   *
+   * It is the intersection of this branch's headline — a render may return an ARRAY, because a
+   * component owns a range — with the commonest composition there is, passing children through. Each
+   * half worked alone: `<div>{this.props.children}</div>` was fine, and so was `return [<a/>, <b/>]`.
+   *
+   * `normalizeChildren` is what every other children position already uses, including
+   * `ChildrenRegion` for a hook's `children` prop, which is the same kind of arbitrary content. It
+   * groups a nested array into a region of its own, stamps a `list()` with the same
+   * `origin:position` identity the scan minted by hand, sets the marker, and keeps one entry out per
+   * entry in — which is what makes `SLOT_SYM` mean "this piece of JSX". Running it over an already
+   * normalized array is a no-op on every branch: an owner already stamped is kept, a vnode is
+   * passed through, and `false` holes survive as themselves.
+   */
+  return normalizeChildren(children, component[GLOBAL_RUNTIME].id);
 }
