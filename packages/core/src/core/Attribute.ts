@@ -172,9 +172,11 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   }
 
   if (name === "value") {
+    // Both, because they say different things about the same element: the PROPERTY is the value
+    // right now, and the ATTRIBUTE is the one it started with — which is also the only half a
+    // server render can serialize. Writing one alone leaves a hydrated page disagreeing with the
+    // markup it adopted, the same pairing `checked` makes below.
     enhancedNode.value = value;
-    // The attribute as well: on an `<input>` it is the DEFAULT value, and a server render has
-    // nowhere else to put it.
     enhancedNode.setAttribute(name, value);
     return;
   }
