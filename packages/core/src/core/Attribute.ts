@@ -1,7 +1,7 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
-import { BOOLEAN_ATTRIBUTES } from "../helpers/booleanAttributes";
+import { BOOLEAN_ATTRIBUTES } from "../helpers/constants";
 type NodeAttributes = Record<string, any>;
 
 /**

@@ -1,6 +1,6 @@
 import { diagnose } from "./diagnostics";
 import type { BaseComponent } from "../types/vdom";
-import { BOOLEAN_ATTRIBUTES } from "../helpers/booleanAttributes";
+import { BOOLEAN_ATTRIBUTES } from "../helpers/constants";
 
 /**
  * DEV-only reporting for server/client render divergence (RMD007).

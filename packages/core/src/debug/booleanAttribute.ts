@@ -1,4 +1,5 @@
 import { diagnose } from "./diagnostics";
+import { BOOLEAN_ATTRIBUTES } from "../helpers/constants";
 
 /**
  * DEV-only: `disabled="false"` and its family. RMD029.
@@ -35,8 +36,6 @@ import { diagnose } from "./diagnostics";
  * carries those words, and a diagnostic that fires on correct code teaches people to skip the
  * category. `"false"` on a genuinely boolean attribute has no reading under which it was intended.
  */
-
-import { BOOLEAN_ATTRIBUTES } from "../helpers/booleanAttributes";
 
 /** What the element will do, per attribute, so the report is about the outcome rather than the rule. */
 const OUTCOME: Record<string, string> = {

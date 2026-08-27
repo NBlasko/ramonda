@@ -44,6 +44,12 @@ import type { ElementRule } from "./rule";
  * the family — a name that does nothing, everywhere it appears — and the only one of the three that
  * needs no tag to decide it.
  *
+ * And the static twin of RMD029: `disabled="false"` written as a literal, which turns the control ON
+ * because a boolean attribute is true whenever it is PRESENT. `@ramonda/core` reports that while it
+ * runs; reading it off the source needs the same list of names, and that list already sits in
+ * `@ramonda/dom-facts` as `BOOLEAN_ATTRIBUTES` — put there rather than kept in `core` precisely so
+ * this rule does not begin by making a second copy of it.
+ *
  * The wrinkle the other six do not have is the tag: they are dead wherever they appear, and these
  * are wrong only in one place. The issue shape already carries `tag`.
  */
