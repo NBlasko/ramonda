@@ -150,31 +150,38 @@ export const BOOLEAN_ATTRIBUTES = new Set([
 ]);
 
 /**
- * Attributes that do not exist on a given element, however reasonable they look.
+ * State an element keeps in a PROPERTY, with no attribute of that name to write it in.
  *
- * Both names are real HTML somewhere else, which is what makes them worth a table rather than a
- * guess: `value` is right on an `<input>` and meaningless on a `<textarea>`, whose value is its
- * TEXT. `indeterminate` is a checkbox's third state and exists only as a property — there is no way
- * to write it in markup at all.
+ * Written as an attribute, each of these puts a word in the document that nothing reads, and the
+ * element goes on holding whatever it held before. Measured: a served `<textarea value="hello">`
+ * parses back with `.value` of `""` — an EMPTY field until the bundle arrives — and
+ * `indeterminate="true"` sat in the markup beside a checkbox showing plainly unchecked.
  *
- * `<select>` belongs to the same family and is deliberately NOT here: its tag is refused by the
- * types and `Select` consumes the value before the element is built, so an entry for it could never
- * run. A table of facts nothing consults is a table that drifts.
+ * They are worth a table rather than a guess because every name here is real HTML somewhere else.
+ * `value` is right on an `<input>` and meaningless on a `<textarea>`, whose value is its TEXT.
+ * `volume` looks exactly like `width`, which is an attribute, and is not one.
  *
- * Written anyway, they put a word in the document that nothing reads. A served
- * `<textarea value="hello">` reaches the reader as an EMPTY field, measured on the parsed markup,
- * and fills itself in when the bundle arrives.
+ * Keyed by tag for that reason, and by tag ONLY — a name absent from every element belongs in
+ * `@ramonda/check`'s dead-name list instead, where it is reported at the line that wrote it rather
+ * than dropped where nobody can see the drop.
  *
- * Both packages need the same list. `@ramonda/core` uses it to not write them; `@ramonda/check`
- * reports them where they are typed, which is the better place — see `attribute-that-does-nothing`,
- * whose six other names are dead on every tag and so need no table.
+ * `<select>` belongs to the family and is deliberately NOT here: its tag is refused by the types and
+ * `Select` consumes the value before the element is built, so an entry for it could never run. A
+ * table of facts nothing consults is a table that drifts.
+ *
+ * Both packages need the same list. `@ramonda/core` writes the property instead; `@ramonda/check`
+ * will report the same names where they are typed, which is the better place of the two.
  */
 const ABSENT: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   ["TEXTAREA", new Set(["value"])],
   ["INPUT", new Set(["indeterminate"])],
+  // A media element's playback state. `muted` is NOT here: it has a real attribute, which carries
+  // the default muted state into a served page, so it is written as well as set.
+  ["VIDEO", new Set(["volume", "playbackrate", "currenttime"])],
+  ["AUDIO", new Set(["volume", "playbackrate", "currenttime"])],
 ]);
 
-/** Whether HTML gives this element no such attribute. `tag` is a `nodeName`, so any case will do. */
-export function absentFromHtml(tag: string, attribute: string): boolean {
+/** Whether this element keeps the named state in a property alone. `tag` is a `nodeName`. */
+export function keptInAProperty(tag: string, attribute: string): boolean {
   return ABSENT.get(tag.toUpperCase())?.has(attribute.toLowerCase()) === true;
 }

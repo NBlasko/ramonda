@@ -103,6 +103,50 @@ describe("indeterminate on a checkbox", () => {
   });
 });
 
+describe("a media element's playback state", () => {
+  /**
+   * `volume` looks exactly like `width`, which IS an attribute, and is not one. Written as an
+   * attribute it did nothing at all: the word sat in the markup and the element played at full
+   * volume.
+   *
+   * `playbackRate` and `currentTime` are the same, and are in the table for the same reason — not
+   * because anybody would reach for them in JSX (a seek is an action, and actions go through a ref)
+   * but because the cost of an entry is a row and the cost of leaving one out is a silent no-op.
+   */
+  test("volume reaches the element and writes no attribute", async () => {
+    class Quiet extends Component {
+      @state level = 0.25;
+      render() {
+        return <video id="v" volume={this.level} />;
+      }
+    }
+
+    const app = await getDOM<Quiet>(<Quiet />);
+    await app.settle();
+    const video = app.container.querySelector("#v") as HTMLVideoElement;
+    expect({ property: video.volume, attribute: video.getAttribute("volume") }).toEqual({
+      property: 0.25,
+      attribute: null,
+    });
+
+    app.instance.level = 1;
+    await app.settle();
+    expect(video.volume).toBe(1);
+  });
+
+  /**
+   * `muted` is NOT in that table, and the difference is the point: it has a real content attribute,
+   * which is what carries the default muted state into a served page. So it is written as well as
+   * set, and both halves are asserted above.
+   */
+  test("muted is not treated as property-only, because it has an attribute", async () => {
+    const app = await getDOM<Media>(<Media />);
+    await app.settle();
+    const video = app.container.querySelector("#v") as HTMLVideoElement;
+    expect(video.getAttribute("muted")).toBe("");
+  });
+});
+
 describe("an attribute HTML does not have is not written", () => {
   /**
    * One rule with a table behind it, rather than a branch per tag. Each of these names is real HTML

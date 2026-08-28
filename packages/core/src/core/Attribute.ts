@@ -1,5 +1,5 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
-import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, absentFromHtml } from "../helpers/constants";
+import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
 type NodeAttributes = Record<string, any>;
 
@@ -200,12 +200,33 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     return;
   }
 
+  /**
+   * State this element keeps in a PROPERTY, with no attribute of that name to write it in.
+   *
+   * A checkbox's `indeterminate`, a media element's `volume` — and a `<textarea>`'s `value`, whose
+   * value is its TEXT. Writing the attribute puts a word in the document that nothing reads while
+   * the element goes on holding what it held before, so the property is the whole answer and there
+   * is nothing to serialize.
+   *
+   * A table rather than a branch each, because there are five of them and the next one is a row. The
+   * list is in `@ramonda/dom-facts`, with the rest of what this package and the checker agree about.
+   *
+   * The consequence, which is HTML's and not ours: none of this survives a server render. A checkbox
+   * arrives unchecked rather than mixed and becomes mixed when hydration runs this line. A textarea
+   * is the exception only because its value has somewhere else to go — as the element's text, put
+   * there before the diff ever runs; see `textareaChildren`.
+   */
+  if (keptInAProperty(enhancedNode.nodeName, name)) {
+    if (name in enhancedNode) (enhancedNode as unknown as Record<string, unknown>)[name] = value;
+    return;
+  }
+
   if (name === "value") {
-    // The property is the value NOW; the attribute is the one it started with, and the only half a
-    // server render can serialize. On a `<textarea>` there is no such attribute — `putAttribute`
-    // knows — and the value goes in as the element's text instead: see `textareaChildren`.
+    // Both, because they say different things about the same element: the property is the value NOW,
+    // and the attribute is the one it started with — which is also the only half a server render can
+    // serialize.
     enhancedNode.value = value;
-    putAttribute(enhancedNode, name, value);
+    enhancedNode.setAttribute(name, value);
     return;
   }
 
@@ -224,26 +245,7 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     // allowed to do, and the browser blocks the play instead. On a media element the attribute is
     // the DEFAULT muted state, read when the element is parsed; the property is the state now.
     if (name in enhancedNode) (enhancedNode as unknown as Record<string, unknown>)[name] = true;
-    putAttribute(enhancedNode, name, value);
-    return;
-  }
-
-  if (name === "indeterminate") {
-    /**
-     * A checkbox's third state, which exists ONLY as a property.
-     *
-     * `putAttribute` writes nothing here, because HTML has no `indeterminate` attribute — measured
-     * before this, `indeterminate="true"` sat in the markup while `.indeterminate` stayed `false`
-     * and the box showed plainly unchecked.
-     *
-     * The consequence is HTML's, not ours: a server-rendered page cannot carry this state at all.
-     * The box arrives unchecked and becomes mixed when hydration runs the line below. There is
-     * nowhere else to put it.
-     */
-    if ("indeterminate" in enhancedNode) {
-      (enhancedNode as unknown as Record<string, unknown>).indeterminate = true;
-    }
-    putAttribute(enhancedNode, name, value);
+    enhancedNode.setAttribute(name, value);
     return;
   }
 
@@ -322,26 +324,6 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     return;
   }
 
-  putAttribute(enhancedNode, name, value);
-}
-
-/**
- * Writes the attribute — unless HTML gives this element no such attribute.
- *
- * `value` on a `<textarea>`, `indeterminate` on an `<input>`: each is real HTML somewhere else and
- * means nothing here, so writing it puts a word in the document that nothing reads. A served
- * `<textarea value="hello">` reaches the reader as an EMPTY field.
- *
- * The list is in `@ramonda/dom-facts`, with the rest of what this package and the checker have to
- * agree about. It is one rule with data behind it rather than a branch per tag, because there are
- * two of these and the next one is a table entry.
- *
- * The PROPERTY is written by the branches above either way. That is the half that still works —
- * a textarea driven by `.value`, a checkbox by `.indeterminate` — and the half a server render
- * cannot have, which is why the value of a textarea goes in as its text instead.
- */
-function putAttribute(enhancedNode: EnhancedHTMLNode, name: string, value: any): void {
-  if (absentFromHtml(enhancedNode.nodeName, name)) return;
   enhancedNode.setAttribute(name, value);
 }
 
