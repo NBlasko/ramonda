@@ -63,6 +63,37 @@ function normalizeClassName(name: ComponentKind, attributes: Record<string, any>
   return rest;
 }
 
+/**
+ * A `<textarea>`'s value is its CHILD, so it is written as one before the diff ever sees it.
+ *
+ * There is no `value` content attribute on a textarea. A served `<textarea value="hello">` reaches
+ * the reader as an empty field and fills itself in when the bundle arrives — measured, `.value` of
+ * `""` on the parsed markup.
+ *
+ * Written HERE rather than in the attribute pass, and that is the whole point. The attribute pass
+ * runs before the children, so a text node it adds is one the children pass does not know about, and
+ * unmounts as a leftover: measured, `"hello"` at the moment of writing and `<textarea></textarea>`
+ * in the finished markup. A vnode child is CLAIMED instead, by the pass that would otherwise have
+ * dropped it — which is also what makes it diff and hydrate like any other text.
+ *
+ * On both sides, because the two must produce the same tree or hydration reports a mismatch. On the
+ * client this is the DEFAULT value, which the property write in `Attribute.ts` immediately overrides
+ * and which stops driving the field the moment somebody types in it — so it costs a text node and
+ * changes nothing about what the reader sees.
+ *
+ * Written children win. `<textarea value={x}>text</textarea>` says two things, and the one the
+ * author put inside the element is the one HTML would have kept.
+ *
+ * `TEXTAREA`, upper case, because that is the name a tag arrives with: `__h` upper-cases every HTML
+ * tag before it gets here, and SVG — which is case-sensitive and passes its names through verbatim —
+ * has no textarea.
+ */
+function textareaChildren(attributes: Record<string, any>, children: unknown[]): unknown[] {
+  if (children.length > 0) return children;
+  const value = attributes.value;
+  return value === undefined || value === null ? children : [String(value)];
+}
+
 export function createRamonda(
   name: ComponentKind,
   rawAttributes: Record<string, any>,
@@ -75,7 +106,7 @@ export function createRamonda(
       type: TEXT_TYPE,
       name,
       attributes,
-      children,
+      children: name === "TEXTAREA" ? textareaChildren(attributes, children) : children,
       [ORIGIN_SYM]: currentOrigin.id,
     };
 

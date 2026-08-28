@@ -187,6 +187,17 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
 
   if (name === "value") {
     enhancedNode.value = value;
+
+    /**
+     * A `<textarea>` has no `value` content attribute, so writing one puts a word in the markup that
+     * nothing reads. Its value is its CHILD, and `createRamonda` has already made it one — see
+     * `textareaChildren`, which also explains why it cannot be done from here.
+     *
+     * The property above still is: it is what a controlled field is driven by once the reader has
+     * typed, at which point the child has stopped meaning anything to the DOM.
+     */
+    if (enhancedNode.nodeName === "TEXTAREA") return;
+
     enhancedNode.setAttribute(name, value);
     return;
   }

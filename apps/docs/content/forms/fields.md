@@ -129,6 +129,22 @@ On a server-rendered page the choice arrives as `selected` on the chosen option,
 where HTML keeps it and a select has no `value` attribute to carry. The reader sees the right option
 before any script runs.
 
+### A `<textarea>` keeps its value inside the element
+
+`value` works the way you would expect, and there is nothing to write differently:
+
+```tsx
+<textarea value={this.draft} oninput={this.onInput} />
+```
+
+What is worth knowing is where it lands. HTML has no `value` attribute on a textarea — the value is
+the element's text — so that is what gets rendered, and a server-rendered page shows the text before
+any script runs. Writing the text yourself instead works too, and wins if you do both:
+
+```tsx
+<textarea>a starting draft</textarea>
+```
+
 ### Writing your own attributes
 
 `bind` is a plain object, so anything after the spread wins:
