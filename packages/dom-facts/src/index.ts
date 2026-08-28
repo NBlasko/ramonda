@@ -148,3 +148,52 @@ export const BOOLEAN_ATTRIBUTES = new Set([
   "reversed",
   "selected",
 ]);
+
+/**
+ * State an element keeps in a PROPERTY, with no attribute of that name to write it in.
+ *
+ * Written as an attribute, each of these puts a word in the document that nothing reads, and the
+ * element goes on holding whatever it held before. Measured: a served `<textarea value="hello">`
+ * parses back with `.value` of `""` — an EMPTY field until the bundle arrives — and
+ * `indeterminate="true"` sat in the markup beside a checkbox showing plainly unchecked.
+ *
+ * They are worth a table rather than a guess because each one looks like an attribute and is not:
+ * `indeterminate` reads as a boolean attribute and there is none, and `volume` sits beside `width`
+ * and `height`, which ARE attributes.
+ *
+ * **Spelled as the PROPERTY, and matched exactly.** These names have no HTML spelling to follow —
+ * there is no `playbackrate` content attribute to be the lower-case form OF — so the only spelling
+ * they have is the one the DOM gives them, and that is what an author writes. Lower-casing the name
+ * before the lookup made the two disagree: `playbackrate={2}` matched the table and then wrote
+ * nothing at all, because `"playbackrate" in video` is false. A silent no-op, and it was the
+ * spelling the types encourage. A misspelled property is an author's mistake and belongs to
+ * `@ramonda/check`, which reports it at the line that wrote it.
+ *
+ * Keyed by tag for that reason, and by tag ONLY — a name absent from every element belongs in
+ * `@ramonda/check`'s dead-name list instead, where it is reported at the line that wrote it rather
+ * than dropped where nobody can see the drop.
+ *
+ * `<select>` and `<textarea>` belong to the family and are deliberately NOT here: both tags are
+ * refused by the types, and `Select` and `TextArea` consume the value before the element is built,
+ * so an entry for either could never run. A table of facts nothing consults is a table that drifts.
+ *
+ * Both packages need the same list. `@ramonda/core` writes the property instead; `@ramonda/check`
+ * will report the same names where they are typed, which is the better place of the two.
+ */
+const ABSENT: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["INPUT", new Set(["indeterminate"])],
+  // A media element's playback state. `muted` is NOT here: it has a real attribute, which carries
+  // the default muted state into a served page, so it is written as well as set.
+  ["VIDEO", new Set(["volume", "playbackRate", "currentTime"])],
+  ["AUDIO", new Set(["volume", "playbackRate", "currentTime"])],
+]);
+
+/**
+ * Whether this element keeps the named state in a property alone.
+ *
+ * `tag` is a `nodeName`, which HTML already gives in upper case, and the name is compared as
+ * written — see above for why neither is folded.
+ */
+export function keptInAProperty(tag: string, attribute: string): boolean {
+  return ABSENT.get(tag)?.has(attribute) === true;
+}

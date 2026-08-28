@@ -32,9 +32,11 @@ const EXPECTED = [
   "StableProps",
   "AsyncLoad",
   "ErrorBoundary",
-  // A select's state is which CHILD is chosen, so the plain tag is refused by the types and this is
-  // what the error names. `<option>` needs nothing: it has no choice to make.
+  // Two tags whose state is not an attribute: a select's is which CHILD is chosen, and a textarea's
+  // IS its child. Both plain tags are refused by the types, and these are what the errors name.
+  // `<option>` needs nothing: it has no choice to make.
   "Select",
+  "TextArea",
   "createContext",
   "createRef",
   "Ref",

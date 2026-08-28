@@ -1,5 +1,5 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
-import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES } from "../helpers/constants";
+import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
 type NodeAttributes = Record<string, any>;
 
@@ -111,6 +111,17 @@ export function formatAttributes(attributes: NodeAttributes): Record<string, any
   return result;
 }
 
+/**
+ * Attributes whose truth is a PROPERTY, so `false` has to be written rather than merely removed.
+ *
+ * Each of these keeps its state somewhere an attribute cannot reach once the element is live:
+ * `checked` and `muted` because the attribute is the DEFAULT and stops driving the element the
+ * moment a user touches it, `indeterminate` because it has no content attribute at all. Removing
+ * the attribute on `false` therefore leaves the element saying the opposite of the model — a box
+ * still ticked, a video still audible, a checkbox still mixed.
+ */
+const PROPERTY_TRUTH = new Set(["checked", "muted", "indeterminate"]);
+
 function attachNextOnenhancedNode(
   enhancedNode: EnhancedHTMLNode,
   previousAttributes: NodeAttributes,
@@ -133,9 +144,13 @@ function attachNextOnenhancedNode(
        * `false` specifically, not every invisible value: `checked={undefined}`
        * is a control the app is not driving, and forcing it off would take over
        * an uncontrolled box.
+       *
+       * The same for every name in `PROPERTY_TRUTH`, which is where the reason is
+       * written out: each of them keeps its truth in a property that an attribute
+       * cannot reach.
        */
-      if (nextAttribute === false && name === "checked" && "checked" in enhancedNode) {
-        enhancedNode.checked = false;
+      if (nextAttribute === false && PROPERTY_TRUTH.has(name) && name in enhancedNode) {
+        (enhancedNode as unknown as Record<string, unknown>)[name] = false;
       }
       continue;
     }
@@ -185,13 +200,36 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     return;
   }
 
+  /**
+   * State this element keeps in a PROPERTY, with no attribute of that name to write it in.
+   *
+   * A checkbox's `indeterminate`, a media element's `volume`. Writing the attribute puts a word in
+   * the document that nothing reads while the element goes on holding what it held before, so the
+   * property is the whole answer and there is nothing to serialize.
+   *
+   * A table rather than a branch each, because the next one is a row. The list is in
+   * `@ramonda/dom-facts`, with the rest of what this package and the checker agree about.
+   *
+   * The consequence, which is HTML's and not ours: none of this survives a server render. A checkbox
+   * arrives unchecked rather than mixed and becomes mixed when hydration runs this line. There is
+   * nowhere in markup to say it. `<select>` and `<textarea>` escape that only because their state
+   * can be written as a CHILD — which is why each is a component rather than a row here.
+   */
+  if (keptInAProperty(enhancedNode.nodeName, name)) {
+    if (name in enhancedNode) (enhancedNode as unknown as Record<string, unknown>)[name] = value;
+    return;
+  }
+
   if (name === "value") {
+    // Both, because they say different things about the same element: the property is the value NOW,
+    // and the attribute is the one it started with — which is also the only half a server render can
+    // serialize.
     enhancedNode.value = value;
     enhancedNode.setAttribute(name, value);
     return;
   }
 
-  if (name === "checked") {
+  if (name === "checked" || name === "muted") {
     // The property as well as the attribute, for the dirty-checkedness reason
     // above: on a box the user has already clicked, the attribute is inert. The
     // attribute is still written so a server render and a hydrated page agree.
@@ -200,7 +238,12 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     // PRESENT, so `checked=""` and even the mistaken `checked="false"` (RMD029)
     // mean a ticked box in HTML, and the property has to say the same thing or
     // the two disagree on the same element.
-    if ("checked" in enhancedNode) enhancedNode.checked = true;
+    //
+    // `muted` is the same shape and was missing: the attribute went out and `.muted` stayed
+    // `false`, so `<video muted>` played with sound — which is what an autoplaying video is not
+    // allowed to do, and the browser blocks the play instead. On a media element the attribute is
+    // the DEFAULT muted state, read when the element is parsed; the property is the state now.
+    if (name in enhancedNode) (enhancedNode as unknown as Record<string, unknown>)[name] = true;
     enhancedNode.setAttribute(name, value);
     return;
   }
