@@ -181,10 +181,33 @@ export type JsxElementLike = ts.JsxElement | ts.JsxSelfClosingElement;
  * once, and hands the pair to every active rule. A rule that walked the tree itself would be the
  * fortieth walk of the same source.
  */
+/**
+ * One attribute as written, normalised.
+ *
+ * Every reader in this file used to walk `openingOf(element).attributes.properties` for itself, and
+ * each walk answered its own question its own way: `attr` was taught to follow a name to the value
+ * it holds, and `stringAttr`, `trueAttr` and the id table's reader were all still literal-only
+ * afterwards, because each had its own copy. Twice that cost a rule a report it should have made.
+ *
+ * So the readers work from THIS instead — one normalised list per element, built once, and ONE
+ * answer per question rather than one per caller.
+ */
+export interface WrittenAttribute {
+  /** The name exactly as written — `aria-labelledBy`, `class`, `tabIndex`. */
+  name: string;
+  /** The node a report about this one attribute should point at. */
+  at: ts.Node;
+  /** The value, when one is written. `undefined` for a bare JSX attribute, which is `{true}`. */
+  value?: ts.Expression;
+  /** `<input disabled />` — no value at all, which JSX reads as `true`. */
+  bare: boolean;
+}
+
 export interface ElementRule<Issue> {
   id: string;
   report: Report<Issue>;
   needs?: string;
+
   /**
    * Whether this rule is still asked about an element that SPREADS.
    *
@@ -420,6 +443,31 @@ export interface Resolver {
   coreName(id: ts.Node): string | undefined;
 }
 
+/**
+ * Whether a finding carries a written reason, and the recording of it.
+ *
+ * One mechanism for all five rule families, applied by the analyzer where every finding already
+ * passes through — not by each rule remembering to ask. `ModuleContext` used to carry an
+ * `unlessAnnotated` a rule called for itself, and its own note said why that is the wrong shape:
+ * "a guard every rule needs is a guard a rule can forget". Three rules called it and thirty did
+ * not, so a class rule that was wrong left the reader nothing but restructuring correct code —
+ * measured, on `server-env-in-shared-code`, which is an ERROR.
+ *
+ * It records rather than merely silences, which is the whole point: the reason travels into
+ * `annotated` and is printed on every run, so it cannot quietly stop being true.
+ *
+ * **An EMPTY directive buys nothing.** It is reported, as it always was, and the finding stands —
+ * which is a change, and a deliberate one. `ramonda-check-ignore` with nothing after it used to
+ * silence the site and leave a note; that made the note the price of switching a rule off, and the
+ * price was too low. The package's own sentence is that a silence is not a record, and a directive
+ * that records nothing has bought a silence with nothing. It matters more now that this reaches
+ * every family: a mechanism for thirty rules is worth abusing in a way one for three was not.
+ */
+export interface Silencer {
+  /** `true` when the site says why, in which case the reason has been recorded. */
+  (ruleId: string, at: { file: string; line: number; column: number }): boolean;
+}
+
 export interface ElementContext {
   /**
    * The tag, lowercased, when this is a host element — `div`, `img`, `iframe`.
@@ -464,6 +512,53 @@ export interface ElementContext {
    */
   spreads: boolean;
 
+  /**
+   * Whether a spread could still change what this attribute SAYS.
+   *
+   * The half of the spread question a rule with `evenWhenSpreading` has to answer for itself, and
+   * it turns on ORDER. `<div role="buton" {...rest} />` may end up with whatever role `rest`
+   * carries; `<div {...rest} role="buton" />` ends up with `buton` whatever `rest` holds, because
+   * the later attribute wins.
+   *
+   * ## A later spread can REMOVE an attribute, and that was measured rather than assumed
+   *
+   * The first version of this said a spread can overwrite a value and never un-write a name, so a
+   * rule reading names needed no order guard at all. **Rendered through `renderToString`, that is
+   * false**: `<span aria-hidden="true" {...{"aria-hidden": undefined}} />` comes out `<span></span>`.
+   * An `undefined` in a later spread takes the attribute off.
+   *
+   * So the line is not name-versus-value. It is what the rule is ABOUT:
+   *
+   * - a rule about what the author WROTE — `unknown-aria-attribute` on a misspelling,
+   *   `class-instead-of-classname`, `aria-with-no-subject` — stands whatever the spread does,
+   *   because the misspelling is in the source either way and the attribute meant by it is still
+   *   not there. No order guard.
+   * - a rule about what the element will BE — `unknown-role`, `positive-tabindex`, `access-key`,
+   *   `aria-value`, `role-takes-no-name`, `aria-hidden-on-focusable` — is reporting a fact a later
+   *   spread can make untrue. Order guard.
+   *
+   * `true` for an attribute that is not written here at all: nothing is proved about an absent one,
+   * which is the family-wide silence this whole mechanism is an exception to.
+   */
+  overwritable(name: string): boolean;
+
+  /**
+   * Every attribute written on this element, normalised — see {@link WrittenAttribute}.
+   *
+   * The rules that report one attribute among several read this rather than walking the JSX node
+   * themselves, so a question asked here has one answer rather than one per caller.
+   */
+  attributes: readonly WrittenAttribute[];
+
+  /** The node a report about the ELEMENT should point at — the opening tag. */
+  at: ts.Node;
+
+  /** An attribute read as a claim of TRUE — bare, `{true}`, `"true"`, or a name holding one. */
+  truth(name: string): boolean | undefined;
+
+  /** An attribute read as a NUMBER — `{0}`, `"0"`, `{-1}`, or a name holding one. */
+  number(name: string): number | undefined;
+
   /** The element's children, for the rules about what is INSIDE a tag rather than on it. */
   children: readonly ts.JsxChild[];
 
@@ -488,21 +583,6 @@ export interface ElementContext {
 }
 
 export interface ModuleContext {
-  /**
-   * Builds an issue, unless the author has already written down why this site is the way it is.
-   *
-   * Supplied by the analyzer rather than written per rule, for the same reason `needs` and `exempt`
-   * are declared rather than coded: a guard every rule needs is a guard a rule can forget. Calling
-   * it is also the shorter way to write the rule, which is what keeps it from being skipped.
-   *
-   * Two annotations count, and they are not the same claim. `ramonda-check-ignore <reason>` is this
-   * package's own, and the reason it carries stays visible in every run — an empty one is itself
-   * reported, because a silence is not a record. `/* @vite-ignore *\/` is the BUNDLER's marker on
-   * the very same construct: a rule whose premise is "nothing tells you when you defeat splitting"
-   * has no premise left at a site where the bundler told the author and the author answered.
-   */
-  unlessAnnotated<Issue>(site: ts.Node, make: () => Issue): Issue | undefined;
-
   /**
    * Where a name was declared, the same question a class rule asks.
    *

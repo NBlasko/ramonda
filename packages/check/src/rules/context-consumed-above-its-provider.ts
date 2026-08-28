@@ -99,7 +99,20 @@ export const contextConsumedAboveItsProvider = {
     const found: ContextConsumedAboveItsProviderIssue[] = [];
 
     /** Per context, the first half of each kind this class declares, and the FIELD that declared it. */
-    type Declared = ContextHalf & { at: ts.PropertyDeclaration; rank: number; on: string | undefined };
+    type Declared = ContextHalf & {
+      at: ts.PropertyDeclaration;
+      rank: number;
+      /**
+       * Where the `this.use` itself sits, which is what orders TWO halves in ONE field.
+       *
+       * The field's own start cannot: it is the same node for both, so `pair = { reads:
+       * this.use(C), writes: this.use(P) }` compared equal and went unreported. One field is one
+       * file by definition, so a source position is meaningful here in a way it is not across the
+       * heritage chain — which is what `rank` is for.
+       */
+      where: number;
+      on: string | undefined;
+    };
     const seen = new Map<ts.VariableDeclaration, { provider?: Declared; consumer?: Declared }>();
 
     /**
@@ -126,8 +139,9 @@ export const contextConsumedAboveItsProvider = {
               const entry = seen.get(half.pair) ?? {};
               // The FIRST of each kind. A second provider on one component is its own fault (RMD056),
               // and taking the first here keeps this rule answering only its own question.
-              if (half.index === 0) entry.provider ??= { ...half, at: member, rank, on: inherited };
-              else entry.consumer ??= { ...half, at: member, rank, on: inherited };
+              const declared = { ...half, at: member, rank, where: node.getStart(), on: inherited };
+              if (half.index === 0) entry.provider ??= declared;
+              else entry.consumer ??= declared;
               seen.set(half.pair, entry);
             }
           }
@@ -143,7 +157,9 @@ export const contextConsumedAboveItsProvider = {
       // the packages are built around and is deliberately silent. Compared by POSITION in the source
       // rather than by line, so two on one line still have an order.
       if (consumer.rank > provider.rank) continue;
-      if (consumer.rank === provider.rank && consumer.at.getStart() >= provider.at.getStart()) continue;
+      // Same field: the two `this.use` calls are constructed left to right, so their own positions
+      // decide. The field's start is one node for both and settled nothing.
+      if (consumer.rank === provider.rank && consumer.where >= provider.where) continue;
       // One half has to be declared HERE. Both on a base is that base's own fault, and its own pass
       // reports it — without this, one pair on a shared base was reported again for every subclass.
       if (consumer.on !== undefined && provider.on !== undefined) continue;

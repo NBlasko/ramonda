@@ -1,5 +1,4 @@
 import { positionOf } from "../syntax";
-import { openingOf } from "./element";
 import type { ElementRule } from "./rule";
 
 /**
@@ -52,9 +51,18 @@ export const accessKey = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, attr, has }) {
-    if (tag === undefined || !has("accessKey")) return [];
+  /**
+   * Reported past a spread, from the side a spread cannot reach over.
+   *
+   * What is claimed is that this element TAKES a key combination off the user, which is a fact
+   * about the rendered element rather than about a misspelling — so a later spread that removes
+   * the attribute makes the claim untrue, and the guard is taken here.
+   */
+  evenWhenSpreading: true,
 
-    return [{ tag, claimed: attr("accessKey"), ...positionOf(openingOf(element)) }];
+  read(_element, { tag, attr, has, overwritable, at }) {
+    if (tag === undefined || !has("accessKey") || overwritable("accessKey")) return [];
+
+    return [{ tag, claimed: attr("accessKey"), ...positionOf(at) }];
   },
 } as const satisfies ElementRule<AccessKeyIssue>;

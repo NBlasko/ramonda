@@ -73,8 +73,8 @@ describe("an environment variable read but never exposed", () => {
  * member.
  */
 describe("process.env in code the browser runs", () => {
-  const serverEnv = () =>
-    analyzeProject(join(here, "fixtures", "env-reads", "tsconfig.json")).findings["server-env-in-shared-code"];
+  const run = () => analyzeProject(join(here, "fixtures", "env-reads", "tsconfig.json"));
+  const serverEnv = () => run().findings["server-env-in-shared-code"];
 
   /**
    * `globalThis.process.env` is the same read and was silent — the check required `process` to be a
@@ -88,6 +88,8 @@ describe("process.env in code the browser runs", () => {
       "OtherSpellings.render: process.env",
       'OtherSpellings.render: process.env["REGION"]',
       "OtherSpellings.render: globalThis.process.env.API_KEY",
+      // An EMPTY directive buys nothing: reported, and the directive itself reported too.
+      "ReadsWithNoReason.read: process.env.DATABASE_URL",
       "ReadsProcessInRender.render: process.env.DATABASE_URL",
       "ReadsProcessInAField.url: process.env.DATABASE_URL",
       "ReadsProcessInSharedCreate.read: process.env.REGION",
@@ -111,6 +113,38 @@ describe("process.env in code the browser runs", () => {
    */
   test("a server-only lifecycle said through an aliased decorator excuses the read", () => {
     expect(serverEnv().map((issue) => issue.component)).not.toContain("AliasedServerOnly");
+  });
+
+  /**
+   * A CLASS rule could not be answered at all until the annotation reached every family.
+   *
+   * `server-env-in-shared-code` is an ERROR, and `ModuleContext.unlessAnnotated` was the only
+   * escape there was — a mechanism three module rules called and thirty class rules could not. When
+   * this rule was wrong, measured, the reader's only way out was restructuring code that was
+   * already right.
+   *
+   * The reason is RECORDED, under the rule's own name, so it is printed on every run and cannot
+   * quietly stop being true.
+   */
+  test("a class rule can be answered with a written reason", () => {
+    const { findings, annotated } = run();
+
+    expect(findings["server-env-in-shared-code"].map((issue) => issue.component)).not.toContain("ReadsWithAReason");
+    expect(annotated.map((one) => `${one.what}: ${one.reason}`)).toContain(
+      "server-env-in-shared-code: this bundle is built for the server only, and the plugin defines process",
+    );
+  });
+
+  /**
+   * An EMPTY directive buys nothing, which is a change and a deliberate one: it used to silence the
+   * site and leave a note, and that made the note the price of switching a rule off. The package's
+   * own sentence is that a silence is not a record.
+   */
+  test("an empty directive does not silence a class rule either", () => {
+    const { findings, unresolved } = run();
+
+    expect(findings["server-env-in-shared-code"].map((issue) => issue.component)).toContain("ReadsWithNoReason");
+    expect(unresolved.filter((one) => one.what === "server-env-in-shared-code")).toHaveLength(1);
   });
 
   test("a helper only a server-only member calls is excused, however many hops away", () => {
@@ -178,5 +212,50 @@ describe("process.env in code the browser runs", () => {
   /** The control: a private helper a render DOES call stays reported, referenced as it is. */
   test("a private helper a render calls is still reported", () => {
     expect(serverEnv().map((issue) => issue.component)).toContain("HelperAlsoCalledInRender");
+  });
+});
+
+/**
+ * A one-sided global, ASKED ABOUT before it is touched.
+ *
+ * `process` does not exist in a browser, so isomorphic code checks first — and checking is the
+ * correct way to write it. `server-env-in-shared-code` is an ERROR, and it reported five shapes
+ * that cannot crash, including the two most standard spellings anybody uses. A build failing
+ * against working code is the one thing this package cannot afford, so this is the fixture that
+ * says so.
+ *
+ * The guard lives in `side-guard.ts` rather than in the rule, deliberately: two rules disagreeing
+ * about one `typeof window` is exactly the drift the shared reader exists to prevent — and the
+ * second one, `client-only-request-read`, was found to need the same answer.
+ */
+describe("a read behind a check that it only happens where it works", () => {
+  const guarded = () =>
+    analyzeProject(join(here, "fixtures", "env-guards", "tsconfig.json")).findings["server-env-in-shared-code"];
+
+  test("every spelling of the guard is honoured", () => {
+    /**
+     * What is left is the whole list, which cannot go quiet the way a `not.toContain` can:
+     *
+     * - 38, a click handler, which IS the browser by definition;
+     * - 46, a `@mounted` on a base class, which defaults to `shared`.
+     *
+     * Everything else in that fixture is guarded — a ternary (7), an `&&` (15),
+     * `if (import.meta.env.SSR)` (23), `if (typeof window === "undefined")` (79), and the EARLY
+     * RETURN (88), which is how a `render()` is written far more often than a nested `if`.
+     */
+    expect(
+      guarded()
+        .map((issue) => issue.line)
+        .sort((a, b) => a - b),
+    ).toEqual([38, 46]);
+  });
+
+  test("a subclass inheriting a shared member is not reported a second time", () => {
+    // One fault, at the base that wrote it. `InheritsIt` adds nothing and says nothing.
+    expect(guarded().map((issue) => issue.component)).toEqual(["InAHandler", "SharedBase"]);
+  });
+
+  test("and a subclass inherits the base's server-only marking too", () => {
+    expect(guarded().map((issue) => issue.component)).not.toContain("InheritsTheMarking");
   });
 });

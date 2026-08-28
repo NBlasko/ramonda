@@ -100,3 +100,68 @@ describe("requestContext() read below an await", () => {
     expect(first.column).toBeGreaterThan(0);
   });
 });
+
+/**
+ * The shapes an `await` divides that the first fixture did not have.
+ *
+ * The rule documents its own boundary — "only a direct call or a same-scope local" — and defends it
+ * as a division of labour with the runtime's RMD053. That reason is worth re-testing rather than
+ * trusting, because the same docstring argues two paragraphs earlier that RMD053 is NOT a
+ * sufficient backstop: it fires only on a path that RUNS, and the throw beside it goes into the
+ * server's work drain and is swallowed.
+ *
+ * Measured: the blocks were all fine, and one hop was missing.
+ */
+describe("the shapes an await divides", () => {
+  const shapes = () =>
+    analyzeProject(join(here, "fixtures", "late-request-shapes", "tsconfig.json")).findings["late-request-read"];
+
+  test("a `try`, a `finally` and a loop body are all below the await", () => {
+    // 13, 30, 44. The block a read sits in changes nothing: the request is gone either way, and a
+    // `finally` is exactly where a late read hides.
+    expect(shapes().map((issue) => issue.component)).toContain("LateInATry");
+    expect(shapes().map((issue) => issue.component)).toContain("LateInAFinally");
+    expect(shapes().map((issue) => issue.component)).toContain("LateInALoop");
+  });
+
+  /**
+   * `ctx = requestContext()` as a FIELD — the same take one scope out.
+   *
+   * The initializer runs at construction, inside the synchronous section the server has not yet
+   * cleared, so the take is correct; every read of it below an `await` is late. Nothing reported
+   * it, while the identical `const ctx = requestContext()` a line lower was. It is the shape
+   * somebody writes precisely to stop calling `requestContext()` over and over, so the tidier the
+   * code the less the rule saw.
+   */
+  test("and a context taken onto a field at construction is one too", () => {
+    const field = shapes().find((issue) => issue.component === "LateThroughAField");
+    expect(field).toBeDefined();
+    expect(field?.via).toBe("field");
+  });
+
+  test("the whole list, so a regression cannot go quiet", () => {
+    expect(shapes().map((issue) => issue.component)).toEqual([
+      "LateInATry",
+      "LateInAFinally",
+      "LateInALoop",
+      "LateThroughAField",
+    ]);
+  });
+
+  /**
+   * The three silences, each of which a worse rule would have punished.
+   *
+   * An `await` inside a NESTED function does not yield the body around it. A destructure taken
+   * BEFORE the await has already run its getter, so the value is in hand. And a property read into
+   * a local before the await is just a string afterwards.
+   */
+  test("an await inside a callback does not yield the body around it", () => {
+    expect(shapes().map((issue) => issue.component)).not.toContain("AwaitsInsideACallback");
+  });
+
+  test("and a value taken before the await is in hand, however it was taken", () => {
+    const guilty = shapes().map((issue) => issue.component);
+    expect(guilty).not.toContain("TakenBeforeTheAwait");
+    expect(guilty).not.toContain("PropertyHeldEarly");
+  });
+});

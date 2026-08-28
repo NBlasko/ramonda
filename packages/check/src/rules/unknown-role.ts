@@ -1,6 +1,5 @@
 import { positionOf } from "../syntax";
 import { ABSTRACT_ROLES, ROLES } from "./aria";
-import { openingOf } from "./element";
 import type { ElementRule } from "./rule";
 
 /**
@@ -54,9 +53,23 @@ export const unknownRole = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { attr }) {
+  /**
+   * Reported past a spread, but only from the side of it a spread cannot reach over.
+   *
+   * This is a rule about what the element WILL BE, so it takes the guard the family would
+   * otherwise give it:
+   * `<div role="buton" {...rest} />` may end up with whatever role `rest` carries and is left
+   * alone, while `<div {...rest} role="buton" />` ends up with `buton` whatever `rest` holds,
+   * because the later attribute wins. Measured on `fixtures/spread-a11y` — the second shape was
+   * silent, beside an identical line without the spread that was reported.
+   */
+  evenWhenSpreading: true,
+
+  read(_element, { attr, overwritable, at }) {
     const written = attr("role");
     if (written === undefined) return [];
+    // A spread written AFTER the role can replace it, and then nothing here is provable.
+    if (overwritable("role")) return [];
 
     const found: UnknownRoleIssue[] = [];
     /**
@@ -71,7 +84,7 @@ export const unknownRole = {
       found.push({
         role: token,
         kind: ABSTRACT_ROLES.has(role) ? "abstract" : "unknown",
-        ...positionOf(openingOf(element)),
+        ...positionOf(at),
       });
     }
 

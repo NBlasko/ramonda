@@ -107,3 +107,56 @@ describe("a context consumed above its provider", () => {
     }
   });
 });
+
+/**
+ * The construction order, in the shapes the first fixture did not have.
+ *
+ * Both of these rules turn on ONE fact — field initialisers run in declaration order, furthest
+ * ancestor first — so the walk is where their gaps would be. Most of it held.
+ */
+describe("the shapes construction order is written in", () => {
+  const shapes = () => analyzeProject(join(here, "fixtures", "context-order-shapes", "tsconfig.json")).findings;
+  const above = () => (shapes()["context-consumed-above-its-provider"] ?? []).map((issue) => issue.component);
+  const twice = () => (shapes()["one-provider-per-component"] ?? []).map((issue) => issue.component);
+
+  test("a base that consumes and a subclass that provides is the fault, across files", () => {
+    // The base's fields construct first, so the consumer looked before the provider existed.
+    expect(above()).toContain("ProvidesUnderAReadingBase");
+  });
+
+  test("and a base that provides with a subclass that consumes is the arrangement, not the fault", () => {
+    expect(above()).not.toContain("ReadsUnderAProvidingBase");
+  });
+
+  /**
+   * TWO halves in ONE field, which compared equal and went unreported.
+   *
+   * `pair = { reads: this.use(C), writes: this.use(P) }` is constructed left to right, so it is the
+   * same fault as two fields in that order. Ordering used to be by the FIELD's start position,
+   * which is one node for both halves — so the comparison settled nothing and the rule fell through
+   * to silence. The `this.use` calls carry their own positions now, which is meaningful because one
+   * field is one file; across the heritage chain it is `rank` that orders, and it still is.
+   */
+  test("two halves in one field are ordered by the calls, not by the field", () => {
+    expect(above()).toContain("BothInOneField");
+  });
+
+  test("a `readonly` modifier and a `static` field between change nothing", () => {
+    // Neither alters when an instance field is constructed; a `static` is not constructed per
+    // instance at all.
+    expect(above()).toContain("ReadonlyFields");
+    expect(above()).toContain("WithAStaticBetween");
+  });
+
+  test("the whole list, so a regression cannot go quiet", () => {
+    expect(above()).toEqual(["ProvidesUnderAReadingBase", "BothInOneField", "ReadonlyFields", "WithAStaticBetween"]);
+  });
+
+  /**
+   * The sibling rule needs no ordering at all — a SECOND provider is the fault wherever it sits —
+   * and it was already right about both shapes.
+   */
+  test("two providers of one context are reported, in one field and across a base", () => {
+    expect(twice()).toEqual(["ProvidesTwiceInOneField", "ProvidesUnderAProvidingBase"]);
+  });
+});

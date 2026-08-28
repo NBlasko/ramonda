@@ -60,7 +60,16 @@ function envOf(decorator: ts.Decorator): string | undefined {
  * `ts.getDecorators` wants a node the compiler already knows can carry them, and `ClassElement` is the
  * union including the ones that cannot — so the two that can are asked and the rest read as bare.
  */
-function coreDecorators(member: ts.ClassElement, context: RuleContext): { decorator: ts.Decorator; name: string }[] {
+/**
+ * Exported because `unguarded-async-lifecycle` asks the same question and asked it by BARE NAME —
+ * so `import { created as onCreate }` and `core.created()` both went quiet, and an app's own
+ * function called `created` would have been judged as core's. Two answers about one decorator is
+ * the drift a shared reader exists to prevent.
+ */
+export function coreDecorators(
+  member: ts.ClassElement,
+  context: RuleContext,
+): { decorator: ts.Decorator; name: string }[] {
   const decorated = ts.isMethodDeclaration(member) || ts.isPropertyDeclaration(member) ? member : undefined;
   const all = (decorated === undefined ? undefined : ts.getDecorators(decorated)) ?? [];
 
@@ -76,6 +85,8 @@ function coreDecorators(member: ts.ClassElement, context: RuleContext): { decora
      * wrong key. `import { created as onCreate }` found nothing in it and every rule reading this
      * went quiet about the member.
      */
+    // `@core.created()` — a namespace import keeps the export's own name on the property, and
+    // `coreExportName` reads that itself. It was patched here first; the copy is gone.
     const name = coreExportName(expression, context.resolveLocal, context.resolveStep);
     if (name !== undefined) found.push({ decorator, name });
   }

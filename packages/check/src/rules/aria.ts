@@ -452,3 +452,56 @@ export const NAME_PROHIBITED_TAGS: ReadonlyMap<string, string> = new Map([
   ["sub", "subscript"],
   ["sup", "superscript"],
 ]);
+
+/**
+ * The `aria-*` attributes every element supports, whatever role it has or does not have.
+ *
+ * ARIA calls these the GLOBAL states and properties, and the distinction is the whole of
+ * `aria-state-with-no-role`: a global one is exposed on any element in the accessibility tree, and
+ * every other one is defined by a ROLE and is exposed only where that role supports it. Written on
+ * something with no role at all, a non-global attribute conveys nothing to anybody.
+ *
+ * From the specification's own list, not inferred: an attribute is here because ARIA says it is
+ * global, and the set is small and stable enough to be worth writing down exactly.
+ *
+ * `aria-hidden` is here and it is worth saying why, because it looks like the odd one: it is
+ * global, and it does something on a roleless element — it takes the subtree out of the tree. It is
+ * exactly the attribute a rule about "this says nothing" must not report.
+ */
+export const GLOBAL_ARIA: ReadonlySet<string> = new Set([
+  "aria-atomic",
+  "aria-braillelabel",
+  "aria-brailleroledescription",
+  "aria-busy",
+  "aria-controls",
+  "aria-current",
+  "aria-describedby",
+  "aria-description",
+  "aria-details",
+  "aria-disabled",
+  "aria-dropeffect",
+  "aria-errormessage",
+  "aria-flowto",
+  "aria-grabbed",
+  "aria-haspopup",
+  "aria-hidden",
+  "aria-invalid",
+  "aria-keyshortcuts",
+  "aria-label",
+  "aria-labelledby",
+  "aria-live",
+  "aria-owns",
+  "aria-relevant",
+  "aria-roledescription",
+]);
+
+/**
+ * Tags with NO implicit ARIA role at all — the only ones this can be certain about.
+ *
+ * A generic element is exposed in the accessibility tree with no role, so a non-global `aria-*` on
+ * it has nothing to attach to. Deliberately just these two rather than a tag-to-role table for the
+ * whole of HTML: that table is large, easy to get subtly wrong, and being wrong here means
+ * reporting correct markup. These two are certain, they are what a custom control is built out of,
+ * and they are where the fault is actually written.
+ */
+export const NO_IMPLICIT_ROLE: ReadonlySet<string> = new Set(["div", "span"]);

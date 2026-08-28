@@ -109,3 +109,34 @@ describe("a click handler with no keyboard path", () => {
     expect(found).toHaveLength(3);
   });
 });
+
+/**
+ * A keyboard path, and what is really inside what.
+ *
+ * Two rules nobody had ever planted a shape for, and three gaps between them — one of them a report
+ * against an element whose keyboard handler is written on the same line.
+ */
+describe("a click a keyboard cannot reach, and a control inside itself", () => {
+  const found = () => analyzeProject(join(here, "fixtures", "keyboard-path", "tsconfig.json")).findings;
+  const clicks = () => (found()["click-with-no-keyboard-path"] ?? []).map((issue) => issue.line);
+  const nested = () => (found()["interactive-inside-interactive"] ?? []).map((issue) => issue.line);
+
+  /**
+   * The framework takes TWO spellings of an event name, and this rule knew one.
+   *
+   * `on:click` hands the name through verbatim, for a custom event with a dash or a capital that
+   * `onclick` cannot reach — `core/Attribute.ts` decides it, and `eventTypeOf` mirrors that rather
+   * than inventing an answer. Read as `onclick` only, `<div on:click={open}>` was not a click
+   * handler at all (11 is reported and 14 was not), and — worse — the key handler in
+   * `<div onclick={open} on:keydown={onKey}>` was invisible, so an element with a keyboard path
+   * written on the same line was reported as having none.
+   */
+  test("both spellings of a click are clicks, and both spellings of a key handler are a path", () => {
+    expect(clicks()).toEqual([11, 14]);
+  });
+
+  /** The plain nesting, as the control for the rule that shares this fixture. */
+  test("a link inside a link is still reported", () => {
+    expect(nested()).toEqual([28]);
+  });
+});

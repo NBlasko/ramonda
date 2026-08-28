@@ -162,3 +162,80 @@ describe("a form control with no label", () => {
     expect(findings["control-with-no-label"]).toHaveLength(1);
   });
 });
+
+/**
+ * An id written out on an element that also spreads.
+ *
+ * The table used to skip a spreading element entirely — a stance it argues for on `unreadable`,
+ * and half of which is right: a spread may CARRY an id, and that is not a claim that it does. What
+ * it may not do is throw away an id spelled out on the very same tag.
+ *
+ * Every rule here reports an ABSENCE, so an id missing from the table is a report against correct
+ * markup. Measured on this fixture before the fix: three of the four references were reported, and
+ * every one of them pointed at an id written one line above it.
+ *
+ * The asymmetry is the OPPOSITE of the element family's, which is why it is worth writing down.
+ * There, widening what is reported can only add false reports, so an attribute a spread could
+ * reach over has to be given up. Here, widening the set of known ids can only prevent a report —
+ * the same sentence that already keeps a literal `id` written on a COMPONENT tag.
+ */
+describe("an id written beside a spread", () => {
+  const found = () => run("id-beside-a-spread").findings;
+
+  test("is in the table whichever side of the spread it is on", () => {
+    // `#pricing` (spread first) and `#terms` (spread last) both resolve. Only the real typo is left.
+    expect(found()["fragment-link-to-nowhere"].map((issue) => issue.target)).toEqual(["nowhere-at-all"]);
+  });
+
+  test("and a control's id past a spread still answers its label", () => {
+    // `htmlFor="email"` finds the `<input {...rest} id="email">`; `htmlFor="missing"` finds nothing.
+    expect(found()["reference-to-an-id-that-is-not-there"].map((issue) => issue.target)).toEqual(["missing"]);
+  });
+
+  test("a spreading element is still not asked about its own references", () => {
+    // `<a {...rest} href="#also-nowhere">` names an id nothing carries, and is not reported: the
+    // spread may replace that `href`, so nothing here is a claim about where the link goes.
+    const targets = found()["fragment-link-to-nowhere"].map((issue) => issue.target);
+    expect(targets).not.toContain("also-nowhere");
+  });
+
+  test("and a spreading control is still not judged for its name", () => {
+    // `<input {...rest} id="email">` may be handed an `aria-label` by the spread, so the rule that
+    // asks whether it has a name says nothing — the half of the old stance that was right.
+    expect(found()["control-with-no-label"]).toEqual([]);
+  });
+});
+
+/**
+ * An empty naming attribute names nothing, and reading its presence as a name was a FALSE SILENCE.
+ *
+ * `<input type="text" aria-labelledby="" />` has no accessible name at all, and was reported by
+ * NOTHING: the attribute that names nothing had answered for the one that would have. Found by
+ * planting a broad sweep of obviously-wrong markup and reading which lines nobody spoke about — the
+ * same method the ladder uses, pointed at the gaps BETWEEN rules rather than at one rule's own
+ * shapes.
+ *
+ * It is the same shape as `placeholder=""` in the branch above it, found the same way and fixed the
+ * same way: when a rule reads an attribute's PRESENCE as its meaning, ask what it SAYS. Three
+ * answers and not two — written-with-something, written-empty, and unreadable.
+ */
+describe("a naming attribute that names nothing", () => {
+  const lines = () =>
+    (analyzeProject(join(here, "fixtures", "empty-name", "tsconfig.json")).findings["control-with-no-label"] ?? []).map(
+      (issue) => issue.line,
+    );
+
+  test("all three spellings, and whitespace with them", () => {
+    // 10 `aria-labelledby=""`, 13 `aria-label=""`, 14 `title=""`, 17 whitespace — none of which a
+    // screen reader announces, and every one of which used to silence the rule.
+    expect(lines()).toEqual([10, 13, 14, 17]);
+  });
+
+  test("and a name this cannot read is somebody naming it", () => {
+    // `aria-label={t("email")}` is a name whose text this cannot know, and guessing would report a
+    // control that is correctly labelled. Only an empty LITERAL is the source saying otherwise.
+    expect(lines()).not.toContain(20);
+    expect(lines()).not.toContain(23);
+    expect(lines()).not.toContain(27);
+  });
+});

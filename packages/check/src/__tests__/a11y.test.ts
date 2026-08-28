@@ -382,3 +382,173 @@ describe("a name on a role that takes none", () => {
     expect(found().filter((issue) => issue.from === "tag")).toHaveLength(6);
   });
 });
+
+/**
+ * What a spread can and cannot take away.
+ *
+ * The family goes quiet on a spreading element because a spread may CARRY the attribute a rule
+ * misses — `<img {...rest} />` may well have its `alt`, and nothing here can say whether it does.
+ * That argument is about an attribute that is ABSENT. It does not transfer to one plainly written
+ * down: a spread can overwrite a value and it cannot un-write a name.
+ *
+ * Measured before this was fixed: three rules were silent on the shape they exist for, on a page
+ * where the identical line without the spread was reported one line below.
+ */
+describe("an accessibility fault beside a spread", () => {
+  const spread = () => analyzeProject(join(here, "fixtures", "spread-a11y", "tsconfig.json")).findings;
+  const lines = (id: string) => (spread()[id] ?? []).map((issue) => issue.line).sort((a, b) => a - b);
+
+  test("a misspelled NAME is reported on either side of a spread", () => {
+    // 21 spread first, 22 spread last, 35 the control. A name is a name whichever side it is on.
+    expect(lines("unknown-aria-attribute")).toEqual([21, 22, 35]);
+  });
+
+  test("an accessibility attribute on a tag with no node is too, because the TAG is the subject", () => {
+    // 31, 32, 37 — and no spread makes a `<meta>` into something a screen reader exposes.
+    expect(lines("aria-with-no-subject")).toEqual([31, 32, 37]);
+  });
+
+  test("a role is reported only from the side a spread cannot reach over", () => {
+    /**
+     * 25 has the spread FIRST, so `role="buton"` is the last word and wins; 36 is the control.
+     * Line 27 writes the spread LAST and is silent — `rest` may carry a role of its own, and this
+     * is a rule about a value.
+     */
+    expect(lines("unknown-role")).toEqual([25, 36]);
+  });
+
+  test("and the silence the guard exists for is untouched", () => {
+    // `<img {...rest} />` — the `alt` may be in `rest`, and nothing here can say it is not.
+    expect(lines("unnamed-image")).toEqual([]);
+  });
+});
+
+/**
+ * The rest of the family, asked the same question.
+ *
+ * `spread-a11y` settled the principle on three rules. Asked of every other element rule, seven more
+ * were silent beside a spread that could not have changed their answer — measured on
+ * `fixtures/spread-sweep`, where each fault was written with the spread first, with the spread
+ * last, and with no spread at all.
+ *
+ * The line between them is not name-versus-value. A later spread carrying `undefined` really does
+ * remove an attribute — `<span aria-hidden="true" {...{"aria-hidden": undefined}} />` renders
+ * `<span></span>`, measured through `renderToString` — so what decides it is what the rule is
+ * ABOUT: what the author WROTE, or what the element WILL BE.
+ */
+describe("the rest of the element family beside a spread", () => {
+  const sweep = () => analyzeProject(join(here, "fixtures", "spread-sweep", "tsconfig.json")).findings;
+  const lines = (id: string) => (sweep()[id] ?? []).map((issue) => issue.line).sort((a, b) => a - b);
+
+  test("a rule about what was WRITTEN reports on either side of a spread", () => {
+    // `class` where `className` was meant: 21 spread first, 22 spread last, 23 the control. The
+    // prop the author meant is missing whether or not the attribute survives to the DOM.
+    expect(lines("class-instead-of-classname")).toEqual([21, 22, 23]);
+  });
+
+  test("and so does a rule whose subject is the TAG, because no spread changes a tag", () => {
+    // An `<li>` with no list around it — 31 with a spread, 32 without.
+    expect(lines("tag-needs-its-parent")).toEqual([31, 32]);
+  });
+
+  /**
+   * The other five, one at a time, so a regression names the rule rather than moving a number.
+   *
+   * Each is a claim about the element that RENDERS, and each is written three times in the
+   * fixture: spread first (reported, the attribute has the last word), spread last (silent, the
+   * spread may replace or remove it), and no spread (reported).
+   */
+  test("a rule about what the element WILL BE reports only from the side a spread cannot reach", () => {
+    expect(lines("positive-tabindex")).toEqual([26, 28]);
+    expect(lines("aria-value")).toEqual([35, 37]);
+    expect(lines("access-key")).toEqual([40, 42]);
+    expect(lines("aria-hidden-on-focusable")).toEqual([45, 47]);
+    // Two attributes decide this one, and each is asked about its own position.
+    expect(lines("role-takes-no-name")).toEqual([50, 52]);
+  });
+
+  test("and the silence the family guard exists for is untouched", () => {
+    expect(lines("unnamed-image")).toEqual([]);
+  });
+});
+
+/**
+ * The BUTTON, which was in the gap between two rules.
+ *
+ * `control-with-no-label` skips `<button>` on purpose and says so: a button is named by what is
+ * inside it, so asking it for a `<label>` would be asking for the wrong thing.
+ * `empty-heading-or-link` covered the two tags that carry text and not the third. Measured on a
+ * plant: `<button onclick={close} />` was reported by nothing, while the `<a href="/x" />` beside it
+ * was reported.
+ *
+ * That is the icon button — the ✕ that closes a dialog, the pencil that edits a row — and it is
+ * written more often than an empty link and an empty heading together. A screen reader announces it
+ * as "button" and nothing else, with no way to find out what it does short of pressing it.
+ */
+describe("a button with nothing to announce", () => {
+  const said = () =>
+    (
+      analyzeProject(join(here, "fixtures", "empty-button", "tsconfig.json")).findings["empty-heading-or-link"] ?? []
+    ).map((issue) => `${issue.line}:${issue.kind}`);
+
+  test("nothing inside, and the icon button whose only child is hidden", () => {
+    // 17 is empty; 20 has content in the DOM and none where it counts, which is how this is
+    // actually written.
+    expect(said()).toEqual(["17:button", "20:button"]);
+  });
+
+  /**
+   * Six silences, and the last is a boundary rather than a limitation.
+   *
+   * 25 and 50 name it outright. 30 has text and 35 has one readable word beside the icon, which is
+   * enough. 40 holds an expression and 45 a COMPONENT, and guessing at either is how a rule reports
+   * a page that is correct.
+   *
+   * 54 and 55 are `<input type="submit">` and `type="button"` — named by their `value` and by a
+   * browser default, so an unlabelled submit reads as "Submit" rather than as nothing. That is
+   * `control-with-no-label`'s territory and its documented boundary, and only the `<button>`
+   * ELEMENT is named by its content.
+   */
+  test("every button that has a name, or might, stays silent", () => {
+    const lines = said().map((entry) => Number(entry.split(":")[0]));
+    for (const quiet of [25, 30, 35, 40, 45, 50, 54, 55]) {
+      expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
+    }
+  });
+});
+
+/**
+ * `role="img"` is an image whatever the tag under it is, and was in a gap.
+ *
+ * An `<svg role="img">` or a `<div role="img">` is announced as an image and has no `alt` to fall
+ * back on — the attribute does not exist on those tags — so `aria-label` is the ONLY way to name
+ * one. Measured on a sweep: both were reported by nothing, while the `<object>` and `<area>` beside
+ * them were reported by this same rule.
+ *
+ * It is how an inline icon is written whenever the icon MEANS something rather than decorating,
+ * which is exactly when it needs a name.
+ */
+describe("an image declared by its role", () => {
+  const said = () =>
+    (analyzeProject(join(here, "fixtures", "declared-image", "tsconfig.json")).findings["unnamed-image"] ?? []).map(
+      (issue) => `${issue.line}:${issue.tag}`,
+    );
+
+  test("a declared image with no name, on any tag", () => {
+    // 31 is the tag-based half, unchanged: `<img>` with no `alt`.
+    expect(said()).toEqual(["10:svg", "13:div", "31:img"]);
+  });
+
+  test("every way of naming one answers, and a decorative icon is not one", () => {
+    /**
+     * 16, 17 and 18 use the three naming attributes. 21 is a name this cannot READ, which is
+     * somebody naming it. 24 says `aria-hidden`, so it is not in the tree at all. 27 is an `<svg>`
+     * with no role, which is not declared to be anything — the rule asks what the source SAYS the
+     * element is, and answers nothing where it says nothing. 30 has an `alt`.
+     */
+    const lines = said().map((entry) => Number(entry.split(":")[0]));
+    for (const quiet of [16, 17, 18, 21, 24, 27, 30]) {
+      expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
+    }
+  });
+});

@@ -1,7 +1,5 @@
-import ts from "typescript";
 import { positionOf } from "../syntax";
 import { NO_ARIA } from "./aria";
-import { openingOf } from "./element";
 import type { ElementRule } from "./rule";
 
 /**
@@ -46,16 +44,28 @@ export const ariaWithNoSubject = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag }) {
+  /**
+   * The subject is the TAG, and no spread makes a `<meta>` into something a screen reader exposes.
+   *
+   * So the family-wide silence has nothing to protect here, and it was costing a real report:
+   * `<meta {...rest} aria-hidden="true" />` said nothing at all.
+   *
+   * No order guard, though a later spread carrying `undefined` really can take the attribute off —
+   * measured through `renderToString`. This is a rule about a MISUNDERSTANDING: somebody wrote
+   * `aria-hidden` on a `<meta>` believing it hid something, and whatever they meant to hide is
+   * still there whether or not the attribute survives to the DOM.
+   */
+  evenWhenSpreading: true,
+
+  read(_element, { tag, attributes }) {
     if (tag === undefined || !NO_ARIA.has(tag)) return [];
 
     const found: AriaWithNoSubjectIssue[] = [];
-    for (const attribute of openingOf(element).attributes.properties) {
-      if (!ts.isJsxAttribute(attribute)) continue;
-      const written = attribute.name.getText();
+    for (const attribute of attributes) {
+      const written = attribute.name;
       const lowered = written.toLowerCase();
       if (lowered !== "role" && !lowered.startsWith("aria-")) continue;
-      found.push({ tag, attribute: written, ...positionOf(attribute) });
+      found.push({ tag, attribute: written, ...positionOf(attribute.at) });
     }
 
     return found;

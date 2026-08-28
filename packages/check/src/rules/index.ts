@@ -10,6 +10,7 @@ import type {
   RuleContext,
   TreeRule,
   ElementContext,
+  Silencer,
 } from "./rule";
 import { contextFor } from "./element";
 import { treeFor } from "./tree";
@@ -42,6 +43,19 @@ import { referenceToAnIdThatIsNotThere } from "./reference-to-an-id-that-is-not-
 import { controlWithNoLabel } from "./control-with-no-label";
 import { namedOnlyByAPlaceholder } from "./named-only-by-a-placeholder";
 import { ariaHiddenOnFocusable } from "./aria-hidden-on-focusable";
+import { presentationRoleOnFocusable } from "./presentation-role-on-focusable";
+import { ariaStateWithNoRole } from "./aria-state-with-no-role";
+import { autocompleteThatFillsNothing } from "./autocomplete-that-fills-nothing";
+import { moreThanOneMain } from "./more-than-one-main";
+import { labelThatNamesNothing } from "./label-that-names-nothing";
+import { ariaStateTheRoleDoesNotHave } from "./aria-state-the-role-does-not-have";
+import { ariaHiddenAroundSomethingFocusable } from "./aria-hidden-around-something-focusable";
+import { tableWithNoHeaders } from "./table-with-no-headers";
+import { landmarksThatCannotBeToldApart } from "./landmarks-that-cannot-be-told-apart";
+import { parentWithAForeignChild } from "./parent-with-a-foreign-child";
+import { ariaThatContradictsTheTag } from "./aria-that-contradicts-the-tag";
+import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
+import { liveRegionThatContradictsItsRole } from "./live-region-that-contradicts-its-role";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
@@ -143,6 +157,40 @@ export { controlWithNoLabel, type ControlWithNoLabelIssue } from "./control-with
 export { namedOnlyByAPlaceholder, type NamedOnlyByAPlaceholderIssue } from "./named-only-by-a-placeholder";
 export { couldExist, idTableFor, NAMES_AN_ID } from "./idTable";
 export { ariaHiddenOnFocusable, type AriaHiddenOnFocusableIssue } from "./aria-hidden-on-focusable";
+export {
+  presentationRoleOnFocusable,
+  type PresentationRoleOnFocusableIssue,
+} from "./presentation-role-on-focusable";
+export { ariaStateWithNoRole, type AriaStateWithNoRoleIssue } from "./aria-state-with-no-role";
+export {
+  autocompleteThatFillsNothing,
+  type AutocompleteThatFillsNothingIssue,
+} from "./autocomplete-that-fills-nothing";
+export { moreThanOneMain, type MoreThanOneMainIssue } from "./more-than-one-main";
+export { labelThatNamesNothing, type LabelThatNamesNothingIssue } from "./label-that-names-nothing";
+export {
+  ariaStateTheRoleDoesNotHave,
+  type AriaStateTheRoleDoesNotHaveIssue,
+} from "./aria-state-the-role-does-not-have";
+export {
+  ariaHiddenAroundSomethingFocusable,
+  type AriaHiddenAroundSomethingFocusableIssue,
+} from "./aria-hidden-around-something-focusable";
+export { tableWithNoHeaders, type TableWithNoHeadersIssue } from "./table-with-no-headers";
+export {
+  landmarksThatCannotBeToldApart,
+  type LandmarksThatCannotBeToldApartIssue,
+} from "./landmarks-that-cannot-be-told-apart";
+export { parentWithAForeignChild, type ParentWithAForeignChildIssue } from "./parent-with-a-foreign-child";
+export {
+  ariaThatContradictsTheTag,
+  type AriaThatContradictsTheTagIssue,
+} from "./aria-that-contradicts-the-tag";
+export { roleThatFightsTheTag, type RoleThatFightsTheTagIssue } from "./role-that-fights-the-tag";
+export {
+  liveRegionThatContradictsItsRole,
+  type LiveRegionThatContradictsItsRoleIssue,
+} from "./live-region-that-contradicts-its-role";
 
 export { arrowFields, type ArrowFieldIssue } from "./arrow-fields";
 export { asyncRender, type AsyncRenderIssue } from "./async-render";
@@ -240,6 +288,7 @@ export const ELEMENT_RULES = [
   indexAsKey,
   classInsteadOfClassName,
   tagNeedsItsParent,
+  parentWithAForeignChild,
   interactiveInsideInteractive,
   unnamedImage,
   unknownAriaAttribute,
@@ -252,6 +301,16 @@ export const ELEMENT_RULES = [
   unnamedFrame,
   positiveTabIndex,
   ariaHiddenOnFocusable,
+  ariaHiddenAroundSomethingFocusable,
+  presentationRoleOnFocusable,
+  ariaStateWithNoRole,
+  ariaStateTheRoleDoesNotHave,
+  ariaThatContradictsTheTag,
+  roleThatFightsTheTag,
+  liveRegionThatContradictsItsRole,
+  autocompleteThatFillsNothing,
+  labelThatNamesNothing,
+  tableWithNoHeaders,
   linkWithoutADestination,
   freshObjectInProps,
   clickWithNoKeyboardPath,
@@ -268,7 +327,7 @@ export const ELEMENT_RULES = [
  * the size of a render, and the guard they all need — whether an element is really on the page at
  * all — is computed once for them in `tree.ts`.
  */
-export const TREE_RULES = [duplicateId, headingSkipsALevel] as const;
+export const TREE_RULES = [duplicateId, headingSkipsALevel, moreThanOneMain, landmarksThatCannotBeToldApart] as const;
 
 /** All four families, which is what the CLI prints from and what {@link Findings} is keyed by. */
 /**
@@ -422,8 +481,18 @@ export function activate<R extends { id: string }>(
  * `rule` is a union of every rule — so nothing can be pushed into it without saying, once, that the
  * pair came from the same rule. It did: both sides are read from the same object.
  */
-function collect(findings: Findings, rule: AnyRule, issues: readonly unknown[]): void {
-  (findings[rule.id] as unknown[]).push(...issues);
+/**
+ * Where every finding from every family lands — and so the one place the annotation is applied.
+ *
+ * `silenced` is required rather than defaulted: a guard a caller can forget looks exactly like a
+ * clean codebase, and this one decides whether a reader has any way out of a wrong report at all.
+ */
+function collect(findings: Findings, rule: AnyRule, issues: readonly unknown[], silenced: Silencer): void {
+  for (const issue of issues) {
+    const at = issue as { file: string; line: number; column: number };
+    if (silenced(rule.id, at)) continue;
+    (findings[rule.id] as unknown[]).push(issue);
+  }
 }
 
 /**
@@ -438,21 +507,23 @@ export function applyClass(
   cls: ts.ClassDeclaration,
   context: RuleContext,
   findings: Findings,
+  silenced: Silencer,
 ): void {
   for (const rule of active) {
     // Same narrowing as `activate` uses for `needs`, and for the same reason.
     const exempt = "exempt" in rule ? (rule.exempt as string) : undefined;
     if (exempt !== undefined && context.self.id.startsWith(exempt)) continue;
-    collect(findings, rule, rule.read(cls, context));
+    collect(findings, rule, rule.read(cls, context), silenced);
   }
 }
 
 /**
  * Every active per-file rule over one source file.
  *
- * The context is built PER RULE rather than handed in ready-made, because the annotation the rule
- * may find has to be recorded against something, and the only honest name for it is the rule that
- * would otherwise have reported the site.
+ * The context used to be built PER RULE, because each of them carried an `unlessAnnotated` and the
+ * reason it found had to be recorded against a rule name. Nothing varies per rule any more: the
+ * annotation is read from the FINDING, in `collect`, which is where every family's findings already
+ * meet — so a class rule cannot be the one that forgot to ask.
  */
 /**
  * Every active element rule over one JSX element.
@@ -475,10 +546,11 @@ export function applyElement(
   element: JsxElementLike,
   findings: Findings,
   resolve: ElementContext["resolve"],
+  silenced: Silencer,
 ): void {
   const context = contextFor(element, resolve);
   const asked = context.spreads ? active.filter((rule) => "evenWhenSpreading" in rule) : active;
-  for (const rule of asked) collect(findings, rule, rule.read(element, context));
+  for (const rule of asked) collect(findings, rule, rule.read(element, context), silenced);
 }
 
 /**
@@ -491,17 +563,19 @@ export function applyProject(
   active: readonly (typeof PROJECT_RULES)[number][],
   project: ProjectContext,
   findings: Findings,
+  silenced: Silencer,
 ): void {
-  for (const rule of active) collect(findings, rule, rule.read(project));
+  for (const rule of active) collect(findings, rule, rule.read(project), silenced);
 }
 
 export function applyModule(
   active: readonly (typeof MODULE_RULES)[number][],
   file: ts.SourceFile,
-  contextFor: (ruleId: string) => ModuleContext,
+  context: ModuleContext,
   findings: Findings,
+  silenced: Silencer,
 ): void {
-  for (const rule of active) collect(findings, rule, rule.read(file, contextFor(rule.id)));
+  for (const rule of active) collect(findings, rule, rule.read(file, context), silenced);
 }
 
 /**
@@ -516,8 +590,9 @@ export function applyTree(
   root: ts.Node,
   findings: Findings,
   resolve: ElementContext["resolve"],
+  silenced: Silencer,
 ): void {
   if (active.length === 0) return;
   const tree = treeFor(root, resolve);
-  for (const rule of active) collect(findings, rule, rule.read(tree));
+  for (const rule of active) collect(findings, rule, rule.read(tree), silenced);
 }

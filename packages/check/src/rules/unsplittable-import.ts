@@ -107,7 +107,7 @@ export const unsplittableImport = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(file, { unlessAnnotated }) {
+  read(file) {
     const found: UnsplittableImportIssue[] = [];
 
     (function scan(node: ts.Node) {
@@ -120,11 +120,10 @@ export const unsplittableImport = {
           !splittableTemplate(specifier) &&
           !bundlerTold(node)
         ) {
-          const issue = unlessAnnotated(node, () => ({
+          found.push({
             path: specifier.getText(),
             ...positionOf(node),
-          }));
-          if (issue) found.push(issue);
+          });
         }
       }
       ts.forEachChild(node, scan);

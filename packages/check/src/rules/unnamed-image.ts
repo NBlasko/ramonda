@@ -57,17 +57,38 @@ export const unnamedImage = {
   },
 
   read(element, { tag, has, attr }) {
-    if (tag === undefined || !IMAGES.has(tag)) return [];
+    if (tag === undefined) return [];
+
+    /**
+     * `role="img"` is an image whatever the tag under it is, and was in a gap.
+     *
+     * An `<svg role="img">` or a `<div role="img">` is announced as an image and has no `alt` to
+     * fall back on — the attribute does not exist on those tags — so `aria-label` is the ONLY way
+     * to name one. Measured on a sweep: `<svg role="img" />` and `<div role="img">` were reported by
+     * nothing, while the `<object>` and the `<area>` beside them were reported here.
+     *
+     * It is how an inline icon is written whenever the icon is meaningful rather than decorative,
+     * which is exactly when it needs a name.
+     */
+    const declared = attr("role")?.trim().toLowerCase() === "img";
+    if (!declared && !IMAGES.has(tag)) return [];
 
     // An `<input>` is an image only when it says so. Every other type is a control with its own
     // labelling rules, and reporting those here would be reporting the wrong fault.
-    if (tag === "input" && attr("type")?.toLowerCase() !== "image") return [];
+    if (!declared && tag === "input" && attr("type")?.toLowerCase() !== "image") return [];
 
     if (NAMES_IT.some((name) => has(name))) return [];
 
     // An `<object>` names itself with its fallback content, which is the documented way round for
     // it. Only an empty one has nothing.
     if (tag === "object" && hasChildren(element)) return [];
+
+    /**
+     * A declared image whose ROLE is what makes it one has no `alt` to fall back on.
+     *
+     * `alt` does not exist on an `<svg>` or a `<div>`, so it cannot answer for them — and it is
+     * already in `NAMES_IT` above for the tags where it does.
+     */
 
     return [{ tag, ...positionOf(openingOf(element)) }];
   },

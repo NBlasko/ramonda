@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 52 of them.
+**Warnings.** These print and the run still passes. 65 of them.
 
 | rule | reported when |
 |---|---|
@@ -172,6 +172,7 @@ rules**, so a rule cannot be added without appearing here.
 | `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |
 | `class-instead-of-classname` | an element carries `class` where Ramonda reads `className` — also [`RMD039`](/reference/diagnostics) |
 | `tag-needs-its-parent` | a tag is written outside the parent it requires — `<tr>` with no table above it, `<option>` with no select |
+| `parent-with-a-foreign-child` | a container whose children are fixed by the content model holds a tag that is not one of them |
 | `interactive-inside-interactive` | an interactive element is nested inside another of the same kind: a link in a link, a button in a button, a form in a form |
 | `unnamed-image` | an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, `aria-labelledby` or `title` |
 | `unknown-aria-attribute` | an `aria-*` attribute is not a name the ARIA specification has |
@@ -184,6 +185,16 @@ rules**, so a rule cannot be added without appearing here.
 | `unnamed-frame` | an `iframe` has no `title` |
 | `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
 | `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
+| `aria-hidden-around-something-focusable` | `aria-hidden="true"` wraps something a keyboard can still tab to |
+| `presentation-role-on-focusable` | `role="presentation"` is written on an element a keyboard can still focus, where the role is ignored |
+| `aria-state-with-no-role` | an `aria-*` belonging to a role is written on an element that has no role |
+| `aria-state-the-role-does-not-have` | an `aria-*` sits beside a `role` that does not support it, so nothing exposes it |
+| `aria-that-contradicts-the-tag` | an `aria-*` is written `false` beside the HTML attribute that says the opposite |
+| `role-that-fights-the-tag` | a `role` says the element behaves in a way the tag does not — a link as a button, or a button as a link |
+| `live-region-that-contradicts-its-role` | an `aria-live` replaces the politeness the element's role already carries |
+| `autocomplete-that-fills-nothing` | an `autocomplete` value names no autofill field, so the browser ignores it entirely |
+| `label-that-names-nothing` | a `<label>` has no `htmlFor` and no control inside it, so it labels nothing |
+| `table-with-no-headers` | a `<table>` written out with data rows has no `<th>` anywhere in it |
 | `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |
 | `fresh-object-in-props` | a component is handed an object or array built during the render — written in the attribute, on one side of a ternary or a `??`, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match |
 | `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
@@ -192,6 +203,8 @@ rules**, so a rule cannot be added without appearing here.
 | `media-with-no-captions` | a `video` or `audio` element carries no `<track>`, so its content exists only as sound |
 | `duplicate-id` | two elements in one render carry the same literal `id`, and both are always present |
 | `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |
+| `more-than-one-main` | one render has more than one `main` landmark, where HTML allows one |
+| `landmarks-that-cannot-be-told-apart` | one render has two or more landmarks of the same kind and none of them is named |
 | `fragment-link-to-nowhere` | an `href="#name"` points at an id no element in the project carries |
 | `reference-to-an-id-that-is-not-there` | an `aria-labelledby`, `htmlFor` or other id reference names an id no element in the project carries |
 | `control-with-no-label` | a form control has no label, no `aria-label`, no `aria-labelledby` and no `title`, so nothing says what it is for |
