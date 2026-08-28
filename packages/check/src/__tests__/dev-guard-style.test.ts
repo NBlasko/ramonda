@@ -81,3 +81,43 @@ describe("a `__DEV__` guard written as an operator", () => {
     expect(found().map((issue) => issue.line)).not.toContain(29);
   });
 });
+
+/**
+ * The shapes a `__DEV__` guard is written in, asked of the rule that READS one.
+ *
+ * `insideADevGuard` decides whether dev-only code is dev-only, and `listener-added-by-hand` is what
+ * asks it. Two shapes were missing, and both made that rule report correctly guarded code — telling
+ * its author to reach for a decorator, which cannot be made dev-only at all.
+ */
+describe("the shapes a dev guard is written in", () => {
+  const said = () =>
+    (
+      analyzeProject(join(here, "fixtures", "dev-guard-shapes", "tsconfig.json")).findings["listener-added-by-hand"] ??
+      []
+    ).map((issue) => `${issue.component}: ${issue.why}`);
+
+  /**
+   * The whole list, because the distinction is in the REASON and not in the count.
+   *
+   * "a decorator does it" is the report for a listener that should not be hand-rolled at all.
+   * "nothing removes it" is the other claim entirely — inside a dev guard the hand-rolled call is
+   * right, and the only question left is whether the hatch is closed. This fixture closes none of
+   * them, so every guarded class keeps that second report and none of them keeps the first.
+   */
+  test("an early return and the bundler's own DEV flag are both guards", () => {
+    expect(said()).toEqual([
+      "GuardedByIf: nothing removes it",
+      "GuardedByAnd: nothing removes it",
+      // `if (!__DEV__) return;` — the shape the walk was silent on, and the one a `render()` is
+      // written with far more often than a nested `if`.
+      "GuardedByEarlyReturn: nothing removes it",
+      // `import.meta.env.DEV` — `__DEV__` is the spelling this repository asks for, and it is not
+      // the only one available. Reporting somebody's correctly guarded code over a second spelling
+      // is worse than tolerating the second spelling.
+      "GuardedByImportMeta: nothing removes it",
+      "NotGuarded: a decorator does it",
+      // The `else` of a dev guard is production, and stays reported.
+      "InTheElse: a decorator does it",
+    ]);
+  });
+});

@@ -1,6 +1,4 @@
-import ts from "typescript";
 import { positionOf } from "../syntax";
-import { openingOf } from "./element";
 import type { ElementRule } from "./rule";
 
 /**
@@ -50,6 +48,11 @@ import type { ElementRule } from "./rule";
  * `@ramonda/dom-facts` as `BOOLEAN_ATTRIBUTES` — put there rather than kept in `core` precisely so
  * this rule does not begin by making a second copy of it.
  *
+ * `ElementContext`'s `truth` already reads it, for the other half of the same fact: asked about
+ * `required="false"` it answers TRUE, because presence is what decides a boolean attribute. So the
+ * rule above has the meaning settled for it and is left with the part only it can say — that the
+ * line reads as the opposite of what it does.
+ *
  * The wrinkle the other six do not have is the tag: they are dead wherever they appear, and these
  * are wrong only in one place. The issue shape already carries `tag`.
  */
@@ -93,8 +96,7 @@ export const attributeThatDoesNothing = {
     heading: (found) => `${found.length} attribute(s) that reach the DOM and do nothing:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.tag} ${issue.attribute}={…}> is written as it stands, so the document gets ` +
-        `\`${issue.attribute.toLowerCase()}\` — ${issue.instead}.`,
+      `    <${issue.tag} ${issue.attribute}={…}> is written as it stands, so the document gets \`${issue.attribute.toLowerCase()}\` — ${issue.instead}.`,
     ],
     advice:
       "An HTML attribute is written through `setAttribute`, which lowercases the name. Exactly two\n" +
@@ -107,18 +109,30 @@ export const attributeThatDoesNothing = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag }) {
+  /**
+   * No order guard, for the same reason `class-instead-of-classname` needs none: the name is in the
+   * source whether or not a later spread takes the attribute off the DOM, and the attribute the
+   * author meant is missing either way.
+   */
+  evenWhenSpreading: true,
+
+  read(_element, { tag, attributes }) {
+    // A component tag decides its own props, so what it does with them is not settled here.
     if (tag === undefined) return [];
 
     const found: AttributeThatDoesNothingIssue[] = [];
 
-    for (const attribute of openingOf(element).attributes.properties) {
-      if (!ts.isJsxAttribute(attribute)) continue;
-      const written = attribute.name.getText();
+    for (const attribute of attributes) {
+      const written = attribute.name;
       const instead = DEAD.get(written.toLowerCase());
       if (instead === undefined) continue;
 
-      found.push({ tag, attribute: written, instead, ...positionOf(attribute) });
+      found.push({
+        tag,
+        attribute: written,
+        instead,
+        ...positionOf(attribute.at),
+      });
     }
 
     return found;

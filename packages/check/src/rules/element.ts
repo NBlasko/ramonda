@@ -1,7 +1,7 @@
 import ts from "typescript";
-import { svgElements } from "@ramonda/dom-facts";
+import { BOOLEAN_ATTRIBUTES, svgElements } from "@ramonda/dom-facts";
 import { follow, type Looking } from "./follow-value";
-import type { ElementContext, JsxElementLike } from "./rule";
+import type { ElementContext, JsxElementLike, WrittenAttribute } from "./rule";
 
 /**
  * What every element rule reads, computed once per element rather than once per rule.
@@ -29,53 +29,84 @@ export function tagOf(element: JsxElementLike): string | undefined {
   return name.toLowerCase();
 }
 
-/** Builds the context an element rule reads. */
-export function contextFor(element: JsxElementLike, resolve: ElementContext["resolve"]): ElementContext {
-  const attributes = openingOf(element).attributes.properties;
-
-  let spreads = false;
-  /** Lowercased name → the attribute, so a lookup is one map rather than a scan per question. */
-  const byName = new Map<string, ts.JsxAttribute>();
-
-  for (const attribute of attributes) {
-    if (ts.isJsxSpreadAttribute(attribute)) {
-      spreads = true;
+/** The attributes written on a TAG, normalised. */
+function attributesOf(element: JsxElementLike): WrittenAttribute[] {
+  const found: WrittenAttribute[] = [];
+  for (const attribute of openingOf(element).attributes.properties) {
+    if (!ts.isJsxAttribute(attribute)) continue;
+    const name = attribute.name.getText();
+    const written = attribute.initializer;
+    if (written === undefined) {
+      found.push({ name, at: attribute, bare: true });
       continue;
     }
-    byName.set(attribute.name.getText().toLowerCase(), attribute);
+    if (ts.isStringLiteral(written)) {
+      found.push({ name, at: attribute, value: written, bare: false });
+      continue;
+    }
+    // `alt={…}` with nothing in the braces is `alt={}`, which carries no value either.
+    const inside = ts.isJsxExpression(written) ? written.expression : undefined;
+    found.push({ name, at: attribute, ...(inside ? { value: inside } : {}), bare: false });
+  }
+  return found;
+}
+
+/** Builds the context an element rule reads. */
+export function contextFor(element: JsxElementLike, resolve: ElementContext["resolve"]): ElementContext {
+  const written = openingOf(element).attributes.properties;
+
+  let spreads = false;
+  /** Lowercased name → where it sits, against the last spread. */
+  const positions = new Map<string, number>();
+  let lastSpread = -1;
+
+  for (const [index, attribute] of written.entries()) {
+    if (ts.isJsxSpreadAttribute(attribute)) {
+      spreads = true;
+      lastSpread = index;
+      continue;
+    }
+    // The LAST one written wins, in JSX as in the object it compiles to, so the last position is
+    // the one that decides whether a spread can still reach over it.
+    positions.set(attribute.name.getText().toLowerCase(), index);
   }
 
-  const tag = tagOf(element);
-
-  return {
-    resolve,
-    tag,
+  return build({
+    attributes: attributesOf(element),
+    at: openingOf(element),
+    tag: tagOf(element),
     // The tag as WRITTEN decides this, not the lowercased one: SVG tag names are case-sensitive,
     // and `<clipPath>` is the SVG element while `<clippath>` is an unknown HTML one.
     inSvg: svgElements.has(openingOf(element).tagName.getText()),
     spreads,
-    children: ts.isJsxElement(element) ? element.children : [],
-    has: (name) => byName.has(name.toLowerCase()),
-    attr: (name) => {
-      const found = byName.get(name.toLowerCase());
-      if (!found) return undefined;
-
-      // `alt` with no value at all is `alt={true}` in JSX, which is not a string and not a label.
-      const value = found.initializer;
-      if (value === undefined) return undefined;
-      if (ts.isStringLiteral(value)) return value.text;
-
-      /**
-       * `alt={"a cat"}` — a literal that happens to be written in braces, and `role={ROLE}`, which
-       * is the same fact one hop away.
-       *
-       * Read because it is the same fact spelled differently, and a rule that saw one and not the
-       * other would report a page that is correct. Anything the walk cannot settle on ONE answer
-       * for is an expression this cannot evaluate, and `undefined` is the honest answer to it.
-       */
-      if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-      return textBehind(value.expression, resolve);
+    overwritable: (name) => {
+      const at = positions.get(name.toLowerCase());
+      return at === undefined || at < lastSpread;
     },
+    children: ts.isJsxElement(element) ? element.children : [],
+    resolve,
+  });
+}
+
+/**
+ * The half of a context that is the same whatever it was built from.
+ *
+ * `has`, `attr`, `truth` and `number` all read the normalised attribute list, so there is ONE
+ * answer per question rather than one per source. That is the lesson the element readers were
+ * fixed by twice already: `attr` was taught to follow a name and `stringAttr`, `trueAttr` and the
+ * id table's reader were all still literal-only afterwards, because each had its own copy.
+ */
+function build(parts: Omit<ElementContext, "has" | "attr" | "truth" | "number">): ElementContext {
+  /** Lowercased name → the attribute, so a lookup is one map rather than a scan per question. */
+  const byName = new Map<string, WrittenAttribute>();
+  for (const attribute of parts.attributes) byName.set(attribute.name.toLowerCase(), attribute);
+
+  return {
+    ...parts,
+    has: (name) => byName.has(name.toLowerCase()),
+    attr: (name) => textOf(byName.get(name.toLowerCase()), parts.resolve),
+    truth: (name) => truthOf(byName.get(name.toLowerCase()), parts.resolve),
+    number: (name) => numberOfAttribute(byName.get(name.toLowerCase()), parts.resolve),
   };
 }
 
@@ -118,17 +149,31 @@ export function stringAttr(
   name: string,
   resolve: ElementContext["resolve"],
 ): string | undefined {
-  for (const attribute of openingOf(element).attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
+  return textOf(named(attributesOf(element), name), resolve);
+}
 
-    const value = attribute.initializer;
-    if (value === undefined) return undefined;
-    if (ts.isStringLiteral(value)) return value.text;
-    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-    return textBehind(value.expression, resolve);
-  }
-  return undefined;
+/** The attribute of that name, whatever the source; the LAST one written, because it wins. */
+function named(attributes: readonly WrittenAttribute[], name: string): WrittenAttribute | undefined {
+  const wanted = name.toLowerCase();
+  let found: WrittenAttribute | undefined;
+  for (const attribute of attributes) if (attribute.name.toLowerCase() === wanted) found = attribute;
+  return found;
+}
+
+/**
+ * An attribute as a STRING.
+ *
+ * `alt="a cat"` and `alt={"a cat"}` are the same fact spelled differently, and `alt={LABEL}` is the
+ * same fact one hop away — read, because a rule that saw one and not the others would report a page
+ * that is correct. Anything the walk cannot settle on ONE answer for is `undefined`, which is the
+ * silence contract.
+ *
+ * A bare attribute is `{true}` in JSX, which is not a string and not a label.
+ */
+function textOf(attribute: WrittenAttribute | undefined, resolve: ElementContext["resolve"]): string | undefined {
+  if (attribute === undefined || attribute.value === undefined) return undefined;
+  if (ts.isStringLiteral(attribute.value)) return attribute.value.text;
+  return textBehind(attribute.value, resolve);
 }
 
 /**
@@ -147,19 +192,49 @@ export function trueAttr(
   name: string,
   resolve: ElementContext["resolve"],
 ): boolean | undefined {
-  for (const attribute of openingOf(element).attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
+  return truthOf(named(attributesOf(element), name), resolve);
+}
 
-    const value = attribute.initializer;
-    // `aria-hidden` on its own — JSX reads a bare attribute as `{true}`.
-    if (value === undefined) return true;
-    if (ts.isStringLiteral(value)) return value.text === "true" ? true : value.text === "false" ? false : undefined;
-    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-    // `aria-hidden={HIDDEN}` — the fourth spelling of the same fact, and the one that was missed.
-    return truthBehind(value.expression, resolve);
+function truthOf(attribute: WrittenAttribute | undefined, resolve: ElementContext["resolve"]): boolean | undefined {
+  if (attribute === undefined) return undefined;
+  // `aria-hidden` on its own — JSX reads a bare attribute as `{true}`.
+  if (attribute.bare) return true;
+  const value = attribute.value;
+  if (value === undefined) return undefined;
+
+  /**
+   * An HTML BOOLEAN attribute is on whenever it is PRESENT, whatever the string says.
+   *
+   * `required="false"` is a required field. The DOM has no way to say otherwise: `setAttribute`
+   * put the name there, and the parser reads only whether it is there. `core/Attribute.ts` is
+   * built on exactly that — `isInvisibleOnScreen` removes an attribute for the VALUE `false` and
+   * keeps the STRING `"false"`, because removing it is the only way to turn `disabled` off.
+   *
+   * An `aria-*` is the other kind and reads the other way: an enumerated string with three
+   * answers, where `"false"` is one of them and absent is a third. The same file's comment says
+   * so, and this mirrors it rather than inventing a second rule.
+   *
+   * Read as a value rather than as a presence, three rules were wrong on one line of markup —
+   * measured: `<main hidden="false">` was counted as a second visible landmark, a
+   * `<video muted="false">` was asked for captions it has no sound to need, and
+   * `<input required="false" aria-required="false">` — the very contradiction
+   * `aria-that-contradicts-the-tag` exists for — was reported by nothing.
+   *
+   * Asked of the VALUE rather than of the literal, because `required={FLAG}` with
+   * `const FLAG = "false"` is the same attribute on the same element. Written for the literal
+   * alone it answered two ways for one line of markup, which is the drift this file exists to
+   * stop — measured on a plant, the literal reported and the name silent.
+   */
+  if (BOOLEAN_ATTRIBUTES.has(attribute.name) || BOOLEAN_ATTRIBUTES.has(attribute.name.toLowerCase())) {
+    return follow(value, resolve, PRESENCE)?.value;
   }
-  return undefined;
+
+  if (ts.isStringLiteral(value)) {
+    return value.text === "true" ? true : value.text === "false" ? false : undefined;
+  }
+
+  // `aria-hidden={HIDDEN}` — the fourth spelling of the same fact, and the one that was missed.
+  return truthBehind(value, resolve);
 }
 
 /**
@@ -187,34 +262,31 @@ export function numberAttr(
   name: string,
   resolve: ElementContext["resolve"],
 ): number | undefined {
-  for (const attribute of openingOf(element).attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (attribute.name.getText().toLowerCase() !== name.toLowerCase()) continue;
+  return numberOfAttribute(named(attributesOf(element), name), resolve);
+}
 
-    const value = attribute.initializer;
-    if (value === undefined) return undefined;
+function numberOfAttribute(
+  attribute: WrittenAttribute | undefined,
+  resolve: ElementContext["resolve"],
+): number | undefined {
+  const written = attribute?.value;
+  if (written === undefined) return undefined;
 
-    // `tabIndex="0"` — valid JSX, and the same fact as `{0}`.
-    if (ts.isStringLiteral(value)) return numberOf(value.text);
+  // `tabIndex="0"` — valid JSX, and the same fact as `{0}`.
+  if (ts.isStringLiteral(written)) return numberOf(written.text);
+  if (ts.isNumericLiteral(written)) return numberOf(written.text);
 
-    if (!ts.isJsxExpression(value) || value.expression === undefined) return undefined;
-
-    const written = value.expression;
-    if (ts.isNumericLiteral(written)) return numberOf(written.text);
-
-    // `{-1}` is a prefix expression rather than a literal, which is the whole reason this exists.
-    if (
-      ts.isPrefixUnaryExpression(written) &&
-      written.operator === ts.SyntaxKind.MinusToken &&
-      ts.isNumericLiteral(written.operand)
-    ) {
-      const magnitude = numberOf(written.operand.text);
-      return magnitude === undefined ? undefined : -magnitude;
-    }
-    // `tabIndex={PRIORITY}` — the same number, declared elsewhere.
-    return numberBehind(written, resolve);
+  // `{-1}` is a prefix expression rather than a literal, which is the whole reason this exists.
+  if (
+    ts.isPrefixUnaryExpression(written) &&
+    written.operator === ts.SyntaxKind.MinusToken &&
+    ts.isNumericLiteral(written.operand)
+  ) {
+    const magnitude = numberOf(written.operand.text);
+    return magnitude === undefined ? undefined : -magnitude;
   }
-  return undefined;
+  // `tabIndex={PRIORITY}` — the same number, declared elsewhere.
+  return numberBehind(written, resolve);
 }
 
 /**
@@ -262,6 +334,35 @@ const NUMBER: Looking<number> = {
 };
 
 /** The three spellings of a claim, behind a name — `{HIDDEN}` where `const HIDDEN = true`. */
+/**
+ * Whether a value REACHES the element at all, which is the whole of a boolean attribute.
+ *
+ * `isInvisibleOnScreen` in `core/Attribute.ts` is the rule being mirrored: an attribute is dropped
+ * for `undefined`, `null`, and the VALUE `false` — and kept for everything else, the string
+ * `"false"` included. So a boolean attribute is on for any string at all, and off only when the
+ * render says `false` outright.
+ *
+ * Separate from {@link TRUTH} because they disagree on exactly one input and it is the one that
+ * matters: a string reading `"false"`. To an `aria-*` that is the value `false`; to `disabled` it
+ * is the attribute being there.
+ */
+const PRESENCE: Looking<boolean> = {
+  leaf: (expression) => {
+    if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (expression.kind === ts.SyntaxKind.NullKeyword) return false;
+    if (ts.isIdentifier(expression) && expression.text === "undefined") return false;
+    // Any string reaches the element, `""` included — which is what the runtime writes for `true`.
+    if (ts.isStringLiteralLike(expression)) return true;
+    if (ts.isNumericLiteral(expression)) return true;
+    return undefined;
+  },
+  throughModuleScope: true,
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+};
+
 const TRUTH: Looking<boolean> = {
   leaf: (expression) => {
     if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;

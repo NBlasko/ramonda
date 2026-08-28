@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { guardedBy } from "./guard-walk";
 
 /**
  * Whether a site is inside `if (__DEV__)`, and so is not in a production build at all.
@@ -32,27 +33,28 @@ import ts from "typescript";
  * production half.
  */
 export function insideADevGuard(node: ts.Node): boolean {
-  let child: ts.Node = node;
+  return guardedBy(node, { holds: guardsDev, denies: deniesDev });
+}
 
-  for (let at = node.parent; at !== undefined; child = at, at = at.parent) {
-    // The THEN branch only: arriving through the `else` of a dev guard is arriving from production.
-    if (ts.isIfStatement(at) && at.thenStatement === child && guardsDev(at.expression)) return true;
-
-    /**
-     * `__DEV__ && doSomething()` — the same claim written as an expression.
-     *
-     * Reading only the `if` reported the identical code written the other way, which is this
-     * repository's standing lesson: a fix for one spelling is not a fix for the other. The RIGHT
-     * operand only — the left is the guard itself.
-     */
-    if (ts.isBinaryExpression(at) && at.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
-      if (at.right === child && guardsDev(at.left)) return true;
-    }
-
-    // `__DEV__ ? here : there` — the same claim again, and only the arm the guard chooses.
-    if (ts.isConditionalExpression(at) && at.whenTrue === child && guardsDev(at.condition)) return true;
+/**
+ * Whether this condition holding means the build is NOT a development one.
+ *
+ * The `else` of a dev guard, the false arm of its ternary, and — the shape this walk was silent on
+ * — `if (!__DEV__) return;`, which narrows everything after it. Measured on a plant:
+ * `listener-added-by-hand` reported a correctly guarded dev-only listener written that way, and
+ * told its author to reach for a decorator that cannot be dev-only.
+ *
+ * A separate predicate rather than `!guardsDev(…)`, because a condition can say three things and
+ * not two: this, the opposite, or nothing at all. Inverting would read every unrecognised
+ * condition as proof that the build is production.
+ */
+function deniesDev(condition: ts.Expression): boolean {
+  if (ts.isParenthesizedExpression(condition)) return deniesDev(condition.expression);
+  if (ts.isPrefixUnaryExpression(condition) && condition.operator === ts.SyntaxKind.ExclamationToken) {
+    return guardsDev(condition.operand);
   }
-  return false;
+  // `import.meta.env.PROD` is the other half of the bundler's own pair, and says so directly.
+  return isBundlerFlag(condition, "PROD");
 }
 
 /**
@@ -66,9 +68,33 @@ export function insideADevGuard(node: ts.Node): boolean {
 export function guardsDev(condition: ts.Expression): boolean {
   if (ts.isParenthesizedExpression(condition)) return guardsDev(condition.expression);
   if (ts.isIdentifier(condition)) return condition.text === "__DEV__";
+  /**
+   * `import.meta.env.DEV` — the bundler's own flag, and the same fact under another name.
+   *
+   * `__DEV__` is the spelling this repository asks for and documents, and it is defined for apps
+   * through `ramondaDefine`. It is not the only one available: `import.meta.env.DEV` is a built-in
+   * every bundler provides, and somebody arriving from one reaches for it without thinking. Not
+   * accepting it meant reporting their correctly guarded dev-only code — measured on a plant — and
+   * a rule that reports the fix is worse than a rule that tolerates a second spelling.
+   */
+  if (isBundlerFlag(condition, "DEV")) return true;
+  if (ts.isPrefixUnaryExpression(condition) && condition.operator === ts.SyntaxKind.ExclamationToken) {
+    return isBundlerFlag(condition.operand, "PROD");
+  }
   // `&&` only. Every branch of one has to hold, so `__DEV__` anywhere in it decides.
   if (ts.isBinaryExpression(condition) && condition.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
     return guardsDev(condition.left) || guardsDev(condition.right);
   }
   return false;
+}
+
+/** `import.meta.env.DEV` / `.PROD` — the two the bundler defines itself. */
+function isBundlerFlag(condition: ts.Expression, name: "DEV" | "PROD"): boolean {
+  return (
+    ts.isPropertyAccessExpression(condition) &&
+    condition.name.text === name &&
+    ts.isPropertyAccessExpression(condition.expression) &&
+    condition.expression.name.text === "env" &&
+    ts.isMetaProperty(condition.expression.expression)
+  );
 }

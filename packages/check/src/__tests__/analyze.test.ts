@@ -1096,13 +1096,66 @@ describe("a route table nothing can reach", () => {
   });
 
   test("a table mounted by an outlet a root reaches is silent", () => {
-    // `live` is the ordinary arrangement, and the count is what says it is not reported.
-    expect(routes()).toHaveLength(2);
+    /**
+     * `live` is the ordinary arrangement — and so are the four beside it, which is the point.
+     *
+     * A whole list rather than a count, because a count is what this claim used to be and a count
+     * says nothing about WHICH two survived.
+     */
+    expect(routes()).toEqual(["unmounted 2", "stranded 1"]);
   });
 
-  test("the pages themselves are not reported as dead, because they are exported", () => {
-    // Which is what a page is. The fault belongs to the table, and is reported once.
+  /**
+   * `routes={…}` is not written one way, and every other way used to name nothing.
+   *
+   * The tag then had no table, so the table had no outlet, so it was reported handed to nobody and
+   * every page in it reported dead. Measured on this fixture before the walk followed a
+   * declaration: three false `unmounted` reports and four pages called dead, on code that renders
+   * exactly what its author meant.
+   *
+   * The pages here are deliberately NOT exported, which is what makes the silence below sharp: an
+   * exported class is spared by `deadOnes` whatever the routing did, so exporting them would have
+   * hidden the fault this is about.
+   */
+  test("a table reached off a field, through a local, or under a renamed outlet is silent", () => {
+    // Named one at a time so a regression says which hop broke rather than that a number moved.
+    const mounted = run("stranded-routes")
+      .graph.edges.filter((e) => e.via === "route" && e.to?.includes("#"))
+      .map((e) => (e.to ?? "").split("#").pop())
+      .filter((name) => name !== undefined && !name.startsWith("RouteOutlet"))
+      .sort();
+    expect(mounted).toEqual(["Draft", "Held", "Home", "Imported", "Lifted", "Renamed"]);
+  });
+
+  test("the pages themselves are not reported as dead", () => {
+    // The fault belongs to the table, and is reported once. `Archive` and `Draft` are exported,
+    // which is what a page is; the five hop cases are not, and are reached or nothing.
     expect(run("stranded-routes").unreachable).toEqual([]);
+  });
+});
+
+/**
+ * An outlet spreading props nothing can read.
+ *
+ * `<RouteOutlet {...props} />` may be handing over any table in the program. Both verdicts above
+ * are about a table NOTHING named, and neither survives a tag that might be naming it — the same
+ * sentence the declaration rules live by: a checker that cannot tell a missing thing from an
+ * invisible one may not report either.
+ *
+ * The spread whose object IS written down is followed, so the silence is the last resort and not
+ * the first move.
+ */
+describe("an outlet that spreads its props", () => {
+  test("a spread written as an object literal is read, and the table is mounted", () => {
+    const spread = run("outlet-spread");
+    expect(spread.unreachableRoutes).toEqual([]);
+    expect(spread.unreachable).toEqual([]);
+  });
+
+  test("a spread nothing can see silences the check rather than guessing", () => {
+    // The table in this one really is handed to no outlet — and it is still not reported, because
+    // the opaque spread one line away could be the outlet that takes it.
+    expect(run("outlet-spread-opaque").unreachableRoutes).toEqual([]);
   });
 });
 

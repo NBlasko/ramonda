@@ -1,7 +1,5 @@
-import ts from "typescript";
 import { positionOf } from "../syntax";
 import { ARIA_ATTRIBUTES } from "./aria";
-import { openingOf } from "./element";
 import type { ElementRule } from "./rule";
 
 /**
@@ -99,15 +97,31 @@ export const unknownAriaAttribute = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, inSvg }) {
+  /**
+   * A misspelling is in the source whatever the spread does.
+   *
+   * The family goes quiet on a spreading element because a spread may CARRY the attribute a rule
+   * misses — `<img {...rest} />` may well have its `alt`. This rule misses nothing: the wrong name
+   * is written on the tag. Measured on `fixtures/spread-a11y`, where
+   * `<div {...rest} aria-lablled="Filters" />` went unreported while the identical line without the
+   * spread was reported one line down.
+   *
+   * No order guard, and NOT because a spread cannot reach it — a later spread carrying `undefined`
+   * really does remove an attribute, measured through `renderToString`. Because this rule is about
+   * what was WRITTEN: `aria-lablled` is a typo whether the browser ends up seeing it or not, and
+   * the attribute the author meant is missing either way. `unknown-role` is the other kind and
+   * takes the guard.
+   */
+  evenWhenSpreading: true,
+
+  read(_element, { tag, inSvg, attributes }) {
     // Components too: `<Panel aria-lablled="x" />` is a prop with a name, and the mistake is the
     // same one whether the tag is markup or a class that will pass it through.
     void tag;
     const found: UnknownAriaAttributeIssue[] = [];
 
-    for (const attribute of openingOf(element).attributes.properties) {
-      if (!ts.isJsxAttribute(attribute)) continue;
-      const written = attribute.name.getText();
+    for (const attribute of attributes) {
+      const written = attribute.name;
       if (!written.toLowerCase().startsWith("aria-")) continue;
       if (ARIA_ATTRIBUTES.has(written)) continue;
 
@@ -121,7 +135,7 @@ export const unknownAriaAttribute = {
       if (!inSvg && ARIA_ATTRIBUTES.has(written.toLowerCase())) continue;
 
       const meant = probably(written);
-      found.push({ attribute: written, ...(meant ? { meant } : {}), ...positionOf(attribute) });
+      found.push({ attribute: written, ...(meant ? { meant } : {}), ...positionOf(attribute.at) });
     }
 
     return found;

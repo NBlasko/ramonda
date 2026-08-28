@@ -42,7 +42,7 @@ export interface DuplicateDecoratorIssue {
   /**
    * What the second declaration DOES, which decides what advice makes sense.
    *
-   * Four, one per behaviour core actually has, because the advice differs for each and naming the wrong
+   * Three, one per behaviour core actually has, because the advice differs for each and naming the wrong
    * one sends a reader somewhere there is nothing to find:
    *
    * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032,
@@ -78,8 +78,7 @@ export interface DuplicateDecoratorIssue {
  * It was four `Set`s until then, one per effect, and the effect was recovered by asking each in turn.
  * A single map says the same thing once and is directly comparable to core's.
  *
- * The four words are the four pieces of advice, and telling them apart is the point:
- *   loads and there is no live line to hunt for.
+ * The three words are the three pieces of advice, and telling them apart is the point:
  * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032,
  *   `@ShouldUpdateOnPropsChange` RMD040). The reader needs to know WHICH is live.
  * - `merges` — both take effect and the result is the union (`@StableProps`, RMD046). It names a set

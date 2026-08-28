@@ -1,5 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
+import { descendantIn } from "./descendants";
+import { eventTypeOf } from "./events";
 import { hasContent, openingOf } from "./element";
 import type { ElementContext, ElementRule } from "./rule";
 
@@ -79,23 +81,36 @@ const INTERACTIVE: ReadonlySet<string> = new Set([
  * `ondblclick`, not `ondoubleclick`: the DOM event is `dblclick`, so `ondoubleclick` named nothing
  * and matched nothing — a set entry that had never been able to fire.
  */
-const POINTER_ONLY: ReadonlySet<string> = new Set(["onclick", "onmousedown", "onmouseup", "ondblclick"]);
+/** By EVENT TYPE, not by attribute name, so both spellings land on one entry. */
+const POINTER_ONLY: ReadonlySet<string> = new Set(["click", "mousedown", "mouseup", "dblclick"]);
 
-/** Whether any keyboard handler is written at all. Which one is not this rule's business. */
+/**
+ * Whether any keyboard handler is written at all. Which one is not this rule's business.
+ *
+ * Through `eventTypeOf`, because the framework takes TWO spellings and this knew one. A regex on
+ * the written name missed `on:keydown` — measured, and the cost was the worst kind: an element with
+ * a keyboard handler written on the same line was reported as having no keyboard path.
+ */
 function hasAKeyHandler(opening: ts.JsxOpeningLikeElement): boolean {
   for (const attribute of opening.attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
-    if (/^onkey/i.test(attribute.name.getText())) return true;
+    if (eventTypeOf(attribute.name.getText())?.type.startsWith("key") === true) return true;
   }
   return false;
 }
 
-/** The pointer-only handler written on this element, if there is one. */
+/**
+ * The pointer-only handler written on this element, if there is one.
+ *
+ * `on:click` is the same listener as `onclick` — the framework's second spelling, for names the
+ * first cannot reach — and it was not recognised as a handler at all, so the whole rule was silent
+ * on an element written that way.
+ */
 function pointerHandlerOn(opening: ts.JsxOpeningLikeElement): string | undefined {
   for (const attribute of opening.attributes.properties) {
     if (!ts.isJsxAttribute(attribute)) continue;
     const name = attribute.name.getText();
-    if (POINTER_ONLY.has(name.toLowerCase())) return name;
+    if (POINTER_ONLY.has(eventTypeOf(name)?.type ?? "")) return name;
   }
   return undefined;
 }
@@ -107,24 +122,12 @@ function pointerHandlerOn(opening: ts.JsxOpeningLikeElement): string | undefined
  * because what it renders is decided inside it and cannot be read from here. Both make the rule go
  * quiet, which is the silence contract: the cost of being wrong is telling somebody their working
  * card is broken.
+ *
+ * The walk itself is `descendantIn`, shared with the two other rules that ask a question of the
+ * same shape.
  */
 function hasAnInteractiveDescendant(children: readonly ts.JsxChild[]): boolean {
-  for (const child of children) {
-    if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-      const opening = ts.isJsxElement(child) ? child.openingElement : child;
-      const name = opening.tagName.getText();
-
-      // A component, or a dotted name — unreadable from here, so treat it as a path.
-      if (/^[A-Z]/.test(name) || name.includes(".")) return true;
-      if (INTERACTIVE.has(name.toLowerCase())) return true;
-      if (ts.isJsxElement(child) && hasAnInteractiveDescendant(child.children)) return true;
-      continue;
-    }
-    // `{rows.map(…)}` and every other expression: unreadable, so it may hold anything.
-    if (ts.isJsxExpression(child) && child.expression !== undefined) return true;
-    if (ts.isJsxFragment(child) && hasAnInteractiveDescendant(child.children)) return true;
-  }
-  return false;
+  return descendantIn(children, (_opening, tag) => INTERACTIVE.has(tag)) !== "none";
 }
 
 export const clickWithNoKeyboardPath = {

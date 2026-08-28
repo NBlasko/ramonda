@@ -157,3 +157,32 @@ function lossyLeaf(resolve: ElementContext["resolve"], depth: number): Looking<L
     throughMutableBindings: true,
   };
 }
+
+/**
+ * What a FIELD holds, when that can be read off the source; `undefined` when it cannot.
+ *
+ * Two rules ask this about the same hydration blob — `persist-of-a-lossy-value` without a gate and
+ * `unserializable-state` with one — and they used to ask it differently. This half, the type
+ * ANNOTATION read when there is no initializer, lived in the ungated one alone: measured on a
+ * plant, `@state rows!: Map<string, number>` assigned in `@created` was reported for `@persist` and
+ * silent for `@state`, which is the shape a value arriving from a fetch is written in.
+ */
+export function lossyFieldValue(member: ts.PropertyDeclaration, resolve: ElementContext["resolve"]): Lossy | undefined {
+  if (member.initializer !== undefined) return lossyIn(member.initializer, resolve);
+
+  /**
+   * No initializer, so the ANNOTATION is the only thing written. Read as syntax: `Map<string, T>`
+   * is the name `Map` in the source, which is a fact about the file rather than a question about a
+   * type. A field with no annotation either says nothing and is left alone.
+   */
+  const annotation = member.type;
+  if (annotation === undefined) return undefined;
+  if (ts.isFunctionTypeNode(annotation)) {
+    return { holds: "a function", becomes: "nothing at all — JSON drops a function without a word" };
+  }
+  if (!ts.isTypeReferenceNode(annotation)) return undefined;
+
+  const name = annotation.typeName.getText();
+  const becomes = BECOMES.get(name);
+  return becomes === undefined ? undefined : { holds: name, becomes };
+}

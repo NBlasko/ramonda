@@ -146,16 +146,31 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
     const tag = hostTag ?? opening.tagName.getText();
 
     /**
-     * A spreading element is not asked about its own references, and does not silence the table.
+     * A spreading element is not asked about its own REFERENCES, and does not silence the table.
      *
      * The first half is the stance the per-element family already takes: a spread may carry the
      * very attribute a rule is about. The second half is the line this family draws and the note on
      * `ProjectContext.unreadable` defends — measured, counting a spread as an unreadable id would
      * have silenced every rule here in every project in this repository.
+     *
+     * ## What it may NOT do is throw away an id that is written out
+     *
+     * This used to `return` here, so an element that spread anything at all contributed nothing —
+     * including an `id` spelled out on the very same tag. Every rule in this family reports an
+     * ABSENCE, so an id dropped from the table is a report against correct markup. Measured on a
+     * plant: `<h2 {...rest} id="pricing">` with `<a href="#pricing">` beside it, and the link was
+     * reported as going nowhere. So was a `<label htmlFor="email">` whose `<input {...rest}
+     * id="email">` was one line below it.
+     *
+     * Both orders are recorded, and that is not the same asymmetry the element rules take. There,
+     * widening what is reported can only add false reports, so a spread that could reach over the
+     * attribute has to silence it. Here it is the reverse: widening the set of known ids can only
+     * PREVENT a report and never cause one, which is the same sentence the literal `id` on a
+     * component tag is already kept for.
      */
-    if (opening.attributes.properties.some(ts.isJsxSpreadAttribute)) return;
+    const spreads = opening.attributes.properties.some(ts.isJsxSpreadAttribute);
 
-    if (hostTag !== undefined && CONTROLS.has(hostTag)) readControl(element, hostTag);
+    if (!spreads && hostTag !== undefined && CONTROLS.has(hostTag)) readControl(element, hostTag);
 
     for (const attribute of opening.attributes.properties) {
       if (!ts.isJsxAttribute(attribute)) continue;
@@ -191,11 +206,16 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
          * A LITERAL `id` on a component goes into the table above regardless, because widening the
          * set of known ids can only prevent a false report and never cause one.
          */
-        if (hostTag !== undefined) {
+        // Not on a spreading element: `unreadable` silences every rule in the family, and that was
+        // measured to be the wrong price for a spread — see `ProjectContext.unreadable`.
+        if (hostTag !== undefined && !spreads) {
           unreadable.push({ written: attribute.getText(), ...positionOf(attribute) });
         }
         continue;
       }
+
+      // Everything below is a REFERENCE, and a spreading element is not asked about its own.
+      if (spreads) continue;
 
       if (NAMES_AN_ID.has(name) || NAMES_AN_ID.has(name.toLowerCase())) {
         const written = literalOf(attribute.initializer, resolve);
@@ -236,11 +256,34 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
         const written = literalOf(attribute.initializer, resolve);
         if (written === undefined) opaqueId = true;
         else id = written;
-      } else if (name === "placeholder") placeholder = true;
-      else if (NAMES_IT_DIRECTLY.has(name)) {
-        // Written at all, in any form. `aria-label={t("email")}` is somebody naming this control,
-        // and whether the string is empty is not a question this can answer.
-        namingAttribute = true;
+      } else if (name === "placeholder") {
+        /**
+         * `placeholder=""` is not a name, and reading its PRESENCE as one put a report on the wrong
+         * rule: `named-only-by-a-placeholder` told the author their placeholder is the only name
+         * this control has, on a control that has no name at all, while `control-with-no-label` —
+         * whose sentence that is — stayed quiet because a placeholder was written.
+         *
+         * A placeholder this cannot READ still counts. `placeholder={t("email")}` is somebody
+         * putting words there, and only an empty literal is the source saying otherwise.
+         */
+        const written = literalOf(attribute.initializer, resolve);
+        placeholder = written === undefined || written.trim().length > 0;
+      } else if (NAMES_IT_DIRECTLY.has(name)) {
+        /**
+         * Written at all, in any form — with one exception the source settles itself.
+         *
+         * `aria-label={t("email")}` is somebody naming this control and whether the string is empty
+         * is not a question this can answer, so anything unreadable counts. An EMPTY LITERAL is
+         * different: `aria-label=""` and `aria-labelledby=""` name nothing, and reading their
+         * presence as a name was a FALSE SILENCE — measured on a plant, `<input type="text"
+         * aria-labelledby="" />` had no name at all and was reported by nothing, because the
+         * attribute that names nothing had answered for the one that would have.
+         *
+         * The same shape as `placeholder=""` two branches up, found the same way and fixed the same
+         * way. When a rule reads an attribute's PRESENCE as its meaning, ask what it SAYS.
+         */
+        const written = literalOf(attribute.initializer, resolve);
+        if (written === undefined || written.trim().length > 0) namingAttribute = true;
       }
     }
 

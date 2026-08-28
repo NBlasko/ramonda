@@ -1,6 +1,5 @@
 import { positionOf } from "../syntax";
 import { ARIA_VALUES, type AriaValue } from "./aria";
-import { openingOf } from "./element";
 import type { ElementRule } from "./rule";
 
 /**
@@ -96,24 +95,34 @@ export const ariaValue = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, attr }) {
+  /**
+   * Reported past a spread, from the side a spread cannot reach over.
+   *
+   * A rule about what the attribute SAYS — `aria-valuenow="lots"` where a number is wanted — so a
+   * later spread that replaces or removes it makes the report untrue, and each attribute is asked
+   * about its own position rather than the element's.
+   */
+  evenWhenSpreading: true,
+
+  read(_element, { tag, attr, overwritable, attributes }) {
     // Markup only. `<Panel aria-hidden="yes" />` is a prop on a component, and what that component
     // does with it is decided inside it — where this rule meets the real attribute again.
     if (tag === undefined) return [];
 
     const found: AriaValueIssue[] = [];
-    for (const attribute of openingOf(element).attributes.properties) {
-      if (!("name" in attribute) || attribute.name === undefined) continue;
-      const name = attribute.name.getText().toLowerCase();
+    for (const attribute of attributes) {
+      const name = attribute.name.toLowerCase();
       const spec = ARIA_VALUES.get(name);
       if (spec === undefined) continue;
 
       const value = attr(name);
       if (value === undefined) continue;
+      // A spread written after it may replace this value with any other, or with nothing at all.
+      if (overwritable(name)) continue;
 
       const wants = judge(spec, value.trim());
       if (wants !== undefined) {
-        found.push({ attribute: name, value, wants, ...positionOf(attribute) });
+        found.push({ attribute: name, value, wants, ...positionOf(attribute.at) });
       }
     }
     return found;

@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
-import { lossyIn } from "./lossyValue";
+import { lossyFieldValue } from "./lossyValue";
 import { hasDecorator } from "./render-reach";
 import type { Rule } from "./rule";
 
@@ -97,8 +97,16 @@ export const unserializableState = {
        */
       if (hasDecorator(member, "persist", resolve)) continue;
 
-      if (member.initializer === undefined) continue;
-      const lossy = lossyIn(member.initializer, resolve);
+      /**
+       * Through `lossyFieldValue`, which reads the type ANNOTATION when there is no initializer.
+       *
+       * This read the initializer alone, and the sibling — the same question about the same blob —
+       * read both. Measured on a plant: `@state rows!: Map<string, number>` assigned in `@created`
+       * was reported for `@persist` and silent for `@state`, and that is the shape a value arriving
+       * from a fetch is written in. Two rules answering one question two ways, and this was the one
+       * that was answering less of it.
+       */
+      const lossy = lossyFieldValue(member, resolve);
       if (lossy === undefined) continue;
 
       found.push({

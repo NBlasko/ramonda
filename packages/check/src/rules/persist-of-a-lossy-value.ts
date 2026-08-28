@@ -1,8 +1,8 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { hasDecorator } from "./render-reach";
-import { BECOMES, lossyIn, type Lossy } from "./lossyValue";
-import type { Rule, RuleContext } from "./rule";
+import { lossyFieldValue } from "./lossyValue";
+import type { Rule } from "./rule";
 
 /**
  * `@persist` on a field holding something JSON cannot carry.
@@ -47,27 +47,6 @@ export interface PersistOfALossyValueIssue {
   column: number;
 }
 
-/** What a field holds, when that can be read off the source; `undefined` when it cannot. */
-function lossyValueOf(member: ts.PropertyDeclaration, resolve: RuleContext["resolve"]): Lossy | undefined {
-  if (member.initializer !== undefined) return lossyIn(member.initializer, resolve);
-
-  /**
-   * No initializer, so the ANNOTATION is the only thing written. Read as syntax: `Map<string, T>`
-   * is the name `Map` in the source, which is a fact about the file rather than a question about a
-   * type. A field with no annotation either says nothing and is left alone.
-   */
-  const annotation = member.type;
-  if (annotation === undefined) return undefined;
-  if (ts.isFunctionTypeNode(annotation)) {
-    return { holds: "a function", becomes: "nothing at all — JSON drops a function without a word" };
-  }
-  if (!ts.isTypeReferenceNode(annotation)) return undefined;
-
-  const name = annotation.typeName.getText();
-  const becomes = BECOMES.get(name);
-  return becomes === undefined ? undefined : { holds: name, becomes };
-}
-
 export const persistOfALossyValue = {
   id: "persist-of-a-lossy-value",
 
@@ -104,7 +83,7 @@ export const persistOfALossyValue = {
       if (!hasDecorator(member, "persist", resolve)) continue;
       if (!ts.isIdentifier(member.name)) continue;
 
-      const lossy = lossyValueOf(member, resolve);
+      const lossy = lossyFieldValue(member, resolve);
       if (lossy === undefined) continue;
 
       found.push({

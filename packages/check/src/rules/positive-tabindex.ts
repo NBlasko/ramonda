@@ -1,5 +1,4 @@
 import { positionOf } from "../syntax";
-import { numberAttr, openingOf } from "./element";
 import type { ElementRule } from "./rule";
 
 /**
@@ -45,8 +44,19 @@ export const positiveTabIndex = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, resolve }) {
+  /**
+   * Reported past a spread, from the side a spread cannot reach over.
+   *
+   * A rule about what the element WILL BE, so it takes the order guard itself:
+   * `<div {...rest} tabIndex={5} />` is in the tab order at 5 whatever `rest` holds, and
+   * `<div tabIndex={5} {...rest} />` may end up with any tabIndex at all — or none, since a later
+   * `undefined` removes the attribute outright, measured through `renderToString`.
+   */
+  evenWhenSpreading: true,
+
+  read(_element, { tag, number, overwritable, at }) {
     if (tag === undefined) return [];
+    if (overwritable("tabIndex")) return [];
 
     /**
      * Read as a literal only, which is the silence contract doing its job.
@@ -56,9 +66,9 @@ export const positiveTabIndex = {
      * shared with `aria-hidden-on-focusable` so the two rules cannot disagree about what a
      * `tabIndex` says on the same line.
      */
-    const value = numberAttr(element, "tabIndex", resolve);
+    const value = number("tabIndex");
     if (value === undefined || value <= 0) return [];
 
-    return [{ tag, value, ...positionOf(openingOf(element)) }];
+    return [{ tag, value, ...positionOf(at) }];
   },
 } as const satisfies ElementRule<PositiveTabIndexIssue>;

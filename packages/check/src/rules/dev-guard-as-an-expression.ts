@@ -103,7 +103,7 @@ export const devGuardAsAnExpression = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(file, { unlessAnnotated }) {
+  read(file) {
     const found: DevGuardAsAnExpressionIssue[] = [];
 
     (function scan(node: ts.Node): void {
@@ -118,23 +118,21 @@ export const devGuardAsAnExpression = {
 
         const chained = guardedByADevChain(written);
         if (chained !== undefined) {
-          const issue = unlessAnnotated(node, () => ({
+          found.push({
             written: "&&" as const,
             guarding: shorten(chained),
             ...positionOf(node),
-          }));
-          if (issue !== undefined) found.push(issue);
+          });
         }
 
         const bare = bareOf(written);
         // A ternary with a real other arm is an `if`/`else`, and the advice here is not that.
         if (ts.isConditionalExpression(bare) && guardsDev(bare.condition) && armIsNothing(bare.whenFalse)) {
-          const issue = unlessAnnotated(node, () => ({
+          found.push({
             written: "?:" as const,
             guarding: shorten(bare.whenTrue),
             ...positionOf(node),
-          }));
-          if (issue !== undefined) found.push(issue);
+          });
         }
       }
 

@@ -60,6 +60,16 @@ export const tagNeedsItsParent = {
       "This is a warning today and an error in a later version.",
   },
 
+  /**
+   * Neither half of this is an attribute, so the family's spread guard has nothing to protect.
+   *
+   * The subject is the TAG and the element ENCLOSING it. `<li {...rest}>` is an `<li>` whatever
+   * `rest` carries, and what it sits inside is decided by the markup around it. Measured on
+   * `fixtures/spread-sweep`: an `<li>` with no list around it went unreported for a spread that
+   * could not have changed the answer.
+   */
+  evenWhenSpreading: true,
+
   read(element, { tag }) {
     if (tag === undefined) return [];
 

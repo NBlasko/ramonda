@@ -2,6 +2,7 @@ import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
 import { isTheGlobal } from "./globals";
 import { isServerOnly } from "./lifecycle-env";
+import { narrowedTo } from "./side-guard";
 import type { Rule, RuleContext } from "./rule";
 
 /**
@@ -212,6 +213,17 @@ export const serverEnvInSharedCode = {
       const visit = (node: ts.Node): void => {
         const read = processEnvRead(node, context);
         if (read !== undefined) {
+          /**
+           * Asked before it is touched, which is the CORRECT way to write this.
+           *
+           * `typeof process !== "undefined"`, `if (typeof window === "undefined")`,
+           * `if (import.meta.env.SSR)`, and the early return that says the same thing the other way
+           * up — none of them reaches `process` in a browser, so none of them is the crash this
+           * rule is about. Measured on `fixtures/env-guards`: five shapes reported, every one of
+           * them correct code, from a rule at ERROR severity. A build failing against working code
+           * is the one thing this package cannot afford.
+           */
+          if (narrowedTo(read, "server")) return;
           /**
            * The whole read, not just `process.env`: `process.env.DATABASE_URL` is what the reader
            * wrote and what they will search for — and `process.env["REGION"]` is too.

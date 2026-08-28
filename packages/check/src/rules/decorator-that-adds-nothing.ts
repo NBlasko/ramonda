@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { memberName, positionOf } from "../syntax";
-import type { Rule } from "./rule";
+import { coreDecorators } from "./lifecycle-env";
+import type { Rule, RuleContext } from "./rule";
 
 /**
  * Two decorators on one member giving it the same thing, so one of them does nothing.
@@ -64,16 +65,20 @@ const GIVES: ReadonlyMap<string, readonly string[]> = new Map([
   ["compute", ["a computed value"]],
 ]);
 
-/** Every decorator written on a member, in source order, by name. */
-function decoratorsOn(member: ts.ClassElement): { name: string; node: ts.Decorator }[] {
-  const found: { name: string; node: ts.Decorator }[] = [];
-  for (const decorator of ts.getDecorators(member as ts.HasDecorators) ?? []) {
-    const expression = ts.isCallExpression(decorator.expression)
-      ? decorator.expression.expression
-      : decorator.expression;
-    if (ts.isIdentifier(expression)) found.push({ name: expression.text, node: decorator });
-  }
-  return found;
+/**
+ * The core decorators on a member, by the name CORE exports each one under.
+ *
+ * This read the written IDENTIFIER, and measured on a plant that was wrong three ways at once:
+ * `import { state as reactive }` and `@core.state` both went quiet on the identical pair, and an
+ * app's own decorator called `persist` beside core's `@state` was REPORTED — somebody else's code,
+ * told one of its lines does nothing, for the framework's rule.
+ *
+ * `duplicate-decorators` sits on the same line and had already answered this correctly, which is
+ * the drift a shared reader exists to prevent: two rules answering one question about one decorator
+ * two different ways. `coreDecorators` is `lifecycle-env`'s, and it is now the only answer.
+ */
+function decoratorsOn(member: ts.ClassElement, context: RuleContext): { name: string; node: ts.Decorator }[] {
+  return coreDecorators(member, context).map(({ decorator, name }) => ({ name, node: decorator }));
 }
 
 export const decoratorThatAddsNothing = {
@@ -102,7 +107,8 @@ export const decoratorThatAddsNothing = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(cls, { self }) {
+  read(cls, context) {
+    const { self } = context;
     const found: DecoratorThatAddsNothingIssue[] = [];
 
     for (const member of cls.members) {
@@ -114,7 +120,7 @@ export const decoratorThatAddsNothing = {
       /** capability → the decorator that claimed it first, which is the one that stays. */
       const claimed = new Map<string, string>();
 
-      for (const { name, node } of decoratorsOn(member)) {
+      for (const { name, node } of decoratorsOn(member, context)) {
         for (const capability of GIVES.get(name) ?? []) {
           const already = claimed.get(capability);
           if (already === undefined) {
