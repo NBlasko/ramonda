@@ -86,6 +86,7 @@ const EXPECTED_TYPES = [
   "PositiveTabIndexIssue",
   "ReferenceToAnIdThatIsNotThereIssue",
   "RoleMissingRequiredAriaIssue",
+  "RegionWithNoNameIssue",
   "RoleTakesNoNameIssue",
   "RowReadsAPlainFieldIssue",
   "RowWithoutAKeyIssue",

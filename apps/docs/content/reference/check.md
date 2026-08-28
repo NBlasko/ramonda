@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 65 of them.
+**Warnings.** These print and the run still passes. 66 of them.
 
 | rule | reported when |
 |---|---|
@@ -179,6 +179,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unknown-role` | a `role` names nothing, or names an abstract role that markup may not use |
 | `role-missing-required-aria` | an explicit `role` is written without the `aria-*` its specification requires |
 | `role-takes-no-name` | an `aria-label` or `aria-labelledby` is written on a role the specification forbids naming |
+| `region-with-no-name` | `role="region"` is written with no `aria-label`, `aria-labelledby` or `title`, so it is not a landmark at all |
 | `aria-value` | an `aria-*` attribute carries a literal value its specification does not permit |
 | `aria-with-no-subject` | a `role` or an `aria-*` sits on an element with no accessibility tree node to describe |
 | `empty-heading-or-link` | a heading or a link has nothing inside it to announce |

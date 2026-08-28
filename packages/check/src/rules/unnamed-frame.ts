@@ -1,5 +1,6 @@
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
+import { isNamed } from "./naming";
 import type { ElementRule } from "./rule";
 
 /**
@@ -18,7 +19,6 @@ export interface UnnamedFrameIssue {
 }
 
 /** Any of these names the frame. `title` is the documented one; the other two also work. */
-const NAMES_IT = ["title", "aria-label", "aria-labelledby"];
 
 export const unnamedFrame = {
   id: "unnamed-frame",
@@ -36,9 +36,9 @@ export const unnamedFrame = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, has }) {
+  read(element, { tag, has, attr }) {
     if (tag !== "iframe") return [];
-    if (NAMES_IT.some((name) => has(name))) return [];
+    if (isNamed({ has, attr })) return [];
     return [positionOf(openingOf(element))];
   },
 } as const satisfies ElementRule<UnnamedFrameIssue>;

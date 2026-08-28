@@ -1,5 +1,6 @@
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
+import { isNamed } from "./naming";
 import type { TreeNode, TreeRule } from "./rule";
 
 /**
@@ -47,6 +48,14 @@ export interface LandmarksThatCannotBeToldApartIssue {
  *
  * `main` is absent on purpose: a page may have one, and two is `more-than-one-main`'s report rather
  * than a naming problem.
+ *
+ * `region` is absent for a sharper reason. It is the one landmark role the specification makes
+ * conditional on a NAME — an unnamed one is not exposed as a landmark at all — so two unnamed
+ * regions are not two landmarks a reader cannot tell apart, they are two elements that never
+ * reached the list. This rule only ever fires when NEITHER is named, which for `region` is exactly
+ * the case where neither is a landmark, so every report it could make here would be the right
+ * report from the wrong rule. `region-with-no-name` owns it, and says the thing that is actually
+ * true. Measured on a plant: both rules named the same two lines.
  */
 const LANDMARK_ROLES: ReadonlySet<string> = new Set([
   "banner",
@@ -54,7 +63,6 @@ const LANDMARK_ROLES: ReadonlySet<string> = new Set([
   "contentinfo",
   "form",
   "navigation",
-  "region",
   "search",
 ]);
 
@@ -74,13 +82,6 @@ function landmarkKind(node: TreeNode): string | undefined {
 
   // `<nav>` is a navigation landmark wherever it sits, which is what makes it safe to read.
   return node.tag === "nav" ? "navigation" : undefined;
-}
-
-/** Whether anything gives this landmark a name a reader would hear in the list. */
-function isNamed(node: TreeNode): boolean {
-  // Written at all, in any form. `aria-label={t("footer")}` is somebody naming this landmark, and
-  // whether the string is empty is not a question this can answer.
-  return node.has("aria-label") || node.has("aria-labelledby") || node.has("title");
 }
 
 export const landmarksThatCannotBeToldApart = {

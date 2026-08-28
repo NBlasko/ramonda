@@ -65,6 +65,7 @@ export type {
   LiveRegionThatContradictsItsRoleIssue,
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
+  RegionWithNoNameIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   ServerEnvInSharedCodeIssue,
