@@ -1,9 +1,9 @@
 import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
-import { COMPONENT_RUNTIME } from "../core/runtime";
 import { __h } from "../vdom/h";
-import type { ComponentChild, RamondaNode, RenderEnv } from "../types/vdom";
+import { forwarded, given } from "./forwarded";
+import type { RamondaNode, RenderEnv } from "../types/vdom";
 import type { RefTarget } from "./Ref";
 
 /**
@@ -24,39 +24,6 @@ import type { RefTarget } from "./Ref";
  *   the chosen option is given the `selected` ATTRIBUTE, which is where HTML keeps it and the only
  *   half a served page can carry: the right option is showing before any script runs.
  */
-
-/**
- * `children` as the factory's rest parameter wants it: no children at all rather than one child that
- * is `undefined`. JSX makes that distinction by writing nothing; a call has to make it by hand.
- */
-function given(children: RamondaNode | undefined): ComponentChild[] {
-  return children === undefined ? [] : [children as ComponentChild];
-}
-
-/**
- * Every prop except the ones this component consumes, read so its signal exists.
- *
- * The props proxy has no `ownKeys` trap — deliberately, because a signal is made per KEY as that key
- * is read, and that is what lets a component depend on exactly the props it looked at. The
- * consequence is that `{...this.props}` spreads nothing at all, so a wrapper written the obvious way
- * silently drops every attribute its caller wrote.
- *
- * The names are on `rawProps`, which is replaced just before the render that will use it, so at this
- * moment they are this render's. Reading each one back THROUGH the proxy is what makes the wrapper
- * reactive to it — so this component does depend on all of them, which is right for something whose
- * whole job is to pass them on.
- */
-// biome-ignore lint/suspicious/noExplicitAny: any component, whatever its props
-function forwarded(component: Component<any>, consumed: readonly string[]): Record<string, unknown> {
-  const { rawProps } = component[COMPONENT_RUNTIME];
-  const props = component.props as unknown as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const name of Object.keys(rawProps)) {
-    if (name === "key" || consumed.includes(name)) continue;
-    out[name] = props[name];
-  }
-  return out;
-}
 
 export interface SelectProps {
   /**
@@ -88,10 +55,11 @@ export class Select extends Component<SelectProps> {
    * `b` asked for out of `a b c`: the page showed `c`, and the served markup carried no `selected`
    * at all.
    */
-  private el = createRef<HTMLSelectElement>((node) => this.handOver(node));
+  /** `e` — the `<select>` element this component owns. One letter because a class member survives minification as written. */
+  private e = createRef<HTMLSelectElement>((node) => this.g(node));
 
-  /** The caller's ref as of the last hand-over, so a swapped one can be let go of. */
-  private held: RefTarget<HTMLSelectElement> | undefined;
+  /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
+  private h: RefTarget<HTMLSelectElement> | undefined;
 
   /**
    * Gives the caller's ref the node, and takes it back from one the caller has stopped passing.
@@ -100,10 +68,11 @@ export class Select extends Component<SelectProps> {
    * the node it points at, or `current` reads as present while `focus()` does nothing. The framework
    * cannot do it here, because as far as it can see the ref on this element never changes.
    */
-  private handOver(node: HTMLSelectElement | null): void {
+  /** `g` — GIVES the caller's ref this node, and takes it back from one they have dropped. */
+  private g(node: HTMLSelectElement | null): void {
     const theirs = this.props.ref;
-    if (this.held !== undefined && this.held !== theirs) this.held.setCurrent(null);
-    this.held = theirs;
+    if (this.h !== undefined && this.h !== theirs) this.h.setCurrent(null);
+    this.h = theirs;
     theirs?.setCurrent(node);
   }
 
@@ -123,12 +92,12 @@ export class Select extends Component<SelectProps> {
   @mounted({ env: "shared" })
   @updated
   settle(env: RenderEnv = "client"): void {
-    const select = this.el.current;
+    const select = this.e.current;
     if (!select) return;
 
     // A caller may hand over a DIFFERENT ref between renders, and the element's own ref did not
     // change, so nothing else would notice. This is the one moment that can.
-    if (this.held !== this.props.ref) this.handOver(select);
+    if (this.h !== this.props.ref) this.g(select);
 
     const onServer = env === "server";
     const chosen = this.props.value;
@@ -162,7 +131,7 @@ export class Select extends Component<SelectProps> {
      */
     return __h(
       "select",
-      { ...forwarded(this, ["value", "children", "ref"]), ref: this.el },
+      { ...forwarded(this, ["value", "children", "ref"]), ref: this.e },
       ...given(this.props.children),
     );
   }

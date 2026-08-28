@@ -1,16 +1,19 @@
 ---
-"@ramonda/core": patch
+"@ramonda/core": minor
 ---
 
-A served `<textarea>` shows its value before any script runs
+`<TextArea>`, because a textarea's value is its child
 
-HTML has no `value` content attribute on a textarea — the value is the element's TEXT — so
-`<textarea value="hello">` was serialized as markup a browser ignores. The reader was shown an empty
-field, which filled itself in when the bundle arrived.
+HTML gives a `<textarea>` no `value` attribute — the value is the element's TEXT — so
+`<textarea value="hello">` was markup a browser ignores. The reader was shown an EMPTY field, which
+filled itself in when the bundle arrived.
 
-The value is now written where HTML keeps it, as the element's child, on both sides. Nothing changes
-in how it is used: `<textarea value={x} />` is still the way to drive one, and the property beside
-the child is still what makes it controlled once somebody has typed. A textarea written with its
-text inside keeps that text, and wins if both are given.
+`<TextArea value={x}>` writes the value as the element's child, so a served page shows the text
+before any script runs, and sets the property afterwards, which is what keeps the field controlled
+once somebody has typed in it. Everything else written on it — `className`, `disabled`, `rows`,
+every event, every `data-` and `aria-` — passes straight through.
 
-Nothing is written on a textarea's `value` attribute any more, since nothing ever read it.
+**`<textarea>` is now a type error**, and the message TypeScript prints is the instruction. It has to
+be a component rather than a line in the attribute writer: the value must become a CHILD, and the
+attribute pass runs before the children, so a text node written there is one the children pass has
+never heard of and unmounts as a leftover.

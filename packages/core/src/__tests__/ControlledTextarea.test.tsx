@@ -1,27 +1,27 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
-import { Component } from "../index";
+import { Component, TextArea, createRef } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 
 /**
- * A `<textarea>` keeps its value INSIDE the element, not in an attribute — there is no `value`
- * content attribute on a textarea at all.
+ * A `<textarea>` keeps its value INSIDE the element. HTML gives it no `value` attribute at all, so
+ * `<textarea value="hello">` is markup a browser ignores — measured on the parsed output, an EMPTY
+ * field that filled itself in when the bundle arrived.
  *
- * That is a question of PLACE rather than of moment, which is what separates it from `<select>`. A
- * select's choice is which child is chosen, so it cannot be settled until the children exist, and it
- * took a component to find that moment. A textarea's value is simply written somewhere else, and the
- * children pass does not disturb it: measured across a render that added a sibling, the value stood.
+ * `<TextArea value={x}>` writes it as the element's child instead, which is the one place it
+ * survives. The attribute pass cannot: it runs BEFORE the children, so a text node written there is
+ * one the children pass has never heard of, and it unmounts it as a leftover — measured, `"hello"`
+ * at the moment of writing and `<textarea></textarea>` in the finished markup.
  *
- * So the client is already right — the property is the whole answer there — and only the server had
- * to change. Before this, a served `<textarea value="hello">` reached the reader as an EMPTY field
- * and filled itself in when the bundle arrived.
+ * The plain tag is refused by the types for that reason: nothing written as an attribute can carry
+ * this value, and only something that renders the tag can write a child.
  */
 class Editor extends Component {
   @state text = "hello";
   render() {
-    return <textarea id="t" value={this.text} />;
+    return <TextArea id="t" value={this.text} />;
   }
 }
 
@@ -43,13 +43,14 @@ describe("what the server sends for a textarea", () => {
   });
 
   /**
-   * The text is content, so it is escaped like content. A value carrying markup used to be the
-   * shape that turned a rendered field into a live element on the page.
+   * The value is content now, so it is escaped like content. Written as an attribute it was escaped
+   * for a different context entirely, and a value carrying markup is the shape that turns a rendered
+   * field into a live element on somebody's page.
    */
   test("a value carrying markup is escaped, not opened", async () => {
     class Hostile extends Component {
       render() {
-        return <textarea id="t" value={'</textarea><img src=x onerror="steal()">'} />;
+        return <TextArea id="t" value={'</textarea><img src=x onerror="steal()">'} />;
       }
     }
 
@@ -63,34 +64,10 @@ describe("what the server sends for a textarea", () => {
     );
   });
 
-  /**
-   * `<textarea value={x}>text</textarea>` says two things about one field. The one written INSIDE the
-   * element wins, because that is where HTML keeps a textarea's value and what a browser parsing the
-   * same markup by hand would have kept.
-   */
-  test("a written child wins over a value prop", async () => {
-    class Both extends Component {
-      render() {
-        return (
-          <textarea id="t" value="from the prop">
-            from the child
-          </textarea>
-        );
-      }
-    }
-
-    const html = (await renderToString(<Both />)).replace(/<!--[^>]*-->/g, "");
-    expect(served(html).value).toBe("from the child");
-
-    const app = await getDOM<Both>(<Both />);
-    await app.settle();
-    expect((app.container.querySelector("#t") as HTMLTextAreaElement).textContent).toBe("from the child");
-  });
-
   test("an empty value sends an empty element rather than nothing at all", async () => {
     class Blank extends Component {
       render() {
-        return <textarea id="t" value="" />;
+        return <TextArea id="t" value="" />;
       }
     }
     const html = (await renderToString(<Blank />)).replace(/<!--[^>]*-->/g, "");
@@ -116,8 +93,8 @@ describe("a served textarea, hydrated", () => {
   });
 });
 
-describe("the client is unchanged, which is half the claim", () => {
-  test("a controlled textarea follows the model", async () => {
+describe("a controlled textarea on the client", () => {
+  test("follows the model", async () => {
     const app = await getDOM<Editor>(<Editor />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
@@ -129,53 +106,80 @@ describe("the client is unchanged, which is half the claim", () => {
   });
 
   /**
-   * The client builds the same text child, and it must: the two sides have to produce the same tree
-   * or hydration reports a mismatch on every textarea an app renders.
+   * Both halves move together, and the reason they are two halves at all.
    *
-   * What it costs is nothing, because the child is the DEFAULT value. The property beside it is what
-   * actually drives the field, and once the reader has typed, the default stops driving it at all —
-   * so the child cannot fight anybody. This pins both halves moving together.
+   * The child is the DEFAULT value — what the field starts as, and the only thing a served page can
+   * carry. The property is what the field IS, and once the reader has typed, the default has stopped
+   * driving the element entirely: from then on only the property can put the model back.
    */
-  test("the text child is the default, and the property is what drives the field", async () => {
+  test("the child is the default and the property is what drives the field", async () => {
     const app = await getDOM<Editor>(<Editor />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
-
     expect({ text: field.textContent, value: field.value }).toEqual({ text: "hello", value: "hello" });
 
     app.instance.text = "goodbye";
     await app.settle();
     expect({ text: field.textContent, value: field.value }).toEqual({ text: "goodbye", value: "goodbye" });
 
-    // And what the reader types wins over the default, which is what makes it a default.
+    // What the reader types wins over the default, which is what makes it a default.
     field.value = "typed";
     expect({ text: field.textContent, value: field.value }).toEqual({ text: "goodbye", value: "typed" });
   });
 
-  /**
-   * A render that changes the children AROUND it leaves the value alone — the measurement that said
-   * this needed no component. A `<select>` would have moved its selection here.
-   */
-  test("a sibling appearing beside it changes nothing", async () => {
-    class WithSibling extends Component {
-      @state extra = false;
+  /** Everything else written on it reaches the element, `data-` and `aria-` included. */
+  test("it is transparent", async () => {
+    class Dressed extends Component {
+      @state wide = true;
       render() {
         return (
-          <div>
-            <textarea id="t" value="keep" />
-            {this.extra ? <span>x</span> : null}
-          </div>
+          <TextArea
+            id="t"
+            value="x"
+            className={this.wide ? "wide" : "narrow"}
+            disabled
+            name="notes"
+            rows={4}
+            data-kind="editor"
+            aria-label="notes"
+          />
         );
       }
     }
 
-    const app = await getDOM<WithSibling>(<WithSibling />);
+    const app = await getDOM<Dressed>(<Dressed />);
     await app.settle();
     const field = app.container.querySelector("#t") as HTMLTextAreaElement;
-    expect(field.value).toBe("keep");
 
-    app.instance.extra = true;
+    expect({
+      cls: field.className,
+      disabled: field.disabled,
+      name: field.name,
+      rows: field.rows,
+      kind: field.getAttribute("data-kind"),
+      label: field.getAttribute("aria-label"),
+    }).toEqual({ cls: "wide", disabled: true, name: "notes", rows: 4, kind: "editor", label: "notes" });
+
+    app.instance.wide = false;
     await app.settle();
-    expect(field.value).toBe("keep");
+    expect(field.className).toBe("narrow");
+  });
+
+  /**
+   * A caller's own ref, which on `Select` was the bug that silently stopped the component working:
+   * one element takes one `ref`, and if the caller's wins, the component never sees its element.
+   */
+  test("a caller's ref gets the element, and the value is still applied", async () => {
+    class Own extends Component {
+      mine = createRef<HTMLTextAreaElement>();
+      render() {
+        return <TextArea id="t" value="held" ref={this.mine} />;
+      }
+    }
+
+    const app = await getDOM<Own>(<Own />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    expect({ ref: app.instance.mine.current, value: field.value }).toEqual({ ref: field, value: "held" });
   });
 });

@@ -86,7 +86,7 @@ The last row is deliberate: no single control holds an object, so asking for one
 worth catching at compile time.
 
 **What `bind` cannot check** is which element you spread it onto. `<Select {...bind} />` and
-`<textarea {...bind} />` both type-check, because the attributes are the same and a type cannot
+`<TextArea {...bind} />` both type-check, because the attributes are the same and a type cannot
 see the tag. Either is fine when the field holds a string.
 
 ### A choice lives on `<Select>`
@@ -131,19 +131,17 @@ before any script runs.
 
 ### A `<textarea>` keeps its value inside the element
 
-`value` works the way you would expect, and there is nothing to write differently:
+HTML gives a textarea no `value` attribute — the value is the element's **text** — so `<textarea>` is
+a type error and you write `<TextArea>`:
 
 ```tsx
-<textarea value={this.draft} oninput={this.onInput} />
+import { TextArea } from "@ramonda/core";
+
+<TextArea value={this.draft} oninput={this.onInput} />;
 ```
 
-What is worth knowing is where it lands. HTML has no `value` attribute on a textarea — the value is
-the element's text — so that is what gets rendered, and a server-rendered page shows the text before
-any script runs. Writing the text yourself instead works too, and wins if you do both:
-
-```tsx
-<textarea>a starting draft</textarea>
-```
+It renders `<textarea>a draft</textarea>`, so a server-rendered page shows the text before any script
+runs, and it passes everything else through to the element.
 
 ### A checkbox's third state
 

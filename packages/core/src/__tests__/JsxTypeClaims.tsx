@@ -1,4 +1,5 @@
 import { Select } from "../base/Select";
+import { TextArea } from "../base/TextArea";
 import { Component } from "../base/Component";
 import { onDocument, onWindow } from "../base/decorators";
 
@@ -178,9 +179,9 @@ export class MaybeNames extends Component {
  * optional properties, so they only bite when somebody writes one. A form's spread goes on exactly
  * as it did.
  *
- * `<select>` is the exception, and deliberately so: it is refused as a TAG, which is a required
- * property, so a spread cannot satisfy it either. `<Select>` takes the same spread and is the answer
- * the error names.
+ * `<select>` and `<textarea>` are the exceptions, and deliberately so: both are refused as TAGS,
+ * which is a required property, so a spread cannot satisfy one either. `<Select>` and `<TextArea>`
+ * take the same spread and are the answers the errors name.
  */
 export class ControlSpreads extends Component {
   render() {
@@ -188,7 +189,7 @@ export class ControlSpreads extends Component {
       <div>
         <input {...bind} />
         <input {...bind} id="email" type="email" />
-        <textarea {...bind} />
+        <TextArea {...bind} value="" />
         <Select {...loose} value="a" />
         <input {...loose} />
         <div {...loose} />
@@ -371,6 +372,11 @@ export const chooser = (
 
 // @ts-expect-error — the tag is refused; write <Select value={x}>.
 export const plainSelect = <select />;
+
+// @ts-expect-error — the tag is refused; a textarea's value is its child, so write <TextArea>.
+export const plainTextArea = <textarea />;
+
+export const editor = <TextArea value={chosen} />;
 
 /** `<option>` is untouched: it has no choice to make, so it stays an ordinary tag. */
 export const plainOption = <option value="a">A</option>;

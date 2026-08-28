@@ -1,4 +1,4 @@
-import { Component, list, memoized, state } from "@ramonda/core";
+import { Component, list, memoized, state, TextArea } from "@ramonda/core";
 import { Form, type StandardResult, type StandardSchemaV1 } from "@ramonda/form";
 
 /**
@@ -188,7 +188,7 @@ class ProfileForm extends Component {
 
           <label>
             bio
-            <textarea {...f.bio.$.bind} rows={2} />
+            <TextArea {...f.bio.$.bind} rows={2} />
           </label>
           {f.bio.$.error ? <p className="error small">{f.bio.$.error}</p> : null}
 
