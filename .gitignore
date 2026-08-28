@@ -18,6 +18,12 @@ coverage
 # process, so production-only code needs its own pass, and its own report to merge.
 coverage-prod
 
+# What a browser run leaves behind: a trace and a screenshot per failure, and the HTML report that
+# reads them. Written only when something fails, and worth looking at on the machine that produced
+# it rather than committing.
+apps/playground-core/test-results/
+apps/playground-core/playwright-report/
+
 # Turbo
 .turbo
 

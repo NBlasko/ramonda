@@ -47,6 +47,45 @@ jobs:
       # testing-library, docs.
       - run: pnpm exec turbo run check-types
 
+  browser:
+    name: Browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # Its own job rather than a step inside `test`, so the minutes it spends installing a browser
+      # run beside the other checks instead of in front of them. Nothing here depends on it and it
+      # depends on nothing: the app it drives is built in this job from this tree.
+      - name: Install Chromium
+        run: pnpm --filter playground-core exec playwright install --with-deps chromium
+
+      - name: Build the playground
+        run: pnpm exec turbo run build --filter=playground-core
+
+      # The handful of claims jsdom cannot settle: a caret the platform moves when a value is
+      # assigned, and focus a node loses when it is picked up and put down. The jsdom suites in the
+      # `test` job cover what the DOM HOLDS; these cover what a person does to it.
+      #
+      # Each was measured in jsdom first, agreed with, and then needed somebody at a keyboard before
+      # it could be believed — and one of them behaved the opposite way in a browser for a reason
+      # jsdom could not have shown.
+      - name: Test in a browser
+        run: pnpm --filter playground-core test:browser
+
+      # A trace and a screenshot per failure. This suite exists for differences that appear only in
+      # a browser, so a red run here is the one place where re-reading the source is least likely to
+      # explain it.
+      - name: Keep what the failure left behind
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure
+          path: |
+            apps/playground-core/test-results/
+            apps/playground-core/playwright-report/
+          retention-days: 7
+
   test:
     name: Test
     runs-on: ubuntu-latest
