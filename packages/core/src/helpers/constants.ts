@@ -10,6 +10,17 @@ export const svgNamespaceUri = "http://www.w3.org/2000/svg";
  */
 export { svgElements } from "@ramonda/dom-facts";
 
+/**
+ * Here for the same reason, one maler earlier.
+ *
+ * `@ramonda/check` does not read this list yet — its rule for `disabled="false"` written as a
+ * literal, and for `indeterminate`, is a TODO in `attribute-that-does-nothing`. It is shared now
+ * rather than when that rule lands, because `svgElements` is what happens otherwise: two copies,
+ * twenty-one names apart, and a test that pinned them together was the confession that there were
+ * two.
+ */
+export { BOOLEAN_ATTRIBUTES } from "@ramonda/dom-facts";
+
 export const DONE = 5;
 export type DONE = 5;
 export const TEXT_TYPE = 6;

@@ -103,148 +103,48 @@ export const svgElements: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Every tag `@ramonda/core` types as an HTML element — the other half of {@link svgElements}.
+ * The HTML boolean attributes, as the spec defines them: present means true.
  *
- * ## Why it is shared even though only the checker reads it today
+ * A boolean attribute carries no value — the parser reads only whether it is there. `@ramonda/core`
+ * needs that to WRITE one: `disabled="true"` behaves correctly and is not what HTML says, so `true`
+ * goes out as the empty string, which is also what a browser gives back from `outerHTML`. The same
+ * list decides RMD029, which reports the string `"false"` on one of these names — an attribute that
+ * turns the control ON while the line says otherwise.
  *
- * The rule above is "a fact BOTH packages need", and core does not need this one yet: it decides a
- * namespace with `svgElements` and treats every other name as HTML, so it never asks whether a name
- * is an element at all. It is here anyway, and deliberately — because the moment core wants to ask,
- * a DEV diagnostic about a host that names nothing, the alternative is a second copy of these 116
- * names. That is the failure this package exists to prevent, and the SVG note above is the record of
- * it happening: a first-guess copy that was twenty-one tags short and wrongly claimed `title`.
+ * `@ramonda/check` reads the same source and has to reach the same verdict without running it, and
+ * that is the reason this is here rather than in `core`: the checker's rule for it is not written
+ * yet, and `svgElements` is the proof that the second copy is made before anyone notices. A list
+ * that two packages will both consult is one list from the beginning or it is two lists later.
  *
- * A fact one package reads and the other is plainly about to is not the thing the rule guards
- * against. What it guards against is a helper with no home.
- *
- * ## Where the names come from
- *
- * Generated from core's `JSX.IntrinsicElements` rather than from a specification, and that is the
- * point: what makes a name an element HERE is what the framework accepts, not what the HTML standard
- * happens to list this year. `HtmlElementNames.test.ts` in core reads that source and pins the two
- * in both directions, exactly as `SvgNamespace.test.tsx` pins the SVG list. A name typed and missing
- * from this Set would have a checker calling something no element while the framework accepts it; a
- * name here and no longer typed is a typo it waves through.
- *
- * `@ramonda/check` reads it to answer one question: whether a `@Host` tag names an element at all.
- * A name with a DASH is not judged against it, because a dash is what the HTML standard reserves for
- * a custom element and inventing one is legitimate.
+ * `aria-*` is deliberately absent. ARIA attributes are enumerated STRINGS, not boolean attributes:
+ * `aria-hidden="false"` is valid and means "not hidden", and `aria-hidden=""` would be neither.
+ * `data-*` is absent for the same reason — its value is data, and an empty one is not the same as
+ * `"true"` to whatever reads it back.
  */
-export const htmlElements: ReadonlySet<string> = new Set([
-  "a",
-  "abbr",
-  "address",
-  "area",
-  "article",
-  "aside",
-  "audio",
-  "b",
-  "base",
-  "bdi",
-  "bdo",
-  "big",
-  "blockquote",
-  "body",
-  "br",
-  "button",
-  "canvas",
-  "caption",
-  "cite",
-  "code",
-  "col",
-  "colgroup",
-  "data",
-  "datalist",
-  "dd",
-  "del",
-  "details",
-  "dfn",
-  "dialog",
-  "div",
-  "dl",
-  "dt",
-  "em",
-  "embed",
-  "fieldset",
-  "figcaption",
-  "figure",
-  "footer",
-  "form",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "head",
-  "header",
-  "hgroup",
-  "hr",
-  "html",
-  "i",
-  "iframe",
-  "img",
-  "input",
-  "ins",
-  "kbd",
-  "keygen",
-  "label",
-  "legend",
-  "li",
-  "link",
-  "main",
-  "map",
-  "mark",
-  "menu",
-  "menuitem",
-  "meta",
-  "meter",
-  "nav",
-  "noindex",
-  "noscript",
-  "object",
-  "ol",
-  "optgroup",
-  "option",
-  "output",
-  "p",
-  "param",
-  "picture",
-  "pre",
-  "progress",
-  "q",
-  "rp",
-  "rt",
-  "ruby",
-  "s",
-  "samp",
-  "slot",
-  "script",
-  "section",
-  "select",
-  "small",
-  "source",
-  "span",
-  "strong",
-  "style",
-  "sub",
-  "summary",
-  "sup",
-  "table",
-  "template",
-  "tbody",
-  "td",
-  "textarea",
-  "tfoot",
-  "th",
-  "thead",
-  "time",
-  "title",
-  "tr",
-  "track",
-  "u",
-  "ul",
-  "var",
-  "video",
-  "wbr",
+export const BOOLEAN_ATTRIBUTES = new Set([
+  "allowfullscreen",
+  "async",
+  "autofocus",
+  "autoplay",
+  "checked",
+  "controls",
+  "default",
+  "defer",
+  "disabled",
+  "formnovalidate",
+  "hidden",
+  "inert",
+  "ismap",
+  "itemscope",
+  "loop",
+  "multiple",
+  "muted",
+  "nomodule",
+  "novalidate",
+  "open",
+  "playsinline",
+  "readonly",
+  "required",
+  "reversed",
+  "selected",
 ]);

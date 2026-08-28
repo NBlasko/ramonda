@@ -1,5 +1,7 @@
 import { diagnose } from "./diagnostics";
 import type { BaseComponent } from "../types/vdom";
+import { BOOLEAN_ATTRIBUTES } from "../helpers/constants";
+import { isInvisibleOnScreen } from "../core/Attribute";
 
 /**
  * DEV-only reporting for server/client render divergence (RMD007).
@@ -13,12 +15,18 @@ import type { BaseComponent } from "../types/vdom";
  * and anything else that differs across the boundary.
  */
 
-/** Attributes that never appear in server markup, so they can't be compared. */
+/**
+ * Attributes that never appear in server markup, so they can't be compared.
+ *
+ * The absent-attribute half is `isInvisibleOnScreen` ITSELF rather than a copy of it. It used to be
+ * a copy, under a comment saying it mirrored the original — and then the original learned that
+ * `aria-expanded={false}` is written rather than removed, and the copy did not. Every ARIA state a
+ * render turns off went uncompared: a real server/client divergence on one could not be reported.
+ */
 function isComparable(name: string, value: unknown): boolean {
   if (name === "ref" || name === "key") return false;
   if (name.startsWith("on")) return false;
-  // Mirrors Attribute.ts's isInvisibleOnScreen: these render no attribute at all.
-  if (value === undefined || value === null || value === false) return false;
+  if (isInvisibleOnScreen(value, name)) return false;
   return typeof value !== "object" && typeof value !== "function";
 }
 
@@ -137,7 +145,15 @@ export function reportAttributeMismatches(
     const found = node.getAttribute(domName);
     if (found === null) continue;
 
-    const expected = String(value);
+    /**
+     * A boolean attribute is compared as the empty string, because that is what gets written.
+     *
+     * The vnode still says `true` here — this runs before the attribute pass, on purpose, so it can
+     * see the server's value before it is overwritten. Comparing the raw `true` against the served
+     * `checked=""` reported a divergence on markup both sides agree about, and the report named
+     * hydration for a difference in spelling. See `BOOLEAN_ATTRIBUTES`.
+     */
+    const expected = value === true && BOOLEAN_ATTRIBUTES.has(domName.toLowerCase()) ? "" : String(value);
     if (found === expected) continue;
 
     // `style` is compared by meaning: the server's copy came back through the
