@@ -47,11 +47,20 @@ class App extends Component {
           ))}
         </Select>
 
-        {/* ✓ `selected={false}` says the opposite and is not a claim to be overwritten. */}
+        {/* ✗ `selected={false}` is overwritten too — the question is whether it is THERE. */}
         <Select value={value} aria-label="F">
           <option value="a" selected={false}>
             A
           </option>
+        </Select>
+
+        {/* ✗ The shape the fault usually takes: the choice controlled from the OPTION side. */}
+        <Select value={value} aria-label="H">
+          {options.map((o) => (
+            <option key={o.id} value={o.id} selected={o.id === value}>
+              {o.label}
+            </option>
+          ))}
         </Select>
 
         {/* ✓ A spread may carry it, and nothing here can say it does. */}

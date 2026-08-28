@@ -26,10 +26,13 @@ import type { ElementContext, ElementRule, JsxElementLike, TextEdit } from "./ru
  *
  * ## What it will not claim
  *
- * `selected={false}` says the opposite, and nothing is overwritten that was not already off.
- * `{options.map(…)}` is children this cannot read. A spread may carry the attribute or replace it.
+ * A spread may carry the attribute or replace it, so a spreading option is not asked about at all.
  * And an `<option>` with no `<Select>` above it is not this report: nothing is deciding for it, so
  * whatever it does is between it and whoever renders it.
+ *
+ * Note what is NOT on that list. `selected={false}` and `selected={row.chosen}` are both reported,
+ * because the question is whether the attribute is THERE rather than what it says — `Select`
+ * overwrites it either way. The second is the shape the fault usually takes.
  */
 export interface OptionThatCannotChooseIssue {
   /** The `value` written on the option, when there is one to print. */
@@ -98,12 +101,25 @@ export const optionThatCannotChoose = {
    * the family's default — not asking about a spreading element at all — is the guard this wants.
    */
 
-  read(element, { tag, truth, attr, resolve }: ElementContext) {
+  read(element, { tag, has, attr, resolve }: ElementContext) {
     if (tag !== "option") return [];
 
-    // Only a claim to BE selected is overwritten. `selected={false}` says the opposite, and
-    // anything unreadable is not a claim this can read.
-    if (truth("selected") !== true) return [];
+    /**
+     * PRESENCE, not the value, and the first version of this rule got it wrong.
+     *
+     * It asked whether the attribute claimed TRUE, on the reasoning that `selected={false}` says the
+     * opposite and is not overwritten into anything it was not already. That reasoning is about
+     * HTML, and this is not about HTML — `Select` sets the choice from its `value` unconditionally,
+     * either with one `select.value =` or by walking every option. Whatever the author wrote is
+     * gone, and `false` is gone exactly as `true` is.
+     *
+     * Worse, asking for a readable TRUE missed the shape the fault is usually written in.
+     * `selected={row.chosen}` is somebody controlling the choice from the option side, which is
+     * precisely the belief this rule exists to correct — and it was silent for it, because the value
+     * cannot be read. Found by walking the rule against Part A of the checklist and planting a
+     * module const, a helper call, a ternary and a row field: three of the four were silent.
+     */
+    if (!has("selected")) return [];
 
     if (!insideASelect(element, resolve)) return [];
 
