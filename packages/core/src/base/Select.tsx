@@ -78,7 +78,34 @@ export interface SelectProps {
 }
 
 export class Select extends Component<SelectProps> {
-  private el = createRef<HTMLSelectElement>();
+  /**
+   * The element's ref is this component's, always — and the caller's is handed the same node.
+   *
+   * One element takes one `ref`, so a caller who writes `<Select ref={mine}>` cannot simply have it
+   * forwarded onto the tag: whichever of the two is written last wins, and if the caller's wins this
+   * component never sees its own element. `settle` then returns on its first line and the choice is
+   * never applied — silently, because a select with no answer still shows an option. Measured with
+   * `b` asked for out of `a b c`: the page showed `c`, and the served markup carried no `selected`
+   * at all.
+   */
+  private el = createRef<HTMLSelectElement>((node) => this.handOver(node));
+
+  /** The caller's ref as of the last hand-over, so a swapped one can be let go of. */
+  private held: RefTarget<HTMLSelectElement> | undefined;
+
+  /**
+   * Gives the caller's ref the node, and takes it back from one the caller has stopped passing.
+   *
+   * The release half is the rule `releaseDroppedRef` enforces for an element: a ref must not outlive
+   * the node it points at, or `current` reads as present while `focus()` does nothing. The framework
+   * cannot do it here, because as far as it can see the ref on this element never changes.
+   */
+  private handOver(node: HTMLSelectElement | null): void {
+    const theirs = this.props.ref;
+    if (this.held !== undefined && this.held !== theirs) this.held.setCurrent(null);
+    this.held = theirs;
+    theirs?.setCurrent(node);
+  }
 
   /**
    * After the options, which is the only moment the answer exists — and on BOTH sides.
@@ -98,6 +125,10 @@ export class Select extends Component<SelectProps> {
   settle(env: RenderEnv = "client"): void {
     const select = this.el.current;
     if (!select) return;
+
+    // A caller may hand over a DIFFERENT ref between renders, and the element's own ref did not
+    // change, so nothing else would notice. This is the one moment that can.
+    if (this.held !== this.props.ref) this.handOver(select);
 
     const onServer = env === "server";
     const chosen = this.props.value;
@@ -129,6 +160,10 @@ export class Select extends Component<SelectProps> {
      * there is nothing to suppress: the refusal keeps meaning exactly what it says at every call
      * site that writes the tag, and this one does not write it.
      */
-    return __h("select", { ref: this.el, ...forwarded(this, ["value", "children"]) }, ...given(this.props.children));
+    return __h(
+      "select",
+      { ...forwarded(this, ["value", "children", "ref"]), ref: this.el },
+      ...given(this.props.children),
+    );
   }
 }

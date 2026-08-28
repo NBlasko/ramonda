@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
-import { Component, Select } from "../index";
+import { Component, Select, createRef } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 
@@ -292,5 +292,93 @@ describe("why attributes go on before the children", () => {
     app.instance.picked = ["a", "c"];
     await app.settle();
     expect([...select.selectedOptions].map((option) => option.value)).toEqual(["a", "c"]);
+  });
+});
+
+describe("a caller's own ref", () => {
+  /**
+   * One element takes one `ref`, and the component needs the element too. Forwarding the caller's
+   * onto the tag meant whichever was written last won — and when that was the caller's, the
+   * component never saw its own element, `settle` returned on its first line, and no choice was ever
+   * applied. Silently, because a select with no answer still shows an option.
+   *
+   * Three options with the MIDDLE one asked for, because two would pass by accident: the last option
+   * is inserted first and a select with no selection takes the first option it is handed.
+   */
+  test("gets the element, and the choice is still applied", async () => {
+    class Own extends Component {
+      mine = createRef<HTMLSelectElement>();
+      render() {
+        return (
+          <Select id="s" value="b" ref={this.mine}>
+            <option value="a">a</option>
+            <option value="b">b</option>
+            <option value="c">c</option>
+          </Select>
+        );
+      }
+    }
+
+    const app = await getDOM<Own>(<Own />);
+    await app.settle();
+
+    expect({
+      refPointsAt: app.instance.mine.current,
+      shown: shown(app.container),
+    }).toEqual({
+      refPointsAt: app.container.querySelector("#s"),
+      shown: { value: "b", index: 1 },
+    });
+  });
+
+  test("and the served markup still carries the choice", async () => {
+    class Own extends Component {
+      mine = createRef<HTMLSelectElement>();
+      render() {
+        return (
+          <Select value="b" ref={this.mine}>
+            <option value="a">a</option>
+            <option value="b">b</option>
+            <option value="c">c</option>
+          </Select>
+        );
+      }
+    }
+
+    const html = (await renderToString(<Own />)).replace(/<!--[^>]*-->/g, "");
+    expect(html).toContain('<option value="b" selected=""');
+  });
+
+  /**
+   * A ref must not outlive the node it points at — the rule `releaseDroppedRef` enforces for an
+   * element. The framework cannot enforce it here, because the ref ON the element never changes; the
+   * one that changes is the caller's, which only this component knows about.
+   */
+  test("a swapped ref is handed the node, and the dropped one is let go", async () => {
+    class Swapping extends Component {
+      first = createRef<HTMLSelectElement>();
+      second = createRef<HTMLSelectElement>();
+      @state useSecond = false;
+      render() {
+        return (
+          <Select id="s" value="b" ref={this.useSecond ? this.second : this.first}>
+            <option value="a">a</option>
+            <option value="b">b</option>
+          </Select>
+        );
+      }
+    }
+
+    const app = await getDOM<Swapping>(<Swapping />);
+    await app.settle();
+    const element = app.container.querySelector("#s");
+    expect([app.instance.first.current, app.instance.second.current]).toEqual([element, null]);
+
+    app.instance.useSecond = true;
+    await app.settle();
+
+    expect([app.instance.first.current, app.instance.second.current]).toEqual([null, element]);
+    // And the component still has its own element, so the choice is still followed.
+    expect(shown(app.container)).toEqual({ value: "b", index: 1 });
   });
 });

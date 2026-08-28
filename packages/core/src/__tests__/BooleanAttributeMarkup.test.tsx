@@ -1,6 +1,7 @@
 import { describe, test, expect } from "vitest";
 import { Component, Select } from "../index";
 import { renderToString } from "../hydration/ssr";
+import { hydrateRoot } from "../hydration/hydrate";
 import { getDOM } from "../test/setup";
 import { state } from "../base/decorators";
 
@@ -112,5 +113,76 @@ describe("a boolean attribute is written the way HTML spells it", () => {
       open: { expanded: "true", disabled: "" },
       closed: { expanded: "false", disabled: null },
     });
+  });
+});
+
+describe("the name is what decides, whatever case it is written in", () => {
+  /**
+   * `setAttribute` lowercases the name it stores, so `readOnly={true}` becomes the attribute
+   * `readonly` — and testing the JSX spelling against the list missed it, writing the very
+   * `readonly="true"` this rule exists to remove. `checkBooleanAttribute` has always lowercased, so
+   * the two disagreed about one name: the diagnostic recognised it and the writer did not.
+   *
+   * A cast, because the types push the lowercase spelling. That is the reach a runtime rule has and
+   * a type does not — JavaScript, a loosened base class, a spread whose shape is `any`.
+   */
+  test("a camelCase boolean attribute is still written as HTML spells it", async () => {
+    class Camel extends Component {
+      render() {
+        return <input id="i" readOnly={true as never} autoFocus={true as never} />;
+      }
+    }
+
+    const app = await getDOM<Camel>(<Camel />);
+    await app.settle();
+    expect((app.container.querySelector("#i") as Element).outerHTML).toBe('<input id="i" readonly="" autofocus="">');
+  });
+});
+
+describe("an ARIA state a render turns off is still compared across hydration", () => {
+  /**
+   * `isComparable` used to carry its own copy of "which values render no attribute", under a comment
+   * saying it mirrored `isInvisibleOnScreen`. Then the original learned that `aria-expanded={false}`
+   * is WRITTEN rather than removed, and the copy did not — so every ARIA state a render turned off
+   * went uncompared, and a real divergence on one could not be reported. It now calls the original.
+   */
+  test("a server saying true and a client saying false is reported", async () => {
+    class Server extends Component {
+      render() {
+        return (
+          <button id="b" aria-expanded={true}>
+            x
+          </button>
+        );
+      }
+    }
+    class Client extends Component {
+      render() {
+        return (
+          <button id="b" aria-expanded={false}>
+            x
+          </button>
+        );
+      }
+    }
+
+    const captured: string[] = [];
+    const handler = (event: Event) => captured.push((event as CustomEvent).detail.message as string);
+    window.addEventListener("ramonda:dev-log", handler);
+
+    const html = await renderToString(<Server />);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html;
+    captured.length = 0;
+
+    hydrateRoot(<Client />, container);
+    await Promise.resolve();
+
+    window.removeEventListener("ramonda:dev-log", handler);
+    const reported = captured.filter((message) => message.includes("RMD007") && message.includes("aria-expanded"));
+    container.remove();
+
+    expect(reported.length).toBe(1);
   });
 });

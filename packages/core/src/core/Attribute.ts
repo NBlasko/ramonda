@@ -1,7 +1,6 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
-import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM } from "../helpers/constants";
+import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
-import { BOOLEAN_ATTRIBUTES } from "../helpers/constants";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -173,7 +172,7 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
    * `aria-hidden="true"` — ARIA attributes are enumerated strings, and the empty one means neither
    * true nor false — and a `data-*` flag is data that something reads back.
    */
-  if (value === true && BOOLEAN_ATTRIBUTES.has(name)) value = "";
+  if (value === true && isBooleanAttribute(name)) value = "";
 
   if (name === "ref") {
     // Remembered on the node so unmount can clear it. Without that, `current`
@@ -431,10 +430,25 @@ function removePreviousFromenhancedNode(
  * such state" — so removing it on `false` throws away the middle one and says something else
  * instead. A collapsed control read as having no expandable state at all.
  */
-function isInvisibleOnScreen(val: unknown, name?: string): boolean {
+export function isInvisibleOnScreen(val: unknown, name: string): boolean {
   if (val === undefined || val === null) return true;
   if (val !== false) return false;
-  return name === undefined || !name.startsWith("aria-");
+  return !name.startsWith("aria-");
+}
+
+/**
+ * Lowercased first, because the DOM does it anyway.
+ *
+ * `setAttribute` lowercases the name it stores, so `readOnly={true}` becomes the attribute
+ * `readonly` — and testing the JSX spelling against the list missed it, writing the very
+ * `readonly="true"` this rule exists to stop. `checkBooleanAttribute` has always lowercased, so the
+ * two disagreed about the same name: the diagnostic recognised it and the writer did not.
+ *
+ * The types push the lowercase spelling, so this is reachable from a cast or from JavaScript. That
+ * is exactly the reach a runtime rule is for.
+ */
+function isBooleanAttribute(name: string): boolean {
+  return BOOLEAN_ATTRIBUTES.has(name) || BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
 }
 
 // DOM attribute values are always strings. When both sides are primitives we

@@ -284,7 +284,6 @@ function hydrateElement(
   // rebuilds the page it just adopted.
   cursor[ORIGIN_SYM] = vnode[ORIGIN_SYM];
   hydrateChildren(vnode.children, placeholder, cursor);
-
   return nextOf(cursor);
 }
 
