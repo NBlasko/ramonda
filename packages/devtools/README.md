@@ -3,6 +3,8 @@
 The development panel for [Ramonda](https://ramonda.dev): the component tree with its state, props
 and hooks, and a way to get from something on screen to the component that drew it.
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fdevtools)](https://www.npmjs.com/package/@ramonda/devtools)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fdevtools)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
@@ -10,9 +12,13 @@ and hooks, and a way to get from something on screen to the component that drew 
 > being explored; from `1.0` the interfaces hold. See the
 > [root README](https://github.com/NBlasko/ramonda#readme).
 
-```bash
-pnpm add -D @ramonda/devtools
+```sh
+npm install -D @ramonda/devtools
 ```
+
+Documentation: **[ramonda.dev/devtools](https://ramonda.dev/devtools)**
+
+[readme:end]: #
 
 ```ts
 // main.ts — anywhere before your app mounts

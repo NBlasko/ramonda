@@ -3,6 +3,8 @@
 Async state for [Ramonda](https://ramonda.dev): cached, deduplicated,
 race-free queries and mutations that survive a server render.
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fquery)](https://www.npmjs.com/package/@ramonda/query)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fquery)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
@@ -15,6 +17,8 @@ npm install @ramonda/query
 ```
 
 Documentation: **[ramonda.dev/query](https://ramonda.dev/query)**
+
+[readme:end]: #
 
 ```tsx
 import { Component } from "@ramonda/core";

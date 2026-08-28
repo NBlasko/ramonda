@@ -3,6 +3,8 @@
 Scaffold a [Ramonda](https://ramonda.dev) app: pick your rendering mode and your packages, then run
 it. The bundler is already configured.
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/create-ramonda)](https://www.npmjs.com/package/create-ramonda)
 [![license](https://img.shields.io/npm/l/create-ramonda)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
@@ -10,9 +12,13 @@ it. The bundler is already configured.
 > being explored; from `1.0` the interfaces hold. See the
 > [root README](https://github.com/NBlasko/ramonda#readme).
 
-```bash
+```sh
 npm create ramonda@latest my-app
 ```
+
+Documentation: **[ramonda.dev/guide/installation](https://ramonda.dev/guide/installation)**
+
+[readme:end]: #
 
 `pnpm create ramonda` and `yarn create ramonda` work too.
 

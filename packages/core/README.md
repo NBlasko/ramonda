@@ -2,6 +2,8 @@
 
 A UI framework. **Explicit. Predictable. Readable.**
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fcore)](https://www.npmjs.com/package/@ramonda/core)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fcore)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
@@ -11,14 +13,21 @@ A UI framework. **Explicit. Predictable. Readable.**
 
 ```sh
 npm install @ramonda/core
+```
+
+Documentation: **[ramonda.dev](https://ramonda.dev)**
+
+[readme:end]: #
+
+Ramonda has no runtime dependencies. It does need three settings from your bundler, and it does
+not run without them:
+
+```sh
 npm install -D @ramonda/build
 ```
 
-Ramonda has no runtime dependencies. It needs three settings from your bundler, and
-[`@ramonda/build`](https://ramonda.dev/reference/build) carries them so you name none — see
-"Before anything else" below for what happens without it.
-
-Documentation: **[ramonda.dev](https://ramonda.dev)**
+[`@ramonda/build`](https://ramonda.dev/reference/build) carries all three so your config names
+none. "Before anything else", below, is what happens without it.
 
 One rule carries most of the design:
 

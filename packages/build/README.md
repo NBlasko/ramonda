@@ -3,6 +3,8 @@
 Three bundler settings decide whether a Ramonda app runs. This package owns them, so your app names
 none of them.
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fbuild)](https://www.npmjs.com/package/@ramonda/build)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fbuild)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
@@ -10,9 +12,13 @@ none of them.
 > being explored; from `1.0` the interfaces hold. See the
 > [root README](https://github.com/NBlasko/ramonda#readme).
 
-```bash
-npm add -D @ramonda/build
+```sh
+npm install -D @ramonda/build
 ```
+
+Documentation: **[ramonda.dev/reference/build](https://ramonda.dev/reference/build)**
+
+[readme:end]: #
 
 ```ts
 // vite.config.ts

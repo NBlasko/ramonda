@@ -4,6 +4,8 @@ Three things a running page will not tell you: a context with no provider above 
 holding a function literal, and a single-use decorator declared twice — on one class, or twice on one
 member. All found before the app is ever opened.
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fcheck)](https://www.npmjs.com/package/@ramonda/check)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fcheck)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
@@ -11,9 +13,13 @@ member. All found before the app is ever opened.
 > being explored; from `1.0` the interfaces hold. See the
 > [root README](https://github.com/NBlasko/ramonda#readme).
 
-```bash
-npm add -D @ramonda/check
+```sh
+npm install -D @ramonda/check typescript
 ```
+
+Documentation: **[ramonda.dev/reference/check](https://ramonda.dev/reference/check)**
+
+[readme:end]: #
 
 ```jsonc
 // package.json — the source before the bundler, the output after it
