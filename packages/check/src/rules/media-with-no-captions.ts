@@ -43,10 +43,10 @@ const CARRIES_THE_WORDS: ReadonlySet<string> = new Set(["captions", "subtitles",
  */
 function hasATrackOrCannotTell(children: readonly ts.JsxChild[]): boolean {
   return (
-    descendantIn(children, (opening, tag) => {
+    descendantIn(children, (child, tag) => {
       if (tag !== "track") return false;
       // A `<track>` with no readable `kind` is one this cannot judge, so it counts.
-      const kind = kindOf(opening);
+      const kind = kindOf(openingOf(child));
       return kind === undefined || CARRIES_THE_WORDS.has(kind);
     }) !== "none"
   );

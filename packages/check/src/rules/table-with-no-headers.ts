@@ -84,11 +84,11 @@ export const tableWithNoHeaders = {
      * most real tables build their rows from data, and a component or an expression may well be
      * where the headers are.
      */
-    if (descendantIn(children, (_opening, inside) => inside === "th") !== "none") return [];
+    if (descendantIn(children, (_child, inside) => inside === "th") !== "none") return [];
 
     // No rows written out either: an empty table, or one holding only a `<caption>`, is scaffolding
     // rather than data, and there is nothing yet to announce badly.
-    if (descendantIn(children, (_opening, inside) => inside === "td") !== "found") return [];
+    if (descendantIn(children, (_child, inside) => inside === "td") !== "found") return [];
 
     return [positionOf(openingOf(element))];
   },

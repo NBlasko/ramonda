@@ -1,7 +1,7 @@
-import ts from "typescript";
 import { positionOf } from "../syntax";
+import { inTheTabOrder } from "./aria-hidden-on-focusable";
 import { descendantIn } from "./descendants";
-import { openingOf } from "./element";
+import { contextFor, openingOf } from "./element";
 import type { ElementContext, ElementRule } from "./rule";
 
 /**
@@ -50,47 +50,6 @@ export interface AriaHiddenAroundSomethingFocusableIssue {
   column: number;
 }
 
-/** Focusable without anybody writing a `tabIndex`. */
-const FOCUSABLE_TAGS: ReadonlySet<string> = new Set(["button", "input", "select", "textarea", "summary", "iframe"]);
-
-/** `tabIndex={-1}` written out — the one value that takes a tag out of the tab order. */
-function takenOutOfTheTabOrder(opening: ts.JsxOpeningLikeElement): boolean {
-  for (const attribute of opening.attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (attribute.name.getText().toLowerCase() !== "tabindex") continue;
-
-    const value = attribute.initializer;
-    if (value === undefined) return false;
-    if (ts.isStringLiteral(value)) return value.text.trim().startsWith("-");
-    if (!ts.isJsxExpression(value) || value.expression === undefined) return false;
-    const written = value.expression;
-    // `{-1}` is a prefix expression rather than a literal, which is the whole reason this exists.
-    return ts.isPrefixUnaryExpression(written) && written.operator === ts.SyntaxKind.MinusToken;
-  }
-  return false;
-}
-
-/** Whether an element written inside the subtree is something a keyboard can land on. */
-function isFocusable(opening: ts.JsxOpeningLikeElement, tag: string): boolean {
-  if (takenOutOfTheTabOrder(opening)) return false;
-
-  for (const attribute of opening.attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    const name = attribute.name.getText().toLowerCase();
-    // A written `tabIndex` that is not negative puts anything in the tab order.
-    if (name === "tabindex") return true;
-    // An `<a>` is focusable only WITH an href, and that is the whole of the difference.
-    if (name === "href" && tag === "a") return true;
-    // An `<input type="hidden">` is not focusable, and is the one input that is not.
-    if (name === "type" && tag === "input") {
-      const value = attribute.initializer;
-      const written = value !== undefined && ts.isStringLiteral(value) ? value.text.toLowerCase() : undefined;
-      if (written === "hidden") return false;
-    }
-  }
-  return FOCUSABLE_TAGS.has(tag);
-}
-
 export const ariaHiddenAroundSomethingFocusable = {
   id: "aria-hidden-around-something-focusable",
 
@@ -122,20 +81,27 @@ export const ariaHiddenAroundSomethingFocusable = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, truth, has, children }: ElementContext) {
+  read(element, { tag, truth, has, children, resolve }: ElementContext) {
     if (tag === undefined) return [];
     if (truth("aria-hidden") !== true) return [];
     // `inert` is the correct fix, and it does the focus half as well as this one.
     if (has("inert")) return [];
 
     let inside: string | undefined;
-    const answer = descendantIn(children, (opening, found) => {
-      if (!isFocusable(opening, found)) return false;
+    const answer = descendantIn(children, (child, found) => {
+      // The SAME reader the sibling rule uses, over a context built for the child. Its own walk
+      // over the raw attributes disagreed with that reader twice, and both were reports against
+      // correct markup — see `inTheTabOrder`.
+      const order = inTheTabOrder(contextFor(child, resolve));
+      if (order === false) return false;
+      // A spread on the child may be carrying the `tabIndex={-1}` that takes it out of the tab
+      // order, so it is a candidate this cannot prove rather than one it can rule out.
+      if (order === undefined) return "unreadable";
       inside = found;
       return true;
     });
-    // `found` is the only answer that speaks. `unreadable` is a component or an expression, and
-    // guessing at what one renders is how a rule reports a page that is correct.
+    // `found` is the only answer that speaks. `unreadable` is a component, an expression, or a
+    // child whose spread may settle it, and guessing at any of them reports a page that is correct.
     if (answer !== "found" || inside === undefined) return [];
 
     return [{ tag, inside, ...positionOf(openingOf(element)) }];

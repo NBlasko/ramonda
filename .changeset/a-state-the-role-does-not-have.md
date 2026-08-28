@@ -38,6 +38,6 @@ those are not the same price.
 
 Silent on an unknown role (`unknown-role`'s report), on a role it cannot read, on a fallback chain,
 on global attributes, on an attribute not in the table, and on a spread that may replace either
-half. Answers for a `@Host` props bag as well as a tag.
+half.
 
 Measured over all nine real projects here: no findings.

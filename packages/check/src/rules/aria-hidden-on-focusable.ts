@@ -56,6 +56,59 @@ export function focusableByTag(tag: string, { attr, has }: ElementContext): bool
   return FOCUSABLE_TAGS.has(tag);
 }
 
+/**
+ * Whether what is written on an element puts it in the TAB ORDER — the whole question, once.
+ *
+ * Three answers. `{ because }` and `false` are proved from what is written down; `undefined` is
+ * "not provable here", which is a spread that may be carrying the `tabIndex={-1}` that settles it.
+ *
+ * ## Why this is a shared reader and not a rule's private helper
+ *
+ * Two rules ask it, of two different elements: this one about the element `aria-hidden` is ON, and
+ * `aria-hidden-around-something-focusable` about an element INSIDE that subtree. It is the same
+ * question about the same kind of thing, and they have to give the same answer.
+ *
+ * They did not. The other rule had written its own walk over the raw JSX attributes, and it
+ * disagreed twice — measured with a plant, both times reporting markup that is correct:
+ *
+ * - `<input type={HIDDEN}>` where `const HIDDEN = "hidden"`. `attr` follows a name to the value it
+ *   holds; a walk that accepts only a string literal does not, so the one input that is NOT
+ *   focusable read as focusable.
+ * - `<button {...rest}>`. `rest` may carry the `tabIndex={-1}` that takes it out of the tab order,
+ *   which is the correct way to write this — and the guard for that lived only here.
+ *
+ * That is this package's standing lesson: two rules answering one question two different ways, and
+ * one of them is wrong. The fix is never the rule, it is the reader.
+ */
+export function inTheTabOrder(context: ElementContext): { because: "tabIndex" | "the tag" } | false | undefined {
+  const { tag } = context;
+  if (tag === undefined) return undefined;
+
+  // `tabIndex` first, because it is the stronger fact: it can put a `<div>` in the tab order, and
+  // `tabIndex={-1}` takes a `<button>` back out of it. Asking the tag first would call
+  // `<button tabIndex={-1}>` focusable, which is the correct way to write one that is not.
+  const tabIndex = context.number("tabIndex");
+  if (tabIndex !== undefined) {
+    // A spread after it may replace this number, or take the attribute away entirely.
+    if (context.overwritable("tabIndex")) return undefined;
+    return tabIndex >= 0 ? { because: "tabIndex" } : false;
+  }
+
+  if (!focusableByTag(tag, context)) return false;
+
+  /**
+   * The tag branch, and the one place a spread on EITHER side matters.
+   *
+   * `<button>` is in the tab order for what the tag is. But `tabIndex={-1}` takes it back out, and
+   * a spread anywhere on the tag may be carrying exactly that, since nothing here can see what an
+   * absent attribute would have said. The branch above needs no such question: the `tabIndex` is
+   * written down, and only what comes after it can reach it.
+   */
+  if (context.spreads) return undefined;
+
+  return { because: "the tag" };
+}
+
 export const ariaHiddenOnFocusable = {
   id: "aria-hidden-on-focusable",
 
@@ -99,29 +152,12 @@ export const ariaHiddenOnFocusable = {
      */
     if (context.overwritable("aria-hidden")) return [];
 
-    // `tabIndex` first, because it is the stronger fact: it can put a `<div>` in the tab order, and
-    // `tabIndex={-1}` takes a `<button>` back out of it. A rule that asked the tag first would
-    // report `<button aria-hidden="true" tabIndex={-1}>`, which is the correct way to write this.
-    const tabIndex = context.number("tabIndex");
-    if (tabIndex !== undefined) {
-      // A spread after it may replace this number, or take the attribute away entirely.
-      if (context.overwritable("tabIndex")) return [];
-      return tabIndex >= 0 ? [{ tag, because: "tabIndex" as const, ...positionOf(context.at) }] : [];
-    }
+    // What puts an element in the tab order is one question, and `inTheTabOrder` is where it is
+    // asked — by this rule about the element `aria-hidden` is on, and by the sibling rule about an
+    // element inside the subtree.
+    const order = inTheTabOrder(context);
+    if (order === false || order === undefined) return [];
 
-    if (!focusableByTag(tag, context)) return [];
-
-    /**
-     * The tag branch, and the one place a spread on EITHER side matters.
-     *
-     * `<button aria-hidden="true">` is reported for what the tag is. But `tabIndex={-1}` takes it
-     * back out of the tab order and is the correct way to write this — and a spread anywhere on
-     * the tag may be carrying exactly that, since nothing here can see what an absent attribute
-     * would have said. The other branch above needs no such question: the `tabIndex` is written
-     * down, and only what comes after it can reach it.
-     */
-    if (context.spreads) return [];
-
-    return [{ tag, because: "the tag" as const, ...positionOf(context.at) }];
+    return [{ tag, because: order.because, ...positionOf(context.at) }];
   },
 } as const satisfies ElementRule<AriaHiddenOnFocusableIssue>;

@@ -29,6 +29,6 @@ a silence costs a missed report rather than a false one.
 
 Silent on a `role` it cannot read, on a tag with an implicit role of its own, on a misspelling
 (which is `unknown-aria-attribute`'s report and gets one, not two), and on an element that spreads,
-since the spread may be carrying the role. Answers for a `@Host` props bag as well as a tag.
+since the spread may be carrying the role.
 
 `aria.ts` gains the specification's global list and the two tags certain to have no implicit role.

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import type { JsxElementLike } from "./rule";
 
 /**
  * Whether anything INSIDE an element is the thing a rule is looking for.
@@ -20,9 +21,16 @@ import ts from "typescript";
  */
 export type Descendant = "found" | "unreadable" | "none";
 
+/**
+ * The matcher answers for ONE element, and it has the same three answers the walk does.
+ *
+ * `true` is a match, `false` is not one, and `"unreadable"` is a match that cannot be proved —
+ * `<button {...rest}>` may carry the `tabIndex={-1}` that decides it. That third answer exists so
+ * a caller's uncertainty travels out with the walk's own rather than being flattened into "none".
+ */
 export function descendantIn(
   children: readonly ts.JsxChild[],
-  matches: (opening: ts.JsxOpeningLikeElement, tag: string) => boolean,
+  matches: (element: JsxElementLike, tag: string) => boolean | "unreadable",
 ): Descendant {
   let unreadable = false;
 
@@ -50,7 +58,9 @@ export function descendantIn(
       continue;
     }
 
-    if (matches(opening, name.toLowerCase())) return "found";
+    const answer = matches(child, name.toLowerCase());
+    if (answer === true) return "found";
+    if (answer === "unreadable") unreadable = true;
 
     if (ts.isJsxElement(child)) {
       const inside = descendantIn(child.children, matches);

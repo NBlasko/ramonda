@@ -2,6 +2,10 @@ import { Component, bootstrap } from "@ramonda/core";
 
 declare const busy: boolean;
 declare const rows: string[];
+declare const rest: Record<string, unknown>;
+
+const HIDDEN = "hidden";
+const TEXT = "text";
 
 class Action extends Component {
   render() {
@@ -80,6 +84,23 @@ class App extends Component {
         {/* ✓ `aria-hidden="false"` hides nothing. */}
         <div aria-hidden="false">
           <button type="button">Save</button>
+        </div>
+
+        {/* ✓ The one input that is not focusable, with its `type` held in a NAME. */}
+        <div aria-hidden="true">
+          <input type={HIDDEN} />
+        </div>
+
+        {/* ✗ And a name that holds a REAL type, as the control for that half. */}
+        <div aria-hidden="true">
+          <input type={TEXT} />
+        </div>
+
+        {/* ✓ The child SPREADS — `rest` may carry the `tabIndex={-1}` that settles it. */}
+        <div aria-hidden="true">
+          <button {...rest} type="button">
+            Save
+          </button>
         </div>
       </div>
     );

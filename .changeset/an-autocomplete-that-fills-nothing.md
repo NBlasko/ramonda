@@ -30,5 +30,4 @@ front of it, because being wrong about those rules would mean reporting a value 
 well. `section-blue billing cc-number` and `username webauthn` are both silent.
 
 Silent on a value it cannot read, on an empty one, on `on`/`off`, on a `<div>` (which no browser
-fills), and on a spread that may replace the attribute. Answers for a `@Host` props bag as well as a
-tag.
+fills), and on a spread that may replace the attribute.

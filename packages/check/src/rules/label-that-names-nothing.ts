@@ -89,7 +89,7 @@ export const labelThatNamesNothing = {
     // A spread may be carrying the `htmlFor`.
     if (spreads) return [];
     // A control this cannot SEE is a control — a component, or anything in an expression.
-    if (descendantIn(children, (_opening, inside) => LABELABLE.has(inside)) !== "none") return [];
+    if (descendantIn(children, (_child, inside) => LABELABLE.has(inside)) !== "none") return [];
 
     return [positionOf(openingOf(element))];
   },

@@ -61,14 +61,19 @@ describe("a container holding a tag that does not belong in it", () => {
    * list is made, and either may render exactly the right tag, so only a tag written OUT and known
    * to be wrong is reported.
    *
-   * The rest are tags a container takes BESIDE its main one, which are in the table rather than
-   * assumed away: a `<table>` with a caption, a colgroup, a thead and a tbody; a `<select>` with an
-   * optgroup and an `<hr>`; a `<dl>` with both its tags and the `<div>` wrapper the specification
-   * allows in one; a `<picture>` with a source and an image.
+   * The rest are the CONTAINERS, each holding tags it takes beside its main one — which are in the
+   * table rather than assumed away: 57 a `<table>` with a caption, a colgroup, a thead and a
+   * tbody; 73 a `<select>` and 74 the `<optgroup>` inside it, which takes options; 82 a `<dl>`
+   * with both its tags and 85 the `<div>` wrapper the specification allows in one; 92 a
+   * `<picture>` with a source and an image.
+   *
+   * Each is the line the rule would REPORT if it were wrong. Three of these used to name a
+   * comment, a closing tag and a blank line, so four of the silences here were never checked —
+   * which is what a negative assertion costs when it points at nothing.
    */
   test("the right children, and everything this cannot see, stay silent", () => {
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [44, 49, 52, 57, 58, 59, 72, 76, 82, 90]) {
+    for (const quiet of [44, 49, 52, 57, 73, 74, 82, 85, 92]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });

@@ -28,7 +28,7 @@ wrong: `aria-hidden="true"` takes the element out of the tree anyway.
 A warning, matching the sibling: the page is not broken, the element keeps its default semantics,
 and this is an intention that failed rather than markup that misleads.
 
-Answers for a `@Host` props bag as well as a tag, and takes the family's spread guards: silent when
+Takes the family's spread guards: silent when
 a spread could replace the role, and silent on a tag-focusable element that spreads at all, since
 the spread may be carrying the `tabIndex={-1}` that settles it.
 
