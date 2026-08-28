@@ -34,6 +34,21 @@ export declare function createContext<T>(
 ): [unknown, unknown];
 export declare function createRoutes(table: unknown): unknown;
 export declare function bootstrap(vnode: unknown, el: unknown): void;
+
+/**
+ * The two form controls core builds through the factory rather than as JSX.
+ *
+ * Their tags are refused by the real types — `<select>` and `<textarea>` each carry a refusal in
+ * `global.ts` — so an app writes these instead, and every accessibility rule that reads elements
+ * meets a COMPONENT where the tag used to be.
+ */
+export declare const Select: (props: {
+  [attribute: Lowercase<string>]: unknown;
+  value: string | number | readonly (string | number)[];
+  children?: unknown;
+}) => unknown;
+
+export declare const TextArea: (props: { [attribute: Lowercase<string>]: unknown; value: string | number }) => unknown;
 /** The server's entries. A tree starts here as much as it does at `bootstrap`. */
 export declare function renderToString(vnode: unknown): Promise<string>;
 export declare function renderPage(vnode: unknown): Promise<{ body: string }>;

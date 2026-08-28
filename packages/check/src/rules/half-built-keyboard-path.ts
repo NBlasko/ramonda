@@ -1,7 +1,8 @@
 import { positionOf } from "../syntax";
 import { ACTIVATED_BY_THE_USER } from "./aria";
 import { descendantIn } from "./descendants";
-import { openingOf } from "./element";
+import { coreElementTag } from "./coreElements";
+import { openingOf, tagOf } from "./element";
 import { enclosingElement } from "./html";
 import { hasAKeyHandler, pointerHandlerOn } from "./events";
 import { INTERACTIVE } from "./click-with-no-keyboard-path";
@@ -53,16 +54,31 @@ export interface HalfBuiltKeyboardPathIssue {
 }
 
 /**
- * Whether an ancestor in this render carries a keyboard handler.
+ * Whether the keyboard might be handled ABOVE this element — either provably, or unknowably.
  *
- * Only what is written IN the render is read — the walk stops where the JSX does. A handler bound
- * further out, on a ref or by a parent component, is not visible here and is exactly the kind of
- * thing the silence contract exists for, so this errs toward finding one rather than missing one.
+ * Two answers collapse into one `true`, and that is deliberate: both mean "do not report".
+ *
+ * **A key handler written on an ancestor** is the composite widget in one render — a `listbox`
+ * taking the arrow keys with its options carrying a roving `tabIndex={-1}`, and `toolbar` and
+ * `tablist` the same.
+ *
+ * **A COMPONENT ancestor**, which is the same widget written the way anyone actually builds one:
+ * `<Toolbar>` renders the `role="toolbar"` and the `onkeydown`, and takes the buttons as children.
+ * From here that is a capitalised tag with nothing on it, and what it puts around its children is
+ * decided in another file. Reported, it is a false report against the recommended shape — measured
+ * on a plant, and the reason this note exists: the same-render half of it was fixed first, and the
+ * cross-component half looked identical from inside the rule.
+ *
+ * The cost is a real report lost when the component ancestor is a plain `<Layout>` that handles no
+ * keys at all. That is the trade this package takes every time: a false report against a widget
+ * built correctly costs more than a missed one against a widget built wrongly.
  */
-function keysHandledAbove(element: JsxElementLike): boolean {
+function keysHandledAbove(element: JsxElementLike, resolve: ElementContext["resolve"]): boolean {
   let at = enclosingElement(element);
   while (at !== undefined) {
     if (hasAKeyHandler(openingOf(at))) return true;
+    // A component: what it renders around its children is decided inside it, and this cannot read it.
+    if (tagOf(at) === undefined && coreElementTag(openingOf(at).tagName, resolve) === undefined) return true;
     at = enclosingElement(at);
   }
   return false;
@@ -113,7 +129,7 @@ export const halfBuiltKeyboardPath = {
   // may be carrying the `tabIndex` or the key handler, which is exactly the doubt that would make
   // the report untrue, so the element is not asked about at all.
 
-  read(element, { tag, attr, has, children }: ElementContext) {
+  read(element, { tag, attr, has, children, resolve }: ElementContext) {
     if (tag === undefined || INTERACTIVE.has(tag)) return [];
 
     const opening = openingOf(element);
@@ -139,7 +155,7 @@ export const halfBuiltKeyboardPath = {
      * Measured before this existed: the canonical listbox, toolbar and tablist produced four
      * reports, all of them against markup that is the documented right answer.
      */
-    if (keysHandledAbove(element)) return [];
+    if (keysHandledAbove(element, resolve)) return [];
 
     // A role this cannot READ may be a widget or may not, and a chain is a list of alternatives
     // whose winner is not a question about this element. Either way nothing here is provable.

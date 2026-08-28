@@ -1,5 +1,6 @@
+import ts from "typescript";
 import { positionOf } from "../syntax";
-import type { ElementRule } from "./rule";
+import type { ElementRule, TextEdit } from "./rule";
 
 /**
  * An attribute that reaches the DOM verbatim and that nothing reads.
@@ -76,6 +77,8 @@ export interface AttributeThatDoesNothingIssue {
   attribute: string;
   /** What to write instead, in the words the report prints. */
   instead: string;
+  /** The rename, for the four whose answer is a name — see {@link TextEdit}. */
+  edit?: TextEdit;
   file: string;
   line: number;
   column: number;
@@ -88,16 +91,29 @@ export interface AttributeThatDoesNothingIssue {
  * lowercase is exactly as dead as `httpEquiv`, and it passes the types, since a lowercase name goes
  * through the index signature rather than through any DOM property.
  */
-const DEAD: ReadonlyMap<string, string> = new Map([
-  ["httpequiv", "write `http-equiv`, which is how HTML spells it"],
-  ["acceptcharset", "write `accept-charset`, which is how HTML spells it"],
+/**
+ * What to write instead, and — where there IS one — the name to write.
+ *
+ * `instead` is the sentence a reader gets. `rename` is the same answer as a bare name, for `--fix`,
+ * and it is absent for the two whose answer is not a name at all: "put the markup in the element's
+ * children" is a change of shape, and no span in this file is the new one.
+ *
+ * Two fields rather than parsing the name back out of the prose, because a sentence is written for
+ * a person and would quietly stop parsing the day somebody improved it.
+ */
+const DEAD: ReadonlyMap<string, { instead: string; rename?: string }> = new Map([
+  ["httpequiv", { instead: "write `http-equiv`, which is how HTML spells it", rename: "http-equiv" }],
+  ["acceptcharset", { instead: "write `accept-charset`, which is how HTML spells it", rename: "accept-charset" }],
   [
     "defaultvalue",
-    "write `value` — the attribute IS the initial value, and there is no controlled/uncontrolled pair here",
+    {
+      instead: "write `value` — the attribute IS the initial value, and there is no controlled/uncontrolled pair here",
+      rename: "value",
+    },
   ],
-  ["defaultchecked", "write `checked` — the attribute IS the initial state"],
-  ["innerhtml", "put the markup in the element's children, which is what Ramonda renders"],
-  ["textcontent", "put the text in the element's children"],
+  ["defaultchecked", { instead: "write `checked` — the attribute IS the initial state", rename: "checked" }],
+  ["innerhtml", { instead: "put the markup in the element's children, which is what Ramonda renders" }],
+  ["textcontent", { instead: "put the text in the element's children" }],
 ]);
 
 export const attributeThatDoesNothing = {
@@ -137,13 +153,32 @@ export const attributeThatDoesNothing = {
 
     for (const attribute of attributes) {
       const written = attribute.name;
-      const instead = DEAD.get(written.toLowerCase());
-      if (instead === undefined) continue;
+      const dead = DEAD.get(written.toLowerCase());
+      if (dead === undefined) continue;
+
+      /**
+       * Four of the six have a name to write instead, and those are carried.
+       *
+       * `innerHTML` and `textContent` do not: their answer is "put it in the children", which is a
+       * change of shape rather than a span. A machine that turned `innerHTML={markup}` into
+       * children would be writing JSX out of a string it never read.
+       */
+      const name = ts.isJsxAttribute(attribute.at) ? attribute.at.name : undefined;
+      const edit =
+        dead.rename === undefined || name === undefined
+          ? undefined
+          : {
+              from: name.getStart(),
+              to: name.getEnd(),
+              text: dead.rename,
+              says: `\`${written}\` → \`${dead.rename}\``,
+            };
 
       found.push({
         tag,
         attribute: written,
-        instead,
+        instead: dead.instead,
+        ...(edit ? { edit } : {}),
         ...positionOf(attribute.at),
       });
     }

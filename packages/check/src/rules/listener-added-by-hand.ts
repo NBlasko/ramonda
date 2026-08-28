@@ -20,10 +20,12 @@ import type { Rule, RuleContext } from "./rule";
  * ## The one thing the decorator cannot do, said out loud rather than papered over
  *
  * A listener the app ARMS — on a click, after a fetch — cannot be written with `@onWindow`, which
- * attaches for the owner's whole life. There is no hook for it yet, and the rule still reports the
- * raw call, so the advice has to say what the reader is actually left with rather than pretend the
- * decorator covers it. `Interval` and `Timeout` are the same problem already solved for timers:
- * hooks the app starts and stops, which the framework still clears when the owner goes.
+ * attaches for the owner's whole life. That is the `Listener` hook's job — `listen()` and `stop()`,
+ * with the framework still removing it when the owner goes — and the advice names it.
+ *
+ * It did not exist when this rule was written, and the advice said so out loud rather than pretending
+ * the decorator covered it. `Interval` and `Timeout` were the same problem already solved for timers,
+ * and `Listener` is that shape for a listener.
  *
  * ## The one place a decorator genuinely cannot be used: `if (__DEV__)`
  *
@@ -206,13 +208,21 @@ export const listenerAddedByHand = {
       "there are ten of them.\n\n" +
       "In a `render()` it is worse than it looks — a render runs whenever the framework likes, so\n" +
       "the listener is registered again on every pass.\n\n" +
-      "**A listener the app ARMS — on a click, after a fetch — has no hook yet, and that is a gap in\n" +
-      "the framework rather than something to work around here.** `@onWindow` attaches for the\n" +
-      "owner's whole life and cannot be turned on and off. The shape the answer will take is already\n" +
-      "in the framework for timers: `Interval` and `Timeout` are hooks the app starts and stops while\n" +
-      "the framework still clears them when the owner goes. Until the same exists for a listener,\n" +
-      "this reports the raw call and the honest fix is to keep the listener for the owner's lifetime\n" +
-      "and decide INSIDE the handler whether to act.\n\n" +
+      "**A listener the app ARMS — on a click, after a fetch — is the `Listener` hook.** `@onWindow`\n" +
+      "attaches for the owner's whole life and cannot be turned on and off; `Listener` can, and the\n" +
+      "framework still removes it when the owner goes:\n\n" +
+      "```tsx\n" +
+      "private escape = this.use(Listener, () => ({\n" +
+      '  on: "document",\n' +
+      '  type: "keydown",\n' +
+      "  run: this.onKey,\n" +
+      "}));\n\n" +
+      "@mounted open() { this.escape.listen(); }\n" +
+      "close() { this.escape.stop(); }\n" +
+      "```\n\n" +
+      "One hook instance is one listener, and teardown removes it — there is nothing to remember and\n" +
+      "no handler reference to keep in step. It is the same shape `Interval` and `Timeout` already\n" +
+      "have for timers.\n\n" +
       "**Inside `if (__DEV__)` the hand-rolled call is right**, and this asks only that it be cleaned\n" +
       "up. A decorator is code on the class, so no guard can remove it and a dev-only listener\n" +
       "written with `@onWindow` would attach in production too. Keep the raw call there and pair it\n" +

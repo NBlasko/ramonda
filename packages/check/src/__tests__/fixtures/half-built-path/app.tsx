@@ -96,4 +96,38 @@ class App extends Component {
   }
 }
 
-bootstrap(<App />, null);
+/**
+ * ✓ The same composite widget, written the way anyone actually builds one.
+ *
+ * `Toolbar` renders the `role="toolbar"` and the `onkeydown`, and takes the buttons as children.
+ * From inside the rule that ancestor is a capitalised tag with nothing on it.
+ */
+class Toolbar extends Component<{ children?: unknown }> {
+  render() {
+    return (
+      <div role="toolbar" onkeydown={onKeys} aria-label="Format">
+        {this.props.children}
+      </div>
+    );
+  }
+}
+
+class Split extends Component {
+  render() {
+    return (
+      <Toolbar>
+        <div role="button" tabIndex={-1} onclick={go}>
+          Bold
+        </div>
+      </Toolbar>
+    );
+  }
+}
+
+bootstrap(
+  <div>
+    <App />
+    <Split />
+  </div>,
+  null,
+);

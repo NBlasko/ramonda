@@ -1,6 +1,7 @@
+import ts from "typescript";
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
-import type { ElementRule } from "./rule";
+import type { ElementRule, TextEdit } from "./rule";
 
 /**
  * `class` written where Ramonda reads `className`.
@@ -37,6 +38,8 @@ export interface ClassInsteadOfClassNameIssue {
   onComponent: boolean;
   /** `className` is on the same element, so this `class` is dropped rather than renamed. */
   dropped: boolean;
+  /** The rename, on the one shape that has a single answer — see {@link TextEdit}. */
+  edit?: TextEdit;
   file: string;
   line: number;
   column: number;
@@ -85,7 +88,36 @@ export const classInsteadOfClassName = {
     // the rename reaches it too, so the report is about a prop rather than about an attribute.
     const onComponent = tag === undefined;
     const name = tag ?? openingOf(element).tagName.getText();
+    const dropped = has("className");
 
-    return [{ tag: name, onComponent, dropped: has("className"), ...positionOf(at) }];
+    /**
+     * One of the three shapes has a single answer, and only that one is carried.
+     *
+     * **On a TAG with no `className` beside it** the answer is the rename, and it is not a guess:
+     * `className` is the one word this framework reads, and the element ends up with exactly the
+     * class the author wrote.
+     *
+     * **On a tag that ALREADY has `className`** the answer looks like deletion — the `class` is
+     * dropped anyway — but which of the two the author meant to keep is not written down. Deleting
+     * the one they were editing would be the machine choosing.
+     *
+     * **On a COMPONENT** there is no answer here at all. The rename reaches the prop, so a
+     * component that declares `class` reads `undefined`; whether the fix is at this call site or in
+     * that component's own props is a question about a file this is not looking at.
+     */
+    const written = openingOf(element).attributes.properties.find(
+      (property) => ts.isJsxAttribute(property) && property.name.getText().toLowerCase() === "class",
+    );
+    const edit =
+      onComponent || dropped || written === undefined || !ts.isJsxAttribute(written)
+        ? undefined
+        : {
+            from: written.name.getStart(),
+            to: written.name.getEnd(),
+            text: "className",
+            says: "`class` → `className`",
+          };
+
+    return [{ tag: name, onComponent, dropped, ...(edit ? { edit } : {}), ...positionOf(at) }];
   },
 } as const satisfies ElementRule<ClassInsteadOfClassNameIssue>;

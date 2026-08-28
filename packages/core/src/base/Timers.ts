@@ -1,7 +1,5 @@
-import { ownerRuntime } from "../core/renderEnv";
 import { delayFault } from "../debug/validateDecorator";
-import { destroyed } from "./decorators";
-import { Hook } from "./Hook";
+import { Armed } from "./Armed";
 
 /** What a scheduled call runs. Declared once, with the hook, and read again every time it fires. */
 export interface ScheduledProps {
@@ -100,54 +98,12 @@ export interface ScheduledProps {
  * sides — a `@created` is `shared` by default — so a throw would force every call site to branch on
  * which side it is, which is the one thing the hydration rules tell an author not to do.
  */
-abstract class Scheduled extends Hook<ScheduledProps> {
-  /**
-   * How to clear what is currently running — a closure rather than the id, because a timeout and an
-   * interval are cleared by different functions, and one field that already knows which cannot be
-   * asked the wrong question.
-   */
-  private disarm: (() => void) | undefined;
-
-  /**
-   * Set by teardown, and the reason it exists is that neither of the two obvious answers is true when
-   * it is asked.
-   *
-   * `ComponentRuntime.isDestroyed` is set AFTER the whole teardown pass — after effect cleanups and
-   * after every `@destroyed` — so during teardown it still reads `false`. Measured: a `@destroyed`
-   * calling `start(50)` got `true` back, left one live timer and fired it after unmount, with nothing
-   * left to clear it. Not even `RMD006` reports that, because the timer has no lifecycle owner to be
-   * attributed to by then.
-   *
-   * A latch of this hook's own is right whichever order the callbacks run in. If teardown reaches this
-   * hook first, a later `start` is refused. If it reaches the owner's `@destroyed` first, that `start`
-   * arms and this hook's teardown then clears it. Reading the owner's flag can do neither.
-   */
-  private torn = false;
-
-  /**
-   * Whether starting can be made safe right now — one question, because all three answers to it mean
-   * the same thing: do not start something nothing will clear.
-   *
-   * - **The owner is not built yet.** `isInitialized` is the framework's own "not ready" flag —
-   *   `Task.ts` gates updates on it for the same reason — and it is what makes this correct rather than
-   *   nearly correct. `ComponentRuntime.env` is `"client"` until `DiffAndMerge` assigns it, which
-   *   happens AFTER the constructor returns, so a `start` from a field initializer would read the wrong
-   *   side. **Two attempts at this asked the side instead and both had a window:** the module flag is
-   *   restored before `renderToString`'s first `await`, so a component built during `drainServerWork`
-   *   answered "client" from the flag AND from the field. Measured, twice: a timer armed in the SSR
-   *   process and fired there. Refusing until the component is BUILT closes every one of those windows
-   *   at once, because `isInitialized` is set one line before `env` and no user code runs between them.
-   * - **A server render**, once it is built. See the note above.
-   * - **Teardown has reached this hook.** See `torn`.
-   *
-   * There is no fourth case: a hook always has an owner, because `Runtime.owner` is required.
-   */
-  private get armable(): boolean {
-    if (this.torn) return false;
-    const owner = ownerRuntime(this);
-    return owner.isInitialized === true && owner.env !== "server";
-  }
-
+/**
+ * A scheduled call the app starts and stops. `Armed` carries when it may arm and that it is undone
+ * once; this adds the only thing a timer has that a listener does not — a DELAY, and the argument
+ * that its value has to be checked at runtime rather than only in development.
+ */
+abstract class Scheduled extends Armed<ScheduledProps> {
   /**
    * Starts it, `ms` from now, clearing anything this instance was already running.
    *
@@ -169,30 +125,6 @@ abstract class Scheduled extends Hook<ScheduledProps> {
 
     this.disarm = this.schedule(ms);
     return true;
-  }
-
-  /** Clears what is running. Safe to call when nothing is, and safe to call again. */
-  stop(): void {
-    this.disarm?.();
-    this.disarm = undefined;
-  }
-
-  /**
-   * Teardown, and it is NOT the same act as `stop()` — which is what an earlier version of this class
-   * claimed, with both on one member.
-   *
-   * Stopping is something an app does and then carries on from; teardown also has to make sure nothing
-   * starts again, because a `@destroyed` running after this one can still call `start`. So it latches
-   * as well as clears. One member could not do both: `stop()` would then disable the timer for good.
-   *
-   * Not `private`, and that is TypeScript rather than intent: `noUnusedLocals` counts a private method
-   * the decorator registers as unused, because a decorator's registration is not a call it can see.
-   * `Portal.clear` carries a `@destroyed` the same way, for the same reason.
-   */
-  @destroyed
-  teardown(): void {
-    this.torn = true;
-    this.stop();
   }
 
   /** Arms the platform timer and hands back how to clear it. */

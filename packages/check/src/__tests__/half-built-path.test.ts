@@ -76,6 +76,21 @@ describe("a keyboard path somebody started and did not finish", () => {
   });
 
   /**
+   * And the same widget written across COMPONENTS, which is how anyone actually builds one.
+   *
+   * `Toolbar` renders the `role="toolbar"` and the `onkeydown` and takes the buttons as children,
+   * so from inside the rule the ancestor is a capitalised tag with nothing on it. The same-render
+   * half of this was fixed first and the cross-component half looked identical from in here — it
+   * was still reporting the recommended shape, and only a plant found it.
+   *
+   * The cost is a real report lost when the component ancestor handles no keys at all. That is the
+   * trade this package takes every time.
+   */
+  test("nor is it when the container is a component in another file", () => {
+    expect(found().map((issue) => issue.line)).not.toContain(119);
+  });
+
+  /**
    * The sibling rule stays out of it, which is the whole point of writing this one.
    *
    * `click-with-no-keyboard-path` goes quiet the moment it sees a `role` or a `tabIndex`, and its
