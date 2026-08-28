@@ -73,6 +73,28 @@ describe("the fixes a run can apply itself", () => {
     expect(readFileSync(path, "utf8")).toBe("aaa bbb");
   });
 
+  /**
+   * A BOM, which is the one place the two readers of a file disagree.
+   *
+   * TypeScript STRIPS a byte-order mark, so every offset a rule produces is relative to the text
+   * without it; `readFileSync` keeps it. Slicing the kept text with the stripped text's offsets put
+   * every edit one character early — measured on a real file, `<div class="card">` came back
+   * `<divclassNames="card">`, having eaten the space and left the `s` behind.
+   *
+   * The offsets here are deliberately written as if a BOM were absent, because that is what a rule
+   * produces. A regression would corrupt the file rather than fail loudly, which is why this test
+   * asserts the whole resulting string and not just that something changed.
+   */
+  test("a byte-order mark shifts nothing, and survives the write", () => {
+    const path = file();
+    writeFileSync(path, "\uFEFFaaa bbb", "utf8");
+
+    // `from`/`to` count from the `a`, exactly as TypeScript would report them.
+    applyFixes(reporting(path, [{ from: 4, to: 7, text: "BBB", says: "rename" }]), true);
+
+    expect(readFileSync(path, "utf8")).toBe("\uFEFFaaa BBB");
+  });
+
   /** A run whose faults all need a person is a run with nothing to apply, not an error. */
   test("findings with no edits are nothing to do", () => {
     const result = applyFixes(

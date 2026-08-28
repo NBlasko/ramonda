@@ -92,13 +92,28 @@ export function applyFixes(findings: Findings, write: boolean): FixResult {
     result.overlapping += dropped;
     if (safe.length === 0) continue;
 
-    let source = readFileSync(file, "utf8");
+    /**
+     * The BOM, and it is the one place these two readers disagree.
+     *
+     * TypeScript STRIPS a byte-order mark when it reads a file, so every offset a rule produced is
+     * relative to the text without it. `readFileSync` keeps it, as a single `\uFEFF`. Slicing the
+     * kept text with the stripped text's offsets puts every edit one character early — measured:
+     * `<div class="card">` came back `<divclassNames="card">`, having eaten the space and left the
+     * `s` behind. Silent, and in a tool that writes somebody's source.
+     *
+     * Stripped here and put back on write, so the file keeps whatever it had. CRLF needs no such
+     * handling and was checked: TypeScript keeps `\r\n` in its text, so the offsets already agree.
+     */
+    const raw = readFileSync(file, "utf8");
+    const bom = raw.charCodeAt(0) === 0xfeff ? "\uFEFF" : "";
+    let source = bom === "" ? raw : raw.slice(1);
+
     for (const edit of safe) {
       source = source.slice(0, edit.from) + edit.text + source.slice(edit.to);
       result.said.push(`${file} — ${edit.says}`);
     }
 
-    if (write) writeFileSync(file, source, "utf8");
+    if (write) writeFileSync(file, bom + source, "utf8");
     result.applied += safe.length;
     result.files.push(file);
   }

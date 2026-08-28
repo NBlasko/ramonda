@@ -44,6 +44,38 @@ class Dialog extends Component {
   }
 }
 
+/** Armed from a FIELD INITIALIZER, before the owner is built. */
+class Early extends Component {
+  escape = this.use(Listener, () => ({ on: "document" as const, type: "keydown", run: this.onKey }));
+  armedEarly = this.escape.listen();
+
+  private onKey(event: Event): void {
+    log.push((event as KeyboardEvent).key);
+  }
+
+  render(): RamondaNode {
+    return <div>early</div>;
+  }
+}
+
+/** `capture: true`, which `removeEventListener` matches on. */
+class Captured extends Component {
+  escape = this.use(Listener, () => ({
+    on: "document" as const,
+    type: "keydown",
+    run: this.onKey,
+    options: { capture: true },
+  }));
+
+  private onKey(event: Event): void {
+    log.push((event as KeyboardEvent).key);
+  }
+
+  render(): RamondaNode {
+    return <div>captured</div>;
+  }
+}
+
 const press = (key: string) => document.dispatchEvent(new KeyboardEvent("keydown", { key }));
 
 describe("Listener", () => {
@@ -96,6 +128,42 @@ describe("Listener", () => {
     await app.unmount();
     press("e");
     expect(log).toEqual([]);
+  });
+
+  /**
+   * A field initializer cannot arm, and this is the whole of what `Armed` is for.
+   *
+   * The owner is not BUILT yet at that point — `isInitialized` is still false — so there is no
+   * teardown to remove anything a listener attached there. Two earlier attempts at this question
+   * asked which SIDE the render was on instead, and both had a window where a timer armed in the
+   * SSR process and fired there. `listen()` returns `false` rather than throwing, because a
+   * component that renders on both sides must not have to branch on which.
+   */
+  test("a field initializer cannot arm, because the owner is not built yet", async () => {
+    const app = await getDOM<Early>(<Early />);
+
+    expect(app.instance.armedEarly).toBe(false);
+    press("a");
+    expect(log).toEqual([]);
+  });
+
+  /**
+   * `capture` is part of what `removeEventListener` matches on, so it has to survive to removal.
+   *
+   * The options are captured when it arms, beside the type and the target, for exactly this reason:
+   * a capture flag re-read at teardown after a signal changed it would ask the DOM to remove a
+   * listener that was never added, and silently leave the real one attached.
+   */
+  test("a captured listener is still removed", async () => {
+    const app = await getDOM<Captured>(<Captured />);
+    app.instance.escape.listen();
+
+    press("b");
+    expect(log).toEqual(["b"]);
+
+    app.instance.escape.stop();
+    press("c");
+    expect(log).toEqual(["b"]);
   });
 
   /**
