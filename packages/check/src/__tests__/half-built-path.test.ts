@@ -23,35 +23,55 @@ const said = () => found().map((issue) => `${issue.line}:${issue.role ?? "-"}/${
 describe("a keyboard path somebody started and did not finish", () => {
   test("all three ways of stopping short, each named for the one to fix first", () => {
     expect(said()).toEqual([
-      "12:button/the tab order",
-      "16:button/a key handler",
+      "13:button/the tab order",
+      "17:button/a key handler",
       // The verbatim spelling of a click is the same handler, through the shared `eventTypeOf`.
-      "20:link/a key handler",
-      // 63 built the whole path and never said what it is; 67 started with the key handler alone.
+      "21:link/a key handler",
+      // 64 built the whole path and never said what it is; 68 started with the key handler alone.
       // Both report the ROLE, because it is the one nothing else compensates for.
-      "63:-/a role",
-      "67:-/a role",
+      "64:-/a role",
+      "68:-/a role",
     ]);
   });
 
   /**
    * Nine silences, and the first three are the finished control.
    *
-   * 25 writes the whole path. 29 writes the key handler in the framework's second spelling, which
-   * the shared reader knows. 33 is `tabIndex={-1}` — somebody choosing to move focus by script
+   * 26 writes the whole path. 30 writes the key handler in the framework's second spelling, which
+   * the shared reader knows. 34 is `tabIndex={-1}` — somebody choosing to move focus by script
    * rather than by Tab, which is a decision rather than an omission, so `has` is the question here
    * and not the number.
    *
-   * 38 is a native `<button>`, which needs none of this written on it. 42 has a role that is not a
-   * widget, so nothing was promised. 46 has a role this cannot read. 50 spreads, and the spread may
-   * be carrying the `tabIndex` or the handler. 54 holds a real `<button>`, which is somewhere for
-   * the keyboard to land. 58 has no pointer handler at all, so nothing on the line says the mouse
+   * 39 is a native `<button>`, which needs none of this written on it. 43 has a role that is not a
+   * widget, so nothing was promised. 47 has a role this cannot read. 51 spreads, and the spread may
+   * be carrying the `tabIndex` or the handler. 55 holds a real `<button>`, which is somewhere for
+   * the keyboard to land. 59 has no pointer handler at all, so nothing on the line says the mouse
    * was wired and the keyboard was not.
    */
   test("the finished control, and everything this cannot claim, stay silent", () => {
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [25, 29, 33, 38, 42, 46, 50, 54, 58]) {
+    for (const quiet of [26, 30, 34, 39, 43, 47, 51, 55, 59]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
+    }
+  });
+
+  /**
+   * The W3C's own patterns, which this rule reported against before it knew better.
+   *
+   * A `listbox` takes the arrow keys and its options carry a roving `tabIndex={-1}`; a `toolbar`
+   * and a `tablist` do the same. Read as elements on their own, every child there is a click with
+   * no key handler — and the canonical three produced FOUR reports, all against markup that is the
+   * documented right answer.
+   *
+   * Two things fixed it, and both are in the safe direction. `ACTIVATED_BY_THE_USER` lost the roles
+   * that are OWNED by a composite parent, so `option`, `tab` and `menuitem` are no longer claimed
+   * to need their own key handler. And keys handled by any ancestor in the render count as keys
+   * handled, which is what covers the `role="button"` inside a toolbar.
+   */
+  test("the container-owns-the-keyboard patterns are not reported", () => {
+    const lines = found().map((issue) => issue.line);
+    for (const quiet of [80, 85, 90]) {
+      expect(lines, `line ${quiet} is the W3C's own pattern`).not.toContain(quiet);
     }
   });
 
@@ -67,8 +87,8 @@ describe("a keyboard path somebody started and did not finish", () => {
     const sibling = (run()["click-with-no-keyboard-path"] ?? []).map((issue) => issue.line);
     const mine = found().map((issue) => issue.line);
 
-    // 71 wrote NONE of the three, which is the sibling's whole subject and none of this rule's.
-    expect(sibling).toEqual([71]);
+    // 72 wrote NONE of the three, which is the sibling's whole subject and none of this rule's.
+    expect(sibling).toEqual([72]);
     // And nothing is reported twice: the sibling returns the moment it sees any one of them.
     expect(mine.filter((line) => sibling.includes(line))).toEqual([]);
   });

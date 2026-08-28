@@ -200,22 +200,24 @@ export const ROLES: ReadonlySet<string> = new Set([
  * role="textbox">` with a click handler is a shape rare enough that guessing at it costs more than
  * it finds.
  *
+ * ## STANDALONE only, which is the correction that matters
+ *
+ * `option`, `tab`, `menuitem`, `menuitemcheckbox`, `menuitemradio`, `treeitem` and `radio` were
+ * here and had to come out. Every one of them is REQUIRED to sit inside a composite parent — a
+ * `listbox`, `tablist`, `menu`, `tree`, `radiogroup` — and in every one of the W3C's own authoring
+ * patterns the PARENT owns the keyboard: arrow keys on the container, roving `tabIndex={-1}` on the
+ * children. So "this element needs its own key handler" is not merely unprovable for them, it is
+ * the opposite of the recommended shape.
+ *
+ * Measured, and it is why this note exists: the canonical listbox, toolbar and tablist from the
+ * ARIA Authoring Practices produced FOUR reports against markup that is the recommendation.
+ *
+ * What is left is the roles a user operates on their own, wherever they sit.
+ *
  * Source: **WAI-ARIA 1.2**, the widget roles, filtered to those whose own documentation describes a
- * user activating them.
+ * user activating them, and then to those that are not owned by a composite parent.
  */
-export const ACTIVATED_BY_THE_USER: ReadonlySet<string> = new Set([
-  "button",
-  "checkbox",
-  "link",
-  "menuitem",
-  "menuitemcheckbox",
-  "menuitemradio",
-  "option",
-  "radio",
-  "switch",
-  "tab",
-  "treeitem",
-]);
+export const ACTIVATED_BY_THE_USER: ReadonlySet<string> = new Set(["button", "checkbox", "link", "switch"]);
 
 export const ABSTRACT_ROLES: ReadonlySet<string> = new Set([
   "command",

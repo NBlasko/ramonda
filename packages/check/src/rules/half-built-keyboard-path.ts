@@ -2,9 +2,10 @@ import { positionOf } from "../syntax";
 import { ACTIVATED_BY_THE_USER } from "./aria";
 import { descendantIn } from "./descendants";
 import { openingOf } from "./element";
+import { enclosingElement } from "./html";
 import { hasAKeyHandler, pointerHandlerOn } from "./events";
 import { INTERACTIVE } from "./click-with-no-keyboard-path";
-import type { ElementContext, ElementRule } from "./rule";
+import type { ElementContext, ElementRule, JsxElementLike } from "./rule";
 
 /**
  * A control built by hand, and the building stopped half way.
@@ -49,6 +50,22 @@ export interface HalfBuiltKeyboardPathIssue {
   file: string;
   line: number;
   column: number;
+}
+
+/**
+ * Whether an ancestor in this render carries a keyboard handler.
+ *
+ * Only what is written IN the render is read — the walk stops where the JSX does. A handler bound
+ * further out, on a ref or by a parent component, is not visible here and is exactly the kind of
+ * thing the silence contract exists for, so this errs toward finding one rather than missing one.
+ */
+function keysHandledAbove(element: JsxElementLike): boolean {
+  let at = enclosingElement(element);
+  while (at !== undefined) {
+    if (hasAKeyHandler(openingOf(at))) return true;
+    at = enclosingElement(at);
+  }
+  return false;
 }
 
 /** One sentence per way of stopping short, because the three fail differently. */
@@ -110,6 +127,19 @@ export const halfBuiltKeyboardPath = {
      * renders is decided inside it, and guessing is how a rule reports a working card as broken.
      */
     if (descendantIn(children, (_child, inside) => INTERACTIVE.has(inside)) !== "none") return [];
+
+    /**
+     * Keys handled ABOVE are keys handled, and this is the shape that made the rule wrong.
+     *
+     * The W3C's own authoring patterns put the keyboard on the CONTAINER: a `listbox` takes the
+     * arrow keys and its options carry a roving `tabIndex={-1}`, and a `toolbar` and a `tablist` do
+     * the same. Read as elements on their own, every child of one of those is a control with a
+     * click and no key handler — and reporting them means reporting the recommendation.
+     *
+     * Measured before this existed: the canonical listbox, toolbar and tablist produced four
+     * reports, all of them against markup that is the documented right answer.
+     */
+    if (keysHandledAbove(element)) return [];
 
     // A role this cannot READ may be a widget or may not, and a chain is a list of alternatives
     // whose winner is not a question about this element. Either way nothing here is provable.

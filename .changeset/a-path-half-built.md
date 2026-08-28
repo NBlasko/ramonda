@@ -32,3 +32,14 @@ inside, and on a spread that may be carrying either missing half.
 `ACTIVATED_BY_THE_USER` in `aria.ts` leans SHORT, which is the opposite of `ROLES` beside it: a rule
 reads this one to report an element whose role IS in it, so an entry too many reports markup that
 never needed a keyboard path.
+
+**Two silences the review measured into it**, because the first version reported the W3C's own
+authoring patterns. A `listbox` takes the arrow keys and its options carry a roving `tabIndex={-1}`;
+a `toolbar` and a `tablist` do the same. Read as elements on their own, every child there is a click
+with no key handler — the canonical three produced FOUR reports against markup that is the
+recommendation.
+
+So the roles OWNED by a composite parent — `option`, `tab`, `menuitem`, `treeitem`, `radio` and the
+two menu checkbox roles — came out of the table, leaving the ones a user operates on their own. And
+a key handler on any ancestor in the render counts as the keys being handled, which is what covers a
+`role="button"` inside a toolbar.

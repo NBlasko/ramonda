@@ -1,6 +1,7 @@
 import { Component, bootstrap } from "@ramonda/core";
 
 declare function go(): void;
+declare function onKeys(e: unknown): void;
 declare const kind: string;
 declare const rest: Record<string, unknown>;
 
@@ -69,6 +70,27 @@ class App extends Component {
         </div>
         {/* ✓ Nothing started at all is the sibling rule's report, not this one's. */}
         <div onclick={go}>Save</div>
+
+        {/*
+          ✓ The W3C's own patterns put the keyboard on the CONTAINER: arrow keys there, and a
+          roving `tabIndex={-1}` on each child. Read as elements on their own every one of these
+          is a click with no key handler, and reporting them means reporting the recommendation.
+        */}
+        <ul role="listbox" tabIndex={0} onkeydown={onKeys} aria-label="Pick one">
+          <li role="option" tabIndex={-1} onclick={go}>
+            One
+          </li>
+        </ul>
+        <div role="toolbar" onkeydown={onKeys} aria-label="Format">
+          <div role="button" tabIndex={-1} onclick={go}>
+            Bold
+          </div>
+        </div>
+        <div role="tablist" onkeydown={onKeys} aria-label="Sections">
+          <div role="tab" tabIndex={-1} onclick={go}>
+            First
+          </div>
+        </div>
       </div>
     );
   }
