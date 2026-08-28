@@ -10,8 +10,9 @@ import type { ElementRule } from "./rule";
  * is no `playbackrate` content attribute for `playbackRate` to be the lowercase form OF, so the
  * name has exactly one spelling — the one the DOM gives it — and anything else is not that name.
  *
- * `putAttribute` matches the table exactly for that reason, and the consequence is silent:
- * `playbackrate={2}` matches nothing, so it falls through and is written as an ATTRIBUTE. The
+ * Core matches the table exactly for that reason — `keptInAProperty`, in the attribute writer —
+ * and the consequence is silent: `playbackrate={2}` matches nothing, so it falls through the
+ * property-only branch and is written as an ATTRIBUTE. The
  * document gets `playbackrate="2"`, nothing reads it, and the video plays at normal speed. Nothing
  * throws, nothing warns, and the line looks right.
  *
@@ -28,8 +29,8 @@ import type { ElementRule } from "./rule";
  *
  * ## Where the names come from
  *
- * `@ramonda/dom-facts`, through `propertyOnlyNames` — the same table `putAttribute` matches against,
- * so what this reports and what core does cannot come apart. The table's own note hands this half
+ * `@ramonda/dom-facts`, through `propertyOnlyNames` — the same table `keptInAProperty` answers
+ * from, so what this reports and what core does cannot come apart. The table's own note hands this half
  * over by name: core "writes the property instead; `@ramonda/check` will report the same names where
  * they are typed, which is the better place of the two".
  */

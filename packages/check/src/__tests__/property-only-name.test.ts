@@ -15,8 +15,8 @@ const said = () => found().map((issue) => `${issue.line}:${issue.written}→${is
  *
  * A few pieces of element state live in a PROPERTY and have no attribute of that name at all. There
  * is no `playbackrate` content attribute for `playbackRate` to be the lowercase form OF, so the
- * name has exactly one spelling and anything else is a different name — which `putAttribute` then
- * writes into the document as an attribute nothing reads.
+ * name has exactly one spelling and anything else is a different name — which the attribute writer
+ * then puts into the document as an attribute nothing reads.
  *
  * The trap is that the types accept both. `RamondaArgs` has an arm keyed on `Lowercase<string>` so
  * that any real lowercase HTML attribute passes without being enumerated, and the wrong spelling

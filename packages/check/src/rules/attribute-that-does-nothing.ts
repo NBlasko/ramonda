@@ -39,9 +39,9 @@ import type { ElementRule } from "./rule";
  *
  * ~~`indeterminate` on an `<input>`.~~ **Withdrawn — core fixed it.** This note used to say the
  * attribute is written into the markup and `.indeterminate` stays `false`, and that was measured
- * and true when it was written. It is not true now: `putAttribute` declines to write a name HTML
- * does not give the element and sets the PROPERTY instead, from the `ABSENT` table in
- * `@ramonda/dom-facts`. So `indeterminate={true}` is the supported way to put a checkbox in its
+ * and true when it was written. It is not true now: the attribute writer declines to write a name
+ * HTML does not give the element and sets the PROPERTY instead, asking `keptInAProperty` against
+ * the `ABSENT` table in `@ramonda/dom-facts`. So `indeterminate={true}` is the supported way to put a checkbox in its
  * third state, and a rule reporting it would report correct code.
  *
  * What is left here is the other half, and dom-facts hands it over by name: a property-only name
