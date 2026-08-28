@@ -44,6 +44,9 @@ onInput(event: Event) {
 }
 ```
 
+That cast is not the answer — it is what [`EventOn`](#reading-a-field-off-the-element-the-handler-is-on)
+below removes. It is written here because the DOM's own types leave you nowhere else to go.
+
 An inline arrow — `onclick={(e) => …}` — types `e` for you, and that is the only
 thing it does better. It also builds a new function on every render, so the listener
 is removed and re-added on the element every time, and a development build reports it
@@ -73,9 +76,11 @@ a `KeyboardEvent` — but reading the element is a separate question, and the DO
 answer it:
 
 ```text
-<input onchange={(e) => (this.draft = e.currentTarget.value)} />
-                                        ~~~~~~~~~~~~~
-      Property 'value' does not exist on type 'EventTarget'.
+onChange(e: Event) {
+  this.draft = e.currentTarget.value;
+                 ~~~~~~~~~~~~~
+  Property 'value' does not exist on type 'EventTarget'.
+}
 ```
 
 `currentTarget` is typed `EventTarget | null`, because in the DOM an event can be listened for
@@ -84,13 +89,33 @@ anywhere. Say which element it is:
 ```tsx
 import type { EventOn } from "@ramonda/core";
 
-<input onchange={(e: EventOn<HTMLInputElement>) => (this.draft = e.currentTarget.value)} />
+class Draft extends Component {
+  @state draft = "";
+
+  onChange(e: EventOn<HTMLInputElement>) {
+    this.draft = e.currentTarget.value;
+  }
+
+  render() {
+    return <input onchange={this.onChange} />;
+  }
+}
 ```
 
 A second argument names the event too, for a handler that wants both halves:
 
 ```tsx
-<button onclick={(e: EventOn<HTMLButtonElement, PointerEvent>) => e.currentTarget.blur()} />
+import type { EventOn } from "@ramonda/core";
+
+class Picker extends Component {
+  onPick(e: EventOn<HTMLButtonElement, PointerEvent>) {
+    e.currentTarget.blur();
+  }
+
+  render() {
+    return <button type="button" onclick={this.onPick}>Pick</button>;
+  }
+}
 ```
 
 **`target` is not narrowed, and that is deliberate.** `currentTarget` is the element the listener is
