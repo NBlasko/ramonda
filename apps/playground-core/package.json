@@ -20,10 +20,10 @@
     "@ramonda/router": "workspace:^"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@ramonda/build": "workspace:^",
     "@ramonda/devtools": "workspace:^",
     "@types/node": "^26.1.2",
-    "vite": "^7.3.6",
-    "@playwright/test": "^1.49.0"
+    "vite": "^7.3.6"
   }
 }

@@ -67,6 +67,7 @@ test.describe("what only a browser can say", () => {
    * moves under it.
    */
   test("a row keeps the reader in it while the list moves underneath", async ({ page }) => {
+    const rows = page.locator('input[id^="row-"]');
     const field = page.locator("#row-a");
     await field.click();
     await field.pressSequentially("hel");
@@ -75,11 +76,19 @@ test.describe("what only a browser can say", () => {
     // The button gave the focus straight back; if it had not, the rest would measure nothing.
     await expect(field).toBeFocused();
 
-    // Two rotations, with the keyboard typed into whatever holds the focus rather than into a
-    // locator — which is the whole question: does anything still hold it?
-    await page.waitForTimeout(1700);
+    /**
+     * Waited on the list HAVING MOVED, not on the clock.
+     *
+     * The timer is 1.5s and a sleep would usually do, but a sleep passes for the wrong reason if
+     * the rotation ever stops happening: focus is trivially kept by a list that never moves, and
+     * this test would go green while proving nothing. Asking who is first now is the same wait and
+     * an assertion as well.
+     */
+    await expect(rows.first()).toHaveAttribute("id", "row-b");
+    // Typed into whatever holds the focus rather than into a locator — which is the whole question.
     await page.keyboard.type("lo");
-    await page.waitForTimeout(1700);
+
+    await expect(rows.first()).toHaveAttribute("id", "row-c");
     await page.keyboard.type("!");
 
     await expect(field).toHaveValue("hello!");
