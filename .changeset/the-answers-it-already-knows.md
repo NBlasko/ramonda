@@ -24,9 +24,27 @@ Three things the fixer does to stay honest:
 - **Edits are applied back to front**, so an earlier one cannot move a later one's offsets.
 - **A file is written once, or not at all.**
 
-Two rules carry an edit to begin with, one of each kind: `misspelled-element-property` renames the
-attribute (the NAME node, so the value it never read is not re-printed), and
-`option-that-cannot-choose` deletes it (from the whitespace before it, so no double space is left).
+Six rules carry an edit, across three kinds:
+
+| | |
+|---|---|
+| `class` → `className` | `class-instead-of-classname` |
+| `httpEquiv` → `http-equiv`, and three more | `attribute-that-does-nothing` |
+| `playbackrate` → `playbackRate` | `misspelled-element-property` |
+| `aria-labelledBy` → `aria-labelledby` | `unknown-aria-attribute` |
+| `disabled="false"` → `disabled={false}` | `false-on-a-boolean-attribute` |
+| remove `selected` | `option-that-cannot-choose` |
+
+And every one of those rules reports faults it does NOT fix, which is where the bar lives:
+
+- `class` beside an existing `className` — which of the two they meant to keep is not written down.
+- `class` on a COMPONENT — the rename reaches the prop, and the answer is in that component's file.
+- `innerHTML` — its answer is "put it in the children", a change of shape rather than a span.
+- `aria-requred` — one edit from a real name is a GUESS, and the report says so with a question mark.
+  Only the CASE fix is carried, and only in SVG: `setAttribute` lowercases for HTML, so
+  `aria-labelledBy` on a `<span>` genuinely works and is not a fault at all.
+- `disabled={NO}` with `const NO = "false"` — whether that name has to stay a string elsewhere is
+  not knowable from the line.
 
 The loss check caught the change to its own inputs, which is the job it was written for: every
 finding of the first rule to carry an edit read as LOST, because the claim had gained a field while

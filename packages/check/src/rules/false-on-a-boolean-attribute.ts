@@ -1,6 +1,7 @@
 import { BOOLEAN_ATTRIBUTES } from "@ramonda/dom-facts";
+import ts from "typescript";
 import { positionOf } from "../syntax";
-import type { ElementRule } from "./rule";
+import type { ElementRule, TextEdit } from "./rule";
 
 /**
  * `disabled="false"` — a boolean attribute turned ON by a string that says off.
@@ -35,6 +36,8 @@ export interface FalseOnABooleanAttributeIssue {
   attribute: string;
   /** What the element will do, in core's own words. */
   outcome: string;
+  /** Replacing the string with the boolean — see {@link TextEdit}. */
+  edit?: TextEdit;
   file: string;
   line: number;
   column: number;
@@ -130,10 +133,38 @@ export const falseOnABooleanAttribute = {
       // A spread AFTER it may replace the value or take the attribute away entirely.
       if (overwritable(written.name)) continue;
 
+      /**
+       * The VALUE is replaced, not the attribute, and the difference is the whole of the fix.
+       *
+       * `disabled="false"` becomes `disabled={false}`, which is the boolean — and a `false` boolean
+       * is what removes the attribute, which is the only way HTML has of turning one off. Deleting
+       * the attribute instead would reach the same DOM and lose the author's intent: they wrote a
+       * value that says off, and `{false}` is that value spelled so it works.
+       *
+       * Only a literal is carried. `disabled={NO}` with `const NO = "false"` is the same fault, and
+       * its answer is somewhere else in the file — this cannot know whether that name is used
+       * anywhere it would still have to be a string.
+       */
+      const value = written.at;
+      const literal =
+        ts.isJsxAttribute(value) && value.initializer !== undefined && ts.isStringLiteral(value.initializer)
+          ? value.initializer
+          : undefined;
+      const edit =
+        literal === undefined
+          ? undefined
+          : {
+              from: literal.getStart(),
+              to: literal.getEnd(),
+              text: "{false}",
+              says: `\`${attribute}="false"\` → \`${attribute}={false}\``,
+            };
+
       found.push({
         tag,
         attribute,
         outcome: OUTCOME[attribute] ?? "the attribute is on",
+        ...(edit ? { edit } : {}),
         ...positionOf(written.at),
       });
     }
