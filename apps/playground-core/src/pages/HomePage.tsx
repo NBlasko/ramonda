@@ -24,6 +24,9 @@ export class HomePage extends Component {
             <Link href="/slots">→ Slots and their edge cases</Link>
           </li>
           <li>
+            <Link href="/caret">→ The caret in a controlled field</Link>
+          </li>
+          <li>
             <Link href="/async">→ AsyncLoad (code splitting)</Link>
           </li>
           <li>

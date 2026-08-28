@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Component } from "../index";
+import { Component, list } from "../index";
 import { state } from "../base/decorators";
 import { getDOM } from "../test/setup";
 
@@ -92,6 +92,64 @@ describe("the caret in a controlled field", () => {
 
     // `1234` typed becomes `1,234`: one character longer, so every offset after the separator moved.
     expect(await typeInTheMiddle(app, "money", 3, "4")).toEqual({ value: "1,234", caret: 5 });
+  });
+
+  /**
+   * What the fix costs, pinned so that moving it out of the `value` branch is a failing test rather
+   * than something nobody notices.
+   *
+   * A render that touches anything else on the page — an attribute, a class, text — pays NOTHING,
+   * because the work sits inside the branch a differing value reaches. When a value IS written the
+   * cost is one caret read and one `setSelectionRange`, one for one with the write that was already
+   * happening: measured across fifty fields, fifty of each and not fifty-one.
+   */
+  test("nothing is read or called on a render that does not write a value", async () => {
+    class Fields extends Component {
+      @state rows = Array.from({ length: 10 }, (_, index) => ({ id: index, text: `row ${index}` }));
+      @state tick = 0;
+      render() {
+        return (
+          <div data-tick={String(this.tick)}>
+            {list(this.rows, (row) => (
+              <input key={row.id} value={row.text} />
+            ))}
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Fields>(<Fields />);
+    await app.settle();
+
+    const counts = { caretReads: 0, ranges: 0 };
+    const caret = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "selectionStart")!;
+    const range = HTMLInputElement.prototype.setSelectionRange;
+    Object.defineProperty(HTMLInputElement.prototype, "selectionStart", {
+      ...caret,
+      get(this: HTMLInputElement) {
+        counts.caretReads++;
+        return caret.get?.call(this);
+      },
+    });
+    HTMLInputElement.prototype.setSelectionRange = function (this: HTMLInputElement, ...args) {
+      counts.ranges++;
+      return range.apply(this, args as never);
+    };
+
+    try {
+      // A render that changes an attribute on the parent and nothing about the fields.
+      app.instance.tick = 1;
+      await app.settle();
+      expect(counts).toEqual({ caretReads: 0, ranges: 0 });
+
+      // And one that rewrites every field: one read and one call each, not one per render.
+      app.instance.rows = app.instance.rows.map((row) => ({ ...row, text: row.text.toUpperCase() }));
+      await app.settle();
+      expect(counts).toEqual({ caretReads: 10, ranges: 10 });
+    } finally {
+      Object.defineProperty(HTMLInputElement.prototype, "selectionStart", caret);
+      HTMLInputElement.prototype.setSelectionRange = range;
+    }
   });
 
   /**
