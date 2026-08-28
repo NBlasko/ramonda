@@ -285,21 +285,39 @@ if (wantsFix) {
   const fixed = applyFixes(findings, !dryRun);
 
   if (fixed.applied === 0) {
-    console.error(`[ramonda-check] nothing to ${dryRun ? "fix" : "fix"} — no reported fault here has a single answer.`);
+    console.error(`${TAG} nothing to fix — no fault reported here has a single answer.`);
   } else {
     console.error(
-      `[ramonda-check] ${dryRun ? "would apply" : "applied"} ${fixed.applied} fix(es) across ${fixed.files.length} file(s):`,
+      `${TAG} ${dryRun ? "would apply" : "applied"} ${fixed.applied} fix(es) across ${fixed.files.length} file(s):`,
     );
     for (const said of fixed.said) console.error(`  ${said}`);
   }
 
   if (fixed.overlapping > 0) {
     console.error(
-      `\n[ramonda-check] ${fixed.overlapping} fix(es) left alone: another fix wanted the same characters, and choosing between them would be a guess.`,
+      `\n${TAG} ${fixed.overlapping} fix(es) left alone: another fix wanted the same characters, and choosing between them would be a guess.`,
     );
   }
 
-  if (dryRun) process.exit(0);
+  /**
+   * `--fix --dry-run` is a CHECK, and answers with its exit code.
+   *
+   * It is the shape `biome format --check` and every tool like it uses, and it is what makes this
+   * usable in a gate: a fault the checker knows the answer to, left in the tree, is one nobody has
+   * an excuse for. Most of them are warnings and a normal run exits 0 on those — which is right,
+   * because a warning is a judgement someone may reasonably defer. A warning with a MECHANICAL
+   * answer is not that.
+   *
+   * It stops here rather than falling through to the report. One question, one answer: a step that
+   * also printed every unrelated warning would be read as the whole check and is not.
+   */
+  if (dryRun) {
+    if (fixed.applied > 0) {
+      console.error(`\n${TAG} run \`--fix\` to apply them, or fix them by hand — this run is failing on them.`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
 }
 
 const failing = failingRules(findings);
