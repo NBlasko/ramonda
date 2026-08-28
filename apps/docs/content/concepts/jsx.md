@@ -79,6 +79,34 @@ the right spelling written into the error:
 There is no controlled/uncontrolled pair here, which is why `defaultValue` has
 nothing to mean: a render decides `value` like it decides any other attribute.
 
+### A `false` takes an attribute away
+
+`false` means the attribute should not be there, which is the only way to turn
+`disabled` off — a boolean attribute is on whenever it is present, whatever it
+says, so removing it is what says "off".
+
+That applies to `data-*` too, and it is usually what you want:
+
+```tsx
+<div data-open={this.isOpen} />
+```
+
+```css
+[data-open] .panel { display: block }
+```
+
+The flag is there or it is not. If you need the WORD `false` in the document —
+a `[data-x="false"]` rule, or something reading `dataset.x` and expecting a
+string either way — write it as one:
+
+```tsx
+<div data-x={String(this.ready)} />
+```
+
+`aria-*` is the exception: those are enumerated strings rather than flags, and
+`aria-expanded="false"` means something an absent attribute does not. A `false`
+on one of them is written rather than obeyed.
+
 **An image and a frame have to be named.** `<img>`, `<area>` and `<iframe>` are
 the two things on a page with nothing inside them to work them out from, so the
 name is the content rather than a nicety — and the types ask for one:
