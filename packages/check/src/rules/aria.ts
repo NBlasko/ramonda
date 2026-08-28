@@ -182,6 +182,41 @@ export const ROLES: ReadonlySet<string> = new Set([
  * role is probably a typo, and an abstract one is somebody reading the spec's inheritance diagram
  * and taking a branch name for a leaf.
  */
+/**
+ * The roles a keyboard must be able to REACH and ACTIVATE — the widgets a user operates.
+ *
+ * ## Which way this table is allowed to be wrong, and it is the opposite of {@link ROLES}
+ *
+ * `ROLES` leans LONG: a rule reading it reports a name that is NOT in it, so a short table reports
+ * correct markup. This one is read the other way round — a rule reports an element whose role IS in
+ * here — so a table long by one reports an element that never needed a keyboard path, and short by
+ * one misses a fault. It leans SHORT, and the entries are the roles where "the user activates this"
+ * is not arguable.
+ *
+ * So `progressbar`, `scrollbar`, `separator` and `tabpanel` are deliberately absent even though the
+ * specification files some of them as widgets: a progress bar is read, not operated, and the others
+ * are operated only in ways that are not a click. `slider`, `spinbutton` and `textbox` are absent
+ * for a different reason — each is normally built on the input that already is one, and a `<div
+ * role="textbox">` with a click handler is a shape rare enough that guessing at it costs more than
+ * it finds.
+ *
+ * Source: **WAI-ARIA 1.2**, the widget roles, filtered to those whose own documentation describes a
+ * user activating them.
+ */
+export const ACTIVATED_BY_THE_USER: ReadonlySet<string> = new Set([
+  "button",
+  "checkbox",
+  "link",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "radio",
+  "switch",
+  "tab",
+  "treeitem",
+]);
+
 export const ABSTRACT_ROLES: ReadonlySet<string> = new Set([
   "command",
   "composite",

@@ -68,6 +68,7 @@ export type {
   RegionWithNoNameIssue,
   FalseOnABooleanAttributeIssue,
   MisspelledElementPropertyIssue,
+  HalfBuiltKeyboardPathIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   ServerEnvInSharedCodeIssue,

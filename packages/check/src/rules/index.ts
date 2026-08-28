@@ -55,6 +55,7 @@ import { landmarksThatCannotBeToldApart } from "./landmarks-that-cannot-be-told-
 import { regionWithNoName } from "./region-with-no-name";
 import { falseOnABooleanAttribute } from "./false-on-a-boolean-attribute";
 import { misspelledElementProperty } from "./misspelled-element-property";
+import { halfBuiltKeyboardPath } from "./half-built-keyboard-path";
 import { parentWithAForeignChild } from "./parent-with-a-foreign-child";
 import { ariaThatContradictsTheTag } from "./aria-that-contradicts-the-tag";
 import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
@@ -187,6 +188,7 @@ export {
 export { regionWithNoName, type RegionWithNoNameIssue } from "./region-with-no-name";
 export { falseOnABooleanAttribute, type FalseOnABooleanAttributeIssue } from "./false-on-a-boolean-attribute";
 export { misspelledElementProperty, type MisspelledElementPropertyIssue } from "./misspelled-element-property";
+export { halfBuiltKeyboardPath, type HalfBuiltKeyboardPathIssue } from "./half-built-keyboard-path";
 export { parentWithAForeignChild, type ParentWithAForeignChildIssue } from "./parent-with-a-foreign-child";
 export {
   ariaThatContradictsTheTag,
@@ -304,6 +306,7 @@ export const ELEMENT_RULES = [
   regionWithNoName,
   falseOnABooleanAttribute,
   misspelledElementProperty,
+  halfBuiltKeyboardPath,
   ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,

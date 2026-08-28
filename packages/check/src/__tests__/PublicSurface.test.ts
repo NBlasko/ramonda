@@ -89,6 +89,7 @@ const EXPECTED_TYPES = [
   "RegionWithNoNameIssue",
   "FalseOnABooleanAttributeIssue",
   "MisspelledElementPropertyIssue",
+  "HalfBuiltKeyboardPathIssue",
   "RoleTakesNoNameIssue",
   "RowReadsAPlainFieldIssue",
   "RowWithoutAKeyIssue",
