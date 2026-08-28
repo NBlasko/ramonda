@@ -32,6 +32,8 @@ export type { Identity } from "./base/merge";
 export { Head } from "./base/Head";
 export type { HeadOptions, MetaTag, LinkTag } from "./base/Head";
 export { Timeout, Interval } from "./base/Timers";
+export { Listener } from "./base/Listener";
+export type { ListenerProps } from "./base/Listener";
 export type { ScheduledProps } from "./base/Timers";
 export { Portal } from "./base/Portal";
 export type { PortalProps } from "./base/Portal";
