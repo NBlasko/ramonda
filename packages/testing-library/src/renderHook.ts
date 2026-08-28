@@ -83,8 +83,8 @@ export function renderHook<T, O = undefined>(
     instance = this.use(hook as never, (self: HookHost) => self.currentProps as never) as T;
 
     render(): RamondaNode {
-      // A hook has no DOM of its own; the host still needs one element, because
-      // every component in Ramonda is exactly one element.
+      // A hook has no DOM of its own, so the host renders a marker element — the
+      // thing `render` returns a container around, and the thing cleanup removes.
       return __h("div", { "data-ramonda-hook-host": "" }) as RamondaNode;
     }
   }

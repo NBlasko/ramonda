@@ -8,10 +8,11 @@
     "build:client": "node scripts/build.mjs client",
     "build:server": "node scripts/build.mjs server",
     "prerender": "node scripts/prerender.mjs",
-    "build": "node scripts/require-content.mjs && node scripts/build-theme.mjs --check && node scripts/build-rule-tables.mjs --check && npm run clean && npm run check-api && npm run build:client && npm run manifest && npm run build:client && npm run build:server && ramonda-check-bundle dist/assets .build && npm run prerender && npm run index",
+    "build": "node scripts/require-content.mjs && node scripts/build-theme.mjs --check && node scripts/build-og-png.mjs --check && node scripts/build-rule-tables.mjs --check && npm run clean && npm run check-api && npm run build:client && npm run manifest && npm run build:client && npm run build:server && ramonda-check-bundle dist/assets .build && npm run prerender && npm run index",
     "check-types": "tsc --noEmit",
     "serve": "node scripts/serve.mjs",
     "manifest": "node scripts/build-manifest.mjs",
+    "og": "node scripts/build-og-png.mjs",
     "check-api": "node scripts/check-api-coverage.mjs",
     "index": "pagefind --site dist",
     "test": "vitest run",
@@ -28,6 +29,7 @@
     "@ramonda/server": "workspace:^"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@ramonda/build": "workspace:^",
     "@ramonda/check": "workspace:^",
     "@ramonda/theme": "workspace:^",

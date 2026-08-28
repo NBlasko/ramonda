@@ -127,7 +127,8 @@ type RefusedEventCasing = {
  * `concepts/jsx` states, and it is complete. Nothing here is reserved: `http-equiv` and
  * `accept-charset` are writable exactly as HTML spells them, and `value` and `checked` are the
  * attributes a `default*` spelling would be standing in for. Aliasing them would turn a two-name
- * exception into a list that grows forever, and the framework's own rule is that the JSX is the DOM.
+ * exception into a list that grows forever, against a framework whose rule is that what you write
+ * is the attribute the element actually has.
  */
 interface RefusedNames {
   innerHTML: "write the markup as children — `innerHTML` is not an attribute";

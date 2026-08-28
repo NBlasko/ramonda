@@ -31,10 +31,10 @@ class TaskRow extends Component<{ item: Task }> {
   }
 }
 
-// `list()` is a FUNCTION in an expression slot, not a component — Ramonda is
-// 1-1, so a <List> tag would have to BE an element and could not put N siblings
-// into the parent. It returns a descriptor the diff understands; the component
-// keeps its single host.
+// `list()` is a FUNCTION in an expression slot, not a component — a list has no
+// state, no lifecycle and nothing of its own to be, so there is nothing for a
+// <List> tag to name. It returns a descriptor the diff understands, and being an
+// expression is what lets it sit anywhere one can.
 //
 // Note what is NOT here: a key. Identity comes from the item itself (its object
 // reference), so there is nothing to write and nothing to get wrong. A wrong key

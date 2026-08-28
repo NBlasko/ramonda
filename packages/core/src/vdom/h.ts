@@ -234,17 +234,18 @@ function regionOwner(index: number, originId: number): string {
 
 /**
  * Builds a vnode from a JSX tag. Exactly two kinds belong there: an intrinsic
- * tag, and a class component — each of which becomes exactly ONE element. That
- * one-to-one rule is what makes a Ramonda tree readable: the JSX is the DOM.
+ * tag, which is one element, and a class component, which renders whatever its
+ * `render()` returns — one element, several, or none.
  *
  * A function is accepted only so it can be reported (RMD011) instead of quietly
  * behaving like a component that has no element. TypeScript already rejects it
  * at the call site — see JSX.ElementType in global.ts.
  *
- * The return is one `VNode`, which is the 1-1 rule stated in the type: every tag
- * the types accept builds exactly one element. Declaring the wider `RamondaNode`
- * described only the unreachable branch below, and made callers that build vnodes
- * by hand — a generated route table, a table cell — cast the result back.
+ * The return is one `VNode` per tag, and that is a claim about the vnode rather
+ * than about the DOM: a component is one node here and as many elements as it
+ * renders on the page. Declaring the wider `RamondaNode` described only the
+ * unreachable branch below, and made callers that build vnodes by hand — a
+ * generated route table, a table cell — cast the result back.
  */
 /**
  * A component class with its own props, called directly rather than through JSX.
@@ -289,7 +290,7 @@ export function __h(
     return createRamonda(upperCaseName, attributes, parsedChildren);
   }
 
-  // 2. Classes (components) — each becomes exactly one element.
+  // 2. Classes (components) — each becomes one vnode; what it draws is its render's business.
   //
   // The nullish check is load-bearing, not defensive. `<Thing />` where the import failed arrives
   // here as `undefined`, which is the FIRST case RMD044 names — and reading `.__isComponent` off it
@@ -308,10 +309,11 @@ export function __h(
 
   // 3. A function in tag position — not a supported kind of component.
   //
-  // A tag that is not an element defeats the reason the 1-1 rule exists: that
-  // the DOM is readable off the JSX. Report it (RMD011) and point at the real
-  // answer — a Hook for state/lifecycle without an element, or `{fn()}` if
-  // vnodes were all that was wanted.
+  // A function has nothing to construct: no state, no lifecycle, and no identity
+  // the diff can hold. A component covers every case it does and several it
+  // cannot, so this is refused rather than supported. Report it (RMD011) and
+  // point at the real answer — a Hook for state/lifecycle without an element, or
+  // `{fn()}` if vnodes were all that was wanted.
   //
   // Call it anyway. TS rejects a NAMED function in tag position, so `<sideBar />` never gets here
   // from typed code — but `<>…</>` does: the compiler does not typecheck a fragment's parameter at
@@ -321,9 +323,8 @@ export function __h(
   if (typeof name === "function") {
     try {
       if (__DEV__) reportFunctionTag(name.name);
-      // Cast because this branch is the one place the 1-1 rule is already broken:
-      // the function returns whatever it likes. It is unreachable from typed code,
-      // and it has just been reported.
+      // Cast because a function returns whatever it likes, and nothing here can
+      // narrow that. Unreachable from typed code, and already reported.
       return (name as UnsupportedTagFn)(attributes as never) as VNode;
     } catch (e) {
       if (__DEV__) {

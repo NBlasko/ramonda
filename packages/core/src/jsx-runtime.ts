@@ -83,7 +83,8 @@ export function jsxs(type: unknown, props: Props | null, key?: string | number):
 export function Fragment(): never {
   if (__DEV__) reportFunctionTag("Fragment");
   throw new Error(
-    "Ramonda has no fragments: `<>…</>` would make one tag produce several elements. " +
-      "Wrap them in an element, or write `{[a, b]}` if you only wanted the vnodes.",
+    "Ramonda has no fragments: `<>…</>` has no state, no lifecycle and no identity the diff can " +
+      "hold, and a component covers every case it would. Use one, or write `{[a, b]}` if you only " +
+      "wanted the vnodes.",
   );
 }

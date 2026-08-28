@@ -4,11 +4,12 @@ import { diagnose } from "./diagnostics";
 /**
  * DEV-only: what is allowed to stand in a JSX tag.
  *
- * A Ramonda tag is always exactly one element — that rule is what lets you read
- * the DOM off the JSX. TypeScript already refuses a function there (see
- * JSX.ElementType in global.ts), so this only fires when types were bypassed or
- * the build has none. It exists so the pattern is enforced at runtime too,
- * rather than a function quietly behaving like a component with no element.
+ * A tag is an intrinsic element or a component — something with state, a
+ * lifecycle and an identity the diff can hold. A function is none of those.
+ * TypeScript already refuses one there (see JSX.ElementType in global.ts), so
+ * this only fires when types were bypassed or the build has none. It exists so
+ * the rule holds at runtime too, rather than a function quietly behaving like a
+ * component that has nothing.
  */
 
 /**
