@@ -57,6 +57,12 @@ describe("a property name written in a case the element does not have", () => {
    * the beginning or it is two lists later — and this rule reads `propertyOnlyNames` from it. If
    * core ever gains a property-only name, this reports its misspelling the same day.
    */
+  /** A rename has one answer, so it is carried rather than described — the NAME node, not the attribute. */
+  test("every report carries the rename that fixes it", () => {
+    expect(found().map((issue) => issue.edit?.text)).toEqual(["playbackRate", "currentTime", "playbackRate"]);
+    expect(found().every((issue) => issue.edit !== undefined)).toBe(true);
+  });
+
   test("and it knows both media tags, not just the one the fixture leads with", () => {
     expect(found().map((issue) => issue.tag)).toContain("video");
     expect(found().map((issue) => issue.tag)).toContain("audio");

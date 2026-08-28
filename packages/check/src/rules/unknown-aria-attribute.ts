@@ -1,6 +1,7 @@
+import ts from "typescript";
 import { positionOf } from "../syntax";
 import { ARIA_ATTRIBUTES } from "./aria";
-import type { ElementRule } from "./rule";
+import type { ElementRule, TextEdit } from "./rule";
 
 /**
  * An `aria-*` attribute the specification does not have.
@@ -31,6 +32,8 @@ export interface UnknownAriaAttributeIssue {
   attribute: string;
   /** The real attribute it was probably meant to be, when one is obvious. */
   meant?: string;
+  /** The case fix, when that is all it is — see {@link TextEdit}. A typo carries no edit. */
+  edit?: TextEdit;
   file: string;
   line: number;
   column: number;
@@ -135,7 +138,31 @@ export const unknownAriaAttribute = {
       if (!inSvg && ARIA_ATTRIBUTES.has(written.toLowerCase())) continue;
 
       const meant = probably(written);
-      found.push({ attribute: written, ...(meant ? { meant } : {}), ...positionOf(attribute.at) });
+
+      /**
+       * Only the CASE fix is carried, and the difference matters more than it looks.
+       *
+       * `probably` answers two ways. `aria-labelledBy` is the right name in the wrong case, and
+       * lower-casing it is not a guess — it is the same attribute, spelled the way the DOM stores
+       * it. `aria-requred` is one edit from `aria-required` and the rule says "did you mean?",
+       * because it might have been `aria-required` and might have been something else entirely.
+       *
+       * Applying the second would be applying "what they probably meant", which is the one thing
+       * an edit must never be. So the typo keeps its question mark and its prose.
+       */
+      const isJustTheCase = meant !== undefined && meant === written.toLowerCase();
+      const name = ts.isJsxAttribute(attribute.at) ? attribute.at.name : undefined;
+      const edit =
+        isJustTheCase && name !== undefined
+          ? { from: name.getStart(), to: name.getEnd(), text: meant, says: `\`${written}\` → \`${meant}\`` }
+          : undefined;
+
+      found.push({
+        attribute: written,
+        ...(meant ? { meant } : {}),
+        ...(edit ? { edit } : {}),
+        ...positionOf(attribute.at),
+      });
     }
 
     return found;

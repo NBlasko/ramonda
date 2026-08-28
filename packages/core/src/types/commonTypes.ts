@@ -161,6 +161,24 @@ export interface RefusedOnFields {
 }
 
 /**
+ * `selected` on an `<option>`, which `Select` overwrites on every render.
+ *
+ * The choice belongs to the select, not to the option, and `Select` applies it by walking EVERY
+ * option and setting each one from its `value` — on and off, for all of them. So an option that
+ * asked to be chosen is turned off again a moment later. The attribute is not competing with
+ * `value` and losing sometimes; it does nothing, while being the one line on the page that looks
+ * like it chooses.
+ *
+ * Refused here rather than left to `@ramonda/check` alone for the reason `<select>` itself is: the
+ * error arrives at the call site, in the editor, before the page is ever run. The checker reports
+ * it too, because a type is a defence only while nobody casts it away — a `@ts-ignore`, a props bag
+ * widened somewhere, a JavaScript file.
+ */
+export interface RefusedOnOption {
+  selected: "the choice belongs to the select — write <Select value={x}>, which sets this on every option";
+}
+
+/**
  * The two tags whose meaning the framework cannot leave to the author: `<select>` and `<textarea>`.
  *
  * Every other element says what it is with its own attributes. A select says it with its CHILDREN —

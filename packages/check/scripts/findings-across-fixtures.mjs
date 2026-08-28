@@ -43,6 +43,16 @@ const MOVES_WITH_THE_FILE = new Set([
   "firstAtLine",
   "providerAtLine",
   "afterAtLine",
+  // `edit` carries character offsets, which move whenever a fixture gains a line above them — the
+  // same reason `line` is here. It caught itself the day it was added: every finding of the first
+  // rule to carry an edit read as LOST, because the claim had gained a field while the rule was
+  // reporting exactly as before.
+  //
+  // The whole field is dropped, not just its offsets, so what an edit REPLACES is not compared
+  // here. That is a real gap and a deliberate one: nesting the normaliser to reach inside would
+  // cost more than it buys, and each rule that carries an edit asserts its `text` in its own test,
+  // where a wrong replacement is a failure rather than a line in a diff.
+  "edit",
 ]);
 
 if (!existsSync(dist)) {

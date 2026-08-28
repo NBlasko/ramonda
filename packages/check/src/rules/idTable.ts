@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { coreDecoratorName } from "./core-import";
 import { positionOf } from "../syntax";
+import { coreElementTag } from "./coreElements";
 import { openingOf, tagOf } from "./element";
 import { follow, type Looking } from "./follow-value";
 import { NAMES_IT } from "./naming";
@@ -139,7 +140,16 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
 
   const readElement = (element: ts.JsxElement | ts.JsxSelfClosingElement): void => {
     const opening = openingOf(element);
-    const hostTag = tagOf(element);
+    /**
+     * A COMPONENT that IS an element counts as that element here too.
+     *
+     * `<Select>` and `<TextArea>` are how core makes an author write a `<select>` and a
+     * `<textarea>`, and this table decides which elements are CONTROLS — so reading only the
+     * written tag meant an unlabelled `<Select>` was not a control at all and
+     * `control-with-no-label` never met it. Measured beside an `<input>` carrying the identical
+     * fault, which was reported.
+     */
+    const hostTag = tagOf(element) ?? coreElementTag(opening.tagName, resolve);
     // A component tag reads as `undefined`; its own name is what a report shows.
     const tag = hostTag ?? opening.tagName.getText();
 

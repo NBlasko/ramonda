@@ -91,6 +91,7 @@ const EXPECTED_TYPES = [
   "MisspelledElementPropertyIssue",
   "HalfBuiltKeyboardPathIssue",
   "ElementHtmlRemovedIssue",
+  "OptionThatCannotChooseIssue",
   "RoleTakesNoNameIssue",
   "RowReadsAPlainFieldIssue",
   "RowWithoutAKeyIssue",

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { applyFixes } from "./fix";
 import { analyzeProject } from "./analyze";
 import { diffGraphs, refuseToDiff } from "./diff";
 import type { ComponentGraph } from "./graph";
@@ -28,6 +29,10 @@ import { filesOf, splitOf } from "./split";
  *
  * `--split` says what the browser loads before it does anything and what each lazily loaded piece
  * brings with it, and `--diff <graph.json>` compares this run against a graph written earlier.
+ *
+ * `--fix` writes the answers this run already knows, and `--fix --dry-run` says what it would
+ * write. Only a fault whose fix has exactly ONE answer carries an edit — a rename, a deletion —
+ * so `--fix` is never "this run is now clean": everything needing a person is still reported.
  * Both are reports: they describe, they never fail a build.
  */
 const argv = process.argv.slice(2);
@@ -39,6 +44,8 @@ const valueOf = (flag: string): string | undefined => {
 const graphAt = valueOf("--graph");
 const diffAgainst = valueOf("--diff");
 const wantsSplit = argv.includes("--split");
+const wantsFix = argv.includes("--fix");
+const dryRun = argv.includes("--dry-run");
 const values = new Set([graphAt, diffAgainst].filter((v): v is string => v !== undefined));
 const arg = argv.find((a) => !a.startsWith("--") && !values.has(a));
 const tsconfig = resolve(arg ?? "tsconfig.json");
@@ -263,6 +270,56 @@ for (const rule of RULES) {
  * this print "everything is fine" above its own report. That is the worst shape a bug in a checker
  * can take, and the list is the only thing that made it possible.
  */
+
+/**
+ * `--fix` writes the answers this run already knows, and `--dry-run` says what it would write.
+ *
+ * Placed BEFORE the report, so what is printed afterwards is the state of the code as it now
+ * stands rather than the state it was in when the run started. A reader who fixes and then sees the
+ * same list would rightly stop believing either half.
+ *
+ * Only a fault whose fix has ONE answer carries an edit; everything else still prints its advice
+ * and is still counted below. So `--fix` never means "this run is now clean".
+ */
+if (wantsFix) {
+  const fixed = applyFixes(findings, !dryRun);
+
+  if (fixed.applied === 0) {
+    console.error(`${TAG} nothing to fix — no fault reported here has a single answer.`);
+  } else {
+    console.error(
+      `${TAG} ${dryRun ? "would apply" : "applied"} ${fixed.applied} fix(es) across ${fixed.files.length} file(s):`,
+    );
+    for (const said of fixed.said) console.error(`  ${said}`);
+  }
+
+  if (fixed.overlapping > 0) {
+    console.error(
+      `\n${TAG} ${fixed.overlapping} fix(es) left alone: another fix wanted the same characters, and choosing between them would be a guess.`,
+    );
+  }
+
+  /**
+   * `--fix --dry-run` is a CHECK, and answers with its exit code.
+   *
+   * It is the shape `biome format --check` and every tool like it uses, and it is what makes this
+   * usable in a gate: a fault the checker knows the answer to, left in the tree, is one nobody has
+   * an excuse for. Most of them are warnings and a normal run exits 0 on those — which is right,
+   * because a warning is a judgement someone may reasonably defer. A warning with a MECHANICAL
+   * answer is not that.
+   *
+   * It stops here rather than falling through to the report. One question, one answer: a step that
+   * also printed every unrelated warning would be read as the whole check and is not.
+   */
+  if (dryRun) {
+    if (fixed.applied > 0) {
+      console.error(`\n${TAG} run \`--fix\` to apply them, or fix them by hand — this run is failing on them.`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+}
+
 const failing = failingRules(findings);
 
 if (

@@ -192,6 +192,50 @@ export type JsxElementLike = ts.JsxElement | ts.JsxSelfClosingElement;
  * So the readers work from THIS instead — one normalised list per element, built once, and ONE
  * answer per question rather than one per caller.
  */
+/**
+ * A replacement this package can make ITSELF, for a fault whose fix has exactly one answer.
+ *
+ * Most advice cannot be applied by a machine: "give it a name" needs a person to know what the
+ * thing is called. A few faults are not like that — `httpEquiv` becomes `http-equiv` and there is
+ * nothing to decide — and for those, printing a sentence and making somebody type it is work the
+ * tool could have done.
+ *
+ * ## The bar for adding one
+ *
+ * **One answer, and it must be the right one.** Not "the usual fix", not "what they probably
+ * meant". If a rule reports two shapes and only one has an obvious replacement, only that one gets
+ * an edit and the other still gets prose. A wrong edit is worse than a wrong report by the distance
+ * between reading a sentence and reverting a commit.
+ *
+ * **Offsets, not lines.** A rule reports a line and a column so a person can find it; an edit needs
+ * the exact span in the file, and the two are rarely the same node — `class-instead-of-classname`
+ * points at the element and replaces the attribute NAME.
+ */
+export interface TextEdit {
+  /** Where the replaced span starts, as a character offset in the file. */
+  from: number;
+  /** Where it ends. `from === to` inserts; a `text` of `""` deletes. */
+  to: number;
+  /** What goes in its place. */
+  text: string;
+  /** What this edit does, for `--fix --dry-run` to print without re-deriving it. */
+  says: string;
+}
+
+/**
+ * The half of an issue every rule shares, and the only half anything outside a rule reads.
+ *
+ * `collect` and the fixer both work structurally on this, which is why neither needs to know what
+ * kind of issue it is holding.
+ */
+export interface Reported {
+  file: string;
+  line: number;
+  column: number;
+  /** Present only when the fix has one answer — see {@link TextEdit}. */
+  edit?: TextEdit;
+}
+
 export interface WrittenAttribute {
   /** The name exactly as written — `aria-labelledBy`, `class`, `tabIndex`. */
   name: string;

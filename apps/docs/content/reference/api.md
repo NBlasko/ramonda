@@ -31,6 +31,7 @@ Everything every package exports. Each entry links to the page that explains it.
 | `@StableProps(...names)` | Declares which props are values, so a caller writes the plain literal. On a hook and on a component alike. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) · [A prop that is a value](/concepts/props#a-prop-that-is-a-value) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `Timeout` / `Interval` | A scheduled call the app starts and the framework clears: `this.use(Timeout, () => ({ run }))`, then `start(ms)` and `stop()`. One instance is one timer; `start` returns whether it started, and teardown clears it. [Timers](/concepts/timers#a-timer-that-starts-when-you-say) |
+| `Listener` | A DOM listener the app arms and the framework removes: `this.use(Listener, () => ({ on: "document", type: "keydown", run }))`, then `listen()` and `stop()`. The target is named — `"window"`, `"document"` or a function — so a server render has nothing to evaluate. One instance is one listener, and teardown removes it. |
 | `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. [Portal](/composition/portal) |
 | `portalTarget(name)` | Names a portal target outside the app's root, so it exists on the server too. `PORTAL_TARGET_ATTR` marks the container a shell emits. [Portal](/composition/portal) |
 | `Select` | A `<select>`, whose value is which of its children is chosen. The plain tag is refused: `selected` on an option means whatever the render order made it mean. `<option>` is untouched. [Fields](/forms/fields#a-choice-lives-on-select) |
@@ -383,15 +384,16 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `LandmarksThatCannotBeToldApartIssue`, `LateRequestReadIssue`, `LinkWithoutADestinationIssue`,
 `ListenerAddedByHandIssue`, `LiveRegionThatContradictsItsRoleIssue`, `MediaWithNoCaptionsIssue`,
 `MisspelledElementPropertyIssue`, `MoreThanOneMainIssue`, `NamedOnlyByAPlaceholderIssue`,
-`OneProviderPerComponentIssue`, `ParentWithAForeignChildIssue`, `PersistOfALossyValueIssue`,
-`PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
-`RegionWithNoNameIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
-`RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`,
-`ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
-`TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`,
-`UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
-`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
-`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`OneProviderPerComponentIssue`, `OptionThatCannotChooseIssue`, `ParentWithAForeignChildIssue`,
+`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`,
+`ReferenceToAnIdThatIsNotThereIssue`, `RegionWithNoNameIssue`, `RoleMissingRequiredAriaIssue`,
+`RoleTakesNoNameIssue`, `RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`,
+`RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`,
+`StateWrittenWhileRenderingIssue`, `TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`,
+`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`,
+`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
+`UnserializableStateIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
+`WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 
