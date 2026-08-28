@@ -2,7 +2,7 @@ import { Component } from "./Component";
 import { createRef } from "./Ref";
 import { mounted, updated } from "./decorators";
 import { __h } from "../vdom/h";
-import { forwarded } from "./forwarded";
+import { forwarded, given } from "./forwarded";
 import type { RefTarget } from "./Ref";
 
 /**
@@ -42,20 +42,19 @@ export interface TextAreaProps {
 
 export class TextArea extends Component<TextAreaProps> {
   /**
-   * The element's ref is this component's, always — and the caller's is handed the same node.
+   * `e` — the `<textarea>` this component owns. Its ref is this component's, always, and the caller's
+   * is handed the same node.
    *
    * One element takes one `ref`, so a caller who writes `<TextArea ref={mine}>` cannot have it
    * forwarded onto the tag: whichever is written last wins, and if the caller's wins this component
    * never sees its own element. That bug was found on `Select`, where it silently stopped the choice
    * from ever being applied.
    */
-  /** `e` — the `<textarea>` element this component owns. One letter because a class member survives minification as written. */
   private e = createRef<HTMLTextAreaElement>((node) => this.g(node));
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLTextAreaElement> | undefined;
 
-  /** `g` — GIVES the caller's ref this node, and takes it back from one they have dropped. */
   private g(node: HTMLTextAreaElement | null): void {
     const theirs = this.props.ref;
     if (this.h !== undefined && this.h !== theirs) this.h.setCurrent(null);
@@ -91,6 +90,20 @@ export class TextArea extends Component<TextAreaProps> {
      * there is nothing to suppress: the refusal keeps meaning exactly what it says at every call
      * site that writes the tag, and this one does not write it.
      */
-    return __h("textarea", { ...forwarded(this, ["value", "children", "ref"]), ref: this.e }, String(this.props.value));
+    const text = String(this.props.value);
+
+    /**
+     * An EMPTY value is no child at all, not a child that is the empty string.
+     *
+     * The two look identical in the DOM and are not the same tree: a server render has nothing to
+     * serialize for `""`, so it sends `<textarea></textarea>`, and a client that built an empty text
+     * node disagrees with it. Measured: RMD007, *rendered the text "" but the server sent nothing* —
+     * a report about correct markup, which is the worst kind.
+     */
+    return __h(
+      "textarea",
+      { ...forwarded(this, ["value", "children", "ref"]), ref: this.e },
+      ...given(text || undefined),
+    );
   }
 }

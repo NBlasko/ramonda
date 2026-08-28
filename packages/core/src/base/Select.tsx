@@ -46,7 +46,8 @@ export interface SelectProps {
 
 export class Select extends Component<SelectProps> {
   /**
-   * The element's ref is this component's, always — and the caller's is handed the same node.
+   * `e` — the `<select>` this component owns. Its ref is this component's, always, and the caller's
+   * is handed the same node.
    *
    * One element takes one `ref`, so a caller who writes `<Select ref={mine}>` cannot simply have it
    * forwarded onto the tag: whichever of the two is written last wins, and if the caller's wins this
@@ -55,20 +56,18 @@ export class Select extends Component<SelectProps> {
    * `b` asked for out of `a b c`: the page showed `c`, and the served markup carried no `selected`
    * at all.
    */
-  /** `e` — the `<select>` element this component owns. One letter because a class member survives minification as written. */
   private e = createRef<HTMLSelectElement>((node) => this.g(node));
 
   /** `h` — the caller's ref as of the last HAND-OVER, so a swapped one can be let go of. */
   private h: RefTarget<HTMLSelectElement> | undefined;
 
   /**
-   * Gives the caller's ref the node, and takes it back from one the caller has stopped passing.
+   * `g` — GIVES the caller's ref the node, and takes it back from one the caller has dropped.
    *
    * The release half is the rule `releaseDroppedRef` enforces for an element: a ref must not outlive
    * the node it points at, or `current` reads as present while `focus()` does nothing. The framework
    * cannot do it here, because as far as it can see the ref on this element never changes.
    */
-  /** `g` — GIVES the caller's ref this node, and takes it back from one they have dropped. */
   private g(node: HTMLSelectElement | null): void {
     const theirs = this.props.ref;
     if (this.h !== undefined && this.h !== theirs) this.h.setCurrent(null);

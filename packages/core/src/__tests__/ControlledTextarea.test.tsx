@@ -76,6 +76,42 @@ describe("what the server sends for a textarea", () => {
 });
 
 describe("a served textarea, hydrated", () => {
+  /**
+   * An EMPTY value is no child at all, not a child that is the empty string.
+   *
+   * The two look identical in the DOM and are not the same tree: the server has nothing to
+   * serialize for `""`, so it sends `<textarea></textarea>`, and a client that built an empty text
+   * node disagrees with it. It reported RMD007 — *rendered the text "" but the server sent nothing*
+   * — on markup both sides were right about, which is the worst kind of report to get.
+   */
+  test("an empty value is not a mismatch", async () => {
+    class Blank extends Component {
+      render() {
+        return <TextArea id="t" value="" />;
+      }
+    }
+
+    const captured: string[] = [];
+    const handler = (event: Event) => captured.push((event as CustomEvent).detail.message as string);
+    window.addEventListener("ramonda:dev-log", handler);
+
+    const html = await renderToString(<Blank />);
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html;
+    captured.length = 0;
+
+    hydrateRoot(<Blank />, container);
+    await Promise.resolve();
+
+    window.removeEventListener("ramonda:dev-log", handler);
+    const field = container.querySelector("#t") as HTMLTextAreaElement;
+    const result = { value: field.value, reported: captured.filter((m) => m.includes("RMD")) };
+    container.remove();
+
+    expect(result).toEqual({ value: "", reported: [] });
+  });
+
   test("the reader sees the text before any JS, and it stays after", async () => {
     const html = await renderToString(<Editor />);
     const container = document.createElement("div");

@@ -203,18 +203,17 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   /**
    * State this element keeps in a PROPERTY, with no attribute of that name to write it in.
    *
-   * A checkbox's `indeterminate`, a media element's `volume` — and a `<textarea>`'s `value`, whose
-   * value is its TEXT. Writing the attribute puts a word in the document that nothing reads while
-   * the element goes on holding what it held before, so the property is the whole answer and there
-   * is nothing to serialize.
+   * A checkbox's `indeterminate`, a media element's `volume`. Writing the attribute puts a word in
+   * the document that nothing reads while the element goes on holding what it held before, so the
+   * property is the whole answer and there is nothing to serialize.
    *
-   * A table rather than a branch each, because there are five of them and the next one is a row. The
-   * list is in `@ramonda/dom-facts`, with the rest of what this package and the checker agree about.
+   * A table rather than a branch each, because the next one is a row. The list is in
+   * `@ramonda/dom-facts`, with the rest of what this package and the checker agree about.
    *
    * The consequence, which is HTML's and not ours: none of this survives a server render. A checkbox
-   * arrives unchecked rather than mixed and becomes mixed when hydration runs this line. A textarea
-   * is the exception only because its value has somewhere else to go — as the element's text, put
-   * there before the diff ever runs; see `textareaChildren`.
+   * arrives unchecked rather than mixed and becomes mixed when hydration runs this line. There is
+   * nowhere in markup to say it. `<select>` and `<textarea>` escape that only because their state
+   * can be written as a CHILD — which is why each is a component rather than a row here.
    */
   if (keptInAProperty(enhancedNode.nodeName, name)) {
     if (name in enhancedNode) (enhancedNode as unknown as Record<string, unknown>)[name] = value;
