@@ -139,6 +139,65 @@ describe("a media element's playback state", () => {
    * which is what carries the default muted state into a served page. So it is written as well as
    * set, and both halves are asserted above.
    */
+  /**
+   * The spelling, which is the whole reason the table is matched as written.
+   *
+   * These names have no HTML form to follow — there is no `playbackrate` content attribute for
+   * `playbackRate` to be the lower-case OF — so the property name is the only name there is. Folding
+   * the case before the lookup made `playbackrate={2}` match the table and then write nothing at
+   * all, because `"playbackrate" in video` is false: a silent no-op, and it was the spelling the
+   * types encourage.
+   */
+  test("playbackRate is written as the property, and reaches it", async () => {
+    class Fast extends Component {
+      @state rate = 2;
+      render() {
+        return <video id="v" playbackRate={this.rate} currentTime={5} />;
+      }
+    }
+
+    const app = await getDOM<Fast>(<Fast />);
+    await app.settle();
+    const video = app.container.querySelector("#v") as HTMLVideoElement;
+    expect({
+      rate: video.playbackRate,
+      time: video.currentTime,
+      attributes: video.getAttributeNames().sort().join(","),
+    }).toEqual({ rate: 2, time: 5, attributes: "id" });
+
+    app.instance.rate = 0.5;
+    await app.settle();
+    expect(video.playbackRate).toBe(0.5);
+  });
+
+  /**
+   * And the misspelling, which is what folding the case hid.
+   *
+   * `playbackrate` is not a name at all — no attribute, no property. Matched against a folded table
+   * it looked like one, and the write that followed did nothing, because `"playbackrate" in video`
+   * is false. The author saw no property set, no attribute written, and no complaint.
+   *
+   * Now it falls through as any unrecognised name does, and the word it leaves in the markup is the
+   * evidence — which is also what `@ramonda/check` reports at the line that wrote it. A mistake that
+   * shows is better than one the framework quietly absorbs.
+   */
+  test("a misspelled property name is left visible rather than silently swallowed", async () => {
+    class Typo extends Component {
+      render() {
+        const misspelled: Record<string, unknown> = { playbackrate: 2 };
+        return <video id="v" {...misspelled} />;
+      }
+    }
+
+    const app = await getDOM<Typo>(<Typo />);
+    await app.settle();
+    const video = app.container.querySelector("#v") as HTMLVideoElement;
+    expect({ attribute: video.getAttribute("playbackrate"), rate: video.playbackRate }).toEqual({
+      attribute: "2",
+      rate: 1,
+    });
+  });
+
   test("muted is not treated as property-only, because it has an attribute", async () => {
     const app = await getDOM<Media>(<Media />);
     await app.settle();
@@ -149,38 +208,27 @@ describe("a media element's playback state", () => {
 
 describe("an attribute HTML does not have is not written", () => {
   /**
-   * One rule with a table behind it, rather than a branch per tag. Each of these names is real HTML
-   * somewhere else, which is what makes them worth writing down: `value` is right on an `<input>`
-   * and meaningless on a `<textarea>` and a `<select>`, whose values are their children.
+   * One rule with a table behind it, rather than a branch per tag. The contrast is on ONE element,
+   * because that is what makes the table necessary: `width` and `volume` are written side by side in
+   * the same JSX, and only one of them is an attribute.
    */
-  test("the same name is written where it exists and skipped where it does not", async () => {
-    class Both extends Component {
+  test("two names on one element, and only the real attribute is written", async () => {
+    class Player extends Component {
       render() {
-        return (
-          <div>
-            <input id="i" value="written" />
-            <textarea id="t" value="skipped" />
-          </div>
-        );
+        return <video id="v" width={320} volume={0.5} />;
       }
     }
 
-    const app = await getDOM<Both>(<Both />);
+    const app = await getDOM<Player>(<Player />);
     await app.settle();
-    const input = app.container.querySelector("#i") as HTMLInputElement;
-    const area = app.container.querySelector("#t") as HTMLTextAreaElement;
+    const video = app.container.querySelector("#v") as HTMLVideoElement;
 
     expect({
-      inputAttribute: input.getAttribute("value"),
-      areaAttribute: area.getAttribute("value"),
-      // Both are still driven, because the PROPERTY is written either way.
-      inputValue: input.value,
-      areaValue: area.value,
-    }).toEqual({
-      inputAttribute: "written",
-      areaAttribute: null,
-      inputValue: "written",
-      areaValue: "skipped",
-    });
+      width: video.getAttribute("width"),
+      volume: video.getAttribute("volume"),
+      // Both reached the element; only one of them had anywhere in the markup to go.
+      widthProperty: video.width,
+      volumeProperty: video.volume,
+    }).toEqual({ width: "320", volume: null, widthProperty: 320, volumeProperty: 0.5 });
   });
 });
