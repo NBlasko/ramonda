@@ -51,6 +51,9 @@ describe("a container holding a tag that does not belong in it", () => {
       "33:divintr",
       "39:divinol",
       "40:spaninol",
+      // Words written straight inside are as foreign as a tag, and the whitespace between children
+      // — a text node on every well-formed list there is — is not.
+      "53:textinul",
     ]);
   });
 
@@ -61,10 +64,14 @@ describe("a container holding a tag that does not belong in it", () => {
    * list is made, and either may render exactly the right tag, so only a tag written OUT and known
    * to be wrong is reported.
    *
+   * 57 is the well-formed list, and it is the one this rule would break first if the text case were
+   * written carelessly: every container here spans several lines, so the newline and the
+   * indentation between children are JSX text nodes on every correct list in existence.
+   *
    * The rest are the CONTAINERS, each holding tags it takes beside its main one — which are in the
-   * table rather than assumed away: 57 a `<table>` with a caption, a colgroup, a thead and a
-   * tbody; 73 a `<select>` and 74 the `<optgroup>` inside it, which takes options; 82 a `<dl>`
-   * with both its tags and 85 the `<div>` wrapper the specification allows in one; 92 a
+   * table rather than assumed away: 68 a `<table>` with a caption, a colgroup, a thead and a
+   * tbody; 84 a `<select>` and 85 the `<optgroup>` inside it, which takes options; 93 a `<dl>`
+   * with both its tags and 96 the `<div>` wrapper the specification allows in one; 103 a
    * `<picture>` with a source and an image.
    *
    * Each is the line the rule would REPORT if it were wrong. Three of these used to name a
@@ -73,7 +80,7 @@ describe("a container holding a tag that does not belong in it", () => {
    */
   test("the right children, and everything this cannot see, stay silent", () => {
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [44, 49, 52, 57, 73, 74, 82, 85, 92]) {
+    for (const quiet of [44, 49, 57, 63, 68, 84, 85, 93, 96, 103]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });

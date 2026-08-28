@@ -3,6 +3,7 @@ import { coreDecoratorName } from "./core-import";
 import { positionOf } from "../syntax";
 import { openingOf, tagOf } from "./element";
 import { follow, type Looking } from "./follow-value";
+import { NAMES_IT } from "./naming";
 import { enclosingElement } from "./html";
 import type { FormControl, IdReference, ProjectContext, Resolver, UnreadableId } from "./rule";
 
@@ -68,9 +69,6 @@ export const NAMES_ITSELF: ReadonlySet<string> = new Set(["submit", "reset", "bu
  * labelable exactly as an `<input>` is, and every way of naming one is the same way.
  */
 const CONTROLS: ReadonlySet<string> = new Set(["input", "select", "textarea", "meter", "progress", "output"]);
-
-/** The attributes that give an element a name outright, rather than by pointing at one. */
-const NAMES_IT_DIRECTLY: ReadonlySet<string> = new Set(["aria-label", "aria-labelledby", "title"]);
 
 /** Whether a `<label>` encloses this element within the same render. */
 function insideALabel(element: ts.JsxElement | ts.JsxSelfClosingElement): boolean {
@@ -268,7 +266,7 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
          */
         const written = literalOf(attribute.initializer, resolve);
         placeholder = written === undefined || written.trim().length > 0;
-      } else if (NAMES_IT_DIRECTLY.has(name)) {
+      } else if (NAMES_IT.has(name)) {
         /**
          * Written at all, in any form — with one exception the source settles itself.
          *

@@ -26,7 +26,7 @@ import type { ElementRule } from "./rule";
  * JavaScript file. A type is a defence only while nobody casts it away, and an attribute that does
  * nothing is worth naming however somebody got there.
  *
- * ## TO ADD: two more, and one of them is a TAG rather than a name
+ * ## TO ADD: what is left, and one of them is a TAG rather than a name
  *
  * `selected` on an `<option>`. Not a dead name — `selected` is real HTML — but what it means depends
  * on the order the options reached their select, and no author writes that order. HTML keeps the
@@ -37,10 +37,19 @@ import type { ElementRule } from "./rule";
  * options exist — but the option's own attribute is still writable, and this is where that would be
  * named.
  *
- * `indeterminate` on an `<input>`. Measured: the attribute is written into the markup, there is no
- * such content attribute in HTML at all, and `.indeterminate` stays `false`. The purest member of
- * the family — a name that does nothing, everywhere it appears — and the only one of the three that
- * needs no tag to decide it.
+ * ~~`indeterminate` on an `<input>`.~~ **Withdrawn — core fixed it.** This note used to say the
+ * attribute is written into the markup and `.indeterminate` stays `false`, and that was measured
+ * and true when it was written. It is not true now: `putAttribute` declines to write a name HTML
+ * does not give the element and sets the PROPERTY instead, from the `ABSENT` table in
+ * `@ramonda/dom-facts`. So `indeterminate={true}` is the supported way to put a checkbox in its
+ * third state, and a rule reporting it would report correct code.
+ *
+ * What is left here is the other half, and dom-facts hands it over by name: a property-only name
+ * MISSPELLED. There is no `playbackrate` content attribute for `playbackRate` to be the lowercase
+ * form of, so the table is matched exactly — and `playbackrate={2}` matches nothing, writes
+ * nothing, and is the spelling the types encourage. Core drops it silently because it has nowhere
+ * to say so; this package can report it at the line that wrote it. `keptInAProperty(tag, name)` is
+ * the reader, and it is exported for this.
  *
  * And the static twin of RMD029: `disabled="false"` written as a literal, which turns the control ON
  * because a boolean attribute is true whenever it is PRESENT. `@ramonda/core` reports that while it
@@ -55,6 +64,10 @@ import type { ElementRule } from "./rule";
  *
  * The wrinkle the other six do not have is the tag: they are dead wherever they appear, and these
  * are wrong only in one place. The issue shape already carries `tag`.
+ *
+ * `selected` on an `<option>` sits inside a `<select>`, and `<select>`/`<textarea>` belong to
+ * another session — check with whoever owns `Select` and `TextArea` before writing a rule about
+ * what goes inside them.
  */
 export interface AttributeThatDoesNothingIssue {
   /** The tag it was written on. */

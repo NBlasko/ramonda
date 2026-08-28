@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { descendantIn } from "./descendants";
-import { eventTypeOf } from "./events";
+import { hasAKeyHandler, pointerHandlerOn } from "./events";
 import { hasContent, openingOf } from "./element";
 import type { ElementContext, ElementRule } from "./rule";
 
@@ -62,8 +62,15 @@ export interface ClickWithNoKeyboardPathIssue {
   column: number;
 }
 
-/** Tags a keyboard reaches and activates without anything being written on them. */
-const INTERACTIVE: ReadonlySet<string> = new Set([
+/**
+ * Tags a keyboard reaches and activates without anything being written on them.
+ *
+ * Exported for `half-built-keyboard-path`, which enters on the same condition this rule does — a
+ * pointer handler on an element that is NOT one of these — and splits from it on whether the author
+ * had started building the path by hand. Two rules dividing one territory have to agree about where
+ * the territory begins.
+ */
+export const INTERACTIVE: ReadonlySet<string> = new Set([
   "a",
   "button",
   "input",
@@ -74,46 +81,6 @@ const INTERACTIVE: ReadonlySet<string> = new Set([
   "label",
   "option",
 ]);
-
-/**
- * The handlers a pointer alone can deliver. `onmousedown` and `ondblclick` are the same fault.
- *
- * `ondblclick`, not `ondoubleclick`: the DOM event is `dblclick`, so `ondoubleclick` named nothing
- * and matched nothing — a set entry that had never been able to fire.
- */
-/** By EVENT TYPE, not by attribute name, so both spellings land on one entry. */
-const POINTER_ONLY: ReadonlySet<string> = new Set(["click", "mousedown", "mouseup", "dblclick"]);
-
-/**
- * Whether any keyboard handler is written at all. Which one is not this rule's business.
- *
- * Through `eventTypeOf`, because the framework takes TWO spellings and this knew one. A regex on
- * the written name missed `on:keydown` — measured, and the cost was the worst kind: an element with
- * a keyboard handler written on the same line was reported as having no keyboard path.
- */
-function hasAKeyHandler(opening: ts.JsxOpeningLikeElement): boolean {
-  for (const attribute of opening.attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (eventTypeOf(attribute.name.getText())?.type.startsWith("key") === true) return true;
-  }
-  return false;
-}
-
-/**
- * The pointer-only handler written on this element, if there is one.
- *
- * `on:click` is the same listener as `onclick` — the framework's second spelling, for names the
- * first cannot reach — and it was not recognised as a handler at all, so the whole rule was silent
- * on an element written that way.
- */
-function pointerHandlerOn(opening: ts.JsxOpeningLikeElement): string | undefined {
-  for (const attribute of opening.attributes.properties) {
-    if (!ts.isJsxAttribute(attribute)) continue;
-    const name = attribute.name.getText();
-    if (POINTER_ONLY.has(eventTypeOf(name)?.type ?? "")) return name;
-  }
-  return undefined;
-}
 
 /**
  * Whether anything inside this element gives a keyboard somewhere to land.

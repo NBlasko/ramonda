@@ -49,6 +49,10 @@ describe("landmarks a screen reader announces identically", () => {
       "30:navigation/3",
       "41:navigation/2",
       "42:navigation/2",
+      // 145/146 write `aria-label=""` — a name left blank names nothing, so both are still
+      // announced "navigation" and a reader still cannot tell them apart.
+      "145:navigation/2",
+      "146:navigation/2",
     ]);
   });
 

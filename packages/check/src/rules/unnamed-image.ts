@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
+import { isNamed } from "./naming";
 import type { ElementRule, JsxElementLike } from "./rule";
 
 /**
@@ -33,7 +34,6 @@ export interface UnnamedImageIssue {
 const IMAGES = new Set(["img", "area", "input", "object"]);
 
 /** Any of these names an element, so any of them answers the question. */
-const NAMES_IT = ["alt", "aria-label", "aria-labelledby", "title"];
 
 export const unnamedImage = {
   id: "unnamed-image",
@@ -77,18 +77,17 @@ export const unnamedImage = {
     // labelling rules, and reporting those here would be reporting the wrong fault.
     if (!declared && tag === "input" && attr("type")?.toLowerCase() !== "image") return [];
 
-    if (NAMES_IT.some((name) => has(name))) return [];
+    /**
+     * `alt` is asked by PRESENCE and the rest are not, which is the whole reason it is passed in
+     * rather than folded into the shared list. `<img alt="">` is the documented way to say
+     * "decoration, skip me" — an empty `alt` is a statement — while an empty `aria-label` is an
+     * author who wrote a name and left it blank, and names nothing.
+     */
+    if (isNamed({ has, attr }, ["alt"])) return [];
 
     // An `<object>` names itself with its fallback content, which is the documented way round for
     // it. Only an empty one has nothing.
     if (tag === "object" && hasChildren(element)) return [];
-
-    /**
-     * A declared image whose ROLE is what makes it one has no `alt` to fall back on.
-     *
-     * `alt` does not exist on an `<svg>` or a `<div>`, so it cannot answer for them — and it is
-     * already in `NAMES_IT` above for the tags where it does.
-     */
 
     return [{ tag, ...positionOf(openingOf(element)) }];
   },

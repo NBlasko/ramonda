@@ -1,8 +1,8 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { descendantIn } from "./descendants";
-import { openingOf } from "./element";
-import type { ElementRule, JsxElementLike } from "./rule";
+import { contextFor, openingOf } from "./element";
+import type { ElementContext, ElementRule, JsxElementLike } from "./rule";
 
 /**
  * A `<video>` or `<audio>` with nothing to read instead of listening.
@@ -19,6 +19,13 @@ import type { ElementRule, JsxElementLike } from "./rule";
  *
  * **A `<video muted>`**, which has no sound to caption — the decorative background loop, which is
  * the commonest `<video>` on a marketing page and would otherwise be the commonest false report.
+ *
+ * A `<audio muted>` is deliberately NOT the same and is still reported, which reads like an
+ * oversight and is not. The escape above is about the decorative loop: autoplaying, silent by
+ * design, nothing to hear at any point. A muted `<audio>` is not that — it is audio somebody will
+ * unmute with the controls, so the words are still coming and there is still nothing to read them
+ * in. Measured before writing this down, on a plant that reported the `<audio>` and cleared the
+ * `<video>` beside it.
  *
  * **Anything whose children this cannot read.** `{tracks.map(…)}` may well be the track, so an
  * element whose children include an expression is left alone.
@@ -37,38 +44,37 @@ const CARRIES_THE_WORDS: ReadonlySet<string> = new Set(["captions", "subtitles",
 /**
  * Whether the children hold a usable `<track>`, or something this cannot read.
  *
- * The two are one answer on purpose: both mean "do not report", and telling them apart would only
- * change a comment nobody reads. The walk is `descendantIn`, shared with the two other rules that
- * ask a question of the same shape.
+ * The two are one answer to the CALLER — both mean "do not report" — but they are kept apart on the
+ * way out, because `descendantIn`'s matcher has three answers and flattening them would make a
+ * track this cannot judge look like one it judged and cleared.
+ *
+ * Reads the child through `contextFor` rather than walking its attributes, which is what lets a
+ * `kind` held in a NAME be followed to the value it holds. Written as its own walk it accepted only
+ * a literal, so `<track kind={CHAPTERS}>` with `const CHAPTERS = "chapters"` counted as a usable
+ * track and silenced the report — the same claim as `kind="chapters"` one name away, measured on a
+ * plant. That was this file's own copy of a reader the package already had.
  */
-function hasATrackOrCannotTell(children: readonly ts.JsxChild[]): boolean {
+function hasATrackOrCannotTell(children: readonly ts.JsxChild[], resolve: ElementContext["resolve"]): boolean {
   return (
     descendantIn(children, (child, tag) => {
       if (tag !== "track") return false;
-      // A `<track>` with no readable `kind` is one this cannot judge, so it counts.
-      const kind = kindOf(openingOf(child));
-      return kind === undefined || CARRIES_THE_WORDS.has(kind);
+
+      const { has, attr, spreads } = contextFor(child, resolve);
+
+      // No `kind` at all defaults to `subtitles`, which carries the words.
+      if (!has("kind")) return true;
+
+      // A spread may carry the `kind` or replace the one written, and then this track is not one
+      // anything here can judge.
+      if (spreads) return "unreadable";
+
+      const kind = attr("kind")?.trim().toLowerCase();
+      // Written and unreadable — `kind={whichever}` — is a track this cannot judge either.
+      if (kind === undefined) return "unreadable";
+
+      return CARRIES_THE_WORDS.has(kind);
     }) !== "none"
   );
-}
-
-/** A `<track>`'s `kind`, lowercased, when it is written as a literal. */
-function kindOf(opening: ts.JsxOpeningLikeElement): string | undefined {
-  for (const attribute of opening.attributes.properties) {
-    if (ts.isJsxSpreadAttribute(attribute)) return undefined;
-    if (!ts.isJsxAttribute(attribute)) continue;
-    if (attribute.name.getText().toLowerCase() !== "kind") continue;
-
-    const value = attribute.initializer;
-    if (value === undefined) return undefined;
-    if (ts.isStringLiteral(value)) return value.text.toLowerCase();
-    if (ts.isJsxExpression(value) && value.expression && ts.isStringLiteralLike(value.expression)) {
-      return value.expression.text.toLowerCase();
-    }
-    return undefined;
-  }
-  // No `kind` at all defaults to `subtitles`, which carries the words.
-  return "subtitles";
 }
 
 export const mediaWithNoCaptions = {
@@ -94,7 +100,7 @@ export const mediaWithNoCaptions = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, has, truth, children }) {
+  read(element, { tag, has, truth, children, resolve }) {
     if (tag !== "video" && tag !== "audio") return [];
 
     /**
@@ -108,7 +114,7 @@ export const mediaWithNoCaptions = {
      */
     if (tag === "video" && has("muted") && truth("muted") !== false) return [];
 
-    if (hasATrackOrCannotTell(children)) return [];
+    if (hasATrackOrCannotTell(children, resolve)) return [];
 
     return [{ tag, ...positionOf(openingOf(element as JsxElementLike)) }];
   },

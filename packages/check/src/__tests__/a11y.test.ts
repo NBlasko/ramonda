@@ -27,9 +27,12 @@ const RULE_IDS = [
 describe("accessibility rules over JSX elements", () => {
   test("an image with nothing to announce it is reported, and a described one is not", () => {
     const found = run().findings["unnamed-image"];
-    // `img`, the image `input`, the empty `object`, and `area`. Everything else in the fixture
-    // answers the question one way or another.
-    expect(found.map((issue) => issue.tag)).toEqual(["img", "input", "object", "area"]);
+    // `img`, the `img` whose `aria-label` is written EMPTY, the image `input`, the empty `object`,
+    // and `area`. Everything else in the fixture answers the question one way or another.
+    //
+    // The empty one is the case `alt=""` is NOT: an author who wrote a name and left it blank gets
+    // no name at all, while `alt=""` is the documented way to say "decoration, skip me".
+    expect(found.map((issue) => issue.tag)).toEqual(["img", "img", "input", "object", "area"]);
   });
 
   /**
@@ -43,12 +46,18 @@ describe("accessibility rules over JSX elements", () => {
     // The fixture writes SEVEN `img` tags and exactly one of them is reported. A leaked spread
     // would make it two, which is what counting says and a line number would not.
     const found = run().findings["unnamed-image"];
-    expect(found.filter((issue) => issue.tag === "img")).toHaveLength(1);
+    expect(found.filter((issue) => issue.tag === "img")).toHaveLength(2);
   });
 
   test("an empty heading and an empty link are reported, and a named one is not", () => {
     const found = run().findings["empty-heading-or-link"];
-    expect(found.map((issue) => `${issue.kind}:${issue.tag}`)).toEqual(["heading:h2", "link:a", "link:a"]);
+    // `heading:h3` is an `aria-label=""` — a name that names nothing.
+    expect(found.map((issue) => `${issue.kind}:${issue.tag}`)).toEqual([
+      "heading:h2",
+      "heading:h3",
+      "link:a",
+      "link:a",
+    ]);
   });
 
   /**
@@ -61,7 +70,8 @@ describe("accessibility rules over JSX elements", () => {
   });
 
   test("a frame with no name is reported", () => {
-    expect(run().findings["unnamed-frame"]).toHaveLength(1);
+    // Two: no `title` at all, and a `title=""` that names nothing.
+    expect(run().findings["unnamed-frame"]).toHaveLength(2);
   });
 
   test("only a POSITIVE tabIndex is reported", () => {

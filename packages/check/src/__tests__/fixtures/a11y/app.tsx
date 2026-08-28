@@ -26,6 +26,8 @@ class Gallery extends Component {
           <img src="/chart.png" alt={"Revenue, rising through Q3"} />
           {/* Not reported: another attribute names it. */}
           <img src="/chart.png" aria-label="Revenue" />
+          {/* REPORTED — a name written and left EMPTY names nothing, unlike `alt=""`. */}
+          <img src="/chart.png" aria-label="" />
           {/* Not reported: a spread may carry `alt` and nothing here can prove it does not. */}
           <img src="/chart.png" {...rest} />
 
@@ -46,6 +48,8 @@ class Gallery extends Component {
           <h2>Pricing</h2>
           {/* Not reported: `aria-label` names it. */}
           <h3 aria-label="Pricing" />
+          {/* REPORTED — an empty `aria-label` is a name that names nothing. */}
+          <h3 aria-label="" />
           {/* Not reported: this MIGHT have text and nothing here can prove otherwise. */}
           <h4>{title}</h4>
 
@@ -58,6 +62,8 @@ class Gallery extends Component {
           <iframe src="/map" />
           {/* Not reported. */}
           <iframe src="/map" title="Map of the venue" />
+          {/* REPORTED — an empty `title` names nothing either. */}
+          <iframe src="/map" title="" />
 
           {/* REPORTED — jumps ahead of the whole document. */}
           <div tabIndex={1} />

@@ -1,6 +1,7 @@
 import { positionOf } from "../syntax";
 import ts from "typescript";
 import { hasContent, openingOf, tagOf, trueAttr } from "./element";
+import { isNamed } from "./naming";
 import type { ElementContext, ElementRule } from "./rule";
 
 /**
@@ -45,7 +46,6 @@ export interface EmptyHeadingOrLinkIssue {
 const HEADINGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
 
 /** Any of these names the element without text inside it. */
-const NAMES_IT = ["aria-label", "aria-labelledby", "title"];
 
 /**
  * Whether everything inside is explicitly removed from the accessibility tree.
@@ -126,7 +126,7 @@ export const emptyHeadingOrLink = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, has, children, resolve }) {
+  read(element, { tag, has, attr, children, resolve }) {
     if (tag === undefined) return [];
 
     const kind = HEADINGS.has(tag) ? "heading" : tag === "a" ? "link" : tag === "button" ? "button" : undefined;
@@ -140,7 +140,7 @@ export const emptyHeadingOrLink = {
      * territory and its documented boundary. Only the `<button>` ELEMENT is named by its content.
      */
 
-    if (NAMES_IT.some((name) => has(name))) return [];
+    if (isNamed({ has, attr })) return [];
     if (hasContent(children) && !everyChildIsHidden(children, resolve)) return [];
 
     return [{ tag, kind, ...positionOf(openingOf(element)) }];
