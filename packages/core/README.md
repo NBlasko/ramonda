@@ -7,12 +7,16 @@ A UI framework. **Explicit. Predictable. Readable.**
 
 One rule carries most of the design:
 
-> **Every JSX tag is exactly one element.**
+> **The page is what you wrote.**
 
-The DOM is readable straight off the JSX. Every element on the page is one you
-wrote, the framework adds none of its own, and there are no function components —
-a function has nothing to construct, no state and no lifecycle, so as a tag it
-names nothing the framework can keep hold of.
+Every element in the DOM is one you can point at in your JSX, and the framework
+adds none of its own — no wrappers, no placeholders. A component puts what its
+`render()` returns on the page: one element, several, or none.
+
+There are no function components, and no fragments. A function has nothing to
+construct, no state and no lifecycle, so as a tag it names nothing the framework
+can keep hold of; a fragment is the same absence with a different spelling, and a
+component already covers every case it would.
 
 ```tsx
 import { Component, state } from "@ramonda/core";
