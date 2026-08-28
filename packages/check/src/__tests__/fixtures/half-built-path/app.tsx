@@ -58,6 +58,17 @@ class App extends Component {
         <div role="button" tabIndex={0}>
           Save
         </div>
+
+        {/* ✗ The whole path built by hand, and nothing announces it as a control. */}
+        <div tabIndex={0} onclick={go} onkeydown={go}>
+          Save
+        </div>
+        {/* ✗ Started with a key handler alone — the role is still what a reader is missing first. */}
+        <div onclick={go} onkeydown={go}>
+          Save
+        </div>
+        {/* ✓ Nothing started at all is the sibling rule's report, not this one's. */}
+        <div onclick={go}>Save</div>
       </div>
     );
   }

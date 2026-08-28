@@ -69,6 +69,7 @@ export type {
   FalseOnABooleanAttributeIssue,
   MisspelledElementPropertyIssue,
   HalfBuiltKeyboardPathIssue,
+  ElementHtmlRemovedIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   ServerEnvInSharedCodeIssue,

@@ -40,15 +40,29 @@ import type { ElementContext, ElementRule } from "./rule";
 export interface HalfBuiltKeyboardPathIssue {
   /** The tag it was written on. */
   tag: string;
-  /** The role that made the promise. */
-  role: string;
+  /** The widget role, when one was written. Absent is itself one of the ways this stops short. */
+  role?: string;
   /** The pointer handler that shows the mouse was wired, as written. */
   handler: string;
   /** Which half is missing, because the two fail differently and the advice differs. */
-  missing: "the tab order" | "a key handler";
+  missing: "a role" | "the tab order" | "a key handler";
   file: string;
   line: number;
   column: number;
+}
+
+/** One sentence per way of stopping short, because the three fail differently. */
+function subject(issue: HalfBuiltKeyboardPathIssue): string {
+  const written = issue.role === undefined ? "" : ` role="${issue.role}"`;
+  const element = `<${issue.tag}${written} ${issue.handler}={…}>`;
+
+  if (issue.missing === "a role") {
+    return `    ${element} is operable and announced as plain text — nothing says it does anything.`;
+  }
+  if (issue.missing === "the tab order") {
+    return `    ${element} has no \`tabIndex\`, so Tab never reaches it.`;
+  }
+  return `    ${element} is reachable, and Enter and Space do nothing.`;
 }
 
 export const halfBuiltKeyboardPath = {
@@ -59,12 +73,7 @@ export const halfBuiltKeyboardPath = {
     reportedWhen:
       "an element with an interactive `role` and a pointer handler is missing the `tabIndex` or the key handler that would finish it",
     heading: (found) => `${found.length} hand-built control(s) a keyboard cannot finish using:`,
-    lines: (issue) => [
-      `  ${issue.file}:${issue.line}:${issue.column}`,
-      issue.missing === "the tab order"
-        ? `    <${issue.tag} role="${issue.role}" ${issue.handler}={…}> has no \`tabIndex\`, so Tab never reaches it.`
-        : `    <${issue.tag} role="${issue.role}" ${issue.handler}={…}> is reachable, and Enter and Space do nothing.`,
-    ],
+    lines: (issue) => [`  ${issue.file}:${issue.line}:${issue.column}`, subject(issue)],
     advice:
       "A `role` is an announcement, not an implementation. It tells a screen reader this is a\n" +
       "button; it does not make Tab stop here, and it does not make Enter do anything. Both have to\n" +
@@ -90,11 +99,6 @@ export const halfBuiltKeyboardPath = {
   read(element, { tag, attr, has, children }: ElementContext) {
     if (tag === undefined || INTERACTIVE.has(tag)) return [];
 
-    // A role this cannot READ may be anything, and a chain is a list of alternatives whose winner
-    // is not a question about this element.
-    const role = attr("role")?.trim().toLowerCase();
-    if (role === undefined || role.includes(" ") || !ACTIVATED_BY_THE_USER.has(role)) return [];
-
     const opening = openingOf(element);
     const handler = pointerHandlerOn(opening);
     if (handler === undefined) return [];
@@ -107,16 +111,48 @@ export const halfBuiltKeyboardPath = {
      */
     if (descendantIn(children, (_child, inside) => INTERACTIVE.has(inside)) !== "none") return [];
 
-    // `has`, not the number: the question is whether somebody reached for a tab order at all, and
-    // an unreadable `tabIndex={n}` is as much of a reach as a written one. `tabIndex={-1}` is a
-    // deliberate choice too — focus moved by script rather than by Tab.
-    if (!has("tabIndex")) {
-      return [{ tag, role, handler, missing: "the tab order" as const, ...positionOf(opening) }];
-    }
+    // A role this cannot READ may be a widget or may not, and a chain is a list of alternatives
+    // whose winner is not a question about this element. Either way nothing here is provable.
+    const written = attr("role")?.trim().toLowerCase();
+    if (has("role") && (written === undefined || written.includes(" "))) return [];
+    const role = written !== undefined && ACTIVATED_BY_THE_USER.has(written) ? written : undefined;
 
-    if (!hasAKeyHandler(opening)) {
-      return [{ tag, role, handler, missing: "a key handler" as const, ...positionOf(opening) }];
-    }
+    /**
+     * `has`, not the number, and not `attr`: the question is whether somebody REACHED for each of
+     * these, not what they reached for. An unreadable `tabIndex={n}` is as much of a reach as a
+     * written one, and `tabIndex={-1}` is a deliberate choice — focus moved by script rather than
+     * by Tab — so both count as built.
+     */
+    const inTheTabOrder = has("tabIndex");
+    const answersAKey = hasAKeyHandler(opening);
+
+    /**
+     * Nothing started is the SIBLING's report, and this is the line between them.
+     *
+     * `click-with-no-keyboard-path` returns the moment it sees any one of these three, saying a
+     * half-built path "is a different rule from this one". So this rule fires on exactly the
+     * complement: at least one written, and not all three. No overlap, and no gap.
+     */
+    if (role === undefined && !inTheTabOrder && !answersAKey) return [];
+
+    /**
+     * The order is what to fix FIRST, not the order they are written in.
+     *
+     * A missing role comes first because it is the one nothing else compensates for: a control that
+     * is reachable and operable still announces as text, and a reader who cannot tell it is a
+     * control will never try. Fixing the tab order under a missing role helps nobody.
+     */
+    const report = (missing: HalfBuiltKeyboardPathIssue["missing"]): HalfBuiltKeyboardPathIssue => ({
+      tag,
+      handler,
+      missing,
+      ...(role === undefined ? {} : { role }),
+      ...positionOf(opening),
+    });
+
+    if (role === undefined) return [report("a role")];
+    if (!inTheTabOrder) return [report("the tab order")];
+    if (!answersAKey) return [report("a key handler")];
 
     return [];
   },

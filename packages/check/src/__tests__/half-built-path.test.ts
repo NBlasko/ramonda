@@ -6,23 +6,31 @@ import { analyzeProject } from "../analyze";
 const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "half-built-path", "tsconfig.json")).findings;
 const found = () => run()["half-built-keyboard-path"] ?? [];
-const said = () => found().map((issue) => `${issue.line}:${issue.role}/${issue.missing}`);
+const said = () => found().map((issue) => `${issue.line}:${issue.role ?? "-"}/${issue.missing}`);
 
 /**
  * A control built by hand, where the building stopped half way.
  *
  * A `role` is an announcement, not an implementation. It makes a screen reader say "button"; it
- * does not make Tab stop here and it does not make Enter do anything. Both have to be written out,
- * and the two ways of stopping short fail differently — one is a control a reader cannot get to,
- * the other is a control they get to, press, and watch do nothing.
+ * does not make Tab stop here and it does not make Enter do anything. Three pieces have to be
+ * written out, and each way of stopping short fails differently: a control nobody is told about, a
+ * control a reader cannot get to, and a control they get to, press, and watch do nothing.
+ *
+ * The report names the one to fix FIRST, not the first one written. A missing role comes ahead of
+ * the others because it is the one nothing else compensates for — a control that is reachable and
+ * operable still announces as text, and a reader who cannot tell it is a control will never try it.
  */
 describe("a keyboard path somebody started and did not finish", () => {
-  test("both halves, each named for the one that is missing", () => {
+  test("all three ways of stopping short, each named for the one to fix first", () => {
     expect(said()).toEqual([
       "12:button/the tab order",
       "16:button/a key handler",
       // The verbatim spelling of a click is the same handler, through the shared `eventTypeOf`.
       "20:link/a key handler",
+      // 63 built the whole path and never said what it is; 67 started with the key handler alone.
+      // Both report the ROLE, because it is the one nothing else compensates for.
+      "63:-/a role",
+      "67:-/a role",
     ]);
   });
 
@@ -55,7 +63,13 @@ describe("a keyboard path somebody started and did not finish", () => {
    * every element in this fixture was reported by nobody. The two enter on the same condition and
    * divide on whether the author had started.
    */
-  test("and the rule that asked for this one keeps its silence", () => {
-    expect(run()["click-with-no-keyboard-path"] ?? []).toEqual([]);
+  test("and the two rules divide the territory with no overlap and no gap", () => {
+    const sibling = (run()["click-with-no-keyboard-path"] ?? []).map((issue) => issue.line);
+    const mine = found().map((issue) => issue.line);
+
+    // 71 wrote NONE of the three, which is the sibling's whole subject and none of this rule's.
+    expect(sibling).toEqual([71]);
+    // And nothing is reported twice: the sibling returns the moment it sees any one of them.
+    expect(mine.filter((line) => sibling.includes(line))).toEqual([]);
   });
 });

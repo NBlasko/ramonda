@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 69 of them.
+**Warnings.** These print and the run still passes. 70 of them.
 
 | rule | reported when |
 |---|---|
@@ -183,6 +183,7 @@ rules**, so a rule cannot be added without appearing here.
 | `false-on-a-boolean-attribute` | a boolean attribute is written `"false"`, which turns it ON because the parser reads only that it is there — also [`RMD029`](/reference/diagnostics) |
 | `misspelled-element-property` | a name is written in the wrong case for element state that lives only in a property, so it is written as an attribute nothing reads |
 | `half-built-keyboard-path` | an element with an interactive `role` and a pointer handler is missing the `tabIndex` or the key handler that would finish it |
+| `element-html-removed` | a tag HTML has removed is written, so nothing defines what it means |
 | `aria-value` | an `aria-*` attribute carries a literal value its specification does not permit |
 | `aria-with-no-subject` | a `role` or an `aria-*` sits on an element with no accessibility tree node to describe |
 | `empty-heading-or-link` | a heading or a link has nothing inside it to announce |
