@@ -3,6 +3,7 @@ import { HomePage } from "./pages/HomePage";
 import { ShowcasePage } from "./pages/ShowcasePage";
 import { TablePage } from "./pages/TablePage";
 import { SlotsPage } from "./pages/SlotsPage";
+import { CaretPage } from "./pages/CaretPage";
 import { ExitPage } from "./pages/ExitPage";
 import { AsyncPage } from "./pages/AsyncPage";
 import { QueryPage } from "./pages/QueryPage";
@@ -18,6 +19,7 @@ export const routes = createRoutes({
   "/showcase": <ShowcasePage />,
   "/table": <TablePage />,
   "/slots": <SlotsPage />,
+  "/caret": <CaretPage />,
   "/exit": <ExitPage />,
   "/async": <AsyncPage />,
   "/query": <QueryPage />,

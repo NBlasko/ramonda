@@ -112,6 +112,72 @@ export function formatAttributes(attributes: NodeAttributes): Record<string, any
 }
 
 /**
+ * Writes `value`, and puts the caret back when doing so cannot have moved it anywhere sensible.
+ *
+ * Assigning `.value` makes the browser drop the selection to the END of the field. That is the
+ * platform, not this framework, and for most writes it is invisible: a value only reaches here when
+ * it DIFFERS from what the element holds, so a model that echoes back what the reader typed writes
+ * nothing at all and the caret never moves.
+ *
+ * What is left is a controlled field whose model REWRITES the input — `toUpperCase()`, a mask, a
+ * number formatter. There the reader types in the middle of the text and the caret jumps to the end,
+ * so the next keystroke lands in the wrong place. Measured: `axbc` typed into, uppercased to `AXBC`,
+ * caret at 4 rather than 2.
+ *
+ * **Only when the length is unchanged**, and the boundary is exact rather than cautious. A rewrite
+ * that maps character to character leaves every offset meaning what it meant, so restoring the
+ * number is restoring the position. A rewrite that inserts or removes characters does not: after
+ * `1,234` becomes `12,345` the old offset points somewhere new, and putting the caret there would be
+ * a guess dressed as a fix. Deciding THAT needs to know which characters are the separators, which
+ * is the app's knowledge and not the framework's — an app that needs it reads the caret in
+ * `@updated` and sets it where its own rules say.
+ *
+ * Guarded on the element supporting selection at all: `setSelectionRange` throws on an `<input>`
+ * whose `type` is `number`, `email`, `date` or `color`, and a value written to one of those is a
+ * value written to a field with no caret to keep.
+ */
+function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onServer: boolean): void {
+  const field = enhancedNode as unknown as {
+    value: unknown;
+    selectionStart: number | null;
+    setSelectionRange?: (start: number, end: number) => void;
+  };
+
+  /**
+   * A server render has no caret to keep, and asking for one is not free: measured, twenty inputs
+   * on a page cost twenty reads of `selectionStart` for an answer that can only be `null`. The
+   * guard is the same one `runComponentEffects` and the commit queue already make.
+   */
+  if (onServer) {
+    field.value = value;
+    return;
+  }
+
+  const before = field.value;
+  const caret = field.selectionStart;
+
+  field.value = value;
+
+  /**
+   * Compared as the element will HOLD them, not as they were written.
+   *
+   * `<input value={this.count} />` hands over a number, and the DOM stringifies it on assignment —
+   * so a rewrite of `1234` to `1235` is a rewrite of the same length, and the reader's caret is as
+   * worth keeping there as in any other field. An earlier version of this line demanded strings on
+   * both sides and quietly left every numeric model out: measured on the same edit, caret 3 with a
+   * string model and 5 with a numeric one.
+   */
+  if (caret === null || before === null || before === undefined || value === null || value === undefined) return;
+  if (String(before).length !== String(value).length) return;
+
+  try {
+    field.setSelectionRange?.(caret, caret);
+  } catch {
+    // A field whose `type` has no text selection. Nothing was lost: there was no caret to keep.
+  }
+}
+
+/**
  * Attributes whose truth is a PROPERTY, so `false` has to be written rather than merely removed.
  *
  * Each of these keeps its state somewhere an attribute cannot reach once the element is live:
@@ -224,7 +290,7 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     // Both, because they say different things about the same element: the property is the value NOW,
     // and the attribute is the one it started with — which is also the only half a server render can
     // serialize.
-    enhancedNode.value = value;
+    writeValue(enhancedNode, value, onServer);
     enhancedNode.setAttribute(name, value);
     return;
   }

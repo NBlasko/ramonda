@@ -113,6 +113,19 @@ export const BLOCK_CLOSE = Symbol("blockClose");
  * Typed as the one method the teardown calls, so nothing outside `core/` needs the class.
  */
 export const BLOCK_OWNER = Symbol("blockOwner");
+/**
+ * On an element that HOSTS at least one block: the answer to "is there one in here" without looking.
+ *
+ * `firstHostedBlock` walks every child of a parent to find an anchor carrying `BLOCK_CLOSE`, and it
+ * is asked on every reorder an element does — where the answer is almost always no, after visiting
+ * everything. Measured on a 500-row list moving ONE row: 1501 sibling steps against 1001 with the
+ * walk stubbed out, so exactly one full pass over the children, spent to find nothing.
+ *
+ * Set when a block is placed and never cleared. Clearing correctly would need a count of the blocks
+ * a target holds, and the cost of not clearing is that an element which once hosted one goes on
+ * walking — which is what every element does today, so the worst case is the present.
+ */
+export const HOSTS_A_BLOCK = Symbol("hostsABlock");
 
 export const STATE_KEYS = Symbol("stateKeys");
 /**

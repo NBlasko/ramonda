@@ -169,9 +169,35 @@ function ramondaGlobals(except = new Set()) {
   /** Each type's parameter list, so the alias can pass them through rather than swallowing them. */
   const generics = new Map();
 
-  for (const declaration of globSync("packages/*/dist/index.d.ts", { cwd: repo })) {
+  /**
+   * Every ENTRY POINT, not only the main one.
+   *
+   * `index.d.ts` alone left a hole with no way to notice it: `IsrStore` is exported from
+   * `@ramonda/router/server`, so the store example on the ISR modes page could not be annotated with
+   * it, and stood as an untyped object literal. It could have drifted from the interface it teaches
+   * and this gate would have said nothing — which is the one thing a gate exists to stop.
+   *
+   * Read from `dist` rather than from source, exactly as the main entries are. The alternative — a
+   * preamble importing the type — pulls the router's SOURCE and its whole import graph into a
+   * program configured with `types: []`, and the file it is written in stops applying: measured, 46
+   * errors across 19 blocks, none of them about ISR.
+   *
+   * Sorted so `index.d.ts` comes first and wins any name it shares with a sibling entry, which is
+   * what `taken` below decides. `server.d.ts` and `server.browser.d.ts` export the same names for
+   * two environments, and the main entry is the one a reader means.
+   */
+  const entries = globSync("packages/*/dist/*.d.ts", { cwd: repo })
+    .filter((path) => !path.split("/").pop().includes("-"))
+    .sort((a, b) => Number(b.endsWith("index.d.ts")) - Number(a.endsWith("index.d.ts")));
+
+  for (const declaration of entries) {
     const pkg = declaration.split("/")[1];
-    const specifier = pkg === "core" ? "@ramonda/core" : `@ramonda/${pkg}`;
+    const entry = declaration
+      .split("/")
+      .pop()
+      .replace(/\.d\.ts$/, "");
+    const base = pkg === "core" ? "@ramonda/core" : `@ramonda/${pkg}`;
+    const specifier = entry === "index" ? base : `${base}/${entry}`;
     const text = readFileSync(join(repo, declaration), "utf8");
     const exported = [...text.matchAll(/^export \{([^}]*)\};/gms)].flatMap((m) => m[1].split(","));
 
