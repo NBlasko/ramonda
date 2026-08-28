@@ -702,3 +702,7 @@ at once: the node ids collide while the graphs differ.
 The file is a **format**, versioned by `schema`, and it is written for tools rather than for people
 to depend on: read it, do not build against it. `analyzeProject` returns the same structure as
 `result.graph`.
+
+## License
+
+[MIT](../../LICENSE) © Nikola Blagojević

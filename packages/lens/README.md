@@ -396,3 +396,7 @@ What to take from it when writing your own updates:
 
 The bigger practical difference is the one the numbers do not show: nothing here is a proxy,
 so there is no draft that can escape its producer, and no finalize pass over the result.
+
+## License
+
+[MIT](../../LICENSE) © Nikola Blagojević

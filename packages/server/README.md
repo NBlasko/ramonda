@@ -3,6 +3,9 @@
 The plumbing a Ramonda server render needs: a DOM to render into, and the document the render goes
 into.
 
+[![npm](https://img.shields.io/npm/v/%40ramonda%2Fserver)](https://www.npmjs.com/package/@ramonda/server)
+[![license](https://img.shields.io/npm/l/%40ramonda%2Fserver)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
+
 ```bash
 pnpm add @ramonda/server
 ```

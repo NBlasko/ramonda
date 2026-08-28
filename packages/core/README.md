@@ -5,6 +5,17 @@ A UI framework. **Explicit. Predictable. Readable.**
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fcore)](https://www.npmjs.com/package/@ramonda/core)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fcore)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
+```sh
+npm install @ramonda/core
+npm install -D @ramonda/build
+```
+
+Ramonda has no runtime dependencies. It needs three settings from your bundler, and
+[`@ramonda/build`](https://ramonda.dev/reference/build) carries them so you name none — see
+"Before anything else" below for what happens without it.
+
+Documentation: **[ramonda.dev](https://ramonda.dev)**
+
 One rule carries most of the design:
 
 > **The page is what you wrote.**
@@ -258,3 +269,7 @@ pnpm build
 The full documentation site — get started, every feature explained with running examples, the API
 and diagnostics references — lives at [ramonda.dev](https://ramonda.dev). This README
 stays the package-level entry point; it is not a substitute for that.
+
+## License
+
+[MIT](../../LICENSE) © Nikola Blagojević

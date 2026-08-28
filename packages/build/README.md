@@ -144,3 +144,7 @@ something else, run `ramonda-check-bundle` over the output and let the artifact 
 ## Docs
 
 **https://ramonda.dev/reference/build**
+
+## License
+
+[MIT](../../LICENSE) © Nikola Blagojević

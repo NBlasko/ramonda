@@ -6,6 +6,12 @@ with nested route outlets.
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Frouter)](https://www.npmjs.com/package/@ramonda/router)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Frouter)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
+```sh
+npm install @ramonda/router
+```
+
+Documentation: **[ramonda.dev/routing](https://ramonda.dev/routing)**
+
 ```tsx
 import { Component } from "@ramonda/core";
 import { createRouter, createRoutes } from "@ramonda/router";

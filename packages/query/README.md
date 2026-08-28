@@ -10,6 +10,12 @@ race-free queries and mutations that survive a server render.
 > being explored; from `1.0` the interfaces hold. See the
 > [root README](https://github.com/NBlasko/ramonda#readme).
 
+```sh
+npm install @ramonda/query
+```
+
+Documentation: **[ramonda.dev/query](https://ramonda.dev/query)**
+
 ```tsx
 import { Component } from "@ramonda/core";
 import { Query, QueryClientProvider } from "@ramonda/query";

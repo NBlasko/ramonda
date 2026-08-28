@@ -10,6 +10,8 @@ Testing utilities for Ramonda components and hooks, built on
 pnpm add -D @ramonda/testing-library @testing-library/dom
 ```
 
+Documentation: **[ramonda.dev/testing](https://ramonda.dev/testing)**
+
 ```tsx
 import { render, screen, fireEvent, act } from "@ramonda/testing-library";
 
@@ -234,3 +236,7 @@ Core's main entry is guarded by tests whose whole job is to keep the internals
 out of what an application can import. A harness genuinely needs three of them —
 so rather than widen the app-facing API permanently to make a test utility
 possible, there is a second, narrow door, pinned by its own tripwire.
+
+## License
+
+[MIT](../../LICENSE) © Nikola Blagojević
