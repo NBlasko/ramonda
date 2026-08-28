@@ -215,7 +215,7 @@ it), or `isr-cold` (nothing cached, so this request waited for the render).
 A store is three small methods, which is the whole point:
 
 ```ts
-const redisStore = {
+const redisStore: IsrStore = {
   async get(key) {
     const raw = await redis.get(`isr:${key}`);
     return raw ? JSON.parse(raw) : undefined;
