@@ -87,6 +87,7 @@ const EXPECTED_TYPES = [
   "ReferenceToAnIdThatIsNotThereIssue",
   "RoleMissingRequiredAriaIssue",
   "RegionWithNoNameIssue",
+  "FalseOnABooleanAttributeIssue",
   "RoleTakesNoNameIssue",
   "RowReadsAPlainFieldIssue",
   "RowWithoutAKeyIssue",

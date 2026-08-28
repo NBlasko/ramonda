@@ -66,6 +66,7 @@ export type {
   ReferenceToAnIdThatIsNotThereIssue,
   RoleMissingRequiredAriaIssue,
   RegionWithNoNameIssue,
+  FalseOnABooleanAttributeIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   ServerEnvInSharedCodeIssue,

@@ -53,6 +53,7 @@ import { ariaHiddenAroundSomethingFocusable } from "./aria-hidden-around-somethi
 import { tableWithNoHeaders } from "./table-with-no-headers";
 import { landmarksThatCannotBeToldApart } from "./landmarks-that-cannot-be-told-apart";
 import { regionWithNoName } from "./region-with-no-name";
+import { falseOnABooleanAttribute } from "./false-on-a-boolean-attribute";
 import { parentWithAForeignChild } from "./parent-with-a-foreign-child";
 import { ariaThatContradictsTheTag } from "./aria-that-contradicts-the-tag";
 import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
@@ -183,6 +184,7 @@ export {
   type LandmarksThatCannotBeToldApartIssue,
 } from "./landmarks-that-cannot-be-told-apart";
 export { regionWithNoName, type RegionWithNoNameIssue } from "./region-with-no-name";
+export { falseOnABooleanAttribute, type FalseOnABooleanAttributeIssue } from "./false-on-a-boolean-attribute";
 export { parentWithAForeignChild, type ParentWithAForeignChildIssue } from "./parent-with-a-foreign-child";
 export {
   ariaThatContradictsTheTag,
@@ -298,6 +300,7 @@ export const ELEMENT_RULES = [
   roleMissingRequiredAria,
   roleTakesNoName,
   regionWithNoName,
+  falseOnABooleanAttribute,
   ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,
