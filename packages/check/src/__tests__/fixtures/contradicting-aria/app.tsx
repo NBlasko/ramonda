@@ -55,6 +55,12 @@ class App extends Component {
 
         {/* ✗ But a spread BEFORE cannot reach over either. */}
         <input type="text" {...rest} required aria-required="false" />
+
+        {/* ✗ `required="false"` is a REQUIRED field: a boolean attribute is on when it is there. */}
+        <input type="text" required="false" aria-required="false" />
+
+        {/* ✓ `required={false}` is not written at all, so there is nothing to contradict. */}
+        <input type="text" required={false} aria-required="false" />
       </div>
     );
   }

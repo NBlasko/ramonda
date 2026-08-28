@@ -1,5 +1,5 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
-import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM } from "../helpers/constants";
+import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
 type NodeAttributes = Record<string, any>;
 
@@ -121,7 +121,7 @@ function attachNextOnenhancedNode(
     if (!nextAttributes.hasOwnProperty(name)) continue;
     const nextAttribute = nextAttributes[name];
 
-    if (isInvisibleOnScreen(nextAttribute)) {
+    if (isInvisibleOnScreen(nextAttribute, name)) {
       /**
        * `checked={false}` is not "no attribute" — it is the model saying the box
        * is OFF, and removing the attribute cannot say that. Clicking a checkbox
@@ -159,6 +159,20 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
   // Here rather than at vnode creation, because this is where the value is FINAL — anything that
   // was going to normalise it already has.
   if (__DEV__) checkBooleanAttribute(enhancedNode.nodeName, name, value);
+
+  /**
+   * A boolean attribute carries no value, so `true` is written as the empty string.
+   *
+   * `disabled="true"` behaves correctly — a browser reads only whether the attribute is THERE — but
+   * it is not what HTML says, and the word sits in every served page for nothing to read. It also
+   * makes markup that does not round-trip: read the same element back through `outerHTML` in a
+   * browser and it says `disabled=""`.
+   *
+   * Keyed on the NAME, not on the value being a boolean. `aria-hidden={true}` must stay
+   * `aria-hidden="true"` — ARIA attributes are enumerated strings, and the empty one means neither
+   * true nor false — and a `data-*` flag is data that something reads back.
+   */
+  if (value === true && isBooleanAttribute(name)) value = "";
 
   if (name === "ref") {
     // Remembered on the node so unmount can clear it. Without that, `current`
@@ -393,7 +407,7 @@ function removePreviousFromenhancedNode(
   for (const name in previousAttributes) {
     const nextAttribute = nextAttributes[name];
 
-    if (!isInvisibleOnScreen(nextAttribute)) continue;
+    if (!isInvisibleOnScreen(nextAttribute, name)) continue;
 
     if (name.startsWith("on")) {
       const listeners = enhancedNode._listeners ?? {};
@@ -405,8 +419,38 @@ function removePreviousFromenhancedNode(
   }
 }
 
-function isInvisibleOnScreen(val: unknown): boolean {
-  return val === undefined || val === null || val === false;
+/**
+ * Whether this render is saying the attribute should not be there at all.
+ *
+ * `false` normally means that, and has to: a boolean attribute is on whenever it is PRESENT, so
+ * removing it is the only way to turn `disabled` off.
+ *
+ * An ARIA state is the exception, and the name is what tells them apart. `aria-expanded` is an
+ * enumerated STRING with three answers — `"true"`, `"false"`, and absent for "this element has no
+ * such state" — so removing it on `false` throws away the middle one and says something else
+ * instead. A collapsed control read as having no expandable state at all.
+ */
+export function isInvisibleOnScreen(val: unknown, name: string): boolean {
+  if (val === undefined || val === null) return true;
+  if (val !== false) return false;
+  return !name.startsWith("aria-");
+}
+
+/**
+ * Lowercased first, because the DOM does it anyway.
+ *
+ * `setAttribute` lowercases the name it stores, so `readOnly={true}` becomes the attribute
+ * `readonly` — and testing the JSX spelling against the list missed it, writing the very
+ * `readonly="true"` this rule exists to stop. `checkBooleanAttribute` has always lowercased, so the
+ * two disagreed about the same name: the diagnostic recognised it and the writer did not.
+ *
+ * The types reject the camelCase name outright — `RamondaArgs` keys on `Lowercase<string>`, so
+ * `autoFocus` is not a property that exists — which leaves the ways a type cannot see: a spread whose
+ * shape is loose, a JavaScript file, a base class widened by a cast. That is the reach a runtime rule
+ * is for.
+ */
+function isBooleanAttribute(name: string): boolean {
+  return BOOLEAN_ATTRIBUTES.has(name) || BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
 }
 
 // DOM attribute values are always strings. When both sides are primitives we

@@ -37,6 +37,21 @@ describe("an accessibility attribute that contradicts the tag", () => {
     expect(said()).toContain("26:hidden");
   });
 
+  /**
+   * A boolean attribute is on whenever it is PRESENT, whatever the string on it says.
+   *
+   * `required="false"` is a required field — `setAttribute` put the name there and the parser reads
+   * only that it is there, which is why `core/Attribute.ts` removes an attribute for the VALUE
+   * `false` and keeps the STRING `"false"`. Read as a value, this — the very contradiction this
+   * rule exists for — was reported by nothing, while two other rules were reporting correct markup
+   * off the same reader. 63 is the other spelling: `required={false}` is not written out at all,
+   * so there is nothing on the element to contradict.
+   */
+  test('`required="false"` is a required field, and `required={false}` is no field at all', () => {
+    expect(said()).toContain("60:required");
+    expect(said().map((entry) => Number(entry.split(":")[0]))).not.toContain(63);
+  });
+
   test("the whole list, so a regression cannot go quiet", () => {
     // 57 has the spread BEFORE both attributes, so nothing can reach over either.
     expect(said()).toEqual([
@@ -47,6 +62,7 @@ describe("an accessibility attribute that contradicts the tag", () => {
       "21:open",
       "26:hidden",
       "57:required",
+      "60:required",
     ]);
   });
 

@@ -25,6 +25,36 @@ import type { ElementRule } from "./rule";
  * the reasons the type is not the whole answer — a `@ts-ignore`, a base class loosened by a cast, a
  * JavaScript file. A type is a defence only while nobody casts it away, and an attribute that does
  * nothing is worth naming however somebody got there.
+ *
+ * ## TO ADD: two more, and one of them is a TAG rather than a name
+ *
+ * `selected` on an `<option>`. Not a dead name — `selected` is real HTML — but what it means depends
+ * on the order the options reached their select, and no author writes that order. HTML keeps the
+ * later of two claims and gives an unclaimed select the first option it holds, so the same markup
+ * means different things depending on how the render that produced it was reached. `@ramonda/core`
+ * refuses the plain `<select>` tag in `global.ts` (`RefusedSelectTag`, whose property NAME is the
+ * message TypeScript prints) and points at `<Select value={x}>`, which settles the choice once the
+ * options exist — but the option's own attribute is still writable, and this is where that would be
+ * named.
+ *
+ * `indeterminate` on an `<input>`. Measured: the attribute is written into the markup, there is no
+ * such content attribute in HTML at all, and `.indeterminate` stays `false`. The purest member of
+ * the family — a name that does nothing, everywhere it appears — and the only one of the three that
+ * needs no tag to decide it.
+ *
+ * And the static twin of RMD029: `disabled="false"` written as a literal, which turns the control ON
+ * because a boolean attribute is true whenever it is PRESENT. `@ramonda/core` reports that while it
+ * runs; reading it off the source needs the same list of names, and that list already sits in
+ * `@ramonda/dom-facts` as `BOOLEAN_ATTRIBUTES` — put there rather than kept in `core` precisely so
+ * this rule does not begin by making a second copy of it.
+ *
+ * `ElementContext`'s `truth` already reads it, for the other half of the same fact: asked about
+ * `required="false"` it answers TRUE, because presence is what decides a boolean attribute. So the
+ * rule above has the meaning settled for it and is left with the part only it can say — that the
+ * line reads as the opposite of what it does.
+ *
+ * The wrinkle the other six do not have is the tag: they are dead wherever they appear, and these
+ * are wrong only in one place. The issue shape already carries `tag`.
  */
 export interface AttributeThatDoesNothingIssue {
   /** The tag it was written on. */

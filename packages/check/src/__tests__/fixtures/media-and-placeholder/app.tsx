@@ -13,6 +13,9 @@ class App extends Component {
         {/* ✗ Written `muted={false}`, which SAYS it has sound. */}
         <video src="/c.mp4" muted={false} />
 
+        {/* ✓ `muted="false"` is MUTED — a boolean attribute is on whenever it is written down. */}
+        <video src="/c2.mp4" muted="false" />
+
         {/* ✓ A track inside a fragment is still a track. */}
         <video src="/d.mp4">
           <>

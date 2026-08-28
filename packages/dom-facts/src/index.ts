@@ -101,3 +101,50 @@ export const svgElements: ReadonlySet<string> = new Set([
   "feTile",
   "feTurbulence",
 ]);
+
+/**
+ * The HTML boolean attributes, as the spec defines them: present means true.
+ *
+ * A boolean attribute carries no value — the parser reads only whether it is there. `@ramonda/core`
+ * needs that to WRITE one: `disabled="true"` behaves correctly and is not what HTML says, so `true`
+ * goes out as the empty string, which is also what a browser gives back from `outerHTML`. The same
+ * list decides RMD029, which reports the string `"false"` on one of these names — an attribute that
+ * turns the control ON while the line says otherwise.
+ *
+ * `@ramonda/check` reads the same source and has to reach the same verdict without running it, and
+ * that is the reason this is here rather than in `core`: the checker's rule for it is not written
+ * yet, and `svgElements` is the proof that the second copy is made before anyone notices. A list
+ * that two packages will both consult is one list from the beginning or it is two lists later.
+ *
+ * `aria-*` is deliberately absent. ARIA attributes are enumerated STRINGS, not boolean attributes:
+ * `aria-hidden="false"` is valid and means "not hidden", and `aria-hidden=""` would be neither.
+ * `data-*` is absent for the same reason — its value is data, and an empty one is not the same as
+ * `"true"` to whatever reads it back.
+ */
+export const BOOLEAN_ATTRIBUTES = new Set([
+  "allowfullscreen",
+  "async",
+  "autofocus",
+  "autoplay",
+  "checked",
+  "controls",
+  "default",
+  "defer",
+  "disabled",
+  "formnovalidate",
+  "hidden",
+  "inert",
+  "ismap",
+  "itemscope",
+  "loop",
+  "multiple",
+  "muted",
+  "nomodule",
+  "novalidate",
+  "open",
+  "playsinline",
+  "readonly",
+  "required",
+  "reversed",
+  "selected",
+]);

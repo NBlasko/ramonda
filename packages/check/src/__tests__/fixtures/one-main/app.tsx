@@ -59,6 +59,18 @@ class HiddenIsFalse extends Component {
   }
 }
 
+/** ✓ `hidden="false"` is HIDDEN: a boolean attribute is on whenever it is written down. */
+class HiddenIsTheString extends Component {
+  render() {
+    return (
+      <div>
+        <main>content</main>
+        <main hidden="false">print copy</main>
+      </div>
+    );
+  }
+}
+
 /** ✓ A spread may be carrying the `hidden` that settles it. */
 class SecondSpreads extends Component {
   render() {
@@ -112,6 +124,7 @@ class App extends Component {
         <OneInEachArm />
         <SecondIsHidden />
         <HiddenIsFalse />
+        <HiddenIsTheString />
         <SecondSpreads />
         <RoleIsUnreadable />
         <JustOne />

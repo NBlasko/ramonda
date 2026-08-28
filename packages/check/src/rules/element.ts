@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { svgElements } from "@ramonda/dom-facts";
+import { BOOLEAN_ATTRIBUTES, svgElements } from "@ramonda/dom-facts";
 import { follow, type Looking } from "./follow-value";
 import type { ElementContext, JsxElementLike, WrittenAttribute } from "./rule";
 
@@ -201,7 +201,31 @@ function truthOf(attribute: WrittenAttribute | undefined, resolve: ElementContex
   if (attribute.bare) return true;
   const value = attribute.value;
   if (value === undefined) return undefined;
-  if (ts.isStringLiteral(value)) return value.text === "true" ? true : value.text === "false" ? false : undefined;
+
+  if (ts.isStringLiteral(value)) {
+    /**
+     * An HTML BOOLEAN attribute is on whenever it is PRESENT, whatever the string says.
+     *
+     * `required="false"` is a required field. The DOM has no way to say otherwise: `setAttribute`
+     * put the name there, and the parser reads only whether it is there. `core/Attribute.ts` is
+     * built on exactly that — `isInvisibleOnScreen` removes an attribute for the VALUE `false` and
+     * keeps the STRING `"false"`, because removing it is the only way to turn `disabled` off.
+     *
+     * An `aria-*` is the other kind and reads the other way: an enumerated string with three
+     * answers, where `"false"` is one of them and absent is a third. The same file's comment says
+     * so, and this mirrors it rather than inventing a second rule.
+     *
+     * Read as a value rather than as a presence, three rules were wrong on one line of markup —
+     * measured: `<main hidden="false">` was counted as a second visible landmark, a
+     * `<video muted="false">` was asked for captions it has no sound to need, and
+     * `<input required="false" aria-required="false">` — the very contradiction
+     * `aria-that-contradicts-the-tag` exists for — was reported by nothing.
+     */
+    if (BOOLEAN_ATTRIBUTES.has(attribute.name) || BOOLEAN_ATTRIBUTES.has(attribute.name.toLowerCase())) return true;
+
+    return value.text === "true" ? true : value.text === "false" ? false : undefined;
+  }
+
   // `aria-hidden={HIDDEN}` — the fourth spelling of the same fact, and the one that was missed.
   return truthBehind(value, resolve);
 }

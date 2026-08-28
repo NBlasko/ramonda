@@ -60,6 +60,9 @@ describe("what an attribute says, not that it is there", () => {
    */
   test("a `<video muted={false}>` has sound, and is reported", () => {
     expect(lines("media-with-no-captions")).toEqual([8, 14]);
+    // 17 is `muted="false"`, which is MUTED: a boolean attribute is on whenever it is present, so
+    // there is no sound to caption. Read as a VALUE this was a report against correct markup.
+    expect(lines("media-with-no-captions")).not.toContain(17);
   });
 
   /**
@@ -68,17 +71,17 @@ describe("what an attribute says, not that it is there", () => {
    *
    * `named-only-by-a-placeholder` told the author their placeholder is the only name this control
    * has — on a control with no name at all — while `control-with-no-label`, whose sentence that is,
-   * stayed quiet because a placeholder was written. Line 27 is now the second rule's, which is not
+   * stayed quiet because a placeholder was written. Line 30 is now the second rule's, which is not
    * a silence but a correction: the fault was always there and the wrong rule was describing it.
    */
   test("an empty placeholder moves the report to the rule whose sentence it is", () => {
-    expect(lines("named-only-by-a-placeholder")).toEqual([24]);
-    expect(lines("control-with-no-label")).toEqual([27]);
+    expect(lines("named-only-by-a-placeholder")).toEqual([27]);
+    expect(lines("control-with-no-label")).toEqual([30]);
   });
 
   test("and a properly labelled control is nobody's report, placeholder or not", () => {
-    // 31 carries a `+381…` hint beside a real `<label htmlFor>`, which is what a placeholder is for.
-    expect(lines("named-only-by-a-placeholder")).not.toContain(31);
-    expect(lines("control-with-no-label")).not.toContain(31);
+    // 34 carries a `+381…` hint beside a real `<label htmlFor>`, which is what a placeholder is for.
+    expect(lines("named-only-by-a-placeholder")).not.toContain(34);
+    expect(lines("control-with-no-label")).not.toContain(34);
   });
 });

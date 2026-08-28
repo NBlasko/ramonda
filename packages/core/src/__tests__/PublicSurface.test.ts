@@ -32,6 +32,9 @@ const EXPECTED = [
   "StableProps",
   "AsyncLoad",
   "ErrorBoundary",
+  // A select's state is which CHILD is chosen, so the plain tag is refused by the types and this is
+  // what the error names. `<option>` needs nothing: it has no choice to make.
+  "Select",
   "createContext",
   "createRef",
   "Ref",

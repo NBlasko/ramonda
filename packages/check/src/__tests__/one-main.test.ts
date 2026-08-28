@@ -47,17 +47,19 @@ describe("more than one main landmark", () => {
   });
 
   /**
-   * Six silences, and each is a different reason a page really has one landmark.
+   * Seven silences, and each is a different reason a page really has one landmark.
    *
    * 34 puts one in each arm of a ternary, which is one on the page — that is what `alwaysPresent`
-   * is computed for. 44 is `hidden`, the specification's own escape. 68 spreads, and the spread may
-   * be carrying the `hidden` that settles it. 80 has a `role` this cannot read, which may be
-   * anything including one that is not a landmark. 92 is a single `main` nested two elements deep.
-   * 102 is a SECOND RENDER — a different route view, never on the page at the same time.
+   * is computed for. 44 is `hidden`, the specification's own escape, and 68 is the same escape
+   * written `hidden="false"` — a boolean attribute is on whenever it is PRESENT, whatever string
+   * is on it, so that `main` is hidden too. 80 spreads, and the spread may be carrying the
+   * `hidden` that settles it. 92 has a `role` this cannot read, which may be anything including
+   * one that is not a landmark. 104 is a single `main` nested two elements deep. 114 is a SECOND
+   * RENDER — a different route view, never on the page at the same time.
    */
   test("every render that really has one landmark stays silent", () => {
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [34, 44, 68, 80, 92, 102]) {
+    for (const quiet of [34, 44, 68, 80, 92, 104, 114]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });
