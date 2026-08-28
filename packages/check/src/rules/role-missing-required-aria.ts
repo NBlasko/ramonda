@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { ROLE_REQUIRES, STATE_FROM_THE_ELEMENT } from "./aria";
-import type { HostElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * A role that promises something the element never says.
@@ -78,8 +78,6 @@ export const roleMissingRequiredAria = {
       "This is a warning today and an error in a later version.",
   },
 
-  alsoOnHost: true,
-
   read(_element, { tag, attr, has, attributes, at }) {
     // Markup only: a `role` prop on a component is decided inside that component.
     if (tag === undefined) return [];
@@ -103,4 +101,4 @@ export const roleMissingRequiredAria = {
     const site = attributes.find((attribute) => attribute.name.toLowerCase() === "role");
     return [{ role, tag, missing, ...positionOf(site?.at ?? at) }];
   },
-} as const satisfies HostElementRule<RoleMissingRequiredAriaIssue>;
+} as const satisfies ElementRule<RoleMissingRequiredAriaIssue>;

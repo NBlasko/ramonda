@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { Component, Host } from "@ramonda/core";
+import { Component } from "@ramonda/core";
 import { render, act, fireEvent } from "@ramonda/testing-library";
 import { createRoutes } from "../match";
 import { createRouter } from "../createRouter";
@@ -12,16 +12,22 @@ import { createRouter } from "../createRouter";
  * validated by `check-types` (an unused expectation there fails the build).
  */
 
-@Host("main")
 class Home extends Component {
   render() {
-    return <h1>Home</h1>;
+    return (
+      <main>
+        <h1>Home</h1>
+      </main>
+    );
   }
 }
-@Host("main")
 class Profile extends Component {
   render() {
-    return <h1>Profile</h1>;
+    return (
+      <main>
+        <h1>Profile</h1>
+      </main>
+    );
   }
 }
 
@@ -56,15 +62,16 @@ describe("route() builds hrefs", () => {
 
 describe("a typed <Link> still navigates", () => {
   test("static href", () => {
-    @Host("div")
     class WithLink extends Component {
       router = this.use(Router);
       route = this.use(Navigator);
       render() {
         return (
           <div>
-            <Link href="/about">go</Link>
-            <RouteOutlet routes={routes} />
+            <div>
+              <Link href="/about">go</Link>
+              <RouteOutlet routes={routes} />
+            </div>
           </div>
         );
       }
@@ -76,14 +83,15 @@ describe("a typed <Link> still navigates", () => {
   });
 
   test("param href via route()", () => {
-    @Host("div")
     class WithLink extends Component {
       router = this.use(Router);
       render() {
         return (
           <div>
-            <Link href={route("/u/:id", { id: "42" })}>go</Link>
-            <RouteOutlet routes={routes} />
+            <div>
+              <Link href={route("/u/:id", { id: "42" })}>go</Link>
+              <RouteOutlet routes={routes} />
+            </div>
           </div>
         );
       }
@@ -97,13 +105,16 @@ describe("a typed <Link> still navigates", () => {
 describe("Navigator.push is typed", () => {
   test("a real path pushes; a bad one is a type error", async () => {
     let nav!: InstanceType<typeof Navigator>;
-    @Host("div")
     class Shell extends Component {
       router = this.use(Router);
       n = this.use(Navigator);
       render() {
         nav = this.n;
-        return <RouteOutlet routes={routes} />;
+        return (
+          <div>
+            <RouteOutlet routes={routes} />
+          </div>
+        );
       }
     }
     render(<Shell />);
@@ -167,30 +178,39 @@ void _typeChecks;
  * matched. A type argument nothing verifies is the fault `route()` already refuses on its side.
  */
 describe("params(pattern) is typed from the pattern", () => {
-  @Host("main")
   class Named extends Component {
     private nav = this.use(Navigator);
     render() {
       // The type comes OUT of the pattern — no annotation, and `id` is `string`.
       const { id } = this.nav.params("/u/:id");
-      return <h1>{id}</h1>;
+      return (
+        <main>
+          <h1>{id}</h1>
+        </main>
+      );
     }
   }
 
-  @Host("main")
   class TwoParams extends Component {
     private nav = this.use(Navigator);
     render() {
       const { id, pid } = this.nav.params("/u/:id/p/:pid");
-      return <h1>{`${id}:${pid}`}</h1>;
+      return (
+        <main>
+          <h1>{`${id}:${pid}`}</h1>
+        </main>
+      );
     }
   }
 
-  @Host("div")
   class App extends Component {
     router = this.use(Router);
     render() {
-      return <RouteOutlet routes={withNamed} />;
+      return (
+        <div>
+          <RouteOutlet routes={withNamed} />
+        </div>
+      );
     }
   }
 
@@ -243,21 +263,27 @@ describe("params(pattern) is typed from the pattern", () => {
  * unchecked claim hands back `undefined` typed as `string`.
  */
 describe("params(pattern) is checked against the route that matched", () => {
-  @Host("main")
   class Wrong extends Component {
     private nav = this.use(Navigator);
     render() {
       // Claims `:pid`, but the route below only supplies `:id`.
       const { pid } = this.nav.params("/u/:id/p/:pid");
-      return <h1>{pid}</h1>;
+      return (
+        <main>
+          <h1>{pid}</h1>
+        </main>
+      );
     }
   }
 
-  @Host("div")
   class App extends Component {
     router = this.use(Router);
     render() {
-      return <RouteOutlet routes={onlyId} />;
+      return (
+        <div>
+          <RouteOutlet routes={onlyId} />
+        </div>
+      );
     }
   }
 
@@ -276,18 +302,24 @@ describe("params(pattern) is checked against the route that matched", () => {
    * names one of them and is right on both — the claim is about the params, not the spelling.
    */
   test("a different pattern with the same param is accepted", () => {
-    @Host("main")
     class Reader extends Component {
       private nav = this.use(Navigator);
       render() {
-        return <h1>{this.nav.params("/u/:id").id}</h1>;
+        return (
+          <main>
+            <h1>{this.nav.params("/u/:id").id}</h1>
+          </main>
+        );
       }
     }
-    @Host("div")
     class Two extends Component {
       router = this.use(Router);
       render() {
-        return <RouteOutlet routes={people} />;
+        return (
+          <div>
+            <RouteOutlet routes={people} />
+          </div>
+        );
       }
     }
     // `Reader` names `/u/:id` while being rendered by `/people/:id` — same param, so it holds.

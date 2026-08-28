@@ -1,10 +1,9 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 /**
  * The links, in one file — and the ids they point at in ANOTHER, which is the whole reason this
  * family exists. No per-render subject can see both ends of this pair.
  */
-@Host("nav")
 export class Nav extends Component {
   render() {
     return (

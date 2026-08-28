@@ -1,10 +1,9 @@
-import { Component, Host, state } from "@ramonda/core";
+import { Component, state } from "@ramonda/core";
 
 // The unit of reuse is the CLASS, and classes extend each other. That is why
 // Ramonda needs no fragments: in a framework whose unit is a function, reuse
 // means nesting, nesting costs an element, and a fragment hides it. Classes do
 // not nest to be reused, so no wrapper appears.
-@Host("div")
 class Badge extends Component<{ label: string }> {
   @state clicks = 0;
 
@@ -19,9 +18,11 @@ class Badge extends Component<{ label: string }> {
 
   render() {
     return (
-      <button type="button" className="demo-badge" onclick={this.bump}>
-        {this.decorate(`${this.props.label} · ${this.clicks}`)}
-      </button>
+      <div>
+        <button type="button" className="demo-badge" onclick={this.bump}>
+          {this.decorate(`${this.props.label} · ${this.clicks}`)}
+        </button>
+      </div>
     );
   }
 }
@@ -38,21 +39,25 @@ class LoudBadge extends Badge {
   }
 }
 
-// @Host is inherited too — and can be overridden, which is the answer to "someone
-// styled a <td>, I want more behaviour but it must stay a <td>".
-@Host("mark")
-class MarkedBadge extends Badge {}
+// A subclass can change the ELEMENT as well as the behaviour, by overriding the render — which is
+// the answer to "someone styled a <td>, I want more behaviour but it must stay a <td>".
+class MarkedBadge extends Badge {
+  override render() {
+    return <mark>{this.decorate(this.props.label)}</mark>;
+  }
+}
 
-@Host("div")
 export class InheritanceDemo extends Component {
   render() {
     return (
-      <p className="demo-row">
-        <Badge label="plain" />
-        <LoudBadge label="loud" />
-        <MarkedBadge label="marked" />
-        <span className="demo-note">three classes, one render() between them — the third is a &lt;mark&gt;</span>
-      </p>
+      <div>
+        <p className="demo-row">
+          <Badge label="plain" />
+          <LoudBadge label="loud" />
+          <MarkedBadge label="marked" />
+          <span className="demo-note">three classes, one render() between them — the third is a &lt;mark&gt;</span>
+        </p>
+      </div>
     );
   }
 }

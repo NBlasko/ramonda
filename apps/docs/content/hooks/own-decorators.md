@@ -7,7 +7,7 @@ order: 62
 
 # Your own decorators
 
-`@interval`, `@timeout`, `@onWindow` and `@onElement` all share one shape: subscribe
+`@interval`, `@timeout`, `@onWindow` and `@onDocument` all share one shape: subscribe
 to something when the component appears, unsubscribe when it goes away.
 `createSubscriptionDecorator` lets you make your own decorator with that shape —
 handy for connecting to an external store or any subscribe/unsubscribe API.

@@ -1,4 +1,4 @@
-import { Component, Host, state, destroyed, __h } from "@ramonda/core";
+import { Component, state, destroyed, __h } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import type { ContentNode } from "./content-types";
 import { toVNode } from "./Markdown";
@@ -26,13 +26,6 @@ function textOf(node: ContentNode): string {
  * select. It renders the `<pre>` directly rather than through `toVNode`, because
  * `toVNode` routes a Shiki `<pre>` back here — going through it would recurse.
  */
-@Host("div", (self: CodeBlock) => {
-  const attrs: Record<string, string> = {
-    className: self.props.className ? `code-block ${self.props.className}` : "code-block",
-  };
-  if (self.props.pagefindIgnore) attrs["data-pagefind-ignore"] = "";
-  return attrs;
-})
 export class CodeBlock extends Component<CodeBlockProps> {
   @state private copied = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -61,12 +54,17 @@ export class CodeBlock extends Component<CodeBlockProps> {
     const tag = typeof pre === "string" ? "pre" : pre.t;
     const attrs = typeof pre === "string" ? null : (pre.a ?? null);
 
-    return [
-      <button type="button" className="copy-btn" onclick={this.copy} aria-label="Copy code to clipboard">
-        {this.copied ? "Copied" : "Copy"}
-      </button>,
-      // ramonda-check-ignore the tag comes from the parsed content tree and is always an element name
-      __h(tag, attrs, ...children) as ComponentChild,
-    ] as RamondaNode;
+    return (
+      <div
+        className={this.props.className ? `code-block ${this.props.className}` : "code-block"}
+        data-pagefind-ignore={this.props.pagefindIgnore ? "" : undefined}
+      >
+        <button type="button" className="copy-btn" onclick={this.copy} aria-label="Copy code to clipboard">
+          {this.copied ? "Copied" : "Copy"}
+        </button>
+        {/* ramonda-check-ignore the tag comes from the parsed content tree and is always an element name */}
+        {__h(tag, attrs, ...children) as ComponentChild}
+      </div>
+    );
   }
 }

@@ -1,5 +1,5 @@
 import { positionOf } from "../syntax";
-import type { HostElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * A `tabIndex` above zero, which moves the element to the front of the tab order.
@@ -54,8 +54,6 @@ export const positiveTabIndex = {
    */
   evenWhenSpreading: true,
 
-  alsoOnHost: true,
-
   read(_element, { tag, number, overwritable, at }) {
     if (tag === undefined) return [];
     if (overwritable("tabIndex")) return [];
@@ -73,4 +71,4 @@ export const positiveTabIndex = {
 
     return [{ tag, value, ...positionOf(at) }];
   },
-} as const satisfies HostElementRule<PositiveTabIndexIssue>;
+} as const satisfies ElementRule<PositiveTabIndexIssue>;

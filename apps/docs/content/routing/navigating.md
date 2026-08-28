@@ -69,7 +69,6 @@ The component that mounts the router with `this.use(Router)` doesn't need a sepa
 surface, from the piece that owns the state:
 
 ```tsx
-@Host("div")
 export class App extends Component {
   router = this.use(Router);
 

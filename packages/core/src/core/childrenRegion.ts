@@ -6,13 +6,15 @@ import {
   disposeRegions,
   unmountChildrenNodes,
   reorderChildren,
+  reparentRegions,
 } from "./DiffAndMerge";
 import { addTaskToQueue } from "./Task";
 import { queuePostCommit } from "./commit";
-import { hydrateLevel, type HydrationWalk } from "../hydration/hydrate";
+import { hydrateLevel, isSplitRemainder, type HydrationWalk } from "../hydration/hydrate";
+import { reportBlockLengthMismatch } from "../debug/hydrationMismatch";
 import type { ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
-import type { DONE } from "../helpers/constants";
+import { BLOCK_CLOSE, BLOCK_OWNER, CHILD_RECORD, type DONE } from "../helpers/constants";
 
 /**
  * The comments that delimit a region's block in the DOM, and in the markup a
@@ -107,13 +109,20 @@ export class ChildrenRegion {
   /** What this block held last pass — the region's own `CHILD_RECORD`. */
   private record: RecordEntry[] = [];
   /**
-   * The block's nodes in order, as of last pass.
+   * The nodes this block holds, in order, derived from `record` on every read.
    *
-   * Doubles as the position map for the reorder: the nodes are contiguous and
-   * nothing else moves them, so this IS their DOM order, and reading it back
-   * costs nothing where a walk over a shared parent's children would.
+   * Deliberately not a cached array. A COMPONENT inside this block re-renders on its own, straight
+   * into the record entry it owns, without this region hearing about it — so a list captured when
+   * the region last reconciled is stale the moment a child's state moves, and every reader of it is
+   * then working from a description of a DOM that no longer exists. `dispose()` unmounted the nodes
+   * of the last pass and left the new ones in a target it no longer has an anchor in. Walking the
+   * record instead walks into that child's CURRENT entries, which is the only place the truth is.
    */
-  private order: ChildNode[] = [];
+  private get order(): ChildNode[] {
+    const nodes: ChildNode[] = [];
+    flattenEntries(this.record, nodes);
+    return nodes;
+  }
   private open: Comment | undefined;
   private close: Comment | undefined;
   private parent: ChildNode | undefined;
@@ -133,6 +142,69 @@ export class ChildrenRegion {
     };
   }
 
+  /**
+   * Publishes this block on its own OPENING ANCHOR: the record it holds, and where it ends.
+   *
+   * The record belongs to the region — that is the whole point of the class — so a walk over the
+   * target element cannot see the components inside it, and three readers need to: the server's
+   * marker pass, the devtools tree, and the search an empty component does for its own position.
+   *
+   * On the anchor rather than in a registry of live regions, and that is the fix for two faults at
+   * once. A registry is only emptied by `dispose`, and nothing disposes a server render's tree — so
+   * it grew by one per portal per request for the life of the process, and the marker pass rebuilt
+   * the whole of it once per DOM node. The anchor is a node already in the target: it goes when the
+   * block goes, and an ordinary walk finds it where it is.
+   */
+  private publish(): void {
+    const open = this.open as unknown as EnhancedChildNode | undefined;
+    if (open === undefined) return;
+    open[CHILD_RECORD] = this.record;
+    (open as unknown as { [BLOCK_CLOSE]?: ChildNode })[BLOCK_CLOSE] = this.close;
+    // And the region itself, so a teardown of the HOST element can tell it. See `hostRemoved`.
+    (open as unknown as { [BLOCK_OWNER]?: { hostRemoved(): void } })[BLOCK_OWNER] = this;
+  }
+
+  /**
+   * The element this block lived in is being removed by whoever owns it.
+   *
+   * The nodes go — they are inside it — and every component in here is torn down, which is what the
+   * teardown was already doing by finding the record on the anchor. What it could not do is TELL the
+   * region, so the region went on believing those instances mounted: measured, the next `reconcile`
+   * adopted a destroyed component, RMD008 reported a write after unmount, and the block carried that
+   * dead markup into the live DOM, where it could never update again.
+   *
+   * Released rather than DISPOSED, and that is the decision worth naming: the owner of this region is
+   * still alive, and its target may come back — the same `<section>` re-rendered, or a different one.
+   * So the region forgets what it held and is placed afresh on its next reconcile, exactly as it was
+   * before it was ever placed. Disposing it instead would leave a live hook rendering nowhere for
+   * good.
+   */
+  hostRemoved(): void {
+    if (this.disposed || this.open === undefined) return;
+
+    const held = this.order;
+    if (held.length > 0) unmountChildrenNodes(held as EnhancedChildNode[], false);
+    // The engines are reachable only from the record — the nodes going is not enough, or every item
+    // that read an ancestor's signal stays subscribed.
+    disposeRegions(this.record);
+    this.record = [];
+
+    /**
+     * The anchors are dropped rather than removed: they are children of the element being taken out,
+     * so the host removes them. Clearing what they published matters all the same — the teardown walk
+     * may still be holding them, and a stale record on a detached comment is exactly what a later
+     * reader would take for the truth.
+     */
+    const open = this.open as unknown as EnhancedChildNode;
+    open[CHILD_RECORD] = undefined;
+    (open as unknown as { [BLOCK_CLOSE]?: ChildNode })[BLOCK_CLOSE] = undefined;
+    (open as unknown as { [BLOCK_OWNER]?: unknown })[BLOCK_OWNER] = undefined;
+
+    this.open = undefined;
+    this.close = undefined;
+    this.parent = undefined;
+  }
+
   /** Brings the block into line with `children`, inside `parent`. */
   reconcile(children: unknown, parent: ChildNode): void {
     if (this.disposed) return;
@@ -144,23 +216,20 @@ export class ChildrenRegion {
     // this region as the origin instead of a component's render.
     const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
 
+    // Read before the record is replaced: this is where the nodes ARE, and the reorder needs it to
+    // tell a node that has not moved from one that has.
+    const before = this.order;
+
     const unclaimed: (EnhancedChildNode | DONE)[] = [];
     const result = reconcileEntries(normalized, this.record, undefined, this.owner, parent, unclaimed, this.listHost);
     this.record = result.entries;
+    this.publish();
 
     // Before the reorder, for the reason the render path has: stale nodes still
     // in the DOM make correctly-placed ones look misplaced and cause moves.
     unmountChildrenNodes(unclaimed, false);
 
-    const ordered: ChildNode[] = [];
-    flattenEntries(result.entries, ordered);
-    reorderChildren(parent, ordered, this.close!, this.order);
-    this.order = ordered;
-  }
-
-  /** The nodes this region owns, in order — what a caller needs to move or seed. */
-  get nodes(): readonly ChildNode[] {
-    return this.order;
+    reorderChildren(parent, this.order, this.close!, before);
   }
 
   /**
@@ -171,9 +240,9 @@ export class ChildrenRegion {
    * everything under a parent. That is the whole reason it exists: a portalled
    * COMPONENT is only restored if `hydrateComponent` runs on it, reading the
    * state blob off its host and adopting it as the instance's own. Reusing the
-   * element and reconciling against it is not the same thing — the node carries
-   * no `_componentInstance`, so the diff builds a fresh component, the server's
-   * `@created` never happened on this side, and its state is gone.
+   * element and reconciling against it is not the same thing — no node says a component is here, so
+   * the diff builds a fresh one, the server's `@created` never happened on this side, and its state
+   * is gone.
    *
    * The server's own anchors are REUSED rather than replaced. Their ids belong to
    * the server's regions and will not match this one's, but an id is only ever
@@ -190,22 +259,73 @@ export class ChildrenRegion {
     const walk: HydrationWalk = { cursor: open.nextSibling as EnhancedChildNode | null, count: 0 };
     this.record = hydrateLevel(normalized, this.owner, parent, walk, this.listHost).entries;
 
-    const ordered: ChildNode[] = [];
-    flattenEntries(this.record, ordered);
-    this.order = ordered;
-
-    // Where the walk stopped IS the closing anchor, when the server wrote as many
-    // nodes as this render wants. It is not when the client renders more children
-    // than the server did: those were built and inserted before the anchor, and
-    // the walk stopped on it all the same. Either way the anchor is the node the
-    // walk ran into, so the only case left is a block the server never closed.
+    /**
+     * Where the walk stopped IS the closing anchor, when the server wrote as many nodes as this
+     * render wants — and also when it wrote FEWER, because those extra children were built and
+     * inserted in front of the anchor and the walk stopped on it all the same.
+     *
+     * **Every exit publishes, and it publishes AFTER `this.close` is known.** This used to publish
+     * once up here, while the close was still `undefined`, and only the two divergence exits below
+     * published again — so the ordinary exit, which is every correct SSR page, left
+     * `open[BLOCK_CLOSE]` unset until the region's first `reconcile()`. Both readers of it then took
+     * their fallback: an empty portalled component's first node was placed at the END OF THE TARGET
+     * rather than inside its own anchors, and a host element read the block's nodes as its own
+     * because the run had no end to skip to.
+     */
     const stop = walk.cursor;
     if (stop !== null && isCloseAnchor(stop)) {
       this.close = stop as unknown as Comment;
+      this.publish();
       return;
     }
+
+    /**
+     * The walk stopped on a leftover SERVER node, still inside this block: the client rendered
+     * FEWER children than the server did.
+     *
+     * Minting a close in front of it is what this used to do, and it put every remaining server node
+     * — and the server's own close — OUTSIDE the region. Measured on a two-`<meta>` block hydrated by
+     * a one-`<meta>` render: the head kept `<!--r7--><meta a><!--/r14--><meta b><!--/r7-->`, so the
+     * stale tag stayed on screen and `dispose()` could never reclaim it, because the teardown only
+     * ever removes what the record holds plus its two anchors.
+     *
+     * The server's own close is the answer, and the run in front of it is what this render did not
+     * ask for. Depth is counted because a block may hold another block, whose close comes first.
+     */
+    let depth = 0;
+    const extra: ChildNode[] = [];
+    for (let node: ChildNode | null = stop; node !== null; node = node.nextSibling) {
+      if (isOpenAnchor(node)) depth++;
+      else if (isCloseAnchor(node)) {
+        if (depth === 0) {
+          // What is REPORTED is what the server sent and this render did not want. A split tail is
+          // the second half of a text divergence already reported, and counting it said "your block
+          // is one node shorter" about a node this hydration made — the same distinction
+          // `closeBlock` draws one level up.
+          let fromServer = 0;
+          for (const spare of extra) {
+            if (!isSplitRemainder(spare)) fromServer++;
+            spare.remove();
+          }
+          this.close = node as Comment;
+          if (__DEV__ && fromServer > 0) reportBlockLengthMismatch(this.owner, fromServer);
+          this.publish();
+          return;
+        }
+        depth--;
+      }
+      extra.push(node);
+    }
+
+    /**
+     * No close anywhere after the cursor: the server never closed this block. Nothing before it can
+     * be trusted as an end, so the region writes its own — without one, `reconcile` and `dispose`
+     * have no boundary to work against and the next render inserts past every other block in a
+     * shared target.
+     */
     this.close = document.createComment(closeAnchor(this.id));
     parent.insertBefore(this.close, stop);
+    this.publish();
   }
 
   /**
@@ -215,12 +335,13 @@ export class ChildrenRegion {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.order.length > 0) unmountChildrenNodes(this.order as EnhancedChildNode[], false);
+    const held = this.order;
+    if (held.length > 0) unmountChildrenNodes(held as EnhancedChildNode[], false);
     // The engines are reachable only from the record — the nodes going is not
     // enough, or every item that read an ancestor's signal stays subscribed.
     disposeRegions(this.record);
     this.record = [];
-    this.order = [];
+    this.publish();
     this.open?.remove();
     this.close?.remove();
     this.open = undefined;
@@ -241,6 +362,7 @@ export class ChildrenRegion {
       parent.appendChild(this.open);
       parent.appendChild(this.close);
       this.parent = parent;
+      this.publish();
       return;
     }
     if (this.parent === parent) return;
@@ -249,6 +371,7 @@ export class ChildrenRegion {
     for (const node of this.order) parent.appendChild(node);
     parent.appendChild(this.close);
     this.parent = parent;
+    reparentRegions(this.record, parent);
   }
 
   /**

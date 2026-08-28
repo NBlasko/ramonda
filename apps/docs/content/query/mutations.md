@@ -20,10 +20,8 @@ interface Todo {
   title: string;
 }
 
-// The host IS the form. `@onElement` listens on the component's host element, so a
-// `submit` handler needs the host to be the thing that emits `submit` — see
-// [the host element](/concepts/host).
-@Host("form")
+// The `<form>` is written in the render, with the `submit` handler on it: a listener belongs
+// on the element that emits the event.
 class AddTodo extends Component {
   @state draft = "";
 
@@ -32,7 +30,6 @@ class AddTodo extends Component {
     invalidates: [["todos"]],
   }));
 
-  @onElement("submit")
   submit(event: Event) {
     event.preventDefault();
     this.add.mutate(this.draft);
@@ -47,12 +44,12 @@ class AddTodo extends Component {
 
   render() {
     return (
-      <div>
+      <form onsubmit={this.submit}>
         <input value={this.draft} oninput={this.typed} />
         <button type="submit" disabled={this.add.isPending}>
           {this.add.isPending ? "saving…" : "add"}
         </button>
-      </div>
+      </form>
     );
   }
 }

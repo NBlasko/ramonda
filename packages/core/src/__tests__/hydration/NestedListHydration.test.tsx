@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../../test/setup";
-import { Component, Host, list, state } from "../../index";
+import { getDOM, instanceOf, servedMarkup } from "../../test/setup";
+import { Component, list, state } from "../../index";
 import { hydrateRoot } from "../../hydration/hydrate";
 
 const microtask = () => Promise.resolve();
@@ -27,45 +27,50 @@ const makeRow = (label: string): Row => ({
 });
 
 /** Nesting through a component per level — a <tr> owning a list over its cells. */
-@Host("tr")
 class TableRow extends Component<{ item: Row }> {
   render() {
-    return [
-      <td className="lbl">{this.props.item.label}</td>,
-      list(this.props.item.cells, (cell: Cell) => <td>{cell.v}</td>),
-    ];
+    return (
+      <tr>
+        {[
+          <td className="lbl">{this.props.item.label}</td>,
+          list(this.props.item.cells, (cell: Cell) => <td>{cell.v}</td>),
+        ]}
+      </tr>
+    );
   }
 }
 
-@Host("div")
 class TableApp extends Component {
   @state rows: Row[] = [makeRow("A"), makeRow("B")];
   render() {
     return (
-      <table>
-        <tbody>
-          {list(this.rows, (item) => (
-            <TableRow item={item} />
-          ))}
-        </tbody>
-      </table>
+      <div>
+        <table>
+          <tbody>
+            {list(this.rows, (item) => (
+              <TableRow item={item} />
+            ))}
+          </tbody>
+        </table>
+      </div>
     );
   }
 }
 
 /** A list nested inside a GROUP, at one element level — no component between. */
-@Host("div")
 class GroupApp extends Component {
   @state rows: Row[] = [makeRow("X")];
   render() {
     return (
-      <ul>
-        {[
-          <li className="head">HEAD</li>,
-          list(this.rows, (row: Row) => <li>{row.label}</li>),
-          <li className="foot">FOOT</li>,
-        ]}
-      </ul>
+      <div>
+        <ul>
+          {[
+            <li className="head">HEAD</li>,
+            list(this.rows, (row: Row) => <li>{row.label}</li>),
+            <li className="foot">FOOT</li>,
+          ]}
+        </ul>
+      </div>
     );
   }
 }
@@ -73,7 +78,7 @@ class GroupApp extends Component {
 async function hydrateFromServer(vnode: JSX.Element) {
   const server = await getDOM(vnode);
   await server.settle();
-  const html = server.container.innerHTML;
+  const html = servedMarkup(server.container, { state: false });
   server.unmount();
 
   const container = document.createElement("div");
@@ -98,10 +103,8 @@ describe("hydration: nested lists", () => {
       expect(serverNodes).toContain(cell);
     }
 
-    const host = container.firstElementChild as unknown as {
-      _componentInstance: TableApp;
-    };
-    host._componentInstance.rows = [makeRow("Z"), ...host._componentInstance.rows];
+    const host = container.firstElementChild;
+    instanceOf<GroupApp>(host).rows = [makeRow("Z"), ...instanceOf<GroupApp>(host).rows];
     await microtask();
     await microtask();
 
@@ -118,10 +121,8 @@ describe("hydration: nested lists", () => {
       expect(serverNodes).toContain(item);
     }
 
-    const host = container.firstElementChild as unknown as {
-      _componentInstance: GroupApp;
-    };
-    host._componentInstance.rows = [makeRow("Y"), ...host._componentInstance.rows];
+    const host = container.firstElementChild;
+    instanceOf<GroupApp>(host).rows = [makeRow("Y"), ...instanceOf<GroupApp>(host).rows];
     await microtask();
     await microtask();
 

@@ -134,12 +134,22 @@ const html = await response.text();
 const checks = [
   ["the app's root", '<div id="app">'],
   ["server-rendered content", "<h2>Home</h2>"],
-  ["a hydration blob", "data-ramonda-state"],
 ];
 
 for (const [what, needle] of checks) {
   if (!html.includes(needle)) fail(`GET / is missing ${what} (${needle})`);
 }
+
+/**
+ * The component markers, and the state blob on one of them.
+ *
+ * `data-ramonda-state` used to be an attribute on each component's host element. A component owns a
+ * RANGE of nodes now, so the pair of comments around that range is what says where it begins and
+ * ends — and the opening one carries the state. Served markup is text; this is the only thing in it
+ * that can say a component is here.
+ */
+if (!/<!--c\d+/.test(html)) fail("GET / carries no component markers, so a client has nothing to hydrate against");
+if (!/<!--c\d+ \{"state"/.test(html)) fail("GET / carries no state blob on any marker");
 
 /**
  * The panel, in the REAL bundle, driven the way a reader drives it.
@@ -572,8 +582,99 @@ async function checkPortal() {
 
 const panel = await checkPanel();
 const editor = await checkEditorEndpoint();
+
+/**
+ * What a component IS in the DOM, asked of a real server and a real parse.
+ *
+ * A component owns a RANGE of nodes rather than one element, and the whole of that claim is only
+ * checkable here: the server has to say where each range begins and ends in TEXT, the parser has to
+ * leave what it says alone, and hydration has to take it back out again. A jsdom unit test can check
+ * the last step; it cannot check that the HTML survives being served and parsed.
+ *
+ * Four things, and each of them was impossible or wrong before:
+ *
+ * - two `<td>` from one component sit INSIDE the `<tr>`. An element there is foster-parented out in
+ *   front of the whole table by the parser, which is what `RMD010` existed to refuse.
+ * - a component that renders nothing is an EMPTY marker pair — its whole footprint.
+ * - after hydration there is not one comment left under `#app`, so the page holds exactly what a
+ *   client-side render would have produced.
+ * - the nodes are ADOPTED, not rebuilt: the deep `<code>` is the same object after hydration.
+ */
+async function checkNesting() {
+  const { JSDOM } = await import("jsdom");
+  const code = await readFile(join(root, "dist/client/assets/client.js"), "utf8");
+
+  const served = await fetch(`http://localhost:${PORT}/nesting`);
+  if (!served.ok) fail(`GET /nesting answered ${served.status}`);
+  const page = await served.text();
+
+  // Two cells from one component, inside the row, with nothing of the framework's between them.
+  const row = /<tr class="person"><!--c(\d+)-->(.*?)<!--\/c\1--><\/tr>/.exec(page);
+  if (!row) fail("the served row is not a marker pair wrapping the cells — the parser moved something");
+  if (!/^<td class="name">.*<\/td><td class="age">\d+<\/td>$/.test(row[2])) {
+    fail(`the row's block is ${row[2]}, expected exactly the two cells`);
+  }
+
+  // A component that renders nothing: an empty pair, and that is all of it.
+  if (!/<!--c(\d+)--><!--\/c\1-->/.test(page)) {
+    fail("no empty marker pair in the served page, so a component that renders nothing left no trace");
+  }
+
+  const dom = new JSDOM(page, {
+    url: `http://localhost:${PORT}/nesting`,
+    runScripts: "outside-only",
+    pretendToBeVisual: true,
+  });
+  const { window } = dom;
+  const doc = window.document;
+
+  const servedDeep = doc.querySelector("#deep");
+  if (!servedDeep) fail("the server did not render the deeply nested component");
+
+  window.eval(code);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  if (doc.querySelector("#deep") !== servedDeep) {
+    fail("hydration rebuilt the deeply nested component instead of adopting its element");
+  }
+
+  const app = doc.getElementById("app");
+  const walker = doc.createTreeWalker(app, 128 /* SHOW_COMMENT */);
+  let left = 0;
+  while (walker.nextNode()) left++;
+  if (left !== 0)
+    fail(`${left} of the server's markers survived hydration — the page is not what a client render makes`);
+
+  const cellsOf = () => [...doc.querySelectorAll("tr.person")].map((tr) => tr.children.length);
+  if (JSON.stringify(cellsOf()) !== JSON.stringify([2, 2])) {
+    fail(`each row must hold exactly its two cells, found ${JSON.stringify(cellsOf())}`);
+  }
+
+  const panels = () => doc.querySelectorAll("p.panel-line").length;
+  if (panels() !== 2) fail(`expected two panels before the toggle, found ${panels()}`);
+
+  const flip = doc.querySelector("#flip");
+  flip.dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  if (panels() !== 0) fail(`hiding left ${panels()} panel(s) behind`);
+
+  flip.dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  if (panels() !== 2) fail(`showing them again produced ${panels()} panel(s)`);
+
+  const rows = cellsOf().length;
+
+  // Closed, because this page mounts a component with a live `@interval` — a timer inside jsdom
+  // keeps Node's event loop alive and the run would never end. Read what is being reported first:
+  // a closed window answers `0` for everything, which reads as a passing check that measured nothing.
+  window.close();
+
+  return { rows };
+}
+
 const form = await checkForm();
 const portal = await checkPortal();
+const nesting = await checkNesting();
 await checkModes();
 
 stop();
@@ -588,5 +689,7 @@ console.log(
     `and the row ids survived a splice (${form.rowids})\n` +
     `[smoke] a portal into a named target was served outside #app, adopted on hydration, kept the ` +
     `state the server gave it, and MOVED its ${portal.rows} list() rows on a reorder\n` +
+    `[smoke] /nesting served its ${nesting.rows} rows as marker pairs inside the <tr>, hydration ` +
+    `adopted the markup and removed every marker, and the toggle takes both panels out and back\n` +
     `[smoke] all three render modes answered: static, dynamic, and ISR through a background rebake`,
 );

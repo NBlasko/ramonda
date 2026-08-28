@@ -1,4 +1,4 @@
-import { Component, Host, state, memoized, list } from "@ramonda/core";
+import { Component, state, memoized, list } from "@ramonda/core";
 
 // @memoized caches a function by its arguments, per instance. Ask for
 // `this.remove("a")` twice and you get the SAME function both times.
@@ -9,7 +9,6 @@ import { Component, Host, state, memoized, list } from "@ramonda/core";
 //
 // Entries whose arguments were not requested this render are dropped, so the
 // cache tracks the list rather than growing with every value ever seen.
-@Host("div")
 export class MemoHandlers extends Component {
   @state items = ["apples", "bread", "coffee"];
   @state lastIdentityCheck = "—";
@@ -36,22 +35,24 @@ export class MemoHandlers extends Component {
   render() {
     return (
       <div>
-        <ul className="demo-log">
-          {list(this.items, (name: string) => (
-            <li>
-              {name}{" "}
-              <button type="button" onclick={this.remove(name)}>
-                remove
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className="demo-row">
-          <button type="button" onclick={this.compareIdentity}>
-            this.remove("apples") twice →
-          </button>
-          <span className="demo-note">{this.lastIdentityCheck}</span>
-        </p>
+        <div>
+          <ul className="demo-log">
+            {list(this.items, (name: string) => (
+              <li>
+                {name}{" "}
+                <button type="button" onclick={this.remove(name)}>
+                  remove
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="demo-row">
+            <button type="button" onclick={this.compareIdentity}>
+              this.remove("apples") twice →
+            </button>
+            <span className="demo-note">{this.lastIdentityCheck}</span>
+          </p>
+        </div>
       </div>
     );
   }

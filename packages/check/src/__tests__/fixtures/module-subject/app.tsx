@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const which: string;
 declare const chosen: string;
@@ -19,17 +19,18 @@ export const notRelative = () => import(`pages/${which}.ts`);
 export const byName = () => import(SPECIFIER);
 export const told = () => import(/* @vite-ignore */ chosen);
 
-@Host("div")
 class Reads extends Component {
   render() {
     return (
       <div>
-        {import.meta.env.VITE_API_URL}
-        {import.meta.env["VITE_API_URL"]}
-        {import.meta.env[KEY]}
-        {import.meta.env[chosen]}
-        {import.meta.env.RAMONDA_PUBLIC_API}
-        {import.meta.env.MODE}
+        <div>
+          {import.meta.env.VITE_API_URL}
+          {import.meta.env["VITE_API_URL"]}
+          {import.meta.env[KEY]}
+          {import.meta.env[chosen]}
+          {import.meta.env.RAMONDA_PUBLIC_API}
+          {import.meta.env.MODE}
+        </div>
       </div>
     );
   }

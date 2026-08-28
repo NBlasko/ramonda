@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { Component, list, state } from "../index";
 import { State } from "../reactivity/State";
 import { stampIdentity } from "../helpers/itemIdentity";
 
@@ -49,18 +49,21 @@ describe("a list with two items under one key", () => {
     const rows: Row[] = [{ id: 1 }, { id: 2 }];
     for (const row of rows) stampIdentity(row, "f-same");
 
-    @Host("ul")
     class L extends Component {
       @state rows: Row[] = rows;
 
       render() {
         ownerRenders++;
-        return list(this.rows, (r: Row) => {
-          // Only the FIRST item reads it, and the first item is the one whose
-          // scope gets shadowed.
-          if (r.id === 1) hidden.get();
-          return <li>{r.id}</li>;
-        });
+        return (
+          <ul>
+            {list(this.rows, (r: Row) => {
+              // Only the FIRST item reads it, and the first item is the one whose
+              // scope gets shadowed.
+              if (r.id === 1) hidden.get();
+              return <li>{r.id}</li>;
+            })}
+          </ul>
+        );
       }
     }
 
@@ -85,16 +88,19 @@ describe("a list with two items under one key", () => {
 
     type Row = { id: number };
 
-    @Host("ul")
     class L extends Component {
       @state rows: Row[] = [{ id: 1 }, { id: 2 }];
 
       render() {
         ownerRenders++;
-        return list(this.rows, (r: Row) => {
-          if (r.id === 2) watched.get();
-          return <li>{r.id}</li>;
-        });
+        return (
+          <ul>
+            {list(this.rows, (r: Row) => {
+              if (r.id === 2) watched.get();
+              return <li>{r.id}</li>;
+            })}
+          </ul>
+        );
       }
     }
 

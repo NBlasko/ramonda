@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, afterEach } from "vitest";
-import { getDOM } from "../../test/setup";
-import { Component, Host, created, destroyed, ErrorBoundary } from "../../index";
+import { getDOM, instanceOf } from "../../test/setup";
+import { Component, created, destroyed, ErrorBoundary } from "../../index";
 import { lifecycleCleanupManagement } from "../../helpers/lifecycleMenagement";
 
 /**
@@ -36,7 +36,6 @@ describe("teardown when the build fails", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const log: string[] = [];
 
-    @Host("div")
     class Broken extends Component {
       @created born() {
         log.push("create"); // stands in for acquiring a resource
@@ -71,7 +70,6 @@ describe("teardown when the build fails", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const log: string[] = [];
 
-    @Host("div")
     class Broken extends Component {
       @created born() {
         log.push("create");
@@ -81,7 +79,11 @@ describe("teardown when the build fails", () => {
         log.push("destroy");
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -109,7 +111,6 @@ describe("teardown when the build fails", () => {
   test("the fallback still renders — teardown does not swallow the error", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    @Host("div")
     class Broken extends Component {
       render(): never {
         throw new Error("boom");
@@ -149,19 +150,22 @@ describe("teardown when the build fails", () => {
   test("running teardown twice runs @destroyed once", async () => {
     let destroys = 0;
 
-    @Host("div")
     class Counted extends Component {
       @destroyed gone() {
         destroys++;
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
     const app = await getDOM(<Counted />);
     const host = app.container.firstElementChild!;
-    const instance = (host as { _componentInstance?: Counted })._componentInstance!;
+    const instance = instanceOf<Counted>(host);
 
     lifecycleCleanupManagement(instance);
     lifecycleCleanupManagement(instance);
@@ -173,7 +177,6 @@ describe("teardown when the build fails", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const log: string[] = [];
 
-    @Host("div")
     class Fine extends Component {
       @created born() {
         log.push("fine:create");
@@ -182,11 +185,14 @@ describe("teardown when the build fails", () => {
         log.push("fine:destroy");
       }
       render() {
-        return <span id="fine">fine</span>;
+        return (
+          <div>
+            <span id="fine">fine</span>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Broken extends Component {
       render(): never {
         throw new Error("boom");

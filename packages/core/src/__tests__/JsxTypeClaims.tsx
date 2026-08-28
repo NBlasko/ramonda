@@ -1,5 +1,5 @@
 import { Component } from "../base/Component";
-import { Host, onElement, onWindow } from "../base/decorators";
+import { onDocument, onWindow } from "../base/decorators";
 
 /**
  * Everything the JSX types promise, in one file, pinned in both directions.
@@ -255,80 +255,93 @@ export class RefusedEventSpellings extends Component {
  * The props are the ELEMENT's, so the same spelling rule reaches them — they used to be
  * `Record<string, unknown>`, which was the one place a camelCase handler still attached quietly.
  */
-@Host("div", (self: PlatformHost) => ({ onclick: self.handle, className: "x" }))
 export class PlatformHost extends Component {
   handle = (_event: PointerEvent) => {};
   render() {
-    return <span />;
+    return (
+      <div onclick={this.handle} className="x">
+        <span />
+      </div>
+    );
   }
 }
 
-@Host("my-widget", () => ({ anything: "goes", "on:ready": () => {} }))
 export class CustomHost extends Component {
   render() {
-    return <span />;
+    return (
+      <my-widget anything="goes" on:ready={() => {}}>
+        <span />
+      </my-widget>
+    );
   }
 }
 
-// @ts-expect-error — not a platform element, and no dash to make it a custom one.
-@Host("mywidget")
 export class UnknownHost extends Component {
   render() {
-    return <span />;
+    return (
+      // @ts-expect-error — not a platform element, and no dash to make it a custom one.
+      <mywidget />
+    );
   }
 }
 
-// @ts-expect-error — a host's props are the element's attributes, under the same rule as the JSX.
-@Host("div", (self: RefusedHostProps) => ({ onClick: self.handle }))
-export class RefusedHostProps extends Component {
+export class RefusedElementProps extends Component {
   handle = () => {};
   render() {
-    return <span />;
+    return (
+      // @ts-expect-error — the DOM's own spelling is lower case, and so is the JSX attribute.
+      <div onClick={this.handle}>
+        <span />
+      </div>
+    );
   }
 }
 
 /**
- * `@onElement` and its two siblings take the EVENT's own name, and refuse the two spellings that
- * are provably not one.
+ * `@onWindow` and `@onDocument` take the EVENT's own name, and refuse the two spellings that are
+ * provably not one.
  *
  * Any other name passes, which is the design rather than a gap: a custom event may be called
  * anything, so `clik` cannot be refused without refusing `save` and `my-event` too. Only what can be
  * proved is stopped — the JSX attribute written where the event belongs, and a known name in the
  * wrong case, which `addEventListener` never matches.
  */
-@Host("div")
 export class EventDecoratorNames extends Component {
-  @onElement("mousedown") pressed(event: MouseEvent) {
-    void event.clientX;
-  }
-  @onElement("my-event") custom(event: Event) {
+  @onDocument("my-event") custom(event: Event) {
     void event.type;
   }
-  @onElement("save") named(event: Event) {
+  @onDocument("save") named(event: Event) {
     void event.type;
   }
-  @onElement("DOMSomething") capitalised(event: Event) {
+  @onDocument("DOMSomething") capitalised(event: Event) {
     void event.type;
   }
   @onWindow("online") back(event: Event) {
     void event.type;
   }
   render() {
-    return <span />;
+    return (
+      <div>
+        <span />
+      </div>
+    );
   }
 }
 
-@Host("div")
 export class RefusedEventDecoratorNames extends Component {
   // @ts-expect-error — the JSX attribute, where the event's own name belongs.
-  @onElement("onclick") wrong(event: Event) {
+  @onWindow("onclick") wrong(event: Event) {
     void event;
   }
   // @ts-expect-error — `addEventListener` is case-sensitive, so this never fires.
-  @onElement("MouseDown") miscased(event: Event) {
+  @onWindow("MouseDown") miscased(event: Event) {
     void event;
   }
   render() {
-    return <span />;
+    return (
+      <div>
+        <span />
+      </div>
+    );
   }
 }

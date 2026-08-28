@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, onDocument, onElement, onWindow, state } from "@ramonda/core";
+import { Component, bootstrap, onDocument, onElement, onWindow, state } from "@ramonda/core";
 import { Panel } from "./base";
 
 /** No `@Host`, so the host is `<ramonda-host>` — `display: contents`, and no box. */
@@ -26,11 +26,14 @@ class Bare extends Component {
 }
 
 /** A real element, so the listener has a box to sit on. */
-@Host("div")
 class Boxed extends Component {
   @onElement("mouseenter") onEnter() {}
   render() {
-    return <p>fine</p>;
+    return (
+      <div>
+        <p>fine</p>
+      </div>
+    );
   }
 }
 

@@ -1,13 +1,14 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDOM } from "../test/setup";
-import { created, Host, mounted, persist, state } from "../base/decorators";
+import { getDOM, instanceOf } from "../test/setup";
+import { created, mounted, persist, state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { serializeComponentToJSON } from "../hydration/serialize";
+import { markComponents } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
 import { renderToString } from "../hydration/ssr";
 import { requestContext, requestKey, setRequestScope } from "../hydration/requestContext";
-import { REQUEST_ATTR, STATE_ATTR } from "../helpers/constants";
+import { REQUEST_ATTR } from "../helpers/constants";
 import { list } from "../base/list";
 import type { ComponentChild, VNode } from "../types/vdom";
 
@@ -120,22 +121,36 @@ describe("the codes that no test reached", () => {
    * only evidence.
    */
   test("RMD035 — the client's hook tree does not match the server's", async () => {
-    @Host("div")
     class Two extends Component {
       @state n = 1;
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
 
     const server = await getDOM<Two>((<Two />) as ComponentChild);
     await server.settle();
-    const host = server.container.firstElementChild as Element & { _componentInstance?: object };
 
-    // A blob claiming two hooks where the client will build none.
-    const blob = JSON.parse(serializeComponentToJSON(host._componentInstance!));
+    // A blob claiming two hooks where the client will build none. It rides the opening marker, so
+    // the pass that writes markers runs first and the claim is edited into the comment it produced.
+    markComponents(server.container);
+    const opening = Array.from(server.container.childNodes).find((n) => n.nodeType === 8) as Comment;
+
+    /**
+     * A blob claiming two hooks where the client will build none.
+     *
+     * The opening marker may carry NO blob at all — `serializeComponentToBlob` writes one only when
+     * something moved off its initial value — so this claim is written whether or not there was one
+     * to edit. That is the fault being reached: what the server SAID about its hooks.
+     */
+    const at = opening.data.indexOf(" ");
+    const blob = at === -1 ? { state: {} } : JSON.parse(opening.data.slice(at + 1));
     blob.hooks = [{ state: {} }, { state: {} }];
-    host.setAttribute(STATE_ATTR, JSON.stringify(blob));
+    opening.data = `${opening.data.split(" ")[0]} ${JSON.stringify(blob)}`;
     const html = server.container.innerHTML;
     server.unmount();
 
@@ -160,21 +175,24 @@ describe("the codes that no test reached", () => {
    * happened, and without it a reader is sent looking for non-determinism that is not there.
    */
   test("RMD036 — a state blob that could not be read", async () => {
-    @Host("div")
     class Counter extends Component {
       @state count = 0;
       render() {
-        return <span id="c">{this.count}</span>;
+        return (
+          <div>
+            <span id="c">{this.count}</span>
+          </div>
+        );
       }
     }
 
     const server = await getDOM<Counter>((<Counter />) as ComponentChild);
     server.instance.count = 5;
     await server.settle();
-    const host = server.container.firstElementChild as Element & { _componentInstance?: object };
-    host.setAttribute(STATE_ATTR, serializeComponentToJSON(host._componentInstance!));
+    markComponents(server.container);
 
-    const html = server.container.innerHTML.replace(/data-ramonda-state="[^"]*"/, 'data-ramonda-state="{not json"');
+    // A corrupt blob, where the server writes it: in the opening marker's own data.
+    const html = server.container.innerHTML.replace(/<!--c(\d+) [^>]*-->/, "<!--c$1 {not json-->");
     server.unmount();
 
     const container = document.createElement("div");
@@ -207,10 +225,13 @@ describe("the codes that no test reached", () => {
   test("RMD058 — a request blob that could not be read", async () => {
     const sid = requestKey<string>("review-sid", { exposeToClient: true });
 
-    @Host("main")
     class Page extends Component {
       render() {
-        return <p>{requestContext().get(sid) ?? "none"}</p>;
+        return (
+          <main>
+            <p>{requestContext().get(sid) ?? "none"}</p>
+          </main>
+        );
       }
     }
 
@@ -256,13 +277,16 @@ describe("the codes that no test reached", () => {
    * still unhandled — which is the honest outcome — and now it arrives with an explanation.
    */
   test("RMD059 — an async lifecycle that rejected", async () => {
-    @Host("div")
     class Boom extends Component {
       @mounted async load() {
         throw new Error("fetch failed");
       }
       render() {
-        return <span>ok</span>;
+        return (
+          <div>
+            <span>ok</span>
+          </div>
+        );
       }
     }
 
@@ -294,13 +318,16 @@ describe("the codes that no test reached", () => {
    * later with a `TypeError` on a method the value no longer has.
    */
   test("RMD033 — a Map, a Set and a Date are reported, and a plain object is not", async () => {
-    @Host("div")
     class Holder extends Component {
       @persist @state map = new Map<string, number>();
       @persist @state when = new Date(0);
       @persist @state plain: Record<string, unknown> = {};
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -311,7 +338,7 @@ describe("the codes that no test reached", () => {
     await dom.settle();
 
     records = [];
-    serializeComponentToJSON((dom.container.firstElementChild as { _componentInstance?: object })._componentInstance!);
+    serializeComponentToJSON(instanceOf<any>(dom.container.firstElementChild));
 
     const kinds = records.filter((r) => r.code === "RMD033").map((r) => (r.data as { kind?: string })?.kind);
     expect(kinds).toContain("Map");
@@ -323,11 +350,14 @@ describe("the codes that no test reached", () => {
 
   /** A `Date` inside a plain object is the commonest shape of all, and a shallow check misses it. */
   test("RMD033 — a Date nested inside a plain object is still found", async () => {
-    @Host("div")
     class Nested extends Component {
       @persist @state row: Record<string, unknown> = {};
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -336,7 +366,7 @@ describe("the codes that no test reached", () => {
     await dom.settle();
 
     records = [];
-    serializeComponentToJSON((dom.container.firstElementChild as { _componentInstance?: object })._componentInstance!);
+    serializeComponentToJSON(instanceOf<any>(dom.container.firstElementChild));
 
     expect(records.some((r) => r.code === "RMD033" && (r.data as { kind?: string })?.kind === "Date")).toBe(true);
     dom.unmount();
@@ -356,13 +386,16 @@ describe("the codes that no test reached", () => {
    * report names the fault, which the raw rejection never could.
    */
   test("RMD059 — the error itself travels with the report", async () => {
-    @Host("div")
     class Detailed extends Component {
       @mounted async load() {
         throw new Error("the stack must survive");
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 

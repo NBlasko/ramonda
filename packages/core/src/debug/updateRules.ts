@@ -1,5 +1,6 @@
 import { diagnose } from "./diagnostics";
 import { COMPONENT_RUNTIME } from "../core/runtime";
+import { firstNodeOf } from "../core/DiffAndMerge";
 import type { BaseComponent } from "../types/vdom";
 
 /**
@@ -42,11 +43,37 @@ export function reportOrphanedUpdate(component: BaseComponent): void {
   // every render.
   if (componentRuntime.env === "server") return;
 
-  const node = componentRuntime.enhancedNode as ChildNode | undefined;
+  /**
+   * The component's own first node, or the parent its block sits in.
+   *
+   * A component may own no node at all — a render that returned `null` — and that is not the fault
+   * this reports: such a component is perfectly healthy as long as the parent it renders into is in
+   * the document. So the parent is the question when there is nothing of its own to ask.
+   */
+  const region = componentRuntime.region;
+  if (!region) return;
+
+  /**
+   * Its own first node, DERIVED from the record, and the parent when it owns none.
+   *
+   * A component may own no node at all — a render that returned `null` — and that is not the fault
+   * this reports: such a component is healthy as long as the parent it renders into is in the
+   * document. So the parent is the question when there is nothing of its own to ask.
+   *
+   * Derived rather than read off a cache, and that is the fix for a false report. The region used to
+   * remember the nodes it held, and only the region that re-rendered refreshed its own memory — so a
+   * component whose DESCENDANT had just swapped an element was accused of being orphaned while its
+   * parent was in the document the whole time. Walking `entries` reaches the descendant's current
+   * record instead, which names the node that is really there.
+   *
+   * A node that IS present and NOT connected stays a report, and deliberately: that is a library
+   * clearing a subtree it was handed, which is the fault this exists for.
+   */
+  const node = firstNodeOf(region.entries) ?? region.parent;
   if (!node || node.isConnected) return;
 
   const name = component.constructor.name;
-  diagnose("RMD016", name, `<${name} /> updated while its element is not in the document.`);
+  diagnose("RMD016", name, `<${name} /> updated while the markup it renders into is not in the document.`);
 }
 
 /**

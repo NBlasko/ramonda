@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeProject } from "../analyze";
-import { RULES } from "../rules/index";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "a11y", "tsconfig.json"));
@@ -400,22 +399,22 @@ describe("an accessibility fault beside a spread", () => {
   const lines = (id: string) => (spread()[id] ?? []).map((issue) => issue.line).sort((a, b) => a - b);
 
   test("a misspelled NAME is reported on either side of a spread", () => {
-    // 22 spread first, 23 spread last, 36 the control. A name is a name whichever side it is on.
-    expect(lines("unknown-aria-attribute")).toEqual([22, 23, 36]);
+    // 21 spread first, 22 spread last, 35 the control. A name is a name whichever side it is on.
+    expect(lines("unknown-aria-attribute")).toEqual([21, 22, 35]);
   });
 
   test("an accessibility attribute on a tag with no node is too, because the TAG is the subject", () => {
-    // 32, 33, 38 — and no spread makes a `<meta>` into something a screen reader exposes.
-    expect(lines("aria-with-no-subject")).toEqual([32, 33, 38]);
+    // 31, 32, 37 — and no spread makes a `<meta>` into something a screen reader exposes.
+    expect(lines("aria-with-no-subject")).toEqual([31, 32, 37]);
   });
 
   test("a role is reported only from the side a spread cannot reach over", () => {
     /**
-     * 26 has the spread FIRST, so `role="buton"` is the last word and wins; 37 is the control.
-     * Line 28 writes the spread LAST and is silent — `rest` may carry a role of its own, and this
+     * 25 has the spread FIRST, so `role="buton"` is the last word and wins; 36 is the control.
+     * Line 27 writes the spread LAST and is silent — `rest` may carry a role of its own, and this
      * is a rule about a value.
      */
-    expect(lines("unknown-role")).toEqual([26, 37]);
+    expect(lines("unknown-role")).toEqual([25, 36]);
   });
 
   test("and the silence the guard exists for is untouched", () => {
@@ -442,14 +441,14 @@ describe("the rest of the element family beside a spread", () => {
   const lines = (id: string) => (sweep()[id] ?? []).map((issue) => issue.line).sort((a, b) => a - b);
 
   test("a rule about what was WRITTEN reports on either side of a spread", () => {
-    // `class` where `className` was meant: 22 spread first, 23 spread last, 24 the control. The
+    // `class` where `className` was meant: 21 spread first, 22 spread last, 23 the control. The
     // prop the author meant is missing whether or not the attribute survives to the DOM.
-    expect(lines("class-instead-of-classname")).toEqual([22, 23, 24]);
+    expect(lines("class-instead-of-classname")).toEqual([21, 22, 23]);
   });
 
   test("and so does a rule whose subject is the TAG, because no spread changes a tag", () => {
-    // An `<li>` with no list around it — 32 with a spread, 33 without.
-    expect(lines("tag-needs-its-parent")).toEqual([32, 33]);
+    // An `<li>` with no list around it — 31 with a spread, 32 without.
+    expect(lines("tag-needs-its-parent")).toEqual([31, 32]);
   });
 
   /**
@@ -460,134 +459,15 @@ describe("the rest of the element family beside a spread", () => {
    * spread may replace or remove it), and no spread (reported).
    */
   test("a rule about what the element WILL BE reports only from the side a spread cannot reach", () => {
-    expect(lines("positive-tabindex")).toEqual([27, 29]);
-    expect(lines("aria-value")).toEqual([36, 38]);
-    expect(lines("access-key")).toEqual([41, 43]);
-    expect(lines("aria-hidden-on-focusable")).toEqual([46, 48]);
+    expect(lines("positive-tabindex")).toEqual([26, 28]);
+    expect(lines("aria-value")).toEqual([35, 37]);
+    expect(lines("access-key")).toEqual([40, 42]);
+    expect(lines("aria-hidden-on-focusable")).toEqual([45, 47]);
     // Two attributes decide this one, and each is asked about its own position.
-    expect(lines("role-takes-no-name")).toEqual([51, 53]);
+    expect(lines("role-takes-no-name")).toEqual([50, 52]);
   });
 
   test("and the silence the family guard exists for is untouched", () => {
     expect(lines("unnamed-image")).toEqual([]);
-  });
-});
-
-/**
- * The element a component IS.
- *
- * `@Host("section", () => ({ role: "buton" }))` puts a role on a real element on a real page, and
- * it is written in no render. The family only ever met TAGS, so — measured with a plant — five
- * faults written in a props bag were reported by NOTHING, while the identical five on a `<div>`
- * one class below were all reported. That is where a component configures its own element, and a
- * rule that reads elements and misses it is reading half of them.
- *
- * The fix was one reader rather than ten: `ElementContext` is built from a normalised attribute
- * list, and a rule declaring `alsoOnHost` gets both sources for free.
- */
-describe("a fault written where a component configures its own element", () => {
-  const host = () => analyzeProject(join(here, "fixtures", "host-configured", "tsconfig.json")).findings;
-  const lines = (id: string) => (host()[id] ?? []).map((issue) => issue.line).sort((a, b) => a - b);
-
-  test("every fault in a `@Host` props bag is reported, beside the same fault on a tag", () => {
-    // 11 is the `@Host` call, 28 the control element. The `aria-` name reports at the property
-    // itself (13), because a report about ONE attribute among five has to say which.
-    // 56 is the polymorphic host, which carries a `class` too: the tag has no one answer and this
-    // rule does not need one, because `class` is the wrong word on every tag it could be.
-    expect(lines("class-instead-of-classname")).toEqual([11, 28, 56]);
-    expect(lines("positive-tabindex")).toEqual([11, 28]);
-    expect(lines("access-key")).toEqual([11, 28]);
-    expect(lines("unknown-aria-attribute")).toContain(13);
-    expect(lines("unknown-role")).toContain(11);
-  });
-
-  test("all three spellings of the callback are read", () => {
-    /**
-     * 33 is `() => { return { … } }` and 45 is the `{ role }` shorthand — the two the id table's
-     * own reader had to be taught one at a time, each after the other was already fixed. 11 is the
-     * long form and 28 the control.
-     */
-    expect(lines("unknown-role")).toEqual([11, 28, 33, 45, 75]);
-  });
-
-  test("a spread in the props bag reaches over what came before it, and not what comes after", () => {
-    // 75 writes the spread FIRST, so `role: "buton"` has the last word and is reported. 67 writes
-    // it LAST and is silent — the same rule the tag family lives by, on the same reasoning.
-    expect(lines("unknown-role")).toContain(75);
-    expect(lines("unknown-role")).not.toContain(67);
-  });
-
-  test("a tag chosen per props does not silence what IS knowable", () => {
-    /**
-     * `@Host((p) => p.as ?? "div", () => ({ "aria-lablled": … }))` — the element has no one answer,
-     * so the rules that turn on the tag say nothing. A misspelled `aria-` name is misspelled on
-     * every tag it could be, and that one is reported: line 58.
-     */
-    expect(lines("unknown-aria-attribute")).toEqual([13, 28, 58, 89]);
-  });
-
-  /**
-   * A host tag name is CASE-SENSITIVE for exactly one question, and this is it.
-   *
-   * `aria-labelledBy` reaches an HTML element as `aria-labelledby` — `setAttribute` lowercases —
-   * and reaches an SVG one verbatim through `setAttributeNS`, where nothing reads it. So the same
-   * name is a fault on `@Host("clipPath")` (89) and is not one on `@Host("div")` (98).
-   *
-   * Caught in review of this branch's own code: the host tag was lowercased before the SVG set was
-   * asked, so `clipPath` answered `clippath` and the fault was reported by nothing. `contextFor`
-   * had the distinction written down two lines from where the lowercasing was copied.
-   */
-  test("an SVG host tag is matched by the name as WRITTEN", () => {
-    expect(lines("unknown-aria-attribute")).toContain(89);
-    expect(lines("unknown-aria-attribute")).not.toContain(98);
-  });
-
-  /**
-   * The report has to name what a reader is looking AT.
-   *
-   * The position lands on a decorator, so `<div class=…>` sends them hunting for a tag that is not
-   * on that line — and on a `@Host` with a callback tag the first version printed
-   * `<the host element class=…>`, which is not a sentence. Found in the second pass over this
-   * branch's own code, which is the least-examined code on it.
-   */
-  test("and a report about a host says so, whether or not the tag is knowable", () => {
-    const rule = RULES.find((r) => r.id === "class-instead-of-classname");
-    const said = (host()["class-instead-of-classname"] ?? []).map((issue) =>
-      (rule?.report.lines(issue as never) ?? []).join(" ").trim(),
-    );
-    expect(said.some((line) => line.includes('`class` in `@Host("div")`\'s props'))).toBe(true);
-    expect(said.some((line) => line.includes("`class` in this component's props"))).toBe(true);
-    expect(said.some((line) => line.includes("<div class=…>"))).toBe(true);
-    expect(said.some((line) => line.includes("the host element"))).toBe(false);
-  });
-
-  /**
-   * The tag read through a module CONSTANT, which is the drift the branch's own review found.
-   *
-   * There were two exported `hostTagOf`s — `html.ts`'s, which follows a name to its declaration,
-   * and one added in `element.ts` that accepted a string literal and nothing else. Two files, one
-   * name, two answers, and the newer one was weaker: `@Host(META, …)` resolved over there and not
-   * here, so every rule that turns on the tag went quiet. There is one reader now.
-   */
-  /**
-   * The TENTH rule of the "what the author WROTE" kind, and the one the sweep missed.
-   *
-   * `httpEquiv` reaches the DOM as `httpequiv` whether it is written on a tag or in a props bag,
-   * and nine rules had been given the host while this one kept reading the JSX node. Found in the
-   * branch's own review, by asking which element rules still read that node directly and why —
-   * not by reading the rule, whose own text says nothing about where it is asked.
-   */
-  test("a dead attribute in the props bag is dead too", () => {
-    expect(lines("attribute-that-does-nothing")).toContain(123);
-  });
-
-  test("the tag is read through a module constant, so the tag rules still answer", () => {
-    expect(lines("aria-with-no-subject")).toContain(111);
-  });
-
-  test("and a `@Host` with no props bag is read as saying nothing", () => {
-    // `@Host("div")` on its own, and on `App`. Neither appears anywhere above.
-    expect(lines("unknown-role")).not.toContain(83);
-    expect(lines("unknown-role")).not.toContain(90);
   });
 });

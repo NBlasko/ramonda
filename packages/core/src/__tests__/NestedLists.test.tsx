@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { Component, list, state } from "../index";
 
 /**
  * The playground's /table page, reduced: a list of rows in a <tbody> where each
@@ -24,13 +24,16 @@ const makeRow = (l: string): RowData => ({
   cells: [{ value: `${l}1` }, { value: `${l}2` }],
 });
 
-@Host("tr")
 class TableRow extends Component<{ item: RowData }> {
   render() {
-    return [
-      <td className="rowlabel">{this.props.item.label}</td>,
-      list(this.props.item.cells, (c: Cell) => <td>{c.value}</td>),
-    ];
+    return (
+      <tr>
+        {[
+          <td className="rowlabel">{this.props.item.label}</td>,
+          list(this.props.item.cells, (c: Cell) => <td>{c.value}</td>),
+        ]}
+      </tr>
+    );
   }
 }
 

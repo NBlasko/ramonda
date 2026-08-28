@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host } from "../index";
+import { Component } from "../index";
 
 /**
  * SVG attribute names, at the type level and at runtime.
@@ -24,15 +24,16 @@ describe("SVG attributes", () => {
   afterEach(() => vi.restoreAllMocks());
 
   test("dashed, lowercase and camelCase names all reach the DOM verbatim", async () => {
-    @Host("div")
     class Icon extends Component {
       render() {
         return (
-          <svg viewBox="0 0 24 24" width="24" height="24">
-            <circle cx="12" cy={12} r="10" fill="none" stroke-width="2" />
-            <linearGradient gradientUnits="userSpaceOnUse" gradientTransform="rotate(90)" />
-            <marker markerWidth={6} markerHeight={6} refX={3} refY={3} />
-          </svg>
+          <div>
+            <svg viewBox="0 0 24 24" width="24" height="24">
+              <circle cx="12" cy={12} r="10" fill="none" stroke-width="2" />
+              <linearGradient gradientUnits="userSpaceOnUse" gradientTransform="rotate(90)" />
+              <marker markerWidth={6} markerHeight={6} refX={3} refY={3} />
+            </svg>
+          </div>
         );
       }
     }
@@ -60,13 +61,14 @@ describe("SVG attributes", () => {
   });
 
   test("camelCase names are not lowercased the way HTML would", async () => {
-    @Host("div")
     class Icon extends Component {
       render() {
         return (
-          <svg viewBox="0 0 8 8">
-            <clipPath clipPathUnits="userSpaceOnUse" />
-          </svg>
+          <div>
+            <svg viewBox="0 0 8 8">
+              <clipPath clipPathUnits="userSpaceOnUse" />
+            </svg>
+          </div>
         );
       }
     }
@@ -82,15 +84,16 @@ describe("SVG attributes", () => {
   });
 
   test("className and style still work on an SVG element", async () => {
-    @Host("div")
     class Icon extends Component {
       render() {
         return (
-          <svg viewBox="0 0 8 8">
-            {/* `className` is an SVGAnimatedString on the DOM interface, so it
-                needs the same treatment as the camelCase attributes above. */}
-            <g className="layer" style="opacity: 0.5" />
-          </svg>
+          <div>
+            <svg viewBox="0 0 8 8">
+              {/* `className` is an SVGAnimatedString on the DOM interface, so it
+                  needs the same treatment as the camelCase attributes above. */}
+              <g className="layer" style="opacity: 0.5" />
+            </svg>
+          </div>
         );
       }
     }

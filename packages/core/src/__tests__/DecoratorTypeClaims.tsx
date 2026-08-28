@@ -1,15 +1,5 @@
 import { Component } from "../base/Component";
-import {
-  compute,
-  deferHydration,
-  Host,
-  interval,
-  memoized,
-  onDocument,
-  onWindow,
-  state,
-  updated,
-} from "../base/decorators";
+import { compute, deferHydration, interval, memoized, onDocument, onWindow, state, updated } from "../base/decorators";
 
 /**
  * What the decorator signatures promise about the METHODS they are put on, pinned in both directions.
@@ -140,22 +130,6 @@ class ComputeClaims extends Component {
   }
 }
 
-/** `@Host` takes a COMPONENT class, and the constraint is the same bottom-typed constructor. */
-@Host("section")
-class Hosted extends Component<{ id: string }> {
-  render() {
-    return <div>{this.props.id}</div>;
-  }
-}
-
-/** And refuses one that is not a component. */
-class NotAComponent {}
-// @ts-expect-error — `__isComponent` is what the constraint asks for, and a plain class has none.
-@Host("section")
-class Rejected extends NotAComponent {}
-
 void ComputeClaims;
 void ParameterClaims;
 void SubscriptionClaims;
-void Hosted;
-void Rejected;

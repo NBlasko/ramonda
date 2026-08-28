@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, createRef } from "../index";
+import { Component, state, createRef } from "../index";
 import { REF_SYM } from "../helpers/constants";
 
 /**
@@ -30,15 +30,16 @@ describe("an element's ref, when the JSX stops giving it one", () => {
   test("moving it to another element releases the first", async () => {
     const ref = createRef<HTMLElement>();
 
-    @Host("div")
     class App extends Component {
       @state onFirst = true;
 
       render() {
         return (
           <div>
-            <p id="a" ref={this.onFirst ? ref : undefined} />
-            <span id="b" ref={this.onFirst ? undefined : ref} />
+            <div>
+              <p id="a" ref={this.onFirst ? ref : undefined} />
+              <span id="b" ref={this.onFirst ? undefined : ref} />
+            </div>
           </div>
         );
       }
@@ -65,12 +66,15 @@ describe("an element's ref, when the JSX stops giving it one", () => {
   test("removing it with nobody to take it clears the ref", async () => {
     const ref = createRef<HTMLElement>();
 
-    @Host("div")
     class App extends Component {
       @state keep = true;
 
       render() {
-        return <p id="a" ref={this.keep ? ref : undefined} />;
+        return (
+          <div>
+            <p id="a" ref={this.keep ? ref : undefined} />
+          </div>
+        );
       }
     }
 
@@ -93,12 +97,15 @@ describe("an element's ref, when the JSX stops giving it one", () => {
     const first = createRef<HTMLElement>();
     const second = createRef<HTMLElement>();
 
-    @Host("div")
     class App extends Component {
       @state useFirst = true;
 
       render() {
-        return <p id="a" ref={this.useFirst ? first : second} />;
+        return (
+          <div>
+            <p id="a" ref={this.useFirst ? first : second} />
+          </div>
+        );
       }
     }
 
@@ -124,15 +131,16 @@ describe("an element's ref, when the JSX stops giving it one", () => {
      */
     const ref = createRef<HTMLElement>();
 
-    @Host("div")
     class App extends Component {
       @state both = true;
 
       render() {
         return (
           <div>
-            <p id="a" ref={ref} />
-            {this.both ? <span id="b" ref={ref} /> : null}
+            <div>
+              <p id="a" ref={ref} />
+              {this.both ? <span id="b" ref={ref} /> : null}
+            </div>
           </div>
         );
       }

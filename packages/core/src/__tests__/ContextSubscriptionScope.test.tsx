@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, createContext } from "../index";
+import { Component, state, createContext } from "../index";
 
 /**
  * Two things about a context subscription that a reader has to be told, because
@@ -20,25 +20,31 @@ describe("what a context subscription covers", () => {
 
     let renders = 0;
 
-    @Host("p")
     class Reader extends Component<{ showAccent: boolean }> {
       ctx = this.use(Consumer);
 
       render() {
         renders++;
         // `accent` is read on ONE branch only.
-        return <span>{this.props.showAccent ? this.ctx.accent : this.ctx.theme}</span>;
+        return (
+          <p>
+            <span>{this.props.showAccent ? this.ctx.accent : this.ctx.theme}</span>
+          </p>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state accent = "pink";
       @state showAccent = true;
       provider = this.use(Provider, () => ({ theme: "light", accent: this.accent }));
 
       render() {
-        return <Reader showAccent={this.showAccent} />;
+        return (
+          <div>
+            <Reader showAccent={this.showAccent} />
+          </div>
+        );
       }
     }
 
@@ -66,20 +72,26 @@ describe("what a context subscription covers", () => {
   test("a key is compared, not explored — changing inside its value tells nobody", async () => {
     const [Provider, Consumer] = createContext({ limits: { max: 1 } }, { label: "Limits" });
 
-    @Host("p")
     class Reader extends Component {
       ctx = this.use(Consumer);
       render() {
-        return <span>{this.ctx.limits.max}</span>;
+        return (
+          <p>
+            <span>{this.ctx.limits.max}</span>
+          </p>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state limits = { max: 1 };
       provider = this.use(Provider, () => ({ limits: this.limits }));
       render() {
-        return <Reader />;
+        return (
+          <div>
+            <Reader />
+          </div>
+        );
       }
     }
 

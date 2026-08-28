@@ -30,8 +30,6 @@ Three questions come up about every decorator, and none of them is guessable fro
 | [`@catchError`](/composition/error-boundaries) | both | **component only** | **no** — a subclass may override |
 | [`@ShouldUpdateOnPropsChange`](/concepts/props) | client in practice¹ | **component only** | **no** — a subclass may override |
 | [`@StableProps`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) | client in practice¹ | both | **no** — it takes a list |
-| [`@Host`](/concepts/host) | both | **component only** | **no** |
-| [`@onElement`](/concepts/events) | **client only**² | **component only** | yes |
 | [`@onWindow` / `@onDocument`](/concepts/events) | **client only**² | component · hook | yes |
 | [`@interval` / `@timeout`](/concepts/timers) | **client only**² | component · hook | yes |
 | [your own subscription](/hooks/own-decorators) | **client only**² | component · hook | yes |
@@ -71,8 +69,6 @@ a lint you can talk past — the second exists because the first is not there in
 
 | | why not |
 |---|---|
-| `@Host` | It names the element a component **is**. A hook adds no element — that is the point of a hook. |
-| `@onElement` | It binds a listener to the component's host element. A hook has none. Use `@onWindow` / `@onDocument`, which work on both. |
 | `@ShouldUpdateOnPropsChange` | It gates a **parent-driven** prop update. A hook's props come from its `this.use()` callback and refresh on every owner render — there is nothing to gate. |
 
 **`@StableProps` goes on both**, and means one thing on each: *these props are values, compare
@@ -135,10 +131,6 @@ Most decorators stack, and the order is defined:
 
 Three are single:
 
-- **`@Host`** — a component is exactly one element, so there is one answer to which. Two on one class
-  **throws**, in every build, because there is no correct program in which both are honoured. A
-  **subclass** may declare its own, which overrides the base's — that is how a specialised component
-  changes its element, and it is silent.
 - **`@ShouldUpdateOnPropsChange`** — there is one answer to "take these props?". Two on ONE class are
   reported in development (RMD040), and **the highest** is the one that decides — class decorators apply
   bottom-up, so it is applied last. That is the opposite line from `@catchError` above, and the same
@@ -147,7 +139,7 @@ Three are single:
 - **`@StableProps`** — it takes as many names as you like, so a second one adds nothing you could not
   write in the first. Two on one class **merge** into the union and are reported as
   [RMD046](/reference/diagnostics#rmd046-more-than-one-stableprops-on-one-class): the result is what you
-  asked for, spelled twice, so it is a warning rather than a refusal — unlike `@Host`, where two element
+  asked for, spelled twice, so it is a warning rather than a refusal
   names have no union. A **subclass** may declare its own, and that one *merges* with what the parent
   declared rather than replacing it, which is the intended way to extend the list.
 

@@ -1,4 +1,4 @@
-import { Component, Host, list, state } from "@ramonda/core";
+import { Component, list, state } from "@ramonda/core";
 import type { RamondaNode, VNode } from "@ramonda/core";
 import { Router, RouteOutlet } from "@ramonda/router";
 import { Navigator, Link, routes, pages } from "./routes";
@@ -20,7 +20,6 @@ const grouped = (() => {
   return [...groups.entries()];
 })();
 
-@Host("nav")
 class Sidebar extends Component<SidebarProps> {
   route = this.use(Navigator);
 
@@ -58,14 +57,20 @@ class Sidebar extends Component<SidebarProps> {
   }
 
   render(): RamondaNode {
-    return [
-      <button type="button" className="drawer-close" onclick={this.close} aria-label="Close navigation">
-        ✕
-      </button>,
-      <div className="sidebar-inner" data-pagefind-ignore onclick={this.onClick}>
-        {list(grouped, this.renderGroup)}
-      </div>,
-    ] as RamondaNode;
+    return (
+      <nav>
+        {
+          [
+            <button type="button" className="drawer-close" onclick={this.close} aria-label="Close navigation">
+              ✕
+            </button>,
+            <div className="sidebar-inner" data-pagefind-ignore onclick={this.onClick}>
+              {list(grouped, this.renderGroup)}
+            </div>,
+          ] as RamondaNode
+        }
+      </nav>
+    );
   }
 }
 
@@ -76,7 +81,6 @@ class Sidebar extends Component<SidebarProps> {
  * sidebar — which sits BESIDE the outlet, not inside it — keeps its state across
  * navigation instead of being rebuilt on every route change.
  */
-@Host("div")
 export class App extends Component {
   router = this.use(Router);
 
@@ -93,36 +97,38 @@ export class App extends Component {
 
   render(): RamondaNode {
     return (
-      <div className="layout">
-        <header className="masthead" data-pagefind-ignore>
-          <button
-            type="button"
-            className="nav-toggle"
-            onclick={this.toggleMenu}
-            aria-label="Toggle navigation"
-            aria-expanded={this.menuOpen ? "true" : "false"}
-          >
-            ☰
-          </button>
-          <Link href="/" className="brand">
-            <img className="brand-mark" src="/favicon.svg" width="24" height="24" alt="" />
-            Ramonda
-          </Link>
-          <Search />
-        </header>
-        <div className={this.menuOpen ? "body nav-open" : "body"}>
-          <Sidebar onNavigate={this.closeMenu} />
-          {/*
-            `data-pagefind-body` scopes the search index to the article. Without
-            it Pagefind indexes the whole page, so every result would match on
-            the sidebar — which lists all 46 page titles and is identical on
-            every page.
-          */}
-          <main className="content" data-pagefind-body>
-            <RouteOutlet routes={routes} />
-          </main>
-          {/* Tap-outside to dismiss the drawer; only rendered while it is open. */}
-          {this.menuOpen ? <div className="sidebar-backdrop" onclick={this.closeMenu} /> : null}
+      <div>
+        <div className="layout">
+          <header className="masthead" data-pagefind-ignore>
+            <button
+              type="button"
+              className="nav-toggle"
+              onclick={this.toggleMenu}
+              aria-label="Toggle navigation"
+              aria-expanded={this.menuOpen ? "true" : "false"}
+            >
+              ☰
+            </button>
+            <Link href="/" className="brand">
+              <img className="brand-mark" src="/favicon.svg" width="24" height="24" alt="" />
+              Ramonda
+            </Link>
+            <Search />
+          </header>
+          <div className={this.menuOpen ? "body nav-open" : "body"}>
+            <Sidebar onNavigate={this.closeMenu} />
+            {/*
+              `data-pagefind-body` scopes the search index to the article. Without
+              it Pagefind indexes the whole page, so every result would match on
+              the sidebar — which lists all 46 page titles and is identical on
+              every page.
+            */}
+            <main className="content" data-pagefind-body>
+              <RouteOutlet routes={routes} />
+            </main>
+            {/* Tap-outside to dismiss the drawer; only rendered while it is open. */}
+            {this.menuOpen ? <div className="sidebar-backdrop" onclick={this.closeMenu} /> : null}
+          </div>
         </div>
       </div>
     );

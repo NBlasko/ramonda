@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, persist, state } from "@ramonda/core";
+import { Component, bootstrap, persist, state } from "@ramonda/core";
 
 declare class Map<K, V> {
   get(key: K): V;
@@ -22,7 +22,6 @@ declare function loadRows(): unknown[];
  * state only reaches the blob on a server render and a browser-only project may hold anything in
  * it. The decorator is the whole difference, so the fixture writes both.
  */
-@Host("div")
 class Cart extends Component {
   /* REPORTED — a `Map` arrives as `{}`. */
   @persist byId = new Map<string, number>();
@@ -60,7 +59,11 @@ class Cart extends Component {
   @state stamp = new Date();
 
   render() {
-    return <div>{this.label}</div>;
+    return (
+      <div>
+        <div>{this.label}</div>
+      </div>
+    );
   }
 }
 

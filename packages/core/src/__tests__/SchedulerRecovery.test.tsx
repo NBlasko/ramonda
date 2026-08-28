@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, state, createSubscriptionDecorator } from "../index";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, state, createSubscriptionDecorator } from "../index";
 import { reactivityScope } from "../reactivity/tracker";
 
 /**
@@ -26,43 +26,50 @@ describe("the scheduler survives an uncaught error", () => {
     reactivityScope.currentEffect = null;
   });
 
-  @Host("div")
   class Counter extends Component<{ id?: string }> {
     @state n = 0;
     render() {
-      return <span id={this.props.id}>{this.n}</span>;
-    }
-  }
-
-  @Host("div")
-  class Exploder extends Component {
-    @state n = 0;
-    render() {
-      if (this.n > 0) throw new Error("render-boom");
-      return <span id="exploder">safe</span>;
-    }
-  }
-
-  @Host("div")
-  class App extends Component {
-    render() {
       return (
         <div>
-          <Exploder />
-          <Counter id="queued" />
-          <Counter id="later" />
+          <span id={this.props.id}>{this.n}</span>
         </div>
       );
     }
   }
 
-  const instanceOf = (container: HTMLElement, id: string) =>
-    (container.querySelector(`#${id}`)!.parentElement as unknown as { _componentInstance: any })._componentInstance;
+  class Exploder extends Component {
+    @state n = 0;
+    render() {
+      if (this.n > 0) throw new Error("render-boom");
+      return (
+        <div>
+          <span id="exploder">safe</span>
+        </div>
+      );
+    }
+  }
+
+  class App extends Component {
+    render() {
+      return (
+        <div>
+          <div>
+            <Exploder />
+            <Counter id="queued" />
+            <Counter id="later" />
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // The component whose markup holds `#id`, asked of the record — a node points at no component.
+  const componentFor = (container: HTMLElement, id: string) => instanceOf<any>(container.querySelector(`#${id}`));
 
   test("a component that went dirty in the SAME drain still renders", async () => {
     const app = await getDOM<App>(<App />);
-    const queued = instanceOf(app.container, "queued") as Counter;
-    const exploder = instanceOf(app.container, "exploder") as Exploder;
+    const queued = componentFor(app.container, "queued") as Counter;
+    const exploder = componentFor(app.container, "exploder") as Exploder;
 
     // Order matters: the queue is popped from the end, so marking the counter
     // FIRST puts the exploder ahead of it — it throws before the counter builds.
@@ -79,8 +86,8 @@ describe("the scheduler survives an uncaught error", () => {
 
   test("a component that goes dirty AFTERWARDS still renders", async () => {
     const app = await getDOM<App>(<App />);
-    const later = instanceOf(app.container, "later") as Counter;
-    const exploder = instanceOf(app.container, "exploder") as Exploder;
+    const later = componentFor(app.container, "later") as Counter;
+    const exploder = componentFor(app.container, "exploder") as Exploder;
 
     exploder.n = 1;
     expect(() => app.settle()).toThrow("render-boom");
@@ -96,8 +103,8 @@ describe("the scheduler survives an uncaught error", () => {
 
   test("the app keeps working across repeated failures", async () => {
     const app = await getDOM<App>(<App />);
-    const later = instanceOf(app.container, "later") as Counter;
-    const exploder = instanceOf(app.container, "exploder") as Exploder;
+    const later = componentFor(app.container, "later") as Counter;
+    const exploder = componentFor(app.container, "exploder") as Exploder;
 
     for (let i = 1; i <= 3; i++) {
       exploder.n = i;
@@ -122,13 +129,16 @@ describe("a throwing effect does not corrupt the tracking scope", () => {
   });
 
   test("currentEffect is cleared, so unrelated reads are not captured", async () => {
-    @Host("div")
     class Boom extends Component {
       @state n = 0;
       @onExplodingStore()
       whatever() {}
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
 

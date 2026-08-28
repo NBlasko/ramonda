@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, afterEach } from "vitest";
-import { Component, Host, state, persist, created, onElement, renderToString, type RamondaNode } from "@ramonda/core";
+import { Component, state, persist, created, renderToString, type RamondaNode } from "@ramonda/core";
 import { render, fireEvent, cleanup } from "../index";
 
 /**
@@ -12,7 +12,6 @@ import { render, fireEvent, cleanup } from "../index";
  * hurts most, since the next test then hydrates on top of a live one.
  */
 
-@Host("div")
 class Greeting extends Component<{ name?: string }> {
   @persist rendered = "server";
   @state clicks = 0;
@@ -21,15 +20,17 @@ class Greeting extends Component<{ name?: string }> {
     this.rendered = this.rendered === "server" ? "hydrated" : "server";
   }
 
-  @onElement("click") bump() {
+  bump() {
     this.clicks = this.clicks + 1;
   }
 
   render(): RamondaNode {
     return (
-      <p>
-        hello {this.props.name ?? "world"} ({this.clicks})
-      </p>
+      <div onclick={this.bump}>
+        <p>
+          hello {this.props.name ?? "world"} ({this.clicks})
+        </p>
+      </div>
     );
   }
 }

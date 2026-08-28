@@ -1,6 +1,6 @@
 import { Component, bootstrap, persist, state, state as reactive } from "@ramonda/core";
 import * as core from "@ramonda/core";
-import { Host as asHost } from "@ramonda/core";
+import { ShouldUpdateOnPropsChange as asGate } from "@ramonda/core";
 import { persist as ourOwn } from "./own";
 import { OursUnderItsOwnName } from "./ours";
 
@@ -44,19 +44,19 @@ class OwnDecorator extends Component {
   }
 }
 
-/** ✗ `@Host` twice on one class — the sibling rule's report, through a NAMESPACE. */
-@core.Host("div")
-@core.Host("section")
-class HostTwiceNamespaced extends Component {
+/** ✗ A single-use class decorator twice — the sibling rule's report, through a NAMESPACE. */
+@core.ShouldUpdateOnPropsChange(() => true)
+@core.ShouldUpdateOnPropsChange(() => false)
+class GateTwiceNamespaced extends Component {
   render() {
     return null;
   }
 }
 
-/** ✗ And with core's `Host` under an alias. */
-@asHost("div")
-@asHost("section")
-class HostTwiceAliased extends Component {
+/** ✗ And with core's own decorator under an alias. */
+@asGate(() => true)
+@asGate(() => false)
+class GateTwiceAliased extends Component {
   render() {
     return null;
   }
@@ -71,8 +71,8 @@ class App extends Component {
         <Namespaced />
         <OwnDecorator />
         <OursUnderItsOwnName />
-        <HostTwiceNamespaced />
-        <HostTwiceAliased />
+        <GateTwiceNamespaced />
+        <GateTwiceAliased />
       </div>
     );
   }

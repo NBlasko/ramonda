@@ -1,4 +1,4 @@
-import { Component, Host, __h, mounted } from "@ramonda/core";
+import { Component, __h, mounted } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import type { ContentNode } from "./content-types";
 import { demos } from "./demos";
@@ -30,7 +30,6 @@ interface MarkdownProps {
  * The host takes the click handler, so a link to a section of THIS page is handled where the click
  * lands rather than by watching the URL for it.
  */
-@Host("div", (self: Markdown) => ({ onclick: self.onLinkClick }))
 export class Markdown extends Component<MarkdownProps> {
   /**
    * The route, read from the ROUTER rather than from `window.location`.
@@ -77,7 +76,7 @@ export class Markdown extends Component<MarkdownProps> {
   }
 
   render(): RamondaNode {
-    return this.props.tree.map(toVNode) as RamondaNode;
+    return <div onclick={this.onLinkClick}>{this.props.tree.map(toVNode) as RamondaNode}</div>;
   }
 }
 

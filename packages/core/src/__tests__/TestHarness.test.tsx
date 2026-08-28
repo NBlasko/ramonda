@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, destroyed } from "../index";
+import { Component, state, destroyed } from "../index";
 
 /**
  * The harness itself. `getDOM` used to append a container to document.body and
@@ -52,14 +52,17 @@ describe("getDOM cleanup", () => {
   test("cleanup unmounts the tree, so @destroyed runs", async () => {
     let wasDestroyed = false;
 
-    @Host("div")
     class Leaky extends Component {
       @state value = 1;
       @destroyed teardown() {
         wasDestroyed = true;
       }
       render() {
-        return <p>{String(this.value)}</p>;
+        return (
+          <div>
+            <p>{String(this.value)}</p>
+          </div>
+        );
       }
     }
 
@@ -78,13 +81,16 @@ describe("getDOM cleanup", () => {
   test("unmounting explicitly then letting afterEach run is safe", async () => {
     let destroyCount = 0;
 
-    @Host("div")
     class Counted extends Component {
       @destroyed teardown() {
         destroyCount++;
       }
       render() {
-        return <p>x</p>;
+        return (
+          <div>
+            <p>x</p>
+          </div>
+        );
       }
     }
 

@@ -65,22 +65,6 @@ describe("the tag name we hand to the DOM", () => {
     expect(createdTags).toContain("input");
   });
 
-  test("the host element too", async () => {
-    // `HOST_TAG` is written `"RAMONDA-HOST"`, so it is the one name that is uppercase at the source.
-    watchCreation();
-
-    class Page extends Component {
-      render() {
-        return <p>x</p>;
-      }
-    }
-
-    await getDOM<Page>(<Page />);
-
-    expect(createdTags).toContain("ramonda-host");
-    expect(createdTags).not.toContain("RAMONDA-HOST");
-  });
-
   test("an SVG element keeps the case it was written with", async () => {
     // SVG names are case-SENSITIVE, and `h` never uppercases them for that reason. Lowercasing here
     // would turn `linearGradient` into `lineargradient`, which is a different element and renders

@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, list, state } from "../index";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, list, state } from "../index";
 import type { RamondaNode } from "../index";
 
 /**
@@ -12,14 +12,15 @@ interface Row {
   label: string;
 }
 
-@Host("li")
 class Item extends Component<{ row: Row }> {
   @state hits = 0;
   render() {
     return (
-      <span>
-        {this.props.row.label}#{this.hits}
-      </span>
+      <li>
+        <span>
+          {this.props.row.label}#{this.hits}
+        </span>
+      </li>
     );
   }
 }
@@ -30,10 +31,8 @@ const dump = (c: Element) =>
     .join(" | ");
 
 const mark = (c: Element, index: number, value: number) => {
-  const li = c.querySelectorAll("li")[index] as Element & {
-    _componentInstance?: Item;
-  };
-  li._componentInstance!.hits = value;
+  const li = c.querySelectorAll("li")[index];
+  instanceOf<{ hits: number }>(li).hits = value;
 };
 
 describe("list regions", () => {
@@ -49,30 +48,32 @@ describe("list regions", () => {
     const own = [{ label: "own1" }, { label: "own2" }];
     const sent = [{ label: "sent1" }, { label: "sent2" }];
 
-    @Host("div")
     class Panel extends Component<{ children?: RamondaNode }> {
       render() {
         return (
-          <ul>
-            {list(own, (row: Row) => (
-              <Item row={row} />
-            ))}
-            {this.props.children}
-          </ul>
+          <div>
+            <ul>
+              {list(own, (row: Row) => (
+                <Item row={row} />
+              ))}
+              {this.props.children}
+            </ul>
+          </div>
         );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state passed: Row[] = sent;
       render() {
         return (
-          <Panel>
-            {list(this.passed, (row: Row) => (
-              <Item row={row} />
-            ))}
-          </Panel>
+          <div>
+            <Panel>
+              {list(this.passed, (row: Row) => (
+                <Item row={row} />
+              ))}
+            </Panel>
+          </div>
         );
       }
     }
@@ -97,10 +98,15 @@ describe("list regions", () => {
     // this is how a <tr> emits N <td> without a wrapper around them.
     const cells = [{ label: "c1" }, { label: "c2" }, { label: "c3" }];
 
-    @Host("ul")
     class Bare extends Component {
       render() {
-        return list(cells, (row: Row) => <Item row={row} />);
+        return (
+          <ul>
+            {list(cells, (row: Row) => (
+              <Item row={row} />
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -114,15 +120,16 @@ describe("list regions", () => {
   test("a list that stops being rendered unmounts and leaves no stale record", async () => {
     const rows = [{ label: "x" }, { label: "y" }];
 
-    @Host("div")
     class Toggling extends Component {
       @state show = true;
       render() {
         return (
-          <ul>
-            <li id="keep">keep</li>
-            {this.show ? list(rows, (row: Row) => <Item row={row} />) : null}
-          </ul>
+          <div>
+            <ul>
+              <li id="keep">keep</li>
+              {this.show ? list(rows, (row: Row) => <Item row={row} />) : null}
+            </ul>
+          </div>
         );
       }
     }

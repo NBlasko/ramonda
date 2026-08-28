@@ -1,4 +1,4 @@
-import { Component, Host, list, memoized } from "@ramonda/core";
+import { Component, list, memoized } from "@ramonda/core";
 import { Form, type StandardResult, type StandardSchemaV1 } from "@ramonda/form";
 
 // A whole form: fields, a cross-field rule, an array with rows that keep their
@@ -49,7 +49,6 @@ function register(values: Signup): Promise<{ ok: boolean }> {
   return new Promise((resolve) => setTimeout(() => resolve({ ok: values.email !== "taken@example.com" }), 600));
 }
 
-@Host("div")
 export class FormDemo extends Component {
   private form = this.use(Form<typeof schema>, () => ({
     schema,
@@ -103,60 +102,62 @@ export class FormDemo extends Component {
     const confirm = f.confirm.$;
 
     return (
-      <form className="demo-form" onsubmit={this.form.submit}>
-        <label>
-          Email
-          <input {...email.bind} />
-          {email.error ? <em className="demo-error">{email.error}</em> : null}
-        </label>
+      <div>
+        <form className="demo-form" onsubmit={this.form.submit}>
+          <label>
+            Email
+            <input {...email.bind} />
+            {email.error ? <em className="demo-error">{email.error}</em> : null}
+          </label>
 
-        <label>
-          Password
-          <input type="password" {...password.bind} />
-          {password.error ? <em className="demo-error">{password.error}</em> : null}
-        </label>
+          <label>
+            Password
+            <input type="password" {...password.bind} />
+            {password.error ? <em className="demo-error">{password.error}</em> : null}
+          </label>
 
-        <label>
-          Repeat it
-          <input type="password" {...confirm.bind} />
-          {confirm.error ? <em className="demo-error">{confirm.error}</em> : null}
-        </label>
+          <label>
+            Repeat it
+            <input type="password" {...confirm.bind} />
+            {confirm.error ? <em className="demo-error">{confirm.error}</em> : null}
+          </label>
 
-        <fieldset>
-          <legend>Tags</legend>
-          <ul className="demo-rows">
-            {list(f.tags.$.rows, (row) => (
-              <li>
-                <input {...row.field.$.bind} />
-                <button type="button" onclick={this.moveTagUp(row.id)} disabled={row.index === 0}>
-                  up
-                </button>
-                <button type="button" onclick={this.removeTag(row.id)}>
-                  remove
-                </button>
-                {row.field.$.error ? <em className="demo-error">{row.field.$.error}</em> : null}
-              </li>
-            ))}
-          </ul>
-          <button type="button" onclick={this.addTag}>
-            add a tag
-          </button>
-        </fieldset>
+          <fieldset>
+            <legend>Tags</legend>
+            <ul className="demo-rows">
+              {list(f.tags.$.rows, (row) => (
+                <li>
+                  <input {...row.field.$.bind} />
+                  <button type="button" onclick={this.moveTagUp(row.id)} disabled={row.index === 0}>
+                    up
+                  </button>
+                  <button type="button" onclick={this.removeTag(row.id)}>
+                    remove
+                  </button>
+                  {row.field.$.error ? <em className="demo-error">{row.field.$.error}</em> : null}
+                </li>
+              ))}
+            </ul>
+            <button type="button" onclick={this.addTag}>
+              add a tag
+            </button>
+          </fieldset>
 
-        {this.form.formErrors.length > 0 ? <p className="demo-error">{this.form.formErrors.join(", ")}</p> : null}
-        {this.accepted ? <p className="demo-ok">Registered. The form is back to its defaults.</p> : null}
+          {this.form.formErrors.length > 0 ? <p className="demo-error">{this.form.formErrors.join(", ")}</p> : null}
+          {this.accepted ? <p className="demo-ok">Registered. The form is back to its defaults.</p> : null}
 
-        <p>
-          <button type="submit" disabled={this.form.isSubmitting}>
-            {this.form.isSubmitting ? "Sending…" : "Sign up"}
-          </button>
-        </p>
+          <p>
+            <button type="submit" disabled={this.form.isSubmitting}>
+              {this.form.isSubmitting ? "Sending…" : "Sign up"}
+            </button>
+          </p>
 
-        <p className="demo-log">
-          valid {String(this.form.isValid)} · dirty {String(this.form.isDirty)} · submits{" "}
-          {String(this.form.submitCount)}
-        </p>
-      </form>
+          <p className="demo-log">
+            valid {String(this.form.isValid)} · dirty {String(this.form.isDirty)} · submits{" "}
+            {String(this.form.submitCount)}
+          </p>
+        </form>
+      </div>
     );
   }
 }

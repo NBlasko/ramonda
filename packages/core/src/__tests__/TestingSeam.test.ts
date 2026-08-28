@@ -15,10 +15,10 @@ import * as api from "../index";
  * becoming API by accident — is invisible in a diff and permanent once shipped.
  */
 
-const EXPECTED = ["flushSync", "rerenderRoot", "getComponentInstance"];
+const EXPECTED = ["flushSync", "rerenderRoot", "getComponentInstance", "getComponentsIn"];
 
 describe("the testing seam", () => {
-  test("exports exactly the three things a harness needs", () => {
+  test("exports exactly what a harness needs, and nothing beside it", () => {
     expect(Object.keys(seam).sort()).toEqual([...EXPECTED].sort());
   });
 

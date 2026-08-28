@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const rest: Record<string, unknown>;
 
@@ -13,7 +13,6 @@ declare const rest: Record<string, unknown>;
  * So the order matters for one of these three and for neither of the others, and both orders are
  * written for each.
  */
-@Host("div")
 class Spreading extends Component {
   render() {
     return (

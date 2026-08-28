@@ -7,12 +7,15 @@ import { Component, Host, bootstrap, fetch } from "@ramonda/core";
  * point of the rule is not that the type refuses it, it is that a `@ts-ignore` or a loosened base
  * class gets past a type that does. The rule reads the `async` keyword and nothing else.
  */
-@Host("div")
 class Feed extends Component {
   /* REPORTED — the method spelling. */
   async render() {
     const rows = await fetch("/api/rows");
-    return <ul>{String(rows)}</ul>;
+    return (
+      <div>
+        <ul>{String(rows)}</ul>
+      </div>
+    );
   }
 }
 
@@ -25,7 +28,6 @@ class Sidebar extends Component {
   };
 }
 
-@Host("div")
 class Panel extends Component {
   /* Not reported: an async method that is not the render. */
   async load() {
@@ -33,7 +35,11 @@ class Panel extends Component {
   }
   /* Not reported: an ordinary render, which is every render there is. */
   render() {
-    return <div>fine</div>;
+    return (
+      <div>
+        <div>fine</div>
+      </div>
+    );
   }
 }
 

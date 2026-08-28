@@ -1,8 +1,10 @@
+import { instanceOf } from "../../test/setup";
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, onElement } from "../../base/decorators";
+import { state, deferHydration } from "../../base/decorators";
+import { Hook } from "../../base/Hook";
 import { AsyncLoad } from "../../base/AsyncLoad";
-import { renderPage } from "../../hydration/ssr";
+import { renderPage, renderToString } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 
 /**
@@ -21,19 +23,20 @@ import { hydrateRoot } from "../../hydration/hydrate";
  * reader watches finished content collapse into a spinner.
  */
 
-@Host("div")
 class Loaded extends Component<{ label?: string }> {
   @state clicks = 0;
 
-  @onElement("click") bump() {
+  bump() {
     this.clicks = this.clicks + 1;
   }
 
   render() {
     return (
-      <p>
-        LOADED: {this.props.label ?? "-"} ({this.clicks})
-      </p>
+      <div id="loaded" onclick={this.bump}>
+        <p>
+          LOADED: {this.props.label ?? "-"} ({this.clicks})
+        </p>
+      </div>
     );
   }
 }
@@ -44,18 +47,19 @@ interface PageProps {
   lazy: () => Promise<Record<string, unknown>>;
 }
 
-@Host("div")
 class Page extends Component<PageProps> {
   render() {
     return (
-      <AsyncLoad
-        cacheKey={this.props.ck}
-        lazy={this.props.lazy}
-        namedExport="Loaded"
-        loadedProps={{ label: "from server" }}
-        onLoading={<p>loading…</p>}
-        errorFallback={<p>failed</p>}
-      />
+      <div>
+        <AsyncLoad
+          cacheKey={this.props.ck}
+          lazy={this.props.lazy}
+          namedExport="Loaded"
+          loadedProps={{ label: "from server" }}
+          onLoading={<p>loading…</p>}
+          errorFallback={<p>failed</p>}
+        />
+      </div>
     );
   }
 }
@@ -86,7 +90,7 @@ function hydrateCold(html: string, key: string) {
   container = document.createElement("div");
   document.body.appendChild(container);
   container.innerHTML = html;
-  const serverNode = container.querySelector('[data-ramonda="Loaded"]');
+  const serverNode = container.querySelector("#loaded");
   hydrateRoot(<Page ck={key} lazy={afterATick} />, container);
   return { serverNode: serverNode as HTMLElement };
 }
@@ -99,14 +103,14 @@ describe("hydration waits instead of destroying", () => {
 
     // The whole point: same node, same text, immediately after hydrateRoot and
     // long before the chunk lands.
-    expect(container!.querySelector('[data-ramonda="Loaded"]')).toBe(serverNode);
+    expect(container!.querySelector("#loaded")).toBe(serverNode);
     expect(container!.textContent).toContain("LOADED: from server");
     expect(container!.textContent).not.toContain("loading…");
 
     // The walk continued PAST the deferred subtree rather than stopping at it:
     // the page's own root is hydrated and owns its host.
-    const root = container!.firstChild as unknown as { _componentInstance?: object };
-    expect(root._componentInstance).toBeDefined();
+    const root = container!.firstChild;
+    expect(instanceOf<object>(root)).toBeDefined();
   });
 
   test("and the same node is still there once the import lands", async () => {
@@ -115,7 +119,7 @@ describe("hydration waits instead of destroying", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 40));
 
-    expect(container!.querySelector('[data-ramonda="Loaded"]')).toBe(serverNode);
+    expect(container!.querySelector("#loaded")).toBe(serverNode);
     expect(container!.textContent).toContain("LOADED: from server");
   });
 
@@ -124,7 +128,7 @@ describe("hydration waits instead of destroying", () => {
     const { serverNode } = hydrateCold(html, "cold-3");
     await new Promise((resolve) => setTimeout(resolve, 40));
 
-    const loaded = container!.querySelector('[data-ramonda="Loaded"]') as HTMLElement;
+    const loaded = container!.querySelector("#loaded") as HTMLElement;
 
     // Both halves, together. Rebuilt content is interactive too, so asserting
     // the click alone would pass without the deferral — it is the click landing
@@ -146,31 +150,32 @@ describe("hydration waits instead of destroying", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     container.innerHTML = html;
-    const serverNode = container.querySelector('[data-ramonda="Loaded"]');
+    const serverNode = container.querySelector("#loaded");
 
     hydrateRoot(<Page ck="warm-1" lazy={immediately} />, container);
     await Promise.resolve();
 
-    expect(container.querySelector('[data-ramonda="Loaded"]')).toBe(serverNode);
+    expect(container.querySelector("#loaded")).toBe(serverNode);
     expect(container.textContent).toContain("LOADED");
   });
 });
 
 describe("updates are held, not lost, while hydration is deferred", () => {
   test("a prop that changes during the wait is picked up on resume", async () => {
-    @Host("div")
     class Parent extends Component {
       @state label = "first";
       render() {
         return (
-          <AsyncLoad
-            cacheKey="cold-props"
-            lazy={afterATick}
-            namedExport="Loaded"
-            loadedProps={{ label: this.label }}
-            onLoading={<p>loading…</p>}
-            errorFallback={<p>failed</p>}
-          />
+          <div>
+            <AsyncLoad
+              cacheKey="cold-props"
+              lazy={afterATick}
+              namedExport="Loaded"
+              loadedProps={{ label: this.label }}
+              onLoading={<p>loading…</p>}
+              errorFallback={<p>failed</p>}
+            />
+          </div>
         );
       }
     }
@@ -184,11 +189,7 @@ describe("updates are held, not lost, while hydration is deferred", () => {
     await Promise.resolve();
 
     // Change the prop while the subtree is still deferred.
-    const parent = (
-      container.firstChild as unknown as {
-        _componentInstance: Parent;
-      }
-    )._componentInstance;
+    const parent = instanceOf<Parent>(container.firstChild);
     parent.label = "second";
     await Promise.resolve();
 
@@ -207,25 +208,25 @@ describe("the whole scenario, end to end", () => {
     const page = await renderPage(<Page ck="e2e-server" lazy={afterATick} />);
     expect(page.body).toContain("LOADED: from server");
     expect(page.body).not.toContain("loading…");
-    expect(page.body).toContain('data-ramonda="Loaded"');
+    expect(page.body).toContain('id="loaded"');
 
     // 2. A cold client — its module cache is empty, exactly like a browser that
     //    has the HTML but has not fetched the chunk.
     container = document.createElement("div");
     document.body.appendChild(container);
     container.innerHTML = page.body;
-    const serverNode = container.querySelector('[data-ramonda="Loaded"]') as HTMLElement;
+    const serverNode = container.querySelector("#loaded") as HTMLElement;
 
     hydrateRoot(<Page ck="e2e-client" lazy={afterATick} />, container);
     await Promise.resolve();
 
     //    Nothing was destroyed: the content is still on screen, mid-hydration.
-    expect(container.querySelector('[data-ramonda="Loaded"]')).toBe(serverNode);
+    expect(container.querySelector("#loaded")).toBe(serverNode);
     expect(container.textContent).toContain("LOADED: from server");
 
     // 3. The chunk lands and the SAME nodes become interactive.
     await new Promise((resolve) => setTimeout(resolve, 40));
-    const loaded = container.querySelector('[data-ramonda="Loaded"]') as HTMLElement;
+    const loaded = container.querySelector("#loaded") as HTMLElement;
     expect(loaded).toBe(serverNode);
 
     loaded.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -240,7 +241,6 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
     const { deferHydration } = await import("../../base/decorators");
     let asked = 0;
 
-    @Host("div")
     class Slow extends Component {
       @state ready = false;
 
@@ -258,7 +258,11 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
       }
 
       render() {
-        return <p>{this.ready ? "ready" : "waiting"}</p>;
+        return (
+          <div>
+            <p>{this.ready ? "ready" : "waiting"}</p>
+          </div>
+        );
       }
     }
 
@@ -279,10 +283,13 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
   });
 
   test("a component with no @deferHydration pays nothing", async () => {
-    @Host("div")
     class Plain extends Component {
       render() {
-        return <p>plain</p>;
+        return (
+          <div>
+            <p>plain</p>
+          </div>
+        );
       }
     }
 
@@ -299,7 +306,6 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
   });
 
   test("a user method named deferHydration is just a method now", async () => {
-    @Host("div")
     class Innocent extends Component {
       @state note = "";
       // Before this was a decorator, defining this would have changed how the
@@ -309,7 +315,11 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
         return Promise.resolve();
       }
       render() {
-        return <p>{this.note || "untouched"}</p>;
+        return (
+          <div>
+            <p>{this.note || "untouched"}</p>
+          </div>
+        );
       }
     }
 
@@ -323,5 +333,98 @@ describe("@deferHydration is a decorator, so method names stay yours", () => {
 
     // The framework never called it; the component hydrated normally.
     expect(container.textContent).toContain("untouched");
+  });
+});
+
+describe("a resume renders from the state the deferral left", () => {
+  test("its hooks see what the deferral changed", async () => {
+    /**
+     * `useCommon` calls a hook's options callback during CONSTRUCTION, so a hook holds whatever the
+     * component's fields held then. The direct hydration path refreshes them after the restore and
+     * the client `@created`; the resume did not.
+     *
+     * A deferral exists to change something before the subtree renders — that is what it is FOR, and
+     * what `AsyncLoad` does with it. Whatever it moved reached the component and not its hooks, so
+     * the resume rendered the pre-deferral answer: measured `5 usd` where the component's own state
+     * already said `sr`.
+     */
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    class Suffix extends Hook<{ locale: string }> {
+      get text() {
+        return this.props.locale === "sr" ? " din" : " usd";
+      }
+    }
+
+    class Amount extends Component {
+      @state locale = "en";
+      suffix = this.use(Suffix, (self: Amount) => ({ locale: self.locale }));
+      @deferHydration wait() {
+        return gate.then(() => {
+          this.locale = "sr";
+        });
+      }
+      render() {
+        return <p id="amount">5{this.suffix.text}</p>;
+      }
+    }
+
+    const html = await renderToString(<Amount />);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html;
+    expect(container.querySelector("#amount")!.textContent).toBe("5 usd");
+
+    hydrateRoot(<Amount />, container);
+    await Promise.resolve();
+
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+
+    expect(container.querySelector("#amount")!.textContent).toBe("5 din");
+  });
+
+  test("one rejecting deferral does not leave an unhandled rejection", async () => {
+    /**
+     * The subtree is released whichever way the promise settled — that is what `allSettled` is for,
+     * and the comment on it has said so all along. But a SINGLE promise was handed back raw, and the
+     * caller does `void deferred.finally(…)`, so its rejection had nobody to take it: an
+     * `unhandledrejection` in a browser, and a process a Node runtime may refuse to keep alive. Two
+     * deferrals in one component never did this, because `allSettled` takes the rejection itself —
+     * so the common case was the broken one.
+     */
+    class Failing extends Component {
+      @deferHydration wait() {
+        return Promise.reject(new Error("chunk 404"));
+      }
+      render() {
+        return <div id="failing">failing</div>;
+      }
+    }
+
+    const html = await renderToString(<Failing />);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = html;
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      hydrateRoot(<Failing />, container);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(unhandled).toEqual([]);
+      // And it still resumed: a failed deferral releases the subtree rather than freezing it.
+      expect(container.querySelector("#failing")).not.toBeNull();
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 });

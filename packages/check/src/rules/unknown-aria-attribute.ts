@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { ARIA_ATTRIBUTES } from "./aria";
-import type { HostElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * An `aria-*` attribute the specification does not have.
@@ -115,8 +115,6 @@ export const unknownAriaAttribute = {
    */
   evenWhenSpreading: true,
 
-  alsoOnHost: true,
-
   read(_element, { tag, inSvg, attributes }) {
     // Components too: `<Panel aria-lablled="x" />` is a prop with a name, and the mistake is the
     // same one whether the tag is markup or a class that will pass it through.
@@ -143,4 +141,4 @@ export const unknownAriaAttribute = {
 
     return found;
   },
-} as const satisfies HostElementRule<UnknownAriaAttributeIssue>;
+} as const satisfies ElementRule<UnknownAriaAttributeIssue>;

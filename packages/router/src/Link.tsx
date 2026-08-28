@@ -1,4 +1,4 @@
-import { Component, onElement, Host } from "@ramonda/core";
+import { Component } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { RouteConsumer } from "./Router";
 import { buildUrl, parseUrlString, sanitizeHref } from "./urlUtils";
@@ -37,15 +37,13 @@ function shouldSkipIntercept(href: string, e: MouseEvent): boolean {
 }
 
 /**
- * Declarative navigation. The component's HOST element IS the `<a>` (via @Host),
- * so there's no wrapping template — a real anchor with a proper href (SEO /
- * middle-click / open-in-new-tab) whose plain left click routes through the
- * single `updateState` channel.
+ * Declarative navigation: a real `<a>` with a proper href — for SEO, middle click and
+ * open-in-new-tab — whose plain left click routes through the single `updateState` channel.
+ *
+ * The anchor is written in the render, which is where the href and the handler that reads it can sit
+ * beside each other. It used to be the component's host element, declared with `@Host("a", …)`, and
+ * the handler was an `@onElement` several lines away from the attribute it had to agree with.
  */
-@Host("a", (self: Link) => ({
-  href: self.currentHref,
-  className: self.props.className,
-}))
 export class Link extends Component<LinkProps> {
   private ctx = this.use(RouteConsumer);
 
@@ -64,7 +62,6 @@ export class Link extends Component<LinkProps> {
       : sanitizeHref(this.props.href ?? "/");
   }
 
-  @onElement("click")
   private onClick(e: MouseEvent): void {
     // The RENDERED href — never `props.href`. Everything that can follow this
     // link has to name one destination: the `href` attribute (middle click,
@@ -83,7 +80,10 @@ export class Link extends Component<LinkProps> {
   }
 
   render() {
-    // The host <a> is the element; just place the children inside it.
-    return this.props.children;
+    return (
+      <a href={this.currentHref} className={this.props.className} onclick={this.onClick}>
+        {this.props.children}
+      </a>
+    );
   }
 }

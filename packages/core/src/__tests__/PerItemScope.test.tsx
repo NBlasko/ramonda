@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, state, compute } from "../index";
+import { Component, list, state, compute } from "../index";
 
 /**
  * Each item's mapper runs inside its own tracker, so the signals it reads are
@@ -19,14 +19,15 @@ interface Row {
 
 let mapperCalls = 0;
 
-@Host("li")
 class Item extends Component<{ row: Row; mark?: string }> {
   render() {
     return (
-      <span>
-        {this.props.row.value}
-        {this.props.mark ?? ""}
-      </span>
+      <li>
+        <span>
+          {this.props.row.value}
+          {this.props.mark ?? ""}
+        </span>
+      </li>
     );
   }
 }
@@ -36,7 +37,6 @@ const dump = (c: Element) =>
     .map((li) => li.textContent)
     .join(",");
 
-@Host("div")
 class Plain extends Component {
   @state rows: Row[] = [
     { id: 1, value: "a" },
@@ -59,11 +59,14 @@ class Plain extends Component {
   }
 
   render() {
-    return <ul>{list(this.rows, this.row)}</ul>;
+    return (
+      <div>
+        <ul>{list(this.rows, this.row)}</ul>
+      </div>
+    );
   }
 }
 
-@Host("div")
 class Selecting extends Component {
   @state rows: Row[] = [
     { id: 1, value: "a" },
@@ -81,7 +84,11 @@ class Selecting extends Component {
   }
 
   render() {
-    return <ul>{list(this.rows, this.row)}</ul>;
+    return (
+      <div>
+        <ul>{list(this.rows, this.row)}</ul>
+      </div>
+    );
   }
 }
 
@@ -134,7 +141,6 @@ describe("per-item reactive scopes", () => {
   test("a signal read through a @compute still invalidates the item", async () => {
     // A cached @compute touches no State when read, so without the getter
     // replaying its deps the item's scope would record nothing and go stale.
-    @Host("div")
     class ViaCompute extends Component {
       @state rows: Row[] = [{ id: 1, value: "a" }];
       @state suffix = "x";
@@ -143,12 +149,14 @@ describe("per-item reactive scopes", () => {
       }
       render() {
         return (
-          <ul>
-            {list(this.rows, (row: Row) => {
-              mapperCalls++;
-              return <Item row={row} mark={this.loud} />;
-            })}
-          </ul>
+          <div>
+            <ul>
+              {list(this.rows, (row: Row) => {
+                mapperCalls++;
+                return <Item row={row} mark={this.loud} />;
+              })}
+            </ul>
+          </div>
         );
       }
     }
@@ -191,7 +199,6 @@ describe("what the scopes deliberately do not track", () => {
   afterEach(() => vi.restoreAllMocks());
 
   test("a plain field is not a signal, so writing it reaches no item", async () => {
-    @Host("div")
     class App extends Component {
       @state rows: Row[] = [
         { id: 1, value: "a" },
@@ -213,7 +220,11 @@ describe("what the scopes deliberately do not track", () => {
       }
 
       render() {
-        return <ul data-tick={String(this.tick)}>{list(this.rows, this.row)}</ul>;
+        return (
+          <div>
+            <ul data-tick={String(this.tick)}>{list(this.rows, this.row)}</ul>
+          </div>
+        );
       }
     }
 
@@ -235,7 +246,6 @@ describe("what the scopes deliberately do not track", () => {
     // The likelier version of the same mistake, and the reason it is worth a
     // test: the array is `===` what it was, so the whole-list skip applies and
     // not one item is examined.
-    @Host("div")
     class App extends Component {
       @state rows: Row[] = [
         { id: 1, value: "a" },
@@ -244,11 +254,13 @@ describe("what the scopes deliberately do not track", () => {
       @state tick = 0;
       render() {
         return (
-          <ul data-tick={String(this.tick)}>
-            {list(this.rows, (row: Row) => (
-              <Item row={row} />
-            ))}
-          </ul>
+          <div>
+            <ul data-tick={String(this.tick)}>
+              {list(this.rows, (row: Row) => (
+                <Item row={row} />
+              ))}
+            </ul>
+          </div>
         );
       }
     }

@@ -17,17 +17,17 @@ const found = () => run().findings["link-without-a-destination"];
 describe("a link with no destination", () => {
   test("every spelling of nowhere is reported, and named", () => {
     expect(found().map((issue) => `${issue.line} ${issue.kind}`)).toEqual([
-      "12 no href",
-      "13 empty href",
-      "14 empty fragment",
-      "15 javascript:",
+      "11 no href",
+      "12 empty href",
+      "13 empty fragment",
+      "14 javascript:",
       // The same two, one name away — `attr` follows a name to its declaration.
-      "18 empty fragment",
-      "19 empty href",
+      "17 empty fragment",
+      "18 empty href",
       // Shouting, and whitespace. Both are the same claim as their tidy spellings.
-      "22 javascript:",
-      "23 empty href",
-      "28 no href",
+      "21 javascript:",
+      "22 empty href",
+      "27 no href",
     ]);
   });
 
@@ -43,14 +43,14 @@ describe("a link with no destination", () => {
       found()
         .filter((issue) => issue.handled)
         .map((issue) => issue.line),
-    ).toEqual([28]);
+    ).toEqual([27]);
   });
 
   /** A real fragment, the legacy anchor TARGET, and a real path. */
   test("a destination that exists is not reported", () => {
     const lines = found().map((issue) => issue.line);
 
-    for (const line of [26, 30, 32]) expect(lines).not.toContain(line);
+    for (const line of [30, 32, 34]) expect(lines).not.toContain(line);
     expect(found()).toHaveLength(9);
   });
 });

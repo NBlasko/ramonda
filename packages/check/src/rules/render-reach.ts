@@ -418,49 +418,4 @@ export function walkRenders(cls: ts.ClassDeclaration, reach: RenderReach): void 
     const body = ts.isMethodDeclaration(member) || ts.isGetAccessorDeclaration(member) ? member.body : undefined;
     if (body) walk(body, [name], true, 0);
   }
-
-  /**
-   * `@Host("nav", (self) => ({ className: … }))` — a render that is in no member body.
-   *
-   * It runs every time the component renders, and `entryPoints` looks only at members, so a clock
-   * read there was reached by nothing. The id table had the same gap for the same callback, in a
-   * different reader — a fix for one reader is not a fix for the other.
-   *
-   * `insideTheClass` is FALSE, exactly as it is for a static. The callback is handed the component
-   * as a PARAMETER rather than through `this`, so nothing about `this` is knowable inside it and
-   * only what depends on nothing — a clock, a random number — is worth finding.
-   */
-  for (const { body, named } of hostCallbacks(cls, reach.resolve)) walk(body, [named], false, 0);
-}
-
-/**
- * Both callbacks `@Host` takes, because both run on every render.
- *
- * The PROPS callback is the second argument and the obvious one. The TAG is the first, and it can
- * be a callback too — `@Host((p) => p.as ?? "div")` is a documented form that core supports and
- * whose result it re-checks on every call. Reading only the second argument missed a clock read in
- * the first, measured with a plant, on a decorator that has no second argument at all.
- *
- * `insideTheClass` is FALSE for both, exactly as it is for a static: each is handed the component as
- * a PARAMETER rather than through `this`, so nothing about `this` is knowable inside them and only
- * what depends on nothing — a clock, a random number — is worth finding.
- */
-function hostCallbacks(cls: ts.ClassDeclaration, resolve: Resolver): { body: ts.Node; named: string }[] {
-  const found: { body: ts.Node; named: string }[] = [];
-
-  for (const decorator of ts.getDecorators(cls) ?? []) {
-    const call = decorator.expression;
-    if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolve) !== "Host") continue;
-
-    for (const [index, named] of [
-      [0, "@Host tag"],
-      [1, "@Host props"],
-    ] as const) {
-      const written = call.arguments[index];
-      if (written === undefined) continue;
-      if (ts.isArrowFunction(written) || ts.isFunctionExpression(written)) found.push({ body: written.body, named });
-    }
-  }
-
-  return found;
 }

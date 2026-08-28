@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state } from "../index";
+import { Component, state } from "../index";
 import { initDevtoolsBridge, setInspectRoot, inspectTree, notifyComponentUpdate } from "../debug/devtoolsBridge";
 
 /**
@@ -10,11 +10,14 @@ import { initDevtoolsBridge, setInspectRoot, inspectTree, notifyComponentUpdate 
  */
 const frame = () => new Promise((r) => setTimeout(r, 32));
 
-@Host("div")
 class Counter extends Component {
   @state n = 0;
   render() {
-    return <span>{this.n}</span>;
+    return (
+      <div>
+        <span>{this.n}</span>
+      </div>
+    );
   }
 }
 

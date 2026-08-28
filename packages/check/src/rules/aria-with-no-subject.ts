@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { NO_ARIA } from "./aria";
-import type { HostElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * `role` or `aria-*` on an element that has no accessibility tree node to describe.
@@ -58,8 +58,6 @@ export const ariaWithNoSubject = {
    */
   evenWhenSpreading: true,
 
-  alsoOnHost: true,
-
   read(_element, { tag, attributes }) {
     if (tag === undefined || !NO_ARIA.has(tag)) return [];
 
@@ -73,4 +71,4 @@ export const ariaWithNoSubject = {
 
     return found;
   },
-} as const satisfies HostElementRule<AriaWithNoSubjectIssue>;
+} as const satisfies ElementRule<AriaWithNoSubjectIssue>;

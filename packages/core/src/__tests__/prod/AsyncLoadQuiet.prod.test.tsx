@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from "vitest";
-import { Component, Host, bootstrap, unmount, AsyncLoad } from "../../index";
+import { Component, bootstrap, unmount, AsyncLoad } from "../../index";
 import { flushSync } from "../../testing";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -32,19 +32,20 @@ describe("production: a failed lazy import", () => {
 
     let seen: unknown;
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => Promise.reject(new Error("chunk 404"))}
-            onLoading={<i>loading…</i>}
-            errorFallback={({ error }) => {
-              seen = error;
-              return <i>could not load</i>;
-            }}
-            cacheKey="prod-quiet"
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => Promise.reject(new Error("chunk 404"))}
+              onLoading={<i>loading…</i>}
+              errorFallback={({ error }) => {
+                seen = error;
+                return <i>could not load</i>;
+              }}
+              cacheKey="prod-quiet"
+            />
+          </div>
         );
       }
     }

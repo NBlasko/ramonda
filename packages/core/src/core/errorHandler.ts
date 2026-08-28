@@ -1,7 +1,15 @@
 import type { MaybeComponent } from "../types/vdom";
 import { COMPONENT_RUNTIME } from "./runtime";
 
-export function errorHandler(e: unknown, placeholderComponent: MaybeComponent) {
+/**
+ * Walks up for a boundary that will take this error, and answers with the one that did.
+ *
+ * The answer is for a caller that has to do something ABOUT the handling — hydration does: a
+ * boundary caught mid-adoption is not initialized yet, so the state its handler writes schedules
+ * nothing, and it has to be queued once the walk that is adopting it has finished. The build path
+ * ignores the answer, because there the boundary is live and its own state write is the whole of it.
+ */
+export function errorHandler(e: unknown, placeholderComponent: MaybeComponent): MaybeComponent {
   let errorCatcherComponent = placeholderComponent;
   let isErrorHandled = false;
 
@@ -33,4 +41,5 @@ export function errorHandler(e: unknown, placeholderComponent: MaybeComponent) {
   }
 
   if (!isErrorHandled) throw e;
+  return errorCatcherComponent;
 }

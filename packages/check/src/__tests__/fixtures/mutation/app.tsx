@@ -11,7 +11,6 @@ declare class Dates {
  * wraps only plain objects and arrays, and lets every non-mutating array method through. A rule
  * drawing its own line would disagree with the runtime about a line of somebody's code.
  */
-@Host("div")
 class Cart extends Component {
   @state items: number[] = [];
   @state user = { name: "a" };
@@ -44,7 +43,11 @@ class Cart extends Component {
   }
 
   render() {
-    return <div>{this.items.length}</div>;
+    return (
+      <div>
+        <div>{this.items.length}</div>
+      </div>
+    );
   }
 }
 
@@ -55,13 +58,16 @@ class Cart extends Component {
  * read from this class body alone, so the declaration on the base was never seen and the push went
  * unreported: a rule that knew the field was state and not what it held.
  */
-@Host("div")
 class Inventory extends Component {
   @state rows: number[] = [];
   @state owner = { name: "a" };
 
   render() {
-    return <div>{this.rows.length}</div>;
+    return (
+      <div>
+        <div>{this.rows.length}</div>
+      </div>
+    );
   }
 }
 

@@ -163,12 +163,17 @@ takes a field needs one thing from the form, and `Field` is it:
 ```tsx
 import { Field, type FieldNode } from "@ramonda/form";
 
-@Host("label", (self: TextField) => ({ className: self.f.error ? "field field--invalid" : "field" }))
 class TextField extends Component<{ of: FieldNode<string>; label: string }> {
   f = this.use(Field<string>, () => ({ of: this.props.of }));
 
   render() {
-    return [<span className="field__label">{this.props.label}</span>, <input {...this.f.bind} />, this.f.error];
+    return (
+      <label className={this.f.error ? "field field--invalid" : "field"}>
+        <span className="field__label">{this.props.label}</span>
+        <input {...this.f.bind} />
+        {this.f.error}
+      </label>
+    );
   }
 }
 ```
@@ -191,10 +196,10 @@ appear, and a write from anywhere else would never reach its input.
 type, so `T` cannot be recovered from it by inference, and `Field<string>` is the same pin
 `Query<Todo>` takes.
 
-### The host element is the wrapper you were going to write
+### The wrapper is the one you were going to write
 
-`@Host("label", …)` makes the component's own element the field's wrapper, so there is no extra node
-in the DOM. The markup that comes out is what you would have written by hand:
+The `<label>` is the component's own markup, so there is no extra node in the DOM. What comes out is
+what you would have written by hand:
 
 ```html
 <label class="field">
@@ -203,8 +208,8 @@ in the DOM. The markup that comes out is what you would have written by hand:
 </label>
 ```
 
-That is where the class, the label and the message belong anyway, and the host props callback runs on
-every render, so the class follows the message without any work.
+That is where the class, the label and the message belong anyway — and the class sits on the element
+it styles, so it follows the message on every render without any work.
 
 ### Defaults and variants come from the class
 
@@ -225,8 +230,8 @@ class EmailField extends TextField {
 }
 ```
 
-`@Host` is read off the class through the static chain, so a subclass inherits the wrapper and may
-declare its own to restyle it.
+A subclass inherits the render along with everything else, and may override it to change the wrapper
+as well as the label.
 
 ### One keystroke, one field
 

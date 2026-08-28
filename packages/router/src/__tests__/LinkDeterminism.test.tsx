@@ -1,5 +1,5 @@
 import { beforeEach, describe, test, expect } from "vitest";
-import { Component, Host } from "@ramonda/core";
+import { Component } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render, fireEvent } from "@ramonda/testing-library";
 import { Router } from "../Router";
@@ -15,11 +15,10 @@ import { Link } from "../Link";
  * then means two different things depending on how it was clicked.
  */
 
-@Host("div")
 class RouterApp extends Component<{ children?: RamondaNode }> {
   router = this.use(Router);
   render() {
-    return this.props.children;
+    return <div>{this.props.children}</div>;
   }
 }
 

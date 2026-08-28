@@ -1,7 +1,7 @@
 import { positionOf } from "../syntax";
-import { openingOf } from "./element";
-import { NOT_INSIDE_ITSELF, enclosingElement, enclosingTag } from "./html";
-import type { ElementRule, JsxElementLike, Resolver } from "./rule";
+import { openingOf, tagOf } from "./element";
+import { NOT_INSIDE_ITSELF, enclosingElement } from "./html";
+import type { ElementRule, JsxElementLike } from "./rule";
 
 /**
  * A link inside a link, a button inside a button, a form inside a form, a label inside a label.
@@ -30,24 +30,11 @@ export interface InteractiveInsideInteractiveIssue {
  * a wrapper is exactly how it gets written. The walk stops where {@link enclosingElement} stops —
  * at a function boundary — so a component in between makes it unprovable and it says nothing.
  */
-function insideSameTag(element: JsxElementLike, tag: string, resolve: Resolver): boolean {
-  let at: JsxElementLike | undefined = element;
+function insideSameTag(element: JsxElementLike, tag: string): boolean {
+  let at = enclosingElement(element);
   while (at !== undefined) {
-    /**
-     * `enclosingTag`, not `tagOf` — so a WRAPPER is seen through to the element it is.
-     *
-     * A component in the way used to end the walk, on the argument that what it renders is decided
-     * inside it. That is true of most components and not of the one that gets written here: a
-     * wrapper whose `render()` hands `this.props.children` straight back puts them inside its own
-     * `@Host` element, and `<LinkBox><a/></LinkBox>` with `@Host("a")` is a link inside a link that
-     * nothing reported. `tag-needs-its-parent` had already been taught this about the same
-     * question, through the same helper — two rules asking "what is this really inside" two
-     * different ways, and this was the one that was wrong.
-     *
-     * It still ends the walk for every other component, which is the silence that keeps it honest:
-     * `hostTagOfComponent` answers only when the children really do land on the host.
-     */
-    const enclosing = enclosingTag(at, resolve);
+    const enclosing = tagOf(at);
+    // A component in the way: what it renders is decided inside it, so nothing is claimed.
     if (enclosing === undefined) return false;
     if (enclosing === tag) return true;
     at = enclosingElement(at);
@@ -80,9 +67,9 @@ export const interactiveInsideInteractive = {
       "This is a warning today and an error in a later version.",
   },
 
-  read(element, { tag, resolve }) {
+  read(element, { tag }) {
     if (tag === undefined || !NOT_INSIDE_ITSELF.has(tag)) return [];
-    if (!insideSameTag(element, tag, resolve)) return [];
+    if (!insideSameTag(element, tag)) return [];
     return [{ tag, ...positionOf(openingOf(element)) }];
   },
 } as const satisfies ElementRule<InteractiveInsideInteractiveIssue>;

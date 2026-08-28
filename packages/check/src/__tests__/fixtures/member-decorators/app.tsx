@@ -1,15 +1,4 @@
-import {
-  Component,
-  Host,
-  bootstrap,
-  created,
-  memoized,
-  mounted,
-  persist,
-  state,
-  updated,
-  watchProp,
-} from "@ramonda/core";
+import { Component, bootstrap, created, memoized, mounted, persist, state, updated, watchProp } from "@ramonda/core";
 
 declare const rows: { id: string; label: string }[];
 
@@ -27,7 +16,6 @@ const SHARED_KEY = { id: "x" };
  * The silence half is most of it: two decorators doing DIFFERENT work on one member is an idiom,
  * not a fault, and the runtime is silent about every one of those.
  */
-@Host("div")
 class Panel extends Component {
   /* REPORTED — `@state` already puts a field in the blob, so `@persist` adds nothing. */
   @state @persist both = 0;
@@ -62,25 +50,27 @@ class Panel extends Component {
   render() {
     const local = { id: "x" };
     return (
-      <ul>
-        {/* REPORTED — a literal argument, and a cast changes nothing about what is passed. */}
-        <li onclick={this.byRef({ id: "x" } as never)}>a</li>
-        {/* REPORTED — null is not a key either. */}
-        <li onclick={this.byRef(null as never)}>b</li>
-        {/* Not reported: an expression this cannot read. `this.byRef(row.id)` is right and
-            `this.byRef(row)` is the fault, and they look the same from here. */}
-        <li onclick={this.byRef(rows[0].id)}>c</li>
-        {/* Not reported: a primitive. */}
-        <li onclick={this.byRef("k")}>d</li>
-        {/* REPORTED — an object one line up; the argument is followed to where it came from. */}
-        <li onclick={this.byRef(local as never)}>e</li>
-        {/* REPORTED — an object a helper returns. */}
-        <li onclick={this.byRef(keyFor("x") as never)}>f</li>
-        {/* REPORTED — a module const: STABLE, and still not something a key can hold. */}
-        <li onclick={this.byRef(SHARED_KEY as never)}>g</li>
-        {/* REPORTED — one arm of a ternary is enough; that path throws. */}
-        <li onclick={this.byRef((rows.length ? { id: "x" } : "k") as never)}>h</li>
-      </ul>
+      <div>
+        <ul>
+          {/* REPORTED — a literal argument, and a cast changes nothing about what is passed. */}
+          <li onclick={this.byRef({ id: "x" } as never)}>a</li>
+          {/* REPORTED — null is not a key either. */}
+          <li onclick={this.byRef(null as never)}>b</li>
+          {/* Not reported: an expression this cannot read. `this.byRef(row.id)` is right and
+              `this.byRef(row)` is the fault, and they look the same from here. */}
+          <li onclick={this.byRef(rows[0].id)}>c</li>
+          {/* Not reported: a primitive. */}
+          <li onclick={this.byRef("k")}>d</li>
+          {/* REPORTED — an object one line up; the argument is followed to where it came from. */}
+          <li onclick={this.byRef(local as never)}>e</li>
+          {/* REPORTED — an object a helper returns. */}
+          <li onclick={this.byRef(keyFor("x") as never)}>f</li>
+          {/* REPORTED — a module const: STABLE, and still not something a key can hold. */}
+          <li onclick={this.byRef(SHARED_KEY as never)}>g</li>
+          {/* REPORTED — one arm of a ternary is enough; that path throws. */}
+          <li onclick={this.byRef((rows.length ? { id: "x" } : "k") as never)}>h</li>
+        </ul>
+      </div>
     );
   }
 }

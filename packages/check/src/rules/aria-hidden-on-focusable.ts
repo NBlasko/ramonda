@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { numberAttr, openingOf, trueAttr } from "./element";
-import type { ElementContext, HostElementRule } from "./rule";
+import type { ElementContext, ElementRule } from "./rule";
 
 /**
  * `aria-hidden="true"` on something a keyboard can still reach.
@@ -76,8 +76,6 @@ export const ariaHiddenOnFocusable = {
 
   evenWhenSpreading: true,
 
-  alsoOnHost: true,
-
   read(_element, context) {
     const { tag } = context;
     if (tag === undefined) return [];
@@ -119,4 +117,4 @@ export const ariaHiddenOnFocusable = {
 
     return [{ tag, because: "the tag" as const, ...positionOf(context.at) }];
   },
-} as const satisfies HostElementRule<AriaHiddenOnFocusableIssue>;
+} as const satisfies ElementRule<AriaHiddenOnFocusableIssue>;

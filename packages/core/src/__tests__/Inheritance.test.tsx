@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, created } from "../index";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, Hook, state, created } from "../index";
 
 /**
  * Extending a component is a first-class pattern: it is how you reuse behaviour
@@ -22,7 +22,6 @@ describe("extending a component (no constructor anywhere)", () => {
     }
   }
 
-  @Host("td")
   class BaseCell extends Component<{ label?: string }> {
     @state count = 0;
     baseHook = this.use(Helper, () => ({ tag: "base" }));
@@ -36,11 +35,14 @@ describe("extending a component (no constructor anywhere)", () => {
     }
 
     render() {
-      return <span>{this.decorate(this.props.label ?? "")}</span>;
+      return (
+        <td>
+          <span>{this.decorate(this.props.label ?? "")}</span>
+        </td>
+      );
     }
   }
 
-  @Host("th")
   class FancyCell extends BaseCell {
     @state extra = 7;
     ownHook = this.use(Helper, () => ({ tag: "fancy" }));
@@ -59,10 +61,12 @@ describe("extending a component (no constructor anywhere)", () => {
 
     override render() {
       return (
-        <span>
-          {this.decorate(this.props.label ?? "")}/{this.newMethod()}/{this.baseHook.value()}
-          {this.ownHook.value()}
-        </span>
+        <th>
+          <span>
+            {this.decorate(this.props.label ?? "")}/{this.newMethod()}/{this.baseHook.value()}
+            {this.ownHook.value()}
+          </span>
+        </th>
       );
     }
   }
@@ -70,18 +74,19 @@ describe("extending a component (no constructor anywhere)", () => {
   test("@Host, render, methods, state and hooks all inherit or override", async () => {
     log.length = 0;
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <table>
-            <tbody>
-              <tr>
-                <BaseCell label="a" />
-                <FancyCell label="b" />
-              </tr>
-            </tbody>
-          </table>
+          <div>
+            <table>
+              <tbody>
+                <tr>
+                  <BaseCell label="a" />
+                  <FancyCell label="b" />
+                </tr>
+              </tbody>
+            </table>
+          </div>
         );
       }
     }
@@ -102,7 +107,7 @@ describe("extending a component (no constructor anywhere)", () => {
     // Lifecycle from both levels runs, base first.
     expect(log).toEqual(["base", "base", "fancy"]);
 
-    const fancy = (cells[1] as Element & { _componentInstance?: FancyCell })._componentInstance!;
+    const fancy = instanceOf<FancyCell>(cells[1]);
     expect(fancy.count).toBe(0); // inherited @state
     expect(fancy.extra).toBe(7); // own @state
   });
@@ -114,31 +119,38 @@ describe("extending a component (no constructor anywhere)", () => {
     // addEventListener callback never escapes dispatchEvent, the click did
     // nothing at all, with no error anywhere. Inheritance looked fine and was
     // quietly broken.
-    @Host("button")
     class BaseButton extends Component {
       @state clicks = 0;
       handleClick() {
         this.clicks++;
       }
       render() {
-        return <span onclick={this.handleClick}>{this.clicks}</span>;
+        return (
+          <button>
+            <span onclick={this.handleClick}>{this.clicks}</span>
+          </button>
+        );
       }
     }
 
-    @Host("button")
     class FancyButton extends BaseButton {
       override render() {
-        return <span onclick={this.handleClick}>fancy:{this.clicks}</span>;
+        return (
+          <button>
+            <span onclick={this.handleClick}>fancy:{this.clicks}</span>
+          </button>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
           <div>
-            <BaseButton />
-            <FancyButton />
+            <div>
+              <BaseButton />
+              <FancyButton />
+            </div>
           </div>
         );
       }
@@ -153,11 +165,7 @@ describe("extending a component (no constructor anywhere)", () => {
     expect(app.container.querySelectorAll("span")[1].textContent).toBe("fancy:1");
 
     // Detaching it must survive too — that is what passing it as a prop does.
-    const fancy = (
-      app.container.querySelectorAll("button")[1] as Element & {
-        _componentInstance?: FancyButton;
-      }
-    )._componentInstance!;
+    const fancy = instanceOf<FancyButton>(app.container.querySelectorAll("button")[1]);
     const detached = fancy.handleClick;
     expect(() => detached()).not.toThrow();
     expect(fancy.clicks).toBe(2);
@@ -171,11 +179,14 @@ describe("extending a component (no constructor anywhere)", () => {
     }
     class ChildHook extends BaseHook {}
 
-    @Host("div")
     class App extends Component {
       hook = this.use(ChildHook);
       render() {
-        return <span>{this.hook.greet()}</span>;
+        return (
+          <div>
+            <span>{this.hook.greet()}</span>
+          </div>
+        );
       }
     }
 

@@ -51,51 +51,6 @@ function attributesOf(element: JsxElementLike): WrittenAttribute[] {
   return found;
 }
 
-/**
- * The object literal a `@Host` props callback hands back, when it hands back one this can read.
- *
- * Both bodies a callback is written with — `() => ({ … })` and `() => { return { … } }`. A block
- * with anything else in it is not read: what it hands back is a value, and that is the dataflow
- * this package refuses.
- */
-export function hostPropsObject(call: ts.CallExpression): ts.ObjectLiteralExpression | undefined {
-  const written = call.arguments[1];
-  if (written === undefined) return undefined;
-  if (!ts.isArrowFunction(written) && !ts.isFunctionExpression(written)) return undefined;
-
-  const returned = ts.isBlock(written.body)
-    ? written.body.statements.length === 1 && ts.isReturnStatement(written.body.statements[0])
-      ? written.body.statements[0].expression
-      : undefined
-    : written.body;
-  const object = returned !== undefined && ts.isParenthesizedExpression(returned) ? returned.expression : returned;
-  return object !== undefined && ts.isObjectLiteralExpression(object) ? object : undefined;
-}
-
-/** The attributes written in a `@Host` props bag, normalised to the same shape as a tag's. */
-function hostAttributesOf(object: ts.ObjectLiteralExpression): {
-  attributes: WrittenAttribute[];
-  spreads: boolean;
-} {
-  const attributes: WrittenAttribute[] = [];
-  let spreads = false;
-  for (const property of object.properties) {
-    if (ts.isSpreadAssignment(property)) {
-      spreads = true;
-      continue;
-    }
-    // `({ role })` and `({ role: "x" })` are the same claim, and reading only the second one is how
-    // the id table missed a real id until the shorthand was planted.
-    const shorthand = ts.isShorthandPropertyAssignment(property);
-    if (!ts.isPropertyAssignment(property) && !shorthand) continue;
-    const name = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
-    if (name === undefined) continue;
-    const value = shorthand ? property.name : property.initializer;
-    attributes.push({ name, at: property, value, bare: false });
-  }
-  return { attributes, spreads };
-}
-
 /** Builds the context an element rule reads. */
 export function contextFor(element: JsxElementLike, resolve: ElementContext["resolve"]): ElementContext {
   const written = openingOf(element).attributes.properties;
@@ -129,71 +84,6 @@ export function contextFor(element: JsxElementLike, resolve: ElementContext["res
       return at === undefined || at < lastSpread;
     },
     children: ts.isJsxElement(element) ? element.children : [],
-    onHost: false,
-    resolve,
-  });
-}
-
-/**
- * The same context, built from the element a component IS rather than from a tag it writes.
- *
- * `@Host("section", () => ({ role: "buton" }))` is one element on the page with one bad role on it,
- * and until this existed the whole family was silent about it — measured with a plant, five faults
- * written in a props bag against the identical five on a tag, and only the tag's were reported.
- *
- * What is NOT carried over, and why. `children` is empty: a host wraps whatever the component's
- * `render` returns, which is not a list of JSX children this can hand over, so the rules about what
- * is INSIDE a tag are not asked here. `overwritable` answers from the object's own order, on the
- * same reasoning as a tag's — a later key wins, and a `{...rest}` after one may replace it.
- */
-export function hostContextFor(
-  call: ts.CallExpression,
-  object: ts.ObjectLiteralExpression,
-  written: string | undefined,
-  resolve: ElementContext["resolve"],
-): ElementContext {
-  const { attributes, spreads } = hostAttributesOf(object);
-
-  const positions = new Map<string, number>();
-  let lastSpread = -1;
-  for (const [index, property] of object.properties.entries()) {
-    if (ts.isSpreadAssignment(property)) {
-      lastSpread = index;
-      continue;
-    }
-    const name = property.name;
-    if (name === undefined) continue;
-    if (ts.isIdentifier(name) || ts.isStringLiteral(name)) positions.set(name.text.toLowerCase(), index);
-  }
-
-  /**
-   * The tag comes in already read, by `html.ts`'s `hostTagOf` — the ONE answer to "what element is
-   * this component".
-   *
-   * This file had its own, taking the `@Host` CALL and accepting only a string literal, which was a
-   * second exported `hostTagOf` with a second answer: `@Host(PANEL_TAG, …)` resolves over there and
-   * did not here. Found in the branch's own review, which is where a name collision between two
-   * files shows up and nowhere else.
-   *
-   * Kept AS WRITTEN, because two questions want different halves of it. A rule about `<img>` should
-   * not be defeated by `<IMG>`, so `tag` is lowercased exactly as `tagOf` lowercases a JSX name —
-   * and SVG tag names are CASE-SENSITIVE, `<clipPath>` being the SVG element while `<clippath>` is
-   * an unknown HTML one, so that question is asked of the name untouched.
-   */
-  return build({
-    attributes,
-    at: call,
-    // A capital first letter is a component in JSX and cannot be a host tag; the callback form has
-    // no one answer, which is the silence contract. Both come back `undefined`.
-    tag: written === undefined || /^[A-Z]/.test(written) ? undefined : written.toLowerCase(),
-    inSvg: written !== undefined && svgElements.has(written),
-    spreads,
-    overwritable: (name) => {
-      const at = positions.get(name.toLowerCase());
-      return at === undefined || at < lastSpread;
-    },
-    children: [],
-    onHost: true,
     resolve,
   });
 }

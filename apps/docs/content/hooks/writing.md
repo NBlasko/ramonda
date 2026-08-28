@@ -160,8 +160,7 @@ something every call site should have to encode:
 export class Query extends Hook<QueryProps> {}
 ```
 
-A class decorator, like [`@Host`](/concepts/host), because the declaration is about the
-hook rather than about any one member — props are not members at all, they live behind the
+A class decorator, because the declaration is about the hook rather than about any one member — props are not members at all, they live behind the
 `this.props` proxy. A subclass that declares more **adds** to what its parent declared
 rather than replacing it, so nothing can be dropped by forgetting to carry it over.
 

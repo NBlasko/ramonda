@@ -1,5 +1,6 @@
 import type { RenderedPage } from "./ssr";
 import { PORTAL_TARGET_ATTR } from "../base/portalTarget";
+import { escapeAttribute, escapeText } from "./escape";
 
 export interface DocumentOptions {
   /**
@@ -101,26 +102,4 @@ function portalContainers(portals: Record<string, string> | undefined): string {
     out += `<div ${PORTAL_TARGET_ATTR}="${escapeAttribute(name)}">${portals[name]}</div>`;
   }
   return out;
-}
-
-/**
- * Escapes text content.
- *
- * `<title>` holds text, and the page title is page data — a doc page called
- * `"<script> and you"` is an ordinary thing to want and must not end the title
- * element. `&` first, or the escapes escape each other.
- */
-function escapeText(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/**
- * Escapes a double-quoted attribute value.
- *
- * `<` and `>` are left alone: they are legal unescaped inside a quoted
- * attribute, and the HTML serializer the rest of this pipeline uses leaves them
- * too. The quote is the character that could end the attribute early.
- */
-function escapeAttribute(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }

@@ -1,4 +1,4 @@
-import { Component, Host, state, AsyncLoad } from "@ramonda/core";
+import { Component, state, AsyncLoad } from "@ramonda/core";
 import type { AsyncLoadFailure } from "@ramonda/core";
 import { preloads } from "../generated/preloads";
 
@@ -10,7 +10,6 @@ import { preloads } from "../generated/preloads";
 //
 // `errorFallback` takes a function so a failure can offer `retry`, the same
 // shape ErrorBoundary's `fallback` uses. One shape to learn for the same job.
-@Host("div")
 export class LazyPanel extends Component {
   // Shown by DEFAULT, and that is the point of this demo. The server awaits the
   // import and renders the panel into the HTML, emits a modulepreload hint for

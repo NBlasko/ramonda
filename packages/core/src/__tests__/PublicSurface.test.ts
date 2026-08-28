@@ -75,12 +75,10 @@ const EXPECTED = [
   "deferHydration",
   "catchError",
   "memoized",
-  "onElement",
   "onWindow",
   "onDocument",
   "interval",
   "timeout",
-  "Host",
   // building your own decorators
   "createSubscriptionDecorator",
   // development-time switches
@@ -98,7 +96,7 @@ const FORBIDDEN = [
   "COMPONENT_RUNTIME",
   "HOOK_RUNTIME",
   "diffAndMerge",
-  "mountNode",
+  "mountRoot",
   "createRamonda",
   "KEY_SYM",
   "IS_LIST",

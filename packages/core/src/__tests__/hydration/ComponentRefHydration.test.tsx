@@ -1,8 +1,8 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { Host } from "../../base/decorators";
 import { Component } from "../../base/Component";
 import { createRef } from "../../base/Ref";
+import { markComponents } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 
 /**
@@ -18,59 +18,32 @@ import { hydrateRoot } from "../../hydration/hydrate";
  * It is the third route to the same host — create, update, adopt — and the ref
  * has to arrive by all three or it arrives by accident.
  */
-describe("hydration: a component's ref", () => {
-  test("fills when the host is adopted rather than created", async () => {
-    @Host("div")
-    class Child extends Component {
-      render() {
-        return <span id="c">hi</span>;
-      }
-    }
-
-    class App extends Component {
-      render() {
-        return <Child ref={ref} />;
-      }
-    }
-
-    const ref = createRef<HTMLElement>();
-
-    // 1. "server": render and capture the HTML, then throw the instances away.
-    const server = await getDOM(<App />);
-    await server.settle();
-    const html = server.container.innerHTML;
-    server.unmount();
-
-    // The server render pointed the ref at ITS host; that element is gone now.
-    ref.setCurrent(null);
-
-    // 2. a fresh DOM out of that HTML — no instances, no listeners.
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    container.innerHTML = html;
-
-    // 3. hydrate: the host is adopted, not built.
-    hydrateRoot(<App />, container);
-
-    const host = container.querySelector("div");
-    expect(host).toBeTruthy();
-    expect(ref.current).toBe(host);
-
-    container.remove();
-  });
-
+describe("hydration: a ref", () => {
   test("an element's ref fills too, on the same page", async () => {
     const elementRef = createRef<HTMLElement>();
 
-    @Host("div")
     class App extends Component {
       render() {
-        return <span id="e" ref={elementRef} />;
+        return (
+          <div>
+            <span id="e" ref={elementRef} />
+          </div>
+        );
       }
     }
 
     const server = await getDOM(<App />);
     await server.settle();
+    /**
+     * The one step that turns a client render into SERVED markup.
+     *
+     * `getDOM` renders on the client, and a client render writes no markers — a component's range is
+     * known from the record there. `markComponents` is the pass the server runs: the comment pair
+     * around each component's nodes, with its state blob on the opening one. Without it a hydrating
+     * client finds no marker where one belongs, builds the component fresh, and the page ends up
+     * with both copies.
+     */
+    markComponents(server.container);
     const html = server.container.innerHTML;
     server.unmount();
     elementRef.setCurrent(null);

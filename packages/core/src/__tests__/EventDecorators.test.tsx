@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { state, onWindow, onDocument, onElement, Host } from "../base/decorators";
+import { state, onWindow, onDocument } from "../base/decorators";
 
 let log: string[] = [];
 
@@ -56,40 +56,53 @@ describe("@onDocument", () => {
   });
 });
 
-describe("@onElement", () => {
-  test("binds to the component host element (real tag via @Host)", async () => {
-    @Host("div")
+describe("a listener in the markup", () => {
+  test("a listener written in the markup reaches the element it is on", async () => {
     class Box extends Component {
-      @onElement("click")
       onClick(event: Event) {
         log.push(`el:${event.type}`);
       }
       render() {
-        return <span>inner</span>;
+        return (
+          <div onclick={this.onClick}>
+            <span>inner</span>
+          </div>
+        );
       }
     }
 
     const app = await getDOM<Box>(<Box />);
 
-    // The host is the <div> wrapping the rendered <span>.
-    const host = app.container.querySelector("span")!.parentElement!;
-    expect(host.nodeName).toBe("DIV");
+    const element = app.container.querySelector("span")!.parentElement!;
+    expect(element.nodeName).toBe("DIV");
 
-    host.dispatchEvent(new MouseEvent("click"));
+    element.dispatchEvent(new MouseEvent("click"));
     expect(log).toEqual(["el:click"]);
 
+    /**
+     * Unmounting takes the element out of the document, and that is the whole of what teardown owes
+     * a markup listener.
+     *
+     * `@onElement` used to have a second obligation here — it attached through an effect, so its
+     * cleanup called `removeEventListener`, and a test could prove it by dispatching on the
+     * detached node. A listener written in the markup lives on the element itself: once the element
+     * is out of the page nothing can reach it to click, and dispatching by hand on a node nobody
+     * holds is not a case a page can be in.
+     */
     app.unmount();
-    host.dispatchEvent(new MouseEvent("click"));
-    expect(log).toEqual(["el:click"]);
+    expect(element.isConnected).toBe(false);
   });
 });
 
 describe("@Host", () => {
   test("swaps the host tag for a real element", async () => {
-    @Host("section")
     class Panel extends Component {
       render() {
-        return <span>content</span>;
+        return (
+          <section>
+            <span>content</span>
+          </section>
+        );
       }
     }
 
@@ -103,13 +116,14 @@ describe("@Host", () => {
   });
 
   test("reactive props callback updates host attributes on state change", async () => {
-    @Host("section", (self: Panel) => ({
-      className: self.open ? "open" : "closed",
-    }))
     class Panel extends Component {
       @state open = false;
       render() {
-        return <span>content</span>;
+        return (
+          <section className={this.open ? "open" : "closed"}>
+            <span>content</span>
+          </section>
+        );
       }
     }
 

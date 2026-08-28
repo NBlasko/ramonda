@@ -1,8 +1,8 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
-import { Host, state } from "../base/decorators";
+import { state } from "../base/decorators";
 import { list } from "../base/list";
-import { getDOM } from "../test/setup";
+import { getDOM, instanceOf } from "../test/setup";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { renderPage } from "../hydration/ssr";
 import { hydrateRoot } from "../hydration/hydrate";
@@ -32,15 +32,16 @@ interface Task {
 
 let built = 0;
 
-@Host("li")
 class Row extends Component<{ item: Task }> {
   @state clicks = 0;
   id = ++built;
   render() {
     return (
-      <span>
-        {this.props.item.title}:{this.clicks}
-      </span>
+      <li>
+        <span>
+          {this.props.item.title}:{this.clicks}
+        </span>
+      </li>
     );
   }
 }
@@ -56,16 +57,17 @@ beforeEach(() => {
 
 describe("list() renders", () => {
   test("with `as`", async () => {
-    @Host("div")
     class Board extends Component {
       @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
       render() {
         return (
-          <ul>
-            {list(this.tasks, (item) => (
-              <Row item={item} />
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.tasks, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -75,16 +77,17 @@ describe("list() renders", () => {
   });
 
   test("with `render`", async () => {
-    @Host("div")
     class Board extends Component {
       @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
       render() {
         return (
-          <ul>
-            {list(this.tasks, (task: Task) => (
-              <li>{task.title}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.tasks, (task: Task) => (
+                <li>{task.title}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -94,16 +97,17 @@ describe("list() renders", () => {
   });
 
   test("an empty list renders nothing and does not throw", async () => {
-    @Host("div")
     class Board extends Component {
       @state tasks: Task[] = [];
       render() {
         return (
-          <ul>
-            {list(this.tasks, (item) => (
-              <Row item={item} />
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.tasks, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -114,16 +118,17 @@ describe("list() renders", () => {
 });
 
 describe("identity — the whole reason For exists, kept", () => {
-  @Host("div")
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
       return (
-        <ul>
-          {list(this.tasks, (item) => (
-            <Row item={item} />
-          ))}
-        </ul>
+        <div>
+          <ul>
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
+          </ul>
+        </div>
       );
     }
   }
@@ -131,11 +136,7 @@ describe("identity — the whole reason For exists, kept", () => {
   test("a reorder moves rows instead of rebuilding them", async () => {
     const { container, instance, settle } = await getDOM<Board>(<Board />);
 
-    const first = (
-      container.querySelectorAll("li")[0] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const first = instanceOf<Row>(container.querySelectorAll("li")[0]);
     first.clicks = 5;
     await settle();
     expect(texts(container)).toEqual(["a:5", "b:0", "c:0"]);
@@ -152,11 +153,7 @@ describe("identity — the whole reason For exists, kept", () => {
 
   test("removing from the middle keeps the survivors' state", async () => {
     const { container, instance, settle } = await getDOM<Board>(<Board />);
-    const third = (
-      container.querySelectorAll("li")[2] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const third = instanceOf<Row>(container.querySelectorAll("li")[2]);
     third.clicks = 9;
     await settle();
 
@@ -170,16 +167,17 @@ describe("identity — the whole reason For exists, kept", () => {
   test("the same item twice gets its own row each time", async () => {
     const tag: Task = { title: "tag" };
 
-    @Host("div")
     class Twice extends Component {
       @state tasks: Task[] = [tag, tag];
       render() {
         return (
-          <ul>
-            {list(this.tasks, (item) => (
-              <Row item={item} />
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.tasks, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -188,7 +186,7 @@ describe("identity — the whole reason For exists, kept", () => {
     const rows = container.querySelectorAll("li");
     expect(rows.length).toBe(2);
 
-    (rows[0] as unknown as { _componentInstance: Row })._componentInstance.clicks = 3;
+    instanceOf<Row>(rows[0]).clicks = 3;
     await settle();
 
     // Reference identity cannot tell two occurrences apart, and neither could a
@@ -197,7 +195,6 @@ describe("identity — the whole reason For exists, kept", () => {
   });
 
   test("objects re-created per fetch keep their rows", async () => {
-    @Host("div")
     class Refetching extends Component {
       @state tasks = [
         { id: "1", title: "a" },
@@ -205,11 +202,13 @@ describe("identity — the whole reason For exists, kept", () => {
       ];
       render() {
         return (
-          <ul>
-            {list(this.tasks, (task: { id: string; title: string }) => (
-              <li>{task.title}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.tasks, (task: { id: string; title: string }) => (
+                <li>{task.title}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -244,11 +243,14 @@ describe("identity — the whole reason For exists, kept", () => {
     window.addEventListener("ramonda:dev-log", handler);
 
     try {
-      @Host("div")
       class Pages extends Component {
         @state pages: Task[][] = [[{ title: "a" }], [{ title: "b" }]];
         render() {
-          return <ul>{list(this.pages, this.page)}</ul>;
+          return (
+            <div>
+              <ul>{list(this.pages, this.page)}</ul>
+            </div>
+          );
         }
         // Cast: this is exactly what the types reject, and the point is what the
         // RUNTIME does with it — a JavaScript app has no such guard.
@@ -272,20 +274,26 @@ describe("the case list() was written for", () => {
   test("a conditional list costs nothing until it is rendered", async () => {
     let mapperRuns = 0;
 
-    @Host("div")
     class Panel extends Component {
       @state open = false;
       @state tasks: Task[] = [{ title: "a" }];
 
       render() {
-        if (!this.open) return <p>closed</p>;
+        if (!this.open)
+          return (
+            <div>
+              <p>closed</p>
+            </div>
+          );
         return (
-          <ul>
-            {list(this.tasks, (task: Task) => {
-              mapperRuns++;
-              return <li>{task.title}</li>;
-            })}
-          </ul>
+          <div>
+            <ul>
+              {list(this.tasks, (task: Task) => {
+                mapperRuns++;
+                return <li>{task.title}</li>;
+              })}
+            </ul>
+          </div>
         );
       }
     }
@@ -303,7 +311,6 @@ describe("the case list() was written for", () => {
   });
 
   test("two lists in one element keep their own identity", async () => {
-    @Host("div")
     class Two extends Component {
       @state todo: Task[] = [{ title: "t1" }, { title: "t2" }];
       @state done: Task[] = [{ title: "d1" }];
@@ -311,27 +318,25 @@ describe("the case list() was written for", () => {
       render() {
         return (
           <div>
-            <ul id="todo">
-              {list(this.todo, (item) => (
-                <Row item={item} />
-              ))}
-            </ul>
-            <ul id="done">
-              {list(this.done, (item) => (
-                <Row item={item} />
-              ))}
-            </ul>
+            <div>
+              <ul id="todo">
+                {list(this.todo, (item) => (
+                  <Row item={item} />
+                ))}
+              </ul>
+              <ul id="done">
+                {list(this.done, (item) => (
+                  <Row item={item} />
+                ))}
+              </ul>
+            </div>
           </div>
         );
       }
     }
 
     const { container, instance, settle } = await getDOM<Two>(<Two />);
-    const todoRow = (
-      container.querySelector("#todo li") as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const todoRow = instanceOf<Row>(container.querySelector("#todo li"));
     todoRow.clicks = 4;
     await settle();
 
@@ -344,18 +349,19 @@ describe("the case list() was written for", () => {
   });
 
   test("a list beside ordinary siblings does not claim them", async () => {
-    @Host("div")
     class WithChrome extends Component {
       @state tasks: Task[] = [{ title: "a" }];
       render() {
         return (
-          <ul>
-            <li id="head">HEAD</li>
-            {list(this.tasks, (item) => (
-              <Row item={item} />
-            ))}
-            <li id="foot">FOOT</li>
-          </ul>
+          <div>
+            <ul>
+              <li id="head">HEAD</li>
+              {list(this.tasks, (item) => (
+                <Row item={item} />
+              ))}
+              <li id="foot">FOOT</li>
+            </ul>
+          </div>
         );
       }
     }
@@ -377,7 +383,6 @@ describe("the case list() was written for", () => {
     // The failure this guards: identifying a list by CALL ORDER instead of by
     // position. `{cond && list(a)}` stops being the first call the moment `cond`
     // is false, and the region — with its state — would go to the wrong list.
-    @Host("div")
     class Shifting extends Component {
       @state showFirst = true;
       @state a: Task[] = [{ title: "a" }];
@@ -385,22 +390,20 @@ describe("the case list() was written for", () => {
 
       render() {
         return (
-          <ul>
-            {this.showFirst ? list(this.a, (item) => <Row item={item} />) : null}
-            {list(this.b, (item) => (
-              <Row item={item} />
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {this.showFirst ? list(this.a, (item) => <Row item={item} />) : null}
+              {list(this.b, (item) => (
+                <Row item={item} />
+              ))}
+            </ul>
+          </div>
         );
       }
     }
 
     const { container, instance, settle } = await getDOM<Shifting>(<Shifting />);
-    const bRow = (
-      container.querySelectorAll("li")[1] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const bRow = instanceOf<Row>(container.querySelectorAll("li")[1]);
     bRow.clicks = 7;
     await settle();
     expect(texts(container)).toEqual(["a:0", "b:7"]);
@@ -420,20 +423,20 @@ describe("nesting and composition", () => {
       items: Task[];
     }
 
-    @Host("li")
     class GroupRow extends Component<{ item: Group }> {
       render() {
         return (
-          <ul>
-            {list(this.props.item.items, (task: Task) => (
-              <li>{task.title}</li>
-            ))}
-          </ul>
+          <li>
+            <ul>
+              {list(this.props.item.items, (task: Task) => (
+                <li>{task.title}</li>
+              ))}
+            </ul>
+          </li>
         );
       }
     }
 
-    @Host("div")
     class Nested extends Component {
       @state groups: Group[] = [
         { name: "g1", items: [{ title: "a" }, { title: "b" }] },
@@ -441,11 +444,13 @@ describe("nesting and composition", () => {
       ];
       render() {
         return (
-          <ul>
-            {list(this.groups, (item) => (
-              <GroupRow item={item} />
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.groups, (item) => (
+                <GroupRow item={item} />
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -459,7 +464,6 @@ describe("nesting and composition", () => {
   });
 
   test("two lists in DIFFERENT elements keep their own identity", async () => {
-    @Host("div")
     class Split extends Component {
       @state left: Task[] = [{ title: "l1" }];
       @state right: Task[] = [{ title: "r1" }];
@@ -467,16 +471,18 @@ describe("nesting and composition", () => {
       render() {
         return (
           <div>
-            <ul id="left">
-              {list(this.left, (item) => (
-                <Row item={item} />
-              ))}
-            </ul>
-            <ul id="right">
-              {list(this.right, (item) => (
-                <Row item={item} />
-              ))}
-            </ul>
+            <div>
+              <ul id="left">
+                {list(this.left, (item) => (
+                  <Row item={item} />
+                ))}
+              </ul>
+              <ul id="right">
+                {list(this.right, (item) => (
+                  <Row item={item} />
+                ))}
+              </ul>
+            </div>
           </div>
         );
       }
@@ -498,7 +504,6 @@ describe("the whole-list skip still applies", () => {
   test("an unrelated re-render does not run the mapper again", async () => {
     let mapperRuns = 0;
 
-    @Host("div")
     class Board extends Component {
       @state unrelated = 0;
       @state tasks: Task[] = [{ title: "a" }, { title: "b" }];
@@ -512,8 +517,10 @@ describe("the whole-list skip still applies", () => {
       render() {
         return (
           <div>
-            <p>{this.unrelated}</p>
-            <ul>{list(this.tasks, this.row)}</ul>
+            <div>
+              <p>{this.unrelated}</p>
+              <ul>{list(this.tasks, this.row)}</ul>
+            </div>
           </div>
         );
       }
@@ -532,16 +539,17 @@ describe("the whole-list skip still applies", () => {
 });
 
 describe("server rendering and hydration", () => {
-  @Host("div")
   class Board extends Component {
     @state tasks: Task[] = [{ title: "a" }, { title: "b" }, { title: "c" }];
     render() {
       return (
-        <ul>
-          {list(this.tasks, (item) => (
-            <Row item={item} />
-          ))}
-        </ul>
+        <div>
+          <ul>
+            {list(this.tasks, (item) => (
+              <Row item={item} />
+            ))}
+          </ul>
+        </div>
       );
     }
   }
@@ -561,12 +569,8 @@ describe("server rendering and hydration", () => {
     hydrateRoot(<Board />, element);
     await Promise.resolve();
 
-    const instance = (element.firstChild as unknown as { _componentInstance: Board })._componentInstance;
-    const first = (
-      element.querySelectorAll("li")[0] as unknown as {
-        _componentInstance: Row;
-      }
-    )._componentInstance;
+    const instance = instanceOf<Board>(element.firstChild);
+    const first = instanceOf<Row>(element.querySelectorAll("li")[0]);
     first.clicks = 5;
     await Promise.resolve();
     await Promise.resolve();
@@ -595,14 +599,15 @@ describe("a two-dimensional list", () => {
     cells: Cell[];
   }
 
-  @Host("td")
   class CellView extends Component<{ item: Cell }> {
     @state clicks = 0;
     render() {
       return (
-        <span>
-          {this.props.item.label}:{this.clicks}
-        </span>
+        <td>
+          <span>
+            {this.props.item.label}:{this.clicks}
+          </span>
+        </td>
       );
     }
   }
@@ -617,7 +622,6 @@ describe("a two-dimensional list", () => {
    * second hook. Composition is a fine answer when the row is a real thing; it
    * is ceremony when the row is just a `<tr>`.
    */
-  @Host("table")
   class Grid extends Component {
     @state rows: GridRow[] = [
       { name: "r1", cells: [{ label: "a" }, { label: "b" }] },
@@ -626,15 +630,17 @@ describe("a two-dimensional list", () => {
 
     render() {
       return (
-        <tbody>
-          {list(this.rows, (row: GridRow) => (
-            <tr>
-              {list(row.cells, (item) => (
-                <CellView item={item} />
-              ))}
-            </tr>
-          ))}
-        </tbody>
+        <table>
+          <tbody>
+            {list(this.rows, (row: GridRow) => (
+              <tr>
+                {list(row.cells, (item) => (
+                  <CellView item={item} />
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       );
     }
   }
@@ -657,11 +663,7 @@ describe("a two-dimensional list", () => {
     const { container, instance, settle } = await getDOM<Grid>(<Grid />);
 
     // Give one cell in the first row some state of its own.
-    const cell = (
-      container.querySelectorAll("td")[0] as unknown as {
-        _componentInstance: CellView;
-      }
-    )._componentInstance;
+    const cell = instanceOf<CellView>(container.querySelectorAll("td")[0]);
     cell.clicks = 7;
     await settle();
 
@@ -682,11 +684,7 @@ describe("a two-dimensional list", () => {
   test("reordering CELLS moves them with their state", async () => {
     const { container, instance, settle } = await getDOM<Grid>(<Grid />);
 
-    const second = (
-      container.querySelectorAll("td")[1] as unknown as {
-        _componentInstance: CellView;
-      }
-    )._componentInstance;
+    const second = instanceOf<CellView>(container.querySelectorAll("td")[1]);
     second.clicks = 4;
     await settle();
     expect(grid(container)[0]).toEqual(["a:0", "b:4"]);
@@ -724,9 +722,7 @@ describe("a two-dimensional list", () => {
     // regions are per <tr>, which is what keeps them apart.
     const { container, settle } = await getDOM<Grid>(<Grid />);
 
-    const firstOfRowTwo = (
-      container.querySelectorAll("tr")[1].querySelectorAll("td")[0] as unknown as { _componentInstance: CellView }
-    )._componentInstance;
+    const firstOfRowTwo = instanceOf<CellView>(container.querySelectorAll("tr")[1].querySelectorAll("td")[0]);
     firstOfRowTwo.clicks = 2;
     await settle();
 
@@ -737,20 +733,21 @@ describe("a two-dimensional list", () => {
   });
 
   test("a ragged array works, and a row can empty out", async () => {
-    @Host("table")
     class Ragged extends Component {
       @state rows: Cell[][] = [[{ label: "a" }, { label: "b" }], [{ label: "c" }], []];
       render() {
         return (
-          <tbody>
-            {list(this.rows, (cells: Cell[]) => (
-              <tr>
-                {list(cells, (item) => (
-                  <CellView item={item} />
-                ))}
-              </tr>
-            ))}
-          </tbody>
+          <table>
+            <tbody>
+              {list(this.rows, (cells: Cell[]) => (
+                <tr>
+                  {list(cells, (item) => (
+                    <CellView item={item} />
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         );
       }
     }
@@ -769,14 +766,15 @@ describe("two dimensions without keys", () => {
     label: string;
   }
 
-  @Host("td")
   class Cell2View extends Component<{ item: Cell2 }> {
     @state clicks = 0;
     render() {
       return (
-        <span>
-          {this.props.item.label}:{this.clicks}
-        </span>
+        <td>
+          <span>
+            {this.props.item.label}:{this.clicks}
+          </span>
+        </td>
       );
     }
   }
@@ -813,7 +811,6 @@ describe("two dimensions without keys", () => {
    * entirely: an edit is a signal write on that component, the outer list is
    * never re-rendered, and no identity has to be asserted anywhere.
    */
-  @Host("tr")
   class OwningRow extends Component<{ item: { name: string; cells: Cell2[] } }> {
     @state cells: Cell2[] = this.props.item.cells;
 
@@ -823,11 +820,16 @@ describe("two dimensions without keys", () => {
 
     render() {
       // A list returned STRAIGHT from render(), with no element around it.
-      return list(this.cells, (item) => <Cell2View item={item} />);
+      return (
+        <tr>
+          {list(this.cells, (item) => (
+            <Cell2View item={item} />
+          ))}
+        </tr>
+      );
     }
   }
 
-  @Host("table")
   class Sheet extends Component {
     @state rows = [
       { name: "r1", cells: [{ label: "a" }, { label: "b" }] },
@@ -835,11 +837,13 @@ describe("two dimensions without keys", () => {
     ];
     render() {
       return (
-        <tbody>
-          {list(this.rows, (item) => (
-            <OwningRow item={item} />
-          ))}
-        </tbody>
+        <table>
+          <tbody>
+            {list(this.rows, (item) => (
+              <OwningRow item={item} />
+            ))}
+          </tbody>
+        </table>
       );
     }
   }
@@ -848,19 +852,11 @@ describe("two dimensions without keys", () => {
     const { container, settle } = await getDOM(<Sheet />);
     expect(grid2(container)).toEqual([["a:0", "b:0"], ["c:0"]]);
 
-    const cell = (
-      container.querySelectorAll("td")[0] as unknown as {
-        _componentInstance: Cell2View;
-      }
-    )._componentInstance;
+    const cell = instanceOf<Cell2View>(container.querySelectorAll("td")[0]);
     cell.clicks = 3;
     await settle();
 
-    const row = (
-      container.querySelector("tr") as unknown as {
-        _componentInstance: OwningRow;
-      }
-    )._componentInstance;
+    const row = instanceOf<OwningRow>(container.querySelector("tr"));
     row.reverse();
     await settle();
 
@@ -878,11 +874,7 @@ describe("two dimensions without keys", () => {
     const { container, settle } = await getDOM(<Sheet />);
     expect(container.querySelectorAll("tr").length).toBe(2);
 
-    const row = (
-      container.querySelector("tr") as unknown as {
-        _componentInstance: OwningRow;
-      }
-    )._componentInstance;
+    const row = instanceOf<OwningRow>(container.querySelector("tr"));
     row.reverse();
     await settle();
 
@@ -899,10 +891,13 @@ describe("the cost of the key-free 2D shape", () => {
     cells: Cell3[];
   }
 
-  @Host("td")
   class Cell3View extends Component<{ item: Cell3 }> {
     render() {
-      return <span>{this.props.item.label}</span>;
+      return (
+        <td>
+          <span>{this.props.item.label}</span>
+        </td>
+      );
     }
   }
 
@@ -919,34 +914,45 @@ describe("the cost of the key-free 2D shape", () => {
    * a row genuinely owns its rows-worth of data and edits are local. It is wrong
    * the moment the parent is the source of truth.
    */
-  @Host("tr")
   class OwningRow3 extends Component<{ item: Row3 }> {
     @state cells: Cell3[] = this.props.item.cells;
     render() {
-      return list(this.cells, (item) => <Cell3View item={item} />);
+      return (
+        <tr>
+          {list(this.cells, (item) => (
+            <Cell3View item={item} />
+          ))}
+        </tr>
+      );
     }
   }
 
   /** The other shape: the row reads through, and the parent stays in charge. */
-  @Host("tr")
   class PropsRow3 extends Component<{ item: Row3 }> {
     render() {
-      return list(this.props.item.cells, (item) => <Cell3View item={item} />);
+      return (
+        <tr>
+          {list(this.props.item.cells, (item) => (
+            <Cell3View item={item} />
+          ))}
+        </tr>
+      );
     }
   }
 
   function sheetOf(RowComp: typeof OwningRow3 | typeof PropsRow3) {
-    @Host("table")
     class Sheet extends Component {
       @state rows: Row3[] = [{ name: "r1", cells: [{ label: "a" }] }];
       render() {
         return (
-          <tbody>
-            {list(this.rows, (row) => {
-              const R = RowComp as typeof OwningRow3;
-              return <R item={row} />;
-            })}
-          </tbody>
+          <table>
+            <tbody>
+              {list(this.rows, (row) => {
+                const R = RowComp as typeof OwningRow3;
+                return <R item={row} />;
+              })}
+            </tbody>
+          </table>
         );
       }
     }
@@ -992,20 +998,20 @@ describe("what NO key costs in two dimensions", () => {
     cells: Cell4[];
   }
 
-  @Host("td")
   class Cell4View extends Component<{ item: Cell4 }> {
     @state clicks = 0;
     render() {
       return (
-        <span>
-          {this.props.item.label}:{this.clicks}
-        </span>
+        <td>
+          <span>
+            {this.props.item.label}:{this.clicks}
+          </span>
+        </td>
       );
     }
   }
 
   /** The two-dimensional shape, with nothing declared about identity. */
-  @Host("table")
   class Unkeyed extends Component {
     @state rows: Row4[] = [
       { name: "r1", cells: [{ label: "a" }, { label: "b" }] },
@@ -1013,15 +1019,17 @@ describe("what NO key costs in two dimensions", () => {
     ];
     render() {
       return (
-        <tbody>
-          {list(this.rows, (row: Row4) => (
-            <tr>
-              {list(row.cells, (item) => (
-                <Cell4View item={item} />
-              ))}
-            </tr>
-          ))}
-        </tbody>
+        <table>
+          <tbody>
+            {list(this.rows, (row: Row4) => (
+              <tr>
+                {list(row.cells, (item) => (
+                  <Cell4View item={item} />
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       );
     }
   }
@@ -1036,7 +1044,7 @@ describe("what NO key costs in two dimensions", () => {
   async function marked() {
     const result = await getDOM<Unkeyed>(<Unkeyed />);
     [...result.container.querySelectorAll("td")].forEach((td, i) => {
-      (td as unknown as { _componentInstance: Cell4View })._componentInstance.clicks = i + 1;
+      instanceOf<Cell4View>(td).clicks = i + 1;
     });
     await result.settle();
     return result;
@@ -1132,7 +1140,6 @@ describe("your key, and what happens when two rows share one", () => {
   test("a key you write survives — the list does not overwrite it", async () => {
     // The whole point of writing one. This used to be assigned over with the
     // list's own minted id, so a key was accepted and then ignored.
-    @Host("div")
     class Board extends Component {
       @state rows: Priced[] = [
         { id: 7, name: "a" },
@@ -1140,11 +1147,13 @@ describe("your key, and what happens when two rows share one", () => {
       ];
       render() {
         return (
-          <ul>
-            {list(this.rows, (r: Priced) => (
-              <li key={r.id}>{r.name}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.rows, (r: Priced) => (
+                <li key={r.id}>{r.name}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -1161,7 +1170,6 @@ describe("your key, and what happens when two rows share one", () => {
   test("a key answers when the objects are all new", async () => {
     // A refetch: nothing shares a reference with what is on screen, so the object
     // cannot say which row is which. The key can, and it is exact.
-    @Host("div")
     class Board extends Component {
       @state rows: Priced[] = [
         { id: 7, name: "a" },
@@ -1169,11 +1177,13 @@ describe("your key, and what happens when two rows share one", () => {
       ];
       render() {
         return (
-          <ul>
-            {list(this.rows, (r: Priced) => (
-              <li key={r.id}>{r.name}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.rows, (r: Priced) => (
+                <li key={r.id}>{r.name}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -1199,7 +1209,6 @@ describe("your key, and what happens when two rows share one", () => {
     // Identity used to be minted, so a collision could not be written. It is
     // yours now, and a field that is not unique is a mistake worth saying out
     // loud — the DOM match is what it drives.
-    @Host("div")
     class Board extends Component {
       @state rows: Priced[] = [
         { id: 7, name: "a" },
@@ -1207,11 +1216,13 @@ describe("your key, and what happens when two rows share one", () => {
       ];
       render() {
         return (
-          <ul>
-            {list(this.rows, (r: Priced) => (
-              <li key={r.id}>{r.name}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.rows, (r: Priced) => (
+                <li key={r.id}>{r.name}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -1229,16 +1240,17 @@ describe("your key, and what happens when two rows share one", () => {
     // apart by which occurrence they are, exactly as they always were.
     const shared: Priced = { id: 7, name: "tag" };
 
-    @Host("div")
     class Board extends Component {
       @state rows: Priced[] = [shared, shared];
       render() {
         return (
-          <ul>
-            {list(this.rows, (r: Priced) => (
-              <li>{r.name}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.rows, (r: Priced) => (
+                <li>{r.name}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -1285,16 +1297,17 @@ describe("what list() returns, and what it does not", () => {
   });
 
   test("it is still an ordinary child, rendered where it sits", async () => {
-    @Host("div")
     class Board extends Component {
       @state rows = [{ t: "a" }, { t: "b" }];
       render() {
         return (
-          <ul>
-            {list(this.rows, (r: { t: string }) => (
-              <li>{r.t}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.rows, (r: { t: string }) => (
+                <li>{r.t}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -1312,7 +1325,6 @@ describe("a list that is only partly keyed", () => {
 
   /** Refetches with one row changed, and reports what survived. */
   async function refetch(row: (r: Row5) => VNode) {
-    @Host("div")
     class Board extends Component {
       @state rows: Row5[] = [
         { id: 1, label: "a" },
@@ -1320,7 +1332,11 @@ describe("a list that is only partly keyed", () => {
         { id: 3, label: "c" },
       ];
       render() {
-        return <ul>{list(this.rows, row)}</ul>;
+        return (
+          <div>
+            <ul>{list(this.rows, row)}</ul>
+          </div>
+        );
       }
     }
 

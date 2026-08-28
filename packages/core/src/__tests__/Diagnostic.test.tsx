@@ -1,7 +1,7 @@
 import { test, expect, assert } from "vitest";
 import { getDOM } from "../test/setup"; // Proveri putanju
 import { Component } from "../base/Component";
-import type { EnhancedHTMLNode } from "../types/vdom";
+import { getComponentInstance } from "../testing";
 
 class DiagnosticComponent extends Component<{ name: string }> {
   render() {
@@ -16,11 +16,10 @@ test("Diagnostic: Instance Discovery", async () => {
   expect(instance).toBeDefined();
   expect(instance.props.name).toBe("Test");
 
-  // 2. The structure: the wrapper element.
-  const wrapper = container.firstChild as EnhancedHTMLNode;
-
-  // The instance really does hang off the wrapper.
-  expect(wrapper._componentInstance).toBe(instance);
+  // 2. The structure: there is NO wrapper. The component's render output is the container's
+  //    first child, and the instance is found through the record rather than off a node.
+  expect((container.firstChild as Element).id).toBe("real-root");
+  expect(getComponentInstance(container.firstChild)).toBe(instance);
 
   // 3. The DOM inside it.
   const innerDiv = container.querySelector("#real-root");

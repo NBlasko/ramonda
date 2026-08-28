@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vitest";
-import { Component, Host, state, created, mounted, bootstrap, unmount } from "../index";
+import { Component, state, created, mounted, bootstrap, unmount } from "../index";
 import { flushSync, rerenderRoot, getComponentInstance } from "../testing";
 
 /**
@@ -26,14 +26,17 @@ afterEach(() => {
 
 describe("flushSync", () => {
   test("applies a batched update immediately", () => {
-    @Host("div")
     class Counter extends Component {
       @state n = 0;
       bump() {
         this.n++;
       }
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
 
@@ -54,7 +57,6 @@ describe("rerenderRoot", () => {
   test("re-renders in place: same instance, @state survives, @created runs once", () => {
     let creates = 0;
 
-    @Host("div")
     class Card extends Component<{ title: string }> {
       @state hits = 0;
       @created init() {
@@ -65,9 +67,11 @@ describe("rerenderRoot", () => {
       }
       render() {
         return (
-          <span>
-            {this.props.title}:{this.hits}
-          </span>
+          <div>
+            <span>
+              {this.props.title}:{this.hits}
+            </span>
+          </div>
         );
       }
     }
@@ -88,11 +92,51 @@ describe("rerenderRoot", () => {
     expect(creates).toBe(1);
   });
 
+  test("a root whose range changes length reorders the container", () => {
+    class Root extends Component<{ wide: boolean }> {
+      render() {
+        return this.props.wide ? [<b>one</b>, <i>two</i>, <u>three</u>] : [<b>one</b>];
+      }
+    }
+
+    const el = mountInto(<Root wide={false} />);
+    expect(el.innerHTML).toBe("<b>one</b>");
+
+    rerenderRoot(<Root wide={true} />, el);
+    flushSync();
+    expect(el.innerHTML).toBe("<b>one</b><i>two</i><u>three</u>");
+
+    rerenderRoot(<Root wide={false} />, el);
+    flushSync();
+    expect(el.innerHTML).toBe("<b>one</b>");
+  });
+
+  test("a different root component replaces what was there", () => {
+    class First extends Component {
+      render() {
+        return <b>first</b>;
+      }
+    }
+    class Second extends Component {
+      render() {
+        return [<i>second</i>, <u>and more</u>];
+      }
+    }
+
+    const el = mountInto(<First />);
+    rerenderRoot(<Second />, el);
+    flushSync();
+    expect(el.innerHTML).toBe("<i>second</i><u>and more</u>");
+  });
+
   test("throws when the container was never rendered into", () => {
-    @Host("div")
     class Card extends Component {
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -103,10 +147,13 @@ describe("rerenderRoot", () => {
 
 describe("getComponentInstance", () => {
   test("returns the instance for a component's host node", () => {
-    @Host("div")
     class Widget extends Component {
       render() {
-        return <span>w</span>;
+        return (
+          <div>
+            <span>w</span>
+          </div>
+        );
       }
     }
 

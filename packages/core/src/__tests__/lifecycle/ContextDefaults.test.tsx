@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../../test/setup";
-import { Component, Host, state, createContext } from "../../index";
+import { Component, state, createContext } from "../../index";
 import { resetDiagnostics } from "../../debug/diagnostics";
 
 /**
@@ -30,15 +30,17 @@ describe("context", () => {
   test("a consumer re-renders only for the key it actually reads", async () => {
     const [P, C] = createContext({ a: "a0", b: "b0" });
     let renders = 0;
-    @Host("div")
     class OnlyA extends Component {
       ctx = this.use(C);
       render() {
         renders++;
-        return <span>{this.ctx.a}</span>;
+        return (
+          <div>
+            <span>{this.ctx.a}</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       @state a = "a0";
       @state b = "b0";
@@ -46,8 +48,10 @@ describe("context", () => {
       render() {
         return (
           <div>
-            {this.b}
-            <OnlyA />
+            <div>
+              {this.b}
+              <OnlyA />
+            </div>
           </div>
         );
       }
@@ -68,30 +72,37 @@ describe("context", () => {
 
   test("a nested provider shadows the outer one for its subtree only", async () => {
     const [P, C] = createContext({ v: "default" });
-    @Host("div")
     class Leaf extends Component {
       ctx = this.use(C);
       render() {
-        return <span>{this.ctx.v}</span>;
+        return (
+          <div>
+            <span>{this.ctx.v}</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class Inner extends Component {
       @state v = "inner";
       p = this.use(P, () => ({ v: this.v }));
       render() {
-        return <Leaf />;
+        return (
+          <div>
+            <Leaf />
+          </div>
+        );
       }
     }
-    @Host("div")
     class Outer extends Component {
       @state v = "outer";
       p = this.use(P, () => ({ v: this.v }));
       render() {
         return (
           <div>
-            <Leaf />
-            <Inner />
+            <div>
+              <Leaf />
+              <Inner />
+            </div>
           </div>
         );
       }
@@ -107,11 +118,14 @@ describe("context", () => {
 
   test("with no provider anywhere, the default is used and reported", async () => {
     const [, C] = createContext({ v: "fallback" }, { label: "Solo" });
-    @Host("div")
     class Leaf extends Component {
       ctx = this.use(C);
       render() {
-        return <span>{this.ctx.v}</span>;
+        return (
+          <div>
+            <span>{this.ctx.v}</span>
+          </div>
+        );
       }
     }
     const app = await getDOM<Leaf>(<Leaf />);
@@ -122,12 +136,15 @@ describe("context", () => {
 
   test("a consumer read only down a branch is still reported, before the branch is taken", async () => {
     const [, C] = createContext({ v: "fallback" }, { label: "Branch" });
-    @Host("div")
     class Leaf extends Component {
       ctx = this.use(C);
       @state show = false;
       render() {
-        return <span>{this.show ? this.ctx.v : "quiet"}</span>;
+        return (
+          <div>
+            <span>{this.show ? this.ctx.v : "quiet"}</span>
+          </div>
+        );
       }
     }
     const app = await getDOM<Leaf>(<Leaf />);
@@ -140,11 +157,14 @@ describe("context", () => {
 
   test("a context whose default is a real answer says so once, and stays quiet", async () => {
     const [, C] = createContext({ v: "fallback" }, { label: "Loose", optional: true });
-    @Host("div")
     class Leaf extends Component {
       ctx = this.use(C);
       render() {
-        return <span>{this.ctx.v}</span>;
+        return (
+          <div>
+            <span>{this.ctx.v}</span>
+          </div>
+        );
       }
     }
     const app = await getDOM<Leaf>(<Leaf />);
@@ -155,23 +175,27 @@ describe("context", () => {
 
   test("a key the provider does not supply falls back to the default", async () => {
     const [P, C] = createContext({ a: "da", b: "db" });
-    @Host("div")
     class Leaf extends Component {
       ctx = this.use(C);
       render() {
         return (
-          <span>
-            {String(this.ctx.a)}/{String(this.ctx.b)}
-          </span>
+          <div>
+            <span>
+              {String(this.ctx.a)}/{String(this.ctx.b)}
+            </span>
+          </div>
         );
       }
     }
-    @Host("div")
     class App extends Component {
       // `b` is never provided.
       p = this.use(P, () => ({ a: "provided" }) as never);
       render() {
-        return <Leaf />;
+        return (
+          <div>
+            <Leaf />
+          </div>
+        );
       }
     }
     const app = await getDOM<App>(<App />);
@@ -184,18 +208,24 @@ describe("context", () => {
 
   test("an explicitly provided undefined is not replaced by the default", async () => {
     const [P, C] = createContext({ v: "fallback" });
-    @Host("div")
     class Leaf extends Component {
       ctx = this.use(C);
       render() {
-        return <span>{String(this.ctx.v)}</span>;
+        return (
+          <div>
+            <span>{String(this.ctx.v)}</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       p = this.use(P, () => ({ v: undefined as never }));
       render() {
-        return <Leaf />;
+        return (
+          <div>
+            <Leaf />
+          </div>
+        );
       }
     }
     const app = await getDOM<App>(<App />);
@@ -216,20 +246,26 @@ describe("context", () => {
   test("a value that becomes undefined propagates as undefined", async () => {
     const [P, C] = createContext<{ v: string | undefined }>({ v: "default" });
     let renders = 0;
-    @Host("div")
     class Leaf extends Component {
       ctx = this.use(C);
       render() {
         renders++;
-        return <span>[{String(this.ctx.v)}]</span>;
+        return (
+          <div>
+            <span>[{String(this.ctx.v)}]</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       @state v: string | undefined = "start";
       p = this.use(P, () => ({ v: this.v }));
       render() {
-        return <Leaf />;
+        return (
+          <div>
+            <Leaf />
+          </div>
+        );
       }
     }
     const app = await getDOM<App>(<App />);
@@ -253,19 +289,25 @@ describe("context", () => {
 
   test("undefined from the very first render still leaves a live channel", async () => {
     const [P, C] = createContext<{ v: string | undefined }>({ v: "default" });
-    @Host("div")
     class Leaf extends Component {
       ctx = this.use(C);
       render() {
-        return <span>[{String(this.ctx.v)}]</span>;
+        return (
+          <div>
+            <span>[{String(this.ctx.v)}]</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       @state v: string | undefined = undefined;
       p = this.use(P, () => ({ v: this.v }));
       render() {
-        return <Leaf />;
+        return (
+          <div>
+            <Leaf />
+          </div>
+        );
       }
     }
     const app = await getDOM<App>(<App />);

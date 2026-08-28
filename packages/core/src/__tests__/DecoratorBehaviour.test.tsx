@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, state, memoized, persist, created, mounted, destroyed } from "../index";
+import { getDOM, findAll } from "../test/setup";
+import { Component, state, memoized, persist, created, mounted, destroyed } from "../index";
 
 /**
  * The decorator surface is the biggest thing this framework exposes, and it read
@@ -17,7 +17,6 @@ describe("decorators", () => {
 
   test("memoized returns one function per distinct argument list", async () => {
     let built = 0;
-    @Host("div")
     class C extends Component {
       @state tick = 0;
       @memoized pick(id: number) {
@@ -25,7 +24,11 @@ describe("decorators", () => {
         return () => id;
       }
       render() {
-        return <span>{this.tick}</span>;
+        return (
+          <div>
+            <span>{this.tick}</span>
+          </div>
+        );
       }
     }
     const app = await getDOM<C>(<C />);
@@ -43,13 +46,16 @@ describe("decorators", () => {
   });
 
   test("a non-primitive argument is refused, loudly — in DEVELOPMENT", async () => {
-    @Host("div")
     class C extends Component {
       @memoized pick(o: unknown) {
         return () => o;
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
     const app = await getDOM<C>(<C />);
@@ -64,37 +70,38 @@ describe("decorators", () => {
   });
 
   test("two instances of a component do not share handlers", async () => {
-    @Host("div")
     class Child extends Component<{ id: string }> {
       @memoized pick(n: number) {
         return () => `${this.props.id}:${n}`;
       }
       render() {
-        return <span>{this.props.id}</span>;
+        return (
+          <div>
+            <span>{this.props.id}</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       render() {
         return (
           <div>
-            <Child id="a" />
-            <Child id="b" />
+            <div>
+              <Child id="a" />
+              <Child id="b" />
+            </div>
           </div>
         );
       }
     }
     const app = await getDOM<App>(<App />);
     await app.settle();
-    const [ca, cb] = Array.from(app.container.querySelectorAll('[data-ramonda="Child"]')).map(
-      (n) => (n as any)._componentInstance,
-    );
+    const [ca, cb] = findAll<any>(app.container, "Child");
     expect(ca.pick(1)).not.toBe(cb.pick(1));
     expect(`${ca.pick(1)()}/${cb.pick(1)()}`).toBe("a:1/b:1");
   });
 
   test("a handler for an item that stopped rendering is collected", async () => {
-    @Host("div")
     class C extends Component {
       @state ids = [1, 2, 3];
       @memoized pick(id: number) {
@@ -102,11 +109,13 @@ describe("decorators", () => {
       }
       render() {
         return (
-          <ul>
-            {this.ids.map((i) => (
-              <li onclick={this.pick(i)}>{i}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {this.ids.map((i) => (
+                <li onclick={this.pick(i)}>{i}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -128,15 +137,16 @@ describe("decorators", () => {
   });
 
   test("@persist holds a value without making it reactive", async () => {
-    @Host("div")
     class C extends Component {
       @persist createdAt = "t0";
       @state tick = 0;
       render() {
         return (
-          <span>
-            {this.createdAt}-{this.tick}
-          </span>
+          <div>
+            <span>
+              {this.createdAt}-{this.tick}
+            </span>
+          </div>
         );
       }
     }
@@ -152,11 +162,14 @@ describe("decorators", () => {
 
   test("a symbol-named member is refused", async () => {
     const sym = Symbol("hidden");
-    @Host("div")
     class C extends Component {
       @state [sym] = 1;
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -167,7 +180,6 @@ describe("decorators", () => {
 
   test("the lifecycle factory form honours env", async () => {
     const ran: string[] = [];
-    @Host("div")
     class C extends Component {
       @created({ env: "client" }) onlyClient() {
         ran.push("create:client");
@@ -182,7 +194,11 @@ describe("decorators", () => {
         ran.push("destroy:client");
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
     const app = await getDOM<C>(<C />);
@@ -196,11 +212,14 @@ describe("decorators", () => {
 
   test("an unknown env is refused", async () => {
     expect(() => {
-      @Host("div")
       class C extends Component {
         @created({ env: "nowhere" as never }) bad() {}
         render() {
-          return <span>x</span>;
+          return (
+            <div>
+              <span>x</span>
+            </div>
+          );
         }
       }
       void C;

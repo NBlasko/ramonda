@@ -17,7 +17,6 @@ const settingsRoutes = createRoutes({
   "/settings/team": <Team />,
 });
 
-@Host("section")
 class Settings extends Component {
   render() {
     return (

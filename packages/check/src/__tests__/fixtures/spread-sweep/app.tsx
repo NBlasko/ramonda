@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const rest: Record<string, unknown>;
 
@@ -13,7 +13,6 @@ declare const rest: Record<string, unknown>;
  * - what the author WROTE stands whichever side the spread is on;
  * - what the element WILL BE is only provable when no spread comes after the attribute.
  */
-@Host("div")
 class Sweep extends Component {
   render() {
     return (

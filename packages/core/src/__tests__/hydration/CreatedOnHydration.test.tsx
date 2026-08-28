@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, created, mounted } from "../../base/decorators";
+import { created, mounted } from "../../base/decorators";
 import { renderToString } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
 
@@ -36,7 +36,6 @@ describe("lifecycle on a hydrated page", () => {
   test("a shared @created is skipped, a client one runs, and @mounted runs either way", async () => {
     const ran: string[] = [];
 
-    @Host("main")
     class Page extends Component {
       @created sharedCreate() {
         ran.push("created:shared");
@@ -48,7 +47,11 @@ describe("lifecycle on a hydrated page", () => {
         ran.push("mounted:shared");
       }
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
 
@@ -78,13 +81,16 @@ describe("lifecycle on a hydrated page", () => {
   test("a shared @created that primes rather than stores does not happen at all", async () => {
     let primed = 0;
 
-    @Host("main")
     class Page extends Component {
       @created prime() {
         primed++;
       }
       render() {
-        return <p>x</p>;
+        return (
+          <main>
+            <p>x</p>
+          </main>
+        );
       }
     }
 

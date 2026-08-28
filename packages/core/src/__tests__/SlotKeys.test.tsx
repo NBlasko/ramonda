@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, state } from "../index";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, state } from "../index";
 import type { RamondaNode } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -22,14 +22,15 @@ function captureDiagnostics() {
   };
 }
 
-@Host("li")
 class Item extends Component<{ label: string }> {
   @state hits = 0;
   render() {
     return (
-      <span>
-        {this.props.label}#{this.hits}
-      </span>
+      <li>
+        <span>
+          {this.props.label}#{this.hits}
+        </span>
+      </li>
     );
   }
 }
@@ -70,17 +71,18 @@ describe("an array is its own group among its siblings", () => {
     // item, taking its DOM node and the state on it. The array is now its own
     // group in the parent's child record, so it cannot reach past itself — and
     // the developer writes nothing to get that.
-    @Host("div")
     class List extends Component {
       @state items = ["a"];
       render() {
         return (
-          <ul>
-            {this.items.map((i) => (
-              <Item label={i} />
-            ))}
-            <Item label="FOOT" />
-          </ul>
+          <div>
+            <ul>
+              {this.items.map((i) => (
+                <Item label={i} />
+              ))}
+              <Item label="FOOT" />
+            </ul>
+          </div>
         );
       }
     }
@@ -89,8 +91,8 @@ describe("an array is its own group among its siblings", () => {
     await app.settle();
 
     const lis = app.container.querySelectorAll("li");
-    const foot = lis[lis.length - 1] as Element & { _componentInstance?: Item };
-    foot._componentInstance!.hits = 99;
+    const foot = lis[lis.length - 1];
+    instanceOf<Item>(foot).hits = 99;
     await app.settle();
     expect(dump(app.container)).toBe("a#0 | FOOT#99");
 
@@ -104,17 +106,18 @@ describe("an array is its own group among its siblings", () => {
   });
 
   test("keys fix it, and then nothing is reported", async () => {
-    @Host("div")
     class List extends Component {
       @state items = ["a"];
       render() {
         return (
-          <ul>
-            {this.items.map((i) => (
-              <Item key={i} label={i} />
-            ))}
-            <Item label="FOOT" />
-          </ul>
+          <div>
+            <ul>
+              {this.items.map((i) => (
+                <Item key={i} label={i} />
+              ))}
+              <Item label="FOOT" />
+            </ul>
+          </div>
         );
       }
     }
@@ -123,8 +126,8 @@ describe("an array is its own group among its siblings", () => {
     await app.settle();
 
     const lis = app.container.querySelectorAll("li");
-    const foot = lis[lis.length - 1] as Element & { _componentInstance?: Item };
-    foot._componentInstance!.hits = 99;
+    const foot = lis[lis.length - 1];
+    instanceOf<Item>(foot).hits = 99;
     await app.settle();
 
     app.instance.items = ["a", "b", "c"];
@@ -138,17 +141,18 @@ describe("an array is its own group among its siblings", () => {
     // The measured reason the check is this narrow: Header stays at index 0
     // however the list grows, so nothing can be claimed. An earlier, broader
     // version of this check was rejected for firing here.
-    @Host("div")
     class List extends Component {
       @state items = ["a"];
       render() {
         return (
-          <ul>
-            <Item label="HEAD" />
-            {this.items.map((i) => (
-              <Item label={i} />
-            ))}
-          </ul>
+          <div>
+            <ul>
+              <Item label="HEAD" />
+              {this.items.map((i) => (
+                <Item label={i} />
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -156,10 +160,8 @@ describe("an array is its own group among its siblings", () => {
     const app = await getDOM<List>(<List />);
     await app.settle();
 
-    const head = app.container.querySelectorAll("li")[0] as Element & {
-      _componentInstance?: Item;
-    };
-    head._componentInstance!.hits = 99;
+    const head = app.container.querySelectorAll("li")[0];
+    instanceOf<Item>(head).hits = 99;
     await app.settle();
 
     app.instance.items = ["a", "b", "c"];
@@ -171,18 +173,19 @@ describe("an array is its own group among its siblings", () => {
   });
 
   test("a trailing child that renders nothing does not count as following", async () => {
-    @Host("div")
     class List extends Component {
       @state items = ["a"];
       show = false;
       render() {
         return (
-          <ul>
-            {this.items.map((i) => (
-              <Item label={i} />
-            ))}
-            {this.show ? <Item label="FOOT" /> : null}
-          </ul>
+          <div>
+            <ul>
+              {this.items.map((i) => (
+                <Item label={i} />
+              ))}
+              {this.show ? <Item label="FOOT" /> : null}
+            </ul>
+          </div>
         );
       }
     }
@@ -195,28 +198,30 @@ describe("an array is its own group among its siblings", () => {
     // The case that made all of this worth doing: the Card author writes correct
     // code and someone else's unkeyed list used to corrupt Card's chrome. Now
     // the caller's array is its own group and Card's <Item> is not in it.
-    @Host("div")
     class Card extends Component<{ children?: RamondaNode }> {
       render() {
         return (
-          <ul>
-            {this.props.children}
-            <Item label="FOOT" />
-          </ul>
+          <div>
+            <ul>
+              {this.props.children}
+              <Item label="FOOT" />
+            </ul>
+          </div>
         );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state items = ["a", "b"];
       render() {
         return (
-          <Card>
-            {this.items.map((i) => (
-              <Item label={i} />
-            ))}
-          </Card>
+          <div>
+            <Card>
+              {this.items.map((i) => (
+                <Item label={i} />
+              ))}
+            </Card>
+          </div>
         );
       }
     }
@@ -225,7 +230,7 @@ describe("an array is its own group among its siblings", () => {
     await app.settle();
 
     const lis = app.container.querySelectorAll("li");
-    (lis[lis.length - 1] as Element & { _componentInstance?: Item })._componentInstance!.hits = 99;
+    instanceOf<Item>(lis[lis.length - 1]).hits = 99;
     await app.settle();
     expect(dump(app.container)).toBe("a#0 | b#0 | FOOT#99");
 

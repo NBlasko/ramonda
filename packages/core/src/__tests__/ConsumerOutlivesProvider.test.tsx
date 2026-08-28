@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { Host, state } from "../base/decorators";
+import { state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { createContext } from "../base/Context";
 import { resetDiagnostics } from "../debug/diagnostics";
@@ -34,28 +34,37 @@ const [ThemeProvider, ThemeConsumer] = createContext({ colour: "default" }, { la
  */
 describe("a consumer outliving its provider", () => {
   test("falls back to the default, and says so", async () => {
-    @Host("div")
     class Leaf extends Component {
       ctx = this.use(ThemeConsumer);
       render() {
-        return <span className="leaf">{(this.ctx as { colour: string }).colour}</span>;
+        return (
+          <div>
+            <span className="leaf">{(this.ctx as { colour: string }).colour}</span>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Provider extends Component {
       p = this.use(ThemeProvider, () => ({ colour: "dark" }));
       render() {
-        return <Leaf />;
+        return (
+          <div>
+            <Leaf />
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state withProvider = true;
       render() {
         // The leaf stays; the provider around it goes away.
-        return <div>{this.withProvider ? <Provider /> : <Leaf />}</div>;
+        return (
+          <div>
+            <div>{this.withProvider ? <Provider /> : <Leaf />}</div>
+          </div>
+        );
       }
     }
 

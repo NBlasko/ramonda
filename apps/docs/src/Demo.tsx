@@ -1,4 +1,4 @@
-import { Component, Host, state, __h } from "@ramonda/core";
+import { Component, state, __h } from "@ramonda/core";
 import type { ComponentChild, RamondaNode } from "@ramonda/core";
 import { demos, demoTitles } from "./demos";
 import { demoSources } from "./generated/demo-sources";
@@ -21,7 +21,6 @@ interface DemoProps {
  * The source starts collapsed. Someone reading a concept wants to see the thing
  * work; someone who wants the code will open it.
  */
-@Host("section")
 export class Demo extends Component<DemoProps> {
   @state open = false;
 
@@ -39,18 +38,20 @@ export class Demo extends Component<DemoProps> {
     }
 
     return (
-      <div className="demo">
-        {this.props.titled ? (
-          <h3 className="demo-title" id={`demo-${name}`}>
-            {demoTitles[name] ?? name}
-          </h3>
-        ) : null}
-        <div className="demo-stage">{__h(component as never, null) as ComponentChild}</div>
-        <button type="button" className="demo-toggle" onclick={this.toggle}>
-          {this.open ? "▾ hide source" : "▸ show source"} <span className="demo-file">{name}.tsx</span>
-        </button>
-        {this.open ? <CodeBlock node={source} className="code-block-demo" pagefindIgnore={true} /> : null}
-      </div>
+      <section>
+        <div className="demo">
+          {this.props.titled ? (
+            <h3 className="demo-title" id={`demo-${name}`}>
+              {demoTitles[name] ?? name}
+            </h3>
+          ) : null}
+          <div className="demo-stage">{__h(component as never, null) as ComponentChild}</div>
+          <button type="button" className="demo-toggle" onclick={this.toggle}>
+            {this.open ? "▾ hide source" : "▸ show source"} <span className="demo-file">{name}.tsx</span>
+          </button>
+          {this.open ? <CodeBlock node={source} className="code-block-demo" pagefindIgnore={true} /> : null}
+        </div>
+      </section>
     );
   }
 }

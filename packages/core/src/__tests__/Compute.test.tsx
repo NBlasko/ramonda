@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { state, compute, Host } from "../base/decorators";
+import { state, compute } from "../base/decorators";
 import { Component } from "../base/Component";
 
 describe("@compute", () => {
@@ -135,7 +135,6 @@ describe("@compute", () => {
     // A cached @compute touches no State when read, so the enclosing tracker
     // used to record nothing and `quad` stayed stale forever: measured "10|4".
     // The getter now replays its own deps into whoever is reading it.
-    @Host("div")
     class Chain extends Component {
       @state n = 1;
       @compute get double() {
@@ -146,9 +145,11 @@ describe("@compute", () => {
       }
       render() {
         return (
-          <span>
-            {this.double}|{this.quad}
-          </span>
+          <div>
+            <span>
+              {this.double}|{this.quad}
+            </span>
+          </div>
         );
       }
     }

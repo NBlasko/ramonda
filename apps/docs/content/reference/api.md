@@ -8,7 +8,7 @@ order: 111
 # API
 
 **Casing tells you where a decorator goes.** `PascalCase` is a class decorator —
-`@Host`, `@StableProps`. `camelCase` goes on a member — `@state`, `@compute`, `@mounted`,
+`@StableProps`. `camelCase` goes on a member — `@state`, `@compute`, `@mounted`,
 `@watchProp`. Nothing else distinguishes them at a glance, and the two groups are used in
 different places, so the convention carries its weight.
 
@@ -112,8 +112,6 @@ anyway under a server DOM shim.
 
 | | |
 |---|---|
-| `@Host(tag, props?)` | The element a component **is**. `tag` may be a callback of props. Components only, once per class. [The host element](/concepts/host) |
-| `@onElement(type, options?)` | Listener on the component's host. Components only — a hook has no element. [Events](/concepts/events) |
 | `@onWindow(type, options?)` / `@onDocument(...)` | Listeners on `window` / `document`. Work on a Hook too. |
 | `@interval(ms)` / `@timeout(ms)` | Timers cleared on unmount. Client only; work on a Hook. [Timers](/concepts/timers) |
 
@@ -375,17 +373,17 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `DevGuardAsAnExpressionIssue`, `DomWriteIssue`, `DuplicateDecoratorIssue`, `DuplicateIdIssue`,
 `DuplicateKeyAmongSiblingsIssue`, `EmptyHeadingOrLinkIssue`, `FragmentLinkToNowhereIssue`,
 `FreshObjectInHookPropsIssue`, `FreshObjectInPropsIssue`, `FreshValueFromAWatchSelectorIssue`,
-`HeadTagsCollideIssue`, `HeadingSkipsALevelIssue`, `HostTagIsNotAnElementIssue`, `IndexAsKeyIssue`,
+`HeadTagsCollideIssue`, `HeadingSkipsALevelIssue`, `IndexAsKeyIssue`,
 `InteractiveInsideInteractiveIssue`, `IntervalWithNoCleanupIssue`, `LateRequestReadIssue`,
-`LinkWithoutADestinationIssue`, `ListenerAddedByHandIssue`, `ListenerOnTheDefaultHostIssue`,
-`MediaWithNoCaptionsIssue`, `NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`,
-`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
-`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RowReadsAPlainFieldIssue`,
-`RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`,
-`StateWrittenWhileRenderingIssue`, `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`,
-`UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
-`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
-`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`LinkWithoutADestinationIssue`, `ListenerAddedByHandIssue`, `MediaWithNoCaptionsIssue`,
+`NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`, `PersistOfALossyValueIssue`,
+`PositiveTabIndexIssue`, `ReferenceToAnIdThatIsNotThereIssue`, `RoleMissingRequiredAriaIssue`,
+`RoleTakesNoNameIssue`, `RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`,
+`ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
+`TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`,
+`UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`,
+`UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`, `UnsplittableImportIssue`,
+`UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 

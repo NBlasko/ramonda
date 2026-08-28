@@ -31,20 +31,6 @@ describe("the id table, one hop from the literal", () => {
     expect(findings["fragment-link-to-nowhere"]).toHaveLength(1);
   });
 
-  /**
-   * An id written in `@Host` props is on the page and is in no JSX element, and it was the same
-   * fault in two more spellings: `id: OVERVIEW_ID` silenced the family exactly as the JSX one did,
-   * and `({ id })` was read by nothing — not even as unreadable — so a link to it would have been
-   * reported as going nowhere.
-   */
-  test("an id in `@Host` props counts, written long or short", () => {
-    const targets = run().findings["fragment-link-to-nowhere"].map((issue) => issue.target);
-
-    expect(targets).not.toContain("overview");
-    expect(targets).not.toContain("filters");
-    expect(targets).toEqual(["sumary"]);
-  });
-
   /** `<label htmlFor={EMAIL_ID}>` names `<input id={EMAIL_ID}>`, and both halves are a name away. */
   test("a control labelled through a name is not called unlabelled", () => {
     expect(run().findings["control-with-no-label"]).toHaveLength(0);

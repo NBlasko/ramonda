@@ -1,5 +1,5 @@
 import { Panel } from "./inherited";
-import { Component, Host, bootstrap, compute, list, memoized, mounted, state } from "@ramonda/core";
+import { Component, bootstrap, compute, list, memoized, mounted, state } from "@ramonda/core";
 import { plainLabel, stampedLabel } from "./format";
 
 declare const items: { id: string; label: string }[];
@@ -12,7 +12,6 @@ declare const when: number;
  * render HANDS OVER, and a clock three names away beside a deterministic utility reached the same
  * way. A rule that gets one of each pair wrong is not stricter, it is broken.
  */
-@Host("div")
 class Impure extends Component {
   @state n = 0;
   @state label = "";
@@ -53,28 +52,29 @@ class Impure extends Component {
     this.stamp();
     return (
       <div>
-        {/* NOT reported: an arrow handed to an attribute runs on the event. */}
-        <button type="button" onclick={() => (this.n += 1)}>
-          up
-        </button>
-        {/* NOT reported: the factory is called now, but its RESULT runs on the click. */}
-        <button type="button" onclick={this.pick("a")}>
-          pick
-        </button>
-        {/* REPORTED — a callback passed to `list` runs during the render. */}
-        <ul>
-          {list(items, (item) => {
-            this.n += 1;
-            return <li key={item.id}>{item.label}</li>;
-          })}
-        </ul>
-        <p>{this.total}</p>
+        <div>
+          {/* NOT reported: an arrow handed to an attribute runs on the event. */}
+          <button type="button" onclick={() => (this.n += 1)}>
+            up
+          </button>
+          {/* NOT reported: the factory is called now, but its RESULT runs on the click. */}
+          <button type="button" onclick={this.pick("a")}>
+            pick
+          </button>
+          {/* REPORTED — a callback passed to `list` runs during the render. */}
+          <ul>
+            {list(items, (item) => {
+              this.n += 1;
+              return <li key={item.id}>{item.label}</li>;
+            })}
+          </ul>
+          <p>{this.total}</p>
+        </div>
       </div>
     );
   }
 }
 
-@Host("div")
 class Untimed extends Component {
   @state label = "";
 
@@ -86,15 +86,17 @@ class Untimed extends Component {
   render() {
     return (
       <div>
-        {/* REPORTED — written in the body. */}
-        <span>{Math.random()}</span>
-        {/* REPORTED — the argument-less form asks what time it is. */}
-        <span>{new Date().toISOString()}</span>
-        {/* NOT reported — parsing a timestamp is deterministic. */}
-        <span>{new Date(when).toISOString()}</span>
-        {/* NOT reported — deterministic, and reached the same way as the clock above. */}
-        <span>{plainLabel(this.label)}</span>
-        <span>{this.decorate(this.label)}</span>
+        <div>
+          {/* REPORTED — written in the body. */}
+          <span>{Math.random()}</span>
+          {/* REPORTED — the argument-less form asks what time it is. */}
+          <span>{new Date().toISOString()}</span>
+          {/* NOT reported — parsing a timestamp is deterministic. */}
+          <span>{new Date(when).toISOString()}</span>
+          {/* NOT reported — deterministic, and reached the same way as the clock above. */}
+          <span>{plainLabel(this.label)}</span>
+          <span>{this.decorate(this.label)}</span>
+        </div>
       </div>
     );
   }
@@ -109,11 +111,14 @@ bootstrap(<Untimed />, null);
  * Written last so it cannot move any other case's line numbers, and separate from every other class
  * here because it is the one that needs a second file to be the fault at all.
  */
-@Host("div")
 class InheritsIt extends Panel {
   render() {
     this.count();
-    return <div>{this.hits}</div>;
+    return (
+      <div>
+        <div>{this.hits}</div>
+      </div>
+    );
   }
 }
 
@@ -125,7 +130,6 @@ bootstrap(<InheritsIt />, null);
  * Each one is a plant: the CLAIM is "reached from a render, by any path", so every one of these
  * either has to be reported or has to be a decision written down.
  */
-@Host("div")
 class OtherPaths extends Component {
   @state n = 0;
 
@@ -154,8 +158,10 @@ class OtherPaths extends Component {
     OtherPaths.viaStatic();
     return (
       <div>
-        {this.viaGetter}
-        {this.viaSuper()}
+        <div>
+          {this.viaGetter}
+          {this.viaSuper()}
+        </div>
       </div>
     );
   }
@@ -171,10 +177,13 @@ class DeepBase extends Component {
   }
 }
 
-@Host("div")
 class ThroughSuper extends DeepBase {
   render() {
-    return <p>{super.stampFromBase()}</p>;
+    return (
+      <div>
+        <p>{super.stampFromBase()}</p>
+      </div>
+    );
   }
 }
 
@@ -192,13 +201,16 @@ class OverriddenBase extends Component {
   }
 }
 
-@Host("div")
 class OverridesIt extends OverriddenBase {
   stamp() {
     return 0;
   }
   render() {
-    return <p>{this.stamp()}</p>;
+    return (
+      <div>
+        <p>{this.stamp()}</p>
+      </div>
+    );
   }
 }
 

@@ -27,6 +27,7 @@ export interface RenderResult {
 const server = defineServer(routes, {
   "/": { prerender: true }, // SSG — baked at build
   "/about": { revalidate: 3 }, // ISR — cached, rebaked every 3s
+  "/nesting": { prerender: true }, // SSG — it reads nothing per request, so view-source is a real file
   "/products": {}, // dynamic — the feed renders per request
   "/users/:id": {}, // dynamic — per-user page
   "/signup": { prerender: true }, // SSG — a form has nothing per-request in it, so it bakes
