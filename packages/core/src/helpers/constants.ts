@@ -19,7 +19,7 @@ export { svgElements } from "@ramonda/dom-facts";
  * twenty-one names apart, and a test that pinned them together was the confession that there were
  * two.
  */
-export { BOOLEAN_ATTRIBUTES } from "@ramonda/dom-facts";
+export { BOOLEAN_ATTRIBUTES, absentFromHtml } from "@ramonda/dom-facts";
 
 export const DONE = 5;
 export type DONE = 5;

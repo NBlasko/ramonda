@@ -148,3 +148,33 @@ export const BOOLEAN_ATTRIBUTES = new Set([
   "reversed",
   "selected",
 ]);
+
+/**
+ * Attributes that do not exist on a given element, however reasonable they look.
+ *
+ * Both names are real HTML somewhere else, which is what makes them worth a table rather than a
+ * guess: `value` is right on an `<input>` and meaningless on a `<textarea>`, whose value is its
+ * TEXT. `indeterminate` is a checkbox's third state and exists only as a property — there is no way
+ * to write it in markup at all.
+ *
+ * `<select>` belongs to the same family and is deliberately NOT here: its tag is refused by the
+ * types and `Select` consumes the value before the element is built, so an entry for it could never
+ * run. A table of facts nothing consults is a table that drifts.
+ *
+ * Written anyway, they put a word in the document that nothing reads. A served
+ * `<textarea value="hello">` reaches the reader as an EMPTY field, measured on the parsed markup,
+ * and fills itself in when the bundle arrives.
+ *
+ * Both packages need the same list. `@ramonda/core` uses it to not write them; `@ramonda/check`
+ * reports them where they are typed, which is the better place — see `attribute-that-does-nothing`,
+ * whose six other names are dead on every tag and so need no table.
+ */
+const ABSENT: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["TEXTAREA", new Set(["value"])],
+  ["INPUT", new Set(["indeterminate"])],
+]);
+
+/** Whether HTML gives this element no such attribute. `tag` is a `nodeName`, so any case will do. */
+export function absentFromHtml(tag: string, attribute: string): boolean {
+  return ABSENT.get(tag.toUpperCase())?.has(attribute.toLowerCase()) === true;
+}

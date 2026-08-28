@@ -145,6 +145,18 @@ any script runs. Writing the text yourself instead works too, and wins if you do
 <textarea>a starting draft</textarea>
 ```
 
+### A checkbox's third state
+
+`indeterminate` is a property and not an attribute — HTML has nowhere to write it — so it works on
+the client and a server-rendered page cannot carry it:
+
+```tsx
+<input type="checkbox" checked={this.all} indeterminate={this.some && !this.all} />
+```
+
+The box arrives unchecked and becomes mixed when the page hydrates. There is no way around that; it
+is what HTML offers.
+
 ### Writing your own attributes
 
 `bind` is a plain object, so anything after the spread wins:
