@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { BOOLEAN_ATTRIBUTES, svgElements } from "@ramonda/dom-facts";
+import { coreElementTag } from "./coreElements";
 import { follow, type Looking } from "./follow-value";
 import type { ElementContext, JsxElementLike, WrittenAttribute } from "./rule";
 
@@ -71,13 +72,25 @@ export function contextFor(element: JsxElementLike, resolve: ElementContext["res
     positions.set(attribute.name.getText().toLowerCase(), index);
   }
 
+  /**
+   * A COMPONENT that IS an element answers with the element it is.
+   *
+   * `<Select>` and `<TextArea>` are how core makes an author write a `<select>` and a `<textarea>`,
+   * because neither can be written correctly as a tag — so every rule that keys on a tag met a
+   * component and went quiet for the two elements there is now no other way to write. See
+   * {@link coreElementTag}.
+   */
+  const writtenTag = tagOf(element);
+  const tag = writtenTag ?? coreElementTag(openingOf(element).tagName, resolve);
+
   return build({
     attributes: attributesOf(element),
     at: openingOf(element),
-    tag: tagOf(element),
+    tag,
     // The tag as WRITTEN decides this, not the lowercased one: SVG tag names are case-sensitive,
     // and `<clipPath>` is the SVG element while `<clippath>` is an unknown HTML one.
-    inSvg: svgElements.has(openingOf(element).tagName.getText()),
+    // The tag as WRITTEN decides this, and a component is never an SVG element.
+    inSvg: writtenTag !== undefined && svgElements.has(openingOf(element).tagName.getText()),
     spreads,
     overwritable: (name) => {
       const at = positions.get(name.toLowerCase());
