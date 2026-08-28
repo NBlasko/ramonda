@@ -98,6 +98,51 @@ attached to, which the framework knows because it attached it. `target` is where
 *originated* — a click on a `<span>` inside a `<button>` has the span as its target — so a type
 naming it as the button would be wrong exactly when it matters. Reach for `currentTarget`.
 
+### A listener you arm and disarm
+
+`@onWindow` and `@onDocument` attach for the component's whole life. When the listener should only be
+live sometimes — a `keydown` while a dialog is open, a `pointermove` during a drag — that is the
+`Listener` hook, and it hands you a plain `Event`:
+
+```tsx
+import { Component, Listener, mounted } from "@ramonda/core";
+
+export class Dialog extends Component<{ onClose: () => void }> {
+  private escape = this.use(Listener, () => ({
+    on: "document" as const,
+    type: "keydown",
+    run: (e) => {
+      if ((e as KeyboardEvent).key === "Escape") this.props.onClose();
+    },
+  }));
+
+  @mounted open() {
+    this.escape.listen();
+  }
+
+  close() {
+    this.escape.stop();
+  }
+
+  render() {
+    return <div role="dialog">…</div>;
+  }
+}
+```
+
+`as const` on the target is needed because `on` takes one of two words, and an object literal widens
+a string unless it is told not to. The cast on the event is the honest spelling here and not an
+oversight. The decorators type the event from the
+NAME because the name is written in their signature; on the hook it is a prop, so the type cannot
+follow it. Three ways round that were tried and each fails — the details are on `ListenerProps.run`
+if you are about to try a fourth.
+
+**If the listener lives for the whole component, use the decorator.** It is typed and checked:
+
+```tsx
+@onDocument("keydown") onKey(e: KeyboardEvent) { … }
+```
+
 ## On window or document
 
 Some events don't come from an element you render — the window resizing, a key
