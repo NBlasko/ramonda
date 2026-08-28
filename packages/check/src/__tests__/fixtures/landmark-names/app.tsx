@@ -137,6 +137,18 @@ class SecondSpreads extends Component {
 }
 
 /** ✓ Two `<main>` is `more-than-one-main`'s report, not a naming problem. */
+/** ✗ A name written and left EMPTY names nothing, so both are still announced "navigation". */
+class NamedEmpty extends Component {
+  render() {
+    return (
+      <div>
+        <nav aria-label="">a</nav>
+        <nav aria-label="">b</nav>
+      </div>
+    );
+  }
+}
+
 class TwoMains extends Component {
   render() {
     return (
@@ -164,6 +176,7 @@ class App extends Component {
         <UnreadableRole />
         <SecondSpreads />
         <TwoMains />
+        <NamedEmpty />
       </div>
     );
   }

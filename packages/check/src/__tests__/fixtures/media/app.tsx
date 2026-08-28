@@ -1,6 +1,10 @@
 import { Component, bootstrap } from "@ramonda/core";
 
 declare const tracks: unknown[];
+declare const rest: Record<string, unknown>;
+
+const CHAPTERS = "chapters";
+const CAPTIONS = "captions";
 
 /** `accessKey` and media without a track, each beside the shapes that are correct. */
 class Player extends Component {
@@ -37,6 +41,19 @@ class Player extends Component {
         <video src="/loop.mp4" muted autoplay />
         {/* Not reported: children this cannot read may well be the track. */}
         <video src="/talk.mp4">{tracks}</video>
+
+        {/* REPORTED — the same claim as `kind="chapters"`, one NAME away. */}
+        <video src="/talk.mp4">
+          <track kind={CHAPTERS} src="/c.vtt" />
+        </video>
+        {/* Not reported: the usable kind, also one name away. */}
+        <video src="/talk.mp4">
+          <track kind={CAPTIONS} src="/en.vtt" />
+        </video>
+        {/* Not reported: a spread may carry or replace the `kind`, so this one cannot be judged. */}
+        <video src="/talk.mp4">
+          <track kind="chapters" {...rest} />
+        </video>
         {/* Not reported: nothing claims a shortcut. */}
         <button>Cancel</button>
       </div>

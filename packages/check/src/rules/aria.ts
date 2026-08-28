@@ -182,6 +182,43 @@ export const ROLES: ReadonlySet<string> = new Set([
  * role is probably a typo, and an abstract one is somebody reading the spec's inheritance diagram
  * and taking a branch name for a leaf.
  */
+/**
+ * The roles a keyboard must be able to REACH and ACTIVATE — the widgets a user operates.
+ *
+ * ## Which way this table is allowed to be wrong, and it is the opposite of {@link ROLES}
+ *
+ * `ROLES` leans LONG: a rule reading it reports a name that is NOT in it, so a short table reports
+ * correct markup. This one is read the other way round — a rule reports an element whose role IS in
+ * here — so a table long by one reports an element that never needed a keyboard path, and short by
+ * one misses a fault. It leans SHORT, and the entries are the roles where "the user activates this"
+ * is not arguable.
+ *
+ * So `progressbar`, `scrollbar`, `separator` and `tabpanel` are deliberately absent even though the
+ * specification files some of them as widgets: a progress bar is read, not operated, and the others
+ * are operated only in ways that are not a click. `slider`, `spinbutton` and `textbox` are absent
+ * for a different reason — each is normally built on the input that already is one, and a `<div
+ * role="textbox">` with a click handler is a shape rare enough that guessing at it costs more than
+ * it finds.
+ *
+ * ## STANDALONE only, which is the correction that matters
+ *
+ * `option`, `tab`, `menuitem`, `menuitemcheckbox`, `menuitemradio`, `treeitem` and `radio` were
+ * here and had to come out. Every one of them is REQUIRED to sit inside a composite parent — a
+ * `listbox`, `tablist`, `menu`, `tree`, `radiogroup` — and in every one of the W3C's own authoring
+ * patterns the PARENT owns the keyboard: arrow keys on the container, roving `tabIndex={-1}` on the
+ * children. So "this element needs its own key handler" is not merely unprovable for them, it is
+ * the opposite of the recommended shape.
+ *
+ * Measured, and it is why this note exists: the canonical listbox, toolbar and tablist from the
+ * ARIA Authoring Practices produced FOUR reports against markup that is the recommendation.
+ *
+ * What is left is the roles a user operates on their own, wherever they sit.
+ *
+ * Source: **WAI-ARIA 1.2**, the widget roles, filtered to those whose own documentation describes a
+ * user activating them, and then to those that are not owned by a composite parent.
+ */
+export const ACTIVATED_BY_THE_USER: ReadonlySet<string> = new Set(["button", "checkbox", "link", "switch"]);
+
 export const ABSTRACT_ROLES: ReadonlySet<string> = new Set([
   "command",
   "composite",

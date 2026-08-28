@@ -48,6 +48,17 @@ class App extends Component {
         {/* ✓ Built from data — how every real list is made, and the tag may be right. */}
         <ul>{rows.map((row) => row)}</ul>
 
+        {/* ✗ Words written straight inside, which the content model takes no more than a tag. */}
+        <ul>
+          Items:
+          <li>one</li>
+        </ul>
+        {/* ✓ The whitespace between children is a text node on every well-formed list there is. */}
+        <ul>
+          <li>one</li>
+          <li>two</li>
+        </ul>
+
         {/* ✓ A COMPONENT may render exactly the right tag. */}
         <ul>
           <Row />

@@ -20,14 +20,30 @@ describe("accessKey", () => {
 describe("media with no captions", () => {
   test("a video and an audio with nothing to read are reported", () => {
     const found = run().findings["media-with-no-captions"];
-    expect(found.map((issue) => issue.tag)).toEqual(["video", "audio", "video"]);
+    expect(found.map((issue) => issue.tag)).toEqual(["video", "audio", "video", "video"]);
   });
 
   /** `captions`, `subtitles` and a `kind`-less track all carry the words; `chapters` does not. */
   test("a track that carries the words silences it, and one that does not carry them does not", () => {
     const found = run().findings["media-with-no-captions"];
-    // Seven media elements in the fixture; three are reported, and the third is the `chapters` one.
-    expect(found).toHaveLength(3);
+    // Ten media elements in the fixture; four are reported.
+    expect(found).toHaveLength(4);
+  });
+
+  /**
+   * A `kind` held in a NAME is the same claim as one written out.
+   *
+   * This file used to walk the track's attributes itself and accept only a literal, so
+   * `<track kind={CHAPTERS}>` with `const CHAPTERS = "chapters"` counted as a usable track and
+   * silenced the report — while the identical `kind="chapters"` above it was reported. It reads the
+   * child through `contextFor` now, which follows a name to the value it holds.
+   */
+  test("a `kind` one name away is read, and the usable one still silences it", () => {
+    const lines = (run().findings["media-with-no-captions"] ?? []).map((issue) => issue.line);
+
+    expect(lines).toContain(46);
+    expect(lines, "`captions` one name away still carries the words").not.toContain(50);
+    expect(lines, "a spread may carry or replace the `kind`, so this one cannot be judged").not.toContain(54);
   });
 
   /**
@@ -36,7 +52,7 @@ describe("media with no captions", () => {
    */
   test("a muted video is not reported", () => {
     const found = run().findings["media-with-no-captions"];
-    expect(found).toHaveLength(3);
+    expect(found).toHaveLength(4);
   });
 });
 

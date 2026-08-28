@@ -1,3 +1,5 @@
+import ts from "typescript";
+
 /**
  * The DOM event a JSX attribute name listens for.
  *
@@ -20,4 +22,44 @@ export function eventTypeOf(name: string): { type: string; verbatim: boolean } |
   if (name.startsWith("on:")) return name.length > 3 ? { type: name.slice(3), verbatim: true } : undefined;
   if (!name.startsWith("on") || name.length <= 2) return undefined;
   return { type: name.slice(2).toLowerCase(), verbatim: false };
+}
+
+/**
+ * The handlers a pointer alone can deliver. `onmousedown` and `ondblclick` are the same fault.
+ *
+ * By EVENT TYPE rather than by attribute name, so both spellings land on one entry. `ondblclick`,
+ * not `ondoubleclick`: the DOM event is `dblclick`, so the longer name matched nothing and was a
+ * set entry that had never been able to fire.
+ */
+const POINTER_ONLY: ReadonlySet<string> = new Set(["click", "mousedown", "mouseup", "dblclick"]);
+
+/**
+ * The pointer-only handler written on this element, if there is one.
+ *
+ * Shared by the two rules that ask "was the mouse wired up here" — one about an element with no
+ * keyboard path at all, one about a path somebody started building by hand and did not finish.
+ * They enter on the same condition and must agree about what a click is.
+ */
+export function pointerHandlerOn(opening: ts.JsxOpeningLikeElement): string | undefined {
+  for (const attribute of opening.attributes.properties) {
+    if (!ts.isJsxAttribute(attribute)) continue;
+    const name = attribute.name.getText();
+    if (POINTER_ONLY.has(eventTypeOf(name)?.type ?? "")) return name;
+  }
+  return undefined;
+}
+
+/**
+ * Whether any keyboard handler is written at all. Which one is not either caller's business.
+ *
+ * Through `eventTypeOf`, because the framework takes TWO spellings and this knew one. A regex on
+ * the written name missed `on:keydown` — measured, and the cost was the worst kind: an element with
+ * a keyboard handler written on the same line was reported as having no keyboard path.
+ */
+export function hasAKeyHandler(opening: ts.JsxOpeningLikeElement): boolean {
+  for (const attribute of opening.attributes.properties) {
+    if (!ts.isJsxAttribute(attribute)) continue;
+    if (eventTypeOf(attribute.name.getText())?.type.startsWith("key") === true) return true;
+  }
+  return false;
 }

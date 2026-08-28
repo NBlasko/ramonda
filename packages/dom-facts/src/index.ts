@@ -197,3 +197,17 @@ const ABSENT: ReadonlyMap<string, ReadonlySet<string>> = new Map([
 export function keptInAProperty(tag: string, attribute: string): boolean {
   return ABSENT.get(tag)?.has(attribute) === true;
 }
+
+/**
+ * Every property-only name this element has, for the half of the job `keptInAProperty` cannot do.
+ *
+ * That reader answers about ONE spelling and is all `@ramonda/core` needs: it either writes the
+ * property or it does not. `@ramonda/check` has the other question — somebody wrote `playbackrate`
+ * and there is no such thing, so what did they mean? Answering that needs the names themselves, and
+ * a checker that kept its own copy of them would be the second list this table exists to prevent.
+ *
+ * `tag` is a `nodeName`, upper case, exactly as above.
+ */
+export function propertyOnlyNames(tag: string): ReadonlySet<string> | undefined {
+  return ABSENT.get(tag);
+}

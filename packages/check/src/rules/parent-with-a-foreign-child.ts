@@ -42,6 +42,18 @@ import type { ElementContext, ElementRule } from "./rule";
  * the table below rather than assumed away.
  *
  * **`<template>` and a script**, which are allowed anywhere and are not rendered content.
+ *
+ * ## Text counts, and whitespace does not
+ *
+ * `<ul>Items:<li>one</li></ul>` is the same fault with no tag in it — the content model of these
+ * containers takes ELEMENTS, and words written straight inside are as foreign as a `<div>`. In a
+ * `<table>` the parser moves them out exactly as it moves a foreign element, so the tree the
+ * browser builds is not the tree in the source.
+ *
+ * The whitespace between children is not that. Every one of these containers is written across
+ * several lines, so the newline and the indentation are JSX text nodes on every well-formed list in
+ * existence — reading those as content would report every correct list this rule was written to
+ * protect. Only text with something in it once trimmed is a child.
  */
 export interface ParentWithAForeignChildIssue {
   /** The container. */
@@ -98,7 +110,9 @@ export const parentWithAForeignChild = {
     heading: (found) => `${found.length} container(s) holding a tag that does not belong in them:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
-      `    <${issue.child}> inside <${issue.parent}>, which takes ${issue.takes}.`,
+      issue.child === "text"
+        ? `    text written straight inside <${issue.parent}>, which takes ${issue.takes}.`
+        : `    <${issue.child}> inside <${issue.parent}>, which takes ${issue.takes}.`,
     ],
     advice:
       'A list is not styling, it is a COUNT. Assistive technology announces "list, 5 items" and\n' +
@@ -128,6 +142,15 @@ export const parentWithAForeignChild = {
 
     const found: ParentWithAForeignChildIssue[] = [];
     for (const child of children) {
+      // Words written straight inside. The indentation between elements is a text node too, on
+      // every well-formed list there is, so only what survives a trim is content.
+      if (ts.isJsxText(child)) {
+        if (child.text.trim().length > 0) {
+          found.push({ parent: tag, child: "text", takes: takesWhat(tag), ...positionOf(child) });
+        }
+        continue;
+      }
+
       // An expression or a component may render exactly the right tag, and `{rows.map(…)}` is how
       // every real list is built. Only a tag written OUT and known to be wrong is reported.
       if (!ts.isJsxElement(child) && !ts.isJsxSelfClosingElement(child)) continue;
