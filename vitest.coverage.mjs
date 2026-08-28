@@ -41,3 +41,28 @@ export const coverage = {
   reporter: ["text-summary", "lcov"],
   reportsDirectory: "coverage",
 };
+
+/**
+ * The same settings, plus a FLOOR the run has to clear.
+ *
+ * What this catches is the failure nothing else does: code added to a package without tests, which
+ * every gate passes — it compiles, it lints, the suite is green — while the number quietly drops and
+ * the next reader assumes the percentage still means what it used to. A badge nobody has to defend
+ * stops being evidence.
+ *
+ * **A floor, not a target.** Set it a point or so under what the package measures TODAY, so ordinary
+ * work does not fight it and a real slide does. Raising it is a deliberate commit of its own; a PR
+ * that has to lower it is the conversation this exists to start.
+ *
+ * **Per package, and per RUN.** One number across the repo would have to be the weakest package's,
+ * which is no floor at all for the strongest — so each package spreads its own, and a package with
+ * none set is simply not floored yet. The `test:prod` runs keep the bare `coverage`: they execute
+ * only `*.prod.test.*`, so they cover the production-only branches and nothing else, and asking them
+ * for a whole package's number would be asking the wrong question.
+ *
+ * **Lines only.** Branches and functions move for reasons that are not a loss of testing — a guard
+ * split in two, a callback extracted — and a gate that fires on those gets turned off.
+ */
+export function withFloor(lines) {
+  return { ...coverage, thresholds: { lines } };
+}

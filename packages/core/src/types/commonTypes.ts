@@ -161,6 +161,30 @@ export interface RefusedOnFields {
 }
 
 /**
+ * The one tag whose meaning the framework cannot leave to the author: `<select>`.
+ *
+ * Every other element says what it is with its own attributes. A select says it with its CHILDREN —
+ * the choice is which option is chosen — and neither half of that can be written down honestly:
+ *
+ * - On the element, before its options exist, there is nothing yet to choose from.
+ * - On an option, `selected` is a CLAIM. HTML settles competing claims by document order, and gives
+ *   a select holding none the first option it is handed. So what the attribute means depends on the
+ *   order the options reached the select, which is the diff's business — no author writes that order
+ *   and none can see it.
+ *
+ * `<Select value={x}>` says it once, on the element that owns the choice, and settles it once the
+ * options are in the element. `<option>` needs no counterpart: it has no choice to make, so it stays
+ * an ordinary tag, in a `<datalist>` as much as in a select.
+ *
+ * A required property, so writing the tag at all is the error and the property NAME is the message.
+ * Unlike the other refusals in this file, which are `Partial` and bite only when somebody writes the
+ * named attribute — here the tag itself is the mistake, so there is no spelling of it that passes.
+ */
+export interface RefusedSelectTag {
+  "write <Select value={x}> — a plain <select> cannot say which option is chosen, because the choice is its children": never;
+}
+
+/**
  * The ways an element can be given a name, as a requirement rather than a suggestion.
  *
  * An image and a frame are the two things on a page that a reader who cannot see them has nothing

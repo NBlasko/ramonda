@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import { coverage } from "../../vitest.coverage.mjs";
+import { withFloor } from "../../vitest.coverage.mjs";
 import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 import { configDefaults } from "vitest/config";
 import { resolve } from "node:path";
@@ -45,7 +45,15 @@ export default defineConfig({
   },
   // Vitest ostaje isti
   test: {
-    coverage,
+    /**
+     * 97, against 97.95 measured on 2026-08-27, the day the range rewrite merged.
+     *
+     * The margin is a point rather than nothing so that adding a file with a couple of unreachable
+     * production branches does not fail the build; ~40 untested lines does. The weakest files in the
+     * package on that day were `core/commit.ts` (91.7%) and `core/Task.ts` (91.1%) — which is where
+     * the fifth review round found four faults, in the two files no earlier round had opened.
+     */
+    coverage: withFloor(97),
     testTimeout,
     hookTimeout,
     globals: true,

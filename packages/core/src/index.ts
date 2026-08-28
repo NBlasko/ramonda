@@ -20,6 +20,8 @@ export type { ErrorBoundaryFallbackProps } from "./base/ErrorBoundary";
 export { Ref, createRef } from "./base/Ref";
 export type { RefCallback, RefTarget } from "./base/Ref";
 export type { AsyncLoadProps, AsyncLoadFailure, Lazy } from "./base/AsyncLoad";
+export { Select } from "./base/Select";
+export type { SelectProps } from "./base/Select";
 export { list } from "./base/list";
 export type { Each, ItemRender } from "./base/list";
 export { merge, SAME_ITEM } from "./base/merge";
