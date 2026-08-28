@@ -29,6 +29,7 @@ import {
   SLOT_SYM,
   BLOCK_CLOSE,
   BLOCK_OWNER,
+  HOSTS_A_BLOCK,
   HAS_REGION,
   COMPONENT_TYPE,
   CHILD_RECORD,
@@ -1452,6 +1453,16 @@ export function reorderChildren(
  * merely looks like an anchor, which a shell is entitled to write, is not mistaken for one.
  */
 function firstHostedBlock(parent: ChildNode): ChildNode | null {
+  /**
+   * Asked of the element before it is asked of its children.
+   *
+   * Nearly every element answers no, and used to answer it after visiting every child — measured on
+   * a 500-row list moving one row, 500 sibling steps to find nothing. `ChildrenRegion.place` marks
+   * the targets it uses, so the ones that were never a portal's target stop here. See
+   * `HOSTS_A_BLOCK` for why the mark is never taken off again.
+   */
+  if ((parent as unknown as { [HOSTS_A_BLOCK]?: true })[HOSTS_A_BLOCK] !== true) return null;
+
   for (let node = parent.firstChild; node !== null; node = node.nextSibling) {
     if (node.nodeType === 8 && blockCloseOf(node) !== undefined) return node;
   }

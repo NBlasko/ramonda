@@ -14,7 +14,7 @@ import { hydrateLevel, isSplitRemainder, type HydrationWalk } from "../hydration
 import { reportBlockLengthMismatch } from "../debug/hydrationMismatch";
 import type { ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
-import { BLOCK_CLOSE, BLOCK_OWNER, CHILD_RECORD, type DONE } from "../helpers/constants";
+import { BLOCK_CLOSE, BLOCK_OWNER, CHILD_RECORD, HOSTS_A_BLOCK, type DONE } from "../helpers/constants";
 
 /**
  * The comments that delimit a region's block in the DOM, and in the markup a
@@ -356,6 +356,16 @@ export class ChildrenRegion {
    * rather than a second copy being built beside a stale one.
    */
   private place(parent: ChildNode): void {
+    /**
+     * The target is told it holds a block, so the diff need not go looking.
+     *
+     * `firstHostedBlock` exists because an element that hosts one has to insert its own children
+     * BEFORE it, and it used to answer by walking every child on every reorder — see
+     * `HOSTS_A_BLOCK`. This is the write that lets it answer without walking, and it happens once
+     * per placement rather than once per render.
+     */
+    (parent as unknown as { [HOSTS_A_BLOCK]?: true })[HOSTS_A_BLOCK] = true;
+
     if (this.close === undefined) {
       this.open = document.createComment(openAnchor(this.id));
       this.close = document.createComment(closeAnchor(this.id));
