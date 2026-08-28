@@ -127,28 +127,16 @@ describe("a click a keyboard cannot reach, and a control inside itself", () => {
    * `on:click` hands the name through verbatim, for a custom event with a dash or a capital that
    * `onclick` cannot reach — `core/Attribute.ts` decides it, and `eventTypeOf` mirrors that rather
    * than inventing an answer. Read as `onclick` only, `<div on:click={open}>` was not a click
-   * handler at all (36 is reported and 39 was not), and — worse — the key handler in
+   * handler at all (11 is reported and 14 was not), and — worse — the key handler in
    * `<div onclick={open} on:keydown={onKey}>` was invisible, so an element with a keyboard path
    * written on the same line was reported as having none.
    */
   test("both spellings of a click are clicks, and both spellings of a key handler are a path", () => {
-    expect(clicks()).toEqual([36, 39]);
+    expect(clicks()).toEqual([11, 14]);
   });
 
-  /**
-   * A WRAPPER is seen through to the element it is.
-   *
-   * `<LinkBox><a/></LinkBox>` with `@Host("a")` is a link inside a link, and the walk used to end
-   * at any component on the argument that what it renders is decided inside it. That is true of
-   * most components and not of this one: a wrapper handing `this.props.children` straight back puts
-   * them inside its own host. `tag-needs-its-parent` had already been taught this about the same
-   * question, through the same helper.
-   *
-   * 53 is the bare `return this.props.children`, 58 the fragment spelling that adds no element, 68
-   * the plain nesting as the control. 63 puts the children in a `<span>` — so what encloses them is
-   * not the host, and nothing is claimed.
-   */
-  test("a wrapper that hands its children to its host is the element it is", () => {
-    expect(nested()).toEqual([53, 58, 68]);
+  /** The plain nesting, as the control for the rule that shares this fixture. */
+  test("a link inside a link is still reported", () => {
+    expect(nested()).toEqual([28]);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { Component, Hook, Host, created, destroyed, state, watchProp } from "@ramonda/core";
+import { Component, Hook, created, destroyed, state, watchProp } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render, renderHook, act } from "../index";
 
@@ -88,10 +88,9 @@ describe("renderHook", () => {
   });
 
   test("a wrapper is mounted above the host, so context reaches the hook", () => {
-    @Host("section")
     class Frame extends Component<{ children?: RamondaNode }> {
       render(): RamondaNode {
-        return this.props.children;
+        return <section>{this.props.children}</section>;
       }
     }
 

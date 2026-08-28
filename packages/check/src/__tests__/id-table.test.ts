@@ -27,18 +27,6 @@ describe("a fragment link pointing at nothing", () => {
    * `` id={`row-${row.id}`} `` could have made. That is a proof rather than a guess, and it is what
    * keeps a list's generated ids from silencing the whole table.
    */
-  /**
-   * An id written in `@Host` props is on the page and is in no JSX element, so the table used to
-   * miss it and the link to it was reported as going nowhere. Found by planting, and the shape got
-   * likelier the day `@Host`'s props became typed as the element's attributes.
-   */
-  test("an id written in @Host props is an id the project carries", () => {
-    const found = run("id-table").findings["fragment-link-to-nowhere"];
-    expect(found.map((issue) => issue.target)).not.toContain("host-anchor");
-    // Both bodies a props callback is written with. The concise one was fixed first and the block
-    // one was still missing, which is what a review is for.
-    expect(found.map((issue) => issue.target)).not.toContain("block-anchor");
-  });
 
   test("an id a template could have produced is not called missing", () => {
     const found = run("id-table").findings["fragment-link-to-nowhere"];
@@ -238,16 +226,16 @@ describe("a naming attribute that names nothing", () => {
     );
 
   test("all three spellings, and whitespace with them", () => {
-    // 11 `aria-labelledby=""`, 14 `aria-label=""`, 15 `title=""`, 18 whitespace — none of which a
+    // 10 `aria-labelledby=""`, 13 `aria-label=""`, 14 `title=""`, 17 whitespace — none of which a
     // screen reader announces, and every one of which used to silence the rule.
-    expect(lines()).toEqual([11, 14, 15, 18]);
+    expect(lines()).toEqual([10, 13, 14, 17]);
   });
 
   test("and a name this cannot read is somebody naming it", () => {
     // `aria-label={t("email")}` is a name whose text this cannot know, and guessing would report a
     // control that is correctly labelled. Only an empty LITERAL is the source saying otherwise.
-    expect(lines()).not.toContain(21);
-    expect(lines()).not.toContain(24);
-    expect(lines()).not.toContain(28);
+    expect(lines()).not.toContain(20);
+    expect(lines()).not.toContain(23);
+    expect(lines()).not.toContain(27);
   });
 });

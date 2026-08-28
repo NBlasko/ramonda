@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, state, Ref, bootstrap, unmount } from "../index";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, state, Ref, bootstrap, unmount } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -38,14 +38,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-@Host("div")
 class Widget extends Component {
   @state n = 0;
   bump() {
     this.n++;
   }
   render() {
-    return <span>{String(this.n)}</span>;
+    return (
+      <div>
+        <span>{String(this.n)}</span>
+      </div>
+    );
   }
 }
 
@@ -67,7 +70,7 @@ describe("RMD016: updating an orphaned tree", () => {
 
     const app = await getDOM<App>(<App />);
     const host = app.instance.slot.current!.firstElementChild!;
-    const widget = (host as { _componentInstance?: Widget })._componentInstance!;
+    const widget = instanceOf<Widget>(host);
 
     // What a chart / modal / drag-and-drop library does to a node it owns.
     app.instance.slot.current!.innerHTML = "";
@@ -88,7 +91,7 @@ describe("RMD016: updating an orphaned tree", () => {
     bootstrap(<Widget />, container);
 
     const host = container.firstElementChild!;
-    const widget = (host as { _componentInstance?: Widget })._componentInstance!;
+    const widget = instanceOf<Widget>(host);
 
     container.remove(); // orphaned: still mounted, no longer in the document
 

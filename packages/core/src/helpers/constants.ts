@@ -1,31 +1,3 @@
-/**
- * The default host: the element a component gets when it has no @Host. It is a
- * custom element so that it is inert, can never collide with a real HTML tag,
- * and — unlike <div> — does not close an open <p> or otherwise steer the parser.
- *
- * It was a <template> until 2026-07-17. That is the natural "fragment" on the
- * client, but it cannot survive HTML: the parser moves a template's children
- * into its .content fragment, where nothing renders. Building them with
- * appendChild keeps them as real children (which is why the client worked), but
- * serializing dropped them and re-parsing would have made them inert — so SSR
- * silently emitted an empty <template> for every default-host component. No
- * serializer could fix that; the tag had to change.
- */
-export const HOST_TAG = "RAMONDA-HOST";
-
-/**
- * Keeps the default host layout-neutral: no box of its own, children lay out as
- * if the host were not there. That is what makes adding a component free.
- *
- * TODO(perf): this ships as an inline style attribute on every default host,
- * which costs ~26 bytes per component in SSR output (13KB on a 500-component
- * page). A single global rule — `ramonda-host { display: contents }` — would cut
- * the host to `<ramonda-host></ramonda-host>`. Not done yet because it makes the
- * markup depend on a stylesheet the app must ship in <head>: if it is late or
- * missing, every host falls back to `display: inline` and the layout breaks.
- * Worth doing once SSR is actually in use and the byte count is measurable.
- */
-export const hostStyle = "display: contents";
 export const svgNamespaceUri = "http://www.w3.org/2000/svg";
 
 /**
@@ -45,7 +17,6 @@ export type TEXT_TYPE = 6;
 export const COMPONENT_TYPE = 7;
 export type COMPONENT_TYPE = 7;
 
-export const HOST_META = Symbol("host:meta");
 export const IS_SVG = Symbol("isSvg");
 export const KEY_SYM = Symbol("key");
 /**
@@ -71,9 +42,9 @@ export const REF_SYM = Symbol("ref");
 /** The style string last written to an element, for the attribute diff to compare against. */
 export const STYLE_SYM = Symbol("style");
 
-/** Brands the opaque object a built list is. See types/vdom.ts → ListNode. */
 /** The component whose render() built this vnode / this DOM node. See core/origin.ts. */
 export const ORIGIN_SYM = Symbol("origin");
+/** Brands the opaque object a built list is. See types/vdom.ts → ListNode. */
 export const IS_LIST = Symbol("isList");
 /**
  * The "take these props?" rule a component declared with
@@ -94,18 +65,44 @@ export const STABLE_PROPS = Symbol("stableProps");
  */
 export const OWN_CHILDREN = Symbol("ownChildren");
 /**
- * Set by `flattenMixedArray` on a children array that contains at least one
- * list, so the diff can take the cheap path (a strict equality check) instead of
- * scanning every child of every element on every render to find out.
+ * Set by `flattenMixedArray` on a children array holding at least one REGION — a list, or a
+ * component — so the diff can take the cheap path (a strict equality check) instead of scanning
+ * every child of every element on every render to find out.
+ *
+ * A component counts because it owns a RANGE: its render may produce two nodes, or none, and which
+ * of the parent's children are its own is a question `childNodes` cannot answer. It was named
+ * `HAS_LIST` while a list was the only thing that owned more than one node.
  */
-export const HAS_LIST = Symbol("hasList");
+export const HAS_REGION = Symbol("hasRegion");
 /**
- * The child record, on elements that own at least one list. Holds this element's
- * children in render order, with each list collapsed to ONE entry — which is what
- * keeps a list's keys from being reachable by its siblings. Absent on every other
- * element, which keeps reading `childNodes` as it always has.
+ * The child record, on elements that own at least one region — a list or a component. Holds this
+ * element's children in render order, with each region collapsed to ONE entry, which is what keeps
+ * a region's keys from being reachable by its siblings. Absent on an element whose children are all
+ * plain markup, which keeps reading `childNodes` as it always has.
  */
 export const CHILD_RECORD = Symbol("childRecord");
+/**
+ * On a `ChildrenRegion`'s OPENING anchor comment: the closing one.
+ *
+ * A block's record hangs off that same comment, and a reader that finds it needs to know where the
+ * block ends — to insert inside it rather than past every other block in a shared target. The anchor
+ * is a permanent node in the target, so putting both there is what lets an ordinary walk over the
+ * parent's children find a block without anything keeping a registry of live regions.
+ */
+export const BLOCK_CLOSE = Symbol("blockClose");
+/**
+ * On a `ChildrenRegion`'s OPENING anchor: the region itself, so a teardown can tell it.
+ *
+ * A block lives in an element it does not own, and that element may be removed by whoever DOES own
+ * it. The nodes go with it — they are inside it — but the region has to hear about it, or it keeps
+ * believing the components in there are mounted: measured, a later `reconcile` adopted a destroyed
+ * instance, RMD008 reported a write after unmount, and the block moved that dead markup into the
+ * live DOM where it could never update again.
+ *
+ * Typed as the one method the teardown calls, so nothing outside `core/` needs the class.
+ */
+export const BLOCK_OWNER = Symbol("blockOwner");
+
 export const STATE_KEYS = Symbol("stateKeys");
 /**
  * DEV-only, on a context Consumer: hands the inspector the context keys this consumer reads and
@@ -138,9 +135,6 @@ export const PERSIST_KEYS = Symbol("persistKeys");
  * Not behind `__DEV__`: what it saves is bytes a production page ships.
  */
 export const INITIAL_PRIMITIVES = Symbol("initialPrimitives");
-
-// Attribute on a component's carrier element holding its serialized state blob.
-export const STATE_ATTR = "data-ramonda-state";
 
 /**
  * Marks an element the framework placed in a target — a `Portal`'s children in its

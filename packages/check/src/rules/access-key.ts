@@ -1,5 +1,5 @@
 import { positionOf } from "../syntax";
-import type { HostElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * `accessKey`, which takes a shortcut away from somebody who was already using it.
@@ -60,11 +60,9 @@ export const accessKey = {
    */
   evenWhenSpreading: true,
 
-  alsoOnHost: true,
-
   read(_element, { tag, attr, has, overwritable, at }) {
     if (tag === undefined || !has("accessKey") || overwritable("accessKey")) return [];
 
     return [{ tag, claimed: attr("accessKey"), ...positionOf(at) }];
   },
-} as const satisfies HostElementRule<AccessKeyIssue>;
+} as const satisfies ElementRule<AccessKeyIssue>;

@@ -170,7 +170,6 @@ export function createContext<T extends object>(
        * Put each Provider on its own component and hand it the subtree it is for:
        *
        * ```tsx
-       * @Host("div")
        * class FormScope extends Component<{ children?: RamondaNode }> {
        *   private form = this.use(Form, () => ({ … }));
        *   render() { return this.props.children; }

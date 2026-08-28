@@ -24,32 +24,30 @@ const said = () => found().map((issue) => `${issue.line}:${issue.tag}/${issue.be
  */
 describe("a presentational role on something focusable", () => {
   test("a tag that is focusable on its own, and both spellings of the role", () => {
-    // 12 `<button role="presentation">`, 17 `<input role="none">`. `none` is the synonym ARIA added
+    // 11 `<button role="presentation">`, 16 `<input role="none">`. `none` is the synonym ARIA added
     // because `presentation` reads like a visual instruction, and it is the same claim.
-    expect(said()).toContain("12:button/the tag");
-    expect(said()).toContain("17:input/the tag");
+    expect(said()).toContain("11:button/the tag");
+    expect(said()).toContain("16:input/the tag");
   });
 
   test("and a `tabIndex` that put a plain element into the tab order", () => {
-    // 20 written out, 25 with the role a `const` away — the reader follows a name, as the family does.
-    expect(said()).toContain("20:div/tabIndex");
-    expect(said()).toContain("25:div/tabIndex");
+    // 19 written out, 24 with the role a `const` away — the reader follows a name, as the family does.
+    expect(said()).toContain("19:div/tabIndex");
+    expect(said()).toContain("24:div/tabIndex");
   });
 
   test("the whole list, so a regression cannot go quiet", () => {
     /**
-     * 41 is `<a href>` — an anchor is focusable only WITH one, which is why 38 is not here. 64 has
+     * 40 is `<a href>` — an anchor is focusable only WITH one, which is why 37 is not here. 63 has
      * the spread first and its `tabIndex` written after it, so the spread cannot reach over either.
-     * 78 is the role written in a `@Host` props bag, which configures a real element.
      */
     expect(said()).toEqual([
-      "12:button/the tag",
-      "17:input/the tag",
-      "20:div/tabIndex",
-      "25:div/tabIndex",
-      "41:a/the tag",
-      "64:div/tabIndex",
-      "78:button/the tag",
+      "11:button/the tag",
+      "16:input/the tag",
+      "19:div/tabIndex",
+      "24:div/tabIndex",
+      "40:a/the tag",
+      "63:div/tabIndex",
     ]);
   });
 
@@ -65,13 +63,13 @@ describe("a presentational role on something focusable", () => {
    */
   test("every shape that is correct, or unprovable, stays silent", () => {
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [30, 35, 38, 46, 49, 54, 59, 69]) {
+    for (const quiet of [29, 34, 37, 45, 48, 53, 58, 68]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });
 
   test("and a role that is not presentational is nobody's business here", () => {
-    // 69 is `<button role="switch" aria-checked="false">` — a real role on a real control.
+    // 68 is `<button role="switch" aria-checked="false">` — a real role on a real control.
     expect(found().map((issue) => issue.tag)).not.toContain("switch");
   });
 });

@@ -1,4 +1,4 @@
-import { Component, Host, state, list } from "@ramonda/core";
+import { Component, state, list } from "@ramonda/core";
 
 interface Task {
   title: string;
@@ -7,7 +7,6 @@ interface Task {
 
 // One row. The `as` shorthand hands it the item as an `item` prop, so there is
 // no per-item closure to write anywhere.
-@Host("li")
 class TaskRow extends Component<{ item: Task }> {
   // Proves identity: each row keeps its own count across reorders. If the diff
   // matched rows by POSITION, these numbers would follow the position instead of
@@ -20,12 +19,14 @@ class TaskRow extends Component<{ item: Task }> {
 
   render() {
     return (
-      <span className={this.props.item.done ? "done" : ""}>
-        {this.props.item.title}{" "}
-        <button type="button" onclick={this.bump}>
-          clicked {this.clicks}×
-        </button>
-      </span>
+      <li>
+        <span className={this.props.item.done ? "done" : ""}>
+          {this.props.item.title}{" "}
+          <button type="button" onclick={this.bump}>
+            clicked {this.clicks}×
+          </button>
+        </span>
+      </li>
     );
   }
 }
@@ -38,7 +39,6 @@ class TaskRow extends Component<{ item: Task }> {
 // Note what is NOT here: a key. Identity comes from the item itself (its object
 // reference), so there is nothing to write and nothing to get wrong. A wrong key
 // is an accident; using .map() is a decision.
-@Host("div")
 export class ListDemo extends Component {
   @state tasks: Task[] = [
     { title: "write the docs", done: false },
@@ -59,20 +59,22 @@ export class ListDemo extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">
-          <button type="button" onclick={this.shuffle}>
-            reverse the list
-          </button>
-          <button type="button" onclick={this.add}>
-            add one
-          </button>
-          <span className="demo-note">click a few counters, then reverse — each count moves with its task</span>
-        </p>
-        <ul className="demo-list">
-          {list(this.tasks, (item) => (
-            <TaskRow item={item} />
-          ))}
-        </ul>
+        <div>
+          <p className="demo-row">
+            <button type="button" onclick={this.shuffle}>
+              reverse the list
+            </button>
+            <button type="button" onclick={this.add}>
+              add one
+            </button>
+            <span className="demo-note">click a few counters, then reverse — each count moves with its task</span>
+          </p>
+          <ul className="demo-list">
+            {list(this.tasks, (item) => (
+              <TaskRow item={item} />
+            ))}
+          </ul>
+        </div>
       </div>
     );
   }

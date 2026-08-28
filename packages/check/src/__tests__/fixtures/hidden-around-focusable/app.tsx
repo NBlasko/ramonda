@@ -1,16 +1,14 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const busy: boolean;
 declare const rows: string[];
 
-@Host("button")
 class Action extends Component {
   render() {
     return null;
   }
 }
 
-@Host("div")
 class App extends Component {
   render() {
     return (

@@ -2,7 +2,7 @@ import { describe, test, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getDOM } from "../test/setup";
-import { Component, Host } from "../index";
+import { Component } from "../index";
 import { svgElements, svgNamespaceUri } from "../helpers/constants";
 
 /**
@@ -32,25 +32,26 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 describe("SVG namespace", () => {
   test("every typed SVG tag is created in the SVG namespace, with its case kept", async () => {
-    @Host("div")
     class Chart extends Component {
       render() {
         return (
-          <svg viewBox="0 0 24 24">
-            <desc />
-            <metadata />
-            <text>
-              <tspan />
-              <textPath />
-            </text>
-            <foreignObject>
-              {/* HTML inside SVG: correct precisely BECAUSE the tag name decides. */}
-              <div />
-            </foreignObject>
-            <image />
-            <switch />
-            <mpath />
-          </svg>
+          <div>
+            <svg viewBox="0 0 24 24">
+              <desc />
+              <metadata />
+              <text>
+                <tspan />
+                <textPath />
+              </text>
+              <foreignObject>
+                {/* HTML inside SVG: correct precisely BECAUSE the tag name decides. */}
+                <div />
+              </foreignObject>
+              <image />
+              <switch />
+              <mpath />
+            </svg>
+          </div>
         );
       }
     }

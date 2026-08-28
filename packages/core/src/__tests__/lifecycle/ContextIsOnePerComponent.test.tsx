@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../../test/setup";
 import { Component } from "../../base/Component";
-import { Host, state } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { createContext } from "../../base/Context";
 import { Head, resetHeadRegistry } from "../../base/Head";
 import { hydrateRoot } from "../../hydration/hydrate";
@@ -39,11 +39,14 @@ describe("a context object is one per component", () => {
     const [Provider, Consumer] = createContext({ label: "default" }, { optional: true });
 
     /** Provides, and is the only branch entitled to the value. */
-    @Host("div")
     class Provides extends Component {
       ctx = this.use(Provider, () => ({ label: "provided" }));
       render() {
-        return <p id="inside">{this.ctx.label}</p>;
+        return (
+          <div>
+            <p id="inside">{this.ctx.label}</p>
+          </div>
+        );
       }
     }
 
@@ -51,21 +54,25 @@ describe("a context object is one per component", () => {
      * Beside it, not under it. It reads the same ancestor object, so it must reach the DEFAULT —
      * this is the assertion that a publish is an own property rather than a write up the chain.
      */
-    @Host("div")
     class Beside extends Component {
       ctx = this.use(Consumer);
       render() {
-        return <p id="beside">{this.ctx.label}</p>;
+        return (
+          <div>
+            <p id="beside">{this.ctx.label}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
           <div>
-            <Provides />
-            <Beside />
+            <div>
+              <Provides />
+              <Beside />
+            </div>
           </div>
         );
       }
@@ -81,44 +88,50 @@ describe("a context object is one per component", () => {
   test("a descendant sees it however many components apart, because none of them published", async () => {
     const [Provider, Consumer] = createContext({ label: "default" }, { optional: true });
 
-    @Host("div")
     class Deep extends Component {
       ctx = this.use(Consumer);
       render() {
-        return <p id="deep">{this.ctx.label}</p>;
+        return (
+          <div>
+            <p id="deep">{this.ctx.label}</p>
+          </div>
+        );
       }
     }
 
     /** Publishes nothing, so it is invisible to the lookup — the whole point of the chain. */
-    @Host("div")
     class Wrapper extends Component {
       render() {
         return (
           <div>
-            <Deep />
+            <div>
+              <Deep />
+            </div>
           </div>
         );
       }
     }
 
-    @Host("div")
     class Guard extends Component {
       render() {
         return (
           <div>
-            <Wrapper />
+            <div>
+              <Wrapper />
+            </div>
           </div>
         );
       }
     }
 
-    @Host("div")
     class App extends Component {
       ctx = this.use(Provider, () => ({ label: "from the top" }));
       render() {
         return (
           <div>
-            <Guard />
+            <div>
+              <Guard />
+            </div>
           </div>
         );
       }
@@ -133,35 +146,40 @@ describe("a context object is one per component", () => {
   test("the nearer provider wins, and the further one is still there for its own branch", async () => {
     const [Provider, Consumer] = createContext({ label: "default" }, { optional: true });
 
-    @Host("div")
     class Reader extends Component {
       ctx = this.use(Consumer);
       render() {
-        return <p class="read">{this.ctx.label}</p>;
-      }
-    }
-
-    /** Shadows the one above for its own subtree only. */
-    @Host("div")
-    class Inner extends Component {
-      ctx = this.use(Provider, () => ({ label: "inner" }));
-      render() {
         return (
           <div>
-            <Reader />
+            <p class="read">{this.ctx.label}</p>
           </div>
         );
       }
     }
 
-    @Host("div")
+    /** Shadows the one above for its own subtree only. */
+    class Inner extends Component {
+      ctx = this.use(Provider, () => ({ label: "inner" }));
+      render() {
+        return (
+          <div>
+            <div>
+              <Reader />
+            </div>
+          </div>
+        );
+      }
+    }
+
     class App extends Component {
       ctx = this.use(Provider, () => ({ label: "outer" }));
       render() {
         return (
           <div>
-            <Inner />
-            <Reader />
+            <div>
+              <Inner />
+              <Reader />
+            </div>
           </div>
         );
       }
@@ -177,33 +195,38 @@ describe("a context object is one per component", () => {
   test("a provider still reaches a consumer when it changes, across the wrappers between them", async () => {
     const [Provider, Consumer] = createContext({ label: "default" }, { optional: true });
 
-    @Host("div")
     class Deep extends Component {
       ctx = this.use(Consumer);
       render() {
-        return <p id="deep">{this.ctx.label}</p>;
-      }
-    }
-
-    @Host("div")
-    class Wrapper extends Component {
-      render() {
         return (
           <div>
-            <Deep />
+            <p id="deep">{this.ctx.label}</p>
           </div>
         );
       }
     }
 
-    @Host("div")
+    class Wrapper extends Component {
+      render() {
+        return (
+          <div>
+            <div>
+              <Deep />
+            </div>
+          </div>
+        );
+      }
+    }
+
     class App extends Component {
       @state label = "first";
       ctx = this.use(Provider, () => ({ label: this.label }));
       render() {
         return (
           <div>
-            <Wrapper />
+            <div>
+              <Wrapper />
+            </div>
           </div>
         );
       }
@@ -226,44 +249,52 @@ describe("a context object is one per component", () => {
      * both keys are published twice and read from both levels — which is what says the two
      * publishers cannot collide: one uses a number from `createId()`, the other a private symbol.
      */
-    @Host("div")
     class Page extends Component {
       ctx = this.use(Consumer);
       head = this.use(Head, () => ({ title: "the page" }));
       render() {
-        return <p id="page">{this.ctx.label}</p>;
+        return (
+          <div>
+            <p id="page">{this.ctx.label}</p>
+          </div>
+        );
       }
     }
 
     /** Beside the page: no provider and no `Head` above it, so it gets the default and no title. */
-    @Host("div")
     class Aside extends Component {
       ctx = this.use(Consumer);
       render() {
-        return <p id="aside">{this.ctx.label}</p>;
+        return (
+          <div>
+            <p id="aside">{this.ctx.label}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Layout extends Component {
       ctx = this.use(Provider, () => ({ label: "from the layout" }));
       head = this.use(Head, () => ({ title: "the layout", description: "set once, by the layout" }));
       render() {
         return (
           <div>
-            <Page />
+            <div>
+              <Page />
+            </div>
           </div>
         );
       }
     }
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
           <div>
-            <Layout />
-            <Aside />
+            <div>
+              <Layout />
+              <Aside />
+            </div>
           </div>
         );
       }
@@ -286,21 +317,25 @@ describe("a context object is one per component", () => {
   test("hydration creates its own objects too, so a hydrated sibling gets the default", async () => {
     const [Provider, Consumer] = createContext({ label: "default" }, { optional: true });
 
-    @Host("div")
     class Page extends Component {
       ctx = this.use(Consumer);
       render() {
-        return <p id="page">{this.ctx.label}</p>;
+        return (
+          <div>
+            <p id="page">{this.ctx.label}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Layout extends Component {
       ctx = this.use(Provider, () => ({ label: "from the layout" }));
       render() {
         return (
           <div>
-            <Page />
+            <div>
+              <Page />
+            </div>
           </div>
         );
       }
@@ -308,21 +343,25 @@ describe("a context object is one per component", () => {
 
     /** Beside the layout, and constructed AFTER it — so a shared object would already hold the
      * channel by the time this one looks. That ordering is what makes the assertion meaningful. */
-    @Host("div")
     class Aside extends Component {
       ctx = this.use(Consumer);
       render() {
-        return <p id="aside">{this.ctx.label}</p>;
+        return (
+          <div>
+            <p id="aside">{this.ctx.label}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
           <div>
-            <Layout />
-            <Aside />
+            <div>
+              <Layout />
+              <Aside />
+            </div>
           </div>
         );
       }

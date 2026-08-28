@@ -1,5 +1,5 @@
 import { positionOf } from "../syntax";
-import type { ElementContext, HostElementRule } from "./rule";
+import type { ElementContext, ElementRule } from "./rule";
 
 /**
  * An `aria-*` written `"false"` beside the HTML attribute that says the opposite.
@@ -95,7 +95,6 @@ export const ariaThatContradictsTheTag = {
    * The order guard is taken for BOTH halves: a spread after either may replace it, and then the
    * two attributes this reports as disagreeing are not the two that render.
    */
-  alsoOnHost: true,
   evenWhenSpreading: true,
 
   read(_element, { tag, has, truth, overwritable, at }: ElementContext) {
@@ -113,4 +112,4 @@ export const ariaThatContradictsTheTag = {
     }
     return found;
   },
-} as const satisfies HostElementRule<AriaThatContradictsTheTagIssue>;
+} as const satisfies ElementRule<AriaThatContradictsTheTagIssue>;

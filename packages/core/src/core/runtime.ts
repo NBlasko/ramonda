@@ -1,6 +1,6 @@
 import type { Context } from "../types/commonTypes";
 import type { Effect } from "../reactivity/effect";
-import type { BaseComponent, MaybeEnhancedNode, LifecycleEntry, WatchPropEntry } from "../types/vdom";
+import type { BaseComponent, ComponentRegion, LifecycleEntry, WatchPropEntry } from "../types/vdom";
 import { createId } from "../helpers/createId";
 import { addTaskToQueue } from "./Task";
 import type { State } from "../reactivity/State";
@@ -109,18 +109,16 @@ export interface ComponentRuntime {
    * end of the life cycle, not the same state.
    */
   isDestroyed?: boolean;
-  enhancedNode?: MaybeEnhancedNode | ChildNode;
   /**
-   * The resolved host tag, cached for this instance's lifetime. `""` means "the
-   * default <ramonda-host>" and is cached too, so a component with no @Host does
-   * not re-resolve on every render.
+   * This component's entry in its parent's child record: the nodes it owns, in order, and the parent
+   * they sit in.
    *
-   * Cached rather than recomputed because the host element IS the component: it
-   * must not change under a live instance. A prop change that would resolve to a
-   * different tag is handled in the diff, which declines the match and builds a
-   * new component — see helpers/hostTag.ts.
+   * What `enhancedNode` used to be, and it had to change shape rather than move: a component owns a
+   * RANGE, so "the node this component is" has no answer once a render may return two nodes or none.
+   * A render this component schedules for itself reconciles through here — see
+   * `refreshComponentRegion`.
    */
-  hostTag?: string;
+  region?: ComponentRegion;
   /**
    * Which side this component was rendered on. Fixed at creation and inherited
    * from the parent, so a re-render that happens after the server render has

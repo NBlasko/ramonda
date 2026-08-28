@@ -1,4 +1,4 @@
-import { Component, Host, list, state, compute } from "@ramonda/core";
+import { Component, list, state, compute } from "@ramonda/core";
 
 // @compute caches a derived value and recomputes it only when something it read
 // actually changed. It works on a method or on a getter — both are cached the
@@ -7,7 +7,6 @@ import { Component, Host, list, state, compute } from "@ramonda/core";
 // The cache tracks READS, not declarations. `total` reads `items`, so adding an
 // item invalidates it; typing in the filter box does not, because `total` never
 // reads `filter`. Nothing declares that — it follows from the body.
-@Host("div")
 export class ComputeDemo extends Component {
   @state items = [
     { name: "apples", price: 3 },
@@ -54,28 +53,30 @@ export class ComputeDemo extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">
-          <input
-            type="text"
-            aria-label="Filter the items"
-            placeholder="filter"
-            value={this.filter}
-            oninput={this.onFilter}
-          />
-          <button type="button" onclick={this.addItem}>
-            add an item
-          </button>
-        </p>
-        <ul className="demo-log">{list(this.visible, this.renderItem)}</ul>
-        <p className="demo-row">
-          <span>
-            total: <strong>{this.total}</strong>
-          </span>
-          <span className="demo-note">
-            total computed {this.totalRuns}× · visible computed {this.visibleRuns}× — typing in the filter recomputes
-            only one of them
-          </span>
-        </p>
+        <div>
+          <p className="demo-row">
+            <input
+              type="text"
+              aria-label="Filter the items"
+              placeholder="filter"
+              value={this.filter}
+              oninput={this.onFilter}
+            />
+            <button type="button" onclick={this.addItem}>
+              add an item
+            </button>
+          </p>
+          <ul className="demo-log">{list(this.visible, this.renderItem)}</ul>
+          <p className="demo-row">
+            <span>
+              total: <strong>{this.total}</strong>
+            </span>
+            <span className="demo-note">
+              total computed {this.totalRuns}× · visible computed {this.visibleRuns}× — typing in the filter recomputes
+              only one of them
+            </span>
+          </p>
+        </div>
       </div>
     );
   }

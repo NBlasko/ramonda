@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { ABSTRACT_ROLES, ROLES } from "./aria";
-import type { HostElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * A `role` that is not one, or one the specification forbids in markup.
@@ -65,8 +65,6 @@ export const unknownRole = {
    */
   evenWhenSpreading: true,
 
-  alsoOnHost: true,
-
   read(_element, { attr, overwritable, at }) {
     const written = attr("role");
     if (written === undefined) return [];
@@ -92,4 +90,4 @@ export const unknownRole = {
 
     return found;
   },
-} as const satisfies HostElementRule<UnknownRoleIssue>;
+} as const satisfies ElementRule<UnknownRoleIssue>;

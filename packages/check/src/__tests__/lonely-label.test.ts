@@ -23,23 +23,23 @@ const lines = () =>
  */
 describe("a label with nothing to label", () => {
   test("a label with neither half of the association", () => {
-    // 21 is bare text; 24 has markup inside it that is not a control, which reads even more like a
+    // 19 is bare text; 22 has markup inside it that is not a control, which reads even more like a
     // finished thing.
-    expect(lines()).toEqual([21, 24]);
+    expect(lines()).toEqual([19, 22]);
   });
 
   /**
    * Nine silences, and most of them are the reason this rule can ship at all.
    *
-   * 29 and 34 write an `htmlFor` — the second one unreadable, which is still written, and whether
+   * 27 and 32 write an `htmlFor` — the second one unreadable, which is still written, and whether
    * it points at a real id is `reference-to-an-id-that-is-not-there`'s question rather than a
-   * second report on one line. 37 and 42 wrap the control, at one level and at two. 49 wraps a
+   * second report on one line. 35 and 40 wrap the control, at one level and at two. 47 wraps a
    * COMPONENT, which is the ordinary way a form is written and whose markup is decided inside it.
-   * 54 puts it in an expression. 57 spreads, and the spread may carry the `htmlFor`. 60 and 63 are
+   * 52 puts it in an expression. 55 spreads, and the spread may carry the `htmlFor`. 58 and 61 are
    * a `<select>` and a `<textarea>`, which are controls as much as an `<input>` is.
    */
   test("every association this can see, or cannot rule out, stays silent", () => {
-    for (const quiet of [29, 34, 37, 42, 49, 54, 57, 60, 63]) {
+    for (const quiet of [27, 32, 35, 40, 47, 52, 55, 58, 61]) {
       expect(lines(), `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });

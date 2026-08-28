@@ -3,8 +3,10 @@ import { afterEach } from "vitest";
 import userEvent from "@testing-library/user-event";
 
 import { bootstrap } from "../";
-import type { ComponentChild } from "../types/vdom";
-import { unmountChildrenNodes } from "../core/DiffAndMerge";
+import type { ComponentChild, ComponentRegion } from "../types/vdom";
+import { COMPONENT_RUNTIME } from "../core/runtime";
+import { componentAt, componentsIn, unmountChildrenNodes } from "../core/DiffAndMerge";
+import { markComponents } from "../hydration/ssr";
 import { flushSync } from "../testing";
 import { configureDev } from "../";
 
@@ -51,6 +53,80 @@ afterEach(() => {
   containerSeq = 0;
 });
 
+/**
+ * The component whose markup this node is part of, typed.
+ *
+ * A component owns a RANGE of nodes, so there is no node to hang a back-reference off: the answer
+ * comes from the child record — see `componentAt`.
+ * It THROWS rather than returning `undefined`, because a test asking this has already decided a
+ * component is there and a `!` on the answer would only move the failure somewhere less useful.
+ */
+export function instanceOf<T>(node: Node | null | undefined): T {
+  if (!node) throw new Error("[test] instanceOf was given no node");
+  const found = componentAt(node);
+  if (!found) throw new Error("[test] no component owns this node");
+  return found as unknown as T;
+}
+
+/**
+ * The components of a given class name under `root`, outermost first.
+ *
+ * What `[data-ramonda="Child"]` used to find. That attribute was a DEV marker on the host element,
+ * and there is no host element — so the question moves to the record, which is where the answer
+ * always really was. It also finds a component that renders NOTHING, which a selector never could.
+ */
+export function findAll<T>(root: Node, name: string): T[] {
+  return componentsIn(root).filter((c) => c.constructor.name === name) as unknown as T[];
+}
+
+/**
+ * A component's own record entry: the nodes it owns and the entries inside it.
+ *
+ * The internals, deliberately — a test that asks this is asking about the reconciler's bookkeeping
+ * rather than about a page, and there is no public way to see a region because nothing outside the
+ * diff has any business with one.
+ */
+export function regionOf(instance: object): ComponentRegion | undefined {
+  return (instance as unknown as { [COMPONENT_RUNTIME]: { region?: ComponentRegion } })[COMPONENT_RUNTIME].region;
+}
+
+/** The one component of that name, and a failure when there is not exactly one. */
+export function findOne<T>(root: Node, name: string): T {
+  const found = findAll<T>(root, name);
+  if (found.length !== 1) throw new Error(`[test] expected one <${name} />, found ${found.length}`);
+  return found[0];
+}
+
+/**
+ * What the SERVER would have served for a tree rendered on the client.
+ *
+ * `getDOM` renders on the client, and a client render writes no markers: a component's range is
+ * known from the record there, so there is nothing to say in the markup. `markComponents` is the one
+ * pass that adds what a hydrating client reads — the comment pair around each component's nodes,
+ * with its state blob on the opening one.
+ *
+ * `state: false` writes the pair WITHOUT the blob, and it is not a convenience. A test about node
+ * ADOPTION wants the server's nodes and the client's own initial state: a list's identity is the item
+ * OBJECT, and a blob is a JSON round trip, so restoring it hands the client copies and every row
+ * looks new. Those tests were written before any blob existed and they still ask the same question;
+ * the ones about state transfer say so by leaving this alone.
+ */
+export function servedMarkup(container: HTMLElement, options?: { state?: boolean }): string {
+  markComponents(container);
+  if (options?.state === false) {
+    const walk = (node: Node): void => {
+      if (node.nodeType === 8) {
+        const comment = node as Comment;
+        const at = comment.data.indexOf(" ");
+        if (comment.data.startsWith("c") && at !== -1) comment.data = comment.data.slice(0, at);
+      }
+      node.childNodes.forEach(walk);
+    };
+    walk(container);
+  }
+  return container.innerHTML;
+}
+
 export async function getDOM<T = any>(component: ComponentChild) {
   const user = userEvent.setup();
   const div = document.createElement("div");
@@ -61,17 +137,15 @@ export async function getDOM<T = any>(component: ComponentChild) {
   bootstrap(component, div);
   await Promise.resolve();
 
-  const findInstance = (node: Node): unknown => {
-    // The instance is parked on the DOM node by the renderer, so the property is the untyped
-    // part — not the node.
-    const carrier = node as Node & { _componentInstance?: unknown };
-    if (carrier._componentInstance) return carrier._componentInstance;
-    for (const child of Array.from(node.childNodes)) {
-      const found = findInstance(child);
-      if (found) return found;
-    }
-    return null;
-  };
+  /**
+   * The outermost component in this container — the root the test just mounted.
+   *
+   * Asked of the container's own record rather than by walking the DOM for a back-reference: a
+   * component owns a RANGE of nodes and has none of its own to park a pointer on. `componentAt`
+   * answers "which component is this node in", so the container's first node is what to ask about,
+   * and the root is the only component whose range covers it from here.
+   */
+  const findInstance = (node: Node): unknown => componentAt(node) ?? null;
 
   const instance = findInstance(div) as T;
 

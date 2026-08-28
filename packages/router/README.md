@@ -7,7 +7,7 @@ with nested route outlets.
 [![license](https://img.shields.io/npm/l/%40ramonda%2Frouter)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
 ```tsx
-import { Component, Host } from "@ramonda/core";
+import { Component } from "@ramonda/core";
 import { createRouter, createRoutes } from "@ramonda/router";
 
 const routes = createRoutes({
@@ -20,7 +20,6 @@ const routes = createRoutes({
 // bound to THIS table, so `href` and `push` take the paths it names and nothing else.
 export const { Router, RouteOutlet, Link, Navigator, route } = createRouter(routes);
 
-@Host("div")
 export class App extends Component {
   // Mount the router once, on the component that wraps your app.
   router = this.use(Router);

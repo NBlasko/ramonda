@@ -1,11 +1,10 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const rest: Record<string, unknown>;
 declare const editing: boolean;
 declare const kind: string;
 
 /** ✗ Two in one render — the layout owns one and the page adds another. */
-@Host("div")
 class TwoMains extends Component {
   render() {
     return (
@@ -18,7 +17,6 @@ class TwoMains extends Component {
 }
 
 /** ✗ The commonest shape: one tag, one role, neither author seeing the other. */
-@Host("div")
 class TagAndRole extends Component {
   render() {
     return (
@@ -31,7 +29,6 @@ class TagAndRole extends Component {
 }
 
 /** ✓ One arm each: that is one landmark on the page. */
-@Host("div")
 class OneInEachArm extends Component {
   render() {
     return <div>{editing ? <main>edit</main> : <main>read</main>}</div>;
@@ -39,7 +36,6 @@ class OneInEachArm extends Component {
 }
 
 /** ✓ The specification's own escape. */
-@Host("div")
 class SecondIsHidden extends Component {
   render() {
     return (
@@ -52,7 +48,6 @@ class SecondIsHidden extends Component {
 }
 
 /** ✗ `hidden={false}` says out loud that it is shown, so it excuses nothing. */
-@Host("div")
 class HiddenIsFalse extends Component {
   render() {
     return (
@@ -65,7 +60,6 @@ class HiddenIsFalse extends Component {
 }
 
 /** ✓ A spread may be carrying the `hidden` that settles it. */
-@Host("div")
 class SecondSpreads extends Component {
   render() {
     return (
@@ -78,7 +72,6 @@ class SecondSpreads extends Component {
 }
 
 /** ✓ A `role` this cannot read may be anything, including one that is not a landmark. */
-@Host("div")
 class RoleIsUnreadable extends Component {
   render() {
     return (
@@ -91,7 +84,6 @@ class RoleIsUnreadable extends Component {
 }
 
 /** ✓ One is one, however deeply it is nested. */
-@Host("div")
 class JustOne extends Component {
   render() {
     return (
@@ -105,14 +97,12 @@ class JustOne extends Component {
 }
 
 /** ✓ A second RENDER is a second page, and they are never on it together. */
-@Host("div")
 class AnotherView extends Component {
   render() {
     return <main>a different route</main>;
   }
 }
 
-@Host("div")
 class App extends Component {
   render() {
     return (

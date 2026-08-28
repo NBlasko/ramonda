@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { ARIA_VALUES, type AriaValue } from "./aria";
-import type { HostElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * An `aria-*` attribute carrying a value its specification does not allow.
@@ -104,8 +104,6 @@ export const ariaValue = {
    */
   evenWhenSpreading: true,
 
-  alsoOnHost: true,
-
   read(_element, { tag, attr, overwritable, attributes }) {
     // Markup only. `<Panel aria-hidden="yes" />` is a prop on a component, and what that component
     // does with it is decided inside it — where this rule meets the real attribute again.
@@ -129,4 +127,4 @@ export const ariaValue = {
     }
     return found;
   },
-} as const satisfies HostElementRule<AriaValueIssue>;
+} as const satisfies ElementRule<AriaValueIssue>;

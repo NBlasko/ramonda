@@ -24,31 +24,29 @@ const said = () => found().map((issue) => `${issue.line}:${issue.html}`);
  */
 describe("an accessibility attribute that contradicts the tag", () => {
   test("the two that cost a reader the most", () => {
-    expect(said()).toContain("12:required");
-    expect(said()).toContain("15:disabled");
+    expect(said()).toContain("11:required");
+    expect(said()).toContain("14:disabled");
   });
 
   test("and every other pair where HTML sets its ARIA counterpart implicitly", () => {
-    expect(said()).toContain("20:checked");
-    expect(said()).toContain("21:readonly");
-    expect(said()).toContain("22:open");
+    expect(said()).toContain("19:checked");
+    expect(said()).toContain("20:readonly");
+    expect(said()).toContain("21:open");
     // `hidden` with `aria-hidden="false"` is the sharpest of them: gone from the page, announced
     // as present.
-    expect(said()).toContain("27:hidden");
+    expect(said()).toContain("26:hidden");
   });
 
   test("the whole list, so a regression cannot go quiet", () => {
-    // 58 has the spread BEFORE both attributes, so nothing can reach over either. 65 is the pair
-    // written in a `@Host` props bag, which configures a real element.
+    // 57 has the spread BEFORE both attributes, so nothing can reach over either.
     expect(said()).toEqual([
-      "12:required",
-      "15:disabled",
-      "20:checked",
-      "21:readonly",
-      "22:open",
-      "27:hidden",
-      "58:required",
-      "65:required",
+      "11:required",
+      "14:disabled",
+      "19:checked",
+      "20:readonly",
+      "21:open",
+      "26:hidden",
+      "57:required",
     ]);
   });
 
@@ -59,18 +57,18 @@ describe("an accessibility attribute that contradicts the tag", () => {
    * rather than untidiness, and a rule that reported agreement would be reporting a habit.
    */
   test("agreeing with the tag is untidy, not a fault", () => {
-    expect(found().map((issue) => issue.line)).not.toContain(32);
+    expect(found().map((issue) => issue.line)).not.toContain(31);
   });
 
   test("everything the source does not settle on both halves stays silent", () => {
     /**
-     * 35 writes the HTML attribute alone, which is the advice. 40 writes `disabled={false}`, so
-     * there is nothing to contradict. 45 binds BOTH to one expression, which is the correct way to
-     * write a pair that moves and exactly what a rule that guessed would report. 50 has the ARIA
-     * half on something with no HTML attribute to disagree with. 55 spreads after both.
+     * 34 writes the HTML attribute alone, which is the advice. 39 writes `disabled={false}`, so
+     * there is nothing to contradict. 44 binds BOTH to one expression, which is the correct way to
+     * write a pair that moves and exactly what a rule that guessed would report. 49 has the ARIA
+     * half on something with no HTML attribute to disagree with. 54 spreads after both.
      */
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [35, 40, 45, 50, 55]) {
+    for (const quiet of [34, 39, 44, 49, 54]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });

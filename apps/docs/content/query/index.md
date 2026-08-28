@@ -85,10 +85,9 @@ only under real traffic.
 
 So a `QueryClientProvider` owns the cache and it reaches components through
 [context](/composition/context), exactly as [the router](/routing) owns route state.
-It is a hook, not a component, for the reason every provider here is a hook: a
-component is [always exactly one element](/why/one-element), so a wrapper would cost
-a node that means nothing — and inside a `<tr>` or a `<select>` that node is illegal
-HTML.
+It is a hook, not a component, and that is a choice about where the value lives rather
+than a cost: a hook belongs to the component that used it, so the cache is per app on the
+client and per request on the server without anything global to reach for.
 
 ```tsx
 class App extends Component {

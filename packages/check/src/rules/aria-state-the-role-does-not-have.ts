@@ -1,7 +1,7 @@
 import { positionOf } from "../syntax";
 import { ROLES } from "./aria";
 import { ARIA_BELONGS_TO, whereItBelongs } from "./ariaBelongsTo";
-import type { ElementContext, HostElementRule } from "./rule";
+import type { ElementContext, ElementRule } from "./rule";
 
 /**
  * An `aria-*` written beside a `role` that does not have it.
@@ -77,7 +77,6 @@ export const ariaStateTheRoleDoesNotHave = {
    * The `role` is read as a VALUE, so the order guard is taken for it. Each attribute is asked
    * about its own position too: a spread after one may replace it with something that belongs.
    */
-  alsoOnHost: true,
   evenWhenSpreading: true,
 
   read(_element, { attr, has, attributes, overwritable }: ElementContext) {
@@ -107,4 +106,4 @@ export const ariaStateTheRoleDoesNotHave = {
     }
     return found;
   },
-} as const satisfies HostElementRule<AriaStateTheRoleDoesNotHaveIssue>;
+} as const satisfies ElementRule<AriaStateTheRoleDoesNotHaveIssue>;

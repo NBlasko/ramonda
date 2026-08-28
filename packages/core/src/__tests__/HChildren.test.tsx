@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, state, __h } from "../index";
+import { getDOM, instanceOf } from "../test/setup";
+import { Component, state, __h } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -8,14 +8,15 @@ import { resetDiagnostics } from "../debug/diagnostics";
  * their own group, what an invalid child does, and what happens when something
  * that is not a tag ends up in tag position.
  */
-@Host("li")
 class Chip extends Component<{ label: string }> {
   @state hits = 0;
   render() {
     return (
-      <span>
-        {this.props.label}#{this.hits}
-      </span>
+      <li>
+        <span>
+          {this.props.label}#{this.hits}
+        </span>
+      </li>
     );
   }
 }
@@ -24,8 +25,8 @@ const dump = (c: Element) =>
     .map((l) => l.textContent)
     .join(" | ");
 const mark = (c: Element, i: number, v: number) => {
-  const li = c.querySelectorAll("li")[i] as any;
-  li._componentInstance.hits = v;
+  const li = c.querySelectorAll("li")[i];
+  instanceOf<{ hits: number }>(li).hits = v;
 };
 
 describe("h: children and tags", () => {
@@ -48,20 +49,21 @@ describe("h: children and tags", () => {
   });
 
   test("an empty array slot does not shift the group after it", async () => {
-    @Host("div")
     class C extends Component {
       @state left: string[] = [];
       @state right = ["r1", "r2"];
       render() {
         return (
-          <ul>
-            {this.left.map((l) => (
-              <Chip label={l} />
-            ))}
-            {this.right.map((r) => (
-              <Chip label={r} />
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {this.left.map((l) => (
+                <Chip label={l} />
+              ))}
+              {this.right.map((r) => (
+                <Chip label={r} />
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -85,10 +87,9 @@ describe("h: children and tags", () => {
   });
 
   test("an object that is not a vnode is dropped, and the rest survives", async () => {
-    @Host("div")
     class C extends Component {
       render() {
-        return __h("p", null, { nope: true } as never, "text" as never) as never;
+        return <div>{__h("p", null, { nope: true } as never, "text" as never) as never}</div>;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -98,10 +99,9 @@ describe("h: children and tags", () => {
 
   test("a function in tag position is reported but still renders", async () => {
     const Fn = (props: { label?: string }) => __h("b", null, props.label ?? ("fn" as never)) as never;
-    @Host("div")
     class C extends Component {
       render() {
-        return __h(Fn as never, { label: "hello" }) as never;
+        return <div>{__h(Fn as never, { label: "hello" }) as never}</div>;
       }
     }
     const app = await getDOM<C>(<C />);
@@ -116,29 +116,28 @@ describe("h: children and tags", () => {
     const Bad = () => {
       throw new Error("tag boom");
     };
-    @Host("div")
     class C extends Component {
       render() {
-        return __h("div", null, __h(Bad as never, null) as never) as never;
+        return <div>{__h("div", null, __h(Bad as never, null) as never) as never}</div>;
       }
     }
     const app = await getDOM<C>(<C />);
     await app.settle();
     // An empty host, not a crash. It must be HOST_TAG and not "template": the
     // name goes into the vnode unchanged and the diff compares it to nodeName,
-    // which is always uppercase.
-    expect(app.container.querySelector("ramonda-host")).not.toBe(null);
+    // which is always uppercase. A `<template>` renders nothing and the parser accepts one
+    // anywhere — it took over from `<ramonda-host>` when the host stopped existing.
+    expect(app.container.querySelector("template")).not.toBe(null);
   });
 
-  test("something that is not a tag at all falls back to an empty host", async () => {
-    @Host("div")
+  test("something that is not a tag at all falls back to an inert element", async () => {
     class C extends Component {
       render() {
-        return __h(42 as never, null) as never;
+        return <div>{__h(42 as never, null) as never}</div>;
       }
     }
     const app = await getDOM<C>(<C />);
     await app.settle();
-    expect(app.container.querySelector("ramonda-host")).not.toBe(null);
+    expect(app.container.querySelector("template")).not.toBe(null);
   });
 });

@@ -26,38 +26,38 @@ const said = () => found().map((issue) => `${issue.line}:${issue.child}in${issue
  */
 describe("a container holding a tag that does not belong in it", () => {
   test("the wrapper that quietly ends a list", () => {
-    expect(said()).toContain("19:divinul");
+    expect(said()).toContain("17:divinul");
   });
 
   test("and the containers the parser MOVES a foreign child out of", () => {
     // `<select>` and `<table>` have strict content models, so the tree the browser builds is not the
     // tree in the source — which hydration then reports as RMD007, a mismatch, sending the reader
     // after a clock that is not there.
-    expect(said()).toContain("24:spaninselect");
-    expect(said()).toContain("29:divintable");
-    expect(said()).toContain("35:divintr");
+    expect(said()).toContain("22:spaninselect");
+    expect(said()).toContain("27:divintable");
+    expect(said()).toContain("33:divintr");
   });
 
   test("two foreign children are two reports, because each is its own line to move", () => {
-    expect(said()).toContain("41:divinol");
-    expect(said()).toContain("42:spaninol");
+    expect(said()).toContain("39:divinol");
+    expect(said()).toContain("40:spaninol");
   });
 
   test("the whole list, so a regression cannot go quiet", () => {
     expect(said()).toEqual([
-      "19:divinul",
-      "24:spaninselect",
-      "29:divintable",
-      "35:divintr",
-      "41:divinol",
-      "42:spaninol",
+      "17:divinul",
+      "22:spaninselect",
+      "27:divintable",
+      "33:divintr",
+      "39:divinol",
+      "40:spaninol",
     ]);
   });
 
   /**
    * The silences, and the second is what makes the rule shippable.
    *
-   * 46 writes the right child. 51 builds from data and 54 holds a COMPONENT — that is how every real
+   * 44 writes the right child. 49 builds from data and 52 holds a COMPONENT — that is how every real
    * list is made, and either may render exactly the right tag, so only a tag written OUT and known
    * to be wrong is reported.
    *
@@ -68,7 +68,7 @@ describe("a container holding a tag that does not belong in it", () => {
    */
   test("the right children, and everything this cannot see, stay silent", () => {
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [46, 51, 54, 59, 60, 61, 74, 78, 84, 92]) {
+    for (const quiet of [44, 49, 52, 57, 58, 59, 72, 76, 82, 90]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });

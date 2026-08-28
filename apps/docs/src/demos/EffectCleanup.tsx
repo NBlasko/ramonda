@@ -1,4 +1,4 @@
-import { Component, Host, createSubscriptionDecorator, list, memoized, state } from "@ramonda/core";
+import { Component, createSubscriptionDecorator, list, memoized, state } from "@ramonda/core";
 
 /** Module scope, so `each` is the SAME array every render — a fresh literal would be a new
  *  value each time and cost the list its identity. */
@@ -25,7 +25,6 @@ const onChannel = createSubscriptionDecorator("onChannel", (owner: ChannelFeed, 
   return () => handler(`disconnected from ${channel}`);
 });
 
-@Host("div")
 export class EffectCleanup extends Component {
   @state channel = "news";
   @state log: string[] = [];
@@ -66,8 +65,10 @@ export class EffectCleanup extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">{list(CHANNELS, this.renderChannel)}</p>
-        <ul className="demo-log">{list(this.log, this.renderLine)}</ul>
+        <div>
+          <p className="demo-row">{list(CHANNELS, this.renderChannel)}</p>
+          <ul className="demo-log">{list(this.log, this.renderLine)}</ul>
+        </div>
       </div>
     );
   }

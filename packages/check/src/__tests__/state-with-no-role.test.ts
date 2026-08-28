@@ -21,39 +21,37 @@ const said = () =>
  */
 describe("an accessibility state with no role to belong to", () => {
   test("a state on a generic element, in both tags that certainly have no role", () => {
-    expect(said()).toContain("13:div/aria-expanded");
-    expect(said()).toContain("16:span/aria-checked");
+    expect(said()).toContain("12:div/aria-expanded");
+    expect(said()).toContain("15:span/aria-checked");
   });
 
   test("two on one element are two reports, because each is its own line to delete", () => {
-    expect(said()).toContain("19:div/aria-selected");
-    expect(said()).toContain("19:div/aria-level");
+    expect(said()).toContain("18:div/aria-selected");
+    expect(said()).toContain("18:div/aria-level");
   });
 
   test("the whole list, so a regression cannot go quiet", () => {
-    // 59 is the state written in a `@Host` props bag, which configures a real element.
     expect(said()).toEqual([
-      "13:div/aria-expanded",
-      "16:span/aria-checked",
-      "19:div/aria-selected",
-      "19:div/aria-level",
-      "59:div/aria-expanded",
+      "12:div/aria-expanded",
+      "15:span/aria-checked",
+      "18:div/aria-selected",
+      "18:div/aria-level",
     ]);
   });
 
   /**
    * The seven silences, and each is a different reason.
    *
-   * 24 is three GLOBAL attributes, which work on anything. 29 is `aria-hidden` — global AND doing
+   * 23 is three GLOBAL attributes, which work on anything. 28 is `aria-hidden` — global AND doing
    * something here, since it takes the subtree out of the tree, so it is exactly the attribute a
-   * rule about "this says nothing" must not report. 32 has a role written and 37 has one this
-   * cannot READ, which is still a role and still not something to claim is absent. 42 is a
-   * `<button>`, whose implicit role this rule deliberately does not have a table for. 50 spreads,
+   * rule about "this says nothing" must not report. 31 has a role written and 36 has one this
+   * cannot READ, which is still a role and still not something to claim is absent. 41 is a
+   * `<button>`, whose implicit role this rule deliberately does not have a table for. 49 spreads,
    * and the spread may be carrying the role.
    */
   test("every shape that says something, or might, stays silent", () => {
     const lines = (run()["aria-state-with-no-role"] ?? []).map((issue) => issue.line);
-    for (const quiet of [24, 29, 32, 37, 42, 50]) {
+    for (const quiet of [23, 28, 31, 36, 41, 49]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });
@@ -66,7 +64,7 @@ describe("an accessibility state with no role to belong to", () => {
    * one line is how a reader learns to skim past both.
    */
   test("a misspelling is the neighbouring rule's, and only its", () => {
-    expect(said().map((s) => Number(s.split(":")[0]))).not.toContain(47);
-    expect((run()["unknown-aria-attribute"] ?? []).map((issue) => issue.line)).toEqual([47]);
+    expect(said().map((s) => Number(s.split(":")[0]))).not.toContain(46);
+    expect((run()["unknown-aria-attribute"] ?? []).map((issue) => issue.line)).toEqual([46]);
   });
 });

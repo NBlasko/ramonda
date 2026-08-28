@@ -32,16 +32,16 @@ import type { ElementRule } from "./rule";
  * written to be jumped to rather than to jump. Rare now, still valid, and reporting it would report
  * markup that is doing the opposite of this fault.
  *
- * **An anchor a component makes through `@Host`, and a `<Link>` at the call site.** Measured against
- * the router's own, which is the shape an application actually writes: `@Host("a", (self) => ({ href:
- * self.currentHref }))`, where `currentHref` is a getter reading the props AND the router's state.
- * There is no `<a>` in any JSX to read, and the prop at the call site is not the anchor's `href` —
- * it is one input to a computation. Judging either would be guessing, so `packages/router` is
- * silent here and correctly so.
+ * **An anchor whose `href` is COMPUTED, and a `<Link>` at the call site.** Measured against the
+ * router's own, which is the shape an application actually writes: `<a href={this.currentHref}>`,
+ * where `currentHref` is a getter reading the props AND the router's state. The element is right
+ * there in the render and the attribute is written on it — and what it holds is settled at runtime,
+ * so there is nothing here to read. The prop at the call site is not the anchor's `href` either; it
+ * is one input to that computation. Judging either would be guessing, so `packages/router` is
+ * silent and correctly so.
  *
  * This is the family's own stance rather than a gap: what `<Panel href="#" />` does with the prop is
- * decided inside `Panel`. It is written down because the anchor being a HOST element makes the
- * silence look like an oversight — there is no element on the page that any rule ever sees.
+ * decided inside `Panel`, and an `href` this cannot read is not an `href` that is missing.
  */
 export interface LinkWithoutADestinationIssue {
   /** Which of the four shapes it is, because what each one costs differs. */

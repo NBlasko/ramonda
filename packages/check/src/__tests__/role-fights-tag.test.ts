@@ -25,9 +25,8 @@ const said = () => found().map((issue) => `${issue.line}:${issue.tag}/${issue.lo
  */
 describe("a role that fights what the tag does", () => {
   test("both directions, each saying what the reader loses", () => {
-    // 76 has the spread BEFORE the role, so nothing can reach over it. 85 is the role written in a
-    // `@Host` props bag, which configures a real element.
-    expect(said()).toEqual(["14:a/space", "24:button/destination", "76:a/space", "85:button/destination"]);
+    // 75 has the spread BEFORE the role, so nothing can reach over it.
+    expect(said()).toEqual(["13:a/space", "23:button/destination", "75:a/space"]);
   });
 
   /**
@@ -41,19 +40,19 @@ describe("a role that fights what the tag does", () => {
    */
   test("an anchor with no destination, readable or not, belongs to the other rule", () => {
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [19, 37, 40]) {
+    for (const quiet of [18, 36, 39]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });
 
   test("a role that agrees, or is neither, stays silent", () => {
     /**
-     * 45 and 48 agree with their tags. 53 and 56 are neither of the two — `menuitem` on an anchor
-     * is the documented menu pattern, and a `tab` is a tab. 61 has a role this cannot READ and 66 a
-     * fallback CHAIN, where which role wins is not asked here. 71 spreads after the role.
+     * 44 and 47 agree with their tags. 52 and 55 are neither of the two — `menuitem` on an anchor
+     * is the documented menu pattern, and a `tab` is a tab. 60 has a role this cannot READ and 65 a
+     * fallback CHAIN, where which role wins is not asked here. 70 spreads after the role.
      */
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [29, 30, 45, 48, 53, 56, 61, 66, 71]) {
+    for (const quiet of [28, 29, 44, 47, 52, 55, 60, 65, 70]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });

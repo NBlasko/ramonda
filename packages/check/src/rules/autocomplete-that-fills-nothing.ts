@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { AUTOFILL_MODIFIERS, AUTOFILL_SWITCHES, autofillFieldOf } from "./autofill";
-import type { ElementContext, HostElementRule } from "./rule";
+import type { ElementContext, ElementRule } from "./rule";
 
 /**
  * An `autocomplete` value nothing recognises, so autofill does nothing.
@@ -86,7 +86,6 @@ export const autocompleteThatFillsNothing = {
    * The order guard is taken because this reads a VALUE: a spread after the attribute may replace
    * it with one that fills perfectly well.
    */
-  alsoOnHost: true,
   evenWhenSpreading: true,
 
   read(_element, { tag, attr, overwritable, at }: ElementContext) {
@@ -111,4 +110,4 @@ export const autocompleteThatFillsNothing = {
       },
     ];
   },
-} as const satisfies HostElementRule<AutocompleteThatFillsNothingIssue>;
+} as const satisfies ElementRule<AutocompleteThatFillsNothingIssue>;

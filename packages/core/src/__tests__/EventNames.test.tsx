@@ -1,7 +1,7 @@
 import { describe, test, expect, vi } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host, onElement, state } from "../base/decorators";
+import { state } from "../base/decorators";
 
 /**
  * How an event is spelled in JSX, and what it attaches to.
@@ -190,10 +190,13 @@ describe("an event's name in JSX", () => {
    */
   test("a host's props take a handler under the same rule", async () => {
     const seen: string[] = [];
-    @Host("div", () => ({ onclick: () => seen.push("host") }))
     class App extends Component {
       render() {
-        return <span>inside</span>;
+        return (
+          <div onclick={() => seen.push("host")}>
+            <span>inside</span>
+          </div>
+        );
       }
     }
     const dom = await getDOM(<App />);
@@ -204,23 +207,26 @@ describe("an event's name in JSX", () => {
   });
 
   /**
-   * `@onElement` never had any of this to get wrong: it takes the event's own name as a STRING, so
+   * A markup listener never had any of this to get wrong: it takes the event's own name, so
    * there is no prefix to add and nothing to capitalise. A name the DOM's map knows types the
    * handler's parameter; any other string is accepted and hands over a plain `Event`, which is how
    * a custom event has always worked here.
    */
-  test("@onElement takes the event's name, custom ones included", async () => {
+  test("a markup listener takes the event's name, custom ones included", async () => {
     const seen: string[] = [];
-    @Host("div")
     class App extends Component {
-      @onElement("my-event") custom(event: Event) {
+      custom(event: Event) {
         seen.push(event.type);
       }
-      @onElement("focusin") entered(event: FocusEvent) {
+      entered(event: FocusEvent) {
         seen.push(event.type);
       }
       render() {
-        return <span>x</span>;
+        return (
+          <div on:my-event={this.custom} onfocusin={this.entered}>
+            <span>x</span>
+          </div>
+        );
       }
     }
     const dom = await getDOM(<App />);

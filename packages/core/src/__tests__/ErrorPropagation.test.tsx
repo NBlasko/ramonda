@@ -1,13 +1,12 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, state, ErrorBoundary, created, mounted } from "../index";
+import { getDOM, findOne } from "../test/setup";
+import { Component, state, ErrorBoundary, created, mounted } from "../index";
 
 /**
  * `errorHandler` walks UP from the component that threw looking for a
  * `catchError`, and rethrows if there is none. The walk itself was the untested
  * branch — every existing test had the boundary as the direct parent.
  */
-@Host("div")
 class Boom extends Component<{ when?: string }> {
   @created early() {
     if (this.props.when === "create") throw new Error("create-boom");
@@ -17,7 +16,11 @@ class Boom extends Component<{ when?: string }> {
   }
   render() {
     if (this.props.when === "render" || !this.props.when) throw new Error("render-boom");
-    return <span>ok</span>;
+    return (
+      <div>
+        <span>ok</span>
+      </div>
+    );
   }
 }
 
@@ -29,23 +32,25 @@ describe("error propagation", () => {
   afterEach(() => vi.restoreAllMocks());
 
   test("a boundary two levels up still catches", async () => {
-    @Host("div")
     class Middle extends Component {
       render() {
         return (
           <div>
-            <Boom />
+            <div>
+              <Boom />
+            </div>
           </div>
         );
       }
     }
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <ErrorBoundary fallback={({ message }: any) => <p className="fb">caught: {message}</p>}>
-            <Middle />
-          </ErrorBoundary>
+          <div>
+            <ErrorBoundary fallback={({ message }: any) => <p className="fb">caught: {message}</p>}>
+              <Middle />
+            </ErrorBoundary>
+          </div>
         );
       }
     }
@@ -55,12 +60,13 @@ describe("error propagation", () => {
   });
 
   test("with no boundary anywhere, the error is rethrown", async () => {
-    @Host("div")
     class App extends Component {
       render() {
         return (
           <div>
-            <Boom />
+            <div>
+              <Boom />
+            </div>
           </div>
         );
       }
@@ -71,13 +77,14 @@ describe("error propagation", () => {
   });
 
   test("a throw in @created is caught", async () => {
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <ErrorBoundary fallback={({ message }: any) => <p>caught: {message}</p>}>
-            <Boom when="create" />
-          </ErrorBoundary>
+          <div>
+            <ErrorBoundary fallback={({ message }: any) => <p>caught: {message}</p>}>
+              <Boom when="create" />
+            </ErrorBoundary>
+          </div>
         );
       }
     }
@@ -87,13 +94,14 @@ describe("error propagation", () => {
   });
 
   test("a throw in @mounted is caught", async () => {
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <ErrorBoundary fallback={({ message }: any) => <p>caught: {message}</p>}>
-            <Boom when="mount" />
-          </ErrorBoundary>
+          <div>
+            <ErrorBoundary fallback={({ message }: any) => <p>caught: {message}</p>}>
+              <Boom when="mount" />
+            </ErrorBoundary>
+          </div>
         );
       }
     }
@@ -103,21 +111,25 @@ describe("error propagation", () => {
   });
 
   test("a throw on a LATER render is caught, not just the first", async () => {
-    @Host("div")
     class Flaky extends Component {
       @state explode = false;
       render() {
         if (this.explode) throw new Error("late-boom");
-        return <span>fine</span>;
+        return (
+          <div>
+            <span>fine</span>
+          </div>
+        );
       }
     }
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <ErrorBoundary fallback={({ message }: any) => <p>caught: {message}</p>}>
-            <Flaky />
-          </ErrorBoundary>
+          <div>
+            <ErrorBoundary fallback={({ message }: any) => <p>caught: {message}</p>}>
+              <Flaky />
+            </ErrorBoundary>
+          </div>
         );
       }
     }
@@ -125,11 +137,7 @@ describe("error propagation", () => {
     await app.settle();
     expect(app.container.textContent).toBe("fine");
 
-    const flaky = (
-      app.container.querySelector('[data-ramonda="Flaky"]') as unknown as {
-        _componentInstance: { explode: boolean };
-      }
-    )._componentInstance;
+    const flaky = findOne<{ explode: boolean }>(app.container, "Flaky");
     flaky.explode = true;
     await app.settle();
 

@@ -1,16 +1,14 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare function close(): void;
 declare const label: string;
 
-@Host("span")
 class Icon extends Component {
   render() {
     return null;
   }
 }
 
-@Host("div")
 class App extends Component {
   render() {
     return (

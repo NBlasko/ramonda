@@ -34,10 +34,13 @@ list(this.tasks, (task) => <TaskRow key={task.id} item={task} />);
 ```
 
 ```tsx
-@Host("li")
 class TaskRow extends Component<{ item: Task }> {
   render() {
-    return <span>{this.props.item.title}</span>;
+    return (
+      <li>
+        <span>{this.props.item.title}</span>
+      </li>
+    );
   }
 }
 ```

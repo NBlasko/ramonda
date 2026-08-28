@@ -1,9 +1,12 @@
-import { Component, Host } from "@ramonda/core";
+import { Component } from "@ramonda/core";
 
 /** A `@Host` on a BASE, which a subclass inherits — the tag is read from the constructor. */
-@Host("section")
 export class Panel extends Component {
   render() {
-    return <div />;
+    return (
+      <section>
+        <div />
+      </section>
+    );
   }
 }

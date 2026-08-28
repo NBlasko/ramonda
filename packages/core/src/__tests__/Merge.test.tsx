@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, state, merge } from "../index";
+import { Component, list, state, merge } from "../index";
 import { mounted } from "../base/decorators";
 
 /**
@@ -117,7 +117,6 @@ describe("merge with an identity", () => {
 describe("merge carries identity where inference cannot", () => {
   let mounts = 0;
 
-  @Host("li")
   class RowView extends Component<{ item: Row }> {
     @state draft = "";
 
@@ -127,7 +126,11 @@ describe("merge carries identity where inference cannot", () => {
     }
 
     render() {
-      return <span data-draft={this.draft}>{this.props.item.title}</span>;
+      return (
+        <li>
+          <span data-draft={this.draft}>{this.props.item.title}</span>
+        </li>
+      );
     }
   }
 
@@ -139,16 +142,17 @@ describe("merge carries identity where inference cannot", () => {
       tags: string[];
     }
 
-    @Host("div")
     class App extends Component {
       @state bags: Bag[] = [{ tags: ["a"] }, { tags: ["b"] }];
       render() {
         return (
-          <ul>
-            {list(this.bags, (b: Bag) => (
-              <li>{b.tags.join(",")}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.bags, (b: Bag) => (
+                <li>{b.tags.join(",")}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -174,7 +178,6 @@ describe("merge carries identity where inference cannot", () => {
     // frozen rows rebuilt every one of them. Told which row is which, `merge`
     // hands back the SAME frozen object for a row that did not change, and for
     // one that did it carries the identity onto the replacement.
-    @Host("div")
     class App extends Component {
       @state items: readonly Row[] = [
         Object.freeze({ id: 1, title: "a", done: false }),
@@ -182,11 +185,13 @@ describe("merge carries identity where inference cannot", () => {
       ];
       render() {
         return (
-          <ul>
-            {list(this.items, (item) => (
-              <RowView item={item} />
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.items, (item) => (
+                <RowView item={item} />
+              ))}
+            </ul>
+          </div>
         );
       }
     }

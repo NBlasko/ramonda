@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state } from "../index";
+import { Component, state } from "../index";
 
 /**
  * An object style is written as CSS text, so every property name has to be in
@@ -10,26 +10,33 @@ import { Component, Host, state } from "../index";
  * `style="color: blue;"`, with half the style gone and nothing reported.
  */
 
-@Host("div")
 class Styled extends Component {
   @state columns = 2;
   @state label = "x";
   render() {
     return (
-      <div
-        style={{
-          gridTemplateColumns: `repeat(${this.columns}, 1fr)`,
-          backgroundColor: "red",
-          color: "blue",
-        }}
-      >
-        {this.label}
+      <div>
+        <div
+          style={{
+            gridTemplateColumns: `repeat(${this.columns}, 1fr)`,
+            backgroundColor: "red",
+            color: "blue",
+          }}
+        >
+          {this.label}
+        </div>
       </div>
     );
   }
 }
 
-const styled = (c: Element) => c.querySelector("[data-ramonda] > div") as HTMLElement;
+/**
+ * The element the style was written on.
+ *
+ * It used to be a `<div>` under the component's host, found by the host's DEV marker. A component
+ * has no host, so the styled element is simply the one the render returns.
+ */
+const styled = (c: Element) => c.querySelector("[style]") as HTMLElement;
 
 /** Counts writes to style.cssText on one element. */
 function countStyleWrites(el: HTMLElement) {
@@ -83,15 +90,20 @@ describe("object style", () => {
     const app = await getDOM<Styled>(<Styled />);
     await app.settle();
 
-    const host = app.container.querySelector("[data-ramonda]") as HTMLElement;
-    expect(host.hasAttribute("style")).toBe(false);
+    // No style asked for, so no attribute written — on the component's own element, which is the
+    // only element there is.
+    const element = app.container.querySelector("div") as HTMLElement;
+    expect(element.hasAttribute("style")).toBe(false);
   });
 
   test("custom properties keep their name, and empty values are dropped", async () => {
-    @Host("div")
     class Custom extends Component {
       render() {
-        return <div style={{ "--brand": "#f05", marginTop: "4px", color: "" }}>x</div>;
+        return (
+          <div>
+            <div style={{ "--brand": "#f05", marginTop: "4px", color: "" }}>x</div>
+          </div>
+        );
       }
     }
 

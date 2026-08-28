@@ -1,9 +1,8 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 const HASH = "#";
 const EMPTY = "";
 
-@Host("div")
 class Links extends Component {
   render() {
     return (

@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { focusableByTag } from "./aria-hidden-on-focusable";
-import type { ElementContext, HostElementRule } from "./rule";
+import type { ElementContext, ElementRule } from "./rule";
 
 /**
  * `role="presentation"` on an element a keyboard can still focus — where the spec IGNORES the role.
@@ -81,7 +81,6 @@ export const presentationRoleOnFocusable = {
    * on the tag, and a spread after the role could replace it — so the guard IS taken, below, for
    * the role. The tag is not an attribute and no spread reaches it.
    */
-  alsoOnHost: true,
   evenWhenSpreading: true,
 
   read(_element, context: ElementContext) {
@@ -120,4 +119,4 @@ export const presentationRoleOnFocusable = {
 
     return [{ tag, role: written as "presentation" | "none", because: "the tag" as const, ...positionOf(at) }];
   },
-} as const satisfies HostElementRule<PresentationRoleOnFocusableIssue>;
+} as const satisfies ElementRule<PresentationRoleOnFocusableIssue>;

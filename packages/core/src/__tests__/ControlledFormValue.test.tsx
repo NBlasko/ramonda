@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state } from "../index";
+import { Component, state } from "../index";
 
 /**
  * `value` and `checked` are LIVE PROPERTIES, and the attribute stops speaking for
@@ -30,7 +30,6 @@ describe("controlled form values", () => {
   afterEach(() => vi.restoreAllMocks());
 
   test("a render re-asserts the model's value on an input the user has typed into", async () => {
-    @Host("div")
     class F extends Component {
       @state text = "abc";
       @state tick = 0;
@@ -38,8 +37,10 @@ describe("controlled form values", () => {
       render() {
         return (
           <div>
-            <input value={this.text} />
-            <span>{this.tick}</span>
+            <div>
+              <input value={this.text} />
+              <span>{this.tick}</span>
+            </div>
           </div>
         );
       }
@@ -63,7 +64,6 @@ describe("controlled form values", () => {
   });
 
   test("a render re-asserts the model's checked state on a box the user has clicked", async () => {
-    @Host("div")
     class F extends Component {
       @state on = false;
       @state tick = 0;
@@ -71,8 +71,10 @@ describe("controlled form values", () => {
       render() {
         return (
           <div>
-            <input type="checkbox" checked={this.on} />
-            <span>{this.tick}</span>
+            <div>
+              <input type="checkbox" checked={this.on} />
+              <span>{this.tick}</span>
+            </div>
           </div>
         );
       }
@@ -95,12 +97,15 @@ describe("controlled form values", () => {
   });
 
   test("the model still reaches a box the user has already touched", async () => {
-    @Host("div")
     class F extends Component {
       @state on = false;
 
       render() {
-        return <input type="checkbox" checked={this.on} />;
+        return (
+          <div>
+            <input type="checkbox" checked={this.on} />
+          </div>
+        );
       }
     }
 
@@ -123,7 +128,6 @@ describe("controlled form values", () => {
   });
 
   test("a value that did not change is not rewritten, so the caret stays put", async () => {
-    @Host("div")
     class F extends Component {
       @state text = "abcd";
       @state tick = 0;
@@ -131,8 +135,10 @@ describe("controlled form values", () => {
       render() {
         return (
           <div>
-            <input value={this.text} />
-            <span>{this.tick}</span>
+            <div>
+              <input value={this.text} />
+              <span>{this.tick}</span>
+            </div>
           </div>
         );
       }
@@ -159,18 +165,19 @@ describe("controlled form values", () => {
      * never accepted — and the attribute cannot do it, for the same
      * dirty-checkedness reason a single checkbox cannot.
      */
-    @Host("form")
     class F extends Component {
       @state picked = "a";
       @state tick = 0;
 
       render() {
         return (
-          <div data-tick={String(this.tick)}>
-            <input id="a" type="radio" name="g" value="a" checked={this.picked === "a"} />
-            <input id="b" type="radio" name="g" value="b" checked={this.picked === "b"} />
-            <input id="c" type="radio" name="g" value="c" checked={this.picked === "c"} />
-          </div>
+          <form>
+            <div data-tick={String(this.tick)}>
+              <input id="a" type="radio" name="g" value="a" checked={this.picked === "a"} />
+              <input id="b" type="radio" name="g" value="b" checked={this.picked === "b"} />
+              <input id="c" type="radio" name="g" value="c" checked={this.picked === "c"} />
+            </div>
+          </form>
         );
       }
     }

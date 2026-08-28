@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { getDOM } from "../test/setup";
-import { state, Host } from "../base/decorators";
+import { state } from "../base/decorators";
 import { Component } from "../base/Component";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -34,11 +34,14 @@ afterEach(() => {
 
 describe("RMD019: @state that cannot be serialized", () => {
   test("a field initialized to a function is flagged (the constructor case)", async () => {
-    @Host("div")
     class Bad extends Component {
       @state fn = () => 1;
       render() {
-        return <p>x</p>;
+        return (
+          <div>
+            <p>x</p>
+          </div>
+        );
       }
     }
 
@@ -47,11 +50,14 @@ describe("RMD019: @state that cannot be serialized", () => {
   });
 
   test("assigning a function to @state later is flagged (the set case)", async () => {
-    @Host("div")
     class C extends Component {
       @state val: unknown = 0;
       render() {
-        return <p>{String(this.val)}</p>;
+        return (
+          <div>
+            <p>{String(this.val)}</p>
+          </div>
+        );
       }
     }
 
@@ -64,11 +70,14 @@ describe("RMD019: @state that cannot be serialized", () => {
   });
 
   test("a bigint in state is flagged too", async () => {
-    @Host("div")
     class Big extends Component {
       @state n = 10n;
       render() {
-        return <p>x</p>;
+        return (
+          <div>
+            <p>x</p>
+          </div>
+        );
       }
     }
 
@@ -77,14 +86,17 @@ describe("RMD019: @state that cannot be serialized", () => {
   });
 
   test("ordinary serializable state — numbers, strings, arrays, objects — is silent", async () => {
-    @Host("div")
     class Ok extends Component {
       @state n = 0;
       @state name = "a";
       @state list = [1, 2, 3];
       @state obj = { a: 1, nested: { b: 2 } };
       render() {
-        return <p>{this.n}</p>;
+        return (
+          <div>
+            <p>{this.n}</p>
+          </div>
+        );
       }
     }
 
@@ -93,17 +105,23 @@ describe("RMD019: @state that cannot be serialized", () => {
   });
 
   test("a callback PROP is not @state, so it is never flagged", async () => {
-    @Host("div")
     class Child extends Component<{ onDo: () => void }> {
       render() {
-        return <button onclick={this.props.onDo}>x</button>;
+        return (
+          <div>
+            <button onclick={this.props.onDo}>x</button>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class Parent extends Component {
       render() {
-        return <Child onDo={() => {}} />;
+        return (
+          <div>
+            <Child onDo={() => {}} />
+          </div>
+        );
       }
     }
 

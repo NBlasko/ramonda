@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach } from "vitest";
 import { Component } from "../base/Component";
 import { state, created, mounted, destroyed } from "../base/decorators";
 import { Portal } from "../base/Portal";
-import { getDOM } from "../test/setup";
+import { getDOM, findAll } from "../test/setup";
 import { resetDiagnostics } from "../debug/diagnostics";
 import type { RamondaNode } from "../types/vdom";
 
@@ -262,6 +262,75 @@ describe("Portal follows a reactive target", () => {
     // The SAME node moved — not a second copy in b and a stale one left in a.
     expect(a.querySelector("#moved")).toBeNull();
     expect(b.querySelector("#moved")).not.toBeNull();
+
+    a.remove();
+    b.remove();
+  });
+
+  test("a component nested inside a moved block re-renders into the NEW target", async () => {
+    /**
+     * A region carries the DOM parent it sits in, and the move has to reach every one of them.
+     *
+     * `reconcileEntries` refreshes that field on the regions that are TOP-LEVEL entries of the
+     * block's record. A component that renders a component produces one nested inside another with
+     * no element between them — and the inner one is not visited unless its own props changed, which
+     * a target change does not do. Left holding the OLD target, its next self-render reorders
+     * against an element the nodes are no longer in.
+     */
+    const a = document.createElement("section");
+    a.id = "nested-a";
+    document.body.appendChild(a);
+    const b = document.createElement("section");
+    b.id = "nested-b";
+    document.body.appendChild(b);
+
+    class Leaf extends Component {
+      @state two = false;
+      render() {
+        return this.two
+          ? [
+              <i data-portal-test="1" id="l1">
+                1
+              </i>,
+              <u data-portal-test="1" id="l2">
+                2
+              </u>,
+            ]
+          : [
+              <i data-portal-test="1" id="l1">
+                1
+              </i>,
+            ];
+      }
+    }
+    class Wrap extends Component {
+      render() {
+        return <Leaf />;
+      }
+    }
+    class Page extends Component {
+      @state useB = false;
+      portal = this.use(Portal, (self: Page) => ({ children: <Wrap />, target: self.useB ? b : a }));
+      render() {
+        return <div>x</div>;
+      }
+    }
+
+    const { instance, settle } = await getDOM<Page>(<Page />);
+    expect(a.querySelector("#l1")).not.toBeNull();
+
+    instance.useB = true;
+    await settle();
+    expect(b.querySelector("#l1")).not.toBeNull();
+    expect(a.querySelector("#l1")).toBeNull();
+
+    // Its own render, nobody else's: the second node has to land in b, beside the first.
+    findAll<Leaf>(b, "Leaf")[0]!.two = true;
+    await settle();
+
+    expect(b.querySelector("#l2")).not.toBeNull();
+    expect(a.querySelector("#l2")).toBeNull();
+    expect([...b.childNodes].filter((n) => n.nodeType !== 8).map((n) => (n as Element).id)).toEqual(["l1", "l2"]);
 
     a.remove();
     b.remove();

@@ -3,13 +3,16 @@ import { Component, Host, bootstrap, compute, state } from "@ramonda/core";
 declare const rows: string[];
 
 /** Written where the rule looks: a write during the render, and a clock read. */
-@Host("div")
 class Direct extends Component {
   @state n = 0;
 
   render() {
     this.n = 1;
-    return <div>{Date.now()}</div>;
+    return (
+      <div>
+        <div>{Date.now()}</div>
+      </div>
+    );
   }
 }
 
@@ -24,7 +27,6 @@ class Direct extends Component {
  * A render is an answer to a question. Arming an effect from it happens once per time the question
  * is asked, and the framework asks whenever it likes.
  */
-@Host("div")
 class Deferred extends Component {
   @state n = 0;
 
@@ -41,17 +43,24 @@ class Deferred extends Component {
     window.addEventListener("resize", () => {
       this.n = 4;
     });
-    return <div>{this.n}</div>;
+    return (
+      <div>
+        <div>{this.n}</div>
+      </div>
+    );
   }
 }
 
 /** A callback that really does run now — the row builder. */
-@Host("div")
 class Immediate extends Component {
   @state n = 0;
 
   render() {
-    return <div>{rows.map(() => (this.n = 1))}</div>;
+    return (
+      <div>
+        <div>{rows.map(() => (this.n = 1))}</div>
+      </div>
+    );
   }
 }
 
@@ -67,7 +76,6 @@ class ArrowRender extends Component {
 }
 
 /** A `@compute` written as a METHOD, which core makes callable. */
-@Host("div")
 class ComputedMethod extends Component {
   @state n = 0;
 
@@ -77,28 +85,26 @@ class ComputedMethod extends Component {
   }
 
   render() {
-    return <div>{this.stamp()}</div>;
+    return (
+      <div>
+        <div>{this.stamp()}</div>
+      </div>
+    );
   }
 }
 
 /** The `@Host` props callback, which runs during the render and is in no member body. */
-@Host("div", () => ({ id: `x-${Date.now()}` }))
 class HostProps extends Component {
   render() {
-    return <div>host</div>;
-  }
-}
-
-/** The TAG callback runs on every render too — and `@Host` here has no second argument at all. */
-@Host((self: TagFromProps) => `x-${Date.now()}`)
-class TagFromProps extends Component {
-  render() {
-    return <div>tag</div>;
+    return (
+      <div id={`x-${Date.now()}`}>
+        <div>host</div>
+      </div>
+    );
   }
 }
 
 bootstrap(<Direct />, null);
-bootstrap(<TagFromProps />, null);
 bootstrap(<Deferred />, null);
 bootstrap(<Immediate />, null);
 bootstrap(<ArrowRender />, null);

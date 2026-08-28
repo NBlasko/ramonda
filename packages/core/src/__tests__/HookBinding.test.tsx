@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, compute } from "../index";
+import { Component, Hook, state, compute } from "../index";
 
 /**
  * A hook binds its methods so `this` survives being handed around as a callback,
@@ -21,11 +21,14 @@ describe("Hook", () => {
       }
     }
 
-    @Host("div")
     class C extends Component {
       c = this.use(Counter);
       render() {
-        return <span onclick={this.c.inc}>{this.c.n}</span>;
+        return (
+          <div>
+            <span onclick={this.c.inc}>{this.c.n}</span>
+          </div>
+        );
       }
     }
 
@@ -52,11 +55,14 @@ describe("Hook", () => {
       }
     }
 
-    @Host("div")
     class C extends Component {
       c = this.use(Derived);
       render() {
-        return <span>{this.c.n}</span>;
+        return (
+          <div>
+            <span>{this.c.n}</span>
+          </div>
+        );
       }
     }
 
@@ -89,11 +95,14 @@ describe("Hook", () => {
       }
     }
 
-    @Host("div")
     class C extends Component {
       c = this.use(Derived);
       render() {
-        return <span>{this.c.log}</span>;
+        return (
+          <div>
+            <span>{this.c.log}</span>
+          </div>
+        );
       }
     }
 
@@ -116,12 +125,15 @@ describe("Hook", () => {
       }
     }
 
-    @Host("div")
     class C extends Component {
       @state show = false;
       c = this.use(WithCompute);
       render() {
-        return <span>{this.show ? this.c.doubled : "-"}</span>;
+        return (
+          <div>
+            <span>{this.show ? this.c.doubled : "-"}</span>
+          </div>
+        );
       }
     }
 
@@ -146,11 +158,14 @@ describe("Hook", () => {
       }
     }
 
-    @Host("div")
     class C extends Component {
       c = this.use(H);
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -180,11 +195,14 @@ describe("Hook", () => {
       }
     }
 
-    @Host("div")
     class C extends Component {
       c = this.use(H);
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -209,7 +227,6 @@ describe("@Host infers the class it is on", () => {
    * looked at, which is why this used to need `(self: Card)` spelled out.
    */
   test("self is the instance, with nothing written down", async () => {
-    @Host("section", (self) => ({ "data-label": self.label, "data-count": String(self.count) }))
     class Card extends Component<{ label: string }> {
       @state count = 2;
 
@@ -218,7 +235,11 @@ describe("@Host infers the class it is on", () => {
       }
 
       render() {
-        return <span>{this.label}</span>;
+        return (
+          <section data-label={this.label} data-count={String(this.count)}>
+            <span>{this.label}</span>
+          </section>
+        );
       }
     }
 
@@ -231,10 +252,19 @@ describe("@Host infers the class it is on", () => {
   });
 
   test("a tag built from props is typed the same way", async () => {
-    @Host((props) => (props.heading ? "h2" : "p"))
     class Line extends Component<{ heading?: boolean }> {
       render() {
-        return <span>text</span>;
+        // The caller's choice of element, written where the markup is. It used to be a `@Host`
+        // callback, which had to be pure and could never be typed: `<h2>` and `<p>` share no props.
+        return this.props.heading ? (
+          <h2>
+            <span>text</span>
+          </h2>
+        ) : (
+          <p>
+            <span>text</span>
+          </p>
+        );
       }
     }
 

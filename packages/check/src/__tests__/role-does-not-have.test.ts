@@ -22,27 +22,25 @@ const said = () =>
  */
 describe("an accessibility state the element's role does not have", () => {
   test("the shape it is usually written in", () => {
-    expect(said()).toContain("13:button/aria-checked");
-    expect(said()).toContain("18:menuitem/aria-selected");
-    expect(said()).toContain("23:button/aria-valuenow");
+    expect(said()).toContain("12:button/aria-checked");
+    expect(said()).toContain("17:menuitem/aria-selected");
+    expect(said()).toContain("22:button/aria-valuenow");
   });
 
   test("two on one element are two reports, because each is its own line to delete", () => {
-    expect(said()).toContain("28:tab/aria-checked");
-    expect(said()).toContain("28:tab/aria-level");
+    expect(said()).toContain("27:tab/aria-checked");
+    expect(said()).toContain("27:tab/aria-level");
   });
 
   test("the whole list, so a regression cannot go quiet", () => {
-    // 85 has the spread BEFORE both attributes, so nothing can reach over either. 94 is the pair
-    // written in a `@Host` props bag, which configures a real element.
+    // 84 has the spread BEFORE both attributes, so nothing can reach over either.
     expect(said()).toEqual([
-      "13:button/aria-checked",
-      "18:menuitem/aria-selected",
-      "23:button/aria-valuenow",
-      "28:tab/aria-checked",
-      "28:tab/aria-level",
-      "85:button/aria-checked",
-      "94:button/aria-checked",
+      "12:button/aria-checked",
+      "17:menuitem/aria-selected",
+      "22:button/aria-valuenow",
+      "27:tab/aria-checked",
+      "27:tab/aria-level",
+      "84:button/aria-checked",
     ]);
   });
 
@@ -57,20 +55,20 @@ describe("an accessibility state the element's role does not have", () => {
    */
   test("a role that inherits the state is silent, which is the whole reason the table is attribute-first", () => {
     const lines = (run()["aria-state-the-role-does-not-have"] ?? []).map((issue) => issue.line);
-    expect(lines).not.toContain(44);
-    expect(lines).not.toContain(47);
+    expect(lines).not.toContain(43);
+    expect(lines).not.toContain(46);
   });
 
   test("every other shape that says something, or might, stays silent", () => {
     /**
-     * 33/36/39 use the role the state belongs to. 52 is three GLOBAL attributes, which belong to
-     * everything. 57 is `aria-required`, which the table deliberately does not carry — its role set
+     * 32/35/38 use the role the state belongs to. 51 is three GLOBAL attributes, which belong to
+     * everything. 56 is `aria-required`, which the table deliberately does not carry — its role set
      * is long and its inheritance fiddly, and being wrong there means reporting markup that works.
-     * 67 has a role this cannot READ and 72 a fallback CHAIN, where which role wins is not a
-     * question about the element. 80 spreads after the role, which may replace it.
+     * 66 has a role this cannot READ and 71 a fallback CHAIN, where which role wins is not a
+     * question about the element. 79 spreads after the role, which may replace it.
      */
     const lines = (run()["aria-state-the-role-does-not-have"] ?? []).map((issue) => issue.line);
-    for (const quiet of [33, 36, 39, 52, 57, 67, 72, 80]) {
+    for (const quiet of [32, 35, 38, 51, 56, 66, 71, 79]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });
@@ -78,15 +76,15 @@ describe("an accessibility state the element's role does not have", () => {
   /**
    * The three neighbouring rules divide one subject and never report the same line.
    *
-   * 62 has an unknown role, which is `unknown-role`'s. 77 has NO role, which is
+   * 61 has an unknown role, which is `unknown-role`'s. 76 has NO role, which is
    * `aria-state-with-no-role`'s. Two reports on one line is how a reader learns to skim past both,
    * so each of the three answers exactly the part that is its own.
    */
   test("an unknown role and a missing one each belong to the neighbour whose sentence they are", () => {
     const lines = (run()["aria-state-the-role-does-not-have"] ?? []).map((issue) => issue.line);
-    expect(lines).not.toContain(62);
-    expect(lines).not.toContain(77);
-    expect((run()["unknown-role"] ?? []).map((issue) => issue.line)).toEqual([62]);
-    expect((run()["aria-state-with-no-role"] ?? []).map((issue) => issue.line)).toEqual([77]);
+    expect(lines).not.toContain(61);
+    expect(lines).not.toContain(76);
+    expect((run()["unknown-role"] ?? []).map((issue) => issue.line)).toEqual([61]);
+    expect((run()["aria-state-with-no-role"] ?? []).map((issue) => issue.line)).toEqual([76]);
   });
 });

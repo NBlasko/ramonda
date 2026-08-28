@@ -1,11 +1,10 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const rest: Record<string, unknown>;
 declare const how: string;
 declare const error: string;
 declare const count: number;
 
-@Host("div")
 class App extends Component {
   render() {
     return (
@@ -72,18 +71,9 @@ class App extends Component {
   }
 }
 
-/** ✗ The same written where a component configures its own element. */
-@Host("div", () => ({ role: "alert", "aria-live": "polite" }))
-class ConfiguredHost extends Component {
-  render() {
-    return <span>host</span>;
-  }
-}
-
 bootstrap(
   <div>
     <App />
-    <ConfiguredHost />
   </div>,
   null,
 );

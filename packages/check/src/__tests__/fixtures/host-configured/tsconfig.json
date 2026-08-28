@@ -1,9 +1,0 @@
-{
-  "extends": "../tsconfig.base.json",
-  "compilerOptions": {
-    "paths": {
-      "@ramonda/core": ["../framework.ts"]
-    }
-  },
-  "include": [".", "../framework.ts", "../jsx-runtime.ts"]
-}

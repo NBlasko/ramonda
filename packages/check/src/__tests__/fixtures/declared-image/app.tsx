@@ -1,8 +1,7 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare function t(key: string): string;
 
-@Host("div")
 class App extends Component {
   render() {
     return (

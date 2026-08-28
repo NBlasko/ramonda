@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, memoized } from "../index";
+import { Component, state, memoized } from "../index";
 
 /**
  * What `@memoized` does with an argument it cannot build a cache key from.
@@ -33,14 +33,17 @@ describe("@memoized with an un-keyable argument", () => {
       logged.push(args.map(String).join(" "));
     });
 
-    @Host("div")
     class Panel extends Component {
       @memoized
       pick(row: unknown) {
         return () => row;
       }
       render() {
-        return <button onclick={this.pick({ id: 7 } as unknown as string)}>x</button>;
+        return (
+          <div>
+            <button onclick={this.pick({ id: 7 } as unknown as string)}>x</button>
+          </div>
+        );
       }
     }
 
@@ -49,7 +52,6 @@ describe("@memoized with an un-keyable argument", () => {
   });
 
   test("development throws, naming the method and the argument", async () => {
-    @Host("div")
     class Panel extends Component {
       @memoized
       pick(row: unknown) {
@@ -57,7 +59,11 @@ describe("@memoized with an un-keyable argument", () => {
       }
 
       render() {
-        return <button onclick={this.pick({ id: 7 } as unknown as string)}>x</button>;
+        return (
+          <div>
+            <button onclick={this.pick({ id: 7 } as unknown as string)}>x</button>
+          </div>
+        );
       }
     }
 
@@ -69,7 +75,6 @@ describe("@memoized with an un-keyable argument", () => {
   });
 
   test("it names the position of the offending argument among several", async () => {
-    @Host("div")
     class Panel extends Component {
       @memoized
       pick(_a: string, _b: number, _c: unknown) {
@@ -77,7 +82,11 @@ describe("@memoized with an un-keyable argument", () => {
       }
 
       render() {
-        return <button onclick={this.pick("a", 1, [] as unknown as string)}>x</button>;
+        return (
+          <div>
+            <button onclick={this.pick("a", 1, [] as unknown as string)}>x</button>
+          </div>
+        );
       }
     }
 
@@ -85,7 +94,6 @@ describe("@memoized with an un-keyable argument", () => {
   });
 
   test("null is named as null rather than as an object", async () => {
-    @Host("div")
     class Panel extends Component {
       @memoized
       pick(_row: unknown) {
@@ -93,7 +101,11 @@ describe("@memoized with an un-keyable argument", () => {
       }
 
       render() {
-        return <button onclick={this.pick(null as unknown as string)}>x</button>;
+        return (
+          <div>
+            <button onclick={this.pick(null as unknown as string)}>x</button>
+          </div>
+        );
       }
     }
 
@@ -101,7 +113,6 @@ describe("@memoized with an un-keyable argument", () => {
   });
 
   test("keyable arguments are unaffected — the same handler comes back", async () => {
-    @Host("div")
     class Panel extends Component {
       @state tick = 0;
       seen: unknown[] = [];
@@ -113,7 +124,11 @@ describe("@memoized with an un-keyable argument", () => {
 
       render() {
         this.seen.push(this.pick("a", true, 1));
-        return <div>{this.tick}</div>;
+        return (
+          <div>
+            <div>{this.tick}</div>
+          </div>
+        );
       }
     }
 
@@ -128,7 +143,6 @@ describe("@memoized with an un-keyable argument", () => {
   });
 
   test("different keyable arguments get different handlers", async () => {
-    @Host("div")
     class Panel extends Component {
       @memoized
       pick(id: string) {
@@ -138,12 +152,14 @@ describe("@memoized with an un-keyable argument", () => {
       render() {
         return (
           <div>
-            <button id="a" onclick={this.pick("a")}>
-              a
-            </button>
-            <button id="b" onclick={this.pick("b")}>
-              b
-            </button>
+            <div>
+              <button id="a" onclick={this.pick("a")}>
+                a
+              </button>
+              <button id="b" onclick={this.pick("b")}>
+                b
+              </button>
+            </div>
           </div>
         );
       }

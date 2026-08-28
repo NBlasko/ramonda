@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { Component, Host, mounted, renderToString, ServerRedirect } from "@ramonda/core";
+import { Component, mounted, renderToString, ServerRedirect } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -18,21 +18,27 @@ import { createRoutes } from "../match";
 // Flipped per test to stand in for an auth check.
 let authed = true;
 
-@Host("main")
 class Protected extends Component {
   private route = this.use(Navigator);
   @mounted guard() {
     if (!authed) this.route.replace("/login");
   }
   render() {
-    return <h1>Secret</h1>;
+    return (
+      <main>
+        <h1>Secret</h1>
+      </main>
+    );
   }
 }
 
-@Host("main")
 class Login extends Component {
   render() {
-    return <h1>Please log in</h1>;
+    return (
+      <main>
+        <h1>Please log in</h1>
+      </main>
+    );
   }
 }
 
@@ -42,11 +48,14 @@ const routes = createRoutes({
   "*": <Login />,
 });
 
-@Host("div")
 class App extends Component<{ children?: RamondaNode }> {
   router = this.use(Router);
   render() {
-    return <RouteOutlet routes={routes} />;
+    return (
+      <div>
+        <RouteOutlet routes={routes} />
+      </div>
+    );
   }
 }
 
@@ -81,7 +90,6 @@ describe("server-side route-guard redirect", () => {
   });
 
   test("first redirect wins — a second one in the same render is ignored", async () => {
-    @Host("main")
     class DoubleGuard extends Component {
       private route = this.use(Navigator);
       @mounted guard() {
@@ -89,7 +97,11 @@ describe("server-side route-guard redirect", () => {
         this.route.replace("/second");
       }
       render() {
-        return <h1>x</h1>;
+        return (
+          <main>
+            <h1>x</h1>
+          </main>
+        );
       }
     }
 
@@ -98,11 +110,14 @@ describe("server-side route-guard redirect", () => {
       "*": <Login />,
     });
 
-    @Host("div")
     class DoubleApp extends Component {
       router = this.use(Router);
       render() {
-        return <RouteOutlet routes={doubleRoutes} />;
+        return (
+          <div>
+            <RouteOutlet routes={doubleRoutes} />
+          </div>
+        );
       }
     }
 

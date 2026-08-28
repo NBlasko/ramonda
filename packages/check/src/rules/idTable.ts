@@ -299,81 +299,8 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
     });
   };
 
-  /**
-   * An id written in `@Host` props, which is on the page and is in no JSX element.
-   *
-   * `@Host("section", () => ({ id: "overview" }))` puts `id="overview"` on the component's own host
-   * — a real id that a fragment link resolves against and that nothing in any render shows. The
-   * table used to miss it entirely, so `<a href="#overview">` was reported as going nowhere.
-   * Measured with a plant, and the shape got likelier the day `@Host`'s props became typed as the
-   * element's attributes.
-   *
-   * An id here that cannot be READ silences the family, exactly as an unreadable one on a host
-   * element in JSX does — it is the same kind of claim about the same kind of element.
-   */
-  const readHostProps = (cls: ts.ClassLikeDeclaration): void => {
-    for (const decorator of ts.getDecorators(cls) ?? []) {
-      const call = decorator.expression;
-      if (!ts.isCallExpression(call) || coreDecoratorName(decorator, resolve) !== "Host") continue;
-
-      const written = call.arguments[1];
-      if (written === undefined) continue;
-      if (!ts.isArrowFunction(written) && !ts.isFunctionExpression(written)) continue;
-
-      /**
-       * Both bodies a props callback is written with: `() => ({ id })` and `() => { return { id } }`.
-       *
-       * Reading only the concise one left the second spelling missing — found in review by planting
-       * it, after the concise one had already been fixed. A block with anything other than one
-       * `return` of an object literal is not read: what it hands back is a value, and that is the
-       * dataflow this package refuses.
-       */
-      const returned = ts.isBlock(written.body)
-        ? written.body.statements.length === 1 && ts.isReturnStatement(written.body.statements[0])
-          ? written.body.statements[0].expression
-          : undefined
-        : written.body;
-      const object = returned !== undefined && ts.isParenthesizedExpression(returned) ? returned.expression : returned;
-      if (object === undefined || !ts.isObjectLiteralExpression(object)) continue;
-
-      for (const property of object.properties) {
-        /**
-         * `({ id: OVERVIEW_ID })` and `({ id })`, which are the same claim.
-         *
-         * The shorthand was read by nothing — not even as an unreadable id — so an id the page
-         * really carries was missing from the table, and a reference to it would have been
-         * reported as naming nothing. Planted after the long form was fixed, on the standing
-         * lesson that a fix for one spelling is not a fix for the other.
-         */
-        const shorthand = ts.isShorthandPropertyAssignment(property);
-        if (!ts.isPropertyAssignment(property) && !shorthand) continue;
-        const key =
-          ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
-        if (key?.toLowerCase() !== "id") continue;
-
-        const value = shorthand ? property.name : property.initializer;
-        if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
-          ids.add(value.text);
-          continue;
-        }
-        if (ts.isTemplateExpression(value) && value.head.text.length > 0) {
-          prefixes.push(value.head.text);
-          continue;
-        }
-        // A name holding the id — the same hop the JSX reader above takes.
-        const behind = follow(value, resolve, LITERAL)?.value;
-        if (behind !== undefined) {
-          ids.add(behind);
-          continue;
-        }
-        unreadable.push({ written: property.getText(), ...positionOf(property) });
-      }
-    }
-  };
-
   const walk = (node: ts.Node): void => {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) readElement(node);
-    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) readHostProps(node);
     ts.forEachChild(node, walk);
   };
 

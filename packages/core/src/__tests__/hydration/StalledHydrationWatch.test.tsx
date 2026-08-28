@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { AsyncLoad } from "../../base/AsyncLoad";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
@@ -18,11 +18,14 @@ import { hydrateRoot } from "../../hydration/hydrate";
  * produces no report whether the timer is cleared or not, which is exactly why nobody noticed.
  */
 
-@Host("div")
 class Loaded extends Component<{ label?: string }> {
   @state clicks = 0;
   render() {
-    return <p>LOADED: {this.props.label ?? "-"}</p>;
+    return (
+      <div>
+        <p>LOADED: {this.props.label ?? "-"}</p>
+      </div>
+    );
   }
 }
 
@@ -31,18 +34,19 @@ interface PageProps {
   lazy: () => Promise<Record<string, unknown>>;
 }
 
-@Host("div")
 class Page extends Component<PageProps> {
   render() {
     return (
-      <AsyncLoad
-        cacheKey={this.props.ck}
-        lazy={this.props.lazy}
-        namedExport="Loaded"
-        loadedProps={{ label: "from server" }}
-        onLoading={<p>loading…</p>}
-        errorFallback={<p>failed</p>}
-      />
+      <div>
+        <AsyncLoad
+          cacheKey={this.props.ck}
+          lazy={this.props.lazy}
+          namedExport="Loaded"
+          loadedProps={{ label: "from server" }}
+          onLoading={<p>loading…</p>}
+          errorFallback={<p>failed</p>}
+        />
+      </div>
     );
   }
 }

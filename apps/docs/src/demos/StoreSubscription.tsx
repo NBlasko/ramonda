@@ -1,4 +1,4 @@
-import { Component, Host, createSubscriptionDecorator, mounted, state, updated } from "@ramonda/core";
+import { Component, createSubscriptionDecorator, mounted, state, updated } from "@ramonda/core";
 
 // An external store: it holds a value, takes a listener, and hands back the function that
 // stops it. That last part is the only thing the decorator below needs — every store worth
@@ -39,7 +39,6 @@ const onStore = createSubscriptionDecorator(
   (_owner, handler: (value: number) => void, store: typeof likes) => store.subscribe(handler),
 );
 
-@Host("div")
 class LikeCount extends Component {
   @state count = likes.value;
 
@@ -49,11 +48,14 @@ class LikeCount extends Component {
   }
 
   render() {
-    return <strong>{this.count}</strong>;
+    return (
+      <div>
+        <strong>{this.count}</strong>
+      </div>
+    );
   }
 }
 
-@Host("div")
 export class StoreSubscription extends Component {
   @state mounted = true;
   @state listeners = 0;
@@ -87,19 +89,21 @@ export class StoreSubscription extends Component {
   render() {
     return (
       <div>
-        <p className="demo-row">
-          <button type="button" onclick={this.like}>
-            like
-          </button>
-          {this.mounted ? <LikeCount /> : <span className="demo-note">unmounted</span>}
-          <button type="button" onclick={this.toggle}>
-            {this.mounted ? "unmount it" : "mount it"}
-          </button>
-        </p>
-        <p className="demo-note">
-          store listeners: {this.listeners} — unmounting the component removes its subscription, with nothing in the
-          component to remember it
-        </p>
+        <div>
+          <p className="demo-row">
+            <button type="button" onclick={this.like}>
+              like
+            </button>
+            {this.mounted ? <LikeCount /> : <span className="demo-note">unmounted</span>}
+            <button type="button" onclick={this.toggle}>
+              {this.mounted ? "unmount it" : "mount it"}
+            </button>
+          </p>
+          <p className="demo-note">
+            store listeners: {this.listeners} — unmounting the component removes its subscription, with nothing in the
+            component to remember it
+          </p>
+        </div>
       </div>
     );
   }

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDOM } from "../test/setup";
-import { Component, Host, Hook, state, created, watchProp } from "../index";
+import { getDOM, findOne } from "../test/setup";
+import { Component, Hook, state, created, watchProp } from "../index";
 import { renderToString } from "../hydration/ssr";
 import { resetDiagnostics } from "../debug/diagnostics";
 
@@ -62,14 +62,15 @@ describe("state and lifecycle without markup", () => {
       }
     }
 
-    @Host("div")
     class Page extends Component {
       @state page = "home";
       render() {
         return (
-          <div className="page">
-            <Analytics page={this.page} />
-            <span>content</span>
+          <div>
+            <div className="page">
+              <Analytics page={this.page} />
+              <span>content</span>
+            </div>
           </div>
         );
       }
@@ -78,9 +79,16 @@ describe("state and lifecycle without markup", () => {
     const app = await getDOM<Page>(<Page />);
     await app.settle();
 
-    const host = app.container.querySelector("ramonda-host")!;
-    expect(host.childNodes.length).toBe(0);
-    expect(host.getAttribute("style")).toBe("display: contents;");
+    /**
+     * It contributes NOTHING to the DOM, which is the whole of what "without markup" means now.
+     *
+     * There used to be a `<ramonda-host style="display: contents">` here — an element that took part
+     * in no layout but was still a node in the page. A component owns a range, and a render that
+     * returns nothing owns an empty one, so there is nothing to find and nothing to assert about.
+     * It is a full component all the same, which is what the rest of this test measures.
+     */
+    expect(app.container.querySelector("ramonda-host")).toBeNull();
+    expect(findOne<object>(app.container, "Analytics")).toBeDefined();
     expect(createdCount).toBe(1);
     // `@watchProp` does not fire on mount — `@created` is the initial pass — so nothing
     // has been tracked yet.
@@ -110,25 +118,29 @@ describe("state and lifecycle without markup", () => {
       }
     }
 
-    @Host("tr")
     class Row extends Component<{ label: string }> {
       render() {
-        return <td>{this.props.label}</td>;
+        return (
+          <tr>
+            <td>{this.props.label}</td>
+          </tr>
+        );
       }
     }
 
-    @Host("div")
     class TableApp extends Component {
       rowsHook = this.use(RowsHook, () => ({ prefix: "x" }));
       render() {
         return (
-          <table>
-            <tbody>
-              {this.rowsHook.rows.map((r) => (
-                <Row key={r} label={r} />
-              ))}
-            </tbody>
-          </table>
+          <div>
+            <table>
+              <tbody>
+                {this.rowsHook.rows.map((r) => (
+                  <Row key={r} label={r} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         );
       }
     }
@@ -163,11 +175,14 @@ describe("state and lifecycle without markup", () => {
       return [<span key="a">a</span>, <span key="b">b</span>];
     }
 
-    @Host("div")
     class App extends Component {
       render() {
-        // @ts-expect-error a function is not a valid Ramonda tag — that is the point
-        return <div>{<Rows />}</div>;
+        return (
+          <div>
+            {/* @ts-expect-error a function is not a valid Ramonda tag — that is the point */}
+            <div>{<Rows />}</div>
+          </div>
+        );
       }
     }
 
@@ -176,6 +191,6 @@ describe("state and lifecycle without markup", () => {
     expect(captured.codes).toEqual(["RMD011"]);
     expect(captured.messages[0]).toContain("Rows was used as a JSX tag");
     expect(captured.messages[0]).toContain("use a Hook");
-    expect(captured.messages[0]).toContain("{rows()}");
+    expect(captured.messages[0]).toContain("{sideBar()}");
   });
 });

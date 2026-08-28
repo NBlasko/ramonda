@@ -6,7 +6,7 @@ import type { Rule } from "./rule";
 /**
  * A decorator that answers a question with ONE answer, declared more than once on the same class.
  *
- * `@catchError` ("who handles an error from below?"), `@Host` ("which element am I?"),
+ * `@catchError` ("who handles an error from below?"),
  * `@ShouldUpdateOnPropsChange` ("take these props?") and `@StableProps` are each single. Declared
  * twice, one of them wins and the others never run — silently, and the one being read may be the dead
  * one. The framework reports what it can at runtime (RMD032 for `@catchError`, RMD040 for
@@ -42,10 +42,9 @@ export interface DuplicateDecoratorIssue {
   /**
    * What the second declaration DOES, which decides what advice makes sense.
    *
-   * Four, one per behaviour core actually has, because the advice differs for each and naming the wrong
+   * Three, one per behaviour core actually has, because the advice differs for each and naming the wrong
    * one sends a reader somewhere there is nothing to find:
    *
-   * - `refuses` — it THROWS (`@Host`, RMD045). Nothing runs, so there is no live line to hunt for.
    * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032,
    *   `@ShouldUpdateOnPropsChange` RMD040). The reader needs to know WHICH is live.
    * - `merges` — both take effect and the result is the union (`@StableProps`, RMD046). Nothing is lost;
@@ -79,9 +78,7 @@ export interface DuplicateDecoratorIssue {
  * It was four `Set`s until then, one per effect, and the effect was recovered by asking each in turn.
  * A single map says the same thing once and is directly comparable to core's.
  *
- * The four words are the four pieces of advice, and telling them apart is the point:
- * - `refuses` — it THROWS (`@Host`, RMD045). Two element names have no union, so the class never
- *   loads and there is no live line to hunt for.
+ * The three words are the three pieces of advice, and telling them apart is the point:
  * - `displaces` — one wins and the rest are dead code (`@catchError` RMD032,
  *   `@ShouldUpdateOnPropsChange` RMD040). The reader needs to know WHICH is live.
  * - `merges` — both take effect and the result is the union (`@StableProps`, RMD046). It names a set
@@ -94,7 +91,6 @@ export interface DuplicateDecoratorIssue {
  * follow several props, and each application does real work. See core's `DecoratorReach.test.tsx`.
  */
 const EFFECT: Record<string, DuplicateDecoratorIssue["effect"]> = {
-  Host: "refuses",
   catchError: "displaces",
   ShouldUpdateOnPropsChange: "displaces",
   StableProps: "merges",
@@ -122,7 +118,7 @@ const inEffect = (kind: DuplicateDecoratorIssue["kind"]): string =>
  * One sentence per EFFECT, because "one of them never runs" is true of `@catchError` and false of
  * the other three.
  *
- * `@Host` throws, so there is no live line to find. `@StableProps` merges, so nothing was lost.
+ * `@StableProps` merges, so nothing was lost.
  * A doubled `@state` behaves exactly like a single one — measured, one render per write and the
  * right value. Sending a reader after a difference that is not there is worse than saying less.
  * One report, four faults, four pieces of advice.
@@ -154,15 +150,14 @@ export const duplicateDecorators = {
   report: {
     severity: "error",
     reportedWhen:
-      "a single-use decorator is written twice: `@Host`, `@catchError`, " +
-      "`@ShouldUpdateOnPropsChange` or `@StableProps`",
-    // Four codes, one per decorator, because what the framework does about it differs: `@Host`
+      "a single-use decorator is written twice: `@catchError`, " + "`@ShouldUpdateOnPropsChange` or `@StableProps`",
+    // A code per decorator, because what the framework does about it differs:
     // throws, the middle two silently pick a winner, `@StableProps` merges. This rule reports the
     // source of all four, and said so only in prose until the field could hold a list.
     // `RMD050` too, for the member-level half: the same decorator written twice on one member.
     // `decorator-that-adds-nothing` answers the other half of that code — two DIFFERENT decorators
     // giving one member the same thing — and the pair is deliberate.
-    alsoReportedAs: ["RMD045", "RMD032", "RMD040", "RMD046", "RMD050"],
+    alsoReportedAs: ["RMD032", "RMD040", "RMD046", "RMD050"],
     heading: (found) => `${found.length} class(es) declaring a single-use decorator twice:`,
     lines: (issue) => {
       // The member is named for a `redundant` report, because that count is per member: without it,

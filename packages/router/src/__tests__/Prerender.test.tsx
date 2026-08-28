@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
-import { Component, Host, Head, renderPage, renderDocument } from "@ramonda/core";
+import { Component, Head, renderPage, renderDocument } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { Router, RouteOutlet, Navigator } from "../Router";
 import { createRoutes, routePaths } from "../match";
@@ -23,18 +23,20 @@ import { createRoutes, routePaths } from "../match";
  * a second and one that pays for a DOM per page.
  */
 
-@Host("main")
 class Home extends Component {
   head = this.use(Head, () => ({
     title: "Ramonda",
     description: "A class-based frontend framework.",
   }));
   render() {
-    return <h1>Home</h1>;
+    return (
+      <main>
+        <h1>Home</h1>
+      </main>
+    );
   }
 }
 
-@Host("main")
 class Guide extends Component {
   head = this.use(Head, () => ({
     title: "Guide — Ramonda",
@@ -42,18 +44,25 @@ class Guide extends Component {
     link: [{ rel: "canonical", href: "https://example.dev/guide" }],
   }));
   render() {
-    return <h1>Guide</h1>;
+    return (
+      <main>
+        <h1>Guide</h1>
+      </main>
+    );
   }
 }
 
-@Host("main")
 class Player extends Component {
   route = this.use(Navigator);
   head = this.use(Head, (self: Player) => ({
     title: `Player ${self.route.params<{ id: string }>().id}`,
   }));
   render() {
-    return <h1>Player {this.route.params<{ id: string }>().id}</h1>;
+    return (
+      <main>
+        <h1>Player {this.route.params<{ id: string }>().id}</h1>
+      </main>
+    );
   }
 }
 
@@ -64,11 +73,14 @@ const routes = createRoutes({
   "*": <Home />,
 });
 
-@Host("div")
 class App extends Component<{ children?: RamondaNode }> {
   router = this.use(Router);
   render() {
-    return <RouteOutlet routes={routes} />;
+    return (
+      <div>
+        <RouteOutlet routes={routes} />
+      </div>
+    );
   }
 }
 
@@ -162,8 +174,10 @@ describe("the build loop", () => {
       expect(html.includes('charset="utf-8"'), path).toBe(true);
       expect(html.includes('<div id="app">'), path).toBe(true);
       expect(html.includes('<script type="module" src="/assets/client.js">'), path).toBe(true);
-      // The state blob is what makes hydration cheap — every carrier carries it.
-      expect(html.includes("data-ramonda-state"), path).toBe(true);
+      // The markers are what make hydration possible at all: a component owns a range of nodes, and
+      // served markup is text, so the pair is the only thing that says where one component's nodes
+      // end and the next one's begin. The state blob rides the opening one.
+      expect(/<!--c\d+/.test(html), path).toBe(true);
     }
   });
 

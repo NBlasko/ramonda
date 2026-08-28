@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const rest: Record<string, unknown>;
 
@@ -13,7 +13,6 @@ declare const rest: Record<string, unknown>;
  * widening what is reported can only ADD false reports. Here, widening the set of known ids can
  * only PREVENT one.
  */
-@Host("div")
 class App extends Component {
   render() {
     return (

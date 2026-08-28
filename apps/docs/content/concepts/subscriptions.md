@@ -54,7 +54,7 @@ none of them need a cleanup from you:
 
 | | |
 |---|---|
-| [`@onElement`](/concepts/events) / `@onWindow` / `@onDocument` | a DOM listener, removed on destroy |
+| [`@onWindow`](/concepts/events) / `@onDocument` | a DOM listener, removed on destroy |
 | [`@interval`](/concepts/timers) / `@timeout` | a timer, cleared on destroy |
 | [`@deferHydration`](/ssr/async) | waits for a promise before hydrating |
 

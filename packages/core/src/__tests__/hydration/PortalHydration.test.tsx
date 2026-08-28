@@ -1,9 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state, created } from "../../base/decorators";
+import { state, created } from "../../base/decorators";
 import { Portal } from "../../base/Portal";
 import { renderPage } from "../../hydration/ssr";
 import { hydrateRoot } from "../../hydration/hydrate";
+import { findAll } from "../../test/setup";
+import { resetDiagnostics } from "../../debug/diagnostics";
 import { unmountChildrenNodes } from "../../core/DiffAndMerge";
 import { PORTAL_ATTR } from "../../helpers/constants";
 import { isOpenAnchor, isCloseAnchor } from "../../core/childrenRegion";
@@ -114,14 +116,17 @@ describe("Portal SSR", () => {
 
 describe("Portal hydration", () => {
   test("adopts the server's node instead of duplicating it, and owns it", async () => {
-    @Host("div")
     class Page extends Component {
       portal = this.use(Portal, () => ({
         children: <meta name="p" content="v" />,
         target: document.head,
       }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
@@ -160,7 +165,6 @@ describe("Portal hydration", () => {
   });
 
   test("a reactive portal keeps following its source after hydration", async () => {
-    @Host("div")
     class Page extends Component {
       count = 0;
       portal = this.use(Portal, (self: Page) => ({
@@ -168,7 +172,11 @@ describe("Portal hydration", () => {
         target: document.head,
       }));
       render() {
-        return <p>page</p>;
+        return (
+          <div>
+            <p>page</p>
+          </div>
+        );
       }
     }
 
@@ -202,13 +210,14 @@ describe("Portal hydration", () => {
       }
     }
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <WithMeta n="a" />
-            <WithMeta n="b" />
+            <div>
+              <WithMeta n="a" />
+              <WithMeta n="b" />
+            </div>
           </div>
         );
       }
@@ -269,13 +278,14 @@ describe("Portal hydration", () => {
       }
     }
 
-    @Host("div")
     class Page extends Component {
       render() {
         return (
           <div>
-            <First />
-            <Second />
+            <div>
+              <First />
+              <Second />
+            </div>
           </div>
         );
       }
@@ -306,10 +316,9 @@ describe("Portal hydration", () => {
 describe("Portal hydration restores components", () => {
   test("a component inside a portal keeps the state the server gave it", async () => {
     // The portal's block is in a target the main hydration walk never visits, so
-    // adopting it used to mean "reuse the element" and nothing more: the node
-    // carried no `_componentInstance`, so the reconcile CREATED a component
-    // against it. A fresh instance means the server's `@created` never ran here
-    // and its state is gone — the tag stays, its contents revert.
+    // adopting it used to mean "reuse the element" and nothing more: no node says a component is
+    // here, so the reconcile CREATED one against it. A fresh instance means the server's `@created`
+    // never ran here and its state is gone — the tag stays, its contents revert.
     //
     // `n` is set by a SERVER-only create, so it can only reach the client through
     // the blob. Reading 0 back means the component was rebuilt, not hydrated.
@@ -369,6 +378,203 @@ describe("Portal hydration restores components", () => {
 });
 
 describe("a comment that only looks like an anchor", () => {
+  test("a client render SHORTER than the server's leaves nothing outside the block", async () => {
+    /**
+     * The third outcome the adoption did not have: the walk stops on a leftover SERVER node that is
+     * still INSIDE the block. A fresh close anchor minted in front of it puts every remaining server
+     * node — and the server's own close — OUTSIDE the region, where the stale markup stays on screen
+     * and `dispose()` can never reach it.
+     *
+     * This is the same divergence the component path handles in `closeBlock`, one level up.
+     */
+    let onServer = true;
+
+    class Page extends Component {
+      portal = this.use(Portal, () => ({
+        children: onServer
+          ? [<meta name="a" content="x" />, <meta name="b" content="x" />]
+          : [<meta name="a" content="x" />],
+        target: document.head,
+      }));
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    document.head.insertAdjacentHTML("beforeend", page.head);
+    expect(document.head.querySelectorAll('meta[name="b"]')).toHaveLength(1);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    onServer = false;
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    // One block, one close, and the child this render did not ask for is gone rather than stranded.
+    expect(headPortalBlocks()).toHaveLength(1);
+    expect([...document.head.childNodes].filter(isCloseAnchor)).toHaveLength(1);
+    expect(document.head.querySelectorAll('meta[name="a"]')).toHaveLength(1);
+    expect(document.head.querySelectorAll('meta[name="b"]')).toHaveLength(0);
+
+    // And what is left is the block's own: the teardown takes it.
+    unmountChildrenNodes([container as unknown as never]);
+    expect(document.head.querySelectorAll("meta")).toHaveLength(0);
+    container.remove();
+  });
+
+  test("a hydrated block publishes where it ends, so an empty component lands inside it", async () => {
+    /**
+     * `BLOCK_CLOSE` on the opening anchor is what tells a reader where a block ends, and two readers
+     * need it: the position search an empty component does for its first node, and the host element
+     * whose claim pool has to skip the run.
+     *
+     * On a HYDRATED page it was not published. The adoption published once before the closing anchor
+     * was known and only the two divergence exits published again — so the ordinary exit, which is
+     * every correct SSR page, left it unset until the region's first `reconcile()`. The fallback for
+     * a missing answer is "the end of the target", which is exactly the fault the client-built case
+     * pins two tests above.
+     */
+    class Late extends Component {
+      @state shown = false;
+      render() {
+        return this.shown ? <meta name="late" content="v" /> : null;
+      }
+    }
+
+    class Page extends Component {
+      first = this.use(Portal, () => ({ children: <Late />, target: document.head }));
+      second = this.use(Portal, () => ({ children: <meta name="other" content="v" />, target: document.head }));
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    document.head.insertAdjacentHTML("beforeend", page.head);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    findAll<{ shown: boolean }>(document.head, "Late")[0]!.shown = true;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    /**
+     * Inside the FIRST block's anchors, not appended past the second one. `|` is an anchor, so the
+     * shape to read is: open, the node, close, then the second block.
+     */
+    const shape = [...document.head.childNodes]
+      .filter((node) => node.nodeType === 8 || (node as Element).getAttribute?.("name"))
+      .map((node) => (node.nodeType === 8 ? "|" : (node as Element).getAttribute("name")))
+      .join(",");
+    expect(shape).toBe("|,late,|,|,other,|");
+    container.remove();
+  });
+
+  test("a text divergence inside a block reports one diagnostic, not two", async () => {
+    /**
+     * A block ends a level of its own, so it has the question `closeBlock` has one level up: the
+     * tail of a text repair is the second half of a divergence already reported, and counting it as
+     * a node the server sent says "your block is one node shorter" about a node this hydration made.
+     *
+     * The text is a child of the BLOCK itself rather than of a component inside it — a component
+     * ends its own level through `closeBlock`, and this is the level the region ends for itself.
+     *
+     * Found by walking the callers of the rule rather than by a failure: six places end a level and
+     * only one of them had been taught this.
+     */
+    let onServer = true;
+
+    class Page extends Component {
+      portal = this.use(Portal, () => ({
+        children: onServer ? "waiting" : "ready",
+        target: document.head,
+      }));
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const codes: string[] = [];
+    const onLog = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { message: string };
+      const code = detail.message.match(/^\[(RMD\d+)\]/)?.[1];
+      if (code) codes.push(code);
+    };
+
+    const page = await renderPage(<Page />);
+    document.head.insertAdjacentHTML("beforeend", page.head);
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    onServer = false;
+    // The registry dedupes by code and key across a run, and earlier tests in this file have already
+    // reported RMD007 — without this the assertion below passes on a suppressed message.
+    resetDiagnostics();
+    window.addEventListener("ramonda:dev-log", onLog);
+    try {
+      hydrateRoot(<Page />, container);
+      await Promise.resolve();
+    } finally {
+      window.removeEventListener("ramonda:dev-log", onLog);
+    }
+
+    // One divergence, one message — and the block holds exactly the text this render produced.
+    expect(codes).toEqual(["RMD007"]);
+    expect(document.head.textContent).toContain("ready");
+    expect(document.head.textContent).not.toContain("waiting");
+    container.remove();
+  });
+
+  test("a block the server never closed is closed by the client that adopts it", async () => {
+    /**
+     * The closing anchor gone from the served markup — a truncated response, or a sanitizer that
+     * strips comments. The walk then has nothing to stop on, and the region has to write its own
+     * close before it can insert anything: without one, `reconcile` and `dispose` have no end to
+     * work against and the next render puts nodes past every other block in the target.
+     */
+    class Page extends Component {
+      portal = this.use(Portal, () => ({
+        children: <meta name="unclosed" content="v" />,
+        target: document.head,
+      }));
+      render() {
+        return <div>body</div>;
+      }
+    }
+
+    const page = await renderPage(<Page />);
+    expect(page.head).toMatch(/<!--\/r\d+-->/);
+    document.head.insertAdjacentHTML("beforeend", page.head.replace(/<!--\/r\d+-->/, ""));
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    container.innerHTML = page.body;
+
+    hydrateRoot(<Page />, container);
+    await Promise.resolve();
+
+    // One opening anchor, one closing anchor, and the server's tag between them — adopted, not
+    // duplicated.
+    expect(headPortalBlocks()).toHaveLength(1);
+    expect([...document.head.childNodes].filter(isCloseAnchor)).toHaveLength(1);
+    expect(document.head.querySelectorAll('meta[name="unclosed"]')).toHaveLength(1);
+
+    // And the block owns what it adopted: the teardown takes the tag with it.
+    unmountChildrenNodes([container as unknown as never]);
+    expect(document.head.querySelectorAll('meta[name="unclosed"]')).toHaveLength(0);
+    container.remove();
+  });
+
   test("does not swallow the shell's head, or hide a real block", async () => {
     // A portal's block is delimited by comments, and a shell is entitled to have
     // one that reads the same way. Two ways of pairing them were wrong, and both

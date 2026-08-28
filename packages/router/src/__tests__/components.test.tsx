@@ -1,5 +1,5 @@
 import { beforeEach, describe, test, expect } from "vitest";
-import { Component, Host, created } from "@ramonda/core";
+import { Component, created } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { render, act, fireEvent } from "@ramonda/testing-library";
 import { Router, RouteOutlet, Navigator } from "../Router";
@@ -11,11 +11,10 @@ import { scanComponentTree } from "../../../core/src/debug/inspector";
  * The app shell. `Router` is a hook now, so something has to own it — in a real
  * app that is the component wrapping everything; here it is this harness.
  */
-@Host("div")
 class RouterApp extends Component<{ children?: RamondaNode }> {
   router = this.use(Router);
   render() {
-    return this.props.children;
+    return <div>{this.props.children}</div>;
   }
 }
 

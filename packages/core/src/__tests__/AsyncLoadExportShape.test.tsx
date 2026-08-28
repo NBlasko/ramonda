@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host } from "../index";
+import { Component } from "../index";
 import { AsyncLoad } from "../base/AsyncLoad";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -30,19 +30,20 @@ describe("a module whose export is not something to render", () => {
   test("a plain object default export goes to the error fallback", async () => {
     let seen = "";
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => Promise.resolve({ default: { colour: "red" } })}
-            onLoading={<i>loading…</i>}
-            errorFallback={({ error }) => {
-              seen = error instanceof Error ? error.message : String(error);
-              return <i>could not load</i>;
-            }}
-            cacheKey="shape-object"
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => Promise.resolve({ default: { colour: "red" } })}
+              onLoading={<i>loading…</i>}
+              errorFallback={({ error }) => {
+                seen = error instanceof Error ? error.message : String(error);
+                return <i>could not load</i>;
+              }}
+              cacheKey="shape-object"
+            />
+          </div>
         );
       }
     }
@@ -62,20 +63,21 @@ describe("a module whose export is not something to render", () => {
   test("a named export that is not a component says which name it was", async () => {
     let seen = "";
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => Promise.resolve({ Widget: 42 })}
-            namedExport="Widget"
-            onLoading={<i>loading…</i>}
-            errorFallback={({ error }) => {
-              seen = error instanceof Error ? error.message : String(error);
-              return <i>could not load</i>;
-            }}
-            cacheKey="shape-number"
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => Promise.resolve({ Widget: 42 })}
+              namedExport="Widget"
+              onLoading={<i>loading…</i>}
+              errorFallback={({ error }) => {
+                seen = error instanceof Error ? error.message : String(error);
+                return <i>could not load</i>;
+              }}
+              cacheKey="shape-number"
+            />
+          </div>
         );
       }
     }
@@ -91,16 +93,17 @@ describe("a module whose export is not something to render", () => {
   });
 
   test("a function export still loads — this is not a components-only rule", async () => {
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <AsyncLoad
-            lazy={() => Promise.resolve({ default: () => <b>from a function</b> })}
-            onLoading={<i>loading…</i>}
-            errorFallback={<i>could not load</i>}
-            cacheKey="shape-function"
-          />
+          <div>
+            <AsyncLoad
+              lazy={() => Promise.resolve({ default: () => <b>from a function</b> })}
+              onLoading={<i>loading…</i>}
+              errorFallback={<i>could not load</i>}
+              cacheKey="shape-function"
+            />
+          </div>
         );
       }
     }

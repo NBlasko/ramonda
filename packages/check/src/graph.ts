@@ -14,27 +14,6 @@
 /** A place, relative to the directory holding the tsconfig — `src/App.tsx:12:3`. */
 export type Where = string;
 
-/**
- * What a component's HOST element is — the element it IS, as far as the source settles it.
- *
- * Two shapes, because `@Host` has two. A tag written down (or held in a name) settles it for every
- * mount of the class. A tag computed from ONE prop does not: `@Host((p) => p.as ?? "div")`
- * is a `<section>` at one call site and a `<div>` at the next, so the class can only say which prop
- * decides and what it falls back to. The call site says the rest — see `GraphEdge.hostTag`.
- *
- * Absent when the source settles neither: a callback reading more than one prop, computing a value,
- * or reaching through a member this cannot follow. A missing `host` is "not knowable here", never
- * "no host" — every component has one.
- */
-export type HostFact =
-  | { tag: string }
-  | {
-      /** The prop the tag is read from — `as`. */
-      fromProp: string;
-      /** What it is when the prop is absent, when the callback says so with `??` or `||`. */
-      fallback?: string;
-    };
-
 export interface GraphNode {
   /**
    * `<file>#<Name>`, the file relative to the project root — `src/pages/settings.tsx#Page`.
@@ -96,13 +75,6 @@ export interface GraphNode {
    * of scope rather than approximated.
    */
   slots?: string[];
-  /**
-   * The element this component IS — see {@link HostFact}.
-   *
-   * On the node because it is a fact about the CLASS. What a particular mount makes of it, when the
-   * class leaves it to a prop, is on the edge.
-   */
-  host?: HostFact;
 }
 
 /**
@@ -154,18 +126,6 @@ export interface GraphEdge {
    * which have no props at all.
    */
   slot?: string;
-  /**
-   * The host element THIS site mounts, when the class left the tag to a prop and this site supplies
-   * it — `<Card as="section" />` against `@Host((p) => p.as ?? "div")`.
-   *
-   * On the edge and not on the node, for the reason `binds` is: a value handed over belongs to a
-   * call. `<Card as="section" />` in one place and `<Card as="dvi" />` in another are two elements,
-   * and a node that carried one of them would be wrong about the other half the time.
-   *
-   * Absent when the class settles its own tag — the node says it once — and absent when this site
-   * does not name the prop and the class offered no fallback.
-   */
-  hostTag?: string;
 }
 
 export interface ComponentGraph {

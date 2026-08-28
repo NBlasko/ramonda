@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
 import { Component } from "../base/Component";
-import { Host, state, updated, mounted, onElement } from "../base/decorators";
+import { state, updated, mounted } from "../base/decorators";
 import { ErrorBoundary } from "../base/ErrorBoundary";
 
 /**
@@ -45,24 +45,28 @@ describe("what an ErrorBoundary reaches", () => {
   });
 
   test("a throw in @updated is caught too — it is the framework's own phase", async () => {
-    @Host("div")
     class Boom extends Component<{ tick: number }> {
       @updated afterRender() {
         if (this.props.tick > 0) throw new Error("updated boom");
       }
       render() {
-        return <p>{this.props.tick}</p>;
+        return (
+          <div>
+            <p>{this.props.tick}</p>
+          </div>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state tick = 0;
       render() {
         return (
-          <ErrorBoundary fallback={({ message }) => <p>caught: {message}</p>}>
-            <Boom tick={this.tick} />
-          </ErrorBoundary>
+          <div>
+            <ErrorBoundary fallback={({ message }) => <p>caught: {message}</p>}>
+              <Boom tick={this.tick} />
+            </ErrorBoundary>
+          </div>
         );
       }
     }
@@ -77,13 +81,16 @@ describe("what an ErrorBoundary reaches", () => {
   });
 
   test("a throw in @mounted is caught", async () => {
-    @Host("div")
     class Boom extends Component {
       @mounted ready(): never {
         throw new Error("mount boom");
       }
       render() {
-        return <p>x</p>;
+        return (
+          <div>
+            <p>x</p>
+          </div>
+        );
       }
     }
 
@@ -98,23 +105,27 @@ describe("what an ErrorBoundary reaches", () => {
   });
 
   test("a throw in an event handler is NOT — the browser called it, not the framework", async () => {
-    @Host("button")
     class Boom extends Component {
-      @onElement("click") onClick(): never {
+      onClick(): never {
         throw new Error("click boom");
       }
       render() {
-        return <span>click me</span>;
+        return (
+          <button onclick={this.onClick}>
+            <span>click me</span>
+          </button>
+        );
       }
     }
 
-    @Host("div")
     class App extends Component {
       render() {
         return (
-          <ErrorBoundary fallback={() => <p>caught</p>}>
-            <Boom />
-          </ErrorBoundary>
+          <div>
+            <ErrorBoundary fallback={() => <p>caught</p>}>
+              <Boom />
+            </ErrorBoundary>
+          </div>
         );
       }
     }

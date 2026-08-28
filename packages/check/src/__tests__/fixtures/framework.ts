@@ -39,12 +39,7 @@ export declare function renderToString(vnode: unknown): Promise<string>;
 export declare function renderPage(vnode: unknown): Promise<{ body: string }>;
 export declare function list<T>(each: T[], render: (item: T) => unknown): unknown;
 export declare function catchError(value: unknown, context: unknown): void;
-/**
- * The tag callback receives the PROPS, never the instance — the diff resolves the tag before the
- * component is built. Typed loosely here but with that one fact kept, because a stub that took only
- * a `string` let a fixture invent `(self) => self.props.as` and the reader was built to match it.
- */
-export declare function Host(tag: string | ((props: never) => string), props?: unknown): (ctor: unknown) => void;
+export declare function Host(tag: string, props?: unknown): (ctor: unknown) => void;
 export declare function ShouldUpdateOnPropsChange(decide: unknown): (ctor: unknown) => void;
 export declare function StableProps(...keys: string[]): (ctor: unknown) => void;
 export declare function state(value: unknown, context: unknown): void;

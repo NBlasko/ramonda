@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { getDOM } from "../../test/setup";
-import { Component, Hook, Host, state, created, mounted, destroyed, unmount } from "../../index";
+import { Component, Hook, state, created, mounted, destroyed, unmount } from "../../index";
 import { queuePostCommit, flushPostCommit } from "../../core/commit";
 import { COMPONENT_RUNTIME } from "../../core/runtime";
 import type { BaseComponent } from "../../types/vdom";
@@ -21,7 +21,6 @@ describe("@mounted runs after the DOM is committed", () => {
     let seenAtCreate = -1;
     let seenAtMount = -1;
 
-    @Host("div", () => ({ className: "probe" }))
     class Probe extends Component {
       @created born() {
         seenAtCreate = document.querySelectorAll(".probe").length;
@@ -30,7 +29,11 @@ describe("@mounted runs after the DOM is committed", () => {
         seenAtMount = document.querySelectorAll(".probe").length;
       }
       render() {
-        return <span>p</span>;
+        return (
+          <div className="probe">
+            <span>p</span>
+          </div>
+        );
       }
     }
 
@@ -55,7 +58,6 @@ describe("@mounted runs after the DOM is committed", () => {
   test("a replacement's @mounted sees its own element, not the outgoing one", async () => {
     const seen: string[] = [];
 
-    @Host("div", () => ({ className: "swap" }))
     class Panel extends Component<{ n: number }> {
       @mounted ready() {
         seen.push(
@@ -65,7 +67,11 @@ describe("@mounted runs after the DOM is committed", () => {
         );
       }
       render() {
-        return <span>{String(this.props.n)}</span>;
+        return (
+          <div className="swap">
+            <span>{String(this.props.n)}</span>
+          </div>
+        );
       }
     }
 
@@ -258,7 +264,6 @@ describe("hooks take part in the same commit", () => {
       }
     }
 
-    @Host("div", () => ({ className: "tracked" }))
     class Owner extends Component {
       tracker = this.use(Tracker);
       @created born() {
@@ -268,7 +273,11 @@ describe("hooks take part in the same commit", () => {
         order.push("owner:mount");
       }
       render() {
-        return <span>o</span>;
+        return (
+          <div className="tracked">
+            <span>o</span>
+          </div>
+        );
       }
     }
 
@@ -292,7 +301,6 @@ describe("hooks take part in the same commit", () => {
       }
     }
 
-    @Host("div")
     class Owner extends Component {
       watcher = this.use(Watcher);
       @mounted ready() {
@@ -320,11 +328,14 @@ describe("hooks take part in the same commit", () => {
       }
     }
 
-    @Host("div", () => ({ className: "swap2" }))
     class Panel extends Component<{ n: number }> {
       reporter = this.use(Reporter);
       render() {
-        return <span>{String(this.props.n)}</span>;
+        return (
+          <div className="swap2">
+            <span>{String(this.props.n)}</span>
+          </div>
+        );
       }
     }
 

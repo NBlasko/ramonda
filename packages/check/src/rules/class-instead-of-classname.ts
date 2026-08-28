@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
-import type { HostElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * `class` written where Ramonda reads `className`.
@@ -31,20 +31,8 @@ import type { HostElementRule } from "./rule";
  * same fault found in a branch nobody has opened.
  */
 export interface ClassInsteadOfClassNameIssue {
-  /**
-   * The tag it was written on — a host element's name, or the component's.
-   *
-   * `undefined` only on a `@Host` whose tag is chosen per props, where there is no name to print.
-   */
-  tag?: string;
-  /**
-   * Written in a component's `@Host` props rather than on a tag in a render.
-   *
-   * The report has to say so: the position lands on a decorator, and `<div class=…>` sends a reader
-   * looking for a tag that is not on that line. Caught in review, on the shape that has no tag
-   * either — the first version printed `<the host element class=…>`.
-   */
-  onHost: boolean;
+  /** The tag it was written on — a host element's name, or the component's. */
+  tag: string;
   /** The tag names a component, so the rename lands on a prop rather than on an element. */
   onComponent: boolean;
   /** `className` is on the same element, so this `class` is dropped rather than renamed. */
@@ -62,20 +50,14 @@ export const classInsteadOfClassName = {
     reportedWhen: "an element carries `class` where Ramonda reads `className`",
     alsoReportedAs: "RMD039",
     heading: (found) => `${found.length} element(s) with \`class\` where \`className\` was meant:`,
-    lines: (issue) => {
-      // On a host the reader is looking at a decorator, so the subject is named as one.
-      const subject = issue.onHost
-        ? `\`class\` in ${issue.tag === undefined ? "this component's" : `\`@Host("${issue.tag}")\`'s`} props`
-        : `<${issue.tag} class=…>`;
-      return [
-        `  ${issue.file}:${issue.line}:${issue.column}`,
-        issue.dropped
-          ? `    ${subject} — \`className\` is there too and wins, so this \`class\` is dropped.`
-          : issue.onComponent
-            ? `    ${subject} — renamed to \`className\`, so a \`class\` prop <${issue.tag} /> declared reads \`undefined\`.`
-            : `    ${subject} — renamed to \`className\`, so the source does not say what the element gets.`,
-      ];
-    },
+    lines: (issue) => [
+      `  ${issue.file}:${issue.line}:${issue.column}`,
+      issue.dropped
+        ? `    <${issue.tag} class=… className=…> — \`className\` wins, so this \`class\` is dropped.`
+        : issue.onComponent
+          ? `    <${issue.tag} class=…> — renamed to \`className\`, so a \`class\` prop <${issue.tag} /> declared reads \`undefined\`.`
+          : `    <${issue.tag} class=…> — renamed to \`className\`, so the source does not say what the element gets.`,
+    ],
     advice:
       "Rename it to `className`. This is the one place the JSX deliberately differs from HTML, and\n" +
       "it has to: `class` is a reserved word in the object literal a JSX factory receives.\n\n" +
@@ -96,29 +78,14 @@ export const classInsteadOfClassName = {
    */
   evenWhenSpreading: true,
 
-  alsoOnHost: true,
-
-  read(element, { tag, has, at, onHost }) {
+  read(element, { tag, has, at }) {
     if (!has("class")) return [];
 
-    /**
-     * `tag` is undefined for a component, and the component's own name is what names the report:
-     * the rename reaches it too, so the report is about a prop rather than about an attribute.
-     *
-     * A HOST is neither. `@Host((p) => p.as ?? "div", …)` has no tag to print and no component
-     * being handed a prop, so it reports with no name at all rather than inventing one.
-     */
-    const onComponent = element !== undefined && tag === undefined;
-    const name = tag ?? (element === undefined ? undefined : openingOf(element).tagName.getText());
+    // `tag` is undefined for a component, and the component's own name is what names the report:
+    // the rename reaches it too, so the report is about a prop rather than about an attribute.
+    const onComponent = tag === undefined;
+    const name = tag ?? openingOf(element).tagName.getText();
 
-    return [
-      {
-        ...(name === undefined ? {} : { tag: name }),
-        onComponent,
-        onHost,
-        dropped: has("className"),
-        ...positionOf(at),
-      },
-    ];
+    return [{ tag: name, onComponent, dropped: has("className"), ...positionOf(at) }];
   },
-} as const satisfies HostElementRule<ClassInsteadOfClassNameIssue>;
+} as const satisfies ElementRule<ClassInsteadOfClassNameIssue>;

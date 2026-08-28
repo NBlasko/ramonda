@@ -10,10 +10,8 @@ import {
   watchProp,
   onWindow,
   onDocument,
-  onElement,
   interval,
   timeout,
-  Host,
 } from "@ramonda/core";
 
 /* ── Nested hooks: CounterHook uses HistoryHook (hook-of-a-hook) ────────── */
@@ -115,40 +113,41 @@ export class Inputs extends Component {
 }
 
 /**
- * The event decorators are typed from the DOM's own maps, so the NAME decides
- * the handler's parameter: `@onElement("mousemove") (e: MouseEvent)` checks,
- * `(e: KeyboardEvent)` does not compile. Unknown names — custom events — still
- * pass and arrive as `Event`.
+ * A listener written in the markup, on the element that emits the event.
  *
- * A handler may also declare a supertype: "click" is a `PointerEvent`, and a
- * handler taking `MouseEvent` accepts it.
+ * The handler's parameter is typed from the JSX attribute, so `onmousemove` hands it a
+ * `MouseEvent` — `offsetX` and `offsetY` exist because of that and not because anyone cast.
  */
-@Host("div", (self: HoverCard) => ({
-  className: `hovercard ${self.hovered ? "on" : ""}`,
-}))
 export class HoverCard extends Component {
   @state hovered = false;
   @state at = "";
 
-  @onElement("mouseenter") onEnter() {
+  onEnter() {
     this.hovered = true;
   }
 
   // Typed from the name — `offsetX`/`offsetY` exist because this is a MouseEvent.
-  @onElement("mousemove") onMove(e: MouseEvent) {
+  onMove(e: MouseEvent) {
     this.at = `${Math.round(e.offsetX)},${Math.round(e.offsetY)}`;
   }
 
-  @onElement("mouseleave") onLeave() {
+  onLeave() {
     this.hovered = false;
     this.at = "";
   }
 
   render() {
     return (
-      <div>
-        <p className="label">@Host (reactive className) · @onElement (hover me)</p>
-        <strong>{this.hovered ? `✨ hovered @ ${this.at}` : "hover this card"}</strong>
+      <div
+        className={`hovercard ${this.hovered ? "on" : ""}`}
+        onmouseenter={this.onEnter}
+        onmousemove={this.onMove}
+        onmouseleave={this.onLeave}
+      >
+        <div>
+          <p className="label">a reactive className, and listeners in the markup (hover me)</p>
+          <strong>{this.hovered ? `✨ hovered @ ${this.at}` : "hover this card"}</strong>
+        </div>
       </div>
     );
   }

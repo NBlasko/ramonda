@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { NAME_PROHIBITED, NAME_PROHIBITED_TAGS, ROLES } from "./aria";
-import type { HostElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * A name written on something that cannot be named.
@@ -84,8 +84,6 @@ export const roleTakesNoName = {
    */
   evenWhenSpreading: true,
 
-  alsoOnHost: true,
-
   read(_element, { tag, attr, has, overwritable, spreads, attributes }) {
     // Markup only: what `<Panel aria-label="x" />` does with the prop is decided inside it.
     if (tag === undefined) return [];
@@ -144,4 +142,4 @@ export const roleTakesNoName = {
     }
     return found;
   },
-} as const satisfies HostElementRule<RoleTakesNoNameIssue>;
+} as const satisfies ElementRule<RoleTakesNoNameIssue>;

@@ -1,4 +1,4 @@
-import { Component, state, Host, list } from "@ramonda/core";
+import { Component, state, list } from "@ramonda/core";
 import { MatrixGrid } from "../demos/MatrixGrid";
 import { TwoLists } from "../demos/TwoLists";
 
@@ -20,25 +20,24 @@ function makeRow(label: string): RowData {
 }
 
 /**
- * One component per row, owning a list over its own cells. It IS the <tr>
- * (@Host), so it drops <td>s straight into the table — no wrapper.
+ * One component per row, owning a list over its own cells.
  *
- * A component per level is no longer forced — `list()` nests inside one
- * component perfectly well. It is still the right shape HERE, because a row that
- * owns state needs somewhere to keep it, and that somewhere is a component.
+ * It writes its own `<tr>`, and the cells go straight inside it. A component per level is not
+ * forced — `list()` nests inside one component perfectly well — but it is the right shape HERE,
+ * because a row that owns state needs somewhere to keep it, and that somewhere is a component.
  */
-@Host("tr")
 export class TableRow extends Component<{ item: RowData }> {
   render() {
-    // This component is a <tr>; render() may return an array of children, and a
-    // list is one of them — the host supplies the single element, so 1-1 holds.
-    //
-    // The inner list uses `render` because a cell maps to plain <td> markup
-    // rather than a component — that is the case `render` is for.
-    return [
-      <td className="rowlabel">{this.props.item.label}</td>,
-      list(this.props.item.cells, (cell: Cell) => <td>{cell.value}</td>),
-    ];
+    // The inner list uses `render` because a cell maps to plain `<td>` markup rather than a
+    // component — that is the case `render` is for.
+    return (
+      <tr>
+        <td className="rowlabel">{this.props.item.label}</td>
+        {list(this.props.item.cells, (cell: Cell) => (
+          <td>{cell.value}</td>
+        ))}
+      </tr>
+    );
   }
 }
 

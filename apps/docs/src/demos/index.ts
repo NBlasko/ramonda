@@ -10,7 +10,6 @@ import { LensSharing } from "./LensSharing";
 import { EffectCleanup } from "./EffectCleanup";
 import { ErrorBoundaryDemo } from "./ErrorBoundaryDemo";
 import { IntervalClock } from "./IntervalClock";
-import { HostTag } from "./HostTag";
 import { KeyboardShortcut } from "./KeyboardShortcut";
 import { LifecycleLog } from "./LifecycleLog";
 import { MemoHandlers } from "./MemoHandlers";
@@ -41,7 +40,6 @@ export const demos: Record<string, ComponentClassKind> = {
   Counter,
   ComputeDemo,
   LifecycleLog,
-  HostTag,
   RefFocus,
   WindowSize,
   KeyboardShortcut,
@@ -71,7 +69,6 @@ export const demoTitles: Record<string, string> = {
   Counter: "State and a handler",
   ComputeDemo: "@compute — derived values, cached",
   LifecycleLog: "@created, @mounted, @destroyed — in order",
-  HostTag: "@Host — the element a component is",
   RefFocus: "Refs — reaching the element",
   WindowSize: "@onWindow — a global listener",
   KeyboardShortcut: "@onDocument — a keyboard shortcut",

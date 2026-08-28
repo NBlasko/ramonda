@@ -75,11 +75,9 @@ import { unwatchedFields } from "./unwatched-fields";
 import { persistOfALossyValue } from "./persist-of-a-lossy-value";
 import { unserializableState } from "./unserializable-state";
 import { intervalWithNoCleanup } from "./interval-with-no-cleanup";
-import { listenerOnTheDefaultHost } from "./listener-on-the-default-host";
 import { listenerAddedByHand } from "./listener-added-by-hand";
 import { lateRequestRead } from "./late-request-read";
 import { headTagsCollide } from "./head-tags-collide";
-import { hostTagIsNotAnElement } from "./host-tag-is-not-an-element";
 import { unguardedAsyncLifecycle } from "./unguarded-async-lifecycle";
 import { duplicateId } from "./duplicate-id";
 import { headingSkipsALevel } from "./heading-skips-a-level";
@@ -212,11 +210,9 @@ export { unwatchedFields, type UnwatchedFieldIssue } from "./unwatched-fields";
 export { persistOfALossyValue, type PersistOfALossyValueIssue } from "./persist-of-a-lossy-value";
 export { unserializableState, type UnserializableStateIssue } from "./unserializable-state";
 export { intervalWithNoCleanup, type IntervalWithNoCleanupIssue } from "./interval-with-no-cleanup";
-export { listenerOnTheDefaultHost, type ListenerOnTheDefaultHostIssue } from "./listener-on-the-default-host";
 export { listenerAddedByHand, type ListenerAddedByHandIssue } from "./listener-added-by-hand";
 export { lateRequestRead, type LateRequestReadIssue } from "./late-request-read";
 export { headTagsCollide, type HeadTagsCollideIssue } from "./head-tags-collide";
-export { hostTagIsNotAnElement, type HostTagIsNotAnElementIssue } from "./host-tag-is-not-an-element";
 export { unguardedAsyncLifecycle, type UnguardedAsyncLifecycleIssue } from "./unguarded-async-lifecycle";
 export { duplicateId, type DuplicateIdIssue } from "./duplicate-id";
 export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skips-a-level";
@@ -260,11 +256,9 @@ export const CLASS_RULES = [
   persistOfALossyValue,
   unserializableState,
   intervalWithNoCleanup,
-  listenerOnTheDefaultHost,
   listenerAddedByHand,
   lateRequestRead,
   headTagsCollide,
-  hostTagIsNotAnElement,
   unguardedAsyncLifecycle,
   contextConsumedAboveItsProvider,
   clientOnlyRequestRead,
@@ -557,43 +551,6 @@ export function applyElement(
   const context = contextFor(element, resolve);
   const asked = context.spreads ? active.filter((rule) => "evenWhenSpreading" in rule) : active;
   for (const rule of asked) collect(findings, rule, rule.read(element, context), silenced);
-}
-
-/**
- * Every active element rule that has an answer for the element a component IS.
- *
- * `@Host("section", () => ({ role: "buton" }))` is one element on one page with one bad role on it,
- * and the whole family used to be silent about it — measured with a plant: five faults written in a
- * props bag, zero reported, against the identical five on a tag with all five reported. A rule that
- * reads elements misses everything written where a component CONFIGURES its own.
- *
- * Only the rules that declare `alsoOnHost` are asked, and they are the ones whose question has an
- * answer here: a host has attributes, and it does not have children this can hand over or a parent
- * this can name.
- */
-export function applyHost(
-  active: readonly (typeof ELEMENT_RULES)[number][],
-  context: ElementContext,
-  findings: Findings,
-  silenced: Silencer,
-): void {
-  const asked = active.filter(answersForAHost);
-  const past = context.spreads ? asked.filter((rule) => "evenWhenSpreading" in rule) : asked;
-  for (const rule of past) collect(findings, rule, rule.read(undefined, context), silenced);
-}
-
-/**
- * A predicate rather than a cast, and the difference is the whole safety of this.
- *
- * `HostCapable` is computed FROM the registry, so a rule reaches `read(undefined, …)` only if its
- * own declaration says it can take that. A cast here would have compiled just as happily and would
- * have handed `undefined` to a rule reaching for `openingOf(element)` the first time somebody
- * forgot the flag.
- */
-type HostCapable = Extract<(typeof ELEMENT_RULES)[number], { alsoOnHost: true }>;
-
-function answersForAHost(rule: (typeof ELEMENT_RULES)[number]): rule is HostCapable {
-  return "alsoOnHost" in rule && rule.alsoOnHost === true;
 }
 
 /**

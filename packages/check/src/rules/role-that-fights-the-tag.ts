@@ -1,5 +1,5 @@
 import { positionOf } from "../syntax";
-import type { ElementContext, HostElementRule } from "./rule";
+import type { ElementContext, ElementRule } from "./rule";
 
 /**
  * A `role` that tells a reader the element behaves in a way it does not.
@@ -91,7 +91,6 @@ export const roleThatFightsTheTag = {
    * The role is read as a VALUE, so the order guard is taken for it — a spread after it may replace
    * it with one that agrees.
    */
-  alsoOnHost: true,
   evenWhenSpreading: true,
 
   read(_element, { tag, attr, overwritable, at }: ElementContext) {
@@ -118,4 +117,4 @@ export const roleThatFightsTheTag = {
 
     return [];
   },
-} as const satisfies HostElementRule<RoleThatFightsTheTagIssue>;
+} as const satisfies ElementRule<RoleThatFightsTheTagIssue>;

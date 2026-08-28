@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
 import { Component } from "../../base/Component";
-import { Host, state } from "../../base/decorators";
+import { state } from "../../base/decorators";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
 import { resetDiagnostics } from "../../debug/diagnostics";
@@ -30,14 +30,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-@Host("div")
 class Counter extends Component {
   @state n = 0;
   render() {
     return (
-      <button id="b" onclick={() => this.n++} on:my-event={() => this.n++} onfocusin={() => {}}>
-        {this.n}
-      </button>
+      <div>
+        <button id="b" onclick={() => this.n++} on:my-event={() => this.n++} onfocusin={() => {}}>
+          {this.n}
+        </button>
+      </div>
     );
   }
 }

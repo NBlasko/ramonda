@@ -92,7 +92,7 @@ describe("who wrote this decorator", () => {
     // The namespace half was missing here too, and fixing it in `coreExportName` fixed both — it
     // had already been patched inline in `lifecycle-env` an hour earlier, which is the copy this
     // removed.
-    expect(twice()).toEqual(["HostTwiceNamespaced", "HostTwiceAliased"]);
+    expect(twice()).toEqual(["GateTwiceNamespaced", "GateTwiceAliased"]);
   });
 
   test("and an app's own decorator of that name is nobody's business", () => {

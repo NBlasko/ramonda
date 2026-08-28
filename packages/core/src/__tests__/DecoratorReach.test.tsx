@@ -5,7 +5,6 @@ import { Hook } from "../base/Hook";
 import type { RamondaNode } from "../types/vdom";
 import { renderToString } from "../hydration/ssr";
 import {
-  Host,
   compute,
   created,
   destroyed,
@@ -59,12 +58,15 @@ describe("a hook reaches everything except the three that need an element or a p
       }
     }
 
-    @Host("div")
     class Owner extends Component {
       @state n = 1;
       h = this.use(Full, () => ({ n: this.n }));
       render() {
-        return <span>{this.n}</span>;
+        return (
+          <div>
+            <span>{this.n}</span>
+          </div>
+        );
       }
     }
 
@@ -99,11 +101,14 @@ describe("a hook reaches everything except the three that need an element or a p
       }
     }
 
-    @Host("div")
     class Owner extends Component {
       h = this.use(Timed);
       render() {
-        return <span>x</span>;
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
       }
     }
 
@@ -145,7 +150,6 @@ describe("what a server render actually runs", () => {
       }
     }
 
-    @Host("div")
     class Page extends Component {
       @state n = 2;
       h = this.use(ServerHook);
@@ -175,7 +179,11 @@ describe("what a server render actually runs", () => {
         return this.n * 2;
       }
       render() {
-        return <span>{this.doubled}</span>;
+        return (
+          <div>
+            <span>{this.doubled}</span>
+          </div>
+        );
       }
     }
 

@@ -1,11 +1,10 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const rest: Record<string, unknown>;
 declare const kind: string;
 declare const wide: boolean;
 
 /** ✗ The shape: a primary navigation and a footer navigation, neither named. */
-@Host("div")
 class TwoNavs extends Component {
   render() {
     return (
@@ -22,7 +21,6 @@ class TwoNavs extends Component {
 }
 
 /** ✗ Three of them, and all three are reported — every one needs a name. */
-@Host("div")
 class ThreeNavs extends Component {
   render() {
     return (
@@ -36,7 +34,6 @@ class ThreeNavs extends Component {
 }
 
 /** ✗ A written `role` is certain, and is the same landmark. */
-@Host("div")
 class NavAndRole extends Component {
   render() {
     return (
@@ -49,7 +46,6 @@ class NavAndRole extends Component {
 }
 
 /** ✓ Both named, which is the fix. */
-@Host("div")
 class BothNamed extends Component {
   render() {
     return (
@@ -62,7 +58,6 @@ class BothNamed extends Component {
 }
 
 /** ✓ One named and one not: two different entries in the list, and they CAN be told apart. */
-@Host("div")
 class OneNamed extends Component {
   render() {
     return (
@@ -75,7 +70,6 @@ class OneNamed extends Component {
 }
 
 /** ✓ Named by pointing at a heading, which cannot drift apart from it. */
-@Host("div")
 class NamedByHeading extends Component {
   render() {
     return (
@@ -88,7 +82,6 @@ class NamedByHeading extends Component {
 }
 
 /** ✓ One landmark of a kind has nothing to be told apart FROM. */
-@Host("div")
 class JustOne extends Component {
   render() {
     return (
@@ -101,7 +94,6 @@ class JustOne extends Component {
 }
 
 /** ✓ Two DIFFERENT kinds are two different words in the list. */
-@Host("div")
 class TwoKinds extends Component {
   render() {
     return (
@@ -114,7 +106,6 @@ class TwoKinds extends Component {
 }
 
 /** ✓ One in each arm of a ternary is one landmark on the page. */
-@Host("div")
 class OneInEachArm extends Component {
   render() {
     return <div>{wide ? <nav>wide</nav> : <nav>narrow</nav>}</div>;
@@ -122,7 +113,6 @@ class OneInEachArm extends Component {
 }
 
 /** ✓ A role this cannot READ may be anything, including something that is not a landmark. */
-@Host("div")
 class UnreadableRole extends Component {
   render() {
     return (
@@ -135,7 +125,6 @@ class UnreadableRole extends Component {
 }
 
 /** ✓ A spread may be carrying the name, or a role that changes what it is. */
-@Host("div")
 class SecondSpreads extends Component {
   render() {
     return (
@@ -148,7 +137,6 @@ class SecondSpreads extends Component {
 }
 
 /** ✓ Two `<main>` is `more-than-one-main`'s report, not a naming problem. */
-@Host("div")
 class TwoMains extends Component {
   render() {
     return (
@@ -160,7 +148,6 @@ class TwoMains extends Component {
   }
 }
 
-@Host("div")
 class App extends Component {
   render() {
     return (

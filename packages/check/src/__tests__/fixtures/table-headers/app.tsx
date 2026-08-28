@@ -1,15 +1,13 @@
-import { Component, Host, bootstrap } from "@ramonda/core";
+import { Component, bootstrap } from "@ramonda/core";
 
 declare const rows: { item: string; price: string }[];
 
-@Host("tr")
 class HeaderRow extends Component {
   render() {
     return null;
   }
 }
 
-@Host("div")
 class App extends Component {
   render() {
     return (

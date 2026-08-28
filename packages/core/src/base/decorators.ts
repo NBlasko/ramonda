@@ -1,13 +1,4 @@
-import {
-  attach,
-  detach,
-  HOST_META,
-  HOST_TAG,
-  STATE_KEYS,
-  PERSIST_KEYS,
-  PROPS_GATE,
-  INITIAL_PRIMITIVES,
-} from "../helpers/constants";
+import { attach, detach, STATE_KEYS, PERSIST_KEYS, PROPS_GATE, INITIAL_PRIMITIVES } from "../helpers/constants";
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
 import { isComponentClass } from "../vdom/guards";
@@ -15,7 +6,6 @@ import { displayName } from "../helpers/utils";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
 import { trackerContainer, trackDependency } from "../reactivity/tracker";
-import type { HostMeta } from "../types/commonTypes";
 import type { LifecycleEnv } from "../types/vdom";
 import { type Runtime, type ComponentRuntime, GLOBAL_RUNTIME, COMPONENT_RUNTIME } from "../core/runtime";
 import { diagnose } from "../debug/diagnostics";
@@ -37,8 +27,6 @@ import {
   assertDisconnect,
   assertDelay,
   assertEventType,
-  assertHostTag,
-  assertHostProps,
   assertSelector,
   assertEnv,
   assertStablePropKeys,
@@ -139,7 +127,7 @@ export type Disconnect = (() => void) | void;
  * decorator, so the cleanup is the framework's problem instead of the app's.
  *
  * This is the door onto the same machinery `@interval`, `@timeout` and
- * `@onElement` are built on. Write the `connect` — subscribe, return the
+ * `@onWindow` is built on. Write the `connect` — subscribe, return the
  * unsubscribe — and you get a decorator that runs it after mount and tears it
  * down on destroy:
  *
@@ -483,7 +471,6 @@ function ownerOfDecoration(instance: object, name: string, fn: unknown): object 
  * Declares the method that handles an error thrown anywhere below this component.
  *
  * ```tsx
- * @Host("div")
  * class Panel extends Component {
  *   @state failed = "";
  *
@@ -582,7 +569,6 @@ export function deferHydration(value: (...args: never[]) => unknown, context: En
  *
  * ```tsx
  * @ShouldUpdateOnPropsChange((self, previous, next) => previous.id !== next.id)
- * @Host("li")
  * class Row extends Component<{ id: number; noisy: unknown }> { … }
  * ```
  *
@@ -813,7 +799,7 @@ export const created = createLifecycleDecorator("creates", "created");
  * the node to a library — this is where that belongs, not in `@created`.
  *
  * Within one commit: every child's `@mounted` before its parent's, and a
- * component's `@mounted` before its effects, so `@onElement` listeners are already
+ * component's `@mounted` before its effects, so subscriptions are already
  * attached. A component torn down before the commit finishes never mounts at all.
  *
  * The method receives its render side (`env: RenderEnv`, `"client"` | `"server"`)
@@ -1309,137 +1295,6 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
 }
 
 /**
- * Sets the component's host (carrier) element. The default host is a transparent
- * `<ramonda-host style="display: contents">`; @Host swaps it for a real element
- * (div, table, g, custom-element, ...). `props` is an optional callback
- * returning attributes to apply to the host — it runs on every render, so it is
- * reactive.
- *
- * (It was a `<template>` until 2026-07-17. That could not survive SSR: the HTML
- * parser moves a template's children into its `.content` fragment, where nothing
- * renders. See constants.ts.)
- *
- *   @Host("nav", (self: Menu) => ({ className: self.open ? "open" : "" }))
- *   class Menu extends Component { ... }
- *
- * Type the host attributes via the callback's parameter annotation `(self: T)`.
- *
- * **The tag may instead be a callback**, so the CALLER chooses the element:
- *
- *   @Host((p: CardProps) => p.as ?? "div")
- *   class Card extends Component<CardProps> { ... }
- *
- *   <Card as="section" />
- *
- * It receives the component's props and must be **pure** — the diff calls it
- * while deciding whether an existing element can be reused, so it runs more than
- * once and must depend on nothing but the props it is handed.
- *
- * One instance's host never changes. The tag is resolved when the component is
- * built and cached for its lifetime, because the host element IS the component:
- * swapping it later would destroy that element and everything attached to it —
- * its state, its listeners, whatever a ref points at. A prop change that would
- * resolve to a different tag does not mutate the host; it fails to match in the
- * diff, and a fresh component is built in its place.
- */
-/**
- * What a component's host element may be: an element the platform has, or a custom one.
- *
- * The platform's own names come from `JSX.IntrinsicElements`, so this list cannot drift from what
- * the JSX accepts. Anything else has to carry a DASH, and that is not a house style — it is the
- * rule for a custom element name, and it decides whether the browser will ever upgrade the tag.
- * `<my-widget>` becomes a web component the moment one is defined; `<mywidget>` is an
- * `HTMLUnknownElement` for ever, and is almost always a misspelling of a real tag.
- *
- * The runtime's own check is looser on purpose — it asks only for a plausible element name, and a
- * net that never REFUSES what the type allows cannot make a typed build behave differently from an
- * untyped one. See `assertHostTag`.
- */
-type HostTag = keyof JSX.IntrinsicElements | `${string}-${string}`;
-
-export function Host<
-  C extends (new (...args: never[]) => object) & { readonly __isComponent: true },
-  T extends HostTag = HostTag,
->(
-  tag: T | ((props: PropsOf<C>) => string),
-  props?: (
-    self: InstanceOf<C>,
-  ) => T extends keyof JSX.IntrinsicElements ? JSX.IntrinsicElements[T] : Record<string, unknown>,
-) {
-  if (__DEV__) {
-    assertHostTag(tag);
-    assertHostProps(props);
-  }
-
-  return (ctor: C) => {
-    // A hook has no element, so `@Host` on one describes nothing — and it used to say nothing
-    // either: the meta was written to a class no render path ever asks about, and the tag was
-    // silently ignored. Thrown in every build, like the other two component-only decorators;
-    // the TYPE already refuses it, so this is for the build that has no types.
-    if (!isComponentClass(ctor)) {
-      throw new Error(
-        `[Ramonda] @Host is for components, not hooks. It names the element a component IS, and a ` +
-          `hook adds no element — that is the point of a hook. Put @Host on the component that uses ` +
-          `${ctor.name}, or drop it.`,
-      );
-    }
-
-    // Exactly one of `tag` / `tagFromProps` is set, so the render and diff paths
-    // never have to decide which of two sources wins.
-    const meta: HostMeta =
-      typeof tag === "function"
-        ? {
-            tagFromProps: tag as HostMeta["tagFromProps"],
-            props: props as HostMeta["props"],
-          }
-        : {
-            tag: tag.toUpperCase(),
-            props: props as HostMeta["props"],
-          };
-
-    /**
-     * Two `@Host` on ONE class, said in words.
-     *
-     * It already failed — `configurable: false` below means the second `defineProperty` throws — but
-     * with V8's own message: `Cannot redefine property: Symbol(host:meta)`. That names an internal
-     * symbol, gives no advice, and points at a line inside this file rather than at the class. For a
-     * mistake as easy as writing the decorator twice, it was the worst available report.
-     *
-     * **A record AND a throw**, which are not alternatives — the same two doors `@ramonda/form`'s
-     * `refuse` opens. The throw is the developer's channel and ships in every build, because there is no
-     * correct program here: a component is exactly one element, so two answers cannot both be honoured.
-     * The RECORD is the collector's, so an app streaming its diagnostics somewhere sees this alongside
-     * everything else it has to tidy up — a fault that only throws is invisible to that.
-     *
-     * What the tier decides is the THROW, not the code. `RMD032` and `RMD040` report and carry on,
-     * because one declaration quietly wins and the program still runs, wrongly. This one cannot pick a
-     * winner.
-     *
-     * `hasOwn`, not `in`: a SUBCLASS declaring its own `@Host` overrides the base's, which is how a
-     * specialised component changes its element, and it is measured as working. Only two on one class
-     * body are refused.
-     */
-    if (Object.hasOwn(ctor, HOST_META)) {
-      if (__DEV__) {
-        diagnose("RMD045", ctor.name, `<${ctor.name} /> declares more than one @Host.`, { component: ctor.name });
-      }
-      throw new Error(
-        `[Ramonda] <${ctor.name} /> has more than one @Host. A component is exactly one element, so ` +
-          `there is one answer to which — keep the @Host you meant and delete the rest. A SUBCLASS may ` +
-          `declare its own, which overrides the base's; this is two on the same class.`,
-      );
-    }
-
-    Object.defineProperty(ctor, HOST_META, {
-      value: meta,
-      writable: false,
-      enumerable: false,
-      configurable: false,
-    });
-  };
-}
-
-/**
  * The instance a class constructs, and the props its constructor takes.
  *
  * **Both are conditional types on purpose**, and that is the whole mechanism behind
@@ -1594,10 +1449,10 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
      *
      * This decorator names a SET, and it already merges along the class chain — a subclass adds names
      * rather than shadowing the base's. So `@StableProps("a") @StableProps("b")` has an unambiguous
-     * reading, the union, and there is no answer to pick between. That is what separates it from
-     * `@Host` (RMD045), where two answers to "which element am I?" cannot both be honoured and the only
-     * honest response is to refuse: here carrying on gives exactly what the author asked for, spelled
-     * awkwardly.
+     * reading, the union, and there is no answer to pick between. That is what separates it from a
+     * decorator that names ONE answer — `@catchError` (RMD032), where the second declaration can only
+     * shadow the first and the honest response is to say which one is live. Here carrying on gives
+     * exactly what the author asked for, spelled awkwardly.
      *
      * It used to throw, and not on purpose — `configurable: false` below meant the second
      * `defineProperty` failed with V8's `Cannot redefine property: Symbol(stableProps)`, an internal
@@ -1637,14 +1492,11 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
 type EventDecoratorTarget = EventTarget | null | undefined;
 
 /**
- * The least an owner must be for a listener to hang off it: a runtime to attach
- * the effect to. A Hook has exactly this and no element — which is fine for
- * `window`/`document`, and is why the constraint is not "a component".
+ * The least an owner must be for a listener to hang off it: a runtime to attach the effect to. A
+ * component and a Hook both have exactly this, which is why the constraint is not "a component" —
+ * `window` and `document` are the same target whoever listens.
  */
 type EventOwner = { [GLOBAL_RUNTIME]: Runtime };
-/** An owner that also has an element of its own, which only @onElement needs. */
-type ElementOwner = EventOwner & { [COMPONENT_RUNTIME]: ComponentRuntime };
-
 /**
  * A known event name, or any other string.
  *
@@ -1662,11 +1514,9 @@ type KnownEvent<EventMap> = Extract<keyof EventMap, string> | (string & {});
  * `my-event`, `save`, `ready` — so an unknown name is not evidence of a mistake and `clik` cannot be
  * refused without refusing those too. Only what can be proved is stopped.
  *
- * **The JSX attribute, written where the event's own name belongs.** `@onElement("onclick")` listens
- * for an event called `onclick`, which nothing dispatches — and it is the likelier mistake now that
- * the JSX attribute IS `onclick`: one place takes the attribute, the other takes the event. Refused
- * only when what follows `on` is an event this target actually has, so a custom `online` or `once`
- * is untouched.
+ * **The JSX attribute, written where the event's own name belongs.** `@onWindow("onresize")` listens
+ * for an event called `onresize`, which nothing dispatches. Refused only when what follows `on` is
+ * an event this target actually has, so a custom `online` or `once` is untouched.
  *
  * **A known name in the wrong case.** `addEventListener` is case-sensitive, so `"MouseDown"` never
  * fires. Refused only when the lower-cased name IS one of this target's events, which leaves a
@@ -1690,26 +1540,20 @@ type CheckedEvent<EventMap, Name extends string> = Name extends `on${infer Rest}
 type EventFor<EventMap, Name> = Name extends keyof EventMap ? EventMap[Name] : Event;
 
 /**
- * Each decorator's `This` is constrained by what its *target resolver* actually
- * reads, not by "component" across the board. @onWindow and @onDocument never
- * touch COMPONENT_RUNTIME, so requiring it only shut them out of Hooks for no
- * reason — while @onElement genuinely cannot work on one.
- *
- * `EventMap` is the second axis: each decorator listens on a different target,
- * and the DOM's own maps already say which events that target can deliver. Using
- * them means the handler's parameter is typed from the NAME, so
- * `@onElement("click") onClick(e: MouseEvent)` type-checks with no cast — the
- * `e as MouseEvent` that every handler used to open with was the type system
- * being told to look away.
+ * `EventMap` is the axis that matters: each decorator listens on a different target, and the DOM's
+ * own maps already say which events that target can deliver. Using them means the handler's
+ * parameter is typed from the NAME, so `@onWindow("resize") onResize(e: UIEvent)` type-checks with
+ * no cast — the `e as UIEvent` that every handler used to open with was the type system being told
+ * to look away.
  */
 function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
   decoratorName: string,
   resolveTarget: (owner: Owner) => EventDecoratorTarget,
   /**
    * Checked at construction, for a decorator whose owner is narrower than "anything with a
-   * runtime" — today only `@onElement`. The TYPE already refuses a Hook; this is for the build
-   * that has no types, which otherwise reached the resolver and died on a property of
-   * `undefined`. See `onElement`.
+   * runtime". Nothing needs it today — both remaining decorators listen on a global target that
+   * every owner can reach — and it stays because the check has to happen at construction rather
+   * than at mount when one does.
    */
   validateOwner?: (owner: object) => void,
 ) {
@@ -1752,31 +1596,6 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
               return;
             }
 
-            /**
-             * A listener on the default host, for an event that cannot reach it.
-             *
-             * Only a NON-BUBBLING one, and that narrowing is a fix. This used to report every
-             * `@onElement` on a `<ramonda-host>`, and most of them work: measured — a click on a
-             * child of a boxless host reaches the listener perfectly well, because it bubbles. The
-             * host has no box, so it can never be the direct TARGET; it is still an ancestor, and
-             * an ancestor is all a bubbling listener needs.
-             *
-             * What genuinely never arrives is an event that does not bubble. `mouseenter` needs a
-             * box to enter, `focus` needs something focusable — and neither is ever reported by any
-             * other means, which is what makes this worth a code of its own.
-             */
-            if (__DEV__ && decoratorName === "onElement" && (target as Node).nodeName === HOST_TAG) {
-              if (DOES_NOT_BUBBLE.has(type)) {
-                diagnose(
-                  "RMD042",
-                  `${component.constructor.name}.${type}`,
-                  `@onElement is listening for "${type}" on the default <ramonda-host>, which has no box — ` +
-                    `and "${type}" does not bubble, so it never arrives.`,
-                  { component: component.constructor.name, event: type },
-                );
-              }
-            }
-
             // The one cast, and it is confined here: addEventListener hands back
             // a plain `Event` at runtime, and no amount of typing changes what
             // the DOM delivers. The map decides what the HANDLER may assume; the
@@ -1798,28 +1617,6 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
  *
  *   @onWindow("resize") onResize(e: UIEvent) { … }
  */
-/**
- * Events that do not bubble, so an ancestor listener never sees them.
- *
- * Read against the DOM's own definitions rather than chosen: each of these is dispatched at its
- * target and nowhere else. `focusin`/`focusout` are deliberately absent — they are the BUBBLING
- * counterparts of `focus`/`blur` and reach an ancestor perfectly well.
- */
-const DOES_NOT_BUBBLE: ReadonlySet<string> = new Set([
-  "mouseenter",
-  "mouseleave",
-  "pointerenter",
-  "pointerleave",
-  "focus",
-  "blur",
-  "load",
-  "unload",
-  "abort",
-  "error",
-  "scroll",
-  "resize",
-]);
-
 export const onWindow = createEventListenerDecorator<EventOwner, WindowEventMap>("onWindow", () =>
   typeof window !== "undefined" ? window : null,
 );
@@ -1832,30 +1629,6 @@ export const onWindow = createEventListenerDecorator<EventOwner, WindowEventMap>
  */
 export const onDocument = createEventListenerDecorator<EventOwner, DocumentEventMap>("onDocument", () =>
   typeof document !== "undefined" ? document : null,
-);
-
-/**
- * Binds a listener on the component's host element. Client only; components only
- * — a Hook has no element.
- *
- *   @onElement("click") onClick(e: MouseEvent) { … }
- */
-export const onElement = createEventListenerDecorator<ElementOwner, HTMLElementEventMap>(
-  "onElement",
-  (component) => component[COMPONENT_RUNTIME].enhancedNode as EventDecoratorTarget,
-  (owner) => {
-    // A hook has no element, so the resolver above would read `.enhancedNode` of `undefined` and
-    // die with "Cannot read properties of undefined" — an error naming nothing the author wrote.
-    // Thrown in every build, and at construction rather than at mount, matching
-    // `@ShouldUpdateOnPropsChange`: one rule for "this decorator is for components".
-    if ((owner as { [COMPONENT_RUNTIME]?: ComponentRuntime })[COMPONENT_RUNTIME] === undefined) {
-      throw new Error(
-        `[Ramonda] @onElement is for components, not hooks. It binds a listener to the component's ` +
-          `host element, and a hook has no element of its own. Move the listener to the component ` +
-          `that uses <${owner.constructor.name} />, or use @onWindow / @onDocument, which work on both.`,
-      );
-    }
-  },
 );
 
 // --- Client-only timer decorators ------------------------------------------

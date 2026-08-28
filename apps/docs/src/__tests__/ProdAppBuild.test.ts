@@ -232,7 +232,15 @@ describe("a production application build", () => {
     // because the fixture failed to pull the framework in.
     expect(prod.files.length).toBeGreaterThan(0);
     expect(prod.code.length).toBeGreaterThan(5_000);
-    expect(prod.code).toContain("RAMONDA-HOST");
+    /**
+     * A string only this framework's runtime has, so the check cannot pass on a bundle that pulled
+     * the framework in by name and dropped it.
+     *
+     * It used to be `RAMONDA-HOST`, the tag of the element every component was. There is no such
+     * element — a component owns a range of nodes — so the fingerprint is the marker the server
+     * writes around one instead.
+     */
+    expect(prod.code).toContain("[Ramonda]");
   });
 
   test("carries no diagnostic code beyond the three that ship on purpose", () => {

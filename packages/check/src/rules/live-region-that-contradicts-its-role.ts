@@ -1,5 +1,5 @@
 import { positionOf } from "../syntax";
-import type { ElementContext, HostElementRule } from "./rule";
+import type { ElementContext, ElementRule } from "./rule";
 
 /**
  * An `aria-live` that undoes the urgency the role was chosen for.
@@ -94,7 +94,6 @@ export const liveRegionThatContradictsItsRole = {
    * Both halves take the order guard: a spread after either may replace it, and then the two this
    * reports as disagreeing are not the two that render.
    */
-  alsoOnHost: true,
   evenWhenSpreading: true,
 
   read(_element, { attr, overwritable, at }: ElementContext) {
@@ -116,4 +115,4 @@ export const liveRegionThatContradictsItsRole = {
 
     return [{ role, brings, written, ...positionOf(at) }];
   },
-} as const satisfies HostElementRule<LiveRegionThatContradictsItsRoleIssue>;
+} as const satisfies ElementRule<LiveRegionThatContradictsItsRoleIssue>;

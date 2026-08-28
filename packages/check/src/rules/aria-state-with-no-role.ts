@@ -1,6 +1,6 @@
 import { positionOf } from "../syntax";
 import { ARIA_ATTRIBUTES, GLOBAL_ARIA, NO_IMPLICIT_ROLE } from "./aria";
-import type { ElementContext, HostElementRule } from "./rule";
+import type { ElementContext, ElementRule } from "./rule";
 
 /**
  * An `aria-*` that belongs to a ROLE, written on an element that has none.
@@ -79,7 +79,6 @@ export const ariaStateWithNoRole = {
    * "an absent attribute may arrive in the spread" case the family guard exists for — taken here by
    * hand because this rule needs the rest of the guard lifted.
    */
-  alsoOnHost: true,
   evenWhenSpreading: true,
 
   read(_element, { tag, has, attributes, spreads }: ElementContext) {
@@ -103,4 +102,4 @@ export const ariaStateWithNoRole = {
     }
     return found;
   },
-} as const satisfies HostElementRule<AriaStateWithNoRoleIssue>;
+} as const satisfies ElementRule<AriaStateWithNoRoleIssue>;

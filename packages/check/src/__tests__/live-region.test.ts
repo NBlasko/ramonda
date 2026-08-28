@@ -25,27 +25,25 @@ const said = () => found().map((issue) => `${issue.line}:${issue.role}->${issue.
  */
 describe("a live region whose urgency was undone", () => {
   test("both directions, each costing something different", () => {
-    expect(said()).toContain("14:alert->polite");
-    expect(said()).toContain("19:status->assertive");
+    expect(said()).toContain("13:alert->polite");
+    expect(said()).toContain("18:status->assertive");
   });
 
   test("and the two rarer live roles behave the same way", () => {
     // `log` and `timer` are live regions and both are `polite`. Far rarer, and here for
     // completeness rather than because anybody has been caught by them.
-    expect(said()).toContain("24:log->assertive");
-    expect(said()).toContain("27:timer->assertive");
+    expect(said()).toContain("23:log->assertive");
+    expect(said()).toContain("26:timer->assertive");
   });
 
   test("the whole list, so a regression cannot go quiet", () => {
-    // 67 has the spread BEFORE both halves, so nothing can reach over either. 76 is the pair
-    // written in a `@Host` props bag, which configures a real element.
+    // 66 has the spread BEFORE both halves, so nothing can reach over either.
     expect(said()).toEqual([
-      "14:alert->polite",
-      "19:status->assertive",
-      "24:log->assertive",
-      "27:timer->assertive",
-      "67:alert->polite",
-      "76:alert->polite",
+      "13:alert->polite",
+      "18:status->assertive",
+      "23:log->assertive",
+      "26:timer->assertive",
+      "66:alert->polite",
     ]);
   });
 
@@ -57,20 +55,20 @@ describe("a live region whose urgency was undone", () => {
    */
   test("agreeing with the role is untidy, not a fault", () => {
     const lines = found().map((issue) => issue.line);
-    expect(lines).not.toContain(36);
-    expect(lines).not.toContain(39);
+    expect(lines).not.toContain(35);
+    expect(lines).not.toContain(38);
   });
 
   test("everything that is not a reversal stays silent", () => {
     /**
-     * 32 and 33 write the role alone, which is the advice. 44 says `off`, which is a stronger claim
+     * 31 and 32 write the role alone, which is the advice. 43 says `off`, which is a stronger claim
      * than a politeness — it says the region is not live at all — and belongs to whoever wrote it.
-     * 49 writes `aria-live` with no role, which is one source for the politeness rather than two.
-     * 52 has a politeness this cannot READ. 57 is a role that is not a live region. 62 spreads
+     * 48 writes `aria-live` with no role, which is one source for the politeness rather than two.
+     * 51 has a politeness this cannot READ. 56 is a role that is not a live region. 61 spreads
      * after both.
      */
     const lines = found().map((issue) => issue.line);
-    for (const quiet of [32, 33, 44, 49, 52, 57, 62]) {
+    for (const quiet of [31, 32, 43, 48, 51, 56, 61]) {
       expect(lines, `line ${quiet} should be silent`).not.toContain(quiet);
     }
   });

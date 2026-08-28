@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, state, list } from "../index";
+import { Component, state, list } from "../index";
 import { resetDiagnostics } from "../debug/diagnostics";
 
 /**
@@ -38,11 +38,14 @@ describe("the in-place mutation guard", () => {
   const reported = (code: string) => logged.filter((line) => line.includes(code));
 
   test("an array mutated in place is reported (RMD005)", async () => {
-    @Host("div")
     class App extends Component {
       @state items: string[] = ["a"];
       render() {
-        return <p>{this.items.length}</p>;
+        return (
+          <div>
+            <p>{this.items.length}</p>
+          </div>
+        );
       }
     }
 
@@ -54,11 +57,14 @@ describe("the in-place mutation guard", () => {
   });
 
   test("an object mutated in place is reported (RMD048)", async () => {
-    @Host("div")
     class App extends Component {
       @state user = { name: "ada" };
       render() {
-        return <p>{this.user.name}</p>;
+        return (
+          <div>
+            <p>{this.user.name}</p>
+          </div>
+        );
       }
     }
 
@@ -74,11 +80,14 @@ describe("the in-place mutation guard", () => {
   });
 
   test("a NESTED change is reported, and named by its path", async () => {
-    @Host("div")
     class App extends Component {
       @state user = { name: "ada", address: { city: "london" } };
       render() {
-        return <p>{this.user.address.city}</p>;
+        return (
+          <div>
+            <p>{this.user.address.city}</p>
+          </div>
+        );
       }
     }
 
@@ -93,11 +102,14 @@ describe("the in-place mutation guard", () => {
   });
 
   test("deleting a key is a change too", async () => {
-    @Host("div")
     class App extends Component {
       @state config: Record<string, unknown> = { debug: true };
       render() {
-        return <p>{String(this.config.debug)}</p>;
+        return (
+          <div>
+            <p>{String(this.config.debug)}</p>
+          </div>
+        );
       }
     }
 
@@ -109,14 +121,15 @@ describe("the in-place mutation guard", () => {
   });
 
   test("replacing works, and rebuilding the path works — which is the advice", async () => {
-    @Host("div")
     class App extends Component {
       @state user = { name: "ada", address: { city: "london" } };
       render() {
         return (
-          <p>
-            {this.user.name}:{this.user.address.city}
-          </p>
+          <div>
+            <p>
+              {this.user.name}:{this.user.address.city}
+            </p>
+          </div>
         );
       }
     }
@@ -139,11 +152,14 @@ describe("the in-place mutation guard", () => {
   });
 
   test("identity is stable, so nothing reads as changed for having been guarded", async () => {
-    @Host("div")
     class App extends Component {
       @state user = { address: { city: "london" } };
       render() {
-        return <p>{this.user.address.city}</p>;
+        return (
+          <div>
+            <p>{this.user.address.city}</p>
+          </div>
+        );
       }
     }
 
@@ -169,13 +185,18 @@ describe("the in-place mutation guard", () => {
 
     let renders = 0;
 
-    @Host("ul")
     class App extends Component {
       @state rows: Row[] = [{ id: 1 }, { id: 2 }, { id: 3 }];
       @state tick = 0;
       render() {
         renders++;
-        return list(this.rows, (r: Row) => <li>{r.id}</li>);
+        return (
+          <ul>
+            {list(this.rows, (r: Row) => (
+              <li>{r.id}</li>
+            ))}
+          </ul>
+        );
       }
     }
 
@@ -209,15 +230,16 @@ describe("the in-place mutation guard", () => {
      * Nothing is lost by handing the raw value back: a frozen property cannot be
      * assigned, so there is no in-place change under it to report.
      */
-    @Host("div")
     class App extends Component {
       @state config = Object.freeze({ nested: { label: "hi" } });
       @state rows = Object.freeze([{ id: 1 }]);
       render() {
         return (
-          <p>
-            {this.config.nested.label}:{this.rows[0].id}
-          </p>
+          <div>
+            <p>
+              {this.config.nested.label}:{this.rows[0].id}
+            </p>
+          </div>
         );
       }
     }
@@ -241,13 +263,16 @@ describe("the in-place mutation guard", () => {
       }
     }
 
-    @Host("div")
     class App extends Component {
       @state when = new Date(0);
       @state seen = new Map<string, number>([["a", 1]]);
       @state price = new Money(5);
       render() {
-        return <p>x</p>;
+        return (
+          <div>
+            <p>x</p>
+          </div>
+        );
       }
     }
 

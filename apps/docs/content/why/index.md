@@ -16,7 +16,7 @@ The through-line is one goal: **the code should be readable, and its mistakes sh
 be loud.** A page you can picture from its source, and a framework that tells you when
 something is wrong instead of quietly doing the wrong thing.
 
-- **[One tag, one element](/why/one-element)** — the single rule everything rests on,
+- **[The page is what you wrote](/why/one-element)** — every element in the DOM is one you wrote,
   and why there are no fragments or function components.
 - **[Classes and decorators](/why/classes)** — why a component is a class, and why
   its lifecycle and state are decorators.

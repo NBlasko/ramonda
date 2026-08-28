@@ -1,4 +1,4 @@
-import { Component, Head, Host, list, memoized, type RamondaNode } from "@ramonda/core";
+import { Component, Head, list, memoized, type RamondaNode } from "@ramonda/core";
 import { Form, type StandardResult, type StandardSchemaV1 } from "@ramonda/form";
 
 /**
@@ -96,7 +96,6 @@ function register(values: Signup): Promise<{ ok: boolean }> {
   return new Promise((resolve) => setTimeout(() => resolve({ ok: values.email !== "taken@example.com" }), 400));
 }
 
-@Host("div")
 export class SignupPage extends Component {
   head = this.use(Head, () => ({
     title: "Sign up — Ramonda SSR",

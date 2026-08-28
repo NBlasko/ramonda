@@ -66,8 +66,8 @@ describe("a component reading the browser's URL", () => {
    */
   /**
    * `self` is the one of the four that is routinely a LOCAL — `const self = this` is an ordinary
-   * line, and `(self) => …` is this framework's own convention for a `@Host` props callback. Added
-   * by NAME it reported both; it has to be proved not to be shadowed, like `window` and `document`.
+   * line, and so is a callback parameter of that name. Added by NAME it reported both; it has to be
+   * proved not to be shadowed, like `window` and `document`.
    */
   test("`self`, a destructure and a bracketed key are the same read", () => {
     const found = run("browser-url").findings["browser-url"].filter((i) => i.component === "OtherSpellings");
@@ -83,7 +83,7 @@ describe("a component reading the browser's URL", () => {
 
   /**
    * A FALSE REPORT until `self` was made to prove itself: `const self = this` reads a component's
-   * own field, and `(self) => …` is the framework's own convention for a `@Host` props callback.
+   * own field, and a parameter of that name is whatever its caller hands it.
    */
   test("a local called `self` is not the global", () => {
     const found = run("browser-url").findings["browser-url"].map((issue) => issue.component);

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { getDOM } from "../test/setup";
-import { Component, Host, list, merge, state } from "../index";
+import { Component, list, merge, state } from "../index";
 import { mounted } from "../base/decorators";
 
 /**
@@ -67,7 +67,6 @@ class RowView extends Component<{ item: Row }> {
   }
 }
 
-@Host("div")
 class App extends Component {
   @state rows: Row[] = [
     { id: 1, t: "a", done: false },
@@ -76,16 +75,17 @@ class App extends Component {
   ];
   render() {
     return (
-      <ul>
-        {list(this.rows, (item) => (
-          <RowView item={item} />
-        ))}
-      </ul>
+      <div>
+        <ul>
+          {list(this.rows, (item) => (
+            <RowView item={item} />
+          ))}
+        </ul>
+      </div>
     );
   }
 }
 
-@Host("div")
 class Plain extends Component {
   @state rows: Row[] = [
     { id: 1, t: "a", done: false },
@@ -106,7 +106,11 @@ class Plain extends Component {
   }
 
   render() {
-    return <ul>{list(this.rows, this.row)}</ul>;
+    return (
+      <div>
+        <ul>{list(this.rows, this.row)}</ul>
+      </div>
+    );
   }
 }
 
@@ -332,7 +336,6 @@ describe("a field that only restates the position does not decide identity", () 
       label: string;
     }
 
-    @Host("div")
     class Rows extends Component {
       @state rows: FormRow[] = [
         { id: "a", index: 0, label: "first" },
@@ -340,11 +343,13 @@ describe("a field that only restates the position does not decide identity", () 
       ];
       render() {
         return (
-          <ul>
-            {list(this.rows, (r: FormRow) => (
-              <li>{r.label}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.rows, (r: FormRow) => (
+                <li>{r.label}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -379,7 +384,6 @@ describe("an id that happens to look like a position", () => {
       t: string;
     }
 
-    @Host("div")
     class Rows extends Component {
       @state rows: Indexed[] = [
         { id: 0, t: "a" },
@@ -388,11 +392,13 @@ describe("an id that happens to look like a position", () => {
       ];
       render() {
         return (
-          <ul>
-            {list(this.rows, (r: Indexed) => (
-              <li>{r.t}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.rows, (r: Indexed) => (
+                <li>{r.t}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -430,16 +436,17 @@ describe("RMD051 — a row nothing can tell apart", () => {
       tags: string[];
     }
 
-    @Host("div")
     class App extends Component {
       @state bags: Bag[] = [{ tags: ["a"] }, { tags: ["b"] }];
       render() {
         return (
-          <ul>
-            {list(this.bags, (b: Bag) => (
-              <li>{b.tags.join(",")}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.bags, (b: Bag) => (
+                <li>{b.tags.join(",")}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -462,7 +469,6 @@ describe("RMD051 — a row nothing can tell apart", () => {
     // been identified — there was nothing here to identify it AS. Reporting this
     // would put a warning on correct code, which is how a diagnostic becomes
     // noise people scroll past.
-    @Host("div")
     class App extends Component {
       @state rows: Row[] = [
         { id: 1, t: "a", done: false },
@@ -470,11 +476,13 @@ describe("RMD051 — a row nothing can tell apart", () => {
       ];
       render() {
         return (
-          <ul>
-            {list(this.rows, (r: Row) => (
-              <li>{r.t}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.rows, (r: Row) => (
+                <li>{r.t}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }
@@ -498,16 +506,17 @@ describe("RMD051 — a row nothing can tell apart", () => {
       tags: string[];
     }
 
-    @Host("div")
     class App extends Component {
       @state bags: Bag[] = [{ tags: ["a"] }, { tags: ["b"] }];
       render() {
         return (
-          <ul>
-            {list(this.bags, (b: Bag) => (
-              <li>{b.tags.join(",")}</li>
-            ))}
-          </ul>
+          <div>
+            <ul>
+              {list(this.bags, (b: Bag) => (
+                <li>{b.tags.join(",")}</li>
+              ))}
+            </ul>
+          </div>
         );
       }
     }

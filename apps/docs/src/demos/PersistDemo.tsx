@@ -1,4 +1,4 @@
-import { Component, Host, persist, state, created } from "@ramonda/core";
+import { Component, persist, state, created } from "@ramonda/core";
 
 // @persist marks a field as part of the hydration payload without making it a
 // signal. @state fields travel automatically; @persist is for set-once values
@@ -12,7 +12,6 @@ import { Component, Host, persist, state, created } from "@ramonda/core";
 // The `env: "server"` matters. A shared @created would run again on the client and
 // overwrite what the server sent, which is how a value silently stops being the
 // one the HTML shipped.
-@Host("div")
 export class PersistDemo extends Component {
   @persist builtAt = "";
   @state clientRuns = 0;
@@ -29,14 +28,16 @@ export class PersistDemo extends Component {
 
   render() {
     return (
-      <p className="demo-row">
-        <span>
-          prerendered at <strong>{this.builtAt || "(not prerendered)"}</strong> UTC
-        </span>
-        <span className="demo-note">
-          client @created ran {this.clientRuns} time(s) — the value above came from the server
-        </span>
-      </p>
+      <div>
+        <p className="demo-row">
+          <span>
+            prerendered at <strong>{this.builtAt || "(not prerendered)"}</strong> UTC
+          </span>
+          <span className="demo-note">
+            client @created ran {this.clientRuns} time(s) — the value above came from the server
+          </span>
+        </p>
+      </div>
     );
   }
 }
