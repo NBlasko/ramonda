@@ -189,25 +189,28 @@ const ABSENT: ReadonlyMap<string, ReadonlySet<string>> = new Map([
 ]);
 
 /**
- * Whether this element keeps the named state in a property alone.
+ * Every property-only name this element has.
  *
- * `tag` is a `nodeName`, which HTML already gives in upper case, and the name is compared as
- * written — see above for why neither is folded.
- */
-export function keptInAProperty(tag: string, attribute: string): boolean {
-  return ABSENT.get(tag)?.has(attribute) === true;
-}
-
-/**
- * Every property-only name this element has, for the half of the job `keptInAProperty` cannot do.
+ * The table is reached through here and nowhere else, so there is one place that knows how it is
+ * keyed. `tag` is a `nodeName`, which HTML already gives in upper case, and names are compared as
+ * WRITTEN — see above for why neither is folded.
  *
- * That reader answers about ONE spelling and is all `@ramonda/core` needs: it either writes the
- * property or it does not. `@ramonda/check` has the other question — somebody wrote `playbackrate`
- * and there is no such thing, so what did they mean? Answering that needs the names themselves, and
- * a checker that kept its own copy of them would be the second list this table exists to prevent.
- *
- * `tag` is a `nodeName`, upper case, exactly as above.
+ * This is the shape `@ramonda/check` needs: somebody wrote `playbackrate`, there is no such thing,
+ * and answering "what did they mean" takes the names themselves. A checker keeping its own copy of
+ * them would be the second list this table exists to prevent.
  */
 export function propertyOnlyNames(tag: string): ReadonlySet<string> | undefined {
   return ABSENT.get(tag);
+}
+
+/**
+ * Whether this element keeps the named state in a property alone — the one question
+ * `@ramonda/core` has, since it either writes the property or it does not.
+ *
+ * Built on the reader above rather than reaching for the table again. Two accessors are right here,
+ * because they answer different questions and their callers read better for it; two ways INTO the
+ * table would not be.
+ */
+export function keptInAProperty(tag: string, attribute: string): boolean {
+  return propertyOnlyNames(tag)?.has(attribute) === true;
 }

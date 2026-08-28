@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test:browser": "playwright test"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,7 @@
     "@ramonda/router": "workspace:^"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@ramonda/build": "workspace:^",
     "@ramonda/devtools": "workspace:^",
     "@types/node": "^26.1.2",

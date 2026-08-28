@@ -47,6 +47,69 @@ jobs:
       # testing-library, docs.
       - run: pnpm exec turbo run check-types
 
+  browser:
+    name: Browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # Its own job rather than a step inside `test`, so the minutes it spends installing a browser
+      # run beside the other checks instead of in front of them. Nothing here depends on it and it
+      # depends on nothing: the app it drives is built in this job from this tree.
+      #
+      # The browser is keyed on the Playwright VERSION rather than on the lockfile: the binary it
+      # wants changes when it changes, and a lockfile hash would throw the cache away on every
+      # unrelated dependency bump.
+      - name: Which browser build to look for
+        id: playwright
+        run: echo "version=$(pnpm --filter playground-core exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-headless-shell-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      # The headless shell alone, not the full Chromium: measured at 267 MB against 656 MB, and this
+      # suite runs headless, so the rest is a download nothing opens. A headed run would need
+      # `playwright install chromium` — locally, where somebody is watching it.
+      #
+      # Unconditional rather than skipped on a cache hit. It takes about a second when the binary is
+      # already there, and a cache that restored badly then repairs itself instead of failing the run.
+      - name: Install Chromium
+        run: pnpm --filter playground-core exec playwright install chromium-headless-shell
+
+      # Apt packages, which are the runner's and not ours to cache.
+      - name: Its system libraries
+        run: pnpm --filter playground-core exec playwright install-deps chromium-headless-shell
+
+      - name: Build the playground
+        run: pnpm exec turbo run build --filter=playground-core
+
+      # The handful of claims jsdom cannot settle: a caret the platform moves when a value is
+      # assigned, and focus a node loses when it is picked up and put down. The jsdom suites in the
+      # `test` job cover what the DOM HOLDS; these cover what a person does to it.
+      #
+      # Each was measured in jsdom first, agreed with, and then needed somebody at a keyboard before
+      # it could be believed — and one of them behaved the opposite way in a browser for a reason
+      # jsdom could not have shown.
+      - name: Test in a browser
+        run: pnpm --filter playground-core test:browser
+
+      # A trace and a screenshot per failure. This suite exists for differences that appear only in
+      # a browser, so a red run here is the one place where re-reading the source is least likely to
+      # explain it.
+      - name: Keep what the failure left behind
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure
+          path: |
+            apps/playground-core/test-results/
+            apps/playground-core/playwright-report/
+          retention-days: 7
+
   test:
     name: Test
     runs-on: ubuntu-latest

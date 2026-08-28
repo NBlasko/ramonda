@@ -13,5 +13,5 @@
       "@ramonda/router": ["../../packages/router/src/index.ts"]
     }
   },
-  "include": ["src", "global.d.ts"]
+  "include": ["src", "browser", "playwright.config.ts", "global.d.ts"]
 }

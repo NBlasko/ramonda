@@ -14,7 +14,7 @@ import { hydrateLevel, isSplitRemainder, type HydrationWalk } from "../hydration
 import { reportBlockLengthMismatch } from "../debug/hydrationMismatch";
 import type { ListHost } from "../helpers/listEngine";
 import type { EnhancedChildNode, MaybeComponent, RecordEntry } from "../types/vdom";
-import { BLOCK_CLOSE, BLOCK_OWNER, CHILD_RECORD, type DONE } from "../helpers/constants";
+import { BLOCK_CLOSE, BLOCK_OWNER, CHILD_RECORD, HOSTS_A_BLOCK, type DONE } from "../helpers/constants";
 
 /**
  * The comments that delimit a region's block in the DOM, and in the markup a
@@ -104,6 +104,21 @@ export function anchorId(node: Node): string | undefined {
  * own `"7:g0"` from its JSX. Every id comes from one process-wide counter, so an
  * id minted here is one no component can also hold.
  */
+/**
+ * Tells an element that it holds a block, so the diff need not go looking.
+ *
+ * `firstHostedBlock` has to know whether an element hosts one — a hosted block sits after the
+ * element's own children, so a fresh child must go in before it — and it used to answer by walking
+ * every child on every reorder. See `HOSTS_A_BLOCK` for the measurement and for why the mark is
+ * never taken off.
+ *
+ * Written from BOTH ways a block reaches a parent: placed by a client build, and adopted from a
+ * server render. Missing either one is a host that looks empty while it is not.
+ */
+function markAsHost(parent: ChildNode): void {
+  (parent as unknown as { [HOSTS_A_BLOCK]?: true })[HOSTS_A_BLOCK] = true;
+}
+
 export class ChildrenRegion {
   private readonly id = createId();
   /** What this block held last pass — the region's own `CHILD_RECORD`. */
@@ -255,6 +270,27 @@ export class ChildrenRegion {
     this.parent = parent;
     this.open = open;
 
+    /**
+     * Marked HERE as well as in `place`, because a served block never goes through `place` at all.
+     *
+     * `Portal.adopt` hands a block the server wrote straight to this method — no placement happens,
+     * since the anchors are already in the document. So the two ways a block reaches a parent are
+     * two pieces of code, and anything the diff learns about a host on one has to be learned on the
+     * other.
+     *
+     * **No failing case was found for it, and that is written down rather than dressed up.** Every
+     * shape tried came out marked anyway: a portal aimed at an element in the owner's own render
+     * cannot resolve that target while `adopt` runs — the field still holds the detached placeholder
+     * — so it falls through to `reconcile`, which places, which marks. The targets that ARE resolved
+     * by then, `document.head` and the like, are not elements the diff reorders. Planting this line
+     * out leaves all 1413 tests green.
+     *
+     * It stays because the asymmetry is real whether or not today's code walks into it: a host that
+     * looks empty while it holds a guest is the fault `firstHostedBlock` exists to prevent, and the
+     * note further down this very method is that fault from the last time it happened.
+     */
+    markAsHost(parent);
+
     const normalized = normalizeChildren(Array.isArray(children) ? children : [children], this.id);
     const walk: HydrationWalk = { cursor: open.nextSibling as EnhancedChildNode | null, count: 0 };
     this.record = hydrateLevel(normalized, this.owner, parent, walk, this.listHost).entries;
@@ -356,6 +392,8 @@ export class ChildrenRegion {
    * rather than a second copy being built beside a stale one.
    */
   private place(parent: ChildNode): void {
+    markAsHost(parent);
+
     if (this.close === undefined) {
       this.open = document.createComment(openAnchor(this.id));
       this.close = document.createComment(closeAnchor(this.id));

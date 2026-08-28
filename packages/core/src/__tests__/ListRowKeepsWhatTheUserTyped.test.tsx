@@ -151,17 +151,18 @@ describe("a row keeps what the user typed", () => {
   });
 });
 
-describe("what a moved row loses, and what an unkeyed refetch loses", () => {
-  test("moving the row itself blurs it — everything else survives", async () => {
+describe("what a moved row keeps, and what an unkeyed refetch keeps", () => {
+  test("moving the row itself keeps everything, focus included", async () => {
     /**
-     * The limitation, measured rather than assumed. A row that is physically moved is removed and
-     * reinserted, and an element removed from the document loses focus — the platform, not this
-     * framework. Its node, its typed text, its caret and its `@state` all come through; only the
-     * focus does not.
+     * This test used to end with `expect(document.activeElement).not.toBe(input)` and a note saying
+     * that restoring focus was a decision nobody had taken — and that the test would start failing
+     * the day somebody did. It did. The decision is taken, and this is the same test with the last
+     * line turned around.
      *
-     * Restoring it is possible — record the active element and its selection before the reorder, put
-     * them back after — and is a decision rather than a fix, so it is not made here. This test is
-     * what makes that decision visible: it will start failing the day someone takes it.
+     * The platform is unchanged: a row that is physically moved is removed and reinserted, and a
+     * removed element is blurred. Its node, its typed text, its caret and its `@state` always came
+     * through. Focus is now put back by `reorderChildren`, because it is the only thing that can —
+     * nothing in a render says which of its rows is about to be picked up.
      */
     const app = await getDOM<Board>(<Board />);
     await app.settle();
@@ -176,8 +177,8 @@ describe("what a moved row loses, and what an unkeyed refetch loses", () => {
     expect(input.value).toBe("half typed");
     expect(input.selectionStart).toBe(4);
     expect(app.container.querySelector("#bump-b")!.textContent).toBe("1");
-    // The one thing that does not come back.
-    expect(document.activeElement).not.toBe(input);
+    // The one that used to be missing.
+    expect(document.activeElement).toBe(input);
   });
 
   test("an UNKEYED row survives a refetch too, because list() infers identity", async () => {
