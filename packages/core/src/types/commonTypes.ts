@@ -391,6 +391,44 @@ export type SVGArgs<T extends SVGElement> = Partial<
     VerbatimEvents
 >;
 
-export interface RamondaEvent<T extends EventTarget | null = any> extends Event {
-  target: T;
-}
+/**
+ * An event, told which element the handler is ON — for the one line the DOM's own types cannot type.
+ *
+ * `e.currentTarget.value` does not compile, because `Event.currentTarget` is `EventTarget | null`
+ * and an `EventTarget` has no `value`. So every handler that reads a field off its own element
+ * opens with a cast, which is the type system being told to look away.
+ *
+ * ```tsx
+ * <input onchange={(e: EventOn<HTMLInputElement>) => this.draft = e.currentTarget.value} />
+ * <button onclick={(e: EventOn<HTMLButtonElement, PointerEvent>) => e.currentTarget.blur()} />
+ * ```
+ *
+ * The event type is already right without this — `onclick` gives `PointerEvent` and `onkeydown` a
+ * `KeyboardEvent`, from the DOM's own map — so the second argument is only for a handler that needs
+ * both halves named at once.
+ *
+ * ## Why this is opt-in rather than the default
+ *
+ * The default would be to parameterise the whole handler map by the element, and it works: written
+ * that way, `e.currentTarget.value` needs no annotation at all. It also costs. Measured on
+ * `apps/docs` with `--extendedDiagnostics`, **type instantiations went from 244,875 to 346,688** —
+ * and not as a fixed cost, because `packages/router` moved a third as far, so it scales with how
+ * much JSX a codebase contains. That is a tax on every consumer's build in exchange for saving an
+ * annotation on the handlers that read their own element.
+ *
+ * Narrowing it to the events people actually reach for does NOT help: restricting the intersection
+ * to eight event names produced 346,688 instantiations, to the digit. TypeScript instantiates the
+ * whole mapped type per element type whatever is inside it. There is no cheap version of that
+ * shape, and this note exists so nobody measures it twice.
+ *
+ * ## `currentTarget`, and deliberately not `target`
+ *
+ * `currentTarget` is the element the listener is attached TO, which the framework knows because it
+ * attached it — so naming it is a fact rather than a hope.
+ *
+ * `target` is where the event ORIGINATED, and for anything that bubbles that is any descendant:
+ * a click on a `<span>` inside a `<button>` has the span as its target. Narrowing it would be a
+ * type that is wrong exactly when a reader most needs it to be right, which is why this does not,
+ * and why `e.target` still answers `EventTarget | null`.
+ */
+export type EventOn<T extends EventTarget, E extends Event = Event> = E & { currentTarget: T };

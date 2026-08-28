@@ -1,6 +1,7 @@
 import { Select } from "../base/Select";
 import { TextArea } from "../base/TextArea";
 import { Component } from "../base/Component";
+import type { EventOn } from "../types/commonTypes";
 import { onDocument, onWindow } from "../base/decorators";
 
 /**
@@ -386,4 +387,44 @@ export const selectMultiple = (
   <Select multiple value={[chosen]}>
     <option value="a">A</option>
   </Select>
+);
+
+/**
+ * `EventOn<T>` — the one line the DOM's own types cannot type.
+ *
+ * `Event.currentTarget` is `EventTarget | null`, so reading a field off the element a handler is
+ * attached to opens with a cast. This says which element it is, and the claims below pin both what
+ * it buys and what it deliberately does not.
+ */
+export const readsItsOwnValue = (
+  <input type="text" onchange={(e: EventOn<HTMLInputElement>) => e.currentTarget.value} />
+);
+
+/** The second argument is for a handler that needs the specific event named as well. */
+export const readsBothHalves = (
+  <button type="button" onclick={(e: EventOn<HTMLButtonElement, PointerEvent>) => e.currentTarget.disabled} />
+);
+
+/** The event type is already right without it, which is why the second argument is optional. */
+export const eventComesFromTheName = <button type="button" onclick={(e) => e.pointerType} />;
+
+/** And an ordinary handler still compiles — this adds a spelling, it does not replace one. */
+export const plainHandlerStillWorks = <input type="text" onchange={(e) => e.type} />;
+
+// @ts-expect-error — `currentTarget` is an `EventTarget` without it, and has no `value`.
+export const noValueWithout = <input type="text" onchange={(e) => e.currentTarget.value} />;
+
+/**
+ * `target` stays `EventTarget | null`, on purpose.
+ *
+ * It is where the event ORIGINATED, and for anything that bubbles that is any descendant — a click
+ * on a `<span>` inside a `<button>` has the span as its target. Narrowing it would be a type that
+ * is wrong exactly when a reader most needs it right.
+ */
+export const targetIsNotNarrowed = (
+  <input
+    type="text"
+    // @ts-expect-error — `target` is not narrowed, and that is the claim rather than a gap.
+    onchange={(e: EventOn<HTMLInputElement>) => e.target?.value}
+  />
 );

@@ -66,6 +66,38 @@ So write it after a colon and it is taken exactly as it stands:
 The handler receives a plain `Event`; a custom event's `detail` is your own, so cast it
 to the shape you dispatched.
 
+### Reading a field off the element the handler is on
+
+The event itself is already typed from the name — `onclick` gives you a `PointerEvent`, `onkeydown`
+a `KeyboardEvent` — but reading the element is a separate question, and the DOM's own types cannot
+answer it:
+
+```text
+<input onchange={(e) => (this.draft = e.currentTarget.value)} />
+                                        ~~~~~~~~~~~~~
+      Property 'value' does not exist on type 'EventTarget'.
+```
+
+`currentTarget` is typed `EventTarget | null`, because in the DOM an event can be listened for
+anywhere. Say which element it is:
+
+```tsx
+import type { EventOn } from "@ramonda/core";
+
+<input onchange={(e: EventOn<HTMLInputElement>) => (this.draft = e.currentTarget.value)} />
+```
+
+A second argument names the event too, for a handler that wants both halves:
+
+```tsx
+<button onclick={(e: EventOn<HTMLButtonElement, PointerEvent>) => e.currentTarget.blur()} />
+```
+
+**`target` is not narrowed, and that is deliberate.** `currentTarget` is the element the listener is
+attached to, which the framework knows because it attached it. `target` is where the event
+*originated* — a click on a `<span>` inside a `<button>` has the span as its target — so a type
+naming it as the button would be wrong exactly when it matters. Reach for `currentTarget`.
+
 ## On window or document
 
 Some events don't come from an element you render — the window resizing, a key
