@@ -123,13 +123,16 @@ describe("the name is what decides, whatever case it is written in", () => {
    * `readonly="true"` this rule exists to remove. `checkBooleanAttribute` has always lowercased, so
    * the two disagreed about one name: the diagnostic recognised it and the writer did not.
    *
-   * A cast, because the types push the lowercase spelling. That is the reach a runtime rule has and
-   * a type does not — JavaScript, a loosened base class, a spread whose shape is `any`.
+   * Reached through a SPREAD, because the types reject the camelCase name outright — `RamondaArgs`
+   * keys on `Lowercase<string>`, so `autoFocus` is not a property that exists. That is exactly the
+   * reach a runtime rule has and a type does not: a spread whose shape is loose, a JavaScript file, a
+   * base class widened by a cast.
    */
   test("a camelCase boolean attribute is still written as HTML spells it", async () => {
+    const camel: Record<string, unknown> = { readOnly: true, autoFocus: true };
     class Camel extends Component {
       render() {
-        return <input id="i" readOnly={true as never} autoFocus={true as never} />;
+        return <input id="i" {...camel} />;
       }
     }
 

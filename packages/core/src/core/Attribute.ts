@@ -444,8 +444,10 @@ export function isInvisibleOnScreen(val: unknown, name: string): boolean {
  * `readonly="true"` this rule exists to stop. `checkBooleanAttribute` has always lowercased, so the
  * two disagreed about the same name: the diagnostic recognised it and the writer did not.
  *
- * The types push the lowercase spelling, so this is reachable from a cast or from JavaScript. That
- * is exactly the reach a runtime rule is for.
+ * The types reject the camelCase name outright — `RamondaArgs` keys on `Lowercase<string>`, so
+ * `autoFocus` is not a property that exists — which leaves the ways a type cannot see: a spread whose
+ * shape is loose, a JavaScript file, a base class widened by a cast. That is the reach a runtime rule
+ * is for.
  */
 function isBooleanAttribute(name: string): boolean {
   return BOOLEAN_ATTRIBUTES.has(name) || BOOLEAN_ATTRIBUTES.has(name.toLowerCase());
