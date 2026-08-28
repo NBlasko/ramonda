@@ -5,6 +5,10 @@ Immutable updates for deep objects, by describing a path instead of mutating a d
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Flens)](https://www.npmjs.com/package/@ramonda/lens)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Flens)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
+
 ```sh
 npm install @ramonda/lens
 ```

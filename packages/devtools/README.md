@@ -6,6 +6,10 @@ and hooks, and a way to get from something on screen to the component that drew 
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fdevtools)](https://www.npmjs.com/package/@ramonda/devtools)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fdevtools)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
+
 ```bash
 pnpm add -D @ramonda/devtools
 ```

@@ -6,9 +6,15 @@ into.
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fserver)](https://www.npmjs.com/package/@ramonda/server)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fserver)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
+
 ```bash
 pnpm add @ramonda/server
 ```
+
+Documentation: **[ramonda.dev/ssr/server](https://ramonda.dev/ssr/server)**
 
 It brings its own DOM — you do not install one. That is deliberate: `linkedom` was a peer once, an
 app put it in `devDependencies`, and a production install produced a server that started and then

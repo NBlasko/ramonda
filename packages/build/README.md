@@ -6,6 +6,10 @@ none of them.
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fbuild)](https://www.npmjs.com/package/@ramonda/build)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fbuild)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
+
 ```bash
 npm add -D @ramonda/build
 ```
