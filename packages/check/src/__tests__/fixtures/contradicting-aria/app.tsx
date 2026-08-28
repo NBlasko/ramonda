@@ -3,6 +3,8 @@ import { Component, bootstrap } from "@ramonda/core";
 declare const rest: Record<string, unknown>;
 declare const busy: boolean;
 
+const FLAG = "false";
+
 class App extends Component {
   render() {
     return (
@@ -61,6 +63,9 @@ class App extends Component {
 
         {/* ✓ `required={false}` is not written at all, so there is nothing to contradict. */}
         <input type="text" required={false} aria-required="false" />
+
+        {/* ✗ The same string one NAME away — the runtime writes the attribute just the same. */}
+        <input type="text" required={FLAG} aria-required="false" />
       </div>
     );
   }

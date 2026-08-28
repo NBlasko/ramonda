@@ -24,17 +24,17 @@ const said = () => found().map((issue) => `${issue.line}:${issue.html}`);
  */
 describe("an accessibility attribute that contradicts the tag", () => {
   test("the two that cost a reader the most", () => {
-    expect(said()).toContain("11:required");
-    expect(said()).toContain("14:disabled");
+    expect(said()).toContain("13:required");
+    expect(said()).toContain("16:disabled");
   });
 
   test("and every other pair where HTML sets its ARIA counterpart implicitly", () => {
-    expect(said()).toContain("19:checked");
-    expect(said()).toContain("20:readonly");
-    expect(said()).toContain("21:open");
+    expect(said()).toContain("21:checked");
+    expect(said()).toContain("22:readonly");
+    expect(said()).toContain("23:open");
     // `hidden` with `aria-hidden="false"` is the sharpest of them: gone from the page, announced
     // as present.
-    expect(said()).toContain("26:hidden");
+    expect(said()).toContain("28:hidden");
   });
 
   /**
@@ -48,21 +48,24 @@ describe("an accessibility attribute that contradicts the tag", () => {
    * so there is nothing on the element to contradict.
    */
   test('`required="false"` is a required field, and `required={false}` is no field at all', () => {
-    expect(said()).toContain("60:required");
-    expect(said().map((entry) => Number(entry.split(":")[0]))).not.toContain(63);
+    // 62 written out, 68 the same string one NAME away — the runtime writes the attribute for both.
+    expect(said()).toContain("62:required");
+    expect(said()).toContain("68:required");
+    expect(said().map((entry) => Number(entry.split(":")[0]))).not.toContain(65);
   });
 
   test("the whole list, so a regression cannot go quiet", () => {
     // 57 has the spread BEFORE both attributes, so nothing can reach over either.
     expect(said()).toEqual([
-      "11:required",
-      "14:disabled",
-      "19:checked",
-      "20:readonly",
-      "21:open",
-      "26:hidden",
-      "57:required",
-      "60:required",
+      "13:required",
+      "16:disabled",
+      "21:checked",
+      "22:readonly",
+      "23:open",
+      "28:hidden",
+      "59:required",
+      "62:required",
+      "68:required",
     ]);
   });
 
@@ -73,7 +76,7 @@ describe("an accessibility attribute that contradicts the tag", () => {
    * rather than untidiness, and a rule that reported agreement would be reporting a habit.
    */
   test("agreeing with the tag is untidy, not a fault", () => {
-    expect(found().map((issue) => issue.line)).not.toContain(31);
+    expect(found().map((issue) => issue.line)).not.toContain(33);
   });
 
   test("everything the source does not settle on both halves stays silent", () => {

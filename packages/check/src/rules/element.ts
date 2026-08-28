@@ -202,27 +202,34 @@ function truthOf(attribute: WrittenAttribute | undefined, resolve: ElementContex
   const value = attribute.value;
   if (value === undefined) return undefined;
 
-  if (ts.isStringLiteral(value)) {
-    /**
-     * An HTML BOOLEAN attribute is on whenever it is PRESENT, whatever the string says.
-     *
-     * `required="false"` is a required field. The DOM has no way to say otherwise: `setAttribute`
-     * put the name there, and the parser reads only whether it is there. `core/Attribute.ts` is
-     * built on exactly that — `isInvisibleOnScreen` removes an attribute for the VALUE `false` and
-     * keeps the STRING `"false"`, because removing it is the only way to turn `disabled` off.
-     *
-     * An `aria-*` is the other kind and reads the other way: an enumerated string with three
-     * answers, where `"false"` is one of them and absent is a third. The same file's comment says
-     * so, and this mirrors it rather than inventing a second rule.
-     *
-     * Read as a value rather than as a presence, three rules were wrong on one line of markup —
-     * measured: `<main hidden="false">` was counted as a second visible landmark, a
-     * `<video muted="false">` was asked for captions it has no sound to need, and
-     * `<input required="false" aria-required="false">` — the very contradiction
-     * `aria-that-contradicts-the-tag` exists for — was reported by nothing.
-     */
-    if (BOOLEAN_ATTRIBUTES.has(attribute.name) || BOOLEAN_ATTRIBUTES.has(attribute.name.toLowerCase())) return true;
+  /**
+   * An HTML BOOLEAN attribute is on whenever it is PRESENT, whatever the string says.
+   *
+   * `required="false"` is a required field. The DOM has no way to say otherwise: `setAttribute`
+   * put the name there, and the parser reads only whether it is there. `core/Attribute.ts` is
+   * built on exactly that — `isInvisibleOnScreen` removes an attribute for the VALUE `false` and
+   * keeps the STRING `"false"`, because removing it is the only way to turn `disabled` off.
+   *
+   * An `aria-*` is the other kind and reads the other way: an enumerated string with three
+   * answers, where `"false"` is one of them and absent is a third. The same file's comment says
+   * so, and this mirrors it rather than inventing a second rule.
+   *
+   * Read as a value rather than as a presence, three rules were wrong on one line of markup —
+   * measured: `<main hidden="false">` was counted as a second visible landmark, a
+   * `<video muted="false">` was asked for captions it has no sound to need, and
+   * `<input required="false" aria-required="false">` — the very contradiction
+   * `aria-that-contradicts-the-tag` exists for — was reported by nothing.
+   *
+   * Asked of the VALUE rather than of the literal, because `required={FLAG}` with
+   * `const FLAG = "false"` is the same attribute on the same element. Written for the literal
+   * alone it answered two ways for one line of markup, which is the drift this file exists to
+   * stop — measured on a plant, the literal reported and the name silent.
+   */
+  if (BOOLEAN_ATTRIBUTES.has(attribute.name) || BOOLEAN_ATTRIBUTES.has(attribute.name.toLowerCase())) {
+    return follow(value, resolve, PRESENCE)?.value;
+  }
 
+  if (ts.isStringLiteral(value)) {
     return value.text === "true" ? true : value.text === "false" ? false : undefined;
   }
 
@@ -327,6 +334,35 @@ const NUMBER: Looking<number> = {
 };
 
 /** The three spellings of a claim, behind a name — `{HIDDEN}` where `const HIDDEN = true`. */
+/**
+ * Whether a value REACHES the element at all, which is the whole of a boolean attribute.
+ *
+ * `isInvisibleOnScreen` in `core/Attribute.ts` is the rule being mirrored: an attribute is dropped
+ * for `undefined`, `null`, and the VALUE `false` — and kept for everything else, the string
+ * `"false"` included. So a boolean attribute is on for any string at all, and off only when the
+ * render says `false` outright.
+ *
+ * Separate from {@link TRUTH} because they disagree on exactly one input and it is the one that
+ * matters: a string reading `"false"`. To an `aria-*` that is the value `false`; to `disabled` it
+ * is the attribute being there.
+ */
+const PRESENCE: Looking<boolean> = {
+  leaf: (expression) => {
+    if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (expression.kind === ts.SyntaxKind.NullKeyword) return false;
+    if (ts.isIdentifier(expression) && expression.text === "undefined") return false;
+    // Any string reaches the element, `""` included — which is what the runtime writes for `true`.
+    if (ts.isStringLiteralLike(expression)) return true;
+    if (ts.isNumericLiteral(expression)) return true;
+    return undefined;
+  },
+  throughModuleScope: true,
+  throughBranches: false,
+  throughCalls: false,
+  throughMutableBindings: false,
+};
+
 const TRUTH: Looking<boolean> = {
   leaf: (expression) => {
     if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;

@@ -27,3 +27,7 @@ Three rules were wrong on one line of markup, each measured with a plant:
 Two reports against correct markup, and one real fault nobody was naming. `required={false}` is
 unchanged and stays silent: written that way the attribute never reaches the element, so there is
 nothing on it to contradict.
+
+Asked of the VALUE rather than of the literal, so `required={FLAG}` with `const FLAG = "false"`
+answers the same as `required="false"` — written for the literal alone it gave one line of markup
+two answers depending on how it was spelled.
