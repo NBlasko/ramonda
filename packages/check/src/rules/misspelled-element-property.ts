@@ -1,6 +1,7 @@
+import ts from "typescript";
 import { propertyOnlyNames } from "@ramonda/dom-facts";
 import { positionOf } from "../syntax";
-import type { ElementRule } from "./rule";
+import type { ElementRule, TextEdit } from "./rule";
 
 /**
  * `playbackrate={2}` — a name one capital away from the only spelling it has.
@@ -40,6 +41,8 @@ export interface MisspelledElementPropertyIssue {
   written: string;
   /** The one spelling that works. */
   meant: string;
+  /** The rename, which has exactly one answer — see {@link TextEdit}. */
+  edit?: TextEdit;
   file: string;
   line: number;
   column: number;
@@ -102,7 +105,24 @@ export const misspelledElementProperty = {
       const meant = [...names].find((name) => name.toLowerCase() === attribute.name.toLowerCase());
       if (meant === undefined) continue;
 
-      found.push({ tag, written: attribute.name, meant, ...positionOf(attribute.at) });
+      /**
+       * The one answer there is: the name, in the only case it has.
+       *
+       * The span is the NAME node, not the attribute — `playbackrate={2}` keeps its value, and
+       * replacing the whole attribute would mean re-printing an expression this never read.
+       */
+      const name = ts.isJsxAttribute(attribute.at) ? attribute.at.name : undefined;
+      const edit =
+        name === undefined
+          ? undefined
+          : {
+              from: name.getStart(),
+              to: name.getEnd(),
+              text: meant,
+              says: `\`${attribute.name}\` → \`${meant}\``,
+            };
+
+      found.push({ tag, written: attribute.name, meant, ...(edit ? { edit } : {}), ...positionOf(attribute.at) });
     }
 
     return found;

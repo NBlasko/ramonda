@@ -33,6 +33,18 @@ describe("an option that cannot choose", () => {
   });
 
   /**
+   * This one has a single answer, so the checker carries it rather than describing it.
+   *
+   * Deleting the attribute leaves the page doing exactly what it already did — `Select` decides
+   * from `value` either way — and the span starts at the whitespace BEFORE it, so removing it does
+   * not leave a double space behind.
+   */
+  test("every report carries the edit that removes it", () => {
+    expect(found().every((issue) => issue.edit?.text === "")).toBe(true);
+    expect(found().every((issue) => issue.edit?.says === "remove `selected`")).toBe(true);
+  });
+
+  /**
    * Four silences, and the first is the whole point of the component.
    *
    * 37 writes no `selected` at all and lets `value` decide. 44 is built from data this cannot read.

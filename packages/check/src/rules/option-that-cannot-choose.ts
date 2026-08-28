@@ -1,8 +1,9 @@
+import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { openingOf, tagOf } from "./element";
 import { enclosingElement } from "./html";
-import type { ElementContext, ElementRule, JsxElementLike } from "./rule";
+import type { ElementContext, ElementRule, JsxElementLike, TextEdit } from "./rule";
 
 /**
  * `<option selected>` inside a `<Select>`, which overwrites it on every render.
@@ -33,6 +34,8 @@ import type { ElementContext, ElementRule, JsxElementLike } from "./rule";
 export interface OptionThatCannotChooseIssue {
   /** The `value` written on the option, when there is one to print. */
   value?: string;
+  /** Removing the attribute, which is the whole fix — see {@link TextEdit}. */
+  edit?: TextEdit;
   file: string;
   line: number;
   column: number;
@@ -105,6 +108,29 @@ export const optionThatCannotChoose = {
     if (!insideASelect(element, resolve)) return [];
 
     const value = attr("value");
-    return [{ ...(value === undefined ? {} : { value }), ...positionOf(openingOf(element)) }];
+
+    /**
+     * The fix is DELETION, and it is the whole of it: `Select` already decides from `value`, so
+     * taking the attribute away leaves the page doing exactly what it did — correctly this time,
+     * and saying so.
+     *
+     * The span runs from the whitespace BEFORE the attribute to its end, so removing it does not
+     * leave a double space behind. Nothing else on the line moves.
+     */
+    const written = openingOf(element).attributes.properties.find(
+      (property) => ts.isJsxAttribute(property) && property.name.getText().toLowerCase() === "selected",
+    );
+    const edit =
+      written === undefined
+        ? undefined
+        : { from: written.getFullStart(), to: written.getEnd(), text: "", says: "remove `selected`" };
+
+    return [
+      {
+        ...(value === undefined ? {} : { value }),
+        ...(edit ? { edit } : {}),
+        ...positionOf(openingOf(element)),
+      },
+    ];
   },
 } as const satisfies ElementRule<OptionThatCannotChooseIssue>;
