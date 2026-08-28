@@ -1398,6 +1398,29 @@ export function reorderChildren(
    */
   let reference: ChildNode | null = anchor ?? firstHostedBlock(parent);
 
+  /**
+   * Whoever the reader was typing in, if this parent holds them.
+   *
+   * Moving a node is REMOVING and re-inserting it, and a removed node loses focus — the platform's
+   * doing, and the same in plain JavaScript. So a list that reorders while somebody types in one of
+   * its rows leaves them typing into nothing: measured, the text, the caret and the row's `@state`
+   * all survive and only the focus is gone, which is the one loss with no sign on the page.
+   *
+   * Read ONCE, here, and only on a walk that is going to move something — everything above this line
+   * either returned already (the DOM matched) or is arithmetic.
+   *
+   * There is no check that the element belongs to THIS parent, and it would be dead weight: the walk
+   * moves only nodes inside `parent`, so it cannot blur anything outside it, and the "did it actually
+   * lose focus" test below already answers for every element it could not have touched. A
+   * `parent.contains` beside it would also be the dearer of the two — a walk up the tree in front of
+   * a property read.
+   *
+   * Restored below rather than by an app, because an app cannot see this happen: nothing in a render
+   * says which of its rows the platform is about to blur.
+   */
+  const focused = document.activeElement;
+  const keepFocus = focused !== null && focused !== document.body;
+
   for (let n = length - 1; n >= 0; n--) {
     const node = orderedNodes[n];
     if (keepIndex >= 0 && keep[keepIndex] === n) {
@@ -1407,6 +1430,18 @@ export function reorderChildren(
       parent.insertBefore(node, reference);
     }
     reference = node;
+  }
+
+  /**
+   * Only if it actually LOST the focus, which is not the same as having been moved.
+   *
+   * A node that stayed put keeps it, and so does one whose ancestor moved without it being detached
+   * on the way. Asking the document is cheaper than working out which of those happened, and it is
+   * the question that matters: giving focus back to something that never lost it would fire a second
+   * `focus` event for nothing.
+   */
+  if (keepFocus && document.activeElement !== focused) {
+    (focused as HTMLElement).focus?.();
   }
 }
 

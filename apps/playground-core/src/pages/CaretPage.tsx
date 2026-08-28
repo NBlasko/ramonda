@@ -1,4 +1,4 @@
-import { Component, state } from "@ramonda/core";
+import { Component, list, state } from "@ramonda/core";
 
 /**
  * The caret in a controlled field, for the eye rather than for a test.
@@ -52,6 +52,94 @@ class Watched extends Component<{
 
 const group = (text: string) => text.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
+/**
+ * Focus across a reorder, which is the caret's neighbour and a different loss.
+ *
+ * Moving a node means removing and re-inserting it, and a removed node is blurred. Everything else
+ * about the row survives — its text, its caret, its state — so the only sign is that typing stops
+ * doing anything. `document.activeElement` is shown live, because that is the thing to watch.
+ */
+class Reorderable extends Component {
+  @state rows = [
+    { id: "a", label: "first" },
+    { id: "b", label: "second" },
+    { id: "c", label: "third" },
+  ];
+  @state active = "—";
+  @state rotating = false;
+  private timer: number | undefined;
+
+  track() {
+    const node = document.activeElement as HTMLElement | null;
+    this.active = node && node.id ? node.id : (node?.nodeName ?? "—");
+  }
+
+  shuffle() {
+    const [head, ...rest] = this.rows;
+    this.rows = [...rest, head];
+    queueMicrotask(() => this.track());
+  }
+
+  /**
+   * A button STEALS the focus the moment it is pressed, and then there is nothing in the list to
+   * keep — which is what the first version of this page measured without meaning to. Preventing the
+   * default on `mousedown` is what stops a control taking focus, so the field the reader is typing
+   * in still has it when the rows move.
+   */
+  keepFocusOnTheField(event: Event) {
+    event.preventDefault();
+  }
+
+  /** Rotates on its own, so the reader never has to touch anything but the field. */
+  auto() {
+    this.rotating = !this.rotating;
+    if (this.timer !== undefined) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+    if (this.rotating) this.timer = setInterval(() => this.shuffle(), 1500) as unknown as number;
+  }
+
+  render() {
+    return (
+      <section style={{ margin: "0 0 1.5rem", padding: "0.75rem", border: "1px solid #ccc" }}>
+        <h3 style={{ margin: "0 0 0.25rem" }}>5 — focus across a reorder</h3>
+        <p style={{ margin: "0 0 0.5rem", fontSize: "0.9em", color: "#555" }}>
+          Click into one of these, type something, then press Rotate. Keep typing without clicking: the letters should
+          go on landing in the same field.
+        </p>
+        {list(this.rows, (row) => (
+          <div key={row.id} style={{ margin: "0 0 0.35rem" }}>
+            <input
+              id={`row-${row.id}`}
+              placeholder={row.label}
+              onfocus={this.track}
+              style={{ fontSize: "1.1rem", padding: "0.3rem", width: "16rem" }}
+            />
+          </div>
+        ))}
+        <button
+          type="button"
+          onclick={this.shuffle}
+          onmousedown={this.keepFocusOnTheField}
+          style={{ marginTop: "0.4rem" }}
+        >
+          Rotate
+        </button>
+        <button
+          type="button"
+          onclick={this.auto}
+          onmousedown={this.keepFocusOnTheField}
+          style={{ marginTop: "0.4rem", marginLeft: "0.4rem" }}
+        >
+          {this.rotating ? "Stop" : "Rotate every 1.5s"}
+        </button>
+        <p style={{ margin: "0.5rem 0 0", fontFamily: "monospace" }}>focus: {this.active}</p>
+      </section>
+    );
+  }
+}
+
 export class CaretPage extends Component {
   render() {
     return (
@@ -93,6 +181,8 @@ export class CaretPage extends Component {
           start="1"
           transform={(text) => text}
         />
+
+        <Reorderable />
       </div>
     );
   }
