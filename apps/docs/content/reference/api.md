@@ -34,6 +34,7 @@ Everything every package exports. Each entry links to the page that explains it.
 | `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. [Portal](/composition/portal) |
 | `portalTarget(name)` | Names a portal target outside the app's root, so it exists on the server too. `PORTAL_TARGET_ATTR` marks the container a shell emits. [Portal](/composition/portal) |
 | `Select` | A `<select>`, whose value is which of its children is chosen. The plain tag is refused: `selected` on an option means whatever the render order made it mean. `<option>` is untouched. [Fields](/forms/fields#a-choice-lives-on-select) |
+| `TextArea` | A `<textarea>`, whose value is the element's TEXT rather than an attribute. The plain tag is refused: nothing written as an attribute can carry the value, so a served page showed an empty field. [Fields](/forms/fields#a-textarea-keeps-its-value-inside-the-element) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |
 | `ErrorBoundary` | Catches what a subtree throws while rendering. [Error boundaries](/composition/error-boundaries) |
 | `createContext(default, options?)` | Returns `[Provider, Consumer]`. Options: `label` names the pair in devtools; `optional: true` says the default is a real answer, so a consumer with no provider above it is not reported. [Context](/composition/context) |
@@ -137,7 +138,7 @@ All 32, grouped by what they belong to. The server and per-request ones are expl
 **Markup** — `VNode` · `RamondaNode` · `ComponentChild` · `ComponentClassKind`
 
 **Hooks and options** — `HookMeta` · `HeadOptions` · `MetaTag` · `LinkTag` · `PortalProps` · `PortalTarget` · `Each` · `ItemRender` · `ItemComponent` · `Identity` ·
-`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps` · `SelectProps`
+`AsyncLoadProps` · `AsyncLoadFailure` · `Lazy` · `ContextOptions` · `ErrorBoundaryFallbackProps` · `SelectProps` · `TextAreaProps`
 
 **Refs and subscriptions** — `RefCallback` · `RefTarget` · `SubscriptionOwner` · `Disconnect`
 

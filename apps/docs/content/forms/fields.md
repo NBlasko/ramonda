@@ -86,7 +86,7 @@ The last row is deliberate: no single control holds an object, so asking for one
 worth catching at compile time.
 
 **What `bind` cannot check** is which element you spread it onto. `<Select {...bind} />` and
-`<textarea {...bind} />` both type-check, because the attributes are the same and a type cannot
+`<TextArea {...bind} />` both type-check, because the attributes are the same and a type cannot
 see the tag. Either is fine when the field holds a string.
 
 ### A choice lives on `<Select>`
@@ -128,6 +128,32 @@ import { Select } from "@ramonda/core";
 On a server-rendered page the choice arrives as `selected` on the chosen option, because that is
 where HTML keeps it and a select has no `value` attribute to carry. The reader sees the right option
 before any script runs.
+
+### A `<textarea>` keeps its value inside the element
+
+HTML gives a textarea no `value` attribute — the value is the element's **text** — so `<textarea>` is
+a type error and you write `<TextArea>`:
+
+```tsx
+import { TextArea } from "@ramonda/core";
+
+<TextArea value={this.draft} oninput={this.onInput} />;
+```
+
+It renders `<textarea>a draft</textarea>`, so a server-rendered page shows the text before any script
+runs, and it passes everything else through to the element.
+
+### A checkbox's third state
+
+`indeterminate` is a property and not an attribute — HTML has nowhere to write it — so it works on
+the client and a server-rendered page cannot carry it:
+
+```tsx
+<input type="checkbox" checked={this.all} indeterminate={this.some && !this.all} />
+```
+
+The box arrives unchecked and becomes mixed when the page hydrates. There is no way around that; it
+is what HTML offers.
 
 ### Writing your own attributes
 

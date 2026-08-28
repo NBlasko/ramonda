@@ -161,7 +161,7 @@ export interface RefusedOnFields {
 }
 
 /**
- * The one tag whose meaning the framework cannot leave to the author: `<select>`.
+ * The two tags whose meaning the framework cannot leave to the author: `<select>` and `<textarea>`.
  *
  * Every other element says what it is with its own attributes. A select says it with its CHILDREN —
  * the choice is which option is chosen — and neither half of that can be written down honestly:
@@ -176,10 +176,20 @@ export interface RefusedOnFields {
  * options are in the element. `<option>` needs no counterpart: it has no choice to make, so it stays
  * an ordinary tag, in a `<datalist>` as much as in a select.
  *
- * A required property, so writing the tag at all is the error and the property NAME is the message.
- * Unlike the other refusals in this file, which are `Partial` and bite only when somebody writes the
- * named attribute — here the tag itself is the mistake, so there is no spelling of it that passes.
+ * A `<textarea>` is the same shape with a different answer. Its value is the element's TEXT and HTML
+ * gives it no `value` attribute at all, so a served `<textarea value="hello">` reached the reader as
+ * an EMPTY field. The value has to be written as a CHILD, which only something that renders the tag
+ * can do — and it cannot be done from the attribute pass, which runs before the children and whose
+ * text node the children pass then unmounts as a leftover.
+ *
+ * A required property, so writing either tag at all is the error and the property NAME is the
+ * message. Unlike the other refusals in this file, which are `Partial` and bite only when somebody
+ * writes the named attribute — here the tag itself is the mistake, so no spelling of it passes.
  */
+export interface RefusedTextAreaTag {
+  "write <TextArea value={x}> — a plain <textarea> cannot carry its value, because the value is the element's text": never;
+}
+
 export interface RefusedSelectTag {
   "write <Select value={x}> — a plain <select> cannot say which option is chosen, because the choice is its children": never;
 }

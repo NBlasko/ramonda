@@ -6,6 +6,7 @@ import type {
   RefusedOnForm,
   RefusedOnMeta,
   RefusedSelectTag,
+  RefusedTextAreaTag,
   SVGArgs,
 } from "./types/commonTypes";
 import type { RamondaNode, VNode } from "./types/vdom";
@@ -165,7 +166,7 @@ declare global {
       template: RamondaArgs<HTMLTemplateElement>;
       tbody: RamondaArgs<HTMLTableSectionElement>;
       td: RamondaArgs<HTMLTableDataCellElement>;
-      textarea: RamondaArgs<HTMLTextAreaElement> & Partial<RefusedOnFields>;
+      textarea: RamondaArgs<HTMLTextAreaElement> & Partial<RefusedOnFields> & RefusedTextAreaTag;
       tfoot: RamondaArgs<HTMLTableSectionElement>;
       th: RamondaArgs<HTMLTableHeaderCellElement>;
       thead: RamondaArgs<HTMLTableSectionElement>;
