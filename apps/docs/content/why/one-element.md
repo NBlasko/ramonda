@@ -9,7 +9,10 @@ order: 121
 
 Open devtools on a Ramonda page and you will find your own markup. Every element there
 is an element you wrote; every element you wrote is there. The framework contributes
-nothing of its own — no wrappers, no placeholders, no marker nodes.
+no elements of its own — no wrappers, no placeholders.
+
+A server-rendered page carries comments until it hydrates, and then it does not; that is
+[the one exception](#what-the-server-sends-is-not-quite-this) and it is at the bottom of this page.
 
 That is worth more than it sounds. A great deal of debugging is answering "what is
 actually on the page?", and this answers it from the source. You can read a component

@@ -313,8 +313,11 @@ export function __h(
   // answer — a Hook for state/lifecycle without an element, or `{fn()}` if
   // vnodes were all that was wanted.
   //
-  // Call it anyway: TS already rejects this at the call site, so if it got here
-  // the build has no types, and crashing the page would help nobody.
+  // Call it anyway. TS rejects a NAMED function in tag position, so `<sideBar />` never gets here
+  // from typed code — but `<>…</>` does: the compiler does not typecheck a fragment's parameter at
+  // all, measured by giving `Fragment` a required one and watching `<><span/></>` compile anyway.
+  // So this branch is the only thing standing between a fragment and a silent half-render, and
+  // crashing the page instead would help nobody.
   if (typeof name === "function") {
     try {
       if (__DEV__) reportFunctionTag(name.name);

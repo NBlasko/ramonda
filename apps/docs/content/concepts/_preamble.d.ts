@@ -13,7 +13,7 @@ declare global {
   interface CardProps {
     title: string;
     subtitle?: string;
-    /** The tag the card renders as — the `@Host` page picks it off the props. */
+    /** Which tag the card renders as, for an example that reads a prop. */
     as?: string;
   }
   class Spinner extends Component<any> {
