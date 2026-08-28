@@ -44,8 +44,19 @@ attached it. `target` is where the event ORIGINATED, and for anything that bubbl
 descendant — a click on a `<span>` inside a `<button>` has the span as its target. A type naming it
 as the button would be wrong exactly when a reader most needs it right.
 
-Both claims are pinned in `JsxTypeClaims.tsx`, in both directions, and each was checked by relaxing
-it and watching the `@ts-expect-error` go unused.
+## It is an annotation, not a proof
+
+Naming the wrong element compiles: `EventOn<HTMLSelectElement>` on an `<input>` is accepted, because
+a handler prop is bivariant in its parameter — which is the same property that lets a narrowed
+parameter stand there at all. Nothing cross-checks the element against the tag.
+
+It is still worth having. The alternative at that line is `(e.currentTarget as HTMLInputElement)`,
+which asserts exactly as much in more characters. But `Listener.run` rejected method syntax
+specifically for making this bivariance LOOK like a check, so the limit is written down rather than
+left for somebody to trust and discover.
+
+All three claims are pinned in `JsxTypeClaims.tsx`, in both directions, and each was checked by
+relaxing it and watching the `@ts-expect-error` go unused.
 
 `RamondaEvent<T>` is gone. It typed `target: T` — the unsound half — was used nowhere, and was never
 exported from the package, so it could not be reached even deliberately.

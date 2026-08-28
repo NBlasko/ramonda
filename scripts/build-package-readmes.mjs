@@ -38,10 +38,9 @@
  * site would then show its own markers to the reader. One convention that works in every renderer
  * beats two that each work in one.
  */
-import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { existsSync, globSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { globSync } from "node:fs";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
 const check = process.argv.includes("--check");
@@ -184,10 +183,12 @@ function region(json, runtime) {
 }
 
 const runtime = runtimePackages();
-let stale = [];
-let missing = [];
+const stale = [];
+const missing = [];
 
-for (const { dir, json } of published()) {
+const packages = published();
+
+for (const { dir, json } of packages) {
   const file = join(repo, dir, "README.md");
   if (!existsSync(file)) {
     missing.push(`${dir} — ${json.name} is published with no README; its npm page would be empty`);
@@ -208,6 +209,32 @@ for (const { dir, json } of published()) {
   const to = text.indexOf(END);
   if (from === -1 || to === -1) {
     missing.push(`${dir}/README.md — no \`${START}\` … \`${END}\` region to write into`);
+    continue;
+  }
+  /**
+   * The markers in the wrong order, which is NOT the same as missing markers.
+   *
+   * `text.slice(0, from) + region + text.slice(to + END.length)` with `to` before `from` keeps the
+   * span between them TWICE and writes a longer file than it read. Planted: an end marker moved one
+   * line above the start marker grew `router`'s README from 79 lines to 98, and the run reported
+   * success. A gate that silently corrupts the file it exists to guard is worse than no gate, so
+   * this is refused rather than repaired — which of the two markers is the misplaced one is the
+   * author's to say, not this script's to guess.
+   */
+  if (to < from) {
+    missing.push(`${dir}/README.md — \`${END}\` comes before \`${START}\`; one of them is misplaced`);
+    continue;
+  }
+
+  /**
+   * The licence, which is a required section and is NOT generated.
+   *
+   * It sits at the bottom, so it cannot live in the region above without moving it somewhere no
+   * reader looks for it. Asserted rather than written: five of the eleven had none before this
+   * plan started, so "somebody will notice" is already measured as false.
+   */
+  if (!text.includes("\n## License\n")) {
+    missing.push(`${dir}/README.md — no \`## License\` section`);
     continue;
   }
 
@@ -234,4 +261,4 @@ if (stale.length > 0) {
   process.exit(1);
 }
 
-if (check) console.log(`[readmes] up to date — ${published().length} published packages`);
+if (check) console.log(`[readmes] up to date — ${packages.length} published packages`);

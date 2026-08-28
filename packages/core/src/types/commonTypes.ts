@@ -424,7 +424,14 @@ export type SVGArgs<T extends SVGElement> = Partial<
  * ## `currentTarget`, and deliberately not `target`
  *
  * `currentTarget` is the element the listener is attached TO, which the framework knows because it
- * attached it — so naming it is a fact rather than a hope.
+ * attached it — so there is a right answer here, which is what makes naming it worthwhile.
+ *
+ * **It is an annotation, not a proof.** A JSX handler prop is bivariant in its parameter — which is
+ * what lets a narrower one stand at all — and the same bivariance accepts `EventOn<HTMLSelectElement>`
+ * on an `<input>`. Nothing cross-checks the element against the tag. That is still better than the
+ * `as HTMLInputElement` it replaces, which asserts exactly as much in more characters, but
+ * `Listener.run` refused method syntax for letting this same bivariance LOOK like a check, so it is
+ * said plainly here too. Pinned in `JsxTypeClaims.tsx` as `wrongElementIsNotCaught`.
  *
  * `target` is where the event ORIGINATED, and for anything that bubbles that is any descendant:
  * a click on a `<span>` inside a `<button>` has the span as its target. Narrowing it would be a

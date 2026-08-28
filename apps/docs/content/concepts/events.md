@@ -98,6 +98,12 @@ attached to, which the framework knows because it attached it. `target` is where
 *originated* — a click on a `<span>` inside a `<button>` has the span as its target — so a type
 naming it as the button would be wrong exactly when it matters. Reach for `currentTarget`.
 
+**It is an annotation, not a proof.** Naming `EventOn<HTMLSelectElement>` on an `<input>` compiles:
+a handler prop accepts a narrower parameter than it promises — which is what lets `EventOn` stand
+here at all — and nothing cross-checks the element you named against the tag it is on. You are
+telling the compiler what is there, exactly as the `as HTMLInputElement` cast this replaces did, in
+fewer characters and at the top of the handler where it can be read.
+
 ### A listener you arm and disarm
 
 `@onWindow` and `@onDocument` attach for the component's whole life. When the listener should only be

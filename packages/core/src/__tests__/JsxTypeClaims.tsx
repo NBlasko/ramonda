@@ -415,6 +415,24 @@ export const plainHandlerStillWorks = <input type="text" onchange={(e) => e.type
 export const noValueWithout = <input type="text" onchange={(e) => e.currentTarget.value} />;
 
 /**
+ * **`EventOn` does not check that you named the RIGHT element**, and that is a limit rather than a
+ * gap in these tests.
+ *
+ * A JSX handler prop is bivariant in its parameter, so a narrower parameter is accepted — which is
+ * the whole reason `EventOn<HTMLInputElement>` may stand where an `Event` is expected. The same
+ * bivariance accepts `HTMLSelectElement` on an `<input>`: the annotation is the author telling the
+ * compiler what is there, and nothing cross-checks it against the tag.
+ *
+ * It is still worth having. The alternative at this line is `(e.currentTarget as HTMLInputElement)`,
+ * which asserts exactly as much and says so in more characters. But it is an annotation, not a
+ * proof, and `Listener.run` rejected method syntax for making this same bivariance look like a
+ * check — so it is written down here rather than discovered by somebody trusting it.
+ */
+export const wrongElementIsNotCaught = (
+  <input type="text" onchange={(e: EventOn<HTMLSelectElement>) => e.currentTarget.multiple} />
+);
+
+/**
  * `target` stays `EventTarget | null`, on purpose.
  *
  * It is where the event ORIGINATED, and for anything that bubbles that is any descendant — a click
