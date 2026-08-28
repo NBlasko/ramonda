@@ -54,6 +54,7 @@ import { tableWithNoHeaders } from "./table-with-no-headers";
 import { landmarksThatCannotBeToldApart } from "./landmarks-that-cannot-be-told-apart";
 import { regionWithNoName } from "./region-with-no-name";
 import { falseOnABooleanAttribute } from "./false-on-a-boolean-attribute";
+import { misspelledElementProperty } from "./misspelled-element-property";
 import { parentWithAForeignChild } from "./parent-with-a-foreign-child";
 import { ariaThatContradictsTheTag } from "./aria-that-contradicts-the-tag";
 import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
@@ -185,6 +186,7 @@ export {
 } from "./landmarks-that-cannot-be-told-apart";
 export { regionWithNoName, type RegionWithNoNameIssue } from "./region-with-no-name";
 export { falseOnABooleanAttribute, type FalseOnABooleanAttributeIssue } from "./false-on-a-boolean-attribute";
+export { misspelledElementProperty, type MisspelledElementPropertyIssue } from "./misspelled-element-property";
 export { parentWithAForeignChild, type ParentWithAForeignChildIssue } from "./parent-with-a-foreign-child";
 export {
   ariaThatContradictsTheTag,
@@ -301,6 +303,7 @@ export const ELEMENT_RULES = [
   roleTakesNoName,
   regionWithNoName,
   falseOnABooleanAttribute,
+  misspelledElementProperty,
   ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,

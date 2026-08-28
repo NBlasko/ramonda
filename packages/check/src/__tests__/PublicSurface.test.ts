@@ -88,6 +88,7 @@ const EXPECTED_TYPES = [
   "RoleMissingRequiredAriaIssue",
   "RegionWithNoNameIssue",
   "FalseOnABooleanAttributeIssue",
+  "MisspelledElementPropertyIssue",
   "RoleTakesNoNameIssue",
   "RowReadsAPlainFieldIssue",
   "RowWithoutAKeyIssue",

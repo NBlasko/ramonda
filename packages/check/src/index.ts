@@ -67,6 +67,7 @@ export type {
   RoleMissingRequiredAriaIssue,
   RegionWithNoNameIssue,
   FalseOnABooleanAttributeIssue,
+  MisspelledElementPropertyIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   ServerEnvInSharedCodeIssue,

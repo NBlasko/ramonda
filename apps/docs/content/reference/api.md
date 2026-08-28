@@ -381,16 +381,17 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `IndexAsKeyIssue`, `InteractiveInsideInteractiveIssue`, `IntervalWithNoCleanupIssue`,
 `LabelThatNamesNothingIssue`, `LandmarksThatCannotBeToldApartIssue`, `LateRequestReadIssue`,
 `LinkWithoutADestinationIssue`, `ListenerAddedByHandIssue`, `LiveRegionThatContradictsItsRoleIssue`,
-`MediaWithNoCaptionsIssue`, `MoreThanOneMainIssue`, `NamedOnlyByAPlaceholderIssue`,
-`OneProviderPerComponentIssue`, `ParentWithAForeignChildIssue`, `PersistOfALossyValueIssue`,
-`PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
-`RegionWithNoNameIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
-`RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`,
-`ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
-`TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`,
-`UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
-`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
-`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`MediaWithNoCaptionsIssue`, `MisspelledElementPropertyIssue`, `MoreThanOneMainIssue`,
+`NamedOnlyByAPlaceholderIssue`, `OneProviderPerComponentIssue`, `ParentWithAForeignChildIssue`,
+`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`,
+`ReferenceToAnIdThatIsNotThereIssue`, `RegionWithNoNameIssue`, `RoleMissingRequiredAriaIssue`,
+`RoleTakesNoNameIssue`, `RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`,
+`RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`,
+`StateWrittenWhileRenderingIssue`, `TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`,
+`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`,
+`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
+`UnserializableStateIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
+`WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 
