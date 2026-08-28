@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import { Component, list } from "../index";
 import { state } from "../base/decorators";
 import { getDOM } from "../test/setup";
+import { renderToString } from "../hydration/ssr";
 
 /**
  * Where the caret is after a controlled field's model rewrites what was typed.
@@ -149,6 +150,70 @@ describe("the caret in a controlled field", () => {
     } finally {
       Object.defineProperty(HTMLInputElement.prototype, "selectionStart", caret);
       HTMLInputElement.prototype.setSelectionRange = range;
+    }
+  });
+
+  /**
+   * A NUMERIC model, which is what `value={this.count}` gives.
+   *
+   * The DOM stringifies a number on assignment, so a rewrite of `1234` to `1235` is a rewrite of the
+   * same length and the caret is as worth keeping as anywhere else. An earlier version demanded a
+   * string on both sides and left every numeric model out without saying so: measured on this same
+   * edit, caret 3 with a string model and 5 with a numeric one.
+   */
+  test("a numeric model keeps the caret too", async () => {
+    class Clamped extends Component {
+      @state code = 1234;
+      onInput(event: Event) {
+        const digits = (event.target as HTMLInputElement).value.replace(/\D/g, "");
+        this.code = Number([...digits].map((digit) => String(Math.min(Number(digit), 5))).join("")) || 0;
+      }
+      render() {
+        return <input id="clamped" value={this.code} oninput={this.onInput} />;
+      }
+    }
+
+    const app = await getDOM<Clamped>(<Clamped />);
+    await app.settle();
+
+    // A `9` typed in the middle, clamped to `5` — same length, one character apart.
+    expect(await typeInTheMiddle(app, "clamped", 2, "9")).toEqual({ value: "12534", caret: 3 });
+  });
+
+  /**
+   * A server render has no caret, and asks for none. Twenty fields cost twenty reads of
+   * `selectionStart` for an answer that can only be `null`, which is the kind of thing that is
+   * invisible until somebody counts it.
+   */
+  test("a server render reads no caret at all", async () => {
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            {[1, 2, 3].map((n) => (
+              <input key={n} value={`row ${n}`} />
+            ))}
+          </div>
+        );
+      }
+    }
+
+    let reads = 0;
+    const caret = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "selectionStart")!;
+    Object.defineProperty(HTMLInputElement.prototype, "selectionStart", {
+      ...caret,
+      get(this: HTMLInputElement) {
+        reads++;
+        return caret.get?.call(this);
+      },
+    });
+
+    try {
+      const html = await renderToString(<Page />);
+      expect(html).toContain('value="row 1"');
+      expect(reads).toBe(0);
+    } finally {
+      Object.defineProperty(HTMLInputElement.prototype, "selectionStart", caret);
     }
   });
 

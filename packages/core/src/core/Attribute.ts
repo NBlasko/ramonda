@@ -136,20 +136,39 @@ export function formatAttributes(attributes: NodeAttributes): Record<string, any
  * whose `type` is `number`, `email`, `date` or `color`, and a value written to one of those is a
  * value written to a field with no caret to keep.
  */
-function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown): void {
+function writeValue(enhancedNode: EnhancedHTMLNode, value: unknown, onServer: boolean): void {
   const field = enhancedNode as unknown as {
     value: unknown;
     selectionStart: number | null;
     setSelectionRange?: (start: number, end: number) => void;
   };
 
+  /**
+   * A server render has no caret to keep, and asking for one is not free: measured, twenty inputs
+   * on a page cost twenty reads of `selectionStart` for an answer that can only be `null`. The
+   * guard is the same one `runComponentEffects` and the commit queue already make.
+   */
+  if (onServer) {
+    field.value = value;
+    return;
+  }
+
   const before = field.value;
   const caret = field.selectionStart;
 
   field.value = value;
 
-  if (caret === null || typeof before !== "string" || typeof value !== "string") return;
-  if (before.length !== value.length) return;
+  /**
+   * Compared as the element will HOLD them, not as they were written.
+   *
+   * `<input value={this.count} />` hands over a number, and the DOM stringifies it on assignment —
+   * so a rewrite of `1234` to `1235` is a rewrite of the same length, and the reader's caret is as
+   * worth keeping there as in any other field. An earlier version of this line demanded strings on
+   * both sides and quietly left every numeric model out: measured on the same edit, caret 3 with a
+   * string model and 5 with a numeric one.
+   */
+  if (caret === null || before === null || before === undefined || value === null || value === undefined) return;
+  if (String(before).length !== String(value).length) return;
 
   try {
     field.setSelectionRange?.(caret, caret);
@@ -271,7 +290,7 @@ function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, val
     // Both, because they say different things about the same element: the property is the value NOW,
     // and the attribute is the one it started with — which is also the only half a server render can
     // serialize.
-    writeValue(enhancedNode, value);
+    writeValue(enhancedNode, value, onServer);
     enhancedNode.setAttribute(name, value);
     return;
   }
