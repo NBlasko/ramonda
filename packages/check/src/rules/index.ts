@@ -57,6 +57,7 @@ import { falseOnABooleanAttribute } from "./false-on-a-boolean-attribute";
 import { misspelledElementProperty } from "./misspelled-element-property";
 import { halfBuiltKeyboardPath } from "./half-built-keyboard-path";
 import { elementHtmlRemoved } from "./element-html-removed";
+import { optionThatCannotChoose } from "./option-that-cannot-choose";
 import { parentWithAForeignChild } from "./parent-with-a-foreign-child";
 import { ariaThatContradictsTheTag } from "./aria-that-contradicts-the-tag";
 import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
@@ -191,6 +192,7 @@ export { falseOnABooleanAttribute, type FalseOnABooleanAttributeIssue } from "./
 export { misspelledElementProperty, type MisspelledElementPropertyIssue } from "./misspelled-element-property";
 export { halfBuiltKeyboardPath, type HalfBuiltKeyboardPathIssue } from "./half-built-keyboard-path";
 export { elementHtmlRemoved, type ElementHtmlRemovedIssue } from "./element-html-removed";
+export { optionThatCannotChoose, type OptionThatCannotChooseIssue } from "./option-that-cannot-choose";
 export { parentWithAForeignChild, type ParentWithAForeignChildIssue } from "./parent-with-a-foreign-child";
 export {
   ariaThatContradictsTheTag,
@@ -310,6 +312,7 @@ export const ELEMENT_RULES = [
   misspelledElementProperty,
   halfBuiltKeyboardPath,
   elementHtmlRemoved,
+  optionThatCannotChoose,
   ariaValue,
   ariaWithNoSubject,
   emptyHeadingOrLink,

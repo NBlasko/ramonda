@@ -383,15 +383,16 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `LandmarksThatCannotBeToldApartIssue`, `LateRequestReadIssue`, `LinkWithoutADestinationIssue`,
 `ListenerAddedByHandIssue`, `LiveRegionThatContradictsItsRoleIssue`, `MediaWithNoCaptionsIssue`,
 `MisspelledElementPropertyIssue`, `MoreThanOneMainIssue`, `NamedOnlyByAPlaceholderIssue`,
-`OneProviderPerComponentIssue`, `ParentWithAForeignChildIssue`, `PersistOfALossyValueIssue`,
-`PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`, `ReferenceToAnIdThatIsNotThereIssue`,
-`RegionWithNoNameIssue`, `RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`,
-`RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`,
-`ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`,
-`TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`,
-`UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`,
-`UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`,
-`UnsplittableImportIssue`, `UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
+`OneProviderPerComponentIssue`, `OptionThatCannotChooseIssue`, `ParentWithAForeignChildIssue`,
+`PersistOfALossyValueIssue`, `PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`,
+`ReferenceToAnIdThatIsNotThereIssue`, `RegionWithNoNameIssue`, `RoleMissingRequiredAriaIssue`,
+`RoleTakesNoNameIssue`, `RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`,
+`RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`,
+`StateWrittenWhileRenderingIssue`, `TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`,
+`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`,
+`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
+`UnserializableStateIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
+`WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 

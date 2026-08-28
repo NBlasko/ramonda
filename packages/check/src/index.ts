@@ -70,6 +70,7 @@ export type {
   MisspelledElementPropertyIssue,
   HalfBuiltKeyboardPathIssue,
   ElementHtmlRemovedIssue,
+  OptionThatCannotChooseIssue,
   RoleTakesNoNameIssue,
   RowWithoutAKeyIssue,
   ServerEnvInSharedCodeIssue,

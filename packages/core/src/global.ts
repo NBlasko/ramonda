@@ -3,6 +3,7 @@ import type {
   NamedImage,
   RamondaArgs,
   RefusedOnFields,
+  RefusedOnOption,
   RefusedOnForm,
   RefusedOnMeta,
   RefusedSelectTag,
@@ -137,7 +138,7 @@ declare global {
       object: RamondaArgs<HTMLObjectElement>;
       ol: RamondaArgs<HTMLOListElement>;
       optgroup: RamondaArgs<HTMLOptGroupElement>;
-      option: RamondaArgs<HTMLOptionElement>;
+      option: RamondaArgs<HTMLOptionElement> & Partial<RefusedOnOption>;
       output: RamondaArgs<HTMLOutputElement>;
       p: RamondaArgs<HTMLParagraphElement>;
       param: RamondaArgs<HTMLParamElement>;
