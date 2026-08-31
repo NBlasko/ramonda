@@ -296,7 +296,7 @@ moment it happens — at the field initializer (`@state x = …`) or a later wri
 way to carry it: a function and a symbol are dropped silently, a bigint makes serialization throw.
 Either way the client would come alive with that field missing.
 
-```tsx
+```tsx expect-report
 @state onPick = () => {};   // ✗ a function — not serializable
 @state total = 42n;         // ✗ a bigint
 ```
@@ -331,6 +331,11 @@ on the element on every render, and a function passed to a child re-renders that
 
 For a handler that must be built per item, [`@memoized`](/concepts/events) caches it by its
 arguments, per instance — so the second render hands back the same function and nothing is reported.
+
+[`ramonda-check`](/reference/check) reports the same thing from the source, as
+`function-built-in-the-markup`, so a handler on a page nobody has opened is found before anything
+runs. It makes the same two exceptions this does: a `@memoized` call, and a prop the child declared
+with `@StableProps`.
 
 **An object or array built in place**, with the same contents. A child receiving it re-renders every
 time, a [`@compute`](/concepts/compute) reading it recomputes every time, and if it is a
@@ -1813,7 +1818,7 @@ Load the data outside the render, and let `render()` show whichever state the co
 }
 
 render() {
-  return this.rows.length === 0 ? <p>Loading…</p> : <ul>…</ul>;
+  return this.rows.length === 0 ? <p>Loading…</p> : <ul>{this.rows}</ul>;
 }
 ```
 

@@ -34,6 +34,7 @@ import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInHookProps } from "./fresh-object-in-hook-props";
 import { freshValueFromAWatchSelector } from "./fresh-value-from-a-watch-selector";
 import { freshObjectInProps } from "./fresh-object-in-props";
+import { functionBuiltInTheMarkup } from "./function-built-in-the-markup";
 import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
 import { accessKey } from "./access-key";
 import { attributeThatDoesNothing } from "./attribute-that-does-nothing";
@@ -150,6 +151,10 @@ export {
   type FreshValueFromAWatchSelectorIssue,
 } from "./fresh-value-from-a-watch-selector";
 export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
+export {
+  functionBuiltInTheMarkup,
+  type FunctionBuiltInTheMarkupIssue,
+} from "./function-built-in-the-markup";
 export { clickWithNoKeyboardPath, type ClickWithNoKeyboardPathIssue } from "./click-with-no-keyboard-path";
 export { accessKey, type AccessKeyIssue } from "./access-key";
 export { attributeThatDoesNothing, type AttributeThatDoesNothingIssue } from "./attribute-that-does-nothing";
@@ -331,6 +336,7 @@ export const ELEMENT_RULES = [
   tableWithNoHeaders,
   linkWithoutADestination,
   freshObjectInProps,
+  functionBuiltInTheMarkup,
   clickWithNoKeyboardPath,
   accessKey,
   attributeThatDoesNothing,

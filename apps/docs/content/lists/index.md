@@ -9,7 +9,7 @@ order: 40
 
 To draw a list from an array — rows of tasks, a set of cards — use `list()`:
 
-```tsx
+```tsx expect-report:row-without-a-key
 class TaskList extends Component {
   @state tasks: Task[] = [];
 
@@ -83,7 +83,7 @@ rows, the framework has to be sure the callback would produce the same ones. It 
 callback **read** — reads are tracked wherever they happen, however many helpers deep, in whatever
 module. What it cannot know is a value read *outside* the callback and closed over:
 
-```tsx
+```tsx expect-report:row-without-a-key
 const label = this.label;
 list(this.tasks, (task: Task) => <li>{task.title} {label}</li>)   // the row reads nothing
 ```

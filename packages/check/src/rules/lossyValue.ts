@@ -155,6 +155,7 @@ function lossyLeaf(resolve: ElementContext["resolve"], depth: number): Looking<L
     throughBranches: true,
     throughCalls: true,
     throughMutableBindings: true,
+    throughMemoizedCalls: true,
   };
 }
 

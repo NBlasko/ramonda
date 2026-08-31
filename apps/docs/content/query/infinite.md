@@ -12,14 +12,14 @@ time. `InfiniteQuery` holds the whole list as **one cache entry**, so it behaves
 other query: one request per key however many components watch it, one `invalidate` to mark
 the list stale, one snapshot across the SSR boundary.
 
-```tsx
+```tsx expect-report:row-without-a-key
 import { InfiniteQuery } from "@ramonda/query";
 
 // One page of the feed. A `render:` callback has to produce an element, so a nested
 // list goes through a component — one item to the outer list, and the rows are what it renders.
 class PostPageView extends Component<{ item: PostPage }> {
   render() {
-    return list(this.props.item.items, (item) => <PostRow item={item} />);
+    return list(this.props.item.items, (item) => <PostRow key={item.id} item={item} />);
   }
 }
 

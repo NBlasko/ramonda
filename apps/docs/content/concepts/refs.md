@@ -22,7 +22,7 @@ export class SearchBox extends Component {
   }
 
   render() {
-    return <input ref={this.input} type="search" />;
+    return <input ref={this.input} type="search" aria-label="Search" />;
   }
 }
 ```

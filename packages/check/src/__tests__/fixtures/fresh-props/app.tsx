@@ -1,4 +1,4 @@
-import { StableProps, Component, bootstrap, compute, list, state } from "@ramonda/core";
+import { StableProps, Component, bootstrap, compute, list, memoized, state } from "@ramonda/core";
 
 import { arrowConf, chainConf, chainShared, deepConf, loopConf, maybeConf, makeConf, sharedConf } from "./make";
 
@@ -52,11 +52,21 @@ class Table extends Component {
     return { dense: this.dense };
   }
 
+  /**
+   * PLANT: the per-row answer the report itself recommends. `@memoized` caches by its arguments,
+   * per instance, so asking twice hands back the same object.
+   */
+  @memoized configFor(id: string) {
+    return { id, href: `/rows/${id}` };
+  }
+
   render() {
     const local = { dense: true };
     return (
       <div>
         <div>
+          {/* PLANT — must be SILENT: a `@memoized` call is the fix, not the fault. */}
+          <Row conf={this.configFor("a")} label="memoized" />
           {/* REPORTED — a fresh object every render. */}
           <Row conf={{ dense: true }} label="a" />
           {/* REPORTED — the same fresh object, built one line earlier. */}

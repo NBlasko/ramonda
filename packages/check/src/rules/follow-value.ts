@@ -120,6 +120,24 @@ export interface Looking<T> {
    * correct markup and the one thing this package may never produce.
    */
   throughMutableBindings: boolean;
+
+  /**
+   * Whether a `@memoized` call may be followed into.
+   *
+   * The same asymmetry as `throughModuleScope`, and it was got wrong once already. A question about
+   * whether a value is REBUILT must stop: `@memoized` caches by its arguments, per instance, so the
+   * call is the documented fix and following it reports the answer. A question about what a value
+   * IS must go on: a `Map` behind a `@memoized` call is still a `Map` in the hydration blob, and
+   * caching changes nothing about what it is.
+   *
+   * Planted both ways. Skipping it for every question made `unserializable-state` silent on
+   * `@state plantedLossy = this.cached("a")` — a rule at error severity going quiet on the exact
+   * value it exists for, which is invisible afterwards in precisely the way a gap is.
+   *
+   * `@compute` is skipped for every question and is not this field: it is read as a PROPERTY in its
+   * getter form and never reaches a call at all, and the method form returns the cached value.
+   */
+  throughMemoizedCalls: boolean;
 }
 
 /** Looking for a value REBUILT during the render: only a literal, and only inside a function. */
@@ -130,7 +148,49 @@ const REBUILT: Looking<"object" | "array"> = {
   throughBranches: true,
   throughCalls: true,
   throughMutableBindings: true,
+  throughMemoizedCalls: false,
 };
+
+/**
+ * Looking for a FUNCTION built during the render: a literal, and only inside a function.
+ *
+ * `throughCalls` is the one that differs from `REBUILT`, and it is the whole of the difference
+ * between the two questions. A call that hands back a function is the documented ANSWER here, not
+ * the fault: `@memoized pickRow(row)` returns a handler and caches it by its arguments, and
+ * `debounce(this.save, 200)` has nowhere else to live. Following either would find the arrow inside
+ * and report the fix — the same trap `arrow-fields` is pinned against in `one-hop-away`.
+ *
+ * Everything else matches `REBUILT`, because they are the same question about a different literal:
+ * a module-level `const` is built once and is the fix, one side of a branch is enough for a fault,
+ * and a `let` is a fresh function however the binding was declared.
+ */
+const A_FUNCTION: Looking<"arrow" | "function"> = {
+  leaf: (expression) =>
+    ts.isArrowFunction(expression) ? "arrow" : ts.isFunctionExpression(expression) ? "function" : undefined,
+  throughModuleScope: false,
+  throughBranches: true,
+  throughCalls: false,
+  throughMutableBindings: true,
+  throughMemoizedCalls: false,
+};
+
+/**
+ * Whether this expression is a FUNCTION built during the render — one that did not exist before it
+ * ran, so the identity the element or the child is handed is fresh every time.
+ *
+ * The props side of `arrow-fields`, and the static half of the runtime's `RMD020` `handler`
+ * verdict. `undefined` for everything the source does not settle: a method, a property read, a
+ * prop, a call — none of those is knowable from here, and a maybe is the one thing this may never
+ * report.
+ */
+export function builtFunctionIn(
+  expression: ts.Expression,
+  resolve: ElementContext["resolve"],
+  depth: number,
+  seen: Set<ts.Node> = new Set(),
+): Found<"arrow" | "function"> | undefined {
+  return follow(expression, resolve, A_FUNCTION, depth, seen);
+}
 
 /** What the walk found, and the name of the local or function it was found in. */
 export interface Found<T> {
@@ -219,7 +279,27 @@ export function follow<T>(
 
     const called = functionOf(resolve(named)?.declarations?.[0]);
     if (called === undefined) return undefined;
-    if (ts.isMethodDeclaration(called) && hasDecorator(called, "compute", resolve)) return undefined;
+    /**
+     * A CACHING method is not followed, because caching is the whole of what it does.
+     *
+     * `@compute` hands back the same value until something it reads changes. `@memoized` caches by
+     * its ARGUMENTS, per instance, so asking twice gives the same object back — and it is the
+     * answer this package recommends for a per-row value, in `fresh-object-in-props`'s own advice
+     * and on the caching page. Following either finds the literal inside and reports the cache,
+     * which is the opposite of the truth.
+     *
+     * `@memoized` was missing here, and the docs found it rather than a test: `caching.md` teaches
+     * `cfg={this.configFor(row.id)}` as the fix for exactly this report, and running the rules over
+     * the documentation's own examples reported the page teaching the answer.
+     *
+     * The caching is only as good as the key, and that is a different rule's job:
+     * `unkeyable-memoized-argument` reports an argument that cannot be keyed, so the assumption
+     * made here is one the package checks somewhere.
+     */
+    if (ts.isMethodDeclaration(called)) {
+      if (hasDecorator(called, "compute", resolve)) return undefined;
+      if (!how.throughMemoizedCalls && hasDecorator(called, "memoized", resolve)) return undefined;
+    }
 
     const file = called.getSourceFile();
     if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;

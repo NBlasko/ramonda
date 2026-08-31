@@ -58,6 +58,8 @@ export declare function Host(tag: string, props?: unknown): (ctor: unknown) => v
 export declare function ShouldUpdateOnPropsChange(decide: unknown): (ctor: unknown) => void;
 export declare function StableProps(...keys: string[]): (ctor: unknown) => void;
 export declare function state(value: unknown, context: unknown): void;
+/** Caches by its arguments, per instance — the answer this package recommends for a per-item handler. */
+export declare function memoized(value: unknown, context: unknown): void;
 export declare function compute(value: unknown, context: unknown): void;
 /** Serialized-but-not-reactive state — the hydration blob's own decorator. */
 export declare function persist(value: unknown, context: unknown): void;

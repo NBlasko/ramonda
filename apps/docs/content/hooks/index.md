@@ -37,7 +37,7 @@ export class Menu extends Component {
     return (
       <div>
         <button onclick={this.menu.toggle}>{this.menu.open ? "Close" : "Open"}</button>
-        {this.menu.open ? <ul>…</ul> : null}
+        {this.menu.open ? <ul><li>…</li></ul> : null}
       </div>
     );
   }

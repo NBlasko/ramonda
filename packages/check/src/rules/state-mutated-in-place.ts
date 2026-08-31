@@ -84,6 +84,7 @@ const PLAIN: Looking<true> = {
   throughBranches: true,
   throughCalls: true,
   throughMutableBindings: true,
+  throughMemoizedCalls: true,
 };
 
 /**

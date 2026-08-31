@@ -40,7 +40,7 @@ cost every row its identity.
 ```tsx
 <ul>
   {list(f.tags.$.rows, (row) => (
-    <li>
+    <li key={row.id}>
       <input {...row.field.$.bind} />
       {row.field.$.error ? <em>{row.field.$.error}</em> : null}
     </li>
@@ -72,7 +72,7 @@ interface Contact {
 
 ```tsx
 {list(f.contacts.$.rows, (row) => (
-    <li>
+    <li key={row.id}>
       <input {...row.field.kind.$.bind} />
       <input {...row.field.value.$.bind} />
       {row.field.value.$.error ? <em>{row.field.value.$.error}</em> : null}

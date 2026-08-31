@@ -27,6 +27,7 @@ describe("a state value the hydration blob cannot carry", () => {
       "cast:Maps",
       "shared:Maps",
       "fromHelper:Maps",
+      "plantedLossy:Map",
       "deep:Maps",
       "held:Maps",
       "branched:Maps",
@@ -50,6 +51,24 @@ describe("a state value the hydration blob cannot carry", () => {
     for (const field of ["cast", "shared", "fromHelper", "deep", "held", "branched", "fallback"]) {
       expect(fields).toContain(field);
     }
+  });
+
+  /**
+   * A `Map` behind a `@memoized` call, which is a report this rule nearly LOST.
+   *
+   * `fresh-object-in-props` was taught to stop at a caching method, because there `@memoized` is the
+   * documented fix and following it reports the answer. Written into the walk itself, that made
+   * every question stop — including this one, which is not about whether a value is rebuilt but
+   * about what it IS. Caching changes nothing about what it is: a `Map` behind a cache is still a
+   * `Map` the hydration blob cannot carry, and this rule is an ERROR going quiet on exactly the
+   * value it exists for.
+   *
+   * Measured both ways before it was fixed, and pinned here because a lost report is invisible
+   * afterwards in precisely the way a gap is. The axis is `Looking.throughMemoizedCalls`.
+   */
+  test("a lossy value behind a `@memoized` call is still lossy", () => {
+    const fields = run("ssr-state").findings["unserializable-state"].map((issue) => `${issue.field}:${issue.holds}`);
+    expect(fields).toContain("plantedLossy:Map");
   });
 
   /**

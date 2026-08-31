@@ -51,6 +51,12 @@ class Watched extends Component<{
 }
 
 const group = (text: string) => text.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+/**
+ * Beside `group`, and for the reason `group` is already here: a `transform` written in the markup
+ * is a new function every render, so `<Watched>` can never compare its props equal.
+ */
+const same = (text: string) => text;
+const upper = (text: string) => text.toUpperCase();
 
 /**
  * Focus across a reorder, which is the caret's neighbour and a different loss.
@@ -155,7 +161,7 @@ export class CaretPage extends Component {
           title="1 — the model echoes the input"
           hint="Nothing is written, so nothing can move the caret. Expect it to stay where you typed."
           start="abcdef"
-          transform={(text) => text}
+          transform={same}
         />
 
         <Watched
@@ -163,7 +169,7 @@ export class CaretPage extends Component {
           title="2 — the model rewrites, same length"
           hint="Uppercased. The value changes, so it IS written — and the caret should still stay."
           start="ABCDEF"
-          transform={(text) => text.toUpperCase()}
+          transform={upper}
         />
 
         <Watched
@@ -179,7 +185,7 @@ export class CaretPage extends Component {
           title="4 — a field with no caret at all"
           hint="type=number, where setSelectionRange throws. Nothing to keep; it must simply not break."
           start="1"
-          transform={(text) => text}
+          transform={same}
         />
 
         <Reorderable />

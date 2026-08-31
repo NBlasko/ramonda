@@ -32,10 +32,20 @@ class Probe extends Component {
   @persist hopPersist = makeCache();
   hopArrow = makeHandler();
 
+  save() {}
+
   render() {
+    const hopHandler = () => this.save();
+
     return (
       <div>
         <div>
+          {/* `function-built-in-the-markup`: the direct shape, one hop, and the call it may not
+              follow — `makeHandler()` is the shape `@memoized` and `debounce` both take. */}
+          <button onclick={() => this.save()}>direct handler</button>
+          <button onclick={hopHandler}>a handler one hop away</button>
+          <button onclick={makeHandler()}>a handler behind a call</button>
+
           {/* direct */}
           <span role="buton" />
           <button tabIndex={5}>a</button>
