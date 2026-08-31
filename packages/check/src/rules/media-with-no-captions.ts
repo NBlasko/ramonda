@@ -82,7 +82,7 @@ export const mediaWithNoCaptions = {
 
   report: {
     severity: "warn",
-    reportedWhen: "a `video` or `audio` element carries no `<track>`, so its content exists only as sound",
+    reportedWhen: "a `video` or `audio` element carries no `<track>`, so nothing on the page says what is in it",
     heading: (found) => `${found.length} media element(s) with no text of what is said:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
@@ -95,6 +95,11 @@ export const mediaWithNoCaptions = {
       'Add `<track kind="captions" src=… srcLang=… label=… />` inside the element. For audio-only\n' +
       'content `kind="descriptions"` is the one that carries the words; `subtitles` is the same\n' +
       "file under the name most people know.\n\n" +
+      "**Music counts, and the answer is not captions.** Its content really is the sound — that is\n" +
+      "the point of it — but somebody who cannot hear it still has to be told what it is. A song\n" +
+      'with words carries them as `kind="descriptions"`, and one without needs a label beside the\n' +
+      "player rather than a track: the title, the performer, the length. What is being asked for is\n" +
+      "not a transcript of every sound, it is that the page not be silent ABOUT the sound.\n\n" +
       "A `<video muted>` is NOT reported — there is no sound to caption, which is the decorative\n" +
       "background loop and not this fault.\n\n" +
       "This is a warning today and an error in a later version.",

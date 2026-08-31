@@ -200,12 +200,12 @@ rules**, so a rule cannot be added without appearing here.
 | `label-that-names-nothing` | a `<label>` has no `htmlFor` and no control inside it, so it labels nothing |
 | `table-with-no-headers` | a `<table>` written out with data rows has no `<th>` anywhere in it |
 | `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |
-| `fresh-object-in-props` | a component is handed an object or array built during the render — written in the attribute, on one side of a ternary or a `??`, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match |
+| `fresh-object-in-props` | a component is handed an object or array built during the render, so it is a new value every time and comparison can never match — lift it to a field or a `@compute`, or declare it on the child with `@StableProps` |
 | `function-built-in-the-markup` | a function literal is written into a JSX attribute — in the attribute, on one side of a ternary or a `??`, or in a local one line up — so its identity is fresh every render, and the listener is removed and re-added or the child can never compare its prop equal — also [`RMD020`](/reference/diagnostics) |
 | `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
 | `access-key` | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |
-| `attribute-that-does-nothing` | an attribute is written whose name reaches the DOM verbatim and that nothing reads |
-| `media-with-no-captions` | a `video` or `audio` element carries no `<track>`, so its content exists only as sound |
+| `attribute-that-does-nothing` | one of six camelCase names — `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, `innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it |
+| `media-with-no-captions` | a `video` or `audio` element carries no `<track>`, so nothing on the page says what is in it |
 | `duplicate-id` | two elements in one render carry the same literal `id`, and both are always present |
 | `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |
 | `more-than-one-main` | one render has more than one `main` landmark, where HTML allows one |
