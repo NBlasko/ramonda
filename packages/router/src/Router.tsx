@@ -110,11 +110,10 @@ let liveRouters = 0;
  *   }
  *
  * **A hook, not a component.** It was `<Router>{children}</Router>` until
- * 2026-07-17 — a pass-through wrapper, which is exactly what the framework's own
- * rule forbids: every component is exactly one element, so a component that only
- * forwards its children still costs a `<ramonda-host>` that means nothing. (The
- * same reasoning is why `createContext` returns hooks.) A hook owns the state and
- * adds no node.
+ * 2026-07-17 — a tag that drew nothing, so a reader had to know it was there to
+ * know what it covered. The router owns state for a whole subtree and puts
+ * nothing on the page, which is what a hook is for. (The same reasoning is why
+ * `createContext` returns hooks.)
  *
  * The state is per-instance rather than a module global so that concurrent server
  * renders cannot share it. See `store.ts`.

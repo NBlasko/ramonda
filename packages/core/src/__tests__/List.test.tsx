@@ -17,8 +17,9 @@ import type { VNode } from "../types/vdom";
  * branch that decides whether the list exists. Several lists meant several
  * declarations, each carrying its markup far from `render()`.
  *
- * It does not bend the one-tag-one-element rule: a function in an expression
- * slot is not a tag, and it is already what RMD011 tells people to reach for.
+ * It is a function call rather than a `<For>` tag on purpose: a function in an
+ * expression slot is not a tag, and it is already what RMD011 tells people to
+ * reach for. A `<For>` tag would be a fragment with extra steps.
  *
  * The interesting part is that `list()` returns a DESCRIPTOR — the mapper has
  * not run when it returns. `normalizeChildren` stamps the child position, and

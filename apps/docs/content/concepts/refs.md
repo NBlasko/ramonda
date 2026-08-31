@@ -86,8 +86,26 @@ class Card extends Component<{ box?: RefTarget<HTMLDivElement> }> {
 goes away:
 
 ```tsx
-<div ref={(node) => node && this.observer.observe(node)} />
+import { Component, createRef } from "@ramonda/core";
+
+class Watched extends Component {
+  private observer = new IntersectionObserver(() => {});
+
+  private box = createRef<HTMLDivElement>((node) => {
+    if (node) this.observer.observe(node);
+  });
+
+  render() {
+    return <div ref={this.box} />;
+  }
+}
 ```
+
+The callback goes to `createRef`, not into the JSX. A `ref` prop takes a ref — something
+that can receive the element — and a function written in the attribute would also be a new
+one on every render, which
+[`RMD020`](/reference/diagnostics#rmd020-render-produced-a-different-value-the-second-time)
+reports.
 
 A ref is cleared when its element is removed, so it can't keep a detached node alive.
 

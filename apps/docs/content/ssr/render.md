@@ -21,9 +21,27 @@ hydrateRoot(<App />, document.getElementById("app")!);
 ## What the server sends
 
 The same components, rendered to HTML — plus one thing a normal render wouldn't have:
-**a small blob of each component's state** (`data-ramonda-state` on its element,
-holding its `@state` and `@persist`). That is what lets the browser *resume* instead
-of starting over — a value the server computed is restored, not recomputed.
+**a pair of HTML comments around each component's nodes**, carrying a small blob of its
+`@state` and `@persist` on the opening one.
+
+```html
+<tr><!--c7 {"state":{"open":true}}--><td>Ada</td><td>9</td><!--/c7--></tr>
+```
+
+They are there because served markup is text. A component owns a run of nodes, and
+nothing in plain HTML says where one component's run ends and the next one's begins —
+so the server says it, in comments, because a comment is the only thing the HTML parser
+leaves alone inside a `<tr>`, and an attribute would need an element the component may
+not have.
+
+The blob is what lets the browser *resume* instead of starting over: a value the server
+computed is restored rather than recomputed. A field still holding the primitive its own
+initializer produced is left out of it — the browser's initializer produces that again,
+so the bytes would buy nothing.
+
+Hydration reads the comments, uses them, and takes them out. By the time the page is
+interactive it holds exactly what a client-side render would have produced: your own
+markup, with nothing of the framework's in it.
 
 ## What hydration does
 

@@ -162,9 +162,9 @@ as you give the rows a key.
 
 ## It's a function, not a `<List>` tag
 
-A component is one element, but a list drops several siblings into the parent — so
-`list()` is a plain function call in a `{ }` slot, not a tag. That is what lets a list
-sit anywhere an expression can:
+A list is not a component: it has no state, no lifecycle, and nothing of its own to be. So `list()`
+is a plain function call in a `{ }` slot rather than a tag, and that is what lets it sit anywhere an
+expression can:
 
 ```tsx
 {this.open ? list(this.results, (item) => <ResultRow item={item} />) : null}

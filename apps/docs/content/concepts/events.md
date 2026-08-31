@@ -44,6 +44,9 @@ onInput(event: Event) {
 }
 ```
 
+That cast is not the answer — it is what [`EventOn`](#reading-a-field-off-the-element-the-handler-is-on)
+below removes. It is written here because the DOM's own types leave you nowhere else to go.
+
 An inline arrow — `onclick={(e) => …}` — types `e` for you, and that is the only
 thing it does better. It also builds a new function on every render, so the listener
 is removed and re-added on the element every time, and a development build reports it
@@ -65,6 +68,111 @@ So write it after a colon and it is taken exactly as it stands:
 
 The handler receives a plain `Event`; a custom event's `detail` is your own, so cast it
 to the shape you dispatched.
+
+### Reading a field off the element the handler is on
+
+The event itself is already typed from the name — `onclick` gives you a `PointerEvent`, `onkeydown`
+a `KeyboardEvent` — but reading the element is a separate question, and the DOM's own types cannot
+answer it:
+
+```text
+onChange(e: Event) {
+  this.draft = e.currentTarget.value;
+                 ~~~~~~~~~~~~~
+  Property 'value' does not exist on type 'EventTarget'.
+}
+```
+
+`currentTarget` is typed `EventTarget | null`, because in the DOM an event can be listened for
+anywhere. Say which element it is:
+
+```tsx
+import type { EventOn } from "@ramonda/core";
+
+class Draft extends Component {
+  @state draft = "";
+
+  onChange(e: EventOn<HTMLInputElement>) {
+    this.draft = e.currentTarget.value;
+  }
+
+  render() {
+    return <input onchange={this.onChange} />;
+  }
+}
+```
+
+A second argument names the event too, for a handler that wants both halves:
+
+```tsx
+import type { EventOn } from "@ramonda/core";
+
+class Picker extends Component {
+  onPick(e: EventOn<HTMLButtonElement, PointerEvent>) {
+    e.currentTarget.blur();
+  }
+
+  render() {
+    return <button type="button" onclick={this.onPick}>Pick</button>;
+  }
+}
+```
+
+**`target` is not narrowed, and that is deliberate.** `currentTarget` is the element the listener is
+attached to, which the framework knows because it attached it. `target` is where the event
+*originated* — a click on a `<span>` inside a `<button>` has the span as its target — so a type
+naming it as the button would be wrong exactly when it matters. Reach for `currentTarget`.
+
+**It is an annotation, not a proof.** Naming `EventOn<HTMLSelectElement>` on an `<input>` compiles:
+a handler prop accepts a narrower parameter than it promises — which is what lets `EventOn` stand
+here at all — and nothing cross-checks the element you named against the tag it is on. You are
+telling the compiler what is there, exactly as the `as HTMLInputElement` cast this replaces did, in
+fewer characters and at the top of the handler where it can be read.
+
+### A listener you arm and disarm
+
+`@onWindow` and `@onDocument` attach for the component's whole life. When the listener should only be
+live sometimes — a `keydown` while a dialog is open, a `pointermove` during a drag — that is the
+`Listener` hook, and it hands you a plain `Event`:
+
+```tsx
+import { Component, Listener, mounted } from "@ramonda/core";
+
+export class Dialog extends Component<{ onClose: () => void }> {
+  private escape = this.use(Listener, () => ({
+    on: "document" as const,
+    type: "keydown",
+    run: (e) => {
+      if ((e as KeyboardEvent).key === "Escape") this.props.onClose();
+    },
+  }));
+
+  @mounted open() {
+    this.escape.listen();
+  }
+
+  close() {
+    this.escape.stop();
+  }
+
+  render() {
+    return <div role="dialog">…</div>;
+  }
+}
+```
+
+`as const` on the target is needed because `on` takes one of two words, and an object literal widens
+a string unless it is told not to. The cast on the event is the honest spelling here and not an
+oversight. The decorators type the event from the
+NAME because the name is written in their signature; on the hook it is a prop, so the type cannot
+follow it. Three ways round that were tried and each fails — the details are on `ListenerProps.run`
+if you are about to try a fourth.
+
+**If the listener lives for the whole component, use the decorator.** It is typed and checked:
+
+```tsx
+@onDocument("keydown") onKey(e: KeyboardEvent) { … }
+```
 
 ## On window or document
 

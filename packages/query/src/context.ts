@@ -61,11 +61,11 @@ export interface QueryClientProviderProps {
  * }
  * ```
  *
- * **A hook, not a component**, for the reason every provider here is a hook: a
- * component is exactly one element, so `<QueryClientProvider>{children}</…>`
- * would cost a wrapper node that means nothing — and inside a `<tr>` or a
- * `<select>` that node is illegal HTML. `createContext` returns hooks for the same
- * reason.
+ * **A hook, not a component**, for the reason every provider here is a hook: it
+ * puts nothing on the page. Written as `<QueryClientProvider>{children}</…>` it
+ * would be a tag that draws nothing, and a reader would have to know it was there
+ * to know what it covers. A hook says that in the component that owns it.
+ * `createContext` returns hooks for the same reason.
  */
 export class QueryClientProvider extends Hook<QueryClientProviderProps | undefined> {
   /**

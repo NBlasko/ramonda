@@ -4,7 +4,7 @@
   "description": "Testing utilities for Ramonda components and hooks, built on @testing-library/dom.",
   "license": "MIT",
   "author": "Nikola Blagojević",
-  "homepage": "https://ramonda.dev",
+  "homepage": "https://ramonda.dev/testing",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NBlasko/ramonda.git",

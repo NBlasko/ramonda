@@ -12,6 +12,7 @@ export { Hook } from "./base/Hook";
 // inline `{ label: "Sign Up" }` needs nothing imported — this is for naming it, in a helper that
 // builds one or a wrapper that passes it along.
 export type { HookMeta } from "./types/HookTypes";
+export type { EventOn } from "./types/commonTypes";
 export { createContext, type ContextOptions } from "./base/Context";
 export { AsyncLoad } from "./base/AsyncLoad";
 export { ErrorBoundary } from "./base/ErrorBoundary";
