@@ -25,7 +25,7 @@ const lineOf = (label: string) => {
  */
 describe("a function where a component belongs", () => {
   test("a declaration, an arrow and an import are all reported", () => {
-    expect(found().map((issue) => issue.tag)).toEqual(["SideBar", "Footer", "Many", "Imported"]);
+    expect(found().map((issue) => issue.tag)).toEqual(["SideBar", "Footer", "Many", "Imported", "AliasedFn"]);
   });
 
   /**
@@ -59,6 +59,23 @@ describe("a function where a component belongs", () => {
   });
 
   /**
+   * An ALIAS is one hop, and the fault survives it.
+   *
+   * `const AliasedFn = SideBar` then `<AliasedFn />` is the same function in the same position, and
+   * the first version of this rule was SILENT on it — the exact failure `one-hop-away` exists to
+   * catch, in a rule written days after that file. It was found because the user said the point is
+   * that a function must not be callable as a component, which is a claim about the CALL SITE
+   * however the name got there.
+   *
+   * The chain is cycle-guarded, and the fixture holds a pair of aliases that point nowhere to prove
+   * the walk terminates rather than recursing.
+   */
+  test("an alias for a function is the same fault, and the chain terminates", () => {
+    expect(found().map((issue) => issue.tag)).toContain("AliasedFn");
+    expect(found().map((issue) => issue.tag)).not.toContain("Ring");
+  });
+
+  /**
    * The silences. A class is a component, which is the point; an alias for one is still one; a
    * value read off something is not knowable from here — the router's kit is exactly that shape;
    * and a call in an expression slot is the ANSWER this rule recommends, not the fault.
@@ -69,6 +86,6 @@ describe("a function where a component belongs", () => {
     for (const label of ["<Card />", "<Aliased />", "<kit.Link />", "{SideBar()}", "<p>text</p>"]) {
       expect(lines, label).not.toContain(lineOf(label));
     }
-    expect(lines).toHaveLength(4);
+    expect(lines).toHaveLength(5);
   });
 });

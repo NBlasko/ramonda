@@ -30,6 +30,13 @@ class Card extends Component {
 /** Silent: an alias for a class is still a class. */
 const Aliased = Card;
 
+/** PLANT: an alias for a FUNCTION. One hop, and the same fault. */
+const AliasedFn = SideBar;
+
+/** Silent, and it must TERMINATE: two aliases pointing at each other. */
+const Loop: unknown = undefined as unknown;
+const Ring = Loop as never;
+
 /** Silent: a value read off something is not knowable from here. */
 declare const kit: { Link: typeof Card };
 
@@ -44,6 +51,8 @@ class Page extends Component {
 
         <Card />
         <Aliased />
+        <AliasedFn />
+        <Ring />
         <kit.Link />
         {/* Silent: called in an expression slot, which is the recommended shape. */}
         {SideBar()}

@@ -31,5 +31,10 @@ would change its mind depending on somebody's build.
 headline case and compiles; so does `{rows()}` in an expression slot. Only tag position is
 constrained, and only because that is where the default rule applies.
 
-Silent on a class, on an alias for one, on a value read off something (`<kit.Link />`, which is the
-router's shape), and on a call in an expression slot — which is the answer, not the fault.
+**An alias is one hop, and the fault survives it.** `const Row = SideBar` then `<Row />` is the same
+function in the same position; the first version read only the initializer's shape and went silent
+on it. The chain is cycle-guarded.
+
+Silent on a class, on an alias for a class, on a value read off something (`<kit.Link />`, which is
+the router kit's shape), and on a call in an expression slot — which is the answer, not the fault. A
+function is welcome to return JSX; what it may not do is stand where a component belongs.
