@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/dom-facts",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Facts about the DOM that the framework and the checker have to agree on. Build-time only — every consumer bundles it.",
   "license": "MIT",

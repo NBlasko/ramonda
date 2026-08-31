@@ -29,7 +29,6 @@ export const CLIENT_ONLY_DECORATORS = new Map<string, string>([
   ["timeout", "`@timeout` is an effect, and effects never run on the server"],
   ["onWindow", "`@onWindow` is an effect, and effects never run on the server"],
   ["onDocument", "`@onDocument` is an effect, and effects never run on the server"],
-  ["onElement", "`@onElement` is an effect, and effects never run on the server"],
 ]);
 
 /** The lifecycle decorators, which run on BOTH sides unless the call says otherwise. */

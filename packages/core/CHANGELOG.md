@@ -1,5 +1,608 @@
 # @ramonda/core
 
+## 0.23.1
+
+### Patch Changes
+
+- 04f8c76: The context object's second publisher is now held to the protocol, not just described by it
+
+  `createContext` writes a per-key signal channel onto a component's context object. The `Head` hook
+  writes the node its descendants hang under — same object, same mechanism, a key of its own. The
+  protocol that makes that safe is stated in one place already, and both sides obey it.
+
+  Nothing enforced it. `Head` does not go through `createContext`, no test put the two of them on one
+  component, and two invariants it depends on were invisible from any call site: the object is
+  prototype-chained per component, and a publisher writes an OWN property so descendants inherit the
+  slot and siblings do not.
+
+  Both are now pinned. Making the per-component object unchained fails the first test; making `Head`
+  publish onto the parent's object instead of its own fails the second — and that second one only bites
+  on a TEARDOWN, which is why the test drops a branch and checks that its descendant's tags go with it
+  while its sibling's stay. Asserting merely that every tag exists passed with the fault in place.
+
+  A shared read/write helper was considered and not written: the four accesses are two reads and two
+  writes of `object[key]`, so wrapping them adds an indirection over what the type's own note calls the
+  design — "the read is where the shape is named" — and would still not fail if the object stopped being
+  prototype-chained. The test does.
+
+## 0.23.0
+
+### Minor Changes
+
+- 46dff27: A boolean attribute is written the way HTML spells it
+
+  `disabled`, `checked`, `selected`, `muted` and the rest of the HTML boolean attributes are written
+  as the empty string when they are on, rather than as `="true"`. A browser reads only whether a
+  boolean attribute is PRESENT, so nothing behaved differently — but the word sat in every served
+  page for nothing to read, and the markup did not round-trip: the same element read back through
+  `outerHTML` says `disabled=""`.
+
+  Keyed on the attribute name, so `aria-hidden={true}` still writes `"true"` and a `data-*` flag
+  keeps its word. ARIA states are enumerated strings rather than boolean attributes, and a data
+  attribute's value is data that something reads back.
+
+- c468786: A component owns a range of nodes rather than being one element, and `@Host` is gone with the
+  element it named.
+
+  A component's markup is what its `render()` returns, and nothing else. One element, several, or
+  none — a component that renders `null` has state, a lifecycle and hooks and no nodes at all. So two
+  `<td>` from one component sit inside the `<tr>` where an element would be foster-parented out in
+  front of the whole table, and a component that exists only to toggle other components costs the page
+  nothing.
+
+  The host element was never for the author. It was the diff's ANCHOR, and it charged for that
+  everywhere else: the tag was declared away from the markup, `display: contents` removed the box but
+  not the node so `.card > p` could not reach through a component, and a component could not produce
+  two siblings. The anchor does not have to be a node — `DiffAndMerge`'s ordering pass never searched
+  for one, it builds the target order for a block and walks it backwards — so a component is now a
+  third kind of `RecordEntry` beside `ListRegion`, and `isRegion` stays blind to which kind.
+
+  **Removed:** `@Host`, `@onElement`, `ref` on a component, and the `<ramonda-host>` element.
+  `RMD010`, `RMD042` and `RMD045` leave with the faults they described, and so does `@ramonda/check`'s
+  `listener-on-the-default-host`. Write the element in the render, put the listener and the ref on it,
+  and give a custom element a dashed tag — `JSX.IntrinsicElements` now accepts one, because `@Host` did.
+
+  **Server markup carries a comment pair per component**, with its state blob on the opening one:
+  `<tr><!--c7 {"state":{…}}--><td>…</td><td>…</td><!--/c7--></tr>`. Served markup is text and nothing in
+  plain HTML says where one component's run of nodes ends, so the server says it — in comments, because
+  a comment is the only thing the parser leaves alone inside a `<tr>`. Hydration consumes and removes
+  them, so a hydrated page holds exactly what a client render would have produced, and a client render
+  never writes one. The blob moved with them: it used to be `data-ramonda-state` on the host element.
+
+  **Measured, not asserted.** `RenderCost` counts DOM operations, and a list of 200 component rows costs
+  what 200 element rows cost — two insertions to append or prepend, two to swap, `N - 1` to reverse,
+  nothing for a fresh array of the same rows. An empty component filling in costs what a plain
+  conditional hole costs, so the sibling search it has to do costs no DOM operation. The child record is
+  kept per region owner rather than per component, so it does not grow with a list.
+
+  `@ramonda/router`'s `Link` writes its `<a>` in the render, where the href and the click handler that
+  has to agree with it sit together. `@ramonda/testing-library`'s `renderHook` finds its host through
+  the record, and `@ramonda/core/testing` gains `getComponentsIn` for that — which is also the only way
+  to find a component that renders nothing, since no node points at one.
+
+- a5085ee: `Listener` — a listener the app arms and disarms, which the framework still removes
+
+  `@onWindow` and `@onDocument` attach for the owner's whole life. That is right for most listeners and
+  wrong for the ones this exists for: a `keydown` while a dialog is open, a `pointermove` while a drag
+  is happening, a `scroll` armed after something loads.
+
+  Written by hand, each of those is an `addEventListener` and a `removeEventListener` that have to
+  agree with each other AND with teardown — three places for one fact, which is exactly where the leak
+  lives and why `listener-added-by-hand` reports it.
+
+  ```tsx
+  private escape = this.use(Listener, () => ({
+    on: "document",
+    type: "keydown",
+    run: this.onKey,
+  }));
+
+  @mounted open() { this.escape.listen(); }
+  close() { this.escape.stop(); }
+  ```
+
+  One hook instance is one listener, and teardown removes it. Nothing to remember, no handler
+  reference to keep in step. It is deliberately the shape `Interval` and `Timeout` already have.
+
+  **The target is NAMED rather than handed over.** `window` does not exist on the server, so a prop
+  holding the value would be evaluated where there is nothing to evaluate. `"window"` and `"document"`
+  are resolved at arm time; a function is the third form, for a target the app owns
+  (`() => this.box.current`), and a ref that is not attached yet answers `null` so the listener refuses
+  rather than attaching to nothing. `@onWindow` resolves its target the same way and for the same
+  reason.
+
+  **What is read WHERE.** The type, the target and the options are captured when it arms, because
+  `removeEventListener` matches on the triple of type, function identity and capture — a `type` re-read
+  at teardown after a signal changed it would ask the DOM to remove a listener that was never added
+  and silently leave the real one attached. `run` is read when the event FIRES, so a handler chosen by
+  a signal takes effect without re-arming. That is the same split `Timeout` and `Interval` keep.
+
+  **`Armed` is extracted, not copied.** Knowing whether arming can be made safe right now is forty
+  lines of measured reasoning — including two earlier attempts that asked which SIDE the render was on
+  and both had a window where a timer armed in the SSR process and fired there. A second copy of that
+  for the listener would have been the drift this codebase keeps paying for, so `Timeout`, `Interval`
+  and `Listener` now share one answer.
+
+  `listener-added-by-hand`'s advice named this as a gap in the framework. It now names the hook.
+
+- bfb46fb: `<Select>`, because a select's state is its children
+
+  A `<select>` is the one element whose own state is not a property of itself: it is which child is
+  chosen. `<Select value={x}>` says that once, on the element that owns the choice, and settles it
+  when the options are in the element — told to the select on the client, written onto the chosen
+  option on the server, which serializes markup and cannot carry a property. So the right option is
+  showing before any script runs. `<Select multiple value={["a", "b"]}>` takes a list.
+
+  It passes everything else straight through: `className`, `disabled`, `name`, every event, every
+  `data-` and `aria-`.
+
+  **`<select>` is now a type error**, and the message TypeScript prints is the instruction. `selected`
+  on an option is a claim rather than a fact: HTML keeps the later of two and gives a select holding
+  none the first option it is handed, so what the markup means depends on the order the options
+  reached the select — an order no author writes and none can see. Measured, with `b` asked for out of
+  `a b c`: the page showed `c`.
+
+  `<option>` is untouched. It has no choice to make, so it stays an ordinary tag, in a `<datalist>` as
+  much as in a select.
+
+- d4e6e5f: `<TextArea>`, because a textarea's value is its child
+
+  HTML gives a `<textarea>` no `value` attribute — the value is the element's TEXT — so
+  `<textarea value="hello">` was markup a browser ignores. The reader was shown an EMPTY field, which
+  filled itself in when the bundle arrived.
+
+  `<TextArea value={x}>` writes the value as the element's child, so a served page shows the text
+  before any script runs, and sets the property afterwards, which is what keeps the field controlled
+  once somebody has typed in it. Everything else written on it — `className`, `disabled`, `rows`,
+  every event, every `data-` and `aria-` — passes straight through.
+
+  **`<textarea>` is now a type error**, and the message TypeScript prints is the instruction. It has to
+  be a component rather than a line in the attribute writer: the value must become a CHILD, and the
+  attribute pass runs before the children, so a text node written there is one the children pass has
+  never heard of and unmounts as a leftover.
+
+- b395733: `EventOn<T>` — the one line the DOM's own types cannot type
+
+  The event itself has always been typed from the name: `onclick` gives a `PointerEvent`, `onkeydown` a
+  `KeyboardEvent`, from the DOM's own map. Reading the ELEMENT is a separate question, and it did not
+  work:
+
+  ```tsx
+  <input onchange={(e) => (this.draft = e.currentTarget.value)} />
+  //                                     Property 'value' does not exist on type 'EventTarget'
+  ```
+
+  `currentTarget` is `EventTarget | null`, because in the DOM an event can be listened for anywhere. So
+  every handler that reads a field off its own element opened with a cast — the type system being told
+  to look away.
+
+  ```tsx
+  import type { EventOn } from "@ramonda/core";
+
+  <input onchange={(e: EventOn<HTMLInputElement>) => (this.draft = e.currentTarget.value)} />
+  <button onclick={(e: EventOn<HTMLButtonElement, PointerEvent>) => e.currentTarget.blur()} />
+  ```
+
+  ## Why it is opt-in, with the numbers
+
+  The obvious version is to parameterise the whole handler map by the element, so no annotation is
+  needed anywhere. It works, and it costs. Measured on `apps/docs` with `--extendedDiagnostics`, type
+  **instantiations went from 244,875 to 346,688** — and not as a fixed cost: `packages/router` moved a
+  third as far, so it scales with how much JSX a codebase contains. That is a tax on every consumer's
+  build in exchange for saving an annotation.
+
+  Narrowing it to the events people actually reach for does **not** help: restricting the intersection
+  to eight event names produced 346,688 instantiations, to the digit. TypeScript instantiates the whole
+  mapped type per element type whatever is inside it. The note in the source says so, so nobody
+  measures it twice.
+
+  ## `target` is deliberately not narrowed
+
+  `currentTarget` is the element the listener is attached TO, which the framework knows because it
+  attached it. `target` is where the event ORIGINATED, and for anything that bubbles that is any
+  descendant — a click on a `<span>` inside a `<button>` has the span as its target. A type naming it
+  as the button would be wrong exactly when a reader most needs it right.
+
+  ## It is an annotation, not a proof
+
+  Naming the wrong element compiles: `EventOn<HTMLSelectElement>` on an `<input>` is accepted, because
+  a handler prop is bivariant in its parameter — which is the same property that lets a narrowed
+  parameter stand there at all. Nothing cross-checks the element against the tag.
+
+  It is still worth having. The alternative at that line is `(e.currentTarget as HTMLInputElement)`,
+  which asserts exactly as much in more characters. But `Listener.run` rejected method syntax
+  specifically for making this bivariance LOOK like a check, so the limit is written down rather than
+  left for somebody to trust and discover.
+
+  All three claims are pinned in `JsxTypeClaims.tsx`, in both directions, and each was checked by
+  relaxing it and watching the `@ts-expect-error` go unused.
+
+  `RamondaEvent<T>` is gone. It typed `target: T` — the unsound half — was used nowhere, and was never
+  exported from the package, so it could not be reached even deliberately.
+
+- ed22995: `selected` on an `<option>` is refused, and reported where a type cannot reach
+
+  The choice belongs to the select, not to the option. `Select` applies it by walking EVERY option and
+  setting each one from its `value` — on and off, for all of them — so an option that asked to be
+  chosen is turned off again a moment later. The attribute is not competing with `value` and losing
+  sometimes; it does nothing, while being the one line on the page that looks like it chooses.
+
+  **`@ramonda/core` refuses it in the types**, the same way it refuses the `<select>` tag itself: the
+  error arrives at the call site, in the editor, with the answer in it —
+  _"the choice belongs to the select — write `<Select value={x}>`, which sets this on every option"_.
+
+  **`@ramonda/check` reports it too**, as `option-that-cannot-choose`, because a type is a defence
+  only while nobody casts it away: a `@ts-ignore`, a props bag widened somewhere, a JavaScript file.
+  That is the same pairing core and check already keep for RMD029 and RMD039.
+
+  The rule asks whether the attribute is THERE, not what it says — and the first version did not,
+  which the branch's own review caught. It asked for a readable TRUE, reasoning that `selected={false}`
+  says the opposite and is not overwritten into anything it was not already. That reasoning is about
+  HTML, and this is not about HTML: `Select` sets the choice from its `value` unconditionally, so
+  `false` is overwritten exactly as `true` is.
+
+  Worse, it missed the shape the fault is usually written in. `selected={o.id === value}` is somebody
+  controlling the choice from the OPTION side — precisely the belief the rule exists to correct — and
+  it was silent for it, because the value cannot be read. Found by walking the rule against the
+  checklist's Part A and planting a module const, a helper call, a ternary and a row field: three of
+  the four were silent.
+
+  Still silent, on purpose: a spread may carry the attribute or replace it, so a spreading option is
+  not asked about at all; and an `<option>` with no `<Select>` above it is nobody's report, because
+  nothing is deciding for it.
+
+  This is the fault the refused `<select>` tag could not reach. The tag is refused because HTML keeps
+  the LAST of competing `selected` claims and gives an unclaimed select its first option — so the same
+  markup meant different things depending on the order the options arrived in, which is not an order
+  anybody writes.
+
+### Patch Changes
+
+- 135d017: The teardown of a component that owns nothing where it lives and something where it does not
+
+  A component with no node of its own is already known to be reached through the record — the record is
+  the only thing that knows it is there. This pins the combination that makes the record's job visible:
+  the component owns NOTHING in its parent and owns a whole block of nodes in a different element,
+  through a `Portal`.
+
+  Nothing in its parent's DOM says either of those things. A teardown that ever decided by asking "does
+  this region hold any nodes?" would skip it: the hook would never be disposed, and the block would be
+  left standing in a target that is SHARED, where nobody owns it and the next region to write there
+  anchors against its leftovers. So the test asserts the TARGET is left empty, anchors included.
+
+  It fails when an empty region is skipped as having nothing to tear down, and when a disposed block
+  leaves its anchors behind.
+
+- 69ae9b7: Two shapes a component's variable node count can be asked in, pinned by tests
+
+  A `ComponentRegion` may own two nodes, then one, then none, where a host element was always exactly
+  one node that was always there. A region owning nothing has no neighbour of its own to read, so the
+  engine answers from the record — and `nextNodeAfter` has to tell three answers apart: a node,
+  "nothing follows it", and "it is not in this record".
+
+  The first shape was probed and found correct in every ordering tried: driven from the parent and from
+  the component's own state, in both tick orders, with an empty region in front of a full one and with
+  an empty region last, each time while the siblings rotated. No fault, and the file says so — it exists
+  to keep an answer that is currently right from drifting.
+
+  The second was a hole. Folding "not in this record" into "nothing follows it" passed all 1416 tests in
+  the package. The existing portal tests each cover one half: an empty component filling in, but into a
+  bare target with no record of its own; and a target that keeps a record, but with a component that is
+  never empty. Neither can reach the record branch with a region that is genuinely absent from it. The
+  new test is the intersection, and it fails when the two answers are folded together.
+
+- effec83: A `Portal` block survives a `@destroyed` that clears the target it writes into
+
+  `ChildrenRegion.reconcile` unmounts the children a pass dropped and then inserts the new ones in
+  front of the block's closing anchor. Unmounting runs user code, and a `Portal`'s target is SHARED —
+  so the `@destroyed` of a child on its way out can take that anchor away with everything else it
+  tidies. Measured on a child clearing the element it had been writing into: `NotFoundError: The child
+can not be found in the parent`, thrown out of the reconcile, with the children this pass produced
+  never reaching the page and the target left empty.
+
+  The render path already had this window and closed it by searching for its anchor again. That is not
+  available here — these anchors are the block's own structure rather than a neighbour, so once they
+  are gone there is nothing to find. They are put back instead, BOTH of them, at the end of the target:
+  leaving a surviving opening anchor where it stands and appending a fresh closing one would stretch
+  the block across every node in between, including nodes another region in the same target owns.
+
+  That is now the complete list. Two places carry an anchor across user code — the component
+  self-render and this one — and both re-check it; the other three unmount-then-insert windows derive
+  their reference at the point of use.
+
+- dfe3513: A coverage floor, so a drop in this package's tests fails the build instead of passing quietly.
+
+  **Nothing a consumer installs changes.** The floor lives in the test configuration, and the published
+  bundle is byte for byte what it was.
+
+  `vitest.coverage.mjs` gained a `withFloor(lines)` beside the settings it already exported, and core's
+  own config asks for 97 — against 97.95 measured the day the range rewrite merged. A floor rather than
+  a target: set a point under today's number so ordinary work does not fight it, while ~40 untested
+  lines does. Per package, because one number across the repo would have to be the weakest package's,
+  and per run, because `test:prod` executes only the production-only branches and asking it for a whole
+  package's number is asking the wrong question.
+
+- c46a61f: A hydration mismatch no longer points the reader at the framework's own bookkeeping
+
+  When a component renders more nodes on the client than the server wrote, the walk runs out of server
+  nodes inside that component's run — so the cursor is standing on its own closing marker. The DOM was
+  already handled correctly: a comment is structure, so the fresh node goes in front of it rather than
+  replacing it. The diagnostic was not. Naming the node by `nodeName` produced
+
+      <Inner /> rendered <b> but the server sent <#comment>.
+
+  and the comment is a marker this framework wrote, not anything the server was asked to send. There is
+  nothing there for a reader to go and look at.
+
+  What it says now is what happened: the server's run for that component ended, so it sent **nothing**.
+  An OPENING marker reads as "a component" — the marker carries an id rather than a class name, so the
+  name is not ours to give — and any other comment as "a comment". One helper decides it, and all three
+  places that report a structure mismatch go through it.
+
+  Two tests come with it, both covering the direction that had none: a component whose server block is
+  SHORTER than its client render, and one the server rendered empty and the client fills in.
+
+  A text node in the way is named the same way: by what it says, not as `<#text>`.
+
+- ba680c1: The retired one-element rule stops being taught, including in a message readers see
+
+  `Every JSX tag is exactly one element` was the framework's headline rule and is not
+  true any more — a component renders one element, several, or none. The rule was
+  retired; the sentences arguing FROM it were not, and they were spread across four
+  packages.
+
+  The one that reached users: the fragment error said `<>…</>` is refused because it
+  `would make one tag produce several elements`. That is now something a component
+  does routinely, so the message argued from a rule the framework no longer has. It
+  gives the reason that still holds — a fragment has no state, no lifecycle and no
+  identity the diff can hold, and a component covers every case it would.
+
+  The rest were comments and one reference page, each rewritten to the reason that
+  survives rather than deleted: `RMD011` and its DEV guard, `__h`'s contract (one
+  vnode per tag, which is a claim about the vnode and not about the DOM), why
+  `createContext`, `QueryClientProvider` and `Router` are hooks (they put nothing on
+  the page — not that a wrapper was forbidden), and why attribute names are not
+  aliased.
+
+  Two comments also described `<ramonda-host>`, which no longer exists anywhere in
+  the source. `AsyncLoad` renders the loaded module and nothing around it.
+
+  `list()` argued from the rule under a third spelling — "it does not bend the
+  one-tag-one-element rule" — which a search for the headline sentence did not reach.
+  The reason that survives is why a `<For>` TAG would still be wrong: a tag whose whole
+  job is to stand in for N siblings and be nothing itself is a fragment with extra
+  steps, and that is the thing Ramonda does not have.
+
+- 82d2988: `muted` and `indeterminate` reach the element, and an attribute HTML does not have is not written
+
+  An attribute is the state an element STARTED with, which for most elements is the whole story. For
+  these it is not, and the property was missing:
+
+  - `<video muted>` went out with `.muted === false`, so the video played with sound — and a browser
+    refuses to autoplay one that is not muted, so `<video muted autoplay>` did not play at all.
+  - `indeterminate={true}` left `.indeterminate` false and put `indeterminate="true"` in the markup.
+    There is no such attribute in HTML: a checkbox's third state exists only as a property. A
+    server-rendered page therefore cannot carry it — the box arrives unchecked and becomes mixed when
+    the page hydrates.
+
+  Both now turn off with the model as well, which removing an attribute cannot do once the element is
+  live. That is the rule `checked` already followed.
+
+  Behind them, one rule replaces what would have been a branch per tag: an attribute HTML does not
+  give an element is not written at all. `value` on a `<textarea>` or a `<select>` is the same case —
+  each name is real HTML elsewhere and means nothing there. The list lives in `@ramonda/dom-facts`,
+  where `@ramonda/check` can report the same names where they are typed.
+
+- 473588c: Nothing a reader is shown names a decorator this framework no longer has
+
+  The first release without `@Host` was about to ship text that still sends people looking for it.
+
+  **RMD041's advice described a feature that was removed**, and the docs page for it described a
+  different one that never existed. The runtime message blamed `@onElement` on a component whose host
+  element was missing; the reference page blamed a selector that matched nothing, and there has never
+  been a selector. Both now say what is actually true: a listener decorator resolves its target when its
+  effect runs on mount, `@onWindow` and `@onDocument` are the only two and they answer with `window` and
+  `document`, so reaching this means an effect ran where there is no DOM at all.
+
+  **`@ramonda/form` shipped a `@Host` example in its published types** — the first example a reader of
+  `Field` meets, using a decorator that is gone. It writes its own `<label>` now, which is what the
+  framework asks for.
+
+  The same sweep over every surface a reader can see: five more places in `@ramonda/core`'s published
+  `.d.ts`, a `flushSync` error naming `@onElement` among the things that might be writing state, and
+  ten spots in `@ramonda/check` and `@ramonda/router`. One was not prose: core's DOM-nesting check
+  still stepped around a `RAMONDA-HOST` parent, which no longer exists, so the branch is gone.
+
+  `@ramonda/check` no longer knows the name either. Its `CLIENT_ONLY_DECORATORS` entry for
+  `@onElement` is gone, and so is the reason for keeping it: the fixtures declare their OWN stub of
+  `@ramonda/core`, so the decorator there was a specimen rather than a migration being tested. The stub
+  stops declaring it, the fixture that used it uses `@onWindow` — a decorator that exists, and the same
+  thing to the rule under test — and `fixtures/host-listeners/`, seven uses of it that no test loads at
+  all, is deleted.
+
+  **And the same question asked of every diagnostic, not just this one.** Comparing all 53 shipped
+  messages against their reference entries turned up no other contradiction — RMD041 was the outlier —
+  but three entries had gone stale in the same way a rename does. RMD047's heading still said "memoized
+  handler"; `@memoized` takes any method, and its own shipped title already says "member". RMD021's
+  heading said the same thing, and so did a runtime message from the purity guard and the label
+  `@ramonda/check` prints for the decorator. RMD006 predates the `Timeout` and `Interval` hooks and only
+  offered the mount-armed decorators.
+
+  Nothing checks that a diagnostic's `fix` and its reference entry agree, which is how RMD041 came to
+  have two different wrong explanations of itself. A gate for that is not in here — it is worth
+  deciding on separately.
+
+- e177dff: The derived node order, pinned one region deeper — through a list
+
+  A region's node set is flattened out of `entries` rather than remembered, so an ancestor walking it
+  sees what a descendant that re-rendered on its own really left in the document. That was already
+  pinned for a component nested directly in a component.
+
+  It is now pinned one level deeper, where the walk has to pass through a `ListRegion` to reach the
+  component whose contents changed, and where the ancestor REORDERS rather than appends — a reorder
+  places every node against a reference taken from the set it just derived, so a single stale entry
+  misplaces its neighbours and not only the new nodes. The row is emptied first, because a row that
+  contributes no node at all is where a remembered set and a derived one differ most.
+
+  Both tests fail when the flattened order is cached instead of derived.
+
+- 658faee: Test only: `AsyncLoad` inside a list inside a slot
+
+  Three mechanisms one inside another, each tested alone and never together. A `list()` mints identity
+  and reuses rows across a change; a slot is written in one component and rendered in another;
+  `AsyncLoad` holds a promise in flight. Nested, the question is whether a load already running
+  survives what the list does to its row — dropped, reordered, or failing beside a sibling.
+
+  Four cases, and no behaviour changed. The reorder case asserts how many times each module was ASKED
+  for, not what the page shows: every visible outcome is identical under the wrong identity, because
+  `AsyncLoad` is driven entirely by its props and props follow position. Planted with identity by
+  position, the page looks right and each module is requested twice.
+
+- 145aa66: `AsyncLoad` stops recommending the shape it reports
+
+  Its own docstring wrote `lazy={() => import("./HeavyChart")}` and an inline arrow for
+  `errorFallback`, while `RMD020` reported both — measured, with `strictRender` on, as
+  `AsyncLoad.lazy` and `AsyncLoad.errorFallback`. The framework was arguing with itself, and the
+  side that loses is the reader who copied the example.
+
+  The examples now hoist the thunk — `const loadChart = () => import("./HeavyChart")` — and pass a
+  bound method for the fallback. An `import()` inside a thunk does not run until the thunk is
+  called, so hoisting costs nothing, and a table of them is the answer when the module is chosen at
+  runtime: `lazy={pageLoaders[path]}`, which is what the documentation site already did.
+
+  The module CACHE still tolerates a rebuilt `lazy` — the key is derived from the thunk's source
+  rather than its identity, so nothing loads twice. The docstring now says that is a defence against
+  the mistake rather than a licence for it: what the cache cannot save you is the render.
+
+  Comments only; no behaviour changed.
+
+- e133c7d: Test only: a slot reads the context it lands under
+
+  Two rules that had never met in a test. A slot **belongs where it lands, not where it was written** —
+  that is what decides its lifecycle order and its depth — and context is looked up the component
+  tree. Together they settle a question neither answers alone, and the answer is the one the design
+  intends: a reader written inside one provider and handed to a component that provides something else
+  reads the one it **lands** under.
+
+  Five cases, including the one that looks like the opposite answer and is the same rule: when the
+  landing component provides nothing, the search keeps climbing and reaches the writer — which is on
+  that path because it rendered the landing component. Nothing about where the JSX was typed changes
+  what is found.
+
+  No behaviour changed. `Context.ts` already carried the rule as a measurement; nothing had pinned it,
+  and planting a broken context chain fails four of the five.
+
+- deb3ef9: Test only: `ErrorBoundary` around the shapes a slot and a list build
+
+  Queue item 5. A throw from a displaced slot is caught by the nearest boundary above where the slot
+  LANDED — the same rule context follows, and the one that decides a slot's lifecycle and depth.
+  Asserted from all three sides, including the case that looks like the exception: the writer's
+  boundary catches when the writer is what rendered the landing component, which puts it on that path.
+
+  Also pinned: how much a boundary takes with it (outside a slot it replaces the slot and its host,
+  per row it replaces the row), that a module which throws while RENDERING goes to the boundary rather
+  than to `AsyncLoad`'s `errorFallback` — those are different failures and only one of them is the
+  loader's — and that `reset` sends a boundary back to its children.
+
+  No behaviour changed. Planting a walk that skips the nearest boundary fails all seven.
+
+- d0707b7: A row keeps the reader in it when a list reorders
+
+  Moving a node means removing and re-inserting it, and a removed node is blurred — the platform, and
+  the same in plain JavaScript. Everything else about the row already survived: its node, the text
+  being typed, the caret, its own `@state`. Only focus did not, which is the one loss with no sign on
+  the page. The reader goes on typing into nothing.
+
+  It is restored by the reorder, because nothing else can: no render says which of its rows the
+  platform is about to pick up.
+
+  It costs one `document.activeElement` read per walk that actually moves something — a render whose
+  DOM already matches returns before reaching it — and one `focus()` only when the element really lost
+  it. Re-focusing something that never lost it would fire a second `focus` event for nothing.
+
+  This closes a decision the test suite had been holding open: `ListRowKeepsWhatTheUserTyped` asserted
+  the loss and said it would start failing the day somebody took the decision.
+
+- 2143a3b: Test only: the nested shapes served and then adopted
+
+  Queue item 6, the half of this path where the faults were — five of the eight findings in round four
+  of the range review were here. A shape that renders correctly twice can still be wrong across the
+  boundary, because hydration does not re-render the server's markup: it walks it, and a client
+  expecting a different tree adopts the wrong nodes or reports a divergence on markup that was right.
+
+  Five shapes, all already correct: context read through a displaced slot, a list inside a slot, an
+  `AsyncLoad` the server waited for and served loaded, a boundary that caught on both sides, and one
+  that was fine on the server and threw on the CLIENT — caught during adoption, which a boundary that
+  only worked on a fresh render would have let escape after the page was already shown.
+
+  Each asserts that a node the server built is still the node on the page, not only that the text
+  matches. With adoption disabled, two of the five stayed green on text alone.
+
+- 9798d6a: Test only: the inspector's view while the tree moves
+
+  Queue item 8, the last of the campaign. The inspector is the one thing here that watches rather than
+  renders, and it reads the CHILD RECORD rather than walking the DOM — it has to, because a component
+  owns a range of nodes and may own none. So it can be wrong in a way nothing else notices: the page
+  stays correct while the panel draws rows in an order they are not in, or a component that unmounted
+  three renders ago.
+
+  Four cases: a slot's contents are drawn where they LAND, a reorder is drawn in the new order, a
+  dropped row leaves the picture, and a portal's contents are drawn where their NODES are — absent
+  from the container they were declared in, present as a root beside the app.
+
+  The last two rules are opposite and both right: a slot's content really is rendered by the component
+  it lands in, while a portal's is rendered into a target that belongs to nobody.
+
+  Order is asserted along with shape, since two rows both called `Leaf` pass any assertion about names
+  alone. No behaviour changed.
+
+- 5eb4454: A controlled field keeps its caret when the model rewrites in place
+
+  Assigning `.value` drops the caret to the end of the field. That is the platform, and for most
+  writes it never shows: a value only reaches the writer when it DIFFERS from what the element holds,
+  so a model that echoes back what the reader typed writes nothing and the caret is untouched.
+
+  What was left is a model that REWRITES — `toUpperCase()`, a mask. The reader clicked into the middle
+  of the text and the next keystroke landed at the end. Measured: `axbc` uppercased to `AXBC`, caret
+  at 4 rather than 2.
+
+  The caret is restored when the rewrite left the LENGTH unchanged, because then every offset still
+  means the position it meant. When the length changed it is not: after `123` becomes `1,234` the old
+  offset points between the separator and the `2`. Placing it there would be a guess, and deciding
+  where it really belongs needs to know which characters are separators — the app's knowledge, not the
+  framework's. An app that formats reads `selectionStart` in `@updated` and applies its own rule.
+
+- ccc64fe: Every package's npm page carries the same four facts, and `homepage` points at its own docs
+
+  The README is published, so this is a change to what a reader lands on. Measured before it was
+  written: of eleven published packages, five carried no licence, three named no install command
+  anywhere, one had no badges, and two linked to no documentation at all. `create-ramonda` and
+  `@ramonda/devtools` had no README whatsoever — their npm pages were blank.
+
+  Those facts are now generated from the sources that already held them — the package name, its
+  `peerDependencies` (required ones appear in the install line; `bguard` is declared optional and
+  so does not), and `homepage`, which now points at the package's own documentation section rather
+  than at the site root. npm shows `homepage` beside the package, so that is a better npm page on
+  its own as well as the one source the README link is written from.
+
+  Nothing below the generated region changed. Each README keeps its own voice, and its own headings.
+
+- c71cab1: A reorder stops searching every element for a portal that is not in it
+
+  `reorderChildren` has to know whether an element holds a `Portal`'s block, because a block is
+  appended into its target and so sits after the element's own children — a fresh child has to go in
+  BEFORE it or the guest ends up in the middle of the host's own run.
+
+  It answered by walking every child. The answer is no for almost every element, and it was reached
+  after visiting all of them: measured on 500 rows moving one, 1501 sibling steps against 1001 with
+  the search taken out, and on 60 rows 121 against 181. One whole extra pass over the children, on
+  every reorder, to find nothing.
+
+  `ChildrenRegion.place` marks the targets it uses, so an element that was never one now stops at a
+  property read. The mark is never taken off: clearing it correctly would need a count of the blocks a
+  target holds, and the cost of leaving it is that an element which once hosted a block goes on
+  walking — which is what every element did before, so the worst case is the present.
+
 ## 0.22.0
 
 ### Minor Changes

@@ -72,8 +72,6 @@ export const ariaStateWithNoRole = {
   },
 
   /**
-   * A `@Host` props bag configures a real element, and a state written there is the same state.
-   *
    * `evenWhenSpreading` with a guard of its own: a spread may be carrying the `role` that would
    * make the attribute mean something, so an element that spreads at all is left alone. That is the
    * "an absent attribute may arrive in the spread" case the family guard exists for — taken here by

@@ -172,7 +172,15 @@ An object changed in place is the same fault and is reported as
 A `setInterval` or `setTimeout` outlived its component, so it will fire into something that no
 longer exists.
 
-Use [`@interval` / `@timeout`](/concepts/timers), which are cleared on unmount and cannot leak.
+Use [`@interval` / `@timeout`](/concepts/timers) for a clock that starts at mount, or the `Timeout`
+and `Interval` hooks for one the component starts itself:
+
+```tsx
+private t = this.use(Timeout, () => ({ run: this.done }));
+// this.t.start(ms), and this.t.stop() to end it early
+```
+
+Both clear themselves on teardown, so there is no id to keep.
 
 ## RMD007 — Server and client rendered different output
 
@@ -453,7 +461,7 @@ bootstrap(<App />, document.querySelector("#app")!);
 
 It is a no-op in a production build, where the check is not compiled in at all.
 
-## RMD021 — randomness during a render, a `@compute`, a memoised handler or a hook's props
+## RMD021 — randomness during a render, a `@compute`, a `@memoized` member or a hook's props
 
 `Math.random()`, `crypto.randomUUID()` and `crypto.getRandomValues()` are reported when
 they are called while one of the four pure phases is running. The same call fails
@@ -991,12 +999,15 @@ rule — and it is silent. This fires only for two applications on the same clas
 
 ## RMD041 — A listener with no target
 
-The handler is never attached, so the event it waits for cannot arrive. The selector matched nothing
-at the moment the listener was set up, which usually means the element is rendered conditionally or
-arrives later.
+The handler is never attached, so the event it waits for cannot arrive. A listener decorator resolves
+its target when its effect runs on mount, and this one resolved nothing.
 
-Attach to an element that is always there and let the event bubble up to it, or move the listener to
-where the element certainly exists.
+`@onWindow` and `@onDocument` are the only two, and they answer with `window` and `document` — which
+are there for as long as the page is, and effects do not run on the server. So this means an effect
+ran somewhere with no DOM at all: a component mounted in a bare Node process, or a test environment
+set up without one.
+
+Check where the mount happened rather than the listener.
 
 ## RMD043 — A `<meta>` with nothing to identify it
 
@@ -1052,7 +1063,7 @@ you asked for, written twice — so nothing is wrong except the spelling.
 A **subclass** declaring its own is not this. That adds to the base's list, which is the intended way to
 extend it.
 
-## RMD047 — A memoized handler was given an argument it cannot key on
+## RMD047 — A `@memoized` member was given an argument it cannot key on
 
 ```tsx expect-error
 @memoized

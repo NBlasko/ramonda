@@ -89,8 +89,6 @@ export const liveRegionThatContradictsItsRole = {
   },
 
   /**
-   * A `@Host` props bag configures a real element, and a live region written there behaves the same.
-   *
    * Both halves take the order guard: a spread after either may replace it, and then the two this
    * reports as disagreeing are not the two that render.
    */

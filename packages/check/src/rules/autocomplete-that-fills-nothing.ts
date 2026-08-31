@@ -81,8 +81,6 @@ export const autocompleteThatFillsNothing = {
   },
 
   /**
-   * A `@Host` props bag configures a real element, and a value written there fills as little.
-   *
    * The order guard is taken because this reads a VALUE: a spread after the attribute may replace
    * it with one that fills perfectly well.
    */

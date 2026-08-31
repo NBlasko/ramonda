@@ -612,8 +612,8 @@ export function ShouldUpdateOnPropsChange<
   return (ctor: C) => {
     // A hook reaches its inputs a different way (the this.use() callback), and the
     // component update path that consults this rule never runs for one — so on a
-    // hook it would be a silent no-op. Thrown in every build, like @Host's; the
-    // TYPE already refuses it, so this is for the build that has no types.
+    // hook it would be a silent no-op. Thrown in every build; the TYPE already
+    // refuses it, so this is for the build that has no types.
     if (!isComponentClass(ctor)) {
       throw new Error(
         `[Ramonda] @ShouldUpdateOnPropsChange is for components, not hooks. A hook's props come from its ` +
@@ -1298,15 +1298,15 @@ export function persist(_value: unknown, context: EnhancedClassFieldDecoratorCon
  * The instance a class constructs, and the props its constructor takes.
  *
  * **Both are conditional types on purpose**, and that is the whole mechanism behind
- * `@Host`'s and `@StableProps`' type inference. A conditional type is not an inference
+ * `@StableProps`' type inference. A conditional type is not an inference
  * site, so TypeScript cannot resolve `C` from the decorator's ARGUMENTS — it defers until
  * the decorator is applied, where the decorated class supplies `C`. Only then are the
  * arguments checked, contextually, against a `C` that is finally known.
  *
  * Measured while writing this: the obvious shape — a type parameter sitting directly in the
  * callback's parameter position (`props?: (self: This) => …`) — fixes `This` to `unknown`
- * from an unannotated arrow before the class is ever looked at, which is why `@Host` used to
- * need `(self: Card)` spelled out.
+ * from an unannotated arrow before the class is ever looked at, which is why a decorator taking
+ * such a callback needs `(self: Card)` spelled out.
  */
 type InstanceOf<C> = C extends new (...args: never[]) => infer I ? I : never;
 
@@ -1402,7 +1402,7 @@ type DeclarablePropsOf<C> = C extends new (
  *
  * ## Notes on the shape
  *
- * A class decorator, like `@Host`, because the declaration is about the hook rather than
+ * A class decorator, because the declaration is about the hook rather than
  * about any one member — and props are not members at all, they live behind the
  * `this.props` proxy, so there is nothing per-prop to decorate.
  *

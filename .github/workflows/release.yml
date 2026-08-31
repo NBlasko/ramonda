@@ -33,8 +33,9 @@ jobs:
   release:
     name: Version or publish
     runs-on: ubuntu-latest
-    # Optional: an "npm" environment can require a manual approval before a
-    # publish and scope NPM_TOKEN to it.
+    # An "npm" environment, which can require a manual approval before a publish.
+    # It is also part of the publishing IDENTITY now: npm's trusted publisher config
+    # names this environment, so renaming it here means renaming it there.
     environment: npm
     steps:
       - uses: actions/checkout@v7
@@ -43,9 +44,12 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup
 
-      # Writes the auth .npmrc that `changeset publish` reads. The version comes
-      # from `.nvmrc`, same as the setup action above — two pins would drift, and
-      # this is the step that publishes.
+      # Points npm at the public registry. The version comes from `.nvmrc`, same as
+      # the setup action above — two pins would drift, and this is the step that
+      # publishes. Node 24 carries npm 11.12, well past the 11.5.1 that OIDC needs.
+      #
+      # No `NODE_AUTH_TOKEN` is written into the .npmrc any more: publishing
+      # authenticates with the workflow's own OIDC identity instead. See below.
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -62,13 +66,26 @@ jobs:
           commit: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Both names on purpose: changesets/action looks for NPM_TOKEN (without
-          # it, it falls back to OIDC trusted publishing, which is scoped to the
-          # @ramonda org and CANNOT create the unscoped `create-ramonda`);
-          # setup-node's .npmrc reads NODE_AUTH_TOKEN. The secret must be a token
-          # that can create new packages — a classic Automation token (account-wide)
-          # or a granular token with "All packages: Read and write". A token scoped
-          # to only @ramonda will still 403 on create-ramonda.
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # No npm token, on purpose.
+          #
+          # Publishing authenticates with this workflow's OIDC identity — npm's
+          # trusted publishing. `id-token: write` above is what mints it, and each
+          # package names this repository and this workflow file as its publisher on
+          # npmjs.com. A token, if one were passed, would be used INSTEAD, so it has
+          # to be absent rather than merely unused.
+          #
+          # What that buys, and it is the whole reason for the change: a token
+          # expires, and a release then fails with `E404 Not Found - PUT` on every
+          # package at once — npm's way of saying "not authorised" without admitting
+          # whether the package exists. That happened on 2026-08-31 with 74
+          # changesets already versioned, and it had happened before. An identity
+          # minted per run cannot expire.
+          #
+          # A NEW package cannot be published this way: its trusted publisher is
+          # configured on a package page, which does not exist yet. Publish the first
+          # version of one with a granular token, then configure it.
+          #
+          # Provenance stays asked for explicitly. Trusted publishing is understood to
+          # imply it, and this costs nothing either way — but a signature that turns
+          # out not to be automatic is not a thing to discover from its absence.
           NPM_CONFIG_PROVENANCE: "true"

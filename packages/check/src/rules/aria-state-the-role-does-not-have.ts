@@ -72,8 +72,6 @@ export const ariaStateTheRoleDoesNotHave = {
   },
 
   /**
-   * A `@Host` props bag configures a real element, and a state written there is as unexposed.
-   *
    * The `role` is read as a VALUE, so the order guard is taken for it. Each attribute is asked
    * about its own position too: a spread after one may replace it with something that belongs.
    */

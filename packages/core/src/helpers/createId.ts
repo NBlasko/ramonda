@@ -1,6 +1,6 @@
 /**
  * Process-wide counter behind every internal id: runtime ids, effect ids,
- * lifecycle entries, memoised handlers, context ids, list scopes.
+ * lifecycle entries, memoised members, context ids, list scopes.
  *
  * ## Is there a faster way? No — measured
  *

@@ -1,5 +1,171 @@
 # @ramonda/router
 
+## 0.11.0
+
+### Minor Changes
+
+- c468786: A component owns a range of nodes rather than being one element, and `@Host` is gone with the
+  element it named.
+
+  A component's markup is what its `render()` returns, and nothing else. One element, several, or
+  none — a component that renders `null` has state, a lifecycle and hooks and no nodes at all. So two
+  `<td>` from one component sit inside the `<tr>` where an element would be foster-parented out in
+  front of the whole table, and a component that exists only to toggle other components costs the page
+  nothing.
+
+  The host element was never for the author. It was the diff's ANCHOR, and it charged for that
+  everywhere else: the tag was declared away from the markup, `display: contents` removed the box but
+  not the node so `.card > p` could not reach through a component, and a component could not produce
+  two siblings. The anchor does not have to be a node — `DiffAndMerge`'s ordering pass never searched
+  for one, it builds the target order for a block and walks it backwards — so a component is now a
+  third kind of `RecordEntry` beside `ListRegion`, and `isRegion` stays blind to which kind.
+
+  **Removed:** `@Host`, `@onElement`, `ref` on a component, and the `<ramonda-host>` element.
+  `RMD010`, `RMD042` and `RMD045` leave with the faults they described, and so does `@ramonda/check`'s
+  `listener-on-the-default-host`. Write the element in the render, put the listener and the ref on it,
+  and give a custom element a dashed tag — `JSX.IntrinsicElements` now accepts one, because `@Host` did.
+
+  **Server markup carries a comment pair per component**, with its state blob on the opening one:
+  `<tr><!--c7 {"state":{…}}--><td>…</td><td>…</td><!--/c7--></tr>`. Served markup is text and nothing in
+  plain HTML says where one component's run of nodes ends, so the server says it — in comments, because
+  a comment is the only thing the parser leaves alone inside a `<tr>`. Hydration consumes and removes
+  them, so a hydrated page holds exactly what a client render would have produced, and a client render
+  never writes one. The blob moved with them: it used to be `data-ramonda-state` on the host element.
+
+  **Measured, not asserted.** `RenderCost` counts DOM operations, and a list of 200 component rows costs
+  what 200 element rows cost — two insertions to append or prepend, two to swap, `N - 1` to reverse,
+  nothing for a fresh array of the same rows. An empty component filling in costs what a plain
+  conditional hole costs, so the sibling search it has to do costs no DOM operation. The child record is
+  kept per region owner rather than per component, so it does not grow with a list.
+
+  `@ramonda/router`'s `Link` writes its `<a>` in the render, where the href and the click handler that
+  has to agree with it sit together. `@ramonda/testing-library`'s `renderHook` finds its host through
+  the record, and `@ramonda/core/testing` gains `getComponentsIn` for that — which is also the only way
+  to find a component that renders nothing, since no node points at one.
+
+### Patch Changes
+
+- 6a943e3: Test only: `serve`'s two `touch` calls, with the eviction in view
+
+  The one part of the ISR module a review had not seen in its current form. `touch` records recency
+  and deliberately does not uncondemn — a read stores nothing, so a key on its way out stays on its
+  way out — and the window that describes is real: a `store.delete` in flight, the entry still there,
+  and a request for exactly that page.
+
+  The read path is correct and now says so. The request is served, and the count is left honest: the
+  next insert evicts exactly one page. A key touched into the count and then deleted from the store
+  without leaving the count would be a phantom, and the cost of one is a live page evicted early.
+
+  **The stale path costs more than the note about it said.** Serving a stale page starts a rebake, and
+  when that lands inside the eviction the delete removes what it had just written — known, accepted,
+  one page re-rendered later. What was not written down is that the write uncondemns the key, so it
+  stays in the count with nothing behind it, and the NEXT insert is two over the cap: it evicts twice,
+  and the second is a live page. The cache ends holding one page under a cap of two. It heals, and the
+  healing costs a page that had done nothing wrong.
+
+  Written down as the measured cost rather than fixed: the fix needs compare-and-set in `IsrStore`,
+  which turns three unconditional methods into an interface most stores cannot satisfy.
+
+- fc14e75: Test only: a `Portal` open while the route changes
+
+  Queue item 7. A portal renders into a target outside the subtree the router swaps — `document.body`
+  for a modal — so nothing about the DOM connects the two. What takes a modal away when its page
+  leaves is the component tree: the portal belongs to whoever declared it, and that owner is unmounted
+  with the route.
+
+  So the question is whose modal it is, and both halves are asserted. A page's leaves with the page
+  and returns on the way back, including through a browser Back; the shell's stays open across every
+  navigation. Both pages aim at the same target, so a teardown that cleared the TARGET rather than
+  what the portal owns would take the shell's modal with it.
+
+  Also pinned: the leaving page is destroyed before the arriving one is created, which is what makes a
+  shared target safe — there is never a moment with two page modals in the document.
+
+  No behaviour changed.
+
+- ba680c1: The retired one-element rule stops being taught, including in a message readers see
+
+  `Every JSX tag is exactly one element` was the framework's headline rule and is not
+  true any more — a component renders one element, several, or none. The rule was
+  retired; the sentences arguing FROM it were not, and they were spread across four
+  packages.
+
+  The one that reached users: the fragment error said `<>…</>` is refused because it
+  `would make one tag produce several elements`. That is now something a component
+  does routinely, so the message argued from a rule the framework no longer has. It
+  gives the reason that still holds — a fragment has no state, no lifecycle and no
+  identity the diff can hold, and a component covers every case it would.
+
+  The rest were comments and one reference page, each rewritten to the reason that
+  survives rather than deleted: `RMD011` and its DEV guard, `__h`'s contract (one
+  vnode per tag, which is a claim about the vnode and not about the DOM), why
+  `createContext`, `QueryClientProvider` and `Router` are hooks (they put nothing on
+  the page — not that a wrapper was forbidden), and why attribute names are not
+  aliased.
+
+  Two comments also described `<ramonda-host>`, which no longer exists anywhere in
+  the source. `AsyncLoad` renders the loaded module and nothing around it.
+
+  `list()` argued from the rule under a third spelling — "it does not bend the
+  one-tag-one-element rule" — which a search for the headline sentence did not reach.
+  The reason that survives is why a `<For>` TAG would still be wrong: a tag whose whole
+  job is to stand in for N siblings and be nothing itself is a fragment with extra
+  steps, and that is the thing Ramonda does not have.
+
+- 473588c: Nothing a reader is shown names a decorator this framework no longer has
+
+  The first release without `@Host` was about to ship text that still sends people looking for it.
+
+  **RMD041's advice described a feature that was removed**, and the docs page for it described a
+  different one that never existed. The runtime message blamed `@onElement` on a component whose host
+  element was missing; the reference page blamed a selector that matched nothing, and there has never
+  been a selector. Both now say what is actually true: a listener decorator resolves its target when its
+  effect runs on mount, `@onWindow` and `@onDocument` are the only two and they answer with `window` and
+  `document`, so reaching this means an effect ran where there is no DOM at all.
+
+  **`@ramonda/form` shipped a `@Host` example in its published types** — the first example a reader of
+  `Field` meets, using a decorator that is gone. It writes its own `<label>` now, which is what the
+  framework asks for.
+
+  The same sweep over every surface a reader can see: five more places in `@ramonda/core`'s published
+  `.d.ts`, a `flushSync` error naming `@onElement` among the things that might be writing state, and
+  ten spots in `@ramonda/check` and `@ramonda/router`. One was not prose: core's DOM-nesting check
+  still stepped around a `RAMONDA-HOST` parent, which no longer exists, so the branch is gone.
+
+  `@ramonda/check` no longer knows the name either. Its `CLIENT_ONLY_DECORATORS` entry for
+  `@onElement` is gone, and so is the reason for keeping it: the fixtures declare their OWN stub of
+  `@ramonda/core`, so the decorator there was a specimen rather than a migration being tested. The stub
+  stops declaring it, the fixture that used it uses `@onWindow` — a decorator that exists, and the same
+  thing to the rule under test — and `fixtures/host-listeners/`, seven uses of it that no test loads at
+  all, is deleted.
+
+  **And the same question asked of every diagnostic, not just this one.** Comparing all 53 shipped
+  messages against their reference entries turned up no other contradiction — RMD041 was the outlier —
+  but three entries had gone stale in the same way a rename does. RMD047's heading still said "memoized
+  handler"; `@memoized` takes any method, and its own shipped title already says "member". RMD021's
+  heading said the same thing, and so did a runtime message from the purity guard and the label
+  `@ramonda/check` prints for the decorator. RMD006 predates the `Timeout` and `Interval` hooks and only
+  offered the mount-armed decorators.
+
+  Nothing checks that a diagnostic's `fix` and its reference entry agree, which is how RMD041 came to
+  have two different wrong explanations of itself. A gate for that is not in here — it is worth
+  deciding on separately.
+
+- ccc64fe: Every package's npm page carries the same four facts, and `homepage` points at its own docs
+
+  The README is published, so this is a change to what a reader lands on. Measured before it was
+  written: of eleven published packages, five carried no licence, three named no install command
+  anywhere, one had no badges, and two linked to no documentation at all. `create-ramonda` and
+  `@ramonda/devtools` had no README whatsoever — their npm pages were blank.
+
+  Those facts are now generated from the sources that already held them — the package name, its
+  `peerDependencies` (required ones appear in the install line; `bguard` is declared optional and
+  so does not), and `homepage`, which now points at the package's own documentation section rather
+  than at the site root. npm shows `homepage` beside the package, so that is a better npm page on
+  its own as well as the one source the README link is written from.
+
+  Nothing below the generated region changed. Each README keeps its own voice, and its own headings.
+
 ## 0.10.0
 
 ### Minor Changes

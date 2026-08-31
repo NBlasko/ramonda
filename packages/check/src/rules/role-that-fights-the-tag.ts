@@ -86,8 +86,6 @@ export const roleThatFightsTheTag = {
   },
 
   /**
-   * A `@Host` props bag configures a real element, and a role written there announces as loudly.
-   *
    * The role is read as a VALUE, so the order guard is taken for it — a spread after it may replace
    * it with one that agrees.
    */

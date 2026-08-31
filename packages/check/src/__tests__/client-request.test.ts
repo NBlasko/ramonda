@@ -45,7 +45,7 @@ describe("a request read that only ever runs in the browser", () => {
 
     expect(byComponent.get("ListenerRead")?.because).toBe("`currentUser` was not declared `{ exposeToClient: true }`");
     expect(byComponent.get("ListenerRead")?.clientOnly).toBe(
-      "`@onElement` is an effect, and effects never run on the server",
+      "`@onWindow` is an effect, and effects never run on the server",
     );
     expect(byComponent.get("CookieInAnInterval")?.because).toBe("cookies are never sent to the browser");
     expect(byComponent.get("HeadersInUpdated")?.because).toBe("headers are never sent to the browser");
