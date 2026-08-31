@@ -215,6 +215,62 @@ describe("a component is a range", () => {
     expect(log).toEqual(["up", "down"]);
   });
 
+  /**
+   * The same teardown, for a component whose nodes are somewhere else entirely.
+   *
+   * The test above proves a component with no node is still reached — the record is what knows it is
+   * there. This is the combination that makes the record's job visible: the component owns NOTHING
+   * in its parent, and owns a block of nodes in a different element altogether.
+   *
+   * Nothing in its parent's DOM says either of those things. A teardown that ever decided by asking
+   * "does this region hold any nodes?" would skip it, its hook would never be disposed, and the
+   * block would be left standing in a target that is SHARED — where nobody owns it and nothing will
+   * ever come back for it. So the assertion is about the target, not about the parent.
+   */
+  test("a component that owns no node still takes its portal block with it", async () => {
+    const log: string[] = [];
+    const target = document.createElement("aside");
+    document.body.appendChild(target);
+
+    class Ghost extends Component {
+      portal = this.use(Portal, () => ({ children: <b id="ported">ported</b>, target }));
+
+      @destroyed down() {
+        log.push("down");
+      }
+
+      render() {
+        return null;
+      }
+    }
+
+    class Shell extends Component {
+      @state on = true;
+      render() {
+        return <div id="ghost-shell">{this.on ? <Ghost /> : null}</div>;
+      }
+    }
+
+    try {
+      const { container, settle } = await getDOM(<Shell />);
+
+      // It has no node of its own, and its markup is in the other element.
+      expect(container.querySelector("#ghost-shell")!.innerHTML).toBe("");
+      expect(target.querySelector("#ported")).not.toBeNull();
+
+      const shell = findInstance(container.querySelector("#ghost-shell")!, "Shell") as { on: boolean };
+      shell.on = false;
+      await settle();
+
+      expect(log).toEqual(["down"]);
+      // The whole block, anchors included — a leftover comment in a shared target is a region nobody
+      // owns and the next one to write there anchors against it.
+      expect(target.childNodes.length).toBe(0);
+    } finally {
+      target.remove();
+    }
+  });
+
   test("rows of a list may be components with no element of their own", async () => {
     interface Row {
       id: number;
