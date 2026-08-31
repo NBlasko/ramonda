@@ -2,17 +2,45 @@
 
 A UI framework. **Explicit. Predictable. Readable.**
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fcore)](https://www.npmjs.com/package/@ramonda/core)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fcore)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
+
+```sh
+npm install @ramonda/core
+```
+
+Documentation: **[ramonda.dev](https://ramonda.dev)**
+
+[readme:end]: #
+
+Ramonda has no runtime dependencies. It does need three settings from your bundler, and it does
+not run without them:
+
+```sh
+npm install -D @ramonda/build
+```
+
+[`@ramonda/build`](https://ramonda.dev/reference/build) carries all three so your config names
+none. "Before anything else", below, is what happens without it.
+
 One rule carries most of the design:
 
-> **Every JSX tag is exactly one element.**
+> **The page is what you wrote.**
 
-The DOM is readable straight off the JSX. Every element on the page is one you
-wrote, the framework adds none of its own, and there are no function components —
-a function has nothing to construct, no state and no lifecycle, so as a tag it
-names nothing the framework can keep hold of.
+Every element in the DOM is one you can point at in your JSX, and the framework
+adds none of its own — no wrappers, no placeholders. A component puts what its
+`render()` returns on the page: one element, several, or none.
+
+There are no function components, and no fragments. A function has nothing to
+construct, no state and no lifecycle, so as a tag it names nothing the framework
+can keep hold of; a fragment is the same absence with a different spelling, and a
+component already covers every case it would.
 
 ```tsx
 import { Component, state } from "@ramonda/core";
@@ -254,3 +282,7 @@ pnpm build
 The full documentation site — get started, every feature explained with running examples, the API
 and diagnostics references — lives at [ramonda.dev](https://ramonda.dev). This README
 stays the package-level entry point; it is not a substitute for that.
+
+## License
+
+[MIT](../../LICENSE) © Nikola Blagojević

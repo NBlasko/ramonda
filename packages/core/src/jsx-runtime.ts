@@ -66,15 +66,25 @@ export function jsxs(type: unknown, props: Props | null, key?: string | number):
 /**
  * A fragment, which Ramonda does not have.
  *
- * The runtime contract requires the export, so it exists and says what is wrong. A tag that is not
- * an element is the thing the one-tag-one-element rule is about: `<>…</>` produces N siblings out of
- * one piece of syntax, and then the DOM can no longer be read off the JSX. The answers are an
- * element that means something, or `{[a, b]}` when vnodes were all that was wanted — see RMD011.
+ * The runtime contract requires the export, so it exists and says what is wrong.
+ *
+ * **The reason is no longer "one tag, one element".** A component returns as many elements as its
+ * render says, and that is the ordinary case now — so a fragment is not refused for producing
+ * several siblings. It is refused for having nothing else: no state, no lifecycle, no identity the
+ * diff can hold. A component covers every case a fragment does and several it cannot, so the
+ * fragment would be a second way to say a worse version of the same thing.
+ *
+ * **And this is the only defence.** The compiler does not typecheck a fragment's parameter —
+ * measured, by giving this one a required argument and watching `<><span /></>` compile anyway — so
+ * unlike a named function in tag position, `<>…</>` reaches the runtime from fully typed code. It
+ * arrives at `__h` as a function tag, is reported as RMD011, throws here, and renders the inert
+ * fallback in production.
  */
 export function Fragment(): never {
   if (__DEV__) reportFunctionTag("Fragment");
   throw new Error(
-    "Ramonda has no fragments: `<>…</>` would make one tag produce several elements. " +
-      "Wrap them in an element, or write `{[a, b]}` if you only wanted the vnodes.",
+    "Ramonda has no fragments: `<>…</>` has no state, no lifecycle and no identity the diff can " +
+      "hold, and a component covers every case it would. Use one, or write `{[a, b]}` if you only " +
+      "wanted the vnodes.",
   );
 }

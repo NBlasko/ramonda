@@ -3,8 +3,22 @@
 Client-side routing for [Ramonda](https://ramonda.dev): state-first, race-free navigation
 with nested route outlets.
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Frouter)](https://www.npmjs.com/package/@ramonda/router)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Frouter)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
+
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
+
+```sh
+npm install @ramonda/router
+```
+
+Documentation: **[ramonda.dev/routing](https://ramonda.dev/routing)**
+
+[readme:end]: #
 
 ```tsx
 import { Component } from "@ramonda/core";

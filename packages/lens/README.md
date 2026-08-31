@@ -2,17 +2,25 @@
 
 Immutable updates for deep objects, by describing a path instead of mutating a draft.
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Flens)](https://www.npmjs.com/package/@ramonda/lens)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Flens)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
+
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
 
 ```sh
 npm install @ramonda/lens
 ```
 
+Documentation: **[ramonda.dev/lens](https://ramonda.dev/lens)**
+
+[readme:end]: #
+
 No dependencies, and nothing in it knows about Ramonda — it is a standalone package for immutable
 updates, usable in any TypeScript or JavaScript project, in the browser or on the server.
-
-Documentation: **[ramonda.dev/lens](https://ramonda.dev/lens)**
 
 ```ts
 import { focusOn } from "@ramonda/lens";
@@ -396,3 +404,7 @@ What to take from it when writing your own updates:
 
 The bigger practical difference is the one the numbers do not show: nothing here is a proxy,
 so there is no draft that can escape its producer, and no finalize pass over the result.
+
+## License
+
+[MIT](../../LICENSE) © Nikola Blagojević

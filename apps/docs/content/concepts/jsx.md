@@ -142,8 +142,8 @@ see both, so it asks the stronger question. Permissive where nothing can be
 known, strict where something can.
 
 **SVG keeps its real names.** Inside SVG the names are written exactly as SVG defines
-them — `stroke-width` with a dash, `viewBox` in camelCase — because the JSX mirrors
-the real element one to one:
+them — `stroke-width` with a dash, `viewBox` in camelCase — because what you write is
+the attribute the element actually has:
 
 ```tsx
 <svg viewBox="0 0 24 24">

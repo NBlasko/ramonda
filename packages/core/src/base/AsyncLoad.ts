@@ -209,11 +209,11 @@ type LoadedComponent = ((loadedProps?: unknown) => RamondaNode) | undefined;
  * />
  * ```
  *
- * An ordinary class component with the default `<ramonda-host>`, so it is
- * exactly one element like every other tag. The loaded module renders INSIDE
- * that host, and its own props are passed as `loadedProps` rather than being
- * mixed into this tag's attributes — those two sets of props belong to different
- * components and must not share a namespace.
+ * An ordinary class component. Once the module has loaded it renders that
+ * module and nothing around it, so nothing of this tag survives in the DOM. The
+ * module's own props are passed as `loadedProps` rather than mixed into this
+ * tag's attributes — those two sets of props belong to different components and
+ * must not share a namespace.
  *
  * `errorFallback` may be a function, and then it receives `{ error, retry,
  * attempt }` — the same shape as `ErrorBoundary`'s fallback. There is no

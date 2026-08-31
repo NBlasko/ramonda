@@ -16,14 +16,28 @@ The through-line is one goal: **the code should be readable, and its mistakes sh
 be loud.** A page you can picture from its source, and a framework that tells you when
 something is wrong instead of quietly doing the wrong thing.
 
-- **[The page is what you wrote](/why/one-element)** — every element in the DOM is one you wrote,
-  and why there are no fragments or function components.
-- **[Classes and decorators](/why/classes)** — why a component is a class, and why
-  its lifecycle and state are decorators.
+- **[Classes and decorators](/why/classes)** — why a component is a class, why there
+  are no fragments or function components, and why its lifecycle and state are
+  decorators.
 - **[The reactivity model](/why/reactivity)** — why changing state re-renders the
   whole component, and where fine-grained tracking lives instead.
 - **[No global state](/why/no-globals)** — why there are no module-level stores, and
   what that buys on the server.
+
+## The page is what you wrote
+
+Open devtools on a Ramonda page and you will find your own markup. Every element there
+is an element you wrote; every element you wrote is there. The framework contributes no
+elements of its own — no wrappers, no placeholders. A great deal of debugging is
+answering "what is actually on the page?", and this answers it from the source: you can
+read a component and know what it produces without running it.
+
+It holds because [a component is not an element](/why/classes#why-no-fragment) — a
+component puts what its `render()` returns on the page, one element or several or none
+— so nothing has to be wrapped in order to be grouped, and there is nothing left for
+the framework to add. The one exception is a server-rendered page, which carries HTML
+comments until it hydrates and then does not; [renderToString and
+hydrateRoot](/ssr/render) describes them.
 
 ## The diagnostics are the other half
 

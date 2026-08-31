@@ -494,6 +494,7 @@ const options = {
     "@ramonda/core/testing": [`${core}/testing.ts`],
     "@ramonda/core": [`${core}/index.ts`],
     "@ramonda/router/server": [`${repo}/packages/router/src/server.ts`],
+    "@ramonda/server": [`${repo}/packages/server/src/index.ts`],
     "@ramonda/router": [`${repo}/packages/router/src/index.ts`],
     "@ramonda/query": [`${repo}/packages/query/src/index.ts`],
     "@ramonda/form/bguard": [`${repo}/packages/form/src/bguard.ts`],

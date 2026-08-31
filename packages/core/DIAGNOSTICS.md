@@ -500,10 +500,10 @@ roadmap.
 
 ### RMD011 — A function was used as a JSX tag
 
-Every Ramonda tag is exactly one element. That is what lets you read the DOM
-structure straight off the JSX, and it is worth protecting: a function in the tag
-position would be a tag that is not an element, and the invariant would be gone
-on sight.
+A tag names something the framework can hold on to: an intrinsic element, or a
+component with state, a lifecycle and an identity the diff can match across
+renders. A function has none of those. It would look like a component and be
+none of one, and a component covers every case it would.
 
 `h` does call the function (rejecting it outright would only break the page in a
 build that already has no types), but it reports first, and the message points at

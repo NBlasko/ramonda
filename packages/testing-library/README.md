@@ -3,12 +3,22 @@
 Testing utilities for Ramonda components and hooks, built on
 [`@testing-library/dom`](https://testing-library.com/docs/dom-testing-library/intro).
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Ftesting-library)](https://www.npmjs.com/package/@ramonda/testing-library)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Ftesting-library)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
-```bash
-pnpm add -D @ramonda/testing-library @testing-library/dom
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. See the
+> [root README](https://github.com/NBlasko/ramonda#readme).
+
+```sh
+npm install -D @ramonda/testing-library
 ```
+
+Documentation: **[ramonda.dev/testing](https://ramonda.dev/testing)**
+
+[readme:end]: #
 
 ```tsx
 import { render, screen, fireEvent, act } from "@ramonda/testing-library";
@@ -234,3 +244,7 @@ Core's main entry is guarded by tests whose whole job is to keep the internals
 out of what an application can import. A harness genuinely needs three of them —
 so rather than widen the app-facing API permanently to make a test utility
 possible, there is a second, narrow door, pinned by its own tripwire.
+
+## License
+
+[MIT](../../LICENSE) © Nikola Blagojević

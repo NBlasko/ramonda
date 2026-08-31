@@ -1,6 +1,6 @@
 ---
 title: Classes and decorators
-description: Why a component is a class, and why its lifecycle and state are decorators.
+description: Why a component is a class, why there are no fragments or function components, and why lifecycle and state are decorators.
 section: Why Ramonda
 order: 122
 ---
@@ -16,8 +16,67 @@ component has a real identity that survives re-renders. State is just a field; t
 is no separate place for it to live and no rules about when you may read it.
 
 It also makes reuse first-class. Because a component is a class, one component can
-*extend* another — keep what it had, change what differs — which is where a lot of the
-framework's composition story comes from.
+*extend* another — keep what it had, change what differs — so reuse does not mean
+nesting, and nesting costs nothing. See [extending components](/composition/inheritance).
+
+## Why no fragment
+
+Other frameworks need one: an invisible tag whose job is to group children without
+being an element. Ramonda does not, because **a component is not an element**. A
+component puts what its `render()` returns on the page — one element, several, or
+none, whatever the render says.
+
+```tsx
+class Cells extends Component<{ name: string; score: number }> {
+  render() {
+    return [<td>{this.props.name}</td>, <td>{this.props.score}</td>];
+  }
+}
+```
+
+```html
+<tr><td>Ada</td><td>9</td></tr>
+```
+
+Two cells, from one component, with nothing between them. It is still a real component
+while it does this: it can hold [state](/concepts/state), a
+[lifecycle](/concepts/lifecycle) and [hooks](/hooks), and there may be many instances
+of it.
+
+So a component covers every case a fragment does, and one it does not: a fragment holds
+no state, so a component that exists only to decide what to show is something a fragment
+cannot be.
+
+```tsx
+class WhenOpen extends Component {
+  @state open = false;
+
+  toggle() {
+    this.open = !this.open;
+  }
+
+  render() {
+    return [
+      <button onclick={this.toggle}>{this.open ? "hide" : "show"}</button>,
+      this.open ? <p>Now you see it.</p> : null,
+    ];
+  }
+}
+```
+
+That is a button and, sometimes, a paragraph. Closed, it is a live component with state
+and one node; open, two — and either way there is nothing of the framework's around it.
+
+## Why not a function component
+
+A plain function in tag position is refused, and for a different reason than a fragment
+was. A function has nothing to construct, no state, and no lifecycle — so as a tag it
+names nothing the framework can keep hold of, and `<Thing />` and `Thing()` would mean
+the same thing written two ways.
+
+For markup you want to reuse without state, call the function in an expression slot —
+`{sideBar()}` — where it reads as the value it is. TypeScript rejects a function as a
+tag; if one reaches the runtime it is reported as `RMD011`.
 
 ## Why decorators, not reserved method names
 

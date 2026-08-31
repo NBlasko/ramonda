@@ -90,14 +90,13 @@ export class Inputs extends Component {
   @state lastKey = "—";
 
   @onWindow("mousemove")
-  onMove(e: Event) {
-    const m = e as MouseEvent;
-    this.x = m.clientX;
-    this.y = m.clientY;
+  onMove(e: MouseEvent) {
+    this.x = e.clientX;
+    this.y = e.clientY;
   }
   @onDocument("keydown")
-  onKey(e: Event) {
-    this.lastKey = (e as KeyboardEvent).key;
+  onKey(e: KeyboardEvent) {
+    this.lastKey = e.key;
   }
 
   render() {

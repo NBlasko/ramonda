@@ -4,7 +4,7 @@
   "description": "Immutable updates for deep objects by describing a path, not by mutating a proxy.",
   "license": "MIT",
   "author": "Nikola Blagojević",
-  "homepage": "https://ramonda.dev",
+  "homepage": "https://ramonda.dev/lens",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NBlasko/ramonda.git",

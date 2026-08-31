@@ -94,9 +94,10 @@ export interface ContextOptions {
  * only wakes consumers of THAT property (true fine-grained). No whole-object
  * State, no sync effect — which also keeps it clean for SSR/hydration.
  *
- * The Provider is a hook rather than a component because the framework is 1-1
- * (every JSX component maps to exactly one HTML element, no fragments), so a
- * pass-through wrapper component is not allowed.
+ * The Provider is a hook rather than a component because it puts nothing on the
+ * page: it holds state for a subtree and has no element of its own, which is what
+ * a hook is for. Written as a component it would be a tag that draws nothing, and
+ * a reader would have to know it was there to know where the scope begins.
  */
 export function createContext<T extends object>(
   defaultValue: T,

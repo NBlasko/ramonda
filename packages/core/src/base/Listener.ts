@@ -23,9 +23,26 @@ export interface ListenerProps {
    * What runs. Read when the event FIRES, not when the listener was armed, so a `run` chosen by a
    * signal takes effect without re-arming — the same contract `Timeout` and `Interval` keep.
    *
-   * `Event` rather than a type derived from `type`, which the decorators can do because the name is
-   * a literal in their signature and this cannot because it is a prop. Narrow it where you write it:
-   * `run: (e) => this.onKey(e as KeyboardEvent)`.
+   * ## `Event`, and three ways of narrowing it that were tried and rejected
+   *
+   * The decorators type this from the NAME — `@onDocument("keydown") onKey(e: KeyboardEvent)` needs
+   * no cast — because the name is a literal in their signature. Here it is a PROP, and that is the
+   * whole difference. Measured, all three:
+   *
+   * - **A generic `Listener<K>`** with `type: K` and `run: (e: EventFor<K>) => void` compiles, and
+   *   inference does not reach it: `this.use(Listener, () => ({ type: "keydown", run: (e) => … }))`
+   *   gives `e` an implicit `any`, because `K` would have to be inferred from `use`'s SECOND
+   *   argument back into a class generic its FIRST already fixed.
+   * - **An annotation at the call site** — `run: (e: KeyboardEvent) => …` — is refused, because a
+   *   function-typed property is contravariant in its parameter.
+   * - **Method syntax** (`run(event: Event): void`) makes that annotation compile, by making the
+   *   parameter bivariant. It also makes `type: "keydown"` with `run: (e: MouseEvent) => …` compile,
+   *   which is the same lie as the cast while LOOKING like a check. A cast at least announces
+   *   itself, so this is the one that was rejected on purpose rather than for want of a way.
+   *
+   * So it is `Event`, and the narrowing is the author's and visible:
+   * `run: (e) => this.onKey(e as KeyboardEvent)`. When the listener lives for the owner's whole
+   * life, `@onDocument` is the better tool and is genuinely checked.
    */
   run: (event: Event) => void;
 

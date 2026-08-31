@@ -3,6 +3,8 @@
 Forms for [Ramonda](https://ramonda.dev): typed field paths, Standard Schema validation,
 and rows that keep their identity.
 
+[readme:start]: #
+
 [![npm](https://img.shields.io/npm/v/%40ramonda%2Fform)](https://www.npmjs.com/package/@ramonda/form)
 [![license](https://img.shields.io/npm/l/%40ramonda%2Fform)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
@@ -15,6 +17,8 @@ npm install @ramonda/form
 ```
 
 Documentation: **[ramonda.dev/forms](https://ramonda.dev/forms)**
+
+[readme:end]: #
 
 ## What it looks like
 
