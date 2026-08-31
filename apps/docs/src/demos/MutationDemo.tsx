@@ -39,6 +39,16 @@ function optimisticAdd(title: string, { client }: { client: QueryClient }): () =
 
 // The `<form>` is written in the render, and the `submit` handler is written on it. A listener
 // belongs on the element that emits the event, which is the element right there in the markup.
+/**
+ * A failure, as text, for anything a mutation can reject with.
+ *
+ * `error` is `unknown` because `throw "gone"` and a rejected string are both reachable — so
+ * `(error as Error).message` is `undefined`, and the note renders empty exactly when it matters.
+ */
+function failureMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export class MutationDemo extends Component {
   private query = this.use(QueryClientProvider);
 
@@ -99,9 +109,7 @@ export class MutationDemo extends Component {
         </p>
 
         {this.add.isError ? (
-          <p className="demo-note">
-            rejected: {(this.add.error as Error).message} — the optimistic item was rolled back
-          </p>
+          <p className="demo-note">rejected: {failureMessage(this.add.error)} — the optimistic item was rolled back</p>
         ) : (
           <p className="demo-note">try adding "write the docs" twice to see the rollback</p>
         )}

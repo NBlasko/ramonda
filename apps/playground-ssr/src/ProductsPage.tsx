@@ -95,6 +95,16 @@ const onVisible = createSubscriptionDecorator("onVisible", (owner: Component, ha
   return () => observer.disconnect();
 });
 
+/**
+ * A failure, as text, for anything the thing that failed can reject with.
+ *
+ * `error` is `unknown` because `throw "gone"` and a rejected string are both reachable — so
+ * `(error as Error).message` is `undefined`, and the page renders empty exactly when it matters.
+ */
+function failureMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 class ProductRow extends Component<{
   item: Product;
   onPick: (id: number) => void;
@@ -202,7 +212,7 @@ class ProductDetail extends Component<{ id: number }> {
       return (
         <div className="panel error">
           <h3>Could not load product {String(this.props.id)}</h3>
-          <p>{(p.error as Error).message}</p>
+          <p>{failureMessage(p.error)}</p>
         </div>
       );
     }
@@ -282,7 +292,7 @@ export class ProductsPage extends Component {
         {feed.isError ? (
           <div className="panel error">
             <h3>Could not load the feed</h3>
-            <p>{(feed.error as Error).message}</p>
+            <p>{failureMessage(feed.error)}</p>
             <p className="meta">
               With no network this is what the server renders — a failed query is a state, not an exception that aborts
               the page.

@@ -1,4 +1,5 @@
 import { Component, state } from "@ramonda/core";
+import { failureMessage } from "../failureMessage";
 
 /**
  * A page for making the framework complain on purpose.
@@ -38,7 +39,7 @@ export class DiagnosticsPage extends Component {
       // a second mistake.
       (this.props as unknown as Record<string, unknown>)[`anything${this.fired}`] = 1;
     } catch (error) {
-      this.last = (error as Error).message.split(" — ")[0];
+      this.last = failureMessage(error).split(" — ")[0];
     }
     this.fired++;
   }
