@@ -28,6 +28,11 @@ export type RenderableProps<P> = Readonly<P> & {
  * The values are `unknown` because they have nothing in common — `createContext` publishes a
  * per-key signal channel, `Head` a node in the head tree. Whoever reads a key is whoever published
  * it, so the read is where the shape is named.
+ *
+ * Two invariants are load-bearing and neither is visible from a call site: the object is
+ * prototype-chained per component, and a publisher writes an OWN property so descendants inherit it
+ * and siblings do not. `TwoPublishersOnOneContext.test.tsx` fails if either stops being true — which
+ * matters most for `Head`, the publisher that does not go through `createContext` at all.
  */
 export type Context = Record<string | number | symbol, unknown>;
 
