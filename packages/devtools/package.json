@@ -44,11 +44,11 @@
     "@ramonda/check": "workspace:^",
     "@ramonda/lens": "workspace:^",
     "@ramonda/theme": "workspace:^",
-    "@types/node": "^24.10.1",
-    "esbuild": "0.28.1",
+    "@types/node": "^26.4.0",
+    "esbuild": "0.28.2",
     "jsdom": "28.0.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
