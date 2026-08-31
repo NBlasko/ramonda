@@ -3,8 +3,9 @@
 Every page in `content/` is judged against this. It is a checklist rather than advice because
 "write it well" is not something two people can disagree about usefully, and this is.
 
-Four of the six questions are the ones the framework's author asks when reading a page cold. The
-other two are about where the page SITS, which no amount of good prose fixes.
+Four of the seven questions are the ones the framework's author asks when reading a page cold. Two
+are about where the page SITS, which no amount of good prose fixes. The last is about WHEN it was
+true.
 
 ---
 
@@ -72,6 +73,26 @@ the page that owns the option. The question is whether a reader would ever searc
 A page that ends is a page a reader leaves. Every page names what to read next and why — not a list
 of links, a sentence about which one is theirs.
 
+## 7. Does it still argue from a constraint that exists?
+
+The slowest way for a page to go wrong is not to be written badly. It is to be written well about a
+design that has since moved, and then to keep being right about everything except the reason.
+
+**A worked example, which is why this check is here.** `composition/inheritance.md` answered *"ten
+`<td>`s, what do I wrap them in?"* with **"None — nothing wraps anything."** That was a true and
+good answer while a wrapper cost a DOM element. It stopped being one when a component became a
+range of nodes: a wrapper handing back `this.props.children` now contributes nothing to the page,
+so "nothing wraps anything" no longer distinguishes the two options it was written to choose
+between. The advice was still defensible; the ARGUMENT for it was gone, and a reader following the
+reasoning would learn something untrue about the framework.
+
+**The test:** find every *because*, *so*, *which is why* and *instead of* on the page — the places
+where it explains rather than states. For each, ask what would have to be true for that reason to
+hold, and then check that it still is. Not whether the advice is still good: whether the reason is.
+
+This is the harder half of the voice rule below. That one is about not writing the change down.
+This one is about noticing that the change happened.
+
 ---
 
 ## The voice rule, and it is the one most often broken here
@@ -99,5 +120,9 @@ It cannot tell you whether a page is clear to somebody who has never seen the fr
 neither can its author — knowing the answer is what makes the question unanswerable. Questions 1
 and 3 are the closest mechanical stand-ins: a term nobody defined and a fact used before it arrives
 are what "unclear" usually turns out to be.
+
+Question 7 has the opposite problem — it is answerable, but only by somebody who knows what the
+framework used to do. That knowledge lives in the git history and in the source's own docstrings,
+which is the one job the diff-writing this repository does so much of is genuinely for.
 
 The real answer is a reader who is not us. Until there is one, these are the proxies.
