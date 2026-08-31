@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 import type { ComponentGraph } from "../graph";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { analyzeProject } from "../analyze";
 import { graphHtml } from "../graph-html";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 const graph = (nodes: ComponentGraph["nodes"], edges: ComponentGraph["edges"] = []): ComponentGraph => ({
   schema: 1,
@@ -55,6 +60,25 @@ describe("the graph drawn as a page", () => {
     const back = JSON.parse(embedded(html)) as ComponentGraph;
     expect(back.nodes[0].name).toBe("Box<T>");
     expect(html).not.toContain("</script><");
+  });
+});
+
+/**
+ * And the graph itself hands each declaration over ONCE.
+ *
+ * Found by drawing it: the page reported 168 nodes and rendered 166 boxes, because a viewer reads
+ * the graph into a map by id and two entries collapsed. `@ramonda/router`'s `Link` and `Navigator`
+ * each arrived twice, byte for byte identical — a node can reach the list down more than one path,
+ * and the two are different objects so the spliced-node check does not catch them.
+ *
+ * It matters most to `--diff`, which compares BY ID: one of a pair is invisible to it.
+ */
+describe("the graph it draws", () => {
+  test("hands each declaration over once", () => {
+    const graph = analyzeProject(join(here, "fixtures", "cross-package", "tsconfig.json")).graph;
+    const ids = graph.nodes.map((node) => node.id);
+
+    expect(ids).toHaveLength(new Set(ids).size);
   });
 });
 

@@ -141,6 +141,21 @@ function labelOf(node) {
   return node.name ?? node.id.slice(node.id.lastIndexOf("#") + 1);
 }
 
+/**
+ * A LIBRARY graph answers a different question, and saying otherwise would be a lie the analyzer
+ * refuses to tell.
+ *
+ * ComponentGraph.scope says it: "an app has roots and can be judged whole. A library has none —
+ * unreachable and no-provider-above cannot be decided without knowing what mounts it." A library
+ * therefore has NO ROOTS, so every node lands at no depth at all — and the first version of this
+ * drew all of them under "nothing reaches these", asserting exactly what the graph says cannot be
+ * decided. Measured on packages/router: six nodes, zero roots, six false claims.
+ *
+ * So depth is not the axis for a library. What an app can NAME is: only an exported declaration can
+ * be mounted from outside, which the node already carries.
+ */
+const LIBRARY = graph.scope === "library";
+
 const COLOR = { root: "--root", component: "--component", hook: "--hook", context: "--context", helper: "--helper" };
 const ROW = 74, PAD = 28, CHAR = 6.6, BOX = 22, GAP = 18;
 
@@ -156,10 +171,11 @@ function draw() {
   });
   const visible = new Set(shown.map((n) => n.id));
 
-  // One band per depth, and a final band for what the walk never reached.
+  // One band per depth, and a final band for what the walk never reached. A LIBRARY has neither:
+  // see LIBRARY above for why depth is not a question its graph can answer.
   const bands = new Map();
   for (const n of shown) {
-    const key = depth.has(n.id) ? depth.get(n.id) : Infinity;
+    const key = LIBRARY ? (n.exported ? 0 : 1) : depth.has(n.id) ? depth.get(n.id) : Infinity;
     (bands.get(key) ?? bands.set(key, []).get(key)).push(n);
   }
   const order = [...bands.keys()].sort((a, b) => a - b);
@@ -185,7 +201,9 @@ function draw() {
 
   for (const key of order) {
     const first = place.get(bands.get(key)[0].id);
-    const label = key === Infinity ? "nothing reaches these" : key === 0 ? "roots" : "depth " + key;
+    const label = LIBRARY
+      ? key === 0 ? "exported — an app can mount these" : "internal to the package"
+      : key === Infinity ? "nothing reaches these" : key === 0 ? "roots" : "depth " + key;
     parts.push('<text class="band" x="' + PAD + '" y="' + (first.y - 8) + '">' + label + "</text>");
   }
 
@@ -257,6 +275,17 @@ document.getElementById("svg").addEventListener("click", (event) => {
 
 for (const id of ["hideHelpers", "onlyLost"]) {
   document.getElementById(id).addEventListener("change", draw);
+}
+
+if (LIBRARY) {
+  // The same lie in a checkbox: a library cannot say what nothing reaches, so it may not offer to
+  // filter by it. Disabled with the reason on it rather than removed, so the absence is explained.
+  const lost = document.getElementById("onlyLost");
+  lost.checked = false;
+  lost.disabled = true;
+  lost.closest("label").title =
+    "A library has no roots, so nothing here can say what an app does or does not mount.";
+  lost.closest("label").style.opacity = ".45";
 }
 draw();
 `;
