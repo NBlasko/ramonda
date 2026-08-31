@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { applyFixes } from "./fix";
 import { analyzeProject } from "./analyze";
+import { graphHtml } from "./graph-html";
 import { diffGraphs, refuseToDiff } from "./diff";
 import type { ComponentGraph } from "./graph";
 import { type AnyRule, failingRules, RULES } from "./rules";
@@ -27,6 +28,10 @@ import { filesOf, splitOf } from "./split";
  * `--graph <file>` also writes the composition graph the checks are computed from — which
  * components exist and which one can mount which, including the edges nothing could resolve.
  *
+ * `--graph-html <file>` writes the same graph as a picture: one self-contained page, rows by
+ * distance from the roots, and a band of its own for whatever nothing reaches. Beside `--graph`
+ * rather than instead of it — the JSON is what `--diff` reads, and a diff does not want markup.
+ *
  * `--split` says what the browser loads before it does anything and what each lazily loaded piece
  * brings with it, and `--diff <graph.json>` compares this run against a graph written earlier.
  *
@@ -42,11 +47,12 @@ const valueOf = (flag: string): string | undefined => {
   return at === -1 ? undefined : argv[at + 1];
 };
 const graphAt = valueOf("--graph");
+const graphHtmlAt = valueOf("--graph-html");
 const diffAgainst = valueOf("--diff");
 const wantsSplit = argv.includes("--split");
 const wantsFix = argv.includes("--fix");
 const dryRun = argv.includes("--dry-run");
-const values = new Set([graphAt, diffAgainst].filter((v): v is string => v !== undefined));
+const values = new Set([graphAt, graphHtmlAt, diffAgainst].filter((v): v is string => v !== undefined));
 const arg = argv.find((a) => !a.startsWith("--") && !values.has(a));
 const tsconfig = resolve(arg ?? "tsconfig.json");
 const TAG = "[ramonda-check]";
@@ -74,6 +80,7 @@ if (!existsSync(tsconfig)) {
 }
 for (const [flag, value, example] of [
   ["--graph", graphAt, "--graph graph.json"],
+  ["--graph-html", graphHtmlAt, "--graph-html graph.html"],
   ["--diff", diffAgainst, "--diff graph.json"],
 ] as const) {
   if (argv.includes(flag) && (value === undefined || value.startsWith("--"))) {
@@ -113,6 +120,26 @@ if (graphAt) {
   console.log(
     `${TAG} graph written to ${graphAt} — ${graph.nodes.length} nodes, ${graph.edges.length} edges` +
       (holes > 0 ? `, ${holes} of them unresolved` : ""),
+  );
+}
+
+/**
+ * The same graph as a picture, in ONE file.
+ *
+ * Beside `--graph` rather than instead of it: the JSON is what a diff reads and what `--diff`
+ * compares, and neither of those wants markup. This is for the other question — the one a hundred
+ * kilobytes of JSON cannot answer, which is what the shape of the app actually is.
+ */
+if (graphHtmlAt) {
+  const target = resolve(graphHtmlAt);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, graphHtml(graph));
+  const lost = graph.nodes.filter(
+    (node) => node.kind !== "root" && !graph.edges.some((edge) => edge.to === node.id),
+  ).length;
+  console.log(
+    `${TAG} graph drawn to ${graphHtmlAt} — ${graph.nodes.length} nodes, ${graph.edges.length} edges` +
+      (lost > 0 ? `, ${lost} that nothing points at` : ""),
   );
 }
 

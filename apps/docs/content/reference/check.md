@@ -352,6 +352,29 @@ A project that does not compile is still `tsc`'s news to break. Run both.
 
 ## What loads when, and what a change moved
 
+## Seeing the graph
+
+The checker builds a composition graph to answer its questions — which components exist and which
+one can mount which. `--graph` writes it as JSON, for a diff to read; `--graph-html` writes it as a
+picture, for you to read.
+
+```
+$ ramonda-check tsconfig.json --graph-html app.html
+
+[ramonda-check] graph drawn to app.html — 168 nodes, 259 edges, 14 that nothing points at
+```
+
+One self-contained file — open it, no server and no network. Rows are distance from the roots, so
+what mounts something is read by going up. A **root** is a call rather than a declaration, so it is
+labelled by the call: `hydrateRoot`, `renderToString`. A dashed edge is a render that may never
+happen, which is a distinction the graph makes and nothing else shows you. And whatever no root
+reaches gets a band of its own rather than being drawn beside the roots, because "nothing mounts
+this" and "this is an entry point" are the opposite of each other.
+
+Two checkboxes: hide the helpers, or show only what nothing reaches.
+
+## What loads when
+
 The same reading of the same graph answers a question no check does: what the browser downloads
 before it does anything.
 
