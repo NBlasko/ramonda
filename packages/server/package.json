@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/server",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "The plumbing a Ramonda server render needs — a DOM for the render, and the document it goes into — so an app does not hand-roll it.",
   "license": "MIT",
   "author": "Nikola Blagojević",
