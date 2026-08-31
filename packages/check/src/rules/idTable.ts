@@ -1,5 +1,4 @@
 import ts from "typescript";
-import { coreDecoratorName } from "./core-import";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
 import { openingOf, tagOf } from "./element";

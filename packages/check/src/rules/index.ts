@@ -71,7 +71,7 @@ import { decoratorThatAddsNothing } from "./decorator-that-adds-nothing";
 import { devGuardAsAnExpression } from "./dev-guard-as-an-expression";
 import { unkeyableMemoizedArgument } from "./unkeyable-memoized-argument";
 import { asyncRender } from "./async-render";
-import { computeTakesNoArguments, type ComputeTakesNoArgumentsIssue } from "./compute-takes-no-arguments";
+import { computeTakesNoArguments } from "./compute-takes-no-arguments";
 import { cachedReadOfAPlainField } from "./cached-read-of-a-plain-field";
 import { watchOfAPropThatIsNotThere } from "./watch-of-a-prop-that-is-not-there";
 import { browserUrl } from "./browser-url";

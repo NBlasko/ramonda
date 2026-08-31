@@ -72,7 +72,8 @@ for (const pkg of published) {
     files++;
     const lines = codeOnly(readFileSync(file, "utf8")).split("\n");
     lines.forEach((line, n) => {
-      for (const match of line.matchAll(/\bany\b/g)) {
+      // The MATCH is not read — one push per occurrence is the whole count.
+      for (const _match of line.matchAll(/\bany\b/g)) {
         sites.push({ file, line: n + 1, text: line.trim(), cast: /\bas any\b/.test(line) });
       }
     });

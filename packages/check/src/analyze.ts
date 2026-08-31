@@ -4,8 +4,7 @@ import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
-import { coreDecoratorName, coreExportName } from "./rules/core-import";
-import { stringAttr } from "./rules/element";
+import { coreExportName } from "./rules/core-import";
 import type { Resolver, Silencer } from "./rules/rule";
 import {
   activate,
@@ -23,57 +22,7 @@ import {
   rootsIn,
   TREE_RULES,
 } from "./rules";
-import type {
-  AccessKeyIssue,
-  AriaHiddenOnFocusableIssue,
-  AriaValueIssue,
-  AriaWithNoSubjectIssue,
-  ArrowFieldIssue,
-  AsyncRenderIssue,
-  BrowserUrlIssue,
-  ClassInsteadOfClassNameIssue,
-  ClickWithNoKeyboardPathIssue,
-  ClientOnlyRequestReadIssue,
-  ClockReadWhileRenderingIssue,
-  CachedReadOfAPlainFieldIssue,
-  ContextConsumedAboveItsProviderIssue,
-  ControlWithNoLabelIssue,
-  DomWriteIssue,
-  DuplicateDecoratorIssue,
-  DuplicateKeyAmongSiblingsIssue,
-  DuplicateIdIssue,
-  EmptyHeadingOrLinkIssue,
-  Findings,
-  HeadingSkipsALevelIssue,
-  FragmentLinkToNowhereIssue,
-  FreshObjectInPropsIssue,
-  HeadTagsCollideIssue,
-  IndexAsKeyIssue,
-  InteractiveInsideInteractiveIssue,
-  LateRequestReadIssue,
-  LinkWithoutADestinationIssue,
-  MediaWithNoCaptionsIssue,
-  NamedOnlyByAPlaceholderIssue,
-  OneProviderPerComponentIssue,
-  PersistOfALossyValueIssue,
-  PositiveTabIndexIssue,
-  ReferenceToAnIdThatIsNotThereIssue,
-  RoleMissingRequiredAriaIssue,
-  RoleTakesNoNameIssue,
-  RowWithoutAKeyIssue,
-  ServerEnvInSharedCodeIssue,
-  StateWrittenWhileRenderingIssue,
-  TagNeedsItsParentIssue,
-  UnguardedAsyncLifecycleIssue,
-  UnknownAriaAttributeIssue,
-  UnknownRoleIssue,
-  UnnamedFrameIssue,
-  UnnamedImageIssue,
-  UnexposedEnvReadIssue,
-  UnsplittableImportIssue,
-  UnwatchedFieldIssue,
-  WatchOfAPropThatIsNotThereIssue,
-} from "./rules";
+import type { Findings } from "./rules";
 
 /**
  * The per-class rules, re-exported so that moving them behind `./rules` changed no import anywhere
