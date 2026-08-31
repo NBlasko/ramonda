@@ -38,6 +38,9 @@ const CHOOSES: ReadonlySet<ts.SyntaxKind> = new Set([
  */
 const HOPS = 20;
 
+/** The decorators whose whole job is to hand the same value back. */
+const CACHING = ["compute", "memoized"] as const;
+
 export interface Built {
   kind: "object" | "array";
   /** Where it is built, when that is not the line the prop is on. */
@@ -259,7 +262,26 @@ export function follow<T>(
 
     const called = functionOf(resolve(named)?.declarations?.[0]);
     if (called === undefined) return undefined;
-    if (ts.isMethodDeclaration(called) && hasDecorator(called, "compute", resolve)) return undefined;
+    /**
+     * A CACHING method is not followed, because caching is the whole of what it does.
+     *
+     * `@compute` hands back the same value until something it reads changes. `@memoized` caches by
+     * its ARGUMENTS, per instance, so asking twice gives the same object back — and it is the
+     * answer this package recommends for a per-row value, in `fresh-object-in-props`'s own advice
+     * and on the caching page. Following either finds the literal inside and reports the cache,
+     * which is the opposite of the truth.
+     *
+     * `@memoized` was missing here, and the docs found it rather than a test: `caching.md` teaches
+     * `cfg={this.configFor(row.id)}` as the fix for exactly this report, and running the rules over
+     * the documentation's own examples reported the page teaching the answer.
+     *
+     * The caching is only as good as the key, and that is a different rule's job:
+     * `unkeyable-memoized-argument` reports an argument that cannot be keyed, so the assumption
+     * made here is one the package checks somewhere.
+     */
+    if (ts.isMethodDeclaration(called) && CACHING.some((name) => hasDecorator(called, name, resolve))) {
+      return undefined;
+    }
 
     const file = called.getSourceFile();
     if (file.isDeclarationFile || file.fileName.includes("node_modules")) return undefined;

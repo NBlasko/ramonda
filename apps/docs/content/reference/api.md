@@ -343,6 +343,7 @@ The analyzer behind `ramonda-check`, as an import. [Checking your app](/referenc
 | | |
 |---|---|
 | `analyzeProject(tsconfig)` | Reads a project and answers with everything below — the context issues, every rule's findings, and the graph they are computed from. |
+| `analyzeProgram(program, notes?)` | The same analysis over a `ts.Program` you already have. The program is the cost of a run — the rules themselves are close to free — so a tool holding its own programs pays once rather than twice. |
 | `ruleCatalogue()` | Every rule as four strings: its `id`, its severity, when it reports, and the runtime diagnostic that reports the same fault. The rule tables on the check page are built from this. |
 | `splitOf(graph)` | What loads before anything, what each split point brings, and what they share. |
 | `filesOf(declarations)` | How many files a set of declarations lives in. |

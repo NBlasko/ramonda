@@ -73,6 +73,12 @@ import type { ElementRule, ElementContext } from "./rule";
  * hands back an object it holds**, which is the same fix behind a function call. The distinction
  * both times is where the literal is BUILT, not where it is written.
  *
+ * **A `@compute` or a `@memoized` call**, because caching is the whole of what those do. The second
+ * was missing and the DOCUMENTATION found it: `concepts/caching.md` teaches
+ * `cfg={this.configFor(row.id)}` as the answer to this very report, and running the rules over the
+ * docs' own examples reported the page teaching the fix. It is the per-ROW answer specifically —
+ * a `@compute` belongs to the component and cannot hold one value per row.
+ *
  * **An attribute a SPREAD may overwrite.** `<Row conf={{…}} {...rest} />` builds the object, but
  * whether the child ever sees it depends on what `rest` holds, and a prop that never arrives is not
  * this fault. Written AFTER the last spread it cannot be taken away, and it is reported — which is

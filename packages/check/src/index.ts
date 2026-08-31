@@ -1,4 +1,4 @@
-export { analyzeProject } from "./analyze";
+export { analyzeProject, analyzeProgram } from "./analyze";
 // Every rule this package runs, as four strings each — what a generator needs to describe them.
 // The documentation site's rule tables are built from this, so they cannot drift from the rules.
 export { ruleCatalogue } from "./rules";

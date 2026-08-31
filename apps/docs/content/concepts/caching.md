@@ -83,6 +83,8 @@ The commonest per-item value is a handler, which is why it is introduced with
 that needs a stable object has the same problem and the same answer:
 
 ```tsx
+import { Component, list, memoized, state } from "@ramonda/core";
+
 class Board extends Component {
   @state rows: RowItem[] = [];
 

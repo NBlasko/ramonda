@@ -24,6 +24,7 @@
  *   node scripts/check-examples.mjs           # check everything
  *   node scripts/check-examples.mjs query     # only paths containing "query"
  */
+import { analyzeProgram } from "@ramonda/check";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -62,6 +63,18 @@ const IGNORED = new Set([
   2564,
 ]);
 
+/**
+ * Which reports a block's fence says to expect: `true` for all of them, a set for named ones.
+ *
+ * `undefined` when the fence says nothing, which is the ordinary case and the one that must stay
+ * cheap to read.
+ */
+function reportsAllowedBy(attrs) {
+  const marker = /expect-report(?::([\w+-]+))?/.exec(attrs);
+  if (marker === null) return undefined;
+  return marker[1] === undefined ? true : new Set(marker[1].split("+"));
+}
+
 function blocksIn(file) {
   const text = readFileSync(file, "utf8");
   const out = [];
@@ -82,7 +95,17 @@ function blocksIn(file) {
     }
     // The line the code starts on, so an error can name a place in the markdown.
     const line = text.slice(0, match.index).split("\n").length + 1;
-    out.push({ code, line });
+    // ```tsx expect-report — the block COMPILES, and `ramonda-check` reports it on purpose. The
+    // diagnostics page is built of these: `@state onPick = () => {}` is there to be wrong, and a
+    // gate that failed on it would be failing on the lesson. Unlike `expect-error` the block is
+    // still type-checked, because a demonstration of one fault may not quietly carry another.
+    //
+    // ```tsx expect-report:row-without-a-key — the same, for ONE named rule. A page teaches in an
+    // order: `lists/index.md` shows `list()` at its simplest and explains identity two sections
+    // later, so the first example is reported and is not wrong. Naming the rule keeps every OTHER
+    // rule live on the block, which is the difference between a gate and a gate people switch off.
+    // Several rules are separated by `+`.
+    out.push({ code, line, expectReport: reportsAllowedBy(attrs) });
   }
   return out;
 }
@@ -458,7 +481,15 @@ for (const file of files) {
     const name = `${file.replace(/[^\w]/g, "_")}__${index}.tsx`;
     const path = join(work, name);
     writeFileSync(path, shaped.text);
-    units.push({ path, file, index, line: block.line, offset: shaped.offset, ambient });
+    units.push({
+      path,
+      file,
+      index,
+      line: block.line,
+      offset: shaped.offset,
+      ambient,
+      expectReport: block.expectReport,
+    });
   });
 }
 
@@ -530,6 +561,8 @@ for (const unit of units) {
 }
 
 const byUnit = new Map();
+/** What the RULES reported, which is a different question from whether the block compiles. */
+const reported = [];
 let groupIndex = 0;
 for (const group of groups.values()) {
   // The globals are generated PER GROUP, so a section's own preamble can claim a name the framework
@@ -570,6 +603,45 @@ for (const group of groups.values()) {
     });
     byUnit.set(unit, list);
   }
+
+  /**
+   * The second question, over the SAME program.
+   *
+   * Type-checking says an example compiles. It has never asked whether the example is one the
+   * framework would report — which is how `reference/api.md` came to demonstrate the inline arrow
+   * `RMD020` reports, with a green gate over it.
+   *
+   * `analyzeProgram` rather than `analyzeProject`, because the program is the cost of a run and
+   * this script has already built it — one per preamble set, and re-deriving 24 tsconfigs would
+   * both double the work and look at something slightly different from what was type-checked.
+   *
+   * **A block that leans on the ambient globals is invisible to a rule that identifies the
+   * framework by MODULE.** The generated globals declare `const memoized: typeof
+   * import("@ramonda/core")["memoized"]` — the right type behind a different symbol — so
+   * `importedFromCore` cannot reach core from it. Measured: `concepts/caching.md` teaches
+   * `cfg={this.configFor(row.id)}` under a `@memoized`, and `fresh-object-in-props` followed the
+   * call and reported the page teaching its own fix; adding `import { memoized } from
+   * "@ramonda/core"` to the example silenced it. So the gate is as good as the example's imports,
+   * and an example that shows where a name comes from is better documentation anyway.
+   *
+   * Only `findings`, which is keyed by rule. The whole-program answers beside it —
+   * `unresolved`, `unreachable`, `unreachableRoutes` — are not questions a fragment can pass: a
+   * snippet has no root and no router, so every component in it is unreachable by construction.
+   * Measured, they come to 321 reports and not one of them is about the example.
+   */
+  for (const [rule, issues] of Object.entries(analyzeProgram(program).findings)) {
+    for (const issue of issues) {
+      const unit = group.units.find((u) => u.path === issue.file);
+      if (!unit) continue;
+      const allowed = unit.expectReport;
+      if (allowed === true || (allowed !== undefined && allowed.has(rule))) continue;
+      reported.push({
+        unit,
+        rule,
+        where: `${unit.file}:${unit.line + (issue.line - 1) - unit.offset}`,
+      });
+    }
+  }
 }
 
 rmSync(work, { recursive: true, force: true });
@@ -582,20 +654,61 @@ const skipped =
   (unparseable.length === 0 ? "" : `, ${unparseable.length} not standalone code and skipped`) +
   (expected.length === 0 ? "" : `, ${expected.length} marked as not one program`);
 
-if (total === 0) {
-  console.log(`[examples] ${units.length} code blocks in ${files.length} files type-check${skipped}.`);
+/**
+ * The rule pass PRINTS and does not fail, for now.
+ *
+ * The repository's own rule for a new gate, and `rule.ts` says it about rules in the same words: a
+ * gate that fails a build on something nobody has seen yet is a gate people switch off. Every
+ * report it makes today is one nobody has triaged.
+ *
+ * What is left is one rule and one question. `row-without-a-key` is 17 of them, and the answer is
+ * genuinely not obvious: `lists/index.md` teaches that a key is often unnecessary — *"while a row
+ * is the same object it is the same row, nothing is declared and nothing can be got wrong"* — so an
+ * example over a stable array is right, while one over refetched data (`query/infinite.md`) is not.
+ * That is a per-site call, and making the gate red before it is made would only teach people to
+ * mark every fence.
+ *
+ * Promote it by deleting this constant and the branch below.
+ */
+const RULES_FAIL_THE_RUN = false;
+
+if (reported.length > 0) {
+  console.error(`\n[examples] ${reported.length} code block(s) teach something the framework reports:\n`);
+  const byRule = new Map();
+  for (const one of reported) byRule.set(one.rule, [...(byRule.get(one.rule) ?? []), one]);
+  for (const [rule, list] of [...byRule].sort((a, b) => b[1].length - a[1].length)) {
+    console.error(`  ${rule} — ${list.length}`);
+    for (const one of list) console.error(`    ${one.where}`);
+  }
+  console.error(
+    (RULES_FAIL_THE_RUN ? "" : "  (printed, not failing — see `RULES_FAIL_THE_RUN`)\n") +
+      "\nAn example is copied. A block showing a pattern `ramonda-check` reports teaches it to\n" +
+      "everyone who reads the page, and the gate went green over it because compiling and being\n" +
+      "RIGHT are different questions. Fix the example, or — where the block exists to SHOW the\n" +
+      "fault, as the diagnostics page does — mark the fence:\n\n" +
+      "    ```tsx expect-report\n",
+  );
+}
+
+if (total === 0 && (reported.length === 0 || !RULES_FAIL_THE_RUN)) {
+  console.log(
+    `[examples] ${units.length} code blocks in ${files.length} files type-check${
+      reported.length === 0 ? " and are clean to `ramonda-check`" : ""
+    }${skipped}.`,
+  );
   for (const u of unparseable) console.log(`           skipped ${u.file}:${u.line}`);
   process.exit(0);
 }
 
-console.error(`\n[examples] ${total} problem(s) in ${byUnit.size} of ${units.length} code blocks:\n`);
+if (total > 0) console.error(`\n[examples] ${total} problem(s) in ${byUnit.size} of ${units.length} code blocks:\n`);
 for (const [unit, list] of byUnit) {
   console.error(`  ${unit.file}  (block ${unit.index + 1})`);
   for (const problem of list) console.error(`    ${problem.where}  TS${problem.code}: ${problem.message}`);
   console.error("");
 }
-console.error(
-  "A name the example is entitled to assume — the reader's own `api`, their `Todo` — belongs in a\n" +
-    "`_preamble.ts` beside the page. A name nothing declares is the example being wrong.\n",
-);
+if (total > 0)
+  console.error(
+    "A name the example is entitled to assume — the reader's own `api`, their `Todo` — belongs in a\n" +
+      "`_preamble.ts` beside the page. A name nothing declares is the example being wrong.\n",
+  );
 process.exit(1);

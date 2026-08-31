@@ -276,7 +276,7 @@ Some faults are not about one element but about two of them in the same markup: 
 twice, a heading level that jumps. Those rules read a whole **render** — every element in one
 top-level piece of JSX, in the order it is written.
 
-```tsx
+```tsx expect-report
 <article>
   <h1>Title</h1>
   <h3>A subsection of nothing</h3>   {/* ✗ the outline claims an h2 that is not there */}

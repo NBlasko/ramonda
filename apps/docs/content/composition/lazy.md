@@ -12,15 +12,33 @@ dialog — doesn't have to be in your first download. `AsyncLoad` loads it only 
 is first rendered, so the page starts light.
 
 ```tsx
-<AsyncLoad
-  lazy={() => import("./HeavyPanel")}
-  namedExport="HeavyPanel"
-  loadedProps={{ note: "hello" }}
-  onLoading={<p>loading…</p>}
-  errorFallback={({ error, retry }) => (
-    <p>Could not load it. <button onclick={retry}>retry</button></p>
-  )}
-/>
+// Beside the component, not in the render: an `import()` inside a thunk does not run until the
+// thunk is called, so hoisting it costs nothing and gives the prop one identity for the module's
+// life. Written in the markup it is a new function every render — see `function-built-in-the-markup`.
+const loadHeavyPanel = () => import("./HeavyPanel");
+const PANEL_PROPS = { note: "hello" };
+
+class Report extends Component {
+  loadFailed({ retry }: AsyncLoadFailure) {
+    return (
+      <p>
+        Could not load it. <button onclick={retry}>retry</button>
+      </p>
+    );
+  }
+
+  render() {
+    return (
+      <AsyncLoad
+        lazy={loadHeavyPanel}
+        namedExport="HeavyPanel"
+        loadedProps={PANEL_PROPS}
+        onLoading={<p>loading…</p>}
+        errorFallback={this.loadFailed}
+      />
+    );
+  }
+}
 ```
 
 ```demo:LazyPanel

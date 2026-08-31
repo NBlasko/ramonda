@@ -296,7 +296,7 @@ moment it happens — at the field initializer (`@state x = …`) or a later wri
 way to carry it: a function and a symbol are dropped silently, a bigint makes serialization throw.
 Either way the client would come alive with that field missing.
 
-```tsx
+```tsx expect-report
 @state onPick = () => {};   // ✗ a function — not serializable
 @state total = 42n;         // ✗ a bigint
 ```
@@ -1813,7 +1813,7 @@ Load the data outside the render, and let `render()` show whichever state the co
 }
 
 render() {
-  return this.rows.length === 0 ? <p>Loading…</p> : <ul>…</ul>;
+  return this.rows.length === 0 ? <p>Loading…</p> : <ul>{this.rows}</ul>;
 }
 ```
 

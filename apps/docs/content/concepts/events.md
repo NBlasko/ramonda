@@ -97,7 +97,7 @@ class Draft extends Component {
   }
 
   render() {
-    return <input onchange={this.onChange} />;
+    return <input aria-label="Draft" onchange={this.onChange} />;
   }
 }
 ```
@@ -253,9 +253,9 @@ handler on the element that emits the event:
 ```tsx
 render() {
   return (
-    <div onmouseenter={this.onEnter} onclick={this.onClick}>
+    <button onmouseenter={this.onEnter} onclick={this.onClick}>
       …
-    </div>
+    </button>
   );
 }
 ```
