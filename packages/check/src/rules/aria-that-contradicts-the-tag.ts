@@ -90,8 +90,6 @@ export const ariaThatContradictsTheTag = {
   },
 
   /**
-   * A `@Host` props bag configures a real element, and a contradiction written there is the same.
-   *
    * The order guard is taken for BOTH halves: a spread after either may replace it, and then the
    * two attributes this reports as disagreeing are not the two that render.
    */

@@ -29,6 +29,13 @@ export const CLIENT_ONLY_DECORATORS = new Map<string, string>([
   ["timeout", "`@timeout` is an effect, and effects never run on the server"],
   ["onWindow", "`@onWindow` is an effect, and effects never run on the server"],
   ["onDocument", "`@onDocument` is an effect, and effects never run on the server"],
+  /**
+   * `@onElement` is gone from the framework, and this entry stays.
+   *
+   * The checker reads SOURCE, and a codebase mid-migration still has the decorator written in it —
+   * which is exactly when a report is worth having. Removing this took two reports off
+   * `client-request.test.ts`, which is the fixture saying the same thing.
+   */
   ["onElement", "`@onElement` is an effect, and effects never run on the server"],
 ]);
 

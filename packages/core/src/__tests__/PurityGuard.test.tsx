@@ -103,7 +103,7 @@ describe("RMD021", () => {
 
     await getDOM<Row>(<Row />);
 
-    expect(reported()).toContain("while building a memoised handler");
+    expect(reported()).toContain("while building a memoised member");
     expect(reported()).toContain("Row.choose");
     // The builder is CALLED from the render, so without its own phase marker the
     // report would have named the render and pointed at the wrong fix.

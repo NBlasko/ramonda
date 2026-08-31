@@ -13,7 +13,7 @@ interface PendingMount {
 /**
  * Work that must not run until the DOM this commit builds is actually in place:
  * @mounted callbacks, the first run of a component's effects (which is what
- * attaches @onElement / @onWindow listeners), and the DEV hydration lint.
+ * attaches @onWindow / @onDocument listeners), and the DEV hydration lint.
  *
  * `buildComponent` used to call all three inline, at the end of building a
  * component — but the host element is inserted by the CALLER, after build

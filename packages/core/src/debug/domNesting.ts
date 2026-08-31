@@ -121,24 +121,19 @@ function damage(parent: string, child: string): string {
 /**
  * Checks one parent/child pair, at the moment the child is created.
  *
- * Called from the same place as `checkHostPlacement`, which already has both tags in hand. Reads
- * `nodeName` only — no layout, no attributes, no walk — so it costs a set lookup per element in a
- * development build and nothing at all in production.
+ * Reads `nodeName` only — no layout, no attributes, no walk — so it costs a set lookup per element
+ * in a development build and nothing at all in production.
  */
 export function checkNesting(parent: Node, child: Node): void {
   const parentTag = parent.nodeName;
   const childTag = child.nodeName;
 
-  // Only element nodes have a nesting rule, and a custom element (our own host included) has no
-  // parser rule at all beyond the ones RMD010 already covers.
+  // Only element nodes have a nesting rule.
   if (parent.nodeType !== 1 || child.nodeType !== 1) return;
 
   const rule = ONLY_INSIDE[childTag];
   if (rule) {
     if (rule.parents.includes(parentTag)) return;
-    // A host in between is the framework's own doing rather than the app's, and RMD010 owns that
-    // case with a better message — it can name the `@Host` to reach for.
-    if (parentTag === "RAMONDA-HOST") return;
 
     report(
       parentTag,
