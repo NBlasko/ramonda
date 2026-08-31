@@ -34,6 +34,7 @@ import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInHookProps } from "./fresh-object-in-hook-props";
 import { freshValueFromAWatchSelector } from "./fresh-value-from-a-watch-selector";
 import { freshObjectInProps } from "./fresh-object-in-props";
+import { objectAmongTheChildren } from "./object-among-the-children";
 import { propsWrittenByTheReceiver } from "./props-written-by-the-receiver";
 import { lazyImportsThatCollide } from "./lazy-imports-that-collide";
 import { functionBuiltInTheMarkup } from "./function-built-in-the-markup";
@@ -153,6 +154,10 @@ export {
   type FreshValueFromAWatchSelectorIssue,
 } from "./fresh-value-from-a-watch-selector";
 export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
+export {
+  objectAmongTheChildren,
+  type ObjectAmongTheChildrenIssue,
+} from "./object-among-the-children";
 export {
   propsWrittenByTheReceiver,
   type PropsWrittenByTheReceiverIssue,
@@ -348,6 +353,7 @@ export const ELEMENT_RULES = [
   linkWithoutADestination,
   freshObjectInProps,
   functionBuiltInTheMarkup,
+  objectAmongTheChildren,
   clickWithNoKeyboardPath,
   accessKey,
   attributeThatDoesNothing,
