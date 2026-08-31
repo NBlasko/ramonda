@@ -257,8 +257,7 @@ class Page extends Component {
 ```
 
 Both `Badge`es use a plain `this.use(ThemeConsumer)` and each reads its own scope, with nothing passed
-down. `Scope` returns `this.props.children`, so it adds no element of its own — it is there to own the
-provider hook and to say where the scope begins and ends.
+down.
 
 **Why it works is worth knowing**, because it is not obvious from the JSX. A context object is created
 from the component that **renders** a node, not from the one whose source contains it — so a child

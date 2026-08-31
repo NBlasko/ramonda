@@ -27,3 +27,9 @@ aliased.
 
 Two comments also described `<ramonda-host>`, which no longer exists anywhere in
 the source. `AsyncLoad` renders the loaded module and nothing around it.
+
+`list()` argued from the rule under a third spelling — "it does not bend the
+one-tag-one-element rule" — which a search for the headline sentence did not reach.
+The reason that survives is why a `<For>` TAG would still be wrong: a tag whose whole
+job is to stand in for N siblings and be nothing itself is a fragment with extra
+steps, and that is the thing Ramonda does not have.

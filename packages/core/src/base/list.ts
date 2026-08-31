@@ -91,12 +91,13 @@ export type ItemRender<T> = (item: T) => VNode;
  * shapes data takes, and it is a guess — which is why a key beats it, and why a
  * row with nothing to tell it apart is reported (RMD051).
  *
- * ## It does not bend the one-tag-one-element rule
+ * ## Why a function and not a `<For>` tag
  *
  * A function in an expression slot is not a tag. It is what the framework already
  * tells people to do when they need vnodes from a function — see RMD011, which
- * points at `{rows()}` for exactly this reason. A `<For>` TAG would be the
- * violation, because a tag producing N siblings is a fragment with extra steps.
+ * points at `{rows()}` for exactly this reason. A `<For>` TAG would be a fragment
+ * with extra steps: a tag whose whole job is to stand in for N siblings and be
+ * nothing itself, which is the thing Ramonda does not have.
  *
  * ## What it returns
  *

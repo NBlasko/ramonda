@@ -140,7 +140,26 @@ function documentation(homepage) {
 const SITE = "https://ramonda.dev";
 
 /**
- * The content file a homepage path resolves to, or `undefined` when nothing answers it.
+ * The path a homepage names on the docs site, or `undefined` when it does not name the docs site.
+ *
+ * The host has to be compared as a host. `https://ramonda.dev.example.com/query` starts with `SITE`
+ * and is a different origin entirely, so a `startsWith` here asks the wrong question — it cannot
+ * see where the host ends, and the rest of this script then treats whatever follows as a path.
+ * `new URL` is the thing that knows, and it normalises `..` out of the pathname on the way.
+ */
+function sitePath(homepage) {
+  let url;
+  try {
+    url = new URL(homepage);
+  } catch {
+    return undefined;
+  }
+  if (url.origin !== SITE) return undefined;
+  return url.pathname.replace(/\/$/, "");
+}
+
+/**
+ * The content file a site path resolves to, or `undefined` when nothing answers it.
  *
  * This is the half of the check that catches the fault that started all of this: a link that reads
  * correctly and goes nowhere. `@ramonda/server` was published pointing at a site that had no page
@@ -148,8 +167,7 @@ const SITE = "https://ramonda.dev";
  * `content/<path>/index.md` — the same two the docs build resolves — and the bare site root is
  * always answerable, which is core's case: its documentation is the whole site.
  */
-function docsPageFor(homepage) {
-  const path = homepage.slice(SITE.length).replace(/\/$/, "");
+function docsPageFor(path) {
   if (path === "") return "content/index.md";
   for (const candidate of [`content${path}.md`, `content${path}/index.md`]) {
     if (existsSync(join(repo, "apps/docs", candidate))) return candidate;
@@ -194,11 +212,12 @@ for (const { dir, json } of packages) {
     missing.push(`${dir} — ${json.name} is published with no README; its npm page would be empty`);
     continue;
   }
-  if (typeof json.homepage !== "string" || !json.homepage.startsWith(SITE)) {
+  const path = typeof json.homepage === "string" ? sitePath(json.homepage) : undefined;
+  if (path === undefined) {
     missing.push(`${dir} — no \`homepage\` on ramonda.dev, so its documentation link has no source`);
     continue;
   }
-  const page = docsPageFor(json.homepage);
+  const page = docsPageFor(path);
   if (page === undefined) {
     missing.push(`${dir} — \`homepage\` is ${json.homepage}, and no page in apps/docs/content answers that path`);
     continue;

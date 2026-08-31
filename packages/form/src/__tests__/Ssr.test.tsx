@@ -114,9 +114,15 @@ describe("on the server", () => {
      * Asserted as ZERO rather than as a threshold: a number would pin the serializer's format, which
      * is not this package's to promise, while "nothing on this page has moved, so nothing is
      * written" is a claim about behaviour.
+     *
+     * The blob rides in the component's opening COMMENT marker — `<!--c7 {"state":…}-->`, see
+     * `core/componentMarker.ts` — and a component with nothing to carry gets a bare `<!--c7-->` with
+     * no space after the id. So "carries a blob" is exactly "the marker has a payload", and counting
+     * those is what this asks. An earlier form of this test matched an attribute the server has not
+     * written for some time, which made it pass no matter what the page shipped.
      */
     const html = await renderToString(<Page />);
-    const blobs = html.match(/data-ramonda-state="[^"]*"/g) ?? [];
+    const blobs = html.match(/<!--c\d+ .*?-->/g) ?? [];
 
     expect(blobs).toHaveLength(0);
     console.log(`[form] SSR: ${blobs.length} blobs, ${html.length} bytes of markup`);
