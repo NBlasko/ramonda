@@ -79,6 +79,7 @@ const EXPECTED_TYPES = [
   "FreshObjectInHookPropsIssue",
   "FreshValueFromAWatchSelectorIssue",
   "FreshObjectInPropsIssue",
+  "PropsWrittenByTheReceiverIssue",
   "LazyImportsThatCollideIssue",
   "FunctionBuiltInTheMarkupIssue",
   "HeadTagsCollideIssue",

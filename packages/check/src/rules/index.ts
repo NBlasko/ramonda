@@ -34,6 +34,7 @@ import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInHookProps } from "./fresh-object-in-hook-props";
 import { freshValueFromAWatchSelector } from "./fresh-value-from-a-watch-selector";
 import { freshObjectInProps } from "./fresh-object-in-props";
+import { propsWrittenByTheReceiver } from "./props-written-by-the-receiver";
 import { lazyImportsThatCollide } from "./lazy-imports-that-collide";
 import { functionBuiltInTheMarkup } from "./function-built-in-the-markup";
 import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
@@ -153,6 +154,10 @@ export {
 } from "./fresh-value-from-a-watch-selector";
 export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
 export {
+  propsWrittenByTheReceiver,
+  type PropsWrittenByTheReceiverIssue,
+} from "./props-written-by-the-receiver";
+export {
   lazyImportsThatCollide,
   type LazyImportsThatCollideIssue,
 } from "./lazy-imports-that-collide";
@@ -261,6 +266,7 @@ export { rootsIn, treeFor } from "./tree";
  * and the whole arrangement quietly becomes a `Record<string, unknown[]>` that compiles.
  */
 export const CLASS_RULES = [
+  propsWrittenByTheReceiver,
   computeTakesNoArguments,
   asyncRender,
   stateWrittenWhileRendering,
