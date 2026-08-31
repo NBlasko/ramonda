@@ -162,7 +162,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unguarded-async-lifecycle` | an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure — also [`RMD059`](/reference/diagnostics) |
 | `context-consumed-above-its-provider` | a component consumes a context on a line above the Provider that publishes it, so the consumer reads an ancestor's value — also [`RMD057`](/reference/diagnostics) |
 | `client-only-request-read` | a `requestContext()` read is on a path that only runs in the browser, where the value it names is never available — also [`RMD025`](/reference/diagnostics) |
-| `fresh-object-in-hook-props` | a hook — a context Provider above all — is handed an object or array built inside its props callback, where the callback also reads something reactive, so the value is rebuilt and every consumer of that key wakes with contents that did not change |
+| `fresh-object-in-hook-props` | a hook — a context Provider above all — is handed an object or array built inside its props callback, where the callback also reads something reactive, so the value is rebuilt and every consumer of that key wakes with contents that did not change — also [`RMD022`](/reference/diagnostics) |
 | `unsplittable-import` | a dynamic import's path is neither a literal nor a template a bundler can read, so no chunk is emitted for it |
 | `unexposed-env-read` | `import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined` |
 | `row-reads-a-plain-field` | a `list()` row callback puts a field nothing can track into the markup, so a reused row keeps the old value |
@@ -171,8 +171,8 @@ rules**, so a rule cannot be added without appearing here.
 | `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics), [`RMD051`](/reference/diagnostics) |
 | `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |
 | `class-instead-of-classname` | an element carries `class` where Ramonda reads `className` — also [`RMD039`](/reference/diagnostics) |
-| `tag-needs-its-parent` | a tag is written outside the parent it requires — `<tr>` with no table above it, `<option>` with no select |
-| `parent-with-a-foreign-child` | a container whose children are fixed by the content model holds a tag that is not one of them |
+| `tag-needs-its-parent` | a tag is written outside the parent it requires — `<tr>` with no table above it, `<option>` with no select — also [`RMD028`](/reference/diagnostics) |
+| `parent-with-a-foreign-child` | a container whose children are fixed by the content model holds a tag that is not one of them — also [`RMD028`](/reference/diagnostics) |
 | `interactive-inside-interactive` | an interactive element is nested inside another of the same kind: a link in a link, a button in a button, a form in a form |
 | `unnamed-image` | an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, `aria-labelledby` or `title` |
 | `unknown-aria-attribute` | an `aria-*` attribute is not a name the ARIA specification has |

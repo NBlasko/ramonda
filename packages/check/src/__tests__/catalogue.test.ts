@@ -77,6 +77,11 @@ describe("the rule catalogue", () => {
       because:
         "`@persist`, which claims the blob whatever the project does, and `@state`, which only crosses under SSR",
     },
+    RMD028: {
+      rules: ["parent-with-a-foreign-child", "tag-needs-its-parent"],
+      because:
+        "the same misplacement read from either end — a container holding a child its content model forbids, and a tag written outside the parent it requires",
+    },
   };
 
   test("each runtime code is answered by exactly the rules written down here", () => {
