@@ -559,6 +559,28 @@ describe("hydration mismatch (RMD007)", () => {
     expect(captured.messages.join("\n")).not.toContain("#comment");
   });
 
+  /**
+   * The other node type a reader is shown, and it had the same wart.
+   *
+   * `nodeName` gives `#text`, so an element rendered where the server sent words was reported as
+   * "the server sent `<#text>`" — a node type where the page has content. `reportTextMismatch`
+   * already names text by what it says, and this now matches it.
+   */
+  test("a text node in the way is named by what it says, not by its node type", async () => {
+    class Page extends Component {
+      render() {
+        return <div>{SIDE === "server" ? "just text" : [<b>bold</b>]}</div>;
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    expect(captured.messages.join("\n")).toContain('rendered <b> but the server sent the text "just text"');
+    expect(captured.messages.join("\n")).not.toContain("#text");
+  });
+
   test("a dropped child that is itself a component does not confuse the block's end", async () => {
     // The leftover run holds a whole component's markers, so "the first `/c…` after the cursor" is
     // the NESTED one. Stopping there leaves the outer block's own marker in the page and puts the

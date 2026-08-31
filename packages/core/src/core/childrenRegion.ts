@@ -445,10 +445,12 @@ export class ChildrenRegion {
     const here = parent as unknown as ParentNode;
     if (this.close?.parentNode === here && this.open?.parentNode === here) return;
 
-    this.open ??= document.createComment(openAnchor(this.id));
-    this.close ??= document.createComment(closeAnchor(this.id));
-    parent.appendChild(this.open);
-    parent.appendChild(this.close);
+    /**
+     * Both anchors exist by the time this runs — `reconcile` calls `place` first, and `place` creates
+     * the pair when it has none. So there is nothing to mint here, only to put back.
+     */
+    parent.appendChild(this.open!);
+    parent.appendChild(this.close!);
     this.parent = parent;
     this.publish();
   }

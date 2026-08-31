@@ -92,6 +92,9 @@ export function reportTextMismatch(owner: BaseComponent | undefined, expected: s
  */
 export function describeFound(node: Node | null): string {
   if (node === null) return "nothing";
+  // Named by its content, the way `reportTextMismatch` names one. `nodeName` gives `#text`, which is
+  // the same wart as `#comment`: a reader looking at the served markup sees words, not a node type.
+  if (node.nodeType === 3) return `the text "${node.textContent ?? ""}"`;
   if (node.nodeType !== 8) return `<${node.nodeName.toLowerCase()}>`;
   if (isComponentClose(node)) return "nothing";
   if (isComponentOpen(node)) return "a component";

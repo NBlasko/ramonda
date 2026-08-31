@@ -21,3 +21,5 @@ places that report a structure mismatch go through it.
 
 Two tests come with it, both covering the direction that had none: a component whose server block is
 SHORTER than its client render, and one the server rendered empty and the client fills in.
+
+A text node in the way is named the same way: by what it says, not as `<#text>`.
