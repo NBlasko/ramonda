@@ -51,6 +51,7 @@ describe("a function built in the markup", () => {
       lineOf("a function expression"),
       lineOf("{...rest} onclick={() => this.save()}"),
       lineOf("the verbatim spelling"),
+      lineOf("a function in a non-event attribute"),
       lineOf('label="a component prop"'),
       lineOf("onclick={() => this.pick(row)}"),
     ]);
@@ -76,6 +77,17 @@ describe("a function built in the markup", () => {
     const byOwner = new Map(found().map((issue) => [issue.line, issue.on]));
     expect(byOwner.get(lineOf("written in place"))).toBe("element");
     expect(byOwner.get(lineOf('label="a component prop"'))).toBe("component");
+  });
+
+  /**
+   * The report says which of FOUR things the fresh identity costs, and the fourth had no plant
+   * until this file was reviewed: a function in a non-event attribute on a host element has no
+   * listener to churn, so "the listener is removed and re-added" would be inventing one.
+   */
+  test("a host element with no event to name says what actually happens", () => {
+    const issue = found().find((one) => one.line === lineOf("a function in a non-event attribute"));
+    expect(issue?.on).toBe("element");
+    expect(issue?.event).toBeUndefined();
   });
 
   /** Both spellings of an event name are the framework's own, and both are handlers. */
@@ -111,6 +123,6 @@ describe("a function built in the markup", () => {
       expect(lines).not.toContain(lineOf(label));
     }
     // The negative assertions above cannot go stale unnoticed while this holds the total.
-    expect(lines).toHaveLength(11);
+    expect(lines).toHaveLength(12);
   });
 });

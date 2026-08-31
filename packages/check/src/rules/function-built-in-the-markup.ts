@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { positionOf } from "../syntax";
-import { openingOf } from "./element";
+import { NOT_PASSED_ON, insideAList, openingOf } from "./element";
 import { eventTypeOf } from "./events";
 import { builtFunctionIn, shorten } from "./follow-value";
 import { stablePropsOf } from "./fresh-object-in-props";
@@ -116,37 +116,6 @@ export interface FunctionBuiltInTheMarkupIssue {
   file: string;
   line: number;
   column: number;
-}
-
-/** Calls whose callback runs once per item, so anything built inside it is built per item. */
-const PER_ITEM: ReadonlySet<string> = new Set(["map", "flatMap", "list"]);
-
-/** Attributes the framework consumes itself, so nothing is attached and nothing is handed on. */
-const NOT_PASSED_ON: ReadonlySet<string> = new Set(["key", "ref"]);
-
-/**
- * Whether this sits inside a callback that runs once per item.
- *
- * Read for the REPORT rather than for the finding: the fault is the same either way, but a handler
- * that closes over the row cannot be lifted out of the render, so the advice that fits a single
- * element is the wrong advice here.
- */
-function insideAList(node: ts.Node): boolean {
-  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
-    const here = at;
-    if ((ts.isArrowFunction(here) || ts.isFunctionExpression(here)) && ts.isCallExpression(here.parent)) {
-      const callee = here.parent.expression;
-      const named = ts.isIdentifier(callee)
-        ? callee.text
-        : ts.isPropertyAccessExpression(callee)
-          ? callee.name.text
-          : "";
-      if (PER_ITEM.has(named) && here.parent.arguments.some((argument) => argument === here)) return true;
-    }
-    // A method body is as far as this needs to look: a callback is written inside the render.
-    if (ts.isMethodDeclaration(here) || ts.isSourceFile(here)) return false;
-  }
-  return false;
 }
 
 /**

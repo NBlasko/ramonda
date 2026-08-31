@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { coreDecoratorName } from "./core-import";
 import { positionOf } from "../syntax";
-import { openingOf } from "./element";
+import { NOT_PASSED_ON, insideAList, openingOf } from "./element";
 import { freshnessOf, shorten } from "./follow-value";
 import type { ElementRule, ElementContext } from "./rule";
 
@@ -122,37 +122,6 @@ export interface FreshObjectInPropsIssue {
   file: string;
   line: number;
   column: number;
-}
-
-/** Calls whose callback runs once per item, so anything built inside it is built per item. */
-const PER_ITEM: ReadonlySet<string> = new Set(["map", "flatMap", "list"]);
-
-/** Props the framework consumes itself, so nothing is handed on and nothing is compared. */
-const NOT_PASSED_ON: ReadonlySet<string> = new Set(["key", "ref"]);
-
-/**
- * Whether this sits inside a callback that runs once per item.
- *
- * Read for the REPORT rather than for the finding: the fault is the same either way, but a value
- * that depends on the row cannot be lifted out of the render, so the advice that fits a single
- * element is the wrong advice here.
- */
-function insideAList(node: ts.Node): boolean {
-  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
-    const here = at;
-    if ((ts.isArrowFunction(here) || ts.isFunctionExpression(here)) && ts.isCallExpression(here.parent)) {
-      const callee = here.parent.expression;
-      const named = ts.isIdentifier(callee)
-        ? callee.text
-        : ts.isPropertyAccessExpression(callee)
-          ? callee.name.text
-          : "";
-      if (PER_ITEM.has(named) && here.parent.arguments.some((argument) => argument === here)) return true;
-    }
-    // A method body is as far as this needs to look: a callback is written inside the render.
-    if (ts.isMethodDeclaration(here) || ts.isSourceFile(here)) return false;
-  }
-  return false;
 }
 
 /**

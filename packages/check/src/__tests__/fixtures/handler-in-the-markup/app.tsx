@@ -62,6 +62,7 @@ class Panel extends Component<{ onPick?: unknown }> {
           after the last spread
         </button>
         <x-thing on:my-event={() => this.save()}>the verbatim spelling</x-thing>
+        <x-thing handler={() => this.save()}>a function in a non-event attribute</x-thing>
         <Row onPick={() => this.save()} label="a component prop" />
         {list(this.rows, (row) => (
           <button key={row} onclick={() => this.pick(row)}>
