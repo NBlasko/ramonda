@@ -23,12 +23,17 @@ export interface AsyncLoadProps {
   /**
    * Rendered when the load fails. Give a function to get a `retry` handler:
    *
-   *   errorFallback: ({ error, retry }) => (
-   *     <div>Failed. <button onClick={retry}>Try again</button></div>
-   *   )
+   *   loadFailed({ error, retry }: AsyncLoadFailure) {
+   *     return <div>Failed. <button onclick={retry}>Try again</button></div>;
+   *   }
    *
-   * Shaped like `ErrorBoundary`'s `fallback` on purpose — one shape to learn
-   * for the same job. A plain node still works when there is nothing to offer.
+   *   <AsyncLoad errorFallback={this.loadFailed} … />
+   *
+   * A bound METHOD rather than an arrow in the markup, for the same reason as
+   * `lazy`: written inline it is a new function every render, and `RMD020`
+   * reports it. Shaped like `ErrorBoundary`'s `fallback` on purpose — one shape
+   * to learn for the same job. A plain node still works when there is nothing
+   * to offer, and a node is already stable.
    */
   errorFallback: RamondaNode | ((failure: AsyncLoadFailure) => RamondaNode);
   onLoading: RamondaNode;
@@ -201,13 +206,30 @@ type LoadedComponent = ((loadedProps?: unknown) => RamondaNode) | undefined;
  * arrives and `errorFallback` if it never does.
  *
  * ```tsx
+ * // Beside the component, not in the render: an `import()` inside a thunk does
+ * // not run until the thunk is called, so hoisting it costs nothing and gives
+ * // the prop one identity for the life of the module.
+ * const loadChart = () => import("./HeavyChart");
+ *
  * <AsyncLoad
- *   lazy={() => import("./HeavyChart")}
+ *   lazy={loadChart}
  *   onLoading={<p>Loading…</p>}
  *   errorFallback={<p>Could not load the chart.</p>}
  *   loadedProps={{ points }}
  * />
  * ```
+ *
+ * **Write `lazy` where it is not rebuilt.** A thunk written in the markup is a
+ * new function every render, so this component can never compare its props
+ * equal and re-renders whenever its parent does — `RMD020` reports it, and so
+ * does `ramonda-check`'s `function-built-in-the-markup`. A module constant is
+ * the usual answer, and a table of them is the answer when the module is chosen
+ * at runtime: `lazy={pageLoaders[path]}`.
+ *
+ * The module CACHE tolerates a rebuilt `lazy` — the key is derived from the
+ * thunk's source rather than its identity, so nothing loads twice — and that is
+ * a defence against the mistake, not a licence for it. What it cannot save you
+ * is the render.
  *
  * An ordinary class component. Once the module has loaded it renders that
  * module and nothing around it, so nothing of this tag survives in the DOM. The
