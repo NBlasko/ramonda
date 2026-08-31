@@ -2,6 +2,7 @@ import { diagnose } from "./diagnostics";
 import type { BaseComponent } from "../types/vdom";
 import { BOOLEAN_ATTRIBUTES } from "../helpers/constants";
 import { isInvisibleOnScreen } from "../core/Attribute";
+import { isComponentClose, isComponentOpen } from "../core/componentMarker";
 
 /**
  * DEV-only reporting for server/client render divergence (RMD007).
@@ -77,9 +78,33 @@ export function reportTextMismatch(owner: BaseComponent | undefined, expected: s
 }
 
 /**
+ * What the walk found where a node was expected, said the way a reader can act on it.
+ *
+ * The server's output holds comments that no author wrote: the pair around every component's run of
+ * nodes. Named by `nodeName` they came out as `<#comment>` — so a component rendering one node more
+ * than the server did was told "the server sent `<#comment>`", which points at framework bookkeeping
+ * and not at the divergence. There is nothing to go and look at.
+ *
+ * A CLOSING marker is the honest "nothing": the server's run for this component ended there, and one
+ * more node is what the render produced beyond it. An OPENING one is a component the server wrote
+ * where this render has something else — the marker carries an id rather than a class name, so the
+ * name is not ours to give.
+ */
+export function describeFound(node: Node | null): string {
+  if (node === null) return "nothing";
+  // Named by its content, the way `reportTextMismatch` names one. `nodeName` gives `#text`, which is
+  // the same wart as `#comment`: a reader looking at the served markup sees words, not a node type.
+  if (node.nodeType === 3) return `the text "${node.textContent ?? ""}"`;
+  if (node.nodeType !== 8) return `<${node.nodeName.toLowerCase()}>`;
+  if (isComponentClose(node)) return "nothing";
+  if (isComponentOpen(node)) return "a component";
+  return "a comment";
+}
+
+/**
  * `expected` and `found` are already-formatted for display (`<b>`,
  * `the text "hi"`, `nothing`) — a node mismatch and a missing text node read
- * very differently, so the caller decides the wording.
+ * very differently, so the caller decides the wording, through `describeFound`.
  */
 export function reportStructureMismatch(owner: BaseComponent | undefined, expected: string, found: string): void {
   const name = ownerName(owner);

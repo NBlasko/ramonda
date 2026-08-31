@@ -179,6 +179,80 @@ describe("a component in a portal", () => {
     }
   });
 
+  /**
+   * The two cases above, at the same time — and it is the combination that is dangerous.
+   *
+   * "An empty one filling in" uses a bare target, which has no record of its own, so the position
+   * search skips the record branch entirely and reaches the block walk however it is written.
+   * "Found once when the target keeps a record" never empties the portalled component, so it never
+   * asks the position question at all. Neither one can see whether the record branch tells its three
+   * answers apart, and a plant that folded "not in this record" into "nothing follows it" passed all
+   * 1416 tests in this package.
+   *
+   * Here the target holds BOTH a record and a block, and the portalled component owns nothing until
+   * it fills in. The record branch is asked first, the region is genuinely not in that record, and
+   * the only correct answer is "not here" — which sends the search on to the block. Answered `null`
+   * instead, it reads as the end of the target, and the node escapes its own anchors: past `#body`,
+   * past the closing comment, where `dispose()` no longer takes it away.
+   */
+  test("an empty one filling in, when the target ALSO keeps a record of its own", async () => {
+    class Late extends Component {
+      @state shown = false;
+      render() {
+        return this.shown ? <b id="late">late</b> : null;
+      }
+    }
+    class Own extends Component {
+      render() {
+        return <em id="own">own</em>;
+      }
+    }
+
+    const host = document.createElement("main");
+    document.body.appendChild(host);
+
+    class Page extends Component {
+      portal = this.use(Portal, () => ({ children: <Late />, target: host }));
+      render() {
+        return (
+          <div id="body">
+            <Own />
+          </div>
+        );
+      }
+    }
+
+    try {
+      bootstrap(<Page />, host);
+      await Promise.resolve();
+
+      const late = componentsIn(host).find((c) => c.constructor.name === "Late") as unknown as {
+        shown: boolean;
+      };
+      expect(late).toBeDefined();
+
+      late.shown = true;
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const nodes = [...host.childNodes];
+      const open = nodes.findIndex((n) => n.nodeType === 8 && /^r\d+$/.test((n as Comment).data));
+      const close = nodes.findIndex((n) => n.nodeType === 8 && /^\/r\d+$/.test((n as Comment).data));
+      const at = nodes.findIndex((n) => (n as Element).id === "late");
+
+      expect(open).toBeGreaterThanOrEqual(0);
+      expect(close).toBeGreaterThan(open);
+      expect(at).toBeGreaterThan(open);
+      expect(at).toBeLessThan(close);
+
+      // And the block still owns it, which is what being inside the anchors is FOR.
+      unmount(host);
+      expect(host.querySelector("#late")).toBeNull();
+    } finally {
+      host.remove();
+    }
+  });
+
   test("the server marks it exactly once, from whichever pass reaches it first", async () => {
     class Badge extends Component {
       @state count = 0;

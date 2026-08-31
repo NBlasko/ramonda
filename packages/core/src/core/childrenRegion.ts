@@ -244,6 +244,21 @@ export class ChildrenRegion {
     // in the DOM make correctly-placed ones look misplaced and cause moves.
     unmountChildrenNodes(unclaimed, false);
 
+    /**
+     * The anchors are re-checked here, because the unmount above runs USER CODE.
+     *
+     * The reorder below inserts in front of `close`, and a target is SHARED — so the `@destroyed` of
+     * a child going out may take that anchor away with everything else it tidies. Measured on a
+     * portalled child whose `@destroyed` cleared the element it had been writing into:
+     * `NotFoundError: The child can not be found in the parent`, thrown out of the reconcile, with
+     * the children this pass produced never reaching the page.
+     *
+     * The render path has the same window and answers it by searching for the anchor again. That is
+     * not available here: these anchors are the block's own structure rather than a neighbour, so
+     * when they are gone there is nothing to find. They are put back instead.
+     */
+    this.reanchor(parent);
+
     reorderChildren(parent, this.order, this.close!, before);
   }
 
@@ -410,6 +425,34 @@ export class ChildrenRegion {
     parent.appendChild(this.close);
     this.parent = parent;
     reparentRegions(this.record, parent);
+  }
+
+  /**
+   * Puts the block's boundary back after user code removed it.
+   *
+   * BOTH anchors are re-appended, not only the missing one. A block spans from its opening anchor to
+   * its closing one, so keeping a surviving `open` where it stands and appending a fresh `close` at
+   * the end would stretch this block across every node in between — nodes that belong to the shell
+   * or to another region in the same target, which the next reconcile would then claim as its own.
+   *
+   * The end of the parent is where they go, because that is where a block that has never been placed
+   * goes: its position was destroyed by user code and there is nothing left that records where it
+   * used to be. A block whose anchors are intact keeps its place — this runs only when they are not.
+   */
+  private reanchor(parent: ChildNode): void {
+    // `parentNode` is a `ParentNode`, which does not overlap `ChildNode` for the compiler — the same
+    // cast the render path's anchor check makes.
+    const here = parent as unknown as ParentNode;
+    if (this.close?.parentNode === here && this.open?.parentNode === here) return;
+
+    /**
+     * Both anchors exist by the time this runs — `reconcile` calls `place` first, and `place` creates
+     * the pair when it has none. So there is nothing to mint here, only to put back.
+     */
+    parent.appendChild(this.open!);
+    parent.appendChild(this.close!);
+    this.parent = parent;
+    this.publish();
   }
 
   /**
