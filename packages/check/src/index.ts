@@ -36,6 +36,7 @@ export type {
   FreshObjectInHookPropsIssue,
   FreshValueFromAWatchSelectorIssue,
   FreshObjectInPropsIssue,
+  FunctionUsedAsATagIssue,
   ObjectAmongTheChildrenIssue,
   PropsWrittenByTheReceiverIssue,
   LazyImportsThatCollideIssue,

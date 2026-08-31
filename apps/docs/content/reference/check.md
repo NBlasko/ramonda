@@ -141,7 +141,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 74 of them.
+**Warnings.** These print and the run still passes. 75 of them.
 
 | rule | reported when |
 |---|---|
@@ -206,6 +206,7 @@ rules**, so a rule cannot be added without appearing here.
 | `fresh-object-in-props` | a component is handed an object or array built during the render — written in the attribute, on one side of a ternary or a `??`, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match |
 | `function-built-in-the-markup` | a function literal is written into a JSX attribute — in the attribute, on one side of a ternary or a `??`, or in a local one line up — so its identity is fresh every render, and the listener is removed and re-added or the child can never compare its prop equal — also [`RMD020`](/reference/diagnostics) |
 | `object-among-the-children` | a plain object is written among an element's children, where the runtime drops it and the page renders without it — also [`RMD037`](/reference/diagnostics) |
+| `function-used-as-a-tag` | a plain function is written in tag position, where it names nothing the framework can construct — and the compiler only refuses the shapes that do not return exactly one element — also [`RMD011`](/reference/diagnostics) |
 | `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
 | `access-key` | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |
 | `attribute-that-does-nothing` | an attribute is written whose name reaches the DOM verbatim and that nothing reads |
