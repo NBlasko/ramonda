@@ -664,4 +664,139 @@ describe("a self-render whose own teardown moves the ground under it", () => {
     // No throw, and the markup this render asked for is in the page, in order.
     expect(app.container.querySelector("#wrap")!.innerHTML).toBe('<b id="mark">m</b><i id="other">o</i>');
   });
+
+  /**
+   * The same window, in the other walk that has one — and it was open.
+   *
+   * The fix above is a render's: it reads its insertion anchor before unmounting, and searches again
+   * when a `@destroyed` takes that neighbour away. `ChildrenRegion.reconcile` has the identical
+   * shape — unmount the children this pass dropped, then insert the new ones in front of the block's
+   * closing anchor — and a `Portal`'s target is SHARED, so the `@destroyed` of a child on its way out
+   * can reach it.
+   *
+   * Measured before the fix, on a child tidying the element it had been writing into:
+   * `NotFoundError: The child can not be found in the parent`, thrown out of the reconcile, with this
+   * pass's children never reaching the page and the target left empty.
+   *
+   * The repair differs from the render's, because the anchors are the block's OWN structure rather
+   * than a neighbour: there is nothing to search for once they are gone, so they are put back. Both
+   * of them, at the end — a surviving `open` left where it stands with a fresh `close` appended would
+   * stretch this block over every node in between.
+   */
+  test("a @destroyed that clears a shared portal target does not take the block with it", async () => {
+    const target = document.createElement("aside");
+    document.body.appendChild(target);
+
+    class Rude extends Component {
+      @destroyed down() {
+        // What an app plausibly does on the way out: tidy the element it was writing into. It takes
+        // this block's own closing anchor with it, and the anchor is what the reorder inserts before.
+        target.innerHTML = "";
+      }
+      render() {
+        return <b id="rude">rude</b>;
+      }
+    }
+
+    class Page extends Component {
+      @state phase = 0;
+      portal = this.use(Portal, (self: Page) => ({
+        children:
+          self.phase === 0 ? [<Rude />, <u id="keep">keep</u>] : [<u id="keep">keep</u>, <i id="fresh">fresh</i>],
+        target,
+      }));
+      render() {
+        return <div id="rude-page">page</div>;
+      }
+    }
+
+    try {
+      const { instance, settle } = await getDOM<Page>(<Page />);
+      expect(target.querySelector("#rude")).not.toBeNull();
+
+      instance.phase = 1;
+      await settle();
+
+      // The children this pass asked for, in order, and inside the block's own anchors — which is
+      // what keeps a shared target usable by whoever else writes into it.
+      const nodes = [...target.childNodes];
+      const open = nodes.findIndex((n) => n.nodeType === 8);
+      const close = nodes.findLastIndex((n) => n.nodeType === 8);
+      const keep = nodes.findIndex((n) => (n as Element).id === "keep");
+      const fresh = nodes.findIndex((n) => (n as Element).id === "fresh");
+
+      expect(target.querySelector("#rude")).toBeNull();
+      expect(keep).toBeGreaterThan(open);
+      expect(fresh).toBeGreaterThan(keep);
+      expect(close).toBeGreaterThan(fresh);
+    } finally {
+      target.remove();
+    }
+  });
+
+  /**
+   * Only the CLOSING anchor goes, and something else is already sharing the target.
+   *
+   * This is the half that says why BOTH anchors are re-appended rather than only the missing one.
+   * Leaving a surviving `open` where it stands and putting a fresh `close` at the end stretches the
+   * block over everything in between — here, a node the shell owns. Nothing looks wrong on the page
+   * at that moment; the block simply now claims a node that is not its own, and the next reconcile
+   * is what acts on the claim.
+   */
+  test("a block whose closing anchor alone was removed does not swallow the target's other content", async () => {
+    const target = document.createElement("aside");
+    document.body.appendChild(target);
+
+    class Rude extends Component {
+      @destroyed down() {
+        // An app tidying comments it does not recognise, and reaching only the last one.
+        const comments = [...target.childNodes].filter((node) => node.nodeType === 8);
+        comments[comments.length - 1]?.remove();
+      }
+      render() {
+        return <b id="rude">rude</b>;
+      }
+    }
+
+    class Page extends Component {
+      @state phase = 0;
+      portal = this.use(Portal, (self: Page) => ({
+        children: self.phase === 0 ? [<Rude />, <u id="keep">keep</u>] : [<u id="keep">keep</u>],
+        target,
+      }));
+      render() {
+        return <div id="rude-page-2">page</div>;
+      }
+    }
+
+    try {
+      const { instance, settle } = await getDOM<Page>(<Page />);
+      // Something else in the shared target, sitting after the block.
+      const foreign = document.createElement("hr");
+      foreign.id = "foreign";
+      target.appendChild(foreign);
+
+      instance.phase = 1;
+      await settle();
+
+      const nodes = [...target.childNodes];
+      const open = nodes.findIndex((node) => node.nodeType === 8);
+      const close = nodes.findLastIndex((node) => node.nodeType === 8);
+      const at = nodes.indexOf(foreign);
+
+      /**
+       * Still there, and OUTSIDE the pair — before it or after it, either is right.
+       *
+       * WHICH side is not the claim. A block that lost an anchor is re-placed at the end of the
+       * target, so this node ends up in front of it; had both anchors survived, the block would have
+       * kept its place and this node would still be behind. What must not happen is BETWEEN, which is
+       * the block claiming a node that is not its own — and the next reconcile is what would act on
+       * the claim, tearing it down with children it never rendered.
+       */
+      expect(at).toBeGreaterThanOrEqual(0);
+      expect(at < open || at > close).toBe(true);
+    } finally {
+      target.remove();
+    }
+  });
 });
