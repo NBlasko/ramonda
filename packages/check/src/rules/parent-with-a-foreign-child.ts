@@ -107,6 +107,7 @@ export const parentWithAForeignChild = {
   report: {
     severity: "warn",
     reportedWhen: "a container whose children are fixed by the content model holds a tag that is not one of them",
+    alsoReportedAs: "RMD028",
     heading: (found) => `${found.length} container(s) holding a tag that does not belong in them:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

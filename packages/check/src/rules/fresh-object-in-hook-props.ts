@@ -178,6 +178,7 @@ export const freshObjectInHookProps = {
     severity: "warn",
     reportedWhen:
       "a hook — a context Provider above all — is handed an object or array built inside its props callback, where the callback also reads something reactive, so the value is rebuilt and every consumer of that key wakes with contents that did not change",
+    alsoReportedAs: "RMD022",
     heading: (found) => `${found.length} hook prop(s) rebuilt when the callback runs again:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

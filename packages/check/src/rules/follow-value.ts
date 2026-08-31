@@ -356,8 +356,14 @@ function functionOf(
   return undefined;
 }
 
-/** Parentheses and the type-only wrappers around an expression, none of which change the value. */
-function unwrap(expression: ts.Expression): ts.Expression {
+/**
+ * Parentheses and the type-only wrappers around an expression, none of which change the value.
+ *
+ * Exported rather than copied: `props-written-by-the-receiver` needs the same peeling to see that
+ * `(this.props as { n: number }).n++` writes props, and a second copy of this walk is the shape
+ * this package has been bitten by — one gets a wrapper added and the other does not.
+ */
+export function unwrap(expression: ts.Expression): ts.Expression {
   let at = expression;
   while (
     ts.isParenthesizedExpression(at) ||

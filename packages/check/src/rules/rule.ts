@@ -420,9 +420,35 @@ export interface FormControl extends Where {
  *
  * Built once, before any rule in this family runs.
  */
+/**
+ * A `lazy` handed to core's `AsyncLoad`, and the module it names.
+ *
+ * Collected across the whole project because the fault needs TWO of them: the cache key is derived
+ * from the function's SOURCE, so two functions written identically in different places share one
+ * entry. One site alone can never be wrong.
+ */
+export interface LazySite {
+  /** The function's source, which is exactly what the runtime keys the cache on. */
+  text: string;
+  /**
+   * The module the dynamic import names, resolved against the file it is written in.
+   *
+   * That resolution is the whole rule: `() => import("./Panel")` is one string and two modules when
+   * it is written in two directories. `undefined` when the specifier cannot be read, which silences
+   * the site — an import built at runtime is not something this can name.
+   */
+  module: string | undefined;
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface ProjectContext {
   /** Every id written out in full, anywhere in the project. */
   ids: ReadonlySet<string>;
+
+  /** Every `lazy` on an `AsyncLoad` this pass could read — see {@link LazySite}. */
+  lazySites: readonly LazySite[];
 
   /**
    * The literal HEAD of every id built from a template — `row-` from `` id={`row-${i}`} ``.

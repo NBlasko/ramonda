@@ -23,6 +23,13 @@ declare global {
      * `JSX.Element` — which is exactly the rule Ramonda wants, and it is what
      * rejects a function returning an array of vnodes (TS2786).
      *
+     * **It does NOT reject a function returning ONE vnode**, and that is worth
+     * knowing rather than assuming: measured on all three shapes, `() => <p/>`
+     * as a tag compiles, while an array and a non-node are both TS2786. So the
+     * default rule covers two thirds of this and the remaining third — a
+     * function component written the ordinary way — is left to RMD011 and to
+     * `@ramonda/check`. Two pages said the compiler refused all of it.
+     *
      * That rejection is a feature. A function in the tag position would be a
      * tag that is not an element, and a JSX tree you can no longer read. If you
      * need vnodes from a function, call it as an expression — `{rows()}` —

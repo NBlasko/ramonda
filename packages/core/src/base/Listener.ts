@@ -15,6 +15,27 @@ export interface ListenerProps {
    * than attaching to nothing.
    */
   on: "window" | "document" | (() => EventTarget | null);
+  /*
+   * ## The `as const` this needs, and two ways round it that were MEASURED and do not ship
+   *
+   * `this.use(Listener, () => ({ on: "document", … }))` does not compile: an object literal widens
+   * `"document"` to `string`, and `Q` takes a candidate from the factory's return as well as from
+   * the hook. So the call site writes `on: "document" as const`. Both ways out were tried on
+   * TypeScript 5.9.3, and neither is a matter of taste:
+   *
+   * - **`PropsFactory<NoInfer<Q>, S>`**, which is the textbook fix for a type parameter inferred
+   *   from two places. It CRASHES the compiler — `Debug Failure. No error for 3 or fewer overload
+   *   signatures`, thrown from `resolveCall`. Not "does not help": tsc does not finish.
+   * - **A `const` type parameter** (`use<T, const Q, S>`). This works, and the example compiles
+   *   with no `as const` — but a `const` parameter keeps every inferred array as a READONLY tuple,
+   *   and hook props take arrays. Measured on the whole repo: six call sites in core's own tests
+   *   stop compiling, `children: [<Wrap />, <u />]` among them, because a readonly tuple is not a
+   *   `RamondaNode[]`. Buying one keyword back costs the array shape of every hook.
+   *
+   * And it is ONE prop, not a pattern: `on` is the only hook prop in the framework typed as a
+   * string-literal union, so the `as const` is a single line in a single API rather than a wart the
+   * reader meets repeatedly. That is why it stands.
+   */
 
   /** The event name, as the DOM spells it — `keydown`, not `onKeyDown`. */
   type: string;

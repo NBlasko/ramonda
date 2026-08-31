@@ -27,4 +27,7 @@ declare global {
     theme: string;
     accent: string;
   }
+
+  /** A factory the reader wrote — the lazy examples call it to show what is built where. */
+  function make(...args: unknown[]): any;
 }

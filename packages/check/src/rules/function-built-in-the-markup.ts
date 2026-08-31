@@ -4,7 +4,7 @@ import { NOT_PASSED_ON, insideAList, openingOf } from "./element";
 import { eventTypeOf } from "./events";
 import { builtFunctionIn, shorten } from "./follow-value";
 import { stablePropsOf } from "./fresh-object-in-props";
-import type { ElementContext, ElementRule } from "./rule";
+import type { ElementRule } from "./rule";
 
 /**
  * A function literal written straight into a JSX attribute.

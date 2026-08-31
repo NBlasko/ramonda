@@ -1,5 +1,4 @@
 import ts from "typescript";
-import { coreDecoratorName } from "./core-import";
 import { memberName } from "../syntax";
 import type { Resolver } from "./rule";
 

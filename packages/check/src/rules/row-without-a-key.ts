@@ -1,4 +1,3 @@
-import ts from "typescript";
 import { positionOf } from "../syntax";
 import { openingOf } from "./element";
 import { rowCallbackFor } from "./row-callback";

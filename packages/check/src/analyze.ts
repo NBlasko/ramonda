@@ -4,8 +4,7 @@ import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 import { hookNamed, isThisUse, positionOf } from "./syntax";
-import { coreDecoratorName, coreExportName } from "./rules/core-import";
-import { stringAttr } from "./rules/element";
+import { coreExportName } from "./rules/core-import";
 import type { Resolver, Silencer } from "./rules/rule";
 import {
   activate,
@@ -23,57 +22,7 @@ import {
   rootsIn,
   TREE_RULES,
 } from "./rules";
-import type {
-  AccessKeyIssue,
-  AriaHiddenOnFocusableIssue,
-  AriaValueIssue,
-  AriaWithNoSubjectIssue,
-  ArrowFieldIssue,
-  AsyncRenderIssue,
-  BrowserUrlIssue,
-  ClassInsteadOfClassNameIssue,
-  ClickWithNoKeyboardPathIssue,
-  ClientOnlyRequestReadIssue,
-  ClockReadWhileRenderingIssue,
-  CachedReadOfAPlainFieldIssue,
-  ContextConsumedAboveItsProviderIssue,
-  ControlWithNoLabelIssue,
-  DomWriteIssue,
-  DuplicateDecoratorIssue,
-  DuplicateKeyAmongSiblingsIssue,
-  DuplicateIdIssue,
-  EmptyHeadingOrLinkIssue,
-  Findings,
-  HeadingSkipsALevelIssue,
-  FragmentLinkToNowhereIssue,
-  FreshObjectInPropsIssue,
-  HeadTagsCollideIssue,
-  IndexAsKeyIssue,
-  InteractiveInsideInteractiveIssue,
-  LateRequestReadIssue,
-  LinkWithoutADestinationIssue,
-  MediaWithNoCaptionsIssue,
-  NamedOnlyByAPlaceholderIssue,
-  OneProviderPerComponentIssue,
-  PersistOfALossyValueIssue,
-  PositiveTabIndexIssue,
-  ReferenceToAnIdThatIsNotThereIssue,
-  RoleMissingRequiredAriaIssue,
-  RoleTakesNoNameIssue,
-  RowWithoutAKeyIssue,
-  ServerEnvInSharedCodeIssue,
-  StateWrittenWhileRenderingIssue,
-  TagNeedsItsParentIssue,
-  UnguardedAsyncLifecycleIssue,
-  UnknownAriaAttributeIssue,
-  UnknownRoleIssue,
-  UnnamedFrameIssue,
-  UnnamedImageIssue,
-  UnexposedEnvReadIssue,
-  UnsplittableImportIssue,
-  UnwatchedFieldIssue,
-  WatchOfAPropThatIsNotThereIssue,
-} from "./rules";
+import type { Findings } from "./rules";
 
 /**
  * The per-class rules, re-exported so that moving them behind `./rules` changed no import anywhere
@@ -497,6 +446,34 @@ const NOT_A_SLOT = new Set([
   "EnhancedElement",
   "ListNode",
 ]);
+
+/**
+ * The same declaration, emitted once.
+ *
+ * A node can reach the list down more than one path — `@ramonda/router`'s `Link` arrives both as a
+ * class this project compiles and as a node its own fragment declares — and the two are different
+ * OBJECTS, so the identity check that skips spliced nodes does not catch them. Measured on this
+ * repository's documentation app: 168 nodes of which 166 are distinct, `Link` and `Navigator`
+ * twice each, byte for byte identical.
+ *
+ * It matters beyond a tidy file. `--diff` compares graphs BY ID, so one of the pair is invisible to
+ * it; anything that reads the graph into a map by id silently keeps one and drops the other, which
+ * is how this was found at all — a viewer drew 166 boxes and reported 168.
+ *
+ * Keyed by id AND position, which is what makes this safe: two nodes that genuinely COLLIDE are two
+ * different declarations and have different positions, so they both survive. That case is
+ * deliberate — the graph reports it — and deduplicating by id alone would delete the very node the
+ * report is about.
+ */
+function oneEach(nodes: GraphNode[]): GraphNode[] {
+  const seen = new Set<string>();
+  return nodes.filter((node) => {
+    const key = `${node.id}\u0000${node.at}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const { program, notes } = createProgram(tsconfigPath);
@@ -3217,7 +3194,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       package: home ? { name: home.name, version: packageOf(home.root).version } : packageOf(projectRoot),
       hash: `sha256:${hash.digest("hex")}`,
       ...(scope === "library" && home ? describedFile(home.root) : {}),
-      nodes: nodes.filter((n) => owned(n.id)).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      nodes: oneEach(nodes.filter((n) => owned(n.id))).sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
       // Sorted so two runs over the same sources produce the same bytes, and a diff between two
       // commits is the change rather than the traversal order.
       edges: edges

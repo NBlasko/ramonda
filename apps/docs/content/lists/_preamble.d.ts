@@ -29,4 +29,10 @@ declare global {
     render(): any;
   }
   const cellView: (cell: string) => RamondaNode;
+
+  /** The reader's own row component for a computed list. */
+  class ResultRow extends Component<any> {
+    [key: string]: any;
+    render(): any;
+  }
 }

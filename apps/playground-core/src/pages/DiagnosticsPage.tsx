@@ -36,6 +36,7 @@ export class DiagnosticsPage extends Component {
       // reported once, which is right in an app and useless on a page whose job is to make the
       // count climb. Varying the property is the honest way to get a second report: it genuinely is
       // a second mistake.
+      // ramonda-check-ignore this page exists to MAKE RMD004 fire, and the write is caught below
       (this.props as unknown as Record<string, unknown>)[`anything${this.fired}`] = 1;
     } catch (error) {
       this.last = (error as Error).message.split(" — ")[0];
