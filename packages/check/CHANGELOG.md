@@ -1,5 +1,1421 @@
 # @ramonda/check
 
+## 0.13.0
+
+### Minor Changes
+
+- c468786: A component owns a range of nodes rather than being one element, and `@Host` is gone with the
+  element it named.
+
+  A component's markup is what its `render()` returns, and nothing else. One element, several, or
+  none — a component that renders `null` has state, a lifecycle and hooks and no nodes at all. So two
+  `<td>` from one component sit inside the `<tr>` where an element would be foster-parented out in
+  front of the whole table, and a component that exists only to toggle other components costs the page
+  nothing.
+
+  The host element was never for the author. It was the diff's ANCHOR, and it charged for that
+  everywhere else: the tag was declared away from the markup, `display: contents` removed the box but
+  not the node so `.card > p` could not reach through a component, and a component could not produce
+  two siblings. The anchor does not have to be a node — `DiffAndMerge`'s ordering pass never searched
+  for one, it builds the target order for a block and walks it backwards — so a component is now a
+  third kind of `RecordEntry` beside `ListRegion`, and `isRegion` stays blind to which kind.
+
+  **Removed:** `@Host`, `@onElement`, `ref` on a component, and the `<ramonda-host>` element.
+  `RMD010`, `RMD042` and `RMD045` leave with the faults they described, and so does `@ramonda/check`'s
+  `listener-on-the-default-host`. Write the element in the render, put the listener and the ref on it,
+  and give a custom element a dashed tag — `JSX.IntrinsicElements` now accepts one, because `@Host` did.
+
+  **Server markup carries a comment pair per component**, with its state blob on the opening one:
+  `<tr><!--c7 {"state":{…}}--><td>…</td><td>…</td><!--/c7--></tr>`. Served markup is text and nothing in
+  plain HTML says where one component's run of nodes ends, so the server says it — in comments, because
+  a comment is the only thing the parser leaves alone inside a `<tr>`. Hydration consumes and removes
+  them, so a hydrated page holds exactly what a client render would have produced, and a client render
+  never writes one. The blob moved with them: it used to be `data-ramonda-state` on the host element.
+
+  **Measured, not asserted.** `RenderCost` counts DOM operations, and a list of 200 component rows costs
+  what 200 element rows cost — two insertions to append or prepend, two to swap, `N - 1` to reverse,
+  nothing for a fresh array of the same rows. An empty component filling in costs what a plain
+  conditional hole costs, so the sibling search it has to do costs no DOM operation. The child record is
+  kept per region owner rather than per component, so it does not grow with a list.
+
+  `@ramonda/router`'s `Link` writes its `<a>` in the render, where the href and the click handler that
+  has to agree with it sit together. `@ramonda/testing-library`'s `renderHook` finds its host through
+  the record, and `@ramonda/core/testing` gains `getComponentsIn` for that — which is also the only way
+  to find a component that renders nothing, since no node points at one.
+
+- 694e8de: The tag rules read `<Select>` and `<TextArea>` as the elements they are
+
+  `<select>` and `<textarea>` are refused by core's own types, because neither can be written
+  correctly as a tag: a select's choice is decided by the order its options reached it, and a
+  textarea's value is its CHILD rather than an attribute. `Select` and `TextArea` settle both — and
+  left the checker meeting a COMPONENT where the tag used to be.
+
+  Measured: `<Select aria-hidden="true" httpEquiv="refresh">` with no label at all was reported by ONE
+  rule, while the identical faults on an `<input>` beside it were reported by four. Every rule keyed
+  on a tag went quiet for the two elements an author now has no other way to write.
+
+  **A table, not a walk.** The obvious answer is to read the component's `render` and see what it
+  builds, and it works inside this repository and nowhere else: an application resolves `Select` to
+  core's `.d.ts`, a declaration with no body. There is no render to read. A reader built that way
+  would pass every fixture here and do nothing for the people the rules are for.
+
+  **Identity is the name core EXPORTS**, through `resolve.coreName` — so core's `Select` under an
+  alias is reported and an application's own component of the same name is its own business. That
+  reader hangs on the resolver precisely so it reaches everywhere the resolver does, which is why this
+  needed no new parameter threaded through the element pipeline.
+
+  `control-with-no-label` needed a second fix and it is the standing lesson again: the element family
+  reads its tag through `contextFor`, while the id table walks the JSX itself and asked `tagOf`
+  directly — so it decided `<Select>` was not a form control at all. One question, two readers, and
+  only one of them had been taught.
+
+- 21cf5a5: New rule: `parent-with-a-foreign-child`
+
+  `<ul><div>…</div></ul>`, `<select><span>…</span></select>`, `<table><div>…</div></table>`. This is
+  the **mirror** of `tag-needs-its-parent`, and neither answers the other: that one asks whether a
+  child is in the right parent, this asks whether a parent holds the right children. A `<div>` is
+  legal almost everywhere, so nothing about it is wrong until you see where it sits.
+
+  **A list is not styling, it is a COUNT.** Assistive technology announces "list, 5 items" and offers
+  a way to step through them, working that count out from the `<li>` children. A stray element breaks
+  the run: some readers announce the wrong number, some end the list early and start a second one. A
+  reader told there are three items where there are seven is worse off than one told nothing, because
+  it is confidently wrong.
+
+  `<table>` and `<select>` are stricter again — the parser MOVES a foreign child out of the element,
+  so the tree the browser builds is not the tree in the source. Hydration then reports that as
+  `RMD007`, a server/client mismatch, and sends the reader looking for a clock or a random number that
+  is not there. That is the same trap `tag-needs-its-parent` documents from the other side.
+
+  **Nobody writes this on purpose.** It arrives when a row gets wrapped for layout, or a tooltip is put
+  around one, and nothing on screen changes because the CSS was on the row all along.
+
+  Only a tag written OUT and known to be wrong is reported. A component child or an expression may
+  render exactly the right tag — `{rows.map(row => <li …/>)}` is how every real list is built — and
+  both are left alone. The tags a container takes BESIDE its main one are in the table rather than
+  assumed away: a `<table>` with its caption and colgroup, a `<select>` with an `<optgroup>` and an
+  `<hr>`, a `<dl>` with the `<div>` wrapper the specification allows in one, a `<picture>` with its
+  sources.
+
+- 4a686a3: `--fix --dry-run` answers with its exit code, so a gate can use it
+
+  It is the shape `biome format --check` and every tool like it uses: nothing is written, and the exit
+  code says whether anything would be. `1` means there is a fault here whose answer this package
+  already knows.
+
+  That is what makes `--fix` usable in a gate, and the repository now runs it as its own step. A
+  warning is a judgement somebody may reasonably defer, which is why a normal run exits `0` on one. A
+  warning with a MECHANICAL answer is not that — there is no version of "later" that improves
+  `class` instead of `className`.
+
+  The step is separate rather than folded into the existing run, and it stops rather than falling
+  through to the report: one question, one answer. A step that also printed every unrelated warning
+  would be read as the whole check, and it is not.
+
+  Proved against the project the gate actually checks, rather than a fixture: planting one `class` in
+  `apps/docs` made the step exit `1` and name the file, `--fix` returned that file byte-identical to
+  what it was, and the step went back to `0`. Its exit codes are pinned by a test that runs the built
+  CLI as a process, because a gate step that silently stopped failing would be worse than no step.
+
+- b48d042: `function-built-in-the-markup` — a function literal written into a JSX attribute
+
+  `RMD020` has reported this at runtime for a long time, as its `handler` verdict: a development
+  build renders every component twice in one tick, and a function built in place comes back with the
+  same source and a fresh identity. Nothing said it before the code ran, so the docs shipped a
+  `reference/api.md` row demonstrating the very pattern the framework reports, and the gate was green
+  over it.
+
+  **Measured on the element, not argued.** `<button onclick={() => this.n} />` under a component
+  whose state changes makes **3 `addEventListener` and 3 `removeEventListener` calls over three
+  re-renders** — one pair per render, which is exactly the churn the runtime's message names.
+
+  **It agrees with the runtime rather than having its own opinion.** With `strictRender` on,
+  `<AsyncLoad lazy={() => import(…)} errorFallback={({ retry }) => …} />` makes `RMD020` name
+  `AsyncLoad.lazy` and `AsyncLoad.errorFallback` — the same two props, at the same sites, this rule
+  reports.
+
+  **It fires on a host element, where `fresh-object-in-props` does not.** Its sibling asks whether a
+  CHILD can skip a render, so a host hands nothing to a component and is left alone. A listener is
+  attached to a real node, and `<button onclick={() => …}>` is the commonest spelling of this fault —
+  a rule silent on host elements would be silent on nearly all of it.
+
+  **A CALL is never followed, and that is the rule's most important silence.**
+  `onclick={this.pickRow(row)}` is the recommended answer: `@memoized` caches by its arguments per
+  instance. `onclick={debounce(this.save, 200)}` has nowhere else to live. Following either would find
+  the arrow inside and report the fix — the same trap `arrow-fields` is pinned against one level in.
+  Also silent: a bound method, a field holding an arrow (that is one identity per INSTANCE, and
+  `arrow-fields` reports it where it is written), a property read, a prop, a module const in this file
+  or an imported one, `key` and `ref`, and a prop the child declared with `@StableProps`.
+
+  **The spread boundary was written down backwards first, and measuring settled it.** The reading that
+  what the author WROTE stands whichever side of a spread it is on is true of a misspelling and not of
+  this. Measured both halves: `<button onclick={written} {...{ onclick: fromSpread }} />` clicked runs
+  ONLY the spread's handler, and `{...{ onclick: undefined }}` after it runs NEITHER. A listener that
+  never reaches the element cannot be removed and re-added, so only an attribute after the LAST spread
+  is reported.
+
+  Both spellings of an event name are read through the shared `eventTypeOf`, so `on:my-event` is a
+  handler exactly as `onclick` is.
+
+  A warning: the page is right either way, and what it costs is work. The first thing it found was one
+  in this repo — `apps/docs`'s `DocPage` built its `errorFallback` in the markup, and it is a bound
+  method now.
+
+- 6860818: New rule: `label-that-names-nothing`, and one walk where there were three
+
+  A `<label>` is an association, not styled text, and HTML gives it exactly two ways to make one:
+  `htmlFor` naming a control's id, or a control written inside it. With neither, the element renders,
+  looks completely right, and does nothing.
+
+  Two things are lost. The control it was meant for has no accessible name — which is
+  `control-with-no-label`'s report at the other end of the same missing pair — and **clicking the text
+  no longer focuses the field**, which is the affordance everybody uses without thinking about it, and
+  which is hardest on the people with the least room to absorb it: a large click target is the
+  difference between a usable form and an unusable one for somebody with a tremor.
+
+  It is worth having separately from the control's end because the two ends are written in different
+  files by different people. A form component owns the control; a design system owns the label.
+
+  Silent on an `htmlFor` written at all — whether it points at a real id is
+  `reference-to-an-id-that-is-not-there`'s question, and two reports on one line is how a reader
+  learns to skim past both — on a control this cannot SEE (`<label>Name<TextField /></label>` is the
+  ordinary way a form is written), on anything in an expression, and on an element that spreads.
+
+  **And one walk where there were three.** `click-with-no-keyboard-path`, `media-with-no-captions` and
+  now this one all ask "is the thing I am looking for inside here, and if not, could a component or an
+  expression be hiding it" — the questions differ and the walk does not. It took a third caller before
+  anybody noticed the first two were the same shape, which is this package's standing lesson arriving
+  on time for once. `descendantIn` answers all three, with three outcomes rather than two: `found`,
+  `unreadable`, `none`. Every caller treats the first two alike, and they are kept apart because they
+  are different facts.
+
+  Verified behaviour-free: no finding changed anywhere in the fixtures when the two existing rules
+  moved onto the shared walk.
+
+- 39c7d39: New rule: `live-region-that-contradicts-its-role`
+
+  `role="alert"` and `role="status"` are live regions with a politeness built in: an alert is
+  `assertive` and interrupts whatever the reader is being told, a status is `polite` and waits for a
+  gap. An explicit `aria-live` beside either **replaces** that — and there are only two values it can
+  take, so writing one is always either redundant or a reversal.
+
+  **An alert made polite waits.** A validation error, a failed save, a session about to expire —
+  announced when the reader happens to pause, which on a form being filled in may be minutes later or
+  never. The author picked `alert` precisely because the message could not wait, and then made it
+  wait.
+
+  **A status made assertive interrupts.** A live result count cutting across every keystroke, and the
+  usual outcome is that the reader turns the page's announcements off entirely — which takes the real
+  messages with them.
+
+  Nobody writes `role="alert" aria-live="polite"` meaning both. It arrives when `aria-live` is added
+  "to be safe" beside a role that already had it, or when a shared component takes a politeness prop
+  that the alert case forgot to override. Either way the source says two things and the reader hears
+  one.
+
+  **Agreement is untidy and is not reported.** `role="alert" aria-live="assertive"` says one thing
+  twice; this package reports faults rather than habits. `aria-live="off"` is a stronger claim than a
+  politeness — it says the region is not live at all — and belongs to whoever wrote it. A politeness
+  this cannot read, a role that is not a live region, and a spread that may replace either half are
+  all silent.
+
+  `log` and `timer` are covered with `alert` and `status`, for completeness rather than because
+  anybody has been caught by them.
+
+- 5810dac: `dom-writes` sees a destructured document, and `unserializable-state` reads a type annotation
+
+  Two class rules nobody had planted a shape for. One gap each, and both were a spelling one rule
+  knew and its neighbour did not.
+
+  **`dom-writes` was silent on `const { body } = document`.** `body.style.overflow = "hidden"` bottoms
+  out at an identifier, so the walk found no `document` and said nothing — one class below the dotted
+  form it reported. The checklist asks for a destructure to be planted whenever a rule matches a
+  global, and this one had never had one planted. It follows a `const` a few hops now, in this file
+  only, which is the same bound `late-request-read` takes a local under.
+
+  **`unserializable-state` read only the initializer.** A field with none says what it holds in its
+  type ANNOTATION — read as SYNTAX, `Map<string, T>` being the name `Map` written in the file, never
+  as a question to the checker. `persist-of-a-lossy-value` read it and this one did not, which is the
+  same question about the same hydration blob answered two ways. The shape is not exotic:
+  `@state rows!: Map<string, number>` assigned in `@created` is how a value arriving from a fetch is
+  written.
+
+  The reader moved to `lossyValue.ts` as `lossyFieldValue`, so the two rules cannot drift again. A
+  field carrying BOTH decorators is still the ungated rule's alone — one line, one report.
+
+- b3c2b84: A name written and left EMPTY names nothing, in every rule that asks
+
+  `aria-label=""`, `aria-labelledby=""` and `title=""` give the accessibility tree no name at all —
+  the attribute is there and the element is still anonymous. Four rules read them by PRESENCE alone,
+  so an author who wrote a name and left it blank was treated as having named the thing:
+  `unnamed-image`, `unnamed-frame`, `empty-heading-or-link` and
+  `landmarks-that-cannot-be-told-apart`.
+
+  **The id table had already worked this out and kept it to itself.** Its own note records the
+  measurement — `<input aria-labelledby="" />` had no name and was reported by nothing, "because the
+  attribute that names nothing had answered for the one that would have" — and it fixed its own
+  reader while four rules beside it went on asking the old way.
+
+  That is this package's standing fault, and it was five copies deep: the same three attribute names
+  written out five times, three of them under the same identifier and two character for character.
+  There is one list and one reader now, in `naming.ts`.
+
+  **`alt` is deliberately not in it.** It names an image and only an image, and it is the one naming
+  attribute where empty is a STATEMENT rather than an omission: `<img alt="">` is the documented way
+  to say "decoration, skip me". `unnamed-image` passes it in separately and it is still asked by
+  presence, so a decorative image stays silent.
+
+- 6af8c9c: New rule: `more-than-one-main`
+
+  HTML allows one `main` element that is not hidden, and it is the only landmark with that constraint.
+  It has it because `main` is a **destination** rather than a description: "skip to main content" is
+  the first thing a keyboard reader presses on a page, and a screen reader's landmark list is how
+  somebody moves around one without scrolling through it.
+
+  With two, that destination is ambiguous and tools resolve it differently — some jump to the first,
+  some list both under the same name — and whichever the reader picks, half the page is now somewhere
+  they have to find by hand. It looks completely correct to anybody using a mouse.
+
+  `<div role="main">` counts, because the accessibility tree does not care which spelling was used.
+  That is the shape it is most often written in: a layout component owning a `<main>` and a page
+  component adding a `role` to its own wrapper, neither author seeing the other's.
+
+  **One RENDER, not one project.** Two route views may each own a `main` and are never on the page
+  together; reporting that would be reporting the ordinary way a routed application is written. The
+  bound is `duplicate-id`'s, and `ProjectRule`'s own note names this exact case as the reason the
+  project subject may claim only negative existence.
+
+  Only the SECOND is reported — the first is the one a reader almost certainly meant, and the report
+  names its line so the two can be compared without hunting.
+
+  Silent on one landmark per arm of a ternary (that is one on the page, which is what `alwaysPresent`
+  is computed for), on `hidden` — the specification's own escape — on an element that spreads, since
+  the spread may be carrying that `hidden`, and on a `role` it cannot read. `hidden={false}` is the
+  source saying out loud that the element is shown, and excuses nothing.
+
+- 5cc085f: New rule: `half-built-keyboard-path` — the rule an existing one asked for by name
+
+  `click-with-no-keyboard-path` reports a click on a plain element with no `role`, no `tabIndex` and
+  no key handler. It goes quiet the moment any of those appears, and its own comment says why: _"A
+  half-built path is somebody's decision to build it by hand, and picking at it is a different rule
+  from this one."_ That rule did not exist, so the half-built path was reported by nobody.
+
+  `<div role="button" onclick={save}>` is somebody taking on work the platform does for a `<button>`.
+  The role is the announcement — a screen reader now says "button" — and the rest has to be written
+  out. Two ways it stops short, and they fail differently:
+
+  - **No `tabIndex`.** A reader is told there is a button and cannot get to it at all. The mouse
+    works, so it looks finished to whoever wrote it.
+  - **`tabIndex` and no key handler.** Tab lands on it, the reader presses Enter, and nothing happens
+    — worse than not reaching it, because they were told it is a button and given every reason to
+    believe they used it correctly.
+
+  The two rules enter on the same condition — a pointer handler on an element that is not natively
+  interactive — and split on whether the author had started. `INTERACTIVE` and the two event readers
+  are shared between them, because two rules dividing one territory have to agree about where the
+  territory begins.
+
+  A pointer handler is required, which is what makes the report certain rather than a guess about
+  intent: `<div role="button">` with nothing wired to it may have its handler attached through a ref.
+  Silent on a role it cannot read, on a role chain, on a role that is not a widget, on a real control
+  inside, and on a spread that may be carrying either missing half.
+
+  `ACTIVATED_BY_THE_USER` in `aria.ts` leans SHORT, which is the opposite of `ROLES` beside it: a rule
+  reads this one to report an element whose role IS in it, so an entry too many reports markup that
+  never needed a keyboard path.
+
+  **Two silences the review measured into it**, because the first version reported the W3C's own
+  authoring patterns. A `listbox` takes the arrow keys and its options carry a roving `tabIndex={-1}`;
+  a `toolbar` and a `tablist` do the same. Read as elements on their own, every child there is a click
+  with no key handler — the canonical three produced FOUR reports against markup that is the
+  recommendation.
+
+  So the roles OWNED by a composite parent — `option`, `tab`, `menuitem`, `treeitem`, `radio` and the
+  two menu checkbox roles — came out of the table, leaving the ones a user operates on their own. And
+  a key handler on any ancestor in the render counts as the keys being handled, which is what covers a
+  `role="button"` inside a toolbar.
+
+- b3c2b84: New rule: `region-with-no-name` — a landmark declared and never exposed
+
+  `region` is the one landmark role the specification makes conditional on a name. WAI-ARIA is
+  explicit — _authors MUST give each element with role `region` a brief label_ — and an unnamed one
+  is not put in the landmark list at all. The element is a generic box, exactly as it would have been
+  with no `role` typed on it.
+
+  That is an intention that failed rather than markup that misleads, and it is invisible: nothing on
+  the page looks wrong, nothing ever will, and the attribute the author wrote does nothing.
+
+  **A bare `<section>` is NOT this report.** `<section>` maps to `region` only when it has a name and
+  to `generic` when it does not — the mapping working as designed. Reporting it would report ordinary
+  correct markup on nearly every page ever written. The line is the WRITTEN role: typing
+  `role="region"` is asking for a landmark.
+
+  Silent on a role it cannot read, on a role chain whose winner is not a question about this element,
+  on a name it cannot read (somebody naming it), and on a spread that may be carrying the name.
+
+  **`landmarks-that-cannot-be-told-apart` gives `region` up.** It fires only when NEITHER of two
+  landmarks of a kind is named — which for `region` is exactly the case where neither IS a landmark.
+  Measured on a plant: both rules named the same two lines, and only one of them was saying something
+  true. One fault, one report.
+
+- 72ab1a6: New rule: `role-that-fights-the-tag`
+
+  `<a href="/pricing" role="button">` and `<button role="link">` are opposite halves of one mistake:
+  the element **keeps its behaviour** and changes only what is announced about it. So the reader is
+  told what to expect and the element does something else.
+
+  **A link announced as a button** loses Space. A button activates on Space as well as Enter, and a
+  reader who has been told "button" will press it — on a link that is the browser's scroll shortcut,
+  so the page jumps down and nothing else happens. It also leaves the list of LINKS a screen reader
+  offers, which is how somebody surveys what a page connects to.
+
+  **A button announced as a link** gains an expectation of a destination: a URL in the status bar, a
+  middle click that opens a tab, "copy link address" in the context menu. None of those exist, and
+  none of them fail loudly — the menu item is simply absent or copies nothing.
+
+  Both are invisible to anybody using a mouse, and both survive review because the page behaves
+  exactly as intended for the person testing it.
+
+  The answer is never the role. The element carries the behaviour and the role only describes it, so
+  writing one that disagrees cannot bring the behaviour with it.
+
+  **An anchor with no real destination is not this**, and that boundary is the rule's own: `<a
+role="button">` and `<a href="#" role="button">` are somebody building a button out of an anchor —
+  `link-without-a-destination`'s conversation, not this one. An `href` this cannot READ goes quiet
+  with them, and that was a correction: the first draft reported it, on the argument that writing
+  `href={where}` means the author has a destination. Planted, it does not hold — `where` may perfectly
+  well be `"#"` — and the silence contract wins, as it does everywhere else here.
+
+- b7201ca: New rule: `presentation-role-on-focusable`
+
+  `role="presentation"` — and its synonym `none` — says the element is scaffolding: expose what is
+  inside it, not it. ARIA resolves the conflict when that cannot hold, and **a focusable element is
+  the case**: it keeps its implicit role and the presentational one is dropped. So the author asked
+  for the element to leave the accessibility tree and it did not, with nothing at build time and
+  nothing at runtime to say so.
+
+  What a reader gets is the shape the author was trying to avoid — they tab onto something announced
+  as a button, a link or a text box that was meant to be invisible scaffolding. Which of the two the
+  author wanted, the element gone or the element focusable, is not a question this can answer, and the
+  report says so rather than guessing.
+
+  Written from the spec's presentational role conflict resolution, and it shares `focusableByTag`
+  with `aria-hidden-on-focusable`, its sibling claim about the same element — the two have to agree
+  about what "focusable" means or the same `<summary>` is focusable to one and not the other.
+
+  **The boundary is drawn where the spec stops being uncontested.** That resolution has a second half
+  — a global `aria-*` on the same element also drops the role — and it is deliberately not reported.
+  `<div role="presentation" aria-label="…">` is written on purpose often enough that reporting it
+  would be reporting a tradeoff rather than a fault, and one member of that set makes it plainly
+  wrong: `aria-hidden="true"` takes the element out of the tree anyway.
+
+  A warning, matching the sibling: the page is not broken, the element keeps its default semantics,
+  and this is an intention that failed rather than markup that misleads.
+
+  Takes the family's spread guards: silent when
+  a spread could replace the role, and silent on a tag-focusable element that spreads at all, since
+  the spread may be carrying the `tabIndex={-1}` that settles it.
+
+  Also cleans five imports the branch's own refactors left unused — `ts` in `aria-with-no-subject`,
+  `unknown-aria-attribute` and `attribute-that-does-nothing`, `RuleContext` in
+  `persist-of-a-lossy-value`, and three element readers in `aria-hidden-on-focusable`. Found by the
+  gate's linter, which the earlier sweep had only been pointed at the files it already knew about.
+
+- c07afff: Three accessibility rules now report past a spread, because a spread cannot un-write a name
+
+  The element family goes quiet on `<img {...rest} />` for a good reason: the spread may CARRY the
+  `alt` the rule is about, and nothing static can say whether it does. That argument is about an
+  attribute that is ABSENT, and it was being applied to three rules about attributes that are
+  plainly written down.
+
+  - `unknown-aria-attribute` reads a NAME. `<div {...rest} aria-lablled="Filters" />` is misspelled
+    on the tag, and no object spread on either side of it can take a name off.
+  - `aria-with-no-subject` reads a name on a fixed set of TAGS. A spread cannot turn a `<meta>` into
+    something a screen reader exposes.
+  - `unknown-role` reads a VALUE, so it takes the guard itself and reports only from the side a
+    spread cannot reach over: `<div {...rest} role="buton" />` ends up with `buton` because the last
+    attribute wins, while `<div role="buton" {...rest} />` may end up with whatever `rest` carries
+    and is left alone.
+
+  `ElementContext` grows `overwritable(name)` for the third of those — whether a spread is written
+  after the attribute — so the order question is answered once rather than per rule.
+
+  Ten more rules were then asked the same question, and seven of them were silent for the same
+  reason: `class-instead-of-classname` and `tag-needs-its-parent` (which read a written name and a
+  tag, and report on either side of a spread), and `positive-tabindex`, `access-key`, `aria-value`,
+  `aria-hidden-on-focusable` and `role-takes-no-name` (which read what the element will BE, and
+  report only from the side a spread cannot reach over).
+
+  The line between the two is NOT name-versus-value, which is what it looked like at first. Measured
+  through `renderToString`: `<span aria-hidden="true" {...{"aria-hidden": undefined}} />` renders
+  `<span></span>` — a later spread carrying `undefined` really does remove an attribute. What decides
+  it is what the rule is about. A misspelling is in the source whether or not the browser sees it; a
+  claim about the rendered element is not.
+
+  Two rules also had to give up a report a spread could ADD its way out of: `<button aria-hidden>`
+  with no `tabIndex` written, and a role taken from the TAG, are both settled by an attribute that
+  is not there — and a spread on either side may be carrying it.
+
+  Measured on the six real projects in this repository: no new findings. The silence the guard
+  exists for is unchanged — `<img {...rest} />` still reports nothing.
+
+- c6acda6: New rule: `aria-state-the-role-does-not-have`
+
+  `<div role="button" aria-checked={on}>` is the shape. ARIA defines every non-global state as
+  belonging to particular roles and exposes it only there — `aria-checked` belongs to `checkbox`,
+  `radio`, `switch` and their kin, and a `button` is none of them. The attribute lands in the DOM,
+  updates as the state changes, and is announced by nobody.
+
+  The author is usually one word from correct, which is what makes it worth reporting: they built a
+  toggle, reached for `role="button"` because that is what it looks like, and wired up the state that
+  would have worked on `role="switch"`.
+
+  **This is the other half of `aria-state-with-no-role`.** That one asks about an element with NO role
+  and is certain because a `<div>` has none; this one asks about a role that is WRITTEN and is certain
+  because the role is right there in the source. Between them they need no table of implicit roles for
+  HTML at all — which is the reason both could ship.
+
+  ## The data is attribute-first, and that is the safety argument
+
+  The specification documents this twice: each role lists the states it supports, and each state lists
+  the roles it is used in and inherits into. Reading it **role-first** means getting inheritance right
+  for every role in ARIA — `checkbox` from `input` from `widget` — and a superclass property missed
+  anywhere is a report against correct markup. Reading it **attribute-first**, the inheritance is
+  already flattened into one short list per attribute, each checkable by eye.
+
+  The fixture proves it where it matters: `role="treeitem"` takes `aria-checked`, `aria-level` and
+  `aria-selected` from three different places in the role hierarchy, and `columnheader` takes
+  `aria-sort` and `aria-colindex` from two. All five are silent.
+
+  **Partial on purpose.** Only attributes whose role set is small, famous and stable are carried;
+  `aria-orientation`, `aria-readonly`, `aria-required` and `aria-activedescendant` are not, because
+  their sets are long and their inheritance is fiddly. And every doubt inside a list is resolved by
+  INCLUDING the role: an extra one costs a missed report, a missing one costs a false report, and
+  those are not the same price.
+
+  Silent on an unknown role (`unknown-role`'s report), on a role it cannot read, on a fallback chain,
+  on global attributes, on an attribute not in the table, and on a spread that may replace either
+  half.
+
+  Measured over all nine real projects here: no findings.
+
+- be53712: New rule: `aria-state-with-no-role`
+
+  ARIA divides its attributes in two. A GLOBAL one — `aria-label`, `aria-hidden`, `aria-describedby`
+  — is exposed on any element in the accessibility tree. Every other one is defined BY a role and is
+  exposed only where that role supports it: `aria-expanded` belongs to `button`, `combobox` and a
+  handful more; `aria-checked` to `checkbox`, `radio`, `switch`, `option`; `aria-selected` to
+  `option`, `row`, `tab`.
+
+  Written on a bare `<div>`, none of them says anything at all. There is no role for the state to be a
+  state OF, so assistive technology has nothing to announce. `<div aria-expanded={open}>` beside a
+  custom dropdown is the commonest shape of it — the author wired the value up correctly and it
+  reaches nobody.
+
+  The fault is invisible in every way a fault can be: the markup is valid, the attribute lands in the
+  DOM and shows in the inspector, the value updates as the state changes, and nothing anywhere
+  reports it.
+
+  **Narrower than the spec, deliberately.** The full question — does this element's role support this
+  attribute — needs a role for every tag in HTML and a supported-properties list for every role in
+  ARIA. Both are large, both are easy to get subtly wrong, and being wrong here means reporting
+  correct markup. So it asks the half that is CERTAIN: a `<div>` or a `<span>` has no implicit role,
+  and with no `role` written either the element has none, full stop. No table of roles is consulted
+  because none is needed, and the other half is left to a later rule that can afford the data — where
+  a silence costs a missed report rather than a false one.
+
+  Silent on a `role` it cannot read, on a tag with an implicit role of its own, on a misspelling
+  (which is `unknown-aria-attribute`'s report and gets one, not two), and on an element that spreads,
+  since the spread may be carrying the role.
+
+  `aria.ts` gains the specification's global list and the two tags certain to have no implicit role.
+
+- 4a389cb: New rule: `table-with-no-headers`
+
+  A table is read visually by POSITION: the eye follows a column up to its heading and back down, and
+  that costs nothing. A screen reader cannot do that. It announces cells one at a time, and the header
+  association is the only thing that lets it say "Price, £4.50" instead of "£4.50", read out of a grid
+  the reader can see nothing of.
+
+  With no `<th>` anywhere there is no association to make, so every cell is announced bare. Past three
+  or four columns the table is not merely harder to read — it is unusable, because nothing says which
+  column any value came from.
+
+  It is also the most invisible fault in this package: `<td>` and `<th>` are one letter apart, they
+  are styled by the same CSS often enough that the table looks identical either way, and nothing at
+  runtime says a word.
+
+  **A LAYOUT table says so and is never reported.** `role="presentation"` and `role="none"` are
+  exactly how an author declares that a table is not data, and the accessibility tree honours it —
+  reporting one would be reporting the documented way of writing the thing this rule does not care
+  about.
+
+  **And the silence is deliberately large.** A table whose rows come from `{rows.map(…)}` or from a
+  component may have its headers in there, and that is how most real tables are built — so
+  `unreadable` and `found` are one answer. A rule that guessed would report the commonest correct
+  table there is. A table with no rows at all, or holding only a `<caption>`, is scaffolding rather
+  than data and is left alone too.
+
+- 18ce6ac: New rule: `autocomplete-that-fills-nothing`
+
+  A browser matches `autocomplete` against the HTML specification's list of autofill field names and
+  against nothing else. A token that is not on it is **not a near miss the browser corrects** — the
+  whole value is ignored and the field never fills. `autocomplete="fullname"` looks exactly as
+  deliberate as `autocomplete="name"` and does exactly nothing.
+
+  It fails in the quietest way an attribute can: the markup is valid, the attribute is in the DOM,
+  nothing is logged, and the only symptom is a form that does not fill — which reads as the browser
+  being unhelpful rather than as a typo in the source.
+
+  **Who it is for, because it is not only a convenience.** Filling an address by hand costs a person
+  with a motor impairment real effort and real errors; somebody using voice control may have no other
+  way to enter a long string accurately; and anybody on a phone is retyping a card number they have
+  already given a browser once. It is also WCAG's _Identify Input Purpose_, which asks for exactly
+  this vocabulary and no other.
+
+  `shipping`, `billing`, `home`, `work`, `mobile`, `fax` and `pager` say WHICH address or number and
+  are not fields on their own. A value that is only one of those gets its own sentence in the report,
+  because naming a group and no field is the commonest near miss and reads as complete.
+
+  **The ordering is deliberately not policed.** The grammar is an optional `section-*`, an optional
+  group word, an optional contact word, the field name, and an optional trailing `webauthn`. This asks
+  the part that is unambiguous — is there a field name at all — and says nothing about the order in
+  front of it, because being wrong about those rules would mean reporting a value that fills perfectly
+  well. `section-blue billing cc-number` and `username webauthn` are both silent.
+
+  Silent on a value it cannot read, on an empty one, on `on`/`off`, on a `<div>` (which no browser
+  fills), and on a spread that may replace the attribute.
+
+- dc494bd: An id written out on a spreading element is an id
+
+  The project family — `fragment-link-to-nowhere`, `reference-to-an-id-that-is-not-there`,
+  `control-with-no-label`, `named-only-by-a-placeholder` — reports an ABSENCE: "nothing in this
+  project carries this id". The table it reads used to skip any element that spread anything at all,
+  **including an `id` spelled out on the very same tag**. An id missing from that table is a report
+  against correct markup, and this is the family where that is worst.
+
+  Measured on a plant: `<h2 {...rest} id="pricing">` with `<a href="#pricing">` beside it, and the
+  link was reported as going nowhere. So was `<label htmlFor="email">` whose
+  `<input {...rest} id="email">` was one line below it. Three of four references reported, every one
+  pointing at an id written a line above.
+
+  Both orders are now recorded, and that is the OPPOSITE asymmetry to the one the element rules take.
+  There, widening what is reported can only add false reports, so an attribute a spread could reach
+  over has to be given up. Here, widening the set of known ids can only PREVENT a report — which is
+  the same sentence that already keeps a literal `id` written on a component tag.
+
+  The half of the old stance that was right is unchanged, and pinned: a spreading element is still
+  never asked about its own REFERENCES, is still not judged for its own NAME, and an unreadable `id`
+  on one still does not silence the family.
+
+  Everything else this family was walked through came back clean: an id and a reference each one hop
+  from where the rule looks both resolve, and a `<label>` on a base class answers for a control in a
+  subclass.
+
+- ef2bd61: `unnamed-image` now covers an image declared by its ROLE
+
+  `<svg role="img" />` and `<div role="img" />` are announced as images and have no `alt` to fall back
+  on — the attribute does not exist on those tags — so `aria-label` is the only way to name one.
+  Measured on a sweep: both were reported by nothing, while the `<object>` and `<area>` beside them
+  were reported by this same rule.
+
+  It is how an inline icon is written whenever the icon MEANS something rather than decorating, which
+  is exactly when it needs a name.
+
+  Every existing way of naming one still answers, a name this cannot read still counts as somebody
+  naming it, and an `<svg>` with no role is not declared to be anything — the rule asks what the
+  source SAYS the element is, and answers nothing where it says nothing.
+
+  ## Measured and deliberately NOT built: a role outside its required context
+
+  The same sweep found `role="option"` outside a `listbox`, `role="tab"` outside a `tablist`, and
+  `role="listitem"` outside a `list` — the ARIA counterpart of `tag-needs-its-parent`, which reports
+  the tag version of exactly that fault.
+
+  It is not provable here, and the reason is worth writing down rather than rediscovering. The
+  required context may come from an ancestor's written `role`, from an ancestor TAG's implicit role
+  (`<ul>` is a `list`), or **from outside the render entirely** — a `<div role="tab">` inside a
+  `<Tabs>` component whose own markup supplies the `tablist`. The walk stops at that component
+  boundary, and a render's own root is itself inside whatever mounted it. So "no ancestor provides the
+  context" is a claim this analyzer cannot make, and a rule that made it would report the ordinary way
+  a tab strip is built.
+
+  It belongs with the full role-to-properties table as work that needs data this cannot yet afford,
+  where a silence costs a missed report rather than a false one.
+
+- ac0aca8: New rule: `aria-that-contradicts-the-tag`
+
+  `<input required aria-required="false">`. `<button disabled aria-disabled="false">`. The HTML
+  attribute is doing its job — the form will refuse to submit, the button will not take a click — and
+  the ARIA one **overrides what a screen reader is told about it**. The reader hears that the field is
+  optional and then cannot submit, or that the button is available and then nothing happens when they
+  press it.
+
+  It is worse than either half missing. A control with nothing said about it leaves a reader to find
+  out by trying; a control that says the opposite of what it does sends them looking for a fault
+  somewhere else on the page. Somebody told a required field is optional does not go back to it — they
+  go hunting through the rest of the form.
+
+  Nobody sets out to contradict themselves. It arrives when ARIA is added "to be safe" beside markup
+  that already said the same thing and the value lands on the wrong side of a condition, or when
+  `required` is added later to a field whose `aria-required="false"` nobody re-read. Both leave a page
+  that works perfectly for anybody using a mouse.
+
+  Six pairs, from the HTML accessibility mappings — the ones where the HTML attribute is a plain
+  boolean and its ARIA counterpart a boolean token: `required`, `disabled`, `checked`, `readonly`,
+  `hidden` and `open`.
+
+  **Agreement is untidy and is not reported.** `aria-required="true"` beside `required` says one thing
+  twice; this package reports faults rather than habits. And anything the source does not settle on
+  both halves is left alone — `disabled={busy} aria-disabled={busy}` is the correct way to write a
+  pair that moves, and is exactly what a rule that guessed would report.
+
+  Found by planting a broad sweep of markup and reading which lines nobody spoke about — the third
+  finding from that method, after the empty `<button>` and the empty naming attribute.
+
+- 63fdf14: A one-sided global asked about before it is touched is not a fault
+
+  `process` does not exist in a browser, so isomorphic code checks first — and checking is the
+  CORRECT way to write it. `server-env-in-shared-code`, which is an **error**, reported five shapes
+  that cannot crash:
+
+  ```tsx
+  typeof process !== "undefined" ? process.env.REGION : ""; // reported
+  typeof process !== "undefined" && process.env.REGION; // reported
+  if (import.meta.env.SSR) return <p>{process.env.DB_URL}</p>; // reported
+  if (typeof window === "undefined") return <p>{process.env.DB_URL}</p>; // reported
+  if (typeof process === "undefined") return null; // and everything after it
+  ```
+
+  The last two are the most standard ways anybody writes this, and the early return is how a
+  `render()` is written far more often than a nested `if`. A build failing against working code is
+  the one thing this package cannot afford.
+
+  `side-guard.ts` answers it once for everyone — `narrowedTo(node, "server" | "client")`, built
+  alongside `insideADevGuard` and taking the same three climbing shapes plus their inverted forms,
+  plus the early return that a dev guard never needs. `typeof` on an undeclared identifier is the one
+  expression in the language that cannot throw, so the test is by NAME and that is right rather than
+  lazy: a reader writing it is asking about the global whatever else is in scope.
+
+  `client-only-request-read` was found to need the same answer. A request read narrowed to the server
+  inside a click listener never runs, so "the browser reads a value it does not have" is untrue and
+  the report goes.
+
+  `browser-url` and `dom-writes` were asked and deliberately left alone: neither is about a crash.
+  `browser-url` is about a snapshot that never updates, and a guard does not make it reactive.
+
+  The rest of the family came back clean — a subclass is not reported a second time for a base's
+  shared member, and it inherits the base's `{ env: "server" }` marking.
+
+- b492d9c: `unguarded-async-lifecycle` asks both of its questions properly
+
+  The rule asks WHICH decorator a member carries and WHETHER its awaits are caught. Both were
+  answered by matching text, and measured on a plant both were wrong — five real faults reported by
+  nothing.
+
+  **Identity.** The decorator was compared as a bare name, so `import { created as onCreate }` and
+  `@core.created()` both went quiet on the identical fault, and an app's own function called
+  `created` would have been judged as the framework's. It now reads through `lifecycle-env`'s own
+  `coreDecorators`, so the two rules cannot answer one question about one decorator two different
+  ways. The NAMESPACE form was missing there too, and fixing it in the shared reader fixed it for
+  both.
+
+  **The guard.** It was satisfied by any `try` anywhere in the method, or by any property called
+  `catch`. Four faults hid behind that:
+
+  - a `try` around something else entirely, with the fetch below it bare;
+  - `await a().catch(…)` followed by a second, unhandled `await`;
+  - `try { await … } finally { … }` — a `finally` runs on the way PAST a rejection and does not stop
+    one;
+  - an await inside a `catch` clause, which its own `try` does not protect.
+
+  The question is about the AWAITS, so it is asked of each one: an await is handled when it sits in
+  the TRY BLOCK of a `try` that has a `catch`, or when what it awaits ends in `.catch(…)`. One
+  unhandled await is the report, because one is all it takes. A nested function is its own timeline,
+  the same line `late-request-read` draws.
+
+  `async-render` was walked and left alone. `render() { return aPromise; }` is the same crash, and
+  reading it needs the RETURN TYPE of a call — the dataflow this analyzer refuses, and the type
+  system refuses that spelling exactly as hard as it refuses `async render()`.
+
+- 5ba5d6b: A route table is followed to the outlet that takes it, however either one was written
+
+  `<RouteOutlet routes={routes} />` with both names written out was the only arrangement the
+  analyzer could read. Five shapes beside it were measured on a planted fixture, and every one of
+  them was a report against correct code:
+
+  - the table held on a FIELD — `<RouteOutlet routes={this.table} />`
+  - the table taken through a LOCAL a line up
+  - the table handed over inside a SPREAD — `<RouteOutlet {...props} />`, long form and shorthand
+  - the outlet renamed — `import { RouteOutlet as Outlet }`, or
+    `const { RouteOutlet: Outlet } = createRouter(routes)`, which is what a typed kit looks like
+  - `createRoutes` renamed — `import { createRoutes as makeRoutes }`
+
+  In each of them the tag named no table, so the table looked handed to no outlet at all: three
+  false `unmounted` reports on one fixture, and four pages reported dead beside them.
+
+  A declaration is now followed to its initialiser, which answers the field, the local and the
+  object property with one walk, and a binding is matched by the name at its SOURCE — the import
+  specifier's or the binding element's `propertyName` — rather than the one the file gave it. Name
+  and not module on purpose: a router kit is a SHAPE, so a third-party `createRouter` returning a
+  `RouteOutlet` is a real one, and a module test would refuse it.
+
+  A spread nothing can read now silences the whole check rather than guessing. `{...someCall()}`
+  may be handing over the very table about to be reported, and a checker that cannot tell a missing
+  outlet from an invisible one may not report either.
+
+  Measured: `apps/docs`, 155 components, 1.29 s before and 1.36 s after — the alias question is
+  asked of every tag. Skipping the lowercase host tags was tried and came back 1.36 s, unchanged, so
+  it is not in the code.
+
+- 7a22b15: New rule: `false-on-a-boolean-attribute` — the word that turns it on
+
+  A boolean attribute is true whenever it is PRESENT. The parser never reads the value, so
+  `disabled="false"` puts `disabled` in the document and the control cannot be used — the opposite of
+  what the line says, and of what whoever wrote it meant.
+
+  The fix is the boolean itself: `disabled={false}` removes the attribute, and removing it is the only
+  way HTML has of turning one off.
+
+  **The static twin of RMD029.** `@ramonda/core` reports this while it runs, and only for markup that
+  renders; this is the same fault found in a branch nobody has opened. Both read
+  `BOOLEAN_ATTRIBUTES` from `@ramonda/dom-facts` — put there so a second copy would not be made — so
+  they cannot come to disagree about which names are boolean.
+
+  Three spellings reach the element identically and all three are reported: written out, written in
+  braces, and held one NAME away in a `const`. Silent on the fix (`disabled={false}` and
+  `required={condition}` both remove the attribute), on `"true"`, on a spread that may replace the
+  value, and on the two kinds of attribute this is NOT about — an `aria-*` is an enumerated string
+  where `"false"` is a real value, and a `data-*` is data something reads back.
+
+- 8db365c: New rule: `aria-hidden-around-something-focusable`
+
+  `aria-hidden` takes a subtree out of the accessibility tree. It does **not** take it out of the tab
+  order — nothing about it touches focus — so a `<button>` inside stays tabbable while ceasing to
+  exist for the software that would announce it.
+
+  What that does to a reader is worse than either half alone. They press Tab, focus moves, and their
+  screen reader says **nothing at all**: there is no node left for it to describe. Focus is somewhere,
+  the page has changed under them, and they have no way to find out where they are or what pressing
+  Enter would do. It is the one accessibility fault that leaves somebody genuinely stranded rather
+  than merely underserved.
+
+  The commonest way to write it is a modal: the dialog opens, the page behind it is hidden from
+  assistive technology with one attribute, and every control back there is still in the tab order — so
+  the first Tab takes the reader out of the dialog and into a void.
+
+  This is the sibling of `aria-hidden-on-focusable`, which asks whether the element CARRYING the
+  attribute is focusable. This one asks whether anything inside it is. Together they are the whole of
+  the fault; separately each is a sentence a reader can act on, which is why they are two reports
+  rather than one with a flag — and the fixture pins that they never report the same line.
+
+  Both fixes are silent, which matters because reporting one would be reporting the fix: `inert`,
+  which the platform added for exactly this and which removes the subtree from the tab order and the
+  accessibility tree together, and `tabIndex={-1}` on the control inside. So are an `<a>` with no
+  `href`, an `<input type="hidden">`, an unreadable `aria-hidden`, and a subtree holding a component
+  or an expression — `found` is the only answer that speaks, and guessing at what a component renders
+  is how a rule reports a page that is correct.
+
+- b212e52: New rule: `landmarks-that-cannot-be-told-apart`
+
+  A screen reader offers landmarks as a LIST — it is how somebody moves around a page without
+  scrolling through it, and for a reader who cannot see the layout it is the closest thing to glancing
+  at a page. A landmark with no accessible name is announced by its kind alone.
+
+  So a page with a primary navigation and a footer navigation offers "navigation, navigation", and the
+  reader has to enter one to find out which it is, come back out, and try the other. With three —
+  primary, breadcrumb, footer — it stops being worth using at all, and the feature that exists to make
+  a page navigable has made it slower than reading straight through.
+
+  The fix is one attribute and the page looks identical afterwards, which is the whole reason this is
+  worth reporting: nothing about the rendered page will ever remind anybody.
+
+  **Only when NEITHER is named, which is the sharp line.** Two unnamed landmarks of one kind cannot be
+  told apart — that is a fact about the list, not a preference. One named and one unnamed CAN be:
+  "navigation" and "Footer navigation" are two different entries. The convention is to name both, and
+  this deliberately enforces the ambiguity rather than the convention.
+
+  All of them are reported, not all-but-one: every one needs a name before the list can be read, which
+  is the opposite of `more-than-one-main`, where one is allowed and only the extras are wrong. `main`
+  is absent from the landmark set for that reason — two of those are that rule's report, and naming
+  them would not make two mains correct.
+
+  **What counts is deliberately not the whole set.** `<nav>` always is a landmark wherever it sits,
+  and an explicitly written `role` is certain because it is in the source. `<header>`, `<footer>`,
+  `<section>` and `<aside>` are absent: whether they map to a landmark at all depends on where they
+  sit in the sectioning tree, and being wrong about that means reporting correct markup. The certain
+  half now, the rest when the data can be afforded.
+
+- cc63fa1: A dev guard is recognised in two more shapes, and both guard walks became one
+
+  `insideADevGuard` decides whether dev-only code is dev-only, and `listener-added-by-hand` is what
+  asks it. Two shapes were missing, and both made that rule report **correctly guarded code** —
+  telling its author to reach for a decorator, which cannot be made dev-only at all:
+
+  - `if (!__DEV__) return;` and everything after it. The early return is how a `render()` is written
+    far more often than a nested `if`.
+  - `if (import.meta.env.DEV)`. `__DEV__` is the spelling this repository asks for and documents, and
+    it is not the only one available — a bundler provides `import.meta.env.DEV` itself, and somebody
+    arriving from one reaches for it without thinking. Reporting their working code over a second
+    spelling is worse than tolerating the second spelling. `guardsDev` is shared, so
+    `dev-guard-as-an-expression` now asks for the `if` form of that one too.
+
+  **And the two guard walks became one.** `side-guard.ts` shipped an hour earlier with its own copy,
+  on the stated argument that a dev guard never needs an early return because dev-only code goes
+  INSIDE its guard. That was wrong within the hour — measured on a plant, the early return was exactly
+  what `insideADevGuard` was silent on. The shapes now live in `guard-walk.ts`; each file only says
+  what its own CONDITIONS mean.
+
+  It takes two predicates rather than one and a negation, deliberately: a condition can say three
+  things — this, the opposite of this, or nothing — and inverting one predicate would read every
+  unrecognised condition as proof of the opposite.
+
+- A boolean attribute is read as PRESENT, not as what its string says
+
+  `truth` had one answer for two kinds of attribute. An `aria-*` is an enumerated string where
+  `"false"` is a real value; an HTML boolean attribute is on whenever it is written down, whatever
+  is on it. `required="false"` is a required field.
+
+  That is not a reading of the spec, it is what this framework does: `core/Attribute.ts` removes an
+  attribute for the VALUE `false` and keeps the STRING `"false"`, because removing it is the only
+  way to turn `disabled` off — and its own comment names `aria-` as the exception for exactly this
+  reason. The checker now mirrors that instead of running a second rule beside it, reading
+  `BOOLEAN_ATTRIBUTES` from `@ramonda/dom-facts`, which is where that list was put so a second copy
+  would not be made.
+
+  Three rules were wrong on one line of markup, each measured with a plant:
+
+  - `<main hidden="false">` was counted as a second visible landmark by `more-than-one-main`. It is
+    hidden, so there is one.
+  - `<video muted="false">` was asked by `media-with-no-captions` for captions it has no sound to
+    need.
+  - `<input required="false" aria-required="false">` — the exact contradiction
+    `aria-that-contradicts-the-tag` exists to report — was reported by nothing.
+
+  Two reports against correct markup, and one real fault nobody was naming. `required={false}` is
+  unchanged and stays silent: written that way the attribute never reaches the element, so there is
+  nothing on it to contradict.
+
+  Asked of the VALUE rather than of the literal, so `required={FLAG}` with `const FLAG = "false"`
+  answers the same as `required="false"` — written for the literal alone it gave one line of markup
+  two answers depending on how it was spelled.
+
+- 544f436: New rule: `element-html-removed` — a tag HTML dropped, still rendered by every browser
+
+  These are not typos. Each was a real element once, each still parses, and most still paint
+  something on the screen — which is exactly why they survive in a codebase: nothing breaks, so
+  nothing draws attention to them. What they no longer have is a specification saying what they MEAN,
+  so an accessibility tree has nothing to map them to and a future browser owes them nothing.
+
+  **Two of them are worse than obsolete.** `<marquee>` and `<blink>` MOVE, and moving content that
+  cannot be paused fails WCAG 2.2.2 outright: a reader who needs time on a line cannot get it, and for
+  some people motion is a vestibular trigger. The report says so in a different sentence from the one
+  it gives the others, because "this fails a success criterion" and "this was tidied out of the
+  standard" are not the same news.
+
+  Each entry carries a REPLACEMENT rather than a correction, which is what separates this from
+  `attribute-that-does-nothing`: these names were right once, so the answer is what to write now
+  (`<abbr>` for `<acronym>`, `<s>` or `<del>` for `<strike>`, CSS for `<center>` and `<font>`).
+
+  The table leans SHORT like every table this package reports FROM — a name too many is a report
+  against markup that is fine — so `<isindex>`, `<nextid>` and `<plaintext>` are left out. Nobody is
+  typing those into a new component, and a table nothing consults is a table that drifts.
+
+- 7a709c1: Every finding can carry a written reason — not just the three module rules that asked for one.
+
+  `ramonda-check-ignore <why>` used to reach exactly three rules, because it was a method on
+  `ModuleContext` that each rule called for itself. Its own note said why that is the wrong shape — "a
+  guard every rule needs is a guard a rule can forget" — and thirty class rules were the ones who
+  forgot. So when a class rule was wrong there was no way out but restructuring correct code, and
+  `server-env-in-shared-code` is an ERROR: measured on this very branch, an aliased
+  `@created({ env: "server" })` stopped excusing a `process.env` read and the reader's only option was
+  to rewrite code that was already right.
+
+  It is applied where every family's findings already meet, in `collect`, so no rule can be the one
+  that did not ask. Class, element, tree, project and module rules all take it, and the reason is
+  recorded under the rule's own name — printed on every run, so it cannot quietly stop being true.
+
+  **An EMPTY directive now buys nothing.** It is reported, as it always was, and the finding stands.
+  `ramonda-check-ignore` with nothing after it used to silence the site and leave a note, which made
+  the note the price of switching a rule off. The package's own sentence is that a silence is not a
+  record, and a directive that records nothing has bought a silence with nothing. It matters more now
+  that the mechanism reaches every family: one worth abusing for thirty rules is not the same as one
+  for three.
+
+  `ModuleContext.unlessAnnotated` is gone, and with it the per-rule context `applyModule` built — the
+  reason for building one per rule was the annotation, and there is nothing left that varies.
+
+- bbadebb: `--fix` writes the answers the checker already knows
+
+  Most advice cannot be applied by a machine: "give it a name" needs a person to know what the thing
+  is called. A few faults are not like that — `httpEquiv` becomes `http-equiv` and there is nothing to
+  decide — and for those, printing a sentence and making somebody type it was work the tool could have
+  done.
+
+  `ramonda-check --fix` applies them. `--fix --dry-run` says what it would apply and touches nothing.
+
+  **The bar for a rule carrying an edit is one answer, and it must be the right one.** Not "the usual
+  fix", not "what they probably meant". A wrong edit costs a reader a revert, and their trust in every
+  edit that was right along with it. So `--fix` is never "this run is now clean" — everything needing
+  a person is still reported, and still counted.
+
+  Three things the fixer does to stay honest:
+
+  - **Overlapping edits are dropped, not merged.** Two rules wanting the same characters disagree
+    about what those characters should say, and picking the first, or the longer, or the one whose
+    rule is registered earlier, is a coin toss wearing a rule's name. The run says how many it left.
+  - **Edits are applied back to front**, so an earlier one cannot move a later one's offsets.
+  - **A file is written once, or not at all.**
+
+  Six rules carry an edit, across three kinds:
+
+  |                                            |                                |
+  | ------------------------------------------ | ------------------------------ |
+  | `class` → `className`                      | `class-instead-of-classname`   |
+  | `httpEquiv` → `http-equiv`, and three more | `attribute-that-does-nothing`  |
+  | `playbackrate` → `playbackRate`            | `misspelled-element-property`  |
+  | `aria-labelledBy` → `aria-labelledby`      | `unknown-aria-attribute`       |
+  | `disabled="false"` → `disabled={false}`    | `false-on-a-boolean-attribute` |
+  | remove `selected`                          | `option-that-cannot-choose`    |
+
+  And every one of those rules reports faults it does NOT fix, which is where the bar lives:
+
+  - `class` beside an existing `className` — which of the two they meant to keep is not written down.
+  - `class` on a COMPONENT — the rename reaches the prop, and the answer is in that component's file.
+  - `innerHTML` — its answer is "put it in the children", a change of shape rather than a span.
+  - `aria-requred` — one edit from a real name is a GUESS, and the report says so with a question mark.
+    Only the CASE fix is carried, and only in SVG: `setAttribute` lowercases for HTML, so
+    `aria-labelledBy` on a `<span>` genuinely works and is not a fault at all.
+  - `disabled={NO}` with `const NO = "false"` — whether that name has to stay a string elsewhere is
+    not knowable from the line.
+
+  The loss check caught the change to its own inputs, which is the job it was written for: every
+  finding of the first rule to carry an edit read as LOST, because the claim had gained a field while
+  the rule reported exactly as before. `edit` is a span, and a span moves whenever a fixture gains a
+  line above it — so it is normalised away like `line` and `column`, with the gap that leaves written
+  down beside it.
+
+- 9493ff8: `empty-heading-or-link` now covers the BUTTON, which was in the gap between two rules
+
+  `control-with-no-label` skips `<button>` on purpose and says so: a button is named by what is inside
+  it, so asking it for a `<label>` would be asking for the wrong thing. `empty-heading-or-link`
+  covered the two tags that carry text and not the third. Measured on a plant:
+  `<button onclick={close} />` was reported by nothing, while the `<a href="/x" />` beside it was
+  reported.
+
+  That is the icon button — the ✕ that closes a dialog, the pencil that edits a row — and it is
+  written more often than an empty link and an empty heading together. A screen reader announces it as
+  "button" and nothing else, with no way to find out what it does short of pressing it. Nothing on
+  screen will ever remind anybody, because it looks finished.
+
+  The rule's existing walk answers it unchanged: an `aria-label` or `aria-labelledby` names it, text
+  inside names it, one readable word beside a hidden icon is enough, and content this cannot read —
+  an expression, or a component child — is left alone.
+
+  **`<input type="submit">` and `type="button"` are NOT this**, and that is a boundary rather than a
+  limitation. Those are named by their `value` and by a browser default, so an unlabelled submit reads
+  as "Submit" rather than as nothing; they belong to `control-with-no-label` and its documented line.
+  Only the `<button>` ELEMENT is named by its content.
+
+  `EmptyHeadingOrLinkIssue.kind` gains `"button"`, and the report gets its own sentence for it.
+
+- ed22995: `selected` on an `<option>` is refused, and reported where a type cannot reach
+
+  The choice belongs to the select, not to the option. `Select` applies it by walking EVERY option and
+  setting each one from its `value` — on and off, for all of them — so an option that asked to be
+  chosen is turned off again a moment later. The attribute is not competing with `value` and losing
+  sometimes; it does nothing, while being the one line on the page that looks like it chooses.
+
+  **`@ramonda/core` refuses it in the types**, the same way it refuses the `<select>` tag itself: the
+  error arrives at the call site, in the editor, with the answer in it —
+  _"the choice belongs to the select — write `<Select value={x}>`, which sets this on every option"_.
+
+  **`@ramonda/check` reports it too**, as `option-that-cannot-choose`, because a type is a defence
+  only while nobody casts it away: a `@ts-ignore`, a props bag widened somewhere, a JavaScript file.
+  That is the same pairing core and check already keep for RMD029 and RMD039.
+
+  The rule asks whether the attribute is THERE, not what it says — and the first version did not,
+  which the branch's own review caught. It asked for a readable TRUE, reasoning that `selected={false}`
+  says the opposite and is not overwritten into anything it was not already. That reasoning is about
+  HTML, and this is not about HTML: `Select` sets the choice from its `value` unconditionally, so
+  `false` is overwritten exactly as `true` is.
+
+  Worse, it missed the shape the fault is usually written in. `selected={o.id === value}` is somebody
+  controlling the choice from the OPTION side — precisely the belief the rule exists to correct — and
+  it was silent for it, because the value cannot be read. Found by walking the rule against the
+  checklist's Part A and planting a module const, a helper call, a ternary and a row field: three of
+  the four were silent.
+
+  Still silent, on purpose: a spread may carry the attribute or replace it, so a spreading option is
+  not asked about at all; and an `<option>` with no `<Select>` above it is nobody's report, because
+  nothing is deciding for it.
+
+  This is the fault the refused `<select>` tag could not reach. The tag is refused because HTML keeps
+  the LAST of competing `selected` claims and gives an unclaimed select its first option — so the same
+  markup meant different things depending on the order the options arrived in, which is not an order
+  anybody writes.
+
+- 4c70cce: `analyzeProgram` — the same analysis, over a program you already have
+
+  `analyzeProject` reads a tsconfig and builds a program. The program IS the cost of a run — the
+  rules themselves are close to free — so a tool holding its own programs had to pay twice, and look
+  at something slightly different from what it had type-checked.
+
+  Written for `scripts/check-examples.mjs`, which now asks a second question of every documentation
+  example. It has always proved they COMPILE; it had never asked whether the example is one the
+  framework itself would report. That is how `reference/api.md` came to demonstrate the inline arrow
+  `RMD020` reports, with a green gate over it.
+
+  **And running it found a rule reporting its own advice.** `fresh-object-in-props` follows a call to
+  see whether a literal is built inside it, and skipped `@compute` because caching is the whole of
+  what it does — but not `@memoized`, which is the answer for a value built per ROW. So
+  `concepts/caching.md`, whose entire subject is `@memoized` as the fix for that report, was reported
+  by it. The walk stops at a `@memoized` call for that question now, and
+  `unkeyable-memoized-argument` is what keeps the assumption honest.
+
+  **Whose question it is decides that, and getting it wrong lost a different report.** Written into
+  the walk itself the skip made EVERY question stop at a `@memoized` call — including
+  `unserializable-state`, which is not about whether a value is rebuilt but about what it IS. Caching
+  changes nothing there: a `Map` behind a cache is still a `Map` the hydration blob cannot carry, and
+  that rule is an ERROR going quiet on the exact value it exists for. It is
+  `Looking.throughMemoizedCalls` now, decided by the question and required rather than defaulted, and
+  both directions are planted.
+
+  The examples the pass found and that are now fixed: three function literals in the markup
+  (`composition/lazy.md` twice, `composition/error-boundaries.md`), six form controls with nothing
+  naming them, a `<div>` with a click and no keyboard path, and two `<ul>…</ul>` elisions that are
+  not valid markup for anyone who copies them.
+
+- 0c6c61b: New rule: `misspelled-element-property` — a name one capital away from working
+
+  A few pieces of element state live in a PROPERTY and have no attribute of that name at all: an
+  `<input>`'s `indeterminate`, and a media element's `volume`, `playbackRate` and `currentTime`.
+  There is no `playbackrate` content attribute for `playbackRate` to be the lowercase form OF, so
+  each has exactly one spelling and anything else is a different name.
+
+  `putAttribute` matches the table exactly for that reason, and the consequence is silent:
+  `playbackrate={2}` matches nothing, falls through, and is written into the document as an attribute.
+  Nothing reads it, the video plays at normal speed, and the line looks right.
+
+  **The types accept both.** `RamondaArgs` has an arm keyed on `Lowercase<string>` so any real
+  lowercase HTML attribute passes without being enumerated — `playbackRate` typechecks because the
+  element's DOM properties are another arm, and `playbackrate` typechecks because it is lowercase.
+  That is what makes this worth a rule rather than a note: it is the RIGHT name in the wrong case,
+  written by somebody who reasonably expected HTML's usual indifference to it.
+
+  `@ramonda/dom-facts` gains `propertyOnlyNames(tag)` beside the existing `keptInAProperty`. Core
+  needs to know whether ONE spelling is the property; the checker needs the names themselves to say
+  what was meant, and a checker with its own copy of them is the second list that table exists to
+  prevent. Its note hands this half over by name.
+
+- 89d0c74: A keyboard path is recognised in both spellings of an event name
+
+  `click-with-no-keyboard-path` knew one. The framework takes two — `onclick`, and `on:click` which
+  hands the name through verbatim for a custom event with a dash or a capital that the first form
+  cannot reach. `core/Attribute.ts` decides it, and the new `eventTypeOf` mirrors that rather than
+  inventing an answer.
+
+  Measured on a plant: `<div on:click={open}>` was not recognised as a click handler at all, and —
+  worse — the key handler in `<div onclick={open} on:keydown={onKey}>` was invisible, so an element
+  whose keyboard path is written on the same line was reported as having none.
+
+  `client-only-request-read` had this right and now reads through the same helper, so a fourth rule
+  cannot drift.
+
+- 2847429: Two rules read what an attribute SAYS rather than that it is there
+
+  The last two rules on the audit list, and both gaps were the same shape: an attribute's PRESENCE
+  read as its meaning, where the source says the opposite out loud.
+
+  **`<video muted={false}>` has sound.** The rule went quiet on `muted` being written at all — right
+  for `muted`, and right for `muted={quiet}`, since anything unreadable has to stay quiet as the
+  direction that cannot report working markup. It was wrong for the one spelling that settles the
+  question the other way, and that video's content exists only as sound with nothing to read instead.
+
+  **`placeholder=""` names nothing, and reading its presence as a name put the report on the WRONG
+  RULE.** `named-only-by-a-placeholder` told the author their placeholder is the only name this
+  control has — on a control with no name at all — while `control-with-no-label`, whose sentence that
+  is, stayed quiet because a placeholder was written. The report moves to the second rule, which is
+  not a silence but a correction: the fault was always there and the wrong rule was describing it. A
+  placeholder this cannot READ still counts as a name, because `placeholder={t("email")}` is somebody
+  putting words there and only an empty literal is the source saying otherwise.
+
+- a93b53b: Both decorator rules answer "who wrote this decorator" the same way
+
+  `duplicate-decorators` resolved it. `decorator-that-adds-nothing`, which sits on the same line, read
+  the written IDENTIFIER — and measured on a plant that was wrong three ways at once:
+
+  - `import { state as reactive }` beside `@persist` went quiet on the identical pair;
+  - `@core.state` beside `@core.persist` went quiet too;
+  - an app's OWN decorator called `persist` beside core's `@state` was **reported** — somebody else's
+    code, told one of its lines does nothing, for the framework's rule.
+
+  It reads through `lifecycle-env`'s `coreDecorators` now. Two rules answering one question about one
+  decorator two different ways is the drift a shared reader exists to prevent, and one of the two is
+  always the wrong one.
+
+  **And the namespace half was missing from the resolver itself.** `@core.Host` twice on one class
+  was invisible to `duplicate-decorators` while the aliased form was reported. `coreExportName` reads
+  a namespace access directly now — that spelling is the one place the module's own name for a
+  binding is written down verbatim at the call site. It had been patched inline in `lifecycle-env` an
+  hour earlier; that copy is gone.
+
+### Patch Changes
+
+- ad46613: `late-request-read` sees a request taken onto a field
+
+  `ctx = requestContext()` written as a FIELD is the same take one scope out. The initializer runs at
+  construction — on the server, inside the synchronous section `renderToString` has not yet cleared —
+  so the take itself is correct, and every read of it below an `await` is late. Nothing reported one,
+  while the identical `const ctx = requestContext()` a line lower was.
+
+  It is the shape somebody writes precisely to stop calling `requestContext()` over and over, which
+  is what made the silence expensive: the tidier the code, the less the rule saw. The report says
+  which door was used, because the take is on a line the reader is not looking at.
+
+  Bounded exactly as the local is — only an initializer that IS the call, nothing followed and
+  nothing inferred.
+
+  The rest of the boundary was re-tested rather than trusted, since the rule defends its own
+  narrowness as a division of labour with the runtime's RMD053 while arguing two paragraphs earlier
+  that RMD053 is not a sufficient backstop. It came back sound: a `try`, a `finally` and a loop body
+  are all correctly below the await; an `await` inside a nested function correctly does not yield the
+  body around it; and a value taken before the await — destructured, or read into a local — is
+  correctly in hand afterwards and is not reported.
+
+- f8bf479: `media-with-no-captions` reads a `<track kind>` held in a name
+
+  The rule walked the track's attributes itself and accepted only a string literal, so
+  `<track kind={CHAPTERS}>` with `const CHAPTERS = "chapters"` counted as a usable track and silenced
+  the report — while the identical `kind="chapters"` on the line above it was reported. The same
+  claim, spelled two ways, answered two ways.
+
+  It reads the child through `contextFor` now, which follows a name to the value it holds. That was
+  the fourth private attribute walk of a shape the shared readers exist to prevent, and it is the
+  last one.
+
+  Two facts stop hiding behind one `undefined` while it is being fixed: a track with NO `kind` defaults
+  to `subtitles` and carries the words, while one whose `kind` cannot be read is a track nothing here
+  can judge. Both still silence the rule, and `descendantIn` now hears which is which. A `<track>`
+  beside a spread joins the second group — the spread may carry the `kind`, or replace the one
+  written.
+
+  Also written down, because it reads like an oversight and is not: a `<audio muted>` is still
+  reported where a `<video muted>` is not. That escape is about the decorative background loop —
+  autoplaying, silent by design, nothing to hear at any point. A muted `<audio>` is audio somebody
+  will unmute with the controls, so the words are still coming.
+
+- a5085ee: `Listener` — a listener the app arms and disarms, which the framework still removes
+
+  `@onWindow` and `@onDocument` attach for the owner's whole life. That is right for most listeners and
+  wrong for the ones this exists for: a `keydown` while a dialog is open, a `pointermove` while a drag
+  is happening, a `scroll` armed after something loads.
+
+  Written by hand, each of those is an `addEventListener` and a `removeEventListener` that have to
+  agree with each other AND with teardown — three places for one fact, which is exactly where the leak
+  lives and why `listener-added-by-hand` reports it.
+
+  ```tsx
+  private escape = this.use(Listener, () => ({
+    on: "document",
+    type: "keydown",
+    run: this.onKey,
+  }));
+
+  @mounted open() { this.escape.listen(); }
+  close() { this.escape.stop(); }
+  ```
+
+  One hook instance is one listener, and teardown removes it. Nothing to remember, no handler
+  reference to keep in step. It is deliberately the shape `Interval` and `Timeout` already have.
+
+  **The target is NAMED rather than handed over.** `window` does not exist on the server, so a prop
+  holding the value would be evaluated where there is nothing to evaluate. `"window"` and `"document"`
+  are resolved at arm time; a function is the third form, for a target the app owns
+  (`() => this.box.current`), and a ref that is not attached yet answers `null` so the listener refuses
+  rather than attaching to nothing. `@onWindow` resolves its target the same way and for the same
+  reason.
+
+  **What is read WHERE.** The type, the target and the options are captured when it arms, because
+  `removeEventListener` matches on the triple of type, function identity and capture — a `type` re-read
+  at teardown after a signal changed it would ask the DOM to remove a listener that was never added
+  and silently leave the real one attached. `run` is read when the event FIRES, so a handler chosen by
+  a signal takes effect without re-arming. That is the same split `Timeout` and `Interval` keep.
+
+  **`Armed` is extracted, not copied.** Knowing whether arming can be made safe right now is forty
+  lines of measured reasoning — including two earlier attempts that asked which SIDE the render was on
+  and both had a window where a timer armed in the SSR process and fired there. A second copy of that
+  for the listener would have been the drift this codebase keeps paying for, so `Timeout`, `Interval`
+  and `Listener` now share one answer.
+
+  `listener-added-by-hand`'s advice named this as a gap in the framework. It now names the hook.
+
+- 9b1c4ef: `--fix` no longer shifts every edit in a file that starts with a BOM
+
+  A byte-order mark is the one place the two readers of a file disagree. TypeScript **strips** it, so
+  every offset a rule produces is relative to the text without it; `readFileSync` keeps it, as a single
+  `﻿`. Slicing the kept text with the stripped text's offsets put every edit one character early.
+
+  Measured on a real file: `<div class="card">` came back `<divclassNames="card">`, having eaten the
+  space and left the `s` behind. Silent, valid-looking, and in a tool that writes somebody's source.
+
+  The mark is stripped before the offsets are used and put back on write, so the file keeps whatever it
+  had. CRLF needed no such handling and was checked at the same time: TypeScript keeps `\r\n` in its
+  text, so those offsets already agree.
+
+  Pinned by a test that asserts the whole resulting string rather than that something changed — a
+  regression here corrupts a file rather than failing loudly.
+
+- 0beac11: An empty naming attribute no longer answers for the name it lacks
+
+  `<input type="text" aria-labelledby="" />` has no accessible name at all, and was reported by
+  **nothing**: the attribute that names nothing had answered for the one that would have.
+  `aria-label=""`, `title=""` and whitespace behaved the same way. A screen reader announces every one
+  of them as "edit, blank" and stops.
+
+  It is the same shape as `placeholder=""` two branches above it in the same reader, found the same
+  way and fixed the same way: **when a rule reads an attribute's PRESENCE as its meaning, ask what it
+  SAYS.** Three answers and not two — written with something, written empty, and unreadable.
+
+  A name this cannot READ still counts. `aria-label={t("email")}` is somebody naming the control and
+  guessing at the string would report one that is correctly labelled; only an empty literal is the
+  source settling the question the other way.
+
+  Found by planting a broad sweep of obviously-wrong markup and reading which lines nobody spoke
+  about — the ladder's own method, pointed at the gaps BETWEEN rules rather than at one rule's shapes.
+  That is the second finding from that sweep; the first was the empty `<button>`.
+
+- 0072896: `half-built-keyboard-path` stops reporting a composite widget built across components
+
+  The rule already knew the container may own the keyboard: a `listbox` takes the arrow keys while its
+  options carry a roving `tabIndex={-1}`, and a `toolbar` and a `tablist` do the same. That was fixed
+  for the case where the container and its children sit in ONE render.
+
+  They usually do not. `<Toolbar>` renders the `role="toolbar"` and the `onkeydown` and takes the
+  buttons as children, which is how anyone actually builds one — and from inside the rule that ancestor
+  is a capitalised tag with nothing written on it. So the recommended shape was reported, and the
+  half-fix looked identical to a whole one from in here.
+
+  A COMPONENT ancestor now means the same as a key handler on an ancestor: do not report. What it puts
+  around its children is decided in another file, and guessing is how a rule reports correct code.
+
+  The cost is a real report lost when that component ancestor is a plain `<Layout>` handling no keys at
+  all. That is the trade this package takes every time — a false report against a widget built
+  correctly costs more than a missed one against a widget built wrongly.
+
+  Found by walking the merged rules against the checklist rather than by a test. The rule passed
+  everything it had.
+
+- 473588c: Nothing a reader is shown names a decorator this framework no longer has
+
+  The first release without `@Host` was about to ship text that still sends people looking for it.
+
+  **RMD041's advice described a feature that was removed**, and the docs page for it described a
+  different one that never existed. The runtime message blamed `@onElement` on a component whose host
+  element was missing; the reference page blamed a selector that matched nothing, and there has never
+  been a selector. Both now say what is actually true: a listener decorator resolves its target when its
+  effect runs on mount, `@onWindow` and `@onDocument` are the only two and they answer with `window` and
+  `document`, so reaching this means an effect ran where there is no DOM at all.
+
+  **`@ramonda/form` shipped a `@Host` example in its published types** — the first example a reader of
+  `Field` meets, using a decorator that is gone. It writes its own `<label>` now, which is what the
+  framework asks for.
+
+  The same sweep over every surface a reader can see: five more places in `@ramonda/core`'s published
+  `.d.ts`, a `flushSync` error naming `@onElement` among the things that might be writing state, and
+  ten spots in `@ramonda/check` and `@ramonda/router`. One was not prose: core's DOM-nesting check
+  still stepped around a `RAMONDA-HOST` parent, which no longer exists, so the branch is gone.
+
+  `@ramonda/check` no longer knows the name either. Its `CLIENT_ONLY_DECORATORS` entry for
+  `@onElement` is gone, and so is the reason for keeping it: the fixtures declare their OWN stub of
+  `@ramonda/core`, so the decorator there was a specimen rather than a migration being tested. The stub
+  stops declaring it, the fixture that used it uses `@onWindow` — a decorator that exists, and the same
+  thing to the rule under test — and `fixtures/host-listeners/`, seven uses of it that no test loads at
+  all, is deleted.
+
+  **And the same question asked of every diagnostic, not just this one.** Comparing all 53 shipped
+  messages against their reference entries turned up no other contradiction — RMD041 was the outlier —
+  but three entries had gone stale in the same way a rename does. RMD047's heading still said "memoized
+  handler"; `@memoized` takes any method, and its own shipped title already says "member". RMD021's
+  heading said the same thing, and so did a runtime message from the purity guard and the label
+  `@ramonda/check` prints for the decorator. RMD006 predates the `Timeout` and `Interval` hooks and only
+  offered the mount-armed decorators.
+
+  Nothing checks that a diagnostic's `fix` and its reference entry agree, which is how RMD041 came to
+  have two different wrong explanations of itself. A gate for that is not in here — it is worth
+  deciding on separately.
+
+- 976fd40: Findings from the branch's own review
+
+  Fresh code is the least-examined code on a branch, and this was a long one.
+
+  **Two rules answering "is this focusable" two different ways.** `aria-hidden-on-focusable` asks it
+  of the element the attribute is ON; `aria-hidden-around-something-focusable` asks it of an element
+  INSIDE that subtree. The second had written its own walk over the raw JSX attributes, and it
+  disagreed twice — measured with a plant, both times reporting markup that is correct:
+  `<input type={HIDDEN}>` where `const HIDDEN = "hidden"`, because a walk that accepts only a string
+  literal does not follow a name to the value it holds; and `<button {...rest}>`, where `rest` may
+  carry the `tabIndex={-1}` that takes it out of the tab order. There is one reader now,
+  `inTheTabOrder`, and it answers three ways rather than two: proved in, proved out, and not
+  provable here.
+
+  `descendantIn`'s matcher can say `"unreadable"` for the same reason, so a caller's uncertainty
+  travels out with the walk's own instead of being flattened into "none".
+
+  **Two exports nothing outside their own file used** — `narrowsTo` and `attributesOf`. An export is
+  a promise, and this package curates its surface on purpose.
+
+  **Three silence assertions pointing at nothing.** `foreign-child`'s list of containers that must
+  stay quiet named a comment, a closing tag and a blank line, so four of the ten silences it claims
+  to check were never checked. A negative assertion passes whatever it points at, which is what makes
+  getting the line right the whole of its value.
+
+- ccc64fe: Every package's npm page carries the same four facts, and `homepage` points at its own docs
+
+  The README is published, so this is a change to what a reader lands on. Measured before it was
+  written: of eleven published packages, five carried no licence, three named no install command
+  anywhere, one had no badges, and two linked to no documentation at all. `create-ramonda` and
+  `@ramonda/devtools` had no README whatsoever — their npm pages were blank.
+
+  Those facts are now generated from the sources that already held them — the package name, its
+  `peerDependencies` (required ones appear in the install line; `bguard` is declared optional and
+  so does not), and `homepage`, which now points at the package's own documentation section rather
+  than at the site root. npm shows `homepage` beside the package, so that is a better npm page on
+  its own as well as the one source the README link is written from.
+
+  Nothing below the generated region changed. Each README keeps its own voice, and its own headings.
+
+- e13c34c: `context-consumed-above-its-provider` orders two halves in one field by the calls, not by the field
+
+  Both provider rules turn on one fact — field initialisers run in declaration order, furthest
+  ancestor first — so the walk is where a gap would be. Walked, and most of it held: a base that
+  consumes with a subclass that provides is correctly the fault ACROSS FILES, a base that provides
+  with a subclass that consumes is correctly the arrangement rather than the fault, and neither a
+  `readonly` modifier nor a `static` field between the two changes anything.
+
+  One shape fell through. `pair = { reads: this.use(C), writes: this.use(P) }` is constructed left to
+  right and is the same fault as two fields in that order, but ordering was by the FIELD's start
+  position — one node for both halves — so the comparison settled nothing and the rule fell through
+  to silence. The `this.use` calls carry their own positions now. That is meaningful because one
+  field is one file; across the heritage chain it is still `rank` that orders, which is the whole
+  reason `rank` exists.
+
+  `one-provider-per-component` needed nothing: a SECOND provider is the fault wherever it sits, so it
+  was already right about two in one field and about one on a base with another on the subclass.
+
+- d70b075: `parent-with-a-foreign-child` counts text, not only tags
+
+  `<ul>Items:<li>one</li></ul>` is the same fault with no tag in it. The content model of these
+  containers takes ELEMENTS, so words written straight inside are as foreign as a `<div>` — and in a
+  `<table>` the parser moves them out exactly as it moves a foreign element, so the tree the browser
+  builds is not the tree in the source.
+
+  **The whitespace between children is not that**, and it is the thing this would have broken first if
+  written carelessly. Every one of these containers is written across several lines, so the newline
+  and the indentation are JSX text nodes on every well-formed list in existence. Only text with
+  something in it once trimmed is content, and the well-formed list is asserted silent beside the
+  faulty one.
+
 ## 0.12.0
 
 ### Minor Changes

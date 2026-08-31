@@ -1,5 +1,94 @@
 # @ramonda/testing-library
 
+## 0.3.0
+
+### Minor Changes
+
+- c468786: A component owns a range of nodes rather than being one element, and `@Host` is gone with the
+  element it named.
+
+  A component's markup is what its `render()` returns, and nothing else. One element, several, or
+  none — a component that renders `null` has state, a lifecycle and hooks and no nodes at all. So two
+  `<td>` from one component sit inside the `<tr>` where an element would be foster-parented out in
+  front of the whole table, and a component that exists only to toggle other components costs the page
+  nothing.
+
+  The host element was never for the author. It was the diff's ANCHOR, and it charged for that
+  everywhere else: the tag was declared away from the markup, `display: contents` removed the box but
+  not the node so `.card > p` could not reach through a component, and a component could not produce
+  two siblings. The anchor does not have to be a node — `DiffAndMerge`'s ordering pass never searched
+  for one, it builds the target order for a block and walks it backwards — so a component is now a
+  third kind of `RecordEntry` beside `ListRegion`, and `isRegion` stays blind to which kind.
+
+  **Removed:** `@Host`, `@onElement`, `ref` on a component, and the `<ramonda-host>` element.
+  `RMD010`, `RMD042` and `RMD045` leave with the faults they described, and so does `@ramonda/check`'s
+  `listener-on-the-default-host`. Write the element in the render, put the listener and the ref on it,
+  and give a custom element a dashed tag — `JSX.IntrinsicElements` now accepts one, because `@Host` did.
+
+  **Server markup carries a comment pair per component**, with its state blob on the opening one:
+  `<tr><!--c7 {"state":{…}}--><td>…</td><td>…</td><!--/c7--></tr>`. Served markup is text and nothing in
+  plain HTML says where one component's run of nodes ends, so the server says it — in comments, because
+  a comment is the only thing the parser leaves alone inside a `<tr>`. Hydration consumes and removes
+  them, so a hydrated page holds exactly what a client render would have produced, and a client render
+  never writes one. The blob moved with them: it used to be `data-ramonda-state` on the host element.
+
+  **Measured, not asserted.** `RenderCost` counts DOM operations, and a list of 200 component rows costs
+  what 200 element rows cost — two insertions to append or prepend, two to swap, `N - 1` to reverse,
+  nothing for a fresh array of the same rows. An empty component filling in costs what a plain
+  conditional hole costs, so the sibling search it has to do costs no DOM operation. The child record is
+  kept per region owner rather than per component, so it does not grow with a list.
+
+  `@ramonda/router`'s `Link` writes its `<a>` in the render, where the href and the click handler that
+  has to agree with it sit together. `@ramonda/testing-library`'s `renderHook` finds its host through
+  the record, and `@ramonda/core/testing` gains `getComponentsIn` for that — which is also the only way
+  to find a component that renders nothing, since no node points at one.
+
+### Patch Changes
+
+- ba680c1: The retired one-element rule stops being taught, including in a message readers see
+
+  `Every JSX tag is exactly one element` was the framework's headline rule and is not
+  true any more — a component renders one element, several, or none. The rule was
+  retired; the sentences arguing FROM it were not, and they were spread across four
+  packages.
+
+  The one that reached users: the fragment error said `<>…</>` is refused because it
+  `would make one tag produce several elements`. That is now something a component
+  does routinely, so the message argued from a rule the framework no longer has. It
+  gives the reason that still holds — a fragment has no state, no lifecycle and no
+  identity the diff can hold, and a component covers every case it would.
+
+  The rest were comments and one reference page, each rewritten to the reason that
+  survives rather than deleted: `RMD011` and its DEV guard, `__h`'s contract (one
+  vnode per tag, which is a claim about the vnode and not about the DOM), why
+  `createContext`, `QueryClientProvider` and `Router` are hooks (they put nothing on
+  the page — not that a wrapper was forbidden), and why attribute names are not
+  aliased.
+
+  Two comments also described `<ramonda-host>`, which no longer exists anywhere in
+  the source. `AsyncLoad` renders the loaded module and nothing around it.
+
+  `list()` argued from the rule under a third spelling — "it does not bend the
+  one-tag-one-element rule" — which a search for the headline sentence did not reach.
+  The reason that survives is why a `<For>` TAG would still be wrong: a tag whose whole
+  job is to stand in for N siblings and be nothing itself is a fragment with extra
+  steps, and that is the thing Ramonda does not have.
+
+- ccc64fe: Every package's npm page carries the same four facts, and `homepage` points at its own docs
+
+  The README is published, so this is a change to what a reader lands on. Measured before it was
+  written: of eleven published packages, five carried no licence, three named no install command
+  anywhere, one had no badges, and two linked to no documentation at all. `create-ramonda` and
+  `@ramonda/devtools` had no README whatsoever — their npm pages were blank.
+
+  Those facts are now generated from the sources that already held them — the package name, its
+  `peerDependencies` (required ones appear in the install line; `bguard` is declared optional and
+  so does not), and `homepage`, which now points at the package's own documentation section rather
+  than at the site root. npm shows `homepage` beside the package, so that is a better npm page on
+  its own as well as the one source the README link is written from.
+
+  Nothing below the generated region changed. Each README keeps its own voice, and its own headings.
+
 ## 0.2.3
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@ramonda/lens",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Immutable updates for deep objects by describing a path, not by mutating a proxy.",
   "license": "MIT",
   "author": "Nikola Blagojević",
