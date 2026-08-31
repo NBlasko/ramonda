@@ -49,9 +49,11 @@ below removes. It is written here because the DOM's own types leave you nowhere 
 
 An inline arrow — `onclick={(e) => …}` — types `e` for you, and that is the only
 thing it does better. It also builds a new function on every render, so the listener
-is removed and re-added on the element every time, and a development build reports it
-(`RMD020`). Annotate the method instead; when a handler has to be built per item,
-[`@memoized`](#a-handler-or-a-value-per-item) caches it by its arguments.
+is removed and re-added on the element every time. Both halves of the toolchain say so:
+[`ramonda-check`](/reference/check) reports it from the source before anything runs, and a
+development build reports it again as `RMD020` once it does. Annotate the method instead; when a
+handler has to be built per item, [`@memoized`](#a-handler-or-a-value-per-item) caches it by its
+arguments.
 
 ### An event whose name `on…` cannot spell
 

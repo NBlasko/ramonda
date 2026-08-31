@@ -332,6 +332,11 @@ on the element on every render, and a function passed to a child re-renders that
 For a handler that must be built per item, [`@memoized`](/concepts/events) caches it by its
 arguments, per instance — so the second render hands back the same function and nothing is reported.
 
+[`ramonda-check`](/reference/check) reports the same thing from the source, as
+`function-built-in-the-markup`, so a handler on a page nobody has opened is found before anything
+runs. It makes the same two exceptions this does: a `@memoized` call, and a prop the child declared
+with `@StableProps`.
+
 **An object or array built in place**, with the same contents. A child receiving it re-renders every
 time, a [`@compute`](/concepts/compute) reading it recomputes every time, and if it is a
 [list's](/lists) items then every row loses its identity and the whole list is rebuilt — per-item
