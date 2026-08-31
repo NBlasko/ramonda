@@ -132,6 +132,46 @@ const REBUILT: Looking<"object" | "array"> = {
   throughMutableBindings: true,
 };
 
+/**
+ * Looking for a FUNCTION built during the render: a literal, and only inside a function.
+ *
+ * `throughCalls` is the one that differs from `REBUILT`, and it is the whole of the difference
+ * between the two questions. A call that hands back a function is the documented ANSWER here, not
+ * the fault: `@memoized pickRow(row)` returns a handler and caches it by its arguments, and
+ * `debounce(this.save, 200)` has nowhere else to live. Following either would find the arrow inside
+ * and report the fix — the same trap `arrow-fields` is pinned against in `one-hop-away`.
+ *
+ * Everything else matches `REBUILT`, because they are the same question about a different literal:
+ * a module-level `const` is built once and is the fix, one side of a branch is enough for a fault,
+ * and a `let` is a fresh function however the binding was declared.
+ */
+const A_FUNCTION: Looking<"arrow" | "function"> = {
+  leaf: (expression) =>
+    ts.isArrowFunction(expression) ? "arrow" : ts.isFunctionExpression(expression) ? "function" : undefined,
+  throughModuleScope: false,
+  throughBranches: true,
+  throughCalls: false,
+  throughMutableBindings: true,
+};
+
+/**
+ * Whether this expression is a FUNCTION built during the render — one that did not exist before it
+ * ran, so the identity the element or the child is handed is fresh every time.
+ *
+ * The props side of `arrow-fields`, and the static half of the runtime's `RMD020` `handler`
+ * verdict. `undefined` for everything the source does not settle: a method, a property read, a
+ * prop, a call — none of those is knowable from here, and a maybe is the one thing this may never
+ * report.
+ */
+export function builtFunctionIn(
+  expression: ts.Expression,
+  resolve: ElementContext["resolve"],
+  depth: number,
+  seen: Set<ts.Node> = new Set(),
+): Found<"arrow" | "function"> | undefined {
+  return follow(expression, resolve, A_FUNCTION, depth, seen);
+}
+
 /** What the walk found, and the name of the local or function it was found in. */
 export interface Found<T> {
   value: T;

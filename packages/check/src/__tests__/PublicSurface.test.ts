@@ -71,6 +71,7 @@ const EXPECTED_TYPES = [
   "FreshObjectInHookPropsIssue",
   "FreshValueFromAWatchSelectorIssue",
   "FreshObjectInPropsIssue",
+  "FunctionBuiltInTheMarkupIssue",
   "HeadTagsCollideIssue",
   "HeadingSkipsALevelIssue",
   "IndexAsKeyIssue",

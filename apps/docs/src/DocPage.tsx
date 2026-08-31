@@ -1,5 +1,5 @@
 import { Component, Head, AsyncLoad } from "@ramonda/core";
-import type { RamondaNode } from "@ramonda/core";
+import type { AsyncLoadFailure, RamondaNode } from "@ramonda/core";
 import { Link } from "./routes";
 import type { PageMeta } from "./content-types";
 import { pageLoaders } from "./generated/page-loaders";
@@ -46,6 +46,22 @@ export class DocPage extends Component<DocPageProps> {
     description: self.props.meta.description,
   }));
 
+  /**
+   * A bound method rather than an arrow in the markup: written inline it is a new function every
+   * render, so `AsyncLoad` could never compare the prop equal and re-rendered whenever this page
+   * did. `function-built-in-the-markup` reports that, and this is the answer it recommends.
+   */
+  loadFailed({ retry }: AsyncLoadFailure): RamondaNode {
+    return (
+      <p className="demo-error">
+        This page could not be loaded.{" "}
+        <button type="button" onclick={retry}>
+          retry
+        </button>
+      </p>
+    );
+  }
+
   render(): RamondaNode {
     if (this.props.notFound) {
       // `data-pagefind-ignore` keeps this out of the search index — it is the one
@@ -72,14 +88,7 @@ export class DocPage extends Component<DocPageProps> {
           namedExport="Page"
           preload={pagePreloads[path]}
           onLoading={<div className="page-loading" />}
-          errorFallback={({ retry }) => (
-            <p className="demo-error">
-              This page could not be loaded.{" "}
-              <button type="button" onclick={retry}>
-                retry
-              </button>
-            </p>
-          )}
+          errorFallback={this.loadFailed}
         />
       </article>
     );

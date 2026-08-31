@@ -36,6 +36,7 @@ export type {
   FreshObjectInHookPropsIssue,
   FreshValueFromAWatchSelectorIssue,
   FreshObjectInPropsIssue,
+  FunctionBuiltInTheMarkupIssue,
   HeadTagsCollideIssue,
   IntervalWithNoCleanupIssue,
   InteractiveInsideInteractiveIssue,
