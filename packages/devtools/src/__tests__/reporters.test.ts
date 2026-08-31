@@ -152,10 +152,14 @@ describe("@ramonda/lens, reporting through the panel", () => {
   it("hands a panel that opens later everything reported before it existed", () => {
     // Startup order, which is the order that actually happens: the app runs, reports, and
     // only then does somebody open the panel.
-    focusOn({ profile: null as { city: string } | null })
-      .get("profile")
-      .get("city")
-      .set("Niš");
+    // RML001 throws in development now, and the point here is the RECORD it leaves on its way out —
+    // so the throw is caught and the second report still happens.
+    expect(() =>
+      focusOn({ profile: null as { city: string } | null })
+        .get("profile")
+        .get("city")
+        .set("Niš"),
+    ).toThrow();
     focusOn({ tags: [] as string[] })
       .get("tags")
       .at(0)

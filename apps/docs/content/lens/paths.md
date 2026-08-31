@@ -49,21 +49,29 @@ interface State {
 focusOn(state).get("profile").get("name").set("Ada");
 ```
 
-If `profile` really is `null` at runtime, **nothing changes**. Development reports which hop could
-not be reached, names the whole path, and says what to do instead — only the LAST hop creates what it
-names, so a gap before it cannot be walked through.
+If `profile` really is `null` at runtime, **development throws**, naming the hop that was missing and
+the whole path it could not reach:
 
-**A published build says nothing.** Every lens diagnostic is behind `__DEV__`, so the check still
-runs and the write still does nothing, but there is no message and no record — deliberately: the text
-is bytes an app ships to nobody, and a devtools collector that happens to be loaded should receive
-silence rather than a stream to filter.
+```
+[Ramonda lens RML001] .profile is null, so .profile.name could not be reached.
+Nothing was changed.
 
-That is the shape to know about. An update through a gap is not an error your users see; it is an
-update that does not happen. Two ways to keep it from reaching production unnoticed:
+→ Only the LAST hop creates what it names, so a gap before it cannot be walked
+  through. Set the intermediate value first, or `merge` the whole object into place.
+```
 
-- **Read the warning in development.** It names the exact hop, so it is one line to fix.
-- **Set the intermediate value first**, or `merge` the object into place, whenever the middle of a
-  path is genuinely optional rather than merely typed that way.
+It throws rather than warns because of what carrying on looks like: the root comes back unchanged,
+which is indistinguishable from a write that had nothing to do. A warning in a busy console is easy
+to walk past; an update that silently does not happen is not something to find in production.
+
+**A published build does not throw, and says nothing.** Every lens diagnostic is behind `__DEV__`, so
+the check still runs and the write still returns the root — but there is no message and no record.
+That is deliberate: the text is bytes shipped to nobody, and an exception in front of a user buys
+nothing the author could not have seen while writing the line.
+
+So the rule is: the middle of a path has to be there. Only the LAST hop creates what it names, so set
+the intermediate value first, or `merge` the whole object into place, whenever a middle hop is
+genuinely optional rather than merely typed that way.
 
 ## Narrowing a type
 
