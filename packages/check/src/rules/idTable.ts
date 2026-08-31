@@ -115,6 +115,7 @@ const LITERAL: Looking<string> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 /**

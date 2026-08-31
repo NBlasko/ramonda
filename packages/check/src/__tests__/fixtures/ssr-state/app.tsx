@@ -1,5 +1,5 @@
 import { renderToString } from "@ramonda/core";
-import { Component, Hook, bootstrap, compute, persist, state } from "@ramonda/core";
+import { Component, Hook, bootstrap, compute, memoized, persist, state } from "@ramonda/core";
 
 import { Dates, Maps } from "./kinds";
 import { heldCache, level1, makeCache } from "./make";
@@ -38,6 +38,12 @@ class Cart extends Storefront {
   @state cast = new Maps<string, number>() as Maps<string, number>;
   @state shared = SHARED;
   @state fromHelper = makeCache();
+
+  /* A Map behind a cache is still a Map in the blob — see the test that pins this. */
+  @memoized cached(k: string) {
+    return new Map<string, number>([[k, 1]]);
+  }
+  @state plantedLossy = this.cached("a");
   @state deep = level1();
   @state held = heldCache();
   @state branched = flag ? new Maps<string, number>() : null;

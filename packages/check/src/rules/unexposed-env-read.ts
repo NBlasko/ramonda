@@ -62,6 +62,7 @@ const KEY_NAME: Looking<string> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 /** Whether this is the `import.meta.env` object itself. */

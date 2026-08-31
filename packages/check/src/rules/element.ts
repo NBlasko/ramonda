@@ -322,6 +322,7 @@ const TEXT: Looking<string> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 /** The same, for the attributes that hold a number — `tabIndex`, `aria-level`. */
@@ -344,6 +345,7 @@ const NUMBER: Looking<number> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 /** The three spellings of a claim, behind a name — `{HIDDEN}` where `const HIDDEN = true`. */
@@ -374,6 +376,7 @@ const PRESENCE: Looking<boolean> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 const TRUTH: Looking<boolean> = {
@@ -388,6 +391,7 @@ const TRUTH: Looking<boolean> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 function textBehind(expression: ts.Expression, resolve: ElementContext["resolve"]): string | undefined {

@@ -46,6 +46,7 @@ const COMPARABLE: Looking<string> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 function literalKey(element: JsxElementLike, resolve: ElementContext["resolve"]): string | undefined {

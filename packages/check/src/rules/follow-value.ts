@@ -38,9 +38,6 @@ const CHOOSES: ReadonlySet<ts.SyntaxKind> = new Set([
  */
 const HOPS = 20;
 
-/** The decorators whose whole job is to hand the same value back. */
-const CACHING = ["compute", "memoized"] as const;
-
 export interface Built {
   kind: "object" | "array";
   /** Where it is built, when that is not the line the prop is on. */
@@ -123,6 +120,24 @@ export interface Looking<T> {
    * correct markup and the one thing this package may never produce.
    */
   throughMutableBindings: boolean;
+
+  /**
+   * Whether a `@memoized` call may be followed into.
+   *
+   * The same asymmetry as `throughModuleScope`, and it was got wrong once already. A question about
+   * whether a value is REBUILT must stop: `@memoized` caches by its arguments, per instance, so the
+   * call is the documented fix and following it reports the answer. A question about what a value
+   * IS must go on: a `Map` behind a `@memoized` call is still a `Map` in the hydration blob, and
+   * caching changes nothing about what it is.
+   *
+   * Planted both ways. Skipping it for every question made `unserializable-state` silent on
+   * `@state plantedLossy = this.cached("a")` — a rule at error severity going quiet on the exact
+   * value it exists for, which is invisible afterwards in precisely the way a gap is.
+   *
+   * `@compute` is skipped for every question and is not this field: it is read as a PROPERTY in its
+   * getter form and never reaches a call at all, and the method form returns the cached value.
+   */
+  throughMemoizedCalls: boolean;
 }
 
 /** Looking for a value REBUILT during the render: only a literal, and only inside a function. */
@@ -133,6 +148,7 @@ const REBUILT: Looking<"object" | "array"> = {
   throughBranches: true,
   throughCalls: true,
   throughMutableBindings: true,
+  throughMemoizedCalls: false,
 };
 
 /**
@@ -155,6 +171,7 @@ const A_FUNCTION: Looking<"arrow" | "function"> = {
   throughBranches: true,
   throughCalls: false,
   throughMutableBindings: true,
+  throughMemoizedCalls: false,
 };
 
 /**
@@ -279,8 +296,9 @@ export function follow<T>(
      * `unkeyable-memoized-argument` reports an argument that cannot be keyed, so the assumption
      * made here is one the package checks somewhere.
      */
-    if (ts.isMethodDeclaration(called) && CACHING.some((name) => hasDecorator(called, name, resolve))) {
-      return undefined;
+    if (ts.isMethodDeclaration(called)) {
+      if (hasDecorator(called, "compute", resolve)) return undefined;
+      if (!how.throughMemoizedCalls && hasDecorator(called, "memoized", resolve)) return undefined;
     }
 
     const file = called.getSourceFile();

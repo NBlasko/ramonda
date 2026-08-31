@@ -563,6 +563,15 @@ for (const unit of units) {
 const byUnit = new Map();
 /** What the RULES reported, which is a different question from whether the block compiles. */
 const reported = [];
+/**
+ * Which `expect-report` markers actually silenced something.
+ *
+ * A marker nobody needs any more is how a gate quietly stops being one: fix the example, leave the
+ * fence alone, and that block is exempt from the rule forever with nothing to say so. The same
+ * failure a stale line-number assertion has — it keeps passing while asserting nothing.
+ */
+const used = new Set();
+const usedRules = new Set();
 let groupIndex = 0;
 for (const group of groups.values()) {
   // The globals are generated PER GROUP, so a section's own preamble can claim a name the framework
@@ -632,9 +641,19 @@ for (const group of groups.values()) {
   for (const [rule, issues] of Object.entries(analyzeProgram(program).findings)) {
     for (const issue of issues) {
       const unit = group.units.find((u) => u.path === issue.file);
+      // A finding inside the framework's own sources is not this script's business: every program
+      // here compiles core from source, so the rules see all of it.
       if (!unit) continue;
       const allowed = unit.expectReport;
-      if (allowed === true || (allowed !== undefined && allowed.has(rule))) continue;
+      if (allowed === true) {
+        used.add(unit);
+        continue;
+      }
+      if (allowed !== undefined && allowed.has(rule)) {
+        used.add(unit);
+        usedRules.add(`${unit.file}\u0000${rule}`);
+        continue;
+      }
       reported.push({
         unit,
         rule,
@@ -654,6 +673,23 @@ const skipped =
   (unparseable.length === 0 ? "" : `, ${unparseable.length} not standalone code and skipped`) +
   (expected.length === 0 ? "" : `, ${expected.length} marked as not one program`);
 
+const stale = units.filter(
+  (unit) =>
+    unit.expectReport !== undefined &&
+    (unit.expectReport === true
+      ? !used.has(unit)
+      : [...unit.expectReport].some((rule) => !usedRules.has(`${unit.file}\u0000${rule}`))),
+);
+
+if (stale.length > 0) {
+  console.error(`\n[examples] ${stale.length} \`expect-report\` marker(s) that silence nothing:\n`);
+  for (const unit of stale) console.error(`    ${unit.file}:${unit.line}`);
+  console.error(
+    "\nThe block no longer produces the report its fence says to expect. Take the marker off — left\n" +
+      "there it exempts the block from that rule forever, and nothing would say so.\n",
+  );
+}
+
 if (reported.length > 0) {
   console.error(`\n[examples] ${reported.length} code block(s) teach something the framework reports:\n`);
   const byRule = new Map();
@@ -667,11 +703,13 @@ if (reported.length > 0) {
       "everyone who reads the page, and the gate went green over it because compiling and being\n" +
       "RIGHT are different questions. Fix the example, or — where the block exists to SHOW the\n" +
       "fault, as the diagnostics page does — mark the fence:\n\n" +
-      "    ```tsx expect-report\n",
+      "    ```tsx expect-report:the-rule-id\n\n" +
+      "Naming the rule keeps every other rule live on that block. Bare `expect-report` switches them\n" +
+      "all off, and is for a block that exists to be wrong throughout.\n",
   );
 }
 
-if (total === 0 && reported.length === 0) {
+if (total === 0 && reported.length === 0 && stale.length === 0) {
   console.log(
     `[examples] ${units.length} code blocks in ${files.length} files type-check and are clean to \`ramonda-check\`${skipped}.`,
   );
