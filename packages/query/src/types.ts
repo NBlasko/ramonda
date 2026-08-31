@@ -46,10 +46,10 @@ export type QueryFetcher<TData, K extends QueryKey = QueryKey> = (ctx: FetchCont
  * A number is a count; a predicate decides per failure, which is what an HTTP
  * client wants — a 404 will never succeed on the third attempt, a 503 might.
  */
-export type RetryPolicy = number | ((failureCount: number, error: unknown) => boolean);
+export type RetryPolicy = number | ((failureCount: number, error: Error) => boolean);
 
 /** Milliseconds before attempt `failureCount + 1`. */
-export type RetryDelayPolicy = number | ((failureCount: number, error: unknown) => number);
+export type RetryDelayPolicy = number | ((failureCount: number, error: Error) => number);
 
 /**
  * The knobs that can be set per query and defaulted per client.

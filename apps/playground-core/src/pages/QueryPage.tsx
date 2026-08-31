@@ -1,7 +1,6 @@
 import { Component, list, memoized, state } from "@ramonda/core";
 import { Link } from "../routes";
 import { Mutation, Query, QueryClientAccess, type FetchContext, type QueryEntry } from "@ramonda/query";
-import { failureMessage } from "../failureMessage";
 
 /** Module scope, so `each` is the same array every render — a fresh literal would be a new value
  *  each time and cost the list the identity it mints from its items. */
@@ -163,8 +162,8 @@ class FlakyCard extends Component {
         </p>
         {q.isError ? (
           <p className="muted small">
-            error: {failureMessage(q.error)} — and the last good value above is still there, because a failed refresh
-            does not make it wrong, only unconfirmed
+            error: {q.error?.message} — and the last good value above is still there, because a failed refresh does not
+            make it wrong, only unconfirmed
           </p>
         ) : null}
         <p className="muted small">
@@ -233,7 +232,7 @@ class TodoPanel extends Component {
         </div>
         <p className="muted small">
           {this.add.isError
-            ? `rejected: ${failureMessage(this.add.error)} — the optimistic row is gone again`
+            ? `rejected: ${this.add.error?.message} — the optimistic row is gone again`
             : 'add "read the docs" twice to see the rollback'}
         </p>
       </div>

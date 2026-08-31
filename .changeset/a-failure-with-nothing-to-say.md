@@ -1,23 +1,34 @@
 ---
+"@ramonda/query": minor
 "@ramonda/core": patch
-"@ramonda/query": patch
 ---
 
-The failure examples stop rendering an empty failure
+A query's failure is always an `Error`
 
-`query.error` and a `@catchError` argument are `unknown`, and not out of caution. A fetcher is app
-code and rejects with whatever it likes — `throw "not found"` after a validation, a status number, a
-plain object from a JSON error body. Measured, all three arrive at `query.error` exactly as thrown.
+`query.error`, `mutation.error` and an `InfiniteQuery`'s were `unknown`, and honestly so: a fetcher
+is app code and rejects with what it likes. Measured, a rejected string, number or plain object
+reached `error` exactly as thrown.
 
-So `(error as Error).message` is `undefined` for three of the four shapes, and a page written that
-way renders an **empty** failure in the one place a reader needs words. The framework's own examples
-were written that way in nine places, including the `@catchError` example in `@ramonda/core`'s
-published types — the first thing a reader of that decorator meets.
+The cost was paid at every call site. The obvious read is `(error as Error).message`, which is
+`undefined` for three of those four shapes — so the page rendered an **empty** failure in the one
+place a reader needs words. This repository taught that read in nine places, including the
+`@catchError` example in `@ramonda/core`'s published types.
 
-They ask `error instanceof Error` first now. `WhatAFetchCanRejectWith.test.tsx` holds the boundary
-still: each shape reaches `query.error` unchanged, the cast produces `undefined` for each one that is
-not an `Error`, and the `instanceof` read produces something for all four. It fails if a query ever
-starts wrapping what it caught.
+A rejection is now normalised where it is caught: an `Error` is passed through as itself, anything
+else is wrapped in `new Error(String(thrown), { cause: thrown })`. So `error.message` always says
+something, `error instanceof YourError` still holds for an error you threw, and what the fetcher
+actually rejected with is on `cause`.
 
-No new API. `serializeError` already reduces any thrown value to `{ name, message }` and is on the
-package's FORBIDDEN export list on purpose, so the fix is at the call sites rather than a new export.
+**The types follow the value rather than flattering it.** `error` is `Error | undefined` on `Query`,
+`Mutation` and `InfiniteQuery`; `QueryResult`'s error arm is `Error`; `RetryPolicy`,
+`RetryDelayPolicy` and a mutation's `onError` all receive an `Error`. Typing them without normalising
+would have turned a visible cast into an invisible `undefined`.
+
+**A retry predicate that inspected a thrown non-Error reads `cause` now** — the one thing in here
+that can need a change. `retry: (n, error) => (error as HttpError).status >= 500` becomes
+`error instanceof HttpError && error.status >= 500`, which is what the docs now show.
+
+It also settles a disagreement between the two halves of a page: a failure restored from a server
+render already arrived as `ServerQueryError`, a real `Error`, while the same failure fetched on the
+client arrived as whatever was thrown. Identical app code behaved differently depending on whether
+the page was server-rendered.

@@ -108,7 +108,7 @@ export interface QueryProps<TData, K extends QueryKey = QueryKey> extends QueryD
 export type QueryResult<TData> =
   | { status: "pending"; data: undefined; error: undefined }
   | { status: "success"; data: TData; error: undefined }
-  | { status: "error"; data: TData | undefined; error: unknown };
+  | { status: "error"; data: TData | undefined; error: Error };
 
 /**
  * Reads a cached, deduplicated, race-free query.
@@ -197,7 +197,7 @@ interface Observed {
   data: unknown;
   status: QueryStatus;
   fetchStatus: FetchStatus;
-  error: unknown;
+  error: Error | undefined;
   failureCount: number;
   updatedAt: number;
   restored: boolean;
@@ -928,7 +928,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   /** Built at most once — see `placeholder()`. */
   private placeholderValue: TData | undefined;
 
-  get error(): unknown {
+  get error(): Error | undefined {
     this.read |= Facet.Error;
     return this.entry.error;
   }
@@ -1038,7 +1038,19 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
       return { status: "success", data: entry.data as TData, error: undefined };
     }
     if (entry.status === "error") {
-      return { status: "error", data: entry.data, error: entry.error };
+      /**
+       * `entry.error` is `Error | undefined` on the entry and an `Error` here, and the narrowing has
+       * to be written because the two facts live apart: `status` and `error` are separate fields, so
+       * nothing tells the compiler that one is only ever `"error"` while the other is set.
+       *
+       * The fallback is not a guess about a normal state — a failure with no error is a bug in this
+       * package, and the message says so rather than leaving the arm blank.
+       */
+      return {
+        status: "error",
+        data: entry.data,
+        error: entry.error ?? new Error("The query failed and the reason was lost."),
+      };
     }
     return { status: "pending", data: undefined, error: undefined };
   }

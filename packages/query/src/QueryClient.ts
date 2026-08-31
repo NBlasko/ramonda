@@ -1,5 +1,5 @@
 import { createEntry, isStale, type QueryEntry } from "./cacheEntry";
-import { deserializeError, serializeError, type SerializedError } from "./errors";
+import { asError, deserializeError, serializeError, type SerializedError } from "./errors";
 import { hashKey, keyStartsWith } from "./hashKey";
 import { replaceEqualDeep } from "./structuralSharing";
 import type {
@@ -484,8 +484,14 @@ export class QueryClient {
           entry.fetchStatus = "idle";
           this.notify(entry, "updated");
           return;
-        } catch (error) {
+        } catch (thrown) {
           if (entry.fetchId !== fetchId || controller.signal.aborted) return;
+
+          // Normalised HERE, before anything downstream sees it — the retry policy included — so
+          // there is exactly one value for a failure rather than one shape while it is being
+          // retried and another once it is stored. `asError` says why, and keeps the original on
+          // `cause`.
+          const error = asError(thrown);
 
           entry.failureCount++;
 
@@ -524,12 +530,12 @@ export class QueryClient {
   }
 }
 
-function shouldRetry(policy: RetryPolicy, failureCount: number, error: unknown): boolean {
+function shouldRetry(policy: RetryPolicy, failureCount: number, error: Error): boolean {
   if (typeof policy === "function") return policy(failureCount, error);
   return failureCount <= policy;
 }
 
-function resolveDelay(policy: RetryDelayPolicy, failureCount: number, error: unknown): number {
+function resolveDelay(policy: RetryDelayPolicy, failureCount: number, error: Error): number {
   return typeof policy === "function" ? policy(failureCount, error) : policy;
 }
 

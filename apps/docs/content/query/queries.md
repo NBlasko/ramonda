@@ -129,8 +129,22 @@ part of the problem. Both are options, and `retry` may be a predicate, which is 
 an HTTP client wants:
 
 ```tsx
-{ retry: (failureCount, error) => (error as HttpError).status >= 500 }
+{ retry: (failureCount, error) => error instanceof HttpError && error.status >= 500 }
 ```
+
+**`error` is always an `Error`.** A fetcher is your code and may reject with anything — a string
+after a validation, a status number, an object parsed out of a JSON error body — so a rejection that
+is not an `Error` is wrapped in one, and the value it was is kept on `cause`:
+
+```tsx
+fetch: () => Promise.reject("not found")
+// error.message === "not found"
+// error.cause   === "not found"
+```
+
+That is why the predicate above asks `instanceof` rather than casting: a cast says `HttpError` about
+whatever arrived, and `error.status` is then `undefined` in a comparison that quietly answers `false`.
+An `Error` your own code threw is passed through as itself, so `instanceof YourError` holds.
 
 **A failed refetch keeps the data.** `status` becomes `"error"` while `data` still
 holds the last known value, because a network failure does not mean what is on screen

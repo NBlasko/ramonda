@@ -143,10 +143,14 @@ function snapshotValue(
   return value;
 }
 
-function describeError(error: unknown): string | undefined {
-  if (error === undefined || error === null) return undefined;
-  if (error instanceof Error) return error.message;
-  return String(error);
+/**
+ * An entry's failure, as one line for the panel.
+ *
+ * It used to ask `instanceof Error` and fall back to `String`, because a rejection could be
+ * anything. `asError` normalises at the catch now, so the only question left is whether there is one.
+ */
+function describeError(error: Error | undefined): string | undefined {
+  return error?.message;
 }
 
 /** The bounded copy and whether it IS the whole value, in one pass. */
