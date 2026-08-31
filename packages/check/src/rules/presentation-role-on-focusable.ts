@@ -75,8 +75,6 @@ export const presentationRoleOnFocusable = {
   },
 
   /**
-   * A `@Host` props bag configures a real element, and a role written there is the same role.
-   *
    * No order guard, and this one is deliberate rather than copied: the claim turns on the ROLE and
    * on the tag, and a spread after the role could replace it — so the guard IS taken, below, for
    * the role. The tag is not an attribute and no spread reaches it.

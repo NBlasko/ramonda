@@ -94,7 +94,7 @@ export function drainSync(maxRounds = 50): void {
 
   throw new Error(
     `[Ramonda] flushSync gave up after ${maxRounds} rounds: rendering kept scheduling more work without settling. ` +
-      `Usually a @mounted, an @updated or a subscription (@onElement, @interval, …) writing state ` +
+      `Usually a @mounted, an @updated or a subscription (@onWindow, @interval, …) writing state ` +
       `that its own render reads back. ` +
       `In a development build the cause is reported by name (RMD009).`,
   );

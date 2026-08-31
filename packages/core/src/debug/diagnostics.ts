@@ -337,7 +337,7 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   RMD041: {
     severity: "warning",
     title: "A listener with no target",
-    fix: "The handler is never attached, so the event it waits for cannot arrive. `@onWindow` and `@onDocument` resolve to the globals, so this is `@onElement` on a component whose host element was not there when the listener was set up — the effect runs on mount, and a component torn down or replaced in the same tick can reach it with nothing to attach to. It is not something the source can be read for: there is no selector, only the component's own host. If it happens repeatedly, the component is being mounted and unmounted faster than it is being rendered, and that is the thing to look at rather than the listener.",
+    fix: "The handler is never attached, so the event it waits for cannot arrive. A listener decorator resolves its target when its effect runs on mount, and this one resolved nothing. `@onWindow` and `@onDocument` are the only two, and they answer with `window` and `document` — which are there for as long as the page is, and effects do not run on the server. So this means an effect ran somewhere with no DOM at all: a component mounted in a bare Node process, or a test environment set up without one. Check where the mount happened rather than the listener.",
   },
   RMD043: {
     severity: "warning",

@@ -7,7 +7,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const run = () => analyzeProject(join(here, "fixtures", "aliased-more", "tsconfig.json"));
 
 /**
- * `@Host`, `@StableProps`, `@watchProp` and `@onElement` under another name.
+ * `@StableProps` and `@watchProp` under another name.
  *
  * `hasDecorator` was taught to resolve, and seven other places still compared the name written on
  * the class — the standing lesson here being that a fix for one spelling is not a fix for the
@@ -16,7 +16,7 @@ const run = () => analyzeProject(join(here, "fixtures", "aliased-more", "tsconfi
  * - **A false report.** A child declaring `conf` through an aliased `@StableProps` had that
  *   declaration hidden, so `fresh-object-in-props` reported the literal handed to it — which is
  *   reporting the fix.
- * - **Two silences.** An aliased `@watchProp` and an aliased `@onElement` were seen by nothing.
+ * - **A silence.** An aliased `@watchProp` was seen by nothing.
  *
  * Every decorator read goes through `coreDecoratorName` now, so an app's own decorator of any of
  * these names is still the app's business.

@@ -233,7 +233,7 @@ function specifierOf(declaration: ts.Declaration): string | undefined {
  * Every rule that reads a decorator asked for the name written on the class, which fails the two
  * ways a bare name always does. Measured with `fixtures/aliased-more`: `@StableProps` under an alias
  * made `fresh-object-in-props` report a prop the child had DECLARED — reporting the fix — while an
- * aliased `@watchProp` and `@onElement` went quiet.
+ * aliased `@watchProp` and `@StableProps` went quiet.
  */
 export function coreDecoratorName(decorator: ts.Decorator, resolve: Resolver): string | undefined {
   const written = ts.isCallExpression(decorator.expression) ? decorator.expression.expression : decorator.expression;

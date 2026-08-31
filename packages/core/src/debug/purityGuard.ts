@@ -126,7 +126,7 @@ function report(label: string): void {
     diagnose(
       "RMD021",
       `${building}:memo:${label}`,
-      `\`${building}\` called ${label} while building a memoised handler — so the value is cached with it, and every call to that handler uses the same one.`,
+      `\`${building}\` called ${label} while building a memoised member — so the value is cached with it, and every call that hits the same cache entry uses the same one.`,
     );
     return;
   }

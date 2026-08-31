@@ -41,8 +41,7 @@ function shouldSkipIntercept(href: string, e: MouseEvent): boolean {
  * open-in-new-tab — whose plain left click routes through the single `updateState` channel.
  *
  * The anchor is written in the render, which is where the href and the handler that reads it can sit
- * beside each other. It used to be the component's host element, declared with `@Host("a", …)`, and
- * the handler was an `@onElement` several lines away from the attribute it had to agree with.
+ * beside each other: the `<a>` is written in the render, and its handler is written on it.
  */
 export class Link extends Component<LinkProps> {
   private ctx = this.use(RouteConsumer);

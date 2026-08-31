@@ -125,5 +125,4 @@ export declare function interval(ms: string | number): (...args: unknown[]) => v
 export declare function timeout(ms: string | number): (...args: unknown[]) => void;
 export declare function onWindow(type: string): (...args: unknown[]) => void;
 export declare function onDocument(type: string): (...args: unknown[]) => void;
-export declare function onElement(type: string): (...args: unknown[]) => void;
 export declare function fetch(url: string): Promise<unknown>;

@@ -74,11 +74,10 @@ export function isVNode(value: unknown): value is VNode {
  * the question "did this come out of the framework's own base class?" and the answer is not
  * inferable from `typeof`: a component class and a plain function are both `"function"`.
  *
- * Asked in four places — `@Host`, `@ShouldUpdateOnPropsChange` and `@StableProps` reject a class of
- * the wrong kind, and `lazy` decides whether a loaded module has to be wrapped before `render` can
- * call it. Three of the four carried `as unknown as { __isComponent?: boolean }` and the fourth took
- * its argument as `any`, which is the same predicate written by hand each time and narrowing nothing
- * afterwards.
+ * Asked in two places — `@ShouldUpdateOnPropsChange` rejects a hook, which reaches its inputs a
+ * different way, and `AsyncLoad` decides whether a loaded module has to be wrapped before `render`
+ * can call it. Each used to carry `as unknown as { __isComponent?: boolean }` or take its argument
+ * as `any`: the same predicate written by hand, narrowing nothing afterwards.
  *
  * `h` asks the same question and keeps its own copy, with the reason written beside it: the value it
  * tests is `ComponentKind | UnsupportedTagFn`, and `UnsupportedTagFn` is

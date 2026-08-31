@@ -54,10 +54,8 @@ declare global {
        * A CUSTOM ELEMENT — any tag with a dash in it, which is what the HTML spec reserves for them.
        *
        * Open on purpose: the framework cannot know the tags an application defines, and a custom
-       * element accepts whatever attributes its own definition reads. `@Host` used to accept these
-       * (its `HostTag` was `keyof JSX.IntrinsicElements | \`${string}-${string}\``), so without this
-       * an element a component could be would stop being an element it can render — the capability
-       * would have been lost in the move rather than given up on purpose.
+       * element accepts whatever attributes its own definition reads. A component renders one the
+       * same way it renders any tag, so the types have to let a dashed name through.
        *
        * Anything WITHOUT a dash still has to be a real tag, so `<dvi>` is still a type error.
        */

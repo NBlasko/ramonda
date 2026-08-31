@@ -30,12 +30,17 @@ interface Watchable {
  * One field, watched by the component that asks for it.
  *
  * ```tsx
- * @Host("label", (self: TextInput) => ({ className: self.f.error ? "field invalid" : "field" }))
  * class TextInput extends Component<{ of: FieldNode<string>; label: string }> {
  *   private f = this.use(Field<string>, () => ({ of: this.props.of }));
  *
  *   render(): RamondaNode {
- *     return [this.props.label, <input {...this.f.bind} />, this.f.error];
+ *     return (
+ *       <label className={this.f.error ? "field invalid" : "field"}>
+ *         {this.props.label}
+ *         <input {...this.f.bind} />
+ *         {this.f.error}
+ *       </label>
+ *     );
  *   }
  * }
  *

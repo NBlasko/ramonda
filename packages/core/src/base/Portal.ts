@@ -80,7 +80,7 @@ export interface PortalProps {
  *
  * ## Events follow the DOM, not the logical tree
  *
- * There is no synthetic event layer — `@onElement` attaches a real listener to a
+ * There is no synthetic event layer — a handler in the markup is a real listener on a
  * real node — so a portal's events bubble through the DOM, from the TARGET's
  * ancestors, not from the owner that declared the portal. A handler on an ancestor
  * of the `Portal`'s owner will NOT see events from the portalled subtree: put it on

@@ -61,7 +61,7 @@ export interface DecoratorThatAddsNothingIssue {
 const GIVES: ReadonlyMap<string, readonly string[]> = new Map([
   ["state", ["reactivity", "a place in the hydration blob"]],
   ["persist", ["a place in the hydration blob"]],
-  ["memoized", ["a memoised handler"]],
+  ["memoized", ["a memoised member"]],
   ["compute", ["a computed value"]],
 ]);
 

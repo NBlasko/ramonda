@@ -11,7 +11,7 @@ import type { Resolver } from "./rule";
  *
  * - **By NAME alone** reported a real binding. Measured: `const self = this; self.location.pathname`
  *   came out as a read of the browser's URL on a component reading its own field, and
- *   `(self) => …` is this framework's own convention for a `@Host` props callback.
+ *   `(self) => …` is this framework's own convention for a decorator's props callback.
  * - **Requiring it to resolve to NOTHING** silenced whatever a project declares for itself.
  *   `globalThis` always resolves, so every listener written on it went unreported; and a project
  *   that writes `declare const self: Window` — an ordinary line in a worker or an SSR entry — would
