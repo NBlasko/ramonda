@@ -500,6 +500,27 @@ const NOT_A_SLOT = new Set([
 
 export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   const { program, notes } = createProgram(tsconfigPath);
+  return analyzeProgram(program, notes);
+}
+
+/**
+ * The same analysis, over a program the caller already has.
+ *
+ * `analyzeProject` reads a tsconfig and builds one. A caller that has built its own cannot use it,
+ * and building a second is not a detail: the program IS the cost of a run — the rules themselves
+ * are close to free — so a tool with N programs would pay for 2N.
+ *
+ * Written for `scripts/check-examples.mjs`, which builds ONE PROGRAM PER PREAMBLE SET (24 of them)
+ * because every ambient declaration lands in the same global scope and a single program would make
+ * the sections collide. Handing those programs here costs nothing beyond the rules, and keeps the
+ * checker looking at exactly what the type-check looked at, which a re-derived tsconfig could not
+ * promise.
+ *
+ * `notes` are the things a run wants to say about the program it was given — a graph fragment that
+ * was refused, a package whose declarations could not be read. A caller that built its own program
+ * has none to hand over, so it defaults to empty.
+ */
+export function analyzeProgram(program: ts.Program, notes: string[] = []): AnalyzeResult {
   const checker = program.getTypeChecker();
 
   /**
@@ -580,7 +601,17 @@ export function analyzeProject(tsconfigPath: string): AnalyzeResult {
   /** Every edge as it is found, including the ones that resolve to nothing. */
   const edges: GraphEdge[] = [];
 
-  const projectRoot = dirname(tsconfigPath);
+  /**
+   * Where the project is rooted, asked of the PROGRAM rather than of a path.
+   *
+   * A program built from a tsconfig carries its path in `configFilePath`, which is what
+   * `analyzeProject` produces. One built by hand — `ts.createProgram(files, options)` — has none,
+   * and its current directory is the honest answer: nothing else about it says where the project
+   * begins. Only used to shorten paths in a report, so the fallback costs a longer path and nothing
+   * else.
+   */
+  const configPath = program.getCompilerOptions().configFilePath;
+  const projectRoot = typeof configPath === "string" ? dirname(configPath) : program.getCurrentDirectory();
 
   /**
    * `@ramonda/core/src/base/AsyncLoad.ts` — the OWNING package and the path inside it.

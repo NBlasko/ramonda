@@ -201,7 +201,7 @@ class Clock extends Component {
 `list()` is a function call in an expression slot, not a component — a `<List>` tag would have to
 *be* an element, so it could not put N siblings into the parent.
 
-```tsx
+```tsx expect-report:row-without-a-key
 render() {
   return <ul>{list(this.items, (item) => <RowView item={item} />)}</ul>;
 }

@@ -97,7 +97,7 @@ Every other control holds its own value. A select's value is which of its **chil
 ```tsx
 import { Select } from "@ramonda/core";
 
-<Select value={this.choice} onchange={this.pick}>
+<Select aria-label="Choice" value={this.choice} onchange={this.pick}>
   <option value="a">A</option>
   <option value="b">B</option>
 </Select>;
@@ -116,7 +116,7 @@ A `multiple` select takes a list, and keeps every value in it:
 ```tsx
 import { Select } from "@ramonda/core";
 
-<Select multiple value={this.picked}>
+<Select multiple aria-label="Tags" value={this.picked}>
   {this.all.map((v) => (
     <option key={v} value={v}>
       {v}
@@ -137,7 +137,7 @@ a type error and you write `<TextArea>`:
 ```tsx
 import { TextArea } from "@ramonda/core";
 
-<TextArea value={this.draft} oninput={this.onInput} />;
+<TextArea aria-label="Draft" value={this.draft} oninput={this.onInput} />;
 ```
 
 It renders `<textarea>a draft</textarea>`, so a server-rendered page shows the text before any script
@@ -338,7 +338,7 @@ class Rows extends Component<{ of: FieldNode<Contact[]> }> {
   f = this.use(Field<Contact[]>, () => ({ of: this.props.of }));
 
   render() {
-    return <div>{list(this.f.rows, (item) => <Line item={item} />)}</div>;
+    return <div>{list(this.f.rows, (item) => <Line key={item.id} item={item} />)}</div>;
   }
 }
 ```

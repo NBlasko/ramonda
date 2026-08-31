@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 71 of them.
+**Warnings.** These print and the run still passes. 72 of them.
 
 | rule | reported when |
 |---|---|
@@ -203,6 +203,7 @@ rules**, so a rule cannot be added without appearing here.
 | `table-with-no-headers` | a `<table>` written out with data rows has no `<th>` anywhere in it |
 | `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |
 | `fresh-object-in-props` | a component is handed an object or array built during the render — written in the attribute, on one side of a ternary or a `??`, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match |
+| `function-built-in-the-markup` | a function literal is written into a JSX attribute — in the attribute, on one side of a ternary or a `??`, or in a local one line up — so its identity is fresh every render, and the listener is removed and re-added or the child can never compare its prop equal — also [`RMD020`](/reference/diagnostics) |
 | `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
 | `access-key` | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |
 | `attribute-that-does-nothing` | an attribute is written whose name reaches the DOM verbatim and that nothing reads |
@@ -275,7 +276,7 @@ Some faults are not about one element but about two of them in the same markup: 
 twice, a heading level that jumps. Those rules read a whole **render** — every element in one
 top-level piece of JSX, in the order it is written.
 
-```tsx
+```tsx expect-report
 <article>
   <h1>Title</h1>
   <h3>A subsection of nothing</h3>   {/* ✗ the outline claims an h2 that is not there */}

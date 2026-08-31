@@ -13,7 +13,7 @@ document rather than three flex containers deep.
 
 The imperative answer is one line, and it is the wrong one:
 
-```tsx
+```tsx expect-report
 @mounted lock() {
   document.documentElement.classList.add("nav-locked"); // ✗
 }

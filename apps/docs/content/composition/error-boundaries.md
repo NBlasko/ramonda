@@ -12,15 +12,27 @@ break the whole page. An **error boundary** catches it, keeps the rest of the pa
 working, and shows a fallback in place of the broken part.
 
 ```tsx
-<ErrorBoundary
-  fallback={({ message, reset }) => (
-    <p className="error">
-      Something broke: {message} <button onclick={reset}>try again</button>
-    </p>
-  )}
->
-  <ReportView data={this.data} />
-</ErrorBoundary>
+class Page extends Component {
+  @state data: unknown = null;
+
+  // A bound method rather than an arrow in the markup: written inline it is a new function every
+  // render, which `RMD020` reports and `function-built-in-the-markup` catches before it runs.
+  broke({ message, reset }: ErrorBoundaryFallbackProps) {
+    return (
+      <p className="error">
+        Something broke: {message} <button onclick={reset}>try again</button>
+      </p>
+    );
+  }
+
+  render() {
+    return (
+      <ErrorBoundary fallback={this.broke}>
+        <ReportView data={this.data} />
+      </ErrorBoundary>
+    );
+  }
+}
 ```
 
 ```demo:ErrorBoundaryDemo

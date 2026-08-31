@@ -322,6 +322,7 @@ const TEXT: Looking<string> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 /** The same, for the attributes that hold a number — `tabIndex`, `aria-level`. */
@@ -344,6 +345,7 @@ const NUMBER: Looking<number> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 /** The three spellings of a claim, behind a name — `{HIDDEN}` where `const HIDDEN = true`. */
@@ -374,6 +376,7 @@ const PRESENCE: Looking<boolean> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 const TRUTH: Looking<boolean> = {
@@ -388,6 +391,7 @@ const TRUTH: Looking<boolean> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 function textBehind(expression: ts.Expression, resolve: ElementContext["resolve"]): string | undefined {
@@ -407,3 +411,45 @@ function numberOf(text: string): number | undefined {
   const value = Number(text);
   return Number.isInteger(value) ? value : undefined;
 }
+
+/**
+ * Whether this sits inside a callback that runs once per item.
+ *
+ * Read for the REPORT rather than for the finding: the fault is the same either way, but a value
+ * that depends on the row cannot be lifted out of the render, so the advice that fits a single
+ * element is the wrong advice here.
+ *
+ * SHARED, because it was written twice. `fresh-object-in-props` and `function-built-in-the-markup`
+ * ask the same question about the same node for the same reason, and the two copies were
+ * byte-identical — which is the shape this package has already been bitten by three times: a reader
+ * copied rather than shared is one that gets fixed in one place and rots in the other.
+ */
+export function insideAList(node: ts.Node): boolean {
+  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
+    const here = at;
+    if ((ts.isArrowFunction(here) || ts.isFunctionExpression(here)) && ts.isCallExpression(here.parent)) {
+      const callee = here.parent.expression;
+      const named = ts.isIdentifier(callee)
+        ? callee.text
+        : ts.isPropertyAccessExpression(callee)
+          ? callee.name.text
+          : "";
+      if (PER_ITEM.has(named) && here.parent.arguments.some((argument) => argument === here)) return true;
+    }
+    // A method body is as far as this needs to look: a callback is written inside the render.
+    if (ts.isMethodDeclaration(here) || ts.isSourceFile(here)) return false;
+  }
+  return false;
+}
+
+/** Calls whose callback runs once per item, so anything built inside it is built per item. */
+const PER_ITEM: ReadonlySet<string> = new Set(["map", "flatMap", "list"]);
+
+/**
+ * Attributes the framework consumes itself, so nothing is attached and nothing is handed on.
+ *
+ * Shared for the same reason as `insideAList`, and it is the more dangerous of the two to keep
+ * two copies of: a name added to one list and not the other makes two rules disagree about what
+ * the framework reads, silently.
+ */
+export const NOT_PASSED_ON: ReadonlySet<string> = new Set(["key", "ref"]);

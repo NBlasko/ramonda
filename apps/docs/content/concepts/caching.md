@@ -83,6 +83,8 @@ The commonest per-item value is a handler, which is why it is introduced with
 that needs a stable object has the same problem and the same answer:
 
 ```tsx
+import { Component, list, memoized, state } from "@ramonda/core";
+
 class Board extends Component {
   @state rows: RowItem[] = [];
 
@@ -92,7 +94,7 @@ class Board extends Component {
   }
 
   render() {
-    return <ul>{list(this.rows, (row) => <RowView cfg={this.configFor(row.id)} />)}</ul>;
+    return <ul>{list(this.rows, (row) => <RowView key={row.id} cfg={this.configFor(row.id)} />)}</ul>;
   }
 }
 ```

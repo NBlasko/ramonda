@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { coreDecoratorName } from "./core-import";
 import { positionOf } from "../syntax";
-import { openingOf } from "./element";
+import { NOT_PASSED_ON, insideAList, openingOf } from "./element";
 import { freshnessOf, shorten } from "./follow-value";
 import type { ElementRule, ElementContext } from "./rule";
 
@@ -73,6 +73,12 @@ import type { ElementRule, ElementContext } from "./rule";
  * hands back an object it holds**, which is the same fix behind a function call. The distinction
  * both times is where the literal is BUILT, not where it is written.
  *
+ * **A `@compute` or a `@memoized` call**, because caching is the whole of what those do. The second
+ * was missing and the DOCUMENTATION found it: `concepts/caching.md` teaches
+ * `cfg={this.configFor(row.id)}` as the answer to this very report, and running the rules over the
+ * docs' own examples reported the page teaching the fix. It is the per-ROW answer specifically —
+ * a `@compute` belongs to the component and cannot hold one value per row.
+ *
  * **An attribute a SPREAD may overwrite.** `<Row conf={{…}} {...rest} />` builds the object, but
  * whether the child ever sees it depends on what `rest` holds, and a prop that never arrives is not
  * this fault. Written AFTER the last spread it cannot be taken away, and it is reported — which is
@@ -116,37 +122,6 @@ export interface FreshObjectInPropsIssue {
   file: string;
   line: number;
   column: number;
-}
-
-/** Calls whose callback runs once per item, so anything built inside it is built per item. */
-const PER_ITEM: ReadonlySet<string> = new Set(["map", "flatMap", "list"]);
-
-/** Props the framework consumes itself, so nothing is handed on and nothing is compared. */
-const NOT_PASSED_ON: ReadonlySet<string> = new Set(["key", "ref"]);
-
-/**
- * Whether this sits inside a callback that runs once per item.
- *
- * Read for the REPORT rather than for the finding: the fault is the same either way, but a value
- * that depends on the row cannot be lifted out of the render, so the advice that fits a single
- * element is the wrong advice here.
- */
-function insideAList(node: ts.Node): boolean {
-  for (let at: ts.Node | undefined = node.parent; at !== undefined; at = at.parent) {
-    const here = at;
-    if ((ts.isArrowFunction(here) || ts.isFunctionExpression(here)) && ts.isCallExpression(here.parent)) {
-      const callee = here.parent.expression;
-      const named = ts.isIdentifier(callee)
-        ? callee.text
-        : ts.isPropertyAccessExpression(callee)
-          ? callee.name.text
-          : "";
-      if (PER_ITEM.has(named) && here.parent.arguments.some((argument) => argument === here)) return true;
-    }
-    // A method body is as far as this needs to look: a callback is written inside the render.
-    if (ts.isMethodDeclaration(here) || ts.isSourceFile(here)) return false;
-  }
-  return false;
 }
 
 /**

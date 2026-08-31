@@ -45,7 +45,7 @@ class AddTodo extends Component {
   render() {
     return (
       <form onsubmit={this.submit}>
-        <input value={this.draft} oninput={this.typed} />
+        <input aria-label="New item" value={this.draft} oninput={this.typed} />
         <button type="submit" disabled={this.add.isPending}>
           {this.add.isPending ? "saving…" : "add"}
         </button>

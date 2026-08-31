@@ -170,7 +170,7 @@ What sits between the tags: text, other elements, components, and `null` for not
 For a **list** built from an array, use `list()` rather than `.map()` — it keeps
 track of which item is which, so items hold their place when the list changes:
 
-```tsx
+```tsx expect-report:row-without-a-key
 render() {
   return list(this.rows, (item) => <Row item={item} />);
 }

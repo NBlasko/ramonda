@@ -40,6 +40,21 @@ describe("a prop rebuilt on every render", () => {
    * The report quotes what is on the LINE and names where the value comes from, because calling
    * `conf={local}` a `conf={{…}}` sends a reader looking for a brace that is not there.
    */
+  /**
+   * The per-row answer this report itself recommends, and it was REPORTED until the documentation
+   * found it: `concepts/caching.md` teaches `cfg={this.configFor(row.id)}` as the fix for exactly
+   * this finding, and running the rules over the docs' own examples reported the page teaching the
+   * answer. `@compute` was skipped here from the start; `@memoized` was not, and it is the one that
+   * works per ROW.
+   *
+   * Kept as a test because a silence is a decision, and a decision with no test is one somebody
+   * undoes.
+   */
+  test("a `@memoized` call is the fix, and is not reported", () => {
+    const written = run().findings["fresh-object-in-props"].map((issue) => issue.written);
+    expect(written).not.toContain('this.configFor("a")');
+  });
+
   test("a local one line up and a helper in another file are the same fault", () => {
     const found = run().findings["fresh-object-in-props"];
     expect(found.map((issue) => `${issue.written}${issue.builtIn ? ` @ ${issue.builtIn}` : ""}`)).toEqual([

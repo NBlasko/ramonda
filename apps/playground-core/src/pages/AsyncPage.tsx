@@ -1,4 +1,5 @@
 import { Component, state, AsyncLoad } from "@ramonda/core";
+import type { AsyncLoadFailure, Lazy } from "@ramonda/core";
 
 /** Drives the "fails twice, then works" demo below. */
 let flakyAttempts = 0;
@@ -31,6 +32,65 @@ const RACE_PROPS = { title: "HeavyPanel (after the race)" };
  * has no timer at all — and it makes the race exact instead of a 3-second dash.
  */
 let releaseSlowLoad: (() => void) | null = null;
+
+/**
+ * The `lazy` thunks, hoisted out of the render — and the reason is the rule the framework reports
+ * on itself. A thunk written in the markup is a new function every render, so `AsyncLoad` can never
+ * compare its props equal and re-renders whenever this page does (`RMD020`, and `ramonda-check`'s
+ * `function-built-in-the-markup`). The module cache tolerates it, because the key is derived from
+ * the thunk's SOURCE rather than its identity — but that is a defence against the mistake, not a
+ * reason to make it. An `import()` inside a thunk does not run until the thunk is called, so
+ * hoisting costs nothing.
+ */
+const loadHeavyPanel = () => import("../demos/HeavyPanel");
+
+/**
+ * Demo 2's own thunk, and it has one so the suppression can live beside the import.
+ *
+ * The ignore used to sit on the JSX line, because the thunk was written there. Hoisting the thunk
+ * moved the import out from under it — and the checker, now able to RESOLVE the module, correctly
+ * reported that `namedExport="NotExported"` names nothing in it. That is the demo working, so the
+ * reason is written here instead of the thunk being put back.
+ */
+// ramonda-check-ignore the export is absent on purpose: this demo is what a bad namedExport looks like
+const loadHeavyPanelMissingExport = () => import("../demos/HeavyPanel");
+
+const loadFlaky = () => {
+  flakyAttempts++;
+  return flakyAttempts < 3
+    ? Promise.reject(new Error(`simulated network failure #${flakyAttempts}`))
+    : import("../demos/HeavyPanel");
+};
+
+// Annotated, because hoisting it out of the attribute took away the contextual type the inline
+// form had — `new Promise(…)` then infers `Promise<unknown>` and `Lazy` refuses it.
+const loadSlowly: Lazy = () =>
+  new Promise((resolve) => {
+    releaseSlowLoad = () => resolve(import("../demos/HeavyPanel"));
+  });
+
+/** The failure fallbacks, for the same reason: written in the markup each is a new function. */
+function retryableForever({ error, retry, attempt }: AsyncLoadFailure) {
+  return (
+    <div className="row">
+      <span className="muted small">
+        attempt {attempt}: {(error as Error).message}
+      </span>
+      <button onclick={retry}>retry (will fail again)</button>
+    </div>
+  );
+}
+
+function retryableTimed({ error, retry, attempt }: AsyncLoadFailure) {
+  return (
+    <div className="row">
+      <span className="muted small">
+        attempt {attempt} failed: {(error as Error).message}
+      </span>
+      <button onclick={retry}>retry</button>
+    </div>
+  );
+}
 
 /**
  * Counting `resource` entries turned out NOT to work: a module script that fails
@@ -84,6 +144,19 @@ export class AsyncPage extends Component {
     if (this.showFlaky) flakyAttempts = 0;
   }
 
+  /**
+   * A bound METHOD rather than a thunk in the markup: this one reads `this.durations`, so it cannot
+   * be a module constant like the others — and written inline it would still be a new function every
+   * render. Ramonda binds methods to the instance, so passing it is all this takes.
+   */
+  loadMissingChunk() {
+    const started = performance.now();
+    return import(/* @vite-ignore */ MISSING_CHUNK).catch((error) => {
+      this.durations = [...this.durations, since(started)];
+      throw error;
+    });
+  }
+
   render() {
     return (
       <div className="page">
@@ -106,7 +179,7 @@ export class AsyncPage extends Component {
           </p>
           {this.showModule ? (
             <AsyncLoad
-              lazy={() => import("../demos/HeavyPanel")}
+              lazy={loadHeavyPanel}
               onLoading={<p className="muted">loading the module…</p>}
               errorFallback={<p className="muted">could not load it</p>}
               loadedProps={LAZY_PROPS}
@@ -129,19 +202,11 @@ export class AsyncPage extends Component {
           </p>
           {this.showBroken ? (
             <AsyncLoad
-              // ramonda-check-ignore the export is absent on purpose: this demo is what a bad namedExport looks like
-              lazy={() => import("../demos/HeavyPanel")}
+              lazy={loadHeavyPanelMissingExport}
               namedExport="NotExported"
               cacheKey="missing-export"
               onLoading={<p className="muted">loading…</p>}
-              errorFallback={({ error, retry, attempt }) => (
-                <div className="row">
-                  <span className="muted small">
-                    attempt {attempt}: {(error as Error).message}
-                  </span>
-                  <button onclick={retry}>retry (will fail again)</button>
-                </div>
-              )}
+              errorFallback={retryableForever}
             />
           ) : null}
         </section>
@@ -158,23 +223,11 @@ export class AsyncPage extends Component {
           </p>
           {this.showFlaky ? (
             <AsyncLoad
-              lazy={() => {
-                flakyAttempts++;
-                return flakyAttempts < 3
-                  ? Promise.reject(new Error(`simulated network failure #${flakyAttempts}`))
-                  : import("../demos/HeavyPanel");
-              }}
+              lazy={loadFlaky}
               cacheKey="flaky-heavy-panel"
               onLoading={<p className="muted">loading…</p>}
               loadedProps={RETRY_PROPS}
-              errorFallback={({ error, retry, attempt }) => (
-                <div className="row">
-                  <span className="muted small">
-                    attempt {attempt} failed: {(error as Error).message}
-                  </span>
-                  <button onclick={retry}>retry</button>
-                </div>
-              )}
+              errorFallback={retryableTimed}
             />
           ) : null}
         </section>
@@ -194,11 +247,7 @@ export class AsyncPage extends Component {
           </p>
           {this.showRace ? (
             <AsyncLoad
-              lazy={() =>
-                new Promise((resolve) => {
-                  releaseSlowLoad = () => resolve(import("../demos/HeavyPanel"));
-                })
-              }
+              lazy={loadSlowly}
               onLoading={<p className="muted">waiting… unmount me, or press "let it finish"</p>}
               errorFallback={<p className="muted">error</p>}
               cacheKey="slow-heavy-panel"
@@ -235,23 +284,10 @@ export class AsyncPage extends Component {
           {this.showMemo ? (
             <AsyncLoad
               // ramonda-check-ignore the chunk is missing on purpose: this demo is what a failed load looks like
-              lazy={() => {
-                const started = performance.now();
-                return import(/* @vite-ignore */ MISSING_CHUNK).catch((error) => {
-                  this.durations = [...this.durations, since(started)];
-                  throw error;
-                });
-              }}
+              lazy={this.loadMissingChunk}
               cacheKey="missing-chunk"
               onLoading={<p className="muted">requesting…</p>}
-              errorFallback={({ error, retry, attempt }) => (
-                <div className="row">
-                  <span className="muted small">
-                    attempt {attempt} failed: {(error as Error).message}
-                  </span>
-                  <button onclick={retry}>retry</button>
-                </div>
-              )}
+              errorFallback={retryableTimed}
             />
           ) : null}
         </section>

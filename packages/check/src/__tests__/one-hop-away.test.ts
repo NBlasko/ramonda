@@ -90,4 +90,22 @@ describe("a value written one hop from where the rule looks", () => {
     expect(fields).toEqual(["directArrow"]);
     expect(fields).not.toContain("hopArrow");
   });
+
+  /**
+   * `function-built-in-the-markup` is the props side of `arrow-fields`, and it makes the same two
+   * decisions for the same two reasons: it follows a NAME to the local one line up, because that is
+   * the same function built at the same moment, and it does NOT follow a CALL, because a call is
+   * the recommended answer rather than the fault — `@memoized pickRow(row)` hands back a cached
+   * handler and `debounce(this.save, 200)` has nowhere else to live.
+   *
+   * Recorded here as well as in the rule's own fixture, because this file is the live record of
+   * which rules follow a value and which match a shape, and a rule missing from it is a rule
+   * nobody re-asks the question of.
+   */
+  test("function-built-in-the-markup follows a local and not a call", () => {
+    const written = run().findings["function-built-in-the-markup"].map((issue) => issue.written);
+
+    expect(written).toEqual(["() => this.save()", "hopHandler"]);
+    expect(written).not.toContain("makeHandler()");
+  });
 });

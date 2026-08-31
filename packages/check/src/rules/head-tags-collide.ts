@@ -96,6 +96,7 @@ const SETTLED: Looking<string> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 function literal(property: ts.ObjectLiteralElementLike, resolve: RuleContext["resolve"]): string | undefined {
@@ -187,6 +188,7 @@ const OPTIONS: Looking<ts.ObjectLiteralExpression> = {
   throughBranches: false,
   throughCalls: false,
   throughMutableBindings: false,
+  throughMemoizedCalls: true,
 };
 
 function optionsOf(
