@@ -266,14 +266,54 @@ Set these under **Settings → Secrets and variables → Actions**.
 
 | Secret | Used by | Notes |
 |---|---|---|
-| `NPM_TOKEN` | `release.yml` | npm **Automation** access token with publish rights for the `@ramonda` scope. |
 | `CLOUDFLARE_API_TOKEN` | `deploy-docs.yml` | Custom token with **Account → Cloudflare Pages → Edit**. |
 | `CLOUDFLARE_ACCOUNT_ID` | `deploy-docs.yml` | Your Cloudflare account id (in the dashboard URL). |
+
+**There is no npm secret, and that is deliberate.** `release.yml` publishes with the
+workflow's own OIDC identity — npm's trusted publishing — so there is nothing to
+rotate and nothing to expire. See *Publishing identity* below.
 
 `GITHUB_TOKEN` is provided automatically; no setup needed. The three security
 workflows add nothing to this table — CodeQL, dependency review and Scorecard run
 on that token alone, which is the practical difference between them and a
 third-party scanner.
+
+## Publishing identity: trusted publishing, not a token
+
+`release.yml` carries no npm token. It publishes with the OIDC identity GitHub mints
+for that workflow run, and each package on npmjs.com names this repository and that
+workflow file as the publisher it will accept.
+
+**Why, and it is not tidiness.** A token expires. When it does, every package fails
+at once with `E404 Not Found - PUT https://registry.npmjs.org/<name>` — which is npm
+refusing to say whether the package exists rather than admitting the request was
+unauthorised, so the message points at the wrong thing entirely. It happened on
+2026-08-31, with all 74 changesets already versioned and committed, and it had
+happened before that. An identity minted per run cannot expire, so the failure mode
+is gone rather than scheduled.
+
+**The one-time setup, per package.** On npmjs.com: the package → **Settings** →
+**Trusted publisher** → GitHub Actions, then
+
+| field | value |
+|---|---|
+| Organization or user | `NBlasko` |
+| Repository | `ramonda` |
+| Workflow filename | `release.yml` |
+| Environment | `npm` — the job declares `environment: npm`, so leave it blank only if that is removed too |
+
+All eleven published packages need it: `@ramonda/core`, `check`, `build`, `router`,
+`form`, `lens`, `query`, `server`, `devtools`, `testing-library`, and the unscoped
+`create-ramonda`. A package missing its trusted publisher fails alone, with the same
+`E404` — so the first release after this change is the one to read carefully.
+
+**A brand-new package cannot be published this way.** Its trusted publisher is
+configured on a package page, and there is no page until something is published.
+Publish its first version with a granular token (**Read and write**, **All
+packages**), then configure it and drop the token again.
+
+**What the workflow needs, and already has:** `permissions: id-token: write`, and an
+npm CLI of 11.5.1 or newer. `.nvmrc` pins Node 24, which carries npm 11.12.
 
 ## One-time setup
 
@@ -340,9 +380,9 @@ third-party scanner.
   `predicateType: https://slsa.dev/provenance/v1`. Consumers verify it with
   `npm audit signatures`. If this repository ever goes private, drop the
   `NPM_CONFIG_PROVENANCE` line — the publish fails without a public source.
-- **`npm` environment (optional).** Create an environment named `npm` and add
-  required reviewers to make every publish a manual approval; scope `NPM_TOKEN`
-  to it for tighter blast radius.
+- **`npm` environment.** An environment named `npm` — the release job declares it,
+  and npm's trusted publisher config names it too, so the two have to agree. Add
+  required reviewers to it to make every publish a manual approval.
 
 ## How a release works (Changesets)
 
