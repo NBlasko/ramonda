@@ -364,6 +364,24 @@ export {};
 `,
       offset: offsetFor(4),
     },
+    {
+      // Siblings. `<input {...a} />` beside `<input {...b} />` is two top-level elements, which is
+      // not one expression and not a statement list either — and it is how a page shows two ways of
+      // writing the same attribute. Ramonda has no fragment to wrap them in, so a `<div>` does it.
+      text: `${head}class __Example extends Component<any> {
+  [key: string]: any;
+  render(): any {
+    return (
+      <div>
+${body}
+      </div>
+    );
+  }
+}
+export {};
+`,
+      offset: offsetFor(5),
+    },
   ];
   // A block whose statements start with `this.` PARSES on its own — at the top of a module `this`
   // is legal and means nothing — and then every property on it is reported as possibly undefined,

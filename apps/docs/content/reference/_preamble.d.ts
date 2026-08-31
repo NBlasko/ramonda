@@ -35,4 +35,14 @@ declare global {
   /** The reader's own request key and their own loader, for the RMD053 examples. */
   const currentUser: RequestKey<string>;
   const fetchPosts: () => Promise<unknown[]>;
+
+  /** The reader's own table component, and the row it is shown holding. */
+  class Table extends Component<any> {
+    [key: string]: any;
+    render(): any;
+  }
+  /** The reader's own data, named where a diagnostic example needs something to point at. */
+  const user: { name: string; id: string };
+  /** A factory the reader wrote, for the examples about a value built per render. */
+  function make(...args: unknown[]): any;
 }

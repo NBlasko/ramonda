@@ -160,7 +160,7 @@ is what HTML offers.
 `bind` is a plain object, so anything after the spread wins:
 
 ```tsx
-<input {...f.email.$.bind} className="wide" placeholder="you@example.com" autoComplete="email" />
+<input {...f.email.$.bind} className="wide" placeholder="you@example.com" autocomplete="email" />
 <input {...f.age.$.bind} min={0} max={120} />
 ```
 

@@ -350,7 +350,7 @@ state lost, `@destroyed` and `@created` run again.
 If the two are **not** the same, the check walks *into* them — an object by key, an array by index — so
 a function inside somebody's config is reported as the function it is, at the place it sits:
 
-```tsx
+```tsx expect-report:fresh-object-in-props
 <Table cfg={{ rows: 10, onRow: () => this.pick() }} />        // reported as `cfg.onRow`
 <Table cols={[{ key: "name", render: () => this.cell() }]} /> // reported as `cols[0].render`
 ```
@@ -362,7 +362,7 @@ not a rebuild at all, so that is reported as the last case instead.
 consequence is the same as a plain object's, and so is the fix: construct it once and keep it in a field,
 a `@compute`, or a module constant.
 
-```tsx
+```tsx expect-report:clock-read-while-rendering
 <Row at={new Date()} />     // ✗ a new Date every render
 readonly at = new Date();   // ✓ constructed once, with the component
 <Row at={this.at} />
@@ -736,7 +736,7 @@ components sit between them in your JSX.
 
 ## RMD029 — a boolean attribute given the string "false"
 
-```tsx
+```tsx expect-report:false-on-a-boolean-attribute+control-with-no-label
 <input disabled="false" />     {/* reported — and the input IS disabled */}
 <input disabled={false} />     {/* what was meant */}
 ```
