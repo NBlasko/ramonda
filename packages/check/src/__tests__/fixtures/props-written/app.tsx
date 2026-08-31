@@ -89,6 +89,18 @@ class Base extends Component<{ title: string }> {
 
 class Derived extends Base {}
 
+/**
+ * PLANT: a PLAIN class with a `props` field, which is not a component and has no proxy on it.
+ * A report here would be an error-severity rule on code that runs perfectly.
+ */
+class NotAComponent {
+  props = { label: "" };
+  rename() {
+    this.props.label = "changed";
+  }
+}
+void NotAComponent;
+
 bootstrap(<Panel label="a" rows={[]} meta={{ seen: false }} />, null);
 bootstrap(<Derived title="t" />, null);
 void Watcher;

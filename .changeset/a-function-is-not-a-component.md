@@ -18,7 +18,10 @@ undeclared, so TypeScript applies its default rule — a tag must return one `JS
 
 The accepted shape is how a function component gets written out of habit, so the likeliest spelling
 was the only one nothing typed caught. The report says which side of that line each finding is on,
-so a reader meeting two messages about one line knows why there are two.
+so a reader meeting two messages about one line knows why there are two — and says NOTHING about
+the compiler when it cannot tell. That third state was found by running the rule against a fixture
+that already existed: `(props) => props.value` as a tag returns a string, so `TS2786` refuses it,
+and a two-state answer had printed *the types let this shape through*.
 
 All three are reported rather than only the third: this package does not typecheck, by design, and
 runs over projects whose types are loose or absent — a rule that answered only where `tsc` is silent

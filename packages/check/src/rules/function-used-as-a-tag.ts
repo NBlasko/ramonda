@@ -45,8 +45,16 @@ import type { ElementRule, Resolver } from "./rule";
 export interface FunctionUsedAsATagIssue {
   /** The tag as written, which is what the reader looks for. */
   tag: string;
-  /** Whether the compiler also refuses it, so a reader meeting both knows why there are two. */
-  alsoRefusedByTypes: boolean;
+  /**
+   * Whether the compiler also refuses it — `undefined` when this cannot tell.
+   *
+   * THREE states, not two, and the third was found by running against a fixture that already
+   * existed: `(props) => props.value` as a tag returns a string, so `TS2786` refuses it, and
+   * reading only literals said "one node" and printed *the types let this shape through*. Both
+   * confident answers are wrong when the return is a name rather than a literal, so the report
+   * says nothing about the compiler there rather than guessing which way.
+   */
+  alsoRefusedByTypes: boolean | undefined;
   file: string;
   line: number;
   column: number;
@@ -81,32 +89,48 @@ function functionBehind(
  * "one node", because that is the answer that keeps the report honest — claiming the compiler also
  * refused something it did not would send a reader looking for an error that is not there.
  */
-function returnsSeveralOrNothing(fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression): boolean {
+function returnsSeveralOrNothing(
+  fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression,
+): boolean | undefined {
   if (fn.body !== undefined && !ts.isBlock(fn.body)) return isNotOneNode(fn.body);
 
-  let several = false;
+  const answers: (boolean | undefined)[] = [];
   (function look(node: ts.Node): void {
-    if (several) return;
-    if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
-      if (node !== fn) return;
-    }
-    if (ts.isReturnStatement(node) && node.expression !== undefined && isNotOneNode(node.expression)) {
-      several = true;
+    // A nested function's returns are its own, not this one's.
+    if (node !== fn && (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node))) {
       return;
     }
+    if (ts.isReturnStatement(node) && node.expression !== undefined) answers.push(isNotOneNode(node.expression));
     ts.forEachChild(node, look);
   })(fn.body ?? fn);
-  return several;
+
+  // Any path that plainly returns something other than one node settles it. Otherwise a single
+  // unreadable return leaves the whole answer unreadable, rather than letting a readable one speak
+  // for a path it knows nothing about.
+  if (answers.includes(true)) return true;
+  return answers.includes(undefined) ? undefined : false;
 }
 
-/** An array literal, or a literal that is plainly not markup. Everything else reads as one node. */
-function isNotOneNode(expression: ts.Expression): boolean {
-  return (
+/**
+ * Whether the return is plainly NOT one node, plainly one node, or unreadable.
+ *
+ * `true` for what is written down as not-a-node — an array, a number, a string, an object. `false`
+ * for a JSX element, which is one. `undefined` for everything else, because a NAME does not say:
+ * `(props) => props.value` returns a string the compiler refuses, and calling that "one node" made
+ * the report claim the types allowed something they do not.
+ */
+function isNotOneNode(expression: ts.Expression): boolean | undefined {
+  if (
     ts.isArrayLiteralExpression(expression) ||
     ts.isNumericLiteral(expression) ||
     ts.isStringLiteralLike(expression) ||
     ts.isObjectLiteralExpression(expression)
-  );
+  ) {
+    return true;
+  }
+  return ts.isJsxElement(expression) || ts.isJsxSelfClosingElement(expression) || ts.isJsxFragment(expression)
+    ? false
+    : undefined;
 }
 
 export const functionUsedAsATag = {

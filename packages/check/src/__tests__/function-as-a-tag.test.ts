@@ -42,6 +42,23 @@ describe("a function where a component belongs", () => {
   });
 
   /**
+   * And a THIRD state, found by running against a fixture that already existed.
+   *
+   * `element-components` holds `(props) => props.value` used as a tag. It returns a string, so the
+   * compiler DOES refuse it — and reading only literals called that "one node" and printed *the
+   * types let this shape through*, which is the opposite of true. A name does not say what it
+   * returns, so the answer is `undefined` and the report says nothing about the compiler rather
+   * than guessing which way.
+   */
+  test("a return this cannot read leaves the compiler question unanswered", () => {
+    const others = analyzeProject(join(here, "fixtures", "element-components", "tsconfig.json")).findings[
+      "function-used-as-a-tag"
+    ];
+
+    expect(others.map((issue) => `${issue.tag}=${String(issue.alsoRefusedByTypes)}`)).toEqual(["TextArea2=undefined"]);
+  });
+
+  /**
    * The silences. A class is a component, which is the point; an alias for one is still one; a
    * value read off something is not knowable from here — the router's kit is exactly that shape;
    * and a call in an expression slot is the ANSWER this rule recommends, not the fault.

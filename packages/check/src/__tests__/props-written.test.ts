@@ -58,6 +58,18 @@ describe("props written by the component that received them", () => {
   });
 
   /**
+   * A PLAIN class is not a component, and this rule is an ERROR.
+   *
+   * `applyClass` runs only on a class the graph knows as a component or a hook, so an ordinary
+   * class with a `props` field never reaches here — there is no proxy on it and the write runs
+   * perfectly. Planted rather than read off the dispatch, because an error-severity rule reporting
+   * working code is the one thing this package may not do.
+   */
+  test("a plain class with a `props` field is not a component and is not reported", () => {
+    expect(found().map((issue) => issue.component)).not.toContain("NotAComponent");
+  });
+
+  /**
    * The silences, each a different reason.
    *
    * Mutating what props POINT AT sets a key on that object, not on the props bag, so the proxy
