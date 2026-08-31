@@ -33,9 +33,21 @@ const Aliased = Card;
 /** PLANT: an alias for a FUNCTION. One hop, and the same fault. */
 const AliasedFn = SideBar;
 
-/** Silent, and it must TERMINATE: two aliases pointing at each other. */
-const Loop: unknown = undefined as unknown;
-const Ring = Loop as never;
+/**
+ * Silent, and it must TERMINATE: two aliases that genuinely point at each other.
+ *
+ * The first version of this plant was `const Loop = undefined as unknown` beside `const Ring = Loop
+ * as never`, which is not a cycle at all — both initializers are casts, so the walk stopped before
+ * taking a single hop and the test passed for the wrong reason. These two are identifiers, so the
+ * walk really does go round: Ring to Loop to Ring, and the `seen` set is what ends it.
+ *
+ * TypeScript would call this a use-before-declaration; the fixtures are excluded from the
+ * type-check (`tsconfig.json`), and the analyzer does not typecheck by design.
+ */
+// @ts-expect-error a deliberate cycle, so the walk has something to terminate on
+const Ring = Loop;
+// @ts-expect-error the other half of it
+const Loop = Ring;
 
 /** Silent: a value read off something is not knowable from here. */
 declare const kit: { Link: typeof Card };

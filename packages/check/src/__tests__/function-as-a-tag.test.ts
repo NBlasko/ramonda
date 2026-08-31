@@ -67,8 +67,11 @@ describe("a function where a component belongs", () => {
    * that a function must not be callable as a component, which is a claim about the CALL SITE
    * however the name got there.
    *
-   * The chain is cycle-guarded, and the fixture holds a pair of aliases that point nowhere to prove
-   * the walk terminates rather than recursing.
+   * The chain is cycle-guarded, and the fixture holds two aliases that genuinely point AT EACH
+   * OTHER. The first version of that plant was a pair of casts, which is not a cycle: the walk
+   * stopped before taking a hop and this passed for the wrong reason. Measured with the guard
+   * removed, the real pair is `RangeError: Maximum call stack size exceeded`, so the guard is
+   * load-bearing rather than decorative.
    */
   test("an alias for a function is the same fault, and the chain terminates", () => {
     expect(found().map((issue) => issue.tag)).toContain("AliasedFn");
