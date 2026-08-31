@@ -220,7 +220,13 @@ signal an effect mutated itself. See [Subscriptions](/concepts/subscriptions).
 ## RMD011 — A function was used as a JSX tag
 
 A function has nothing to construct, no state and no lifecycle, so as a tag it names nothing the
-framework can keep hold of. TypeScript rejects it; this fires when the build has no types.
+framework can keep hold of.
+
+TypeScript catches most of it without help. `JSX.ElementType` is deliberately not declared, so the
+compiler's default rule applies — a tag has to return one `JSX.Element` — and a function returning
+several nodes, or anything that is not a node, is refused as `TS2786`. **What it lets through is a
+function returning exactly ONE element**, which is precisely how a function component gets written
+by habit. That is what this fires on, types or no types.
 
 For markup you reuse, call the function in an expression slot — `{sideBar()}` — where it reads as
 the value it is. For state and lifecycle with no markup, use a [Hook](/hooks). For both, make it a
