@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import type { ComponentGraph } from "../graph";
 import { dirname, join } from "node:path";
@@ -61,6 +62,23 @@ describe("the graph drawn as a page", () => {
     expect(back.nodes[0].name).toBe("Box<T>");
     expect(html).not.toContain("</script><");
   });
+});
+
+/**
+ * The viewer is written as one template literal, and a BACKTICK in a comment inside it closes the
+ * literal — the file becomes syntax it never meant. That has now cost two builds, the second one
+ * after the file itself had grown a comment saying not to do it. A sentence asking people to
+ * remember is not a guard; this is.
+ *
+ * Checked on the source rather than the output, because the output is the thing that would already
+ * be broken.
+ */
+test("the viewer's source carries no backtick that would close its own template", () => {
+  const source = readFileSync(join(here, "..", "graph-html.ts"), "utf8");
+  const viewer = source.slice(source.indexOf("String.raw`") + "String.raw`".length);
+  const body = viewer.slice(0, viewer.indexOf("\n`;"));
+
+  expect(body).not.toContain("`");
 });
 
 /**

@@ -138,7 +138,14 @@ for (let i = 0; i < queue.length; i++) {
  * a backtick in a comment closes it. Cost one build.
  */
 function labelOf(node) {
-  return node.name ?? node.id.slice(node.id.lastIndexOf("#") + 1);
+  const own = node.id.slice(node.id.lastIndexOf("#") + 1);
+  const name = node.name ?? own;
+  // A ROUTE OUTLET SITE is minted as file#RouteOutlet@n and carries kind "component" plus the
+  // component's own name, so two boxes read RouteOutlet and one of them is a USE rather than a
+  // declaration. Found by drawing a second app: in playground-ssr the router's component and the
+  // outlet written in App.tsx sat side by side, identical. The ordinal is what tells them apart.
+  const site = /@(\d+)$/.exec(own);
+  return site === null ? name : name + " @" + site[1];
 }
 
 /**
