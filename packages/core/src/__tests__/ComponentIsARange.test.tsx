@@ -422,6 +422,73 @@ describe("a region's node set is derived, not remembered", () => {
   });
 
   /**
+   * The same rule, reached through a LIST — and with the ancestor REORDERING rather than adding.
+   *
+   * The test above nests a component directly in a component. Here the descendant sits inside a list
+   * row inside a component, so the ancestor's walk has to pass through a `ListRegion` to reach a
+   * `ComponentRegion` whose contents changed under it. Regions nest, and the claim is that they are
+   * reconciled by the same rules at every depth; this is the depth where that stops being obvious.
+   *
+   * The ancestor also REORDERS instead of appending, which is the harder half: a reorder places
+   * every node against a reference taken from the set it just derived, so one stale entry anywhere
+   * in that set misplaces the nodes around it rather than only the new ones.
+   *
+   * The descendant is emptied first ON PURPOSE. A row that contributes no node at all is the case a
+   * host element made impossible, and it is where a remembered set and a derived one differ most:
+   * the remembered one still holds a node the row gave up.
+   */
+  test("an ancestor reordering a list sees what a descendant inside it gave up", async () => {
+    class Leaf extends Component<{ mark: string }> {
+      @state full = true;
+      render() {
+        return this.full ? <i className="leaf">{this.props.mark}</i> : null;
+      }
+    }
+
+    class Row extends Component<{ mark: string }> {
+      render() {
+        return <Leaf mark={this.props.mark} />;
+      }
+    }
+
+    class Shell extends Component {
+      @state rows = [{ id: "a" }, { id: "b" }, { id: "c" }];
+      render() {
+        return (
+          <div id="shell">
+            {list(this.rows, (row) => (
+              <Row key={row.id} mark={row.id} />
+            ))}
+            <span id="tail">tail</span>
+          </div>
+        );
+      }
+    }
+
+    const { container, instance, settle } = await getDOM<Shell>(<Shell />);
+    const shell = () => container.querySelector("#shell")!.innerHTML;
+    const tail = '<span id="tail">tail</span>';
+
+    expect(shell()).toBe(`<i class="leaf">a</i><i class="leaf">b</i><i class="leaf">c</i>${tail}`);
+
+    // The DESCENDANT, two regions down, gives up its only node on its own.
+    const middle = findAll<{ full: boolean }>(container, "Leaf")[1]!;
+    middle.full = false;
+    await settle();
+    expect(shell()).toBe(`<i class="leaf">a</i><i class="leaf">c</i>${tail}`);
+
+    // Now the ANCESTOR reorders the list it owns, with one row contributing nothing.
+    instance.rows = [{ id: "c" }, { id: "b" }, { id: "a" }];
+    await settle();
+    expect(shell()).toBe(`<i class="leaf">c</i><i class="leaf">a</i>${tail}`);
+
+    // And the emptied row fills back in, into a list it did not reorder itself.
+    middle.full = true;
+    await settle();
+    expect(shell()).toBe(`<i class="leaf">c</i><i class="leaf">b</i><i class="leaf">a</i>${tail}`);
+  });
+
+  /**
    * RMD016 says a component updated while its markup is out of the document, and it read the same
    * cache — so a component whose descendant had just replaced a node was accused of being orphaned
    * while its parent was in the document the whole time.
