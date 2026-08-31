@@ -156,7 +156,7 @@ The fix is the caller's, and it is [`list()`](/lists) instead of `.map()`:
 
 ```tsx
 // instead of  {items.map((item) => <li>{item.name}</li>)}
-<Panel>{list(items, (item) => <Item item={item} />)}</Panel>
+<Panel>{list(items, (item) => <Item key={item.id} item={item} />)}</Panel>
 ```
 
 `list()` keeps the rows as one child rather than letting them mix with the panel's own

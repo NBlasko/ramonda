@@ -21,7 +21,7 @@ export class Grid extends Component<{ rows: RowData[] }> {
       <table>
         <tbody>
           {list(this.rows, (row) => (
-            <tr>{list(row.cells, (cell) => <td>{cell.value}</td>)}</tr>
+            <tr key={row.id}>{list(row.cells, (cell) => <td key={cell.id}>{cell.value}</td>)}</tr>
           ))}
         </tbody>
       </table>
@@ -42,7 +42,7 @@ name:
 ```tsx
 class Row extends Component<{ item: RowData }> {
   render() {
-    return <tr>{list(this.props.item.cells, (item) => <CellView item={item} />)}</tr>;
+    return <tr>{list(this.props.item.cells, (item) => <CellView key={item.id} item={item} />)}</tr>;
   }
 }
 
@@ -54,7 +54,7 @@ export class Grid extends Component<{ rows: RowData[] }> {
   render() {
     return (
       <table>
-        <tbody>{list(this.rows, (item) => <Row item={item} />)}</tbody>
+        <tbody>{list(this.rows, (item) => <Row key={item.id} item={item} />)}</tbody>
       </table>
     );
   }

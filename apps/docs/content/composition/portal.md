@@ -75,7 +75,7 @@ then, not lost.
 A portal's children go through the real reconciler, so a list is a list — minted identity,
 per-item scopes, the whole-list skip. Nothing about it is special because it is portalled:
 
-```tsx
+```tsx expect-report:row-without-a-key
 this.use(Portal, () => ({
   children: list(this.rows, (item) => <Row item={item} />),
   target: modals,

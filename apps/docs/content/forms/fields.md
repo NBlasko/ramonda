@@ -338,7 +338,7 @@ class Rows extends Component<{ of: FieldNode<Contact[]> }> {
   f = this.use(Field<Contact[]>, () => ({ of: this.props.of }));
 
   render() {
-    return <div>{list(this.f.rows, (item) => <Line item={item} />)}</div>;
+    return <div>{list(this.f.rows, (item) => <Line key={item.id} item={item} />)}</div>;
   }
 }
 ```

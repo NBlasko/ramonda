@@ -654,24 +654,6 @@ const skipped =
   (unparseable.length === 0 ? "" : `, ${unparseable.length} not standalone code and skipped`) +
   (expected.length === 0 ? "" : `, ${expected.length} marked as not one program`);
 
-/**
- * The rule pass PRINTS and does not fail, for now.
- *
- * The repository's own rule for a new gate, and `rule.ts` says it about rules in the same words: a
- * gate that fails a build on something nobody has seen yet is a gate people switch off. Every
- * report it makes today is one nobody has triaged.
- *
- * What is left is one rule and one question. `row-without-a-key` is 17 of them, and the answer is
- * genuinely not obvious: `lists/index.md` teaches that a key is often unnecessary — *"while a row
- * is the same object it is the same row, nothing is declared and nothing can be got wrong"* — so an
- * example over a stable array is right, while one over refetched data (`query/infinite.md`) is not.
- * That is a per-site call, and making the gate red before it is made would only teach people to
- * mark every fence.
- *
- * Promote it by deleting this constant and the branch below.
- */
-const RULES_FAIL_THE_RUN = false;
-
 if (reported.length > 0) {
   console.error(`\n[examples] ${reported.length} code block(s) teach something the framework reports:\n`);
   const byRule = new Map();
@@ -681,8 +663,7 @@ if (reported.length > 0) {
     for (const one of list) console.error(`    ${one.where}`);
   }
   console.error(
-    (RULES_FAIL_THE_RUN ? "" : "  (printed, not failing — see `RULES_FAIL_THE_RUN`)\n") +
-      "\nAn example is copied. A block showing a pattern `ramonda-check` reports teaches it to\n" +
+    "\nAn example is copied. A block showing a pattern `ramonda-check` reports teaches it to\n" +
       "everyone who reads the page, and the gate went green over it because compiling and being\n" +
       "RIGHT are different questions. Fix the example, or — where the block exists to SHOW the\n" +
       "fault, as the diagnostics page does — mark the fence:\n\n" +
@@ -690,11 +671,9 @@ if (reported.length > 0) {
   );
 }
 
-if (total === 0 && (reported.length === 0 || !RULES_FAIL_THE_RUN)) {
+if (total === 0 && reported.length === 0) {
   console.log(
-    `[examples] ${units.length} code blocks in ${files.length} files type-check${
-      reported.length === 0 ? " and are clean to `ramonda-check`" : ""
-    }${skipped}.`,
+    `[examples] ${units.length} code blocks in ${files.length} files type-check and are clean to \`ramonda-check\`${skipped}.`,
   );
   for (const u of unparseable) console.log(`           skipped ${u.file}:${u.line}`);
   process.exit(0);

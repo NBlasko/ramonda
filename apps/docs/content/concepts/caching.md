@@ -94,7 +94,7 @@ class Board extends Component {
   }
 
   render() {
-    return <ul>{list(this.rows, (row) => <RowView cfg={this.configFor(row.id)} />)}</ul>;
+    return <ul>{list(this.rows, (row) => <RowView key={row.id} cfg={this.configFor(row.id)} />)}</ul>;
   }
 }
 ```
