@@ -49,8 +49,21 @@ interface State {
 focusOn(state).get("profile").get("name").set("Ada");
 ```
 
-If `profile` really is `null` at runtime, nothing changes and development reports
-which hop couldn't be reached.
+If `profile` really is `null` at runtime, **nothing changes**. Development reports which hop could
+not be reached, names the whole path, and says what to do instead — only the LAST hop creates what it
+names, so a gap before it cannot be walked through.
+
+**A published build says nothing.** Every lens diagnostic is behind `__DEV__`, so the check still
+runs and the write still does nothing, but there is no message and no record — deliberately: the text
+is bytes an app ships to nobody, and a devtools collector that happens to be loaded should receive
+silence rather than a stream to filter.
+
+That is the shape to know about. An update through a gap is not an error your users see; it is an
+update that does not happen. Two ways to keep it from reaching production unnoticed:
+
+- **Read the warning in development.** It names the exact hop, so it is one line to fix.
+- **Set the intermediate value first**, or `merge` the object into place, whenever the middle of a
+  path is genuinely optional rather than merely typed that way.
 
 ## Narrowing a type
 
