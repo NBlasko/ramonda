@@ -25,10 +25,12 @@ The same sweep over every surface a reader can see: five more places in `@ramond
 ten spots in `@ramonda/check` and `@ramonda/router`. One was not prose: core's DOM-nesting check
 still stepped around a `RAMONDA-HOST` parent, which no longer exists, so the branch is gone.
 
-`@ramonda/check` keeps its `@onElement` entry, and now says why. The checker reads SOURCE, and a
-codebase mid-migration still has the decorator written in it — which is when a report is worth
-having. Taking it out removed two findings from an existing fixture, which is the tests saying the
-same thing.
+`@ramonda/check` no longer knows the name either. Its `CLIENT_ONLY_DECORATORS` entry for
+`@onElement` is gone, and so is the reason for keeping it: the fixtures declare their OWN stub of
+`@ramonda/core`, so the decorator there was a specimen rather than a migration being tested. The stub
+stops declaring it, the fixture that used it uses `@onWindow` — a decorator that exists, and the same
+thing to the rule under test — and `fixtures/host-listeners/`, seven uses of it that no test loads at
+all, is deleted.
 
 **And the same question asked of every diagnostic, not just this one.** Comparing all 53 shipped
 messages against their reference entries turned up no other contradiction — RMD041 was the outlier —

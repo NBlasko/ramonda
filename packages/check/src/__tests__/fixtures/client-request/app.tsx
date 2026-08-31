@@ -4,7 +4,6 @@ import {
   deferHydration,
   interval,
   mounted,
-  onElement,
   onWindow,
   requestContext,
   requestKey,
@@ -22,7 +21,7 @@ declare function track(what: unknown): void;
 
 /** ✗ A key that cannot travel, read from an effect-backed listener. */
 export class ListenerRead extends Component {
-  @onElement("click")
+  @onWindow("click")
   onClick() {
     track(requestContext().get(currentUser));
   }
@@ -33,7 +32,7 @@ export class ListenerRead extends Component {
 
 /** A read narrowed to the server, inside a member that otherwise only the browser runs. */
 export class GuardedInAListener extends Component {
-  @onElement("click")
+  @onWindow("click")
   onClick() {
     if (typeof window === "undefined") track(requestContext().cookies.get("session"));
   }
@@ -124,7 +123,7 @@ export class InlineHandler extends Component {
 
 /** ✗ A key declared `exposeToClient: false`, which is decided rather than unknown. */
 export class ExplicitlyNotExposed extends Component {
-  @onElement("click")
+  @onWindow("click")
   onClick() {
     track(requestContext().get(secret));
   }
@@ -171,7 +170,7 @@ export class ServerCreated extends Component {
 
 /** An EXPOSED key. Whether the server seeded it is runtime, so nothing is claimed. */
 export class ExposedKey extends Component {
-  @onElement("click")
+  @onWindow("click")
   onClick() {
     track(requestContext().get(publicRole));
   }
@@ -222,7 +221,7 @@ export class HandlerAlsoCalledOnTheServer extends Component {
 /** A key this cannot resolve to a `requestKey` declaration. Unresolved is not the same as unexposed. */
 declare const opaqueKey: ReturnType<typeof requestKey<string>>;
 export class OpaqueKey extends Component {
-  @onElement("click")
+  @onWindow("click")
   onClick() {
     track(requestContext().get(opaqueKey));
   }

@@ -67,24 +67,8 @@ class HandsAStableProp extends Component {
   }
 }
 
-/**
- * `@onElement` on a component that HAS a host, said through an aliased `@Host`.
- *
- * The listener has a real box, so reporting it would be reporting working markup.
- */
-@Element("section")
-class HasAHostUnderAnAlias extends Component {
-  @onHostEvent("mouseenter")
-  onEnter() {}
-
-  render() {
-    return <section>host</section>;
-  }
-}
-
 void Hook;
 
 bootstrap(<Plain />, null);
 bootstrap(<HandsAStableProp />, null);
-bootstrap(<HasAHostUnderAnAlias />, null);
 bootstrap(<Aliased />, null);
