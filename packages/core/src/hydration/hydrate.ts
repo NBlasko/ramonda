@@ -29,6 +29,7 @@ import {
   reportTextMismatch,
   reportStructureMismatch,
   reportChildCountMismatch,
+  describeFound,
   reportBlockLengthMismatch,
   reportAttributeMismatches,
 } from "../debug/hydrationMismatch";
@@ -252,11 +253,7 @@ function hydrateText(
   }
 
   if (__DEV__) {
-    reportStructureMismatch(
-      placeholder,
-      `the text "${text}"`,
-      cursor ? `<${cursor.nodeName.toLowerCase()}>` : "nothing",
-    );
+    reportStructureMismatch(placeholder, `the text "${text}"`, describeFound(cursor));
   }
   parent.insertBefore(document.createTextNode(text), cursor);
   return cursor;
@@ -324,11 +321,7 @@ function hydrateComponentRegion(
    */
   if (open === null || !isComponentOpen(open)) {
     if (__DEV__) {
-      reportStructureMismatch(
-        placeholder,
-        `<${vnode.name.name}>`,
-        open ? `<${open.nodeName.toLowerCase()}>` : "nothing",
-      );
+      reportStructureMismatch(placeholder, `<${vnode.name.name}>`, describeFound(open));
     }
     const region = buildComponentRegion(vnode, placeholder, owner, parent as ChildNode);
     const built: ChildNode[] = [];
@@ -1048,11 +1041,7 @@ function hydrationFallback(
   parent: Node,
 ): EnhancedChildNode | null {
   if (__DEV__) {
-    reportStructureMismatch(
-      placeholder,
-      `<${vnodeName(vnode)}>`,
-      existingNode ? `<${existingNode.nodeName.toLowerCase()}>` : "nothing",
-    );
+    reportStructureMismatch(placeholder, `<${vnodeName(vnode)}>`, describeFound(existingNode));
   }
   const fresh = diffAndMerge(vnode, placeholder, undefined);
 

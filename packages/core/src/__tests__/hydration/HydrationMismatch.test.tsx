@@ -475,6 +475,90 @@ describe("hydration mismatch (RMD007)", () => {
     expect(captured.messages.join("\n")).not.toContain("no closing marker");
   });
 
+  /**
+   * The mirror of the test above: the client renders MORE children than the server wrote.
+   *
+   * The walk runs out of server nodes in the middle of a component's run, so the cursor is standing
+   * on that component's own CLOSING marker. A marker is structure rather than content — replacing it
+   * deletes the answer to "where does this run end" — so the fresh node is inserted in front of it,
+   * and the marker is consumed at close as usual.
+   *
+   * What that costs the reader is the diagnostic, which used to name the node it found by
+   * `nodeName`: "the server sent `<#comment>`". The comment is the framework's own bookkeeping and
+   * there is nothing for a reader to go and look at. The server's run for this component ended
+   * there, so the honest answer is that it sent nothing.
+   */
+  test("a component whose block is SHORTER on the server keeps the siblings after it", async () => {
+    class Inner extends Component {
+      render() {
+        return SIDE === "server" ? [<b>one</b>] : [<b>one</b>, <i>two</i>];
+      }
+    }
+
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Inner />
+            <span id="after">after</span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    // Exactly a client render: the extra node inside the block, the sibling untouched, no markers.
+    expect(container.innerHTML).toBe('<div><b>one</b><i>two</i><span id="after">after</span></div>');
+
+    expect(captured.codes).toContain("RMD007");
+    expect(captured.messages.join("\n")).toContain("rendered <i> but the server sent nothing");
+    // The marker is ours, and naming it sends the reader after framework bookkeeping.
+    expect(captured.messages.join("\n")).not.toContain("#comment");
+  });
+
+  /**
+   * The same, from an EMPTY block — the case a host element could never produce.
+   *
+   * The server wrote a component that rendered `null`, so its block holds nothing at all between the
+   * two markers. Every node the client renders is one the server did not send, and each is reported
+   * as such rather than against the marker the cursor happens to be resting on.
+   *
+   * The sibling here is a plain element on purpose. A COMPONENT after the one that grew — where the
+   * cost of a block ending in the wrong place is a lost state blob rather than a misplaced node — is
+   * "an extra element at the END of a component's run keeps its sibling whole", further down.
+   */
+  test("a component the server rendered empty is filled in without touching its neighbours", async () => {
+    class Inner extends Component {
+      render() {
+        return SIDE === "server" ? null : [<b>one</b>, <i>two</i>];
+      }
+    }
+
+    class Page extends Component {
+      render() {
+        return (
+          <div>
+            <Inner />
+            <span id="after">after</span>
+          </div>
+        );
+      }
+    }
+
+    const container = await serverHtmlInto(<Page />);
+    // The server's block really is empty, which is what makes this different from the test above.
+    expect(container.querySelectorAll("b, i").length).toBe(0);
+
+    SIDE = "client";
+    hydrateRoot(<Page />, container);
+
+    expect(container.innerHTML).toBe('<div><b>one</b><i>two</i><span id="after">after</span></div>');
+    expect(captured.messages.join("\n")).not.toContain("#comment");
+  });
+
   test("a dropped child that is itself a component does not confuse the block's end", async () => {
     // The leftover run holds a whole component's markers, so "the first `/c…` after the cursor" is
     // the NESTED one. Stopping there leaves the outer block's own marker in the page and puts the
