@@ -36,6 +36,7 @@ export type {
   FreshObjectInHookPropsIssue,
   FreshValueFromAWatchSelectorIssue,
   FreshObjectInPropsIssue,
+  LazyImportsThatCollideIssue,
   FunctionBuiltInTheMarkupIssue,
   HeadTagsCollideIssue,
   IntervalWithNoCleanupIssue,

@@ -34,6 +34,7 @@ import { linkWithoutADestination } from "./link-without-a-destination";
 import { freshObjectInHookProps } from "./fresh-object-in-hook-props";
 import { freshValueFromAWatchSelector } from "./fresh-value-from-a-watch-selector";
 import { freshObjectInProps } from "./fresh-object-in-props";
+import { lazyImportsThatCollide } from "./lazy-imports-that-collide";
 import { functionBuiltInTheMarkup } from "./function-built-in-the-markup";
 import { clickWithNoKeyboardPath } from "./click-with-no-keyboard-path";
 import { accessKey } from "./access-key";
@@ -151,6 +152,10 @@ export {
   type FreshValueFromAWatchSelectorIssue,
 } from "./fresh-value-from-a-watch-selector";
 export { freshObjectInProps, type FreshObjectInPropsIssue } from "./fresh-object-in-props";
+export {
+  lazyImportsThatCollide,
+  type LazyImportsThatCollideIssue,
+} from "./lazy-imports-that-collide";
 export {
   functionBuiltInTheMarkup,
   type FunctionBuiltInTheMarkupIssue,
@@ -362,6 +367,7 @@ export const TREE_RULES = [duplicateId, headingSkipsALevel, moreThanOneMain, lan
  * table first and asks afterwards. See `ProjectRule`.
  */
 export const PROJECT_RULES = [
+  lazyImportsThatCollide,
   fragmentLinkToNowhere,
   referenceToAnIdThatIsNotThere,
   controlWithNoLabel,

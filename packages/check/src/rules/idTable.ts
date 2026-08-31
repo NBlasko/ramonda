@@ -1,3 +1,4 @@
+import { dirname, resolve as resolvePath } from "node:path";
 import ts from "typescript";
 import { positionOf } from "../syntax";
 import { coreElementTag } from "./coreElements";
@@ -5,7 +6,7 @@ import { openingOf, tagOf } from "./element";
 import { follow, type Looking } from "./follow-value";
 import { NAMES_IT } from "./naming";
 import { enclosingElement } from "./html";
-import type { FormControl, IdReference, ProjectContext, Resolver, UnreadableId } from "./rule";
+import type { FormControl, IdReference, LazySite, ProjectContext, Resolver, UnreadableId } from "./rule";
 
 /**
  * The project's ids, and every place one is named — the fifth subject, built in one pass.
@@ -137,9 +138,11 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
   const unreadable: UnreadableId[] = [];
   const references: IdReference[] = [];
   const controls: FormControl[] = [];
+  const lazySites: LazySite[] = [];
 
   const readElement = (element: ts.JsxElement | ts.JsxSelfClosingElement): void => {
     const opening = openingOf(element);
+    readLazy(opening, resolve, lazySites);
     /**
      * A COMPONENT that IS an element counts as that element here too.
      *
@@ -314,7 +317,7 @@ export function idTableFor(sources: readonly ts.SourceFile[], resolve: Resolver)
 
   for (const file of sources) walk(file);
 
-  return { ids, prefixes, unreadable, references, controls };
+  return { ids, prefixes, unreadable, references, controls, lazySites };
 }
 
 /**
@@ -338,4 +341,71 @@ export function couldExist(target: string, project: ProjectContext): boolean {
    * it to matter. The fix at that point is a trie, not a rewrite.
    */
   return project.prefixes.some((prefix) => target.startsWith(prefix));
+}
+
+/**
+ * Records a `lazy` on core's `AsyncLoad`, with the module it actually names.
+ *
+ * Two silences, both taken from the runtime rather than invented:
+ *
+ * - **An explicit `cacheKey`** is the app's own claim about identity, and `claim()` believes it —
+ *   two entries deliberately given one key are meant to share it.
+ * - **Any SPREAD, on either side.** This rule is settled by an attribute that is NOT written, and
+ *   a spread may be carrying it: `<AsyncLoad {...rest} lazy={…} />` where `rest` holds a
+ *   `cacheKey` is correct code. An absent attribute is never provable past a spread, which is the
+ *   asymmetry the element family already records.
+ *
+ * The `lazy` is followed one hop through a name, because a module-level `const loadPanel = () =>
+ * import("./Panel")` is what the documentation now tells people to write — reading only the
+ * attribute would go silent on the recommended spelling.
+ */
+function readLazy(opening: ts.JsxOpeningLikeElement, resolve: Resolver, into: LazySite[]): void {
+  if (resolve.coreName(opening.tagName) !== "AsyncLoad") return;
+
+  const attributes = opening.attributes.properties;
+  if (attributes.some((attribute) => ts.isJsxSpreadAttribute(attribute))) return;
+
+  let lazy: ts.Expression | undefined;
+  for (const attribute of attributes) {
+    if (!ts.isJsxAttribute(attribute)) continue;
+    const name = attribute.name.getText();
+    if (name === "cacheKey") return;
+    if (name !== "lazy") continue;
+    const value = attribute.initializer;
+    if (value !== undefined && ts.isJsxExpression(value)) lazy = value.expression;
+  }
+  if (lazy === undefined) return;
+
+  const built = ts.isIdentifier(lazy)
+    ? resolve(lazy)?.declarations?.find((one): one is ts.VariableDeclaration => ts.isVariableDeclaration(one))
+        ?.initializer
+    : lazy;
+  if (built === undefined) return;
+
+  into.push({ text: built.getText(), module: moduleNamed(built), ...positionOf(opening) });
+}
+
+/**
+ * The module a dynamic import inside this function names, resolved against the file it sits in.
+ *
+ * A RELATIVE specifier is the whole point: one string, and a different module per directory it is
+ * written in. A bare one names the same package wherever it appears, so it is returned as written
+ * and can never collide with itself. Anything that is not a literal is unreadable, and unreadable
+ * means silent.
+ */
+function moduleNamed(built: ts.Expression): string | undefined {
+  let found: string | undefined;
+  (function look(node: ts.Node): void {
+    if (found !== undefined) return;
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const [specifier] = node.arguments;
+      if (specifier !== undefined && ts.isStringLiteralLike(specifier)) found = specifier.text;
+      return;
+    }
+    ts.forEachChild(node, look);
+  })(built);
+
+  if (found === undefined) return undefined;
+  if (!found.startsWith(".")) return found;
+  return resolvePath(dirname(built.getSourceFile().fileName), found);
 }

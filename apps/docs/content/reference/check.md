@@ -140,7 +140,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 72 of them.
+**Warnings.** These print and the run still passes. 73 of them.
 
 | rule | reported when |
 |---|---|
@@ -212,6 +212,7 @@ rules**, so a rule cannot be added without appearing here.
 | `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |
 | `more-than-one-main` | one render has more than one `main` landmark, where HTML allows one |
 | `landmarks-that-cannot-be-told-apart` | one render has two or more landmarks of the same kind and none of them is named |
+| `lazy-imports-that-collide` | two `lazy` functions are written identically but name different modules — the module cache is keyed by the function's source, so one entry has to serve both — also [`RMD049`](/reference/diagnostics) |
 | `fragment-link-to-nowhere` | an `href="#name"` points at an id no element in the project carries |
 | `reference-to-an-id-that-is-not-there` | an `aria-labelledby`, `htmlFor` or other id reference names an id no element in the project carries |
 | `control-with-no-label` | a form control has no label, no `aria-label`, no `aria-labelledby` and no `title`, so nothing says what it is for |
