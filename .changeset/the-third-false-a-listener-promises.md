@@ -29,3 +29,16 @@ then never tries again.
 
 The class doc called that "the uncommon case, worth knowing". The portal page, whose own example uses
 exactly that lookup, did not mention it. It does now, with the shape that recovers.
+
+The Firefox and Safari stack shape is parsed by something now
+
+`sourceLocation` reads where a class is defined out of the first construction's stack, so devtools can
+open your editor on it. Its parser handles two engine shapes and says so in its own note — V8's
+`at new Foo (file:line:col)` and Firefox/Safari's `Foo@file:line:col`. The tests run on V8, so only the
+first was ever exercised. The second is not an edge case; it is half the browsers somebody opens
+devtools in.
+
+Six more shapes come with it, each one a promise the file already makes: a V8 frame through the same
+entry point, a frame that names the class but carries no position (skipped rather than reported as
+`line: NaN` at a file an editor cannot open), a stack that names nothing, no stack at all, an
+anonymous class, and `definitionOf` asked about something that is not a class.
