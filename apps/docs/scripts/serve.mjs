@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
-import { join, extname, dirname } from "node:path";
+import { join, extname, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
  * `/guide/installation` to it. A dev server that did not would make the links
  * work locally and 404 in production.
  */
-const dist = join(dirname(fileURLToPath(import.meta.url)), "..", "dist");
+const dist = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
 const PORT = Number(process.env.PORT ?? 5173);
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -22,10 +22,37 @@ const MIME = {
   ".json": "application/json",
 };
 
+/**
+ * The path a request asks for, or `undefined` when it asks for something outside `dist`.
+ *
+ * `join` NORMALISES, so `join(dist, "/../../etc/passwd")` is a path outside the directory this
+ * serves — a traversal, and one that predates the flat-file rule below rather than arriving with
+ * it. Resolving and then confining is the whole guard: everything after this derives from a path
+ * already proved to be inside, so `${file}.html` and `index.html` are contained by construction.
+ *
+ * `decodeURIComponent` throws on a stray `%`, which would take the server down for a malformed URL
+ * a crawler produces by accident. A request nobody can decode is a request nobody can serve.
+ */
+function asked(rawUrl) {
+  let url;
+  try {
+    url = decodeURIComponent((rawUrl ?? "/").split("?")[0]);
+  } catch {
+    return undefined;
+  }
+  const at = resolve(join(dist, url));
+  return at === dist || at.startsWith(dist + sep) ? at : undefined;
+}
+
 createServer((req, res) => {
-  const url = decodeURIComponent((req.url ?? "/").split("?")[0]);
-  let file = join(dist, url);
+  let file = asked(req.url);
   let status = 200;
+
+  if (file === undefined) {
+    res.writeHead(403, { "content-type": "text/plain" });
+    res.end("Forbidden");
+    return;
+  }
 
   /**
    * The FLAT file first, and the order is the whole fix.
