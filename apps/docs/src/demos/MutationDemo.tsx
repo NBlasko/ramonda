@@ -99,9 +99,7 @@ export class MutationDemo extends Component {
         </p>
 
         {this.add.isError ? (
-          <p className="demo-note">
-            rejected: {(this.add.error as Error).message} — the optimistic item was rolled back
-          </p>
+          <p className="demo-note">rejected: {this.add.error?.message} — the optimistic item was rolled back</p>
         ) : (
           <p className="demo-note">try adding "write the docs" twice to see the rollback</p>
         )}

@@ -33,13 +33,14 @@
     "@ramonda/build": "workspace:^",
     "@ramonda/check": "workspace:^",
     "@ramonda/theme": "workspace:^",
-    "@types/node": "^26.1.2",
-    "esbuild": "0.28.1",
+    "@types/node": "^26.4.1",
+    "esbuild": "0.28.2",
     "jsdom": "28.0.0",
     "markdown-it": "^14.3.0",
     "pagefind": "^1.5.2",
-    "shiki": "^4.3.1",
+    "shiki": "^4.4.3",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
   }
 }

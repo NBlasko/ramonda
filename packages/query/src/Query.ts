@@ -108,7 +108,7 @@ export interface QueryProps<TData, K extends QueryKey = QueryKey> extends QueryD
 export type QueryResult<TData> =
   | { status: "pending"; data: undefined; error: undefined }
   | { status: "success"; data: TData; error: undefined }
-  | { status: "error"; data: TData | undefined; error: unknown };
+  | { status: "error"; data: TData | undefined; error: Error };
 
 /**
  * Reads a cached, deduplicated, race-free query.
@@ -197,7 +197,7 @@ interface Observed {
   data: unknown;
   status: QueryStatus;
   fetchStatus: FetchStatus;
-  error: unknown;
+  error: Error | undefined;
   failureCount: number;
   updatedAt: number;
   restored: boolean;
@@ -928,7 +928,7 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
   /** Built at most once — see `placeholder()`. */
   private placeholderValue: TData | undefined;
 
-  get error(): unknown {
+  get error(): Error | undefined {
     this.read |= Facet.Error;
     return this.entry.error;
   }
@@ -1038,7 +1038,19 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
       return { status: "success", data: entry.data as TData, error: undefined };
     }
     if (entry.status === "error") {
-      return { status: "error", data: entry.data, error: entry.error };
+      /**
+       * Asserted rather than defaulted, because the fallback could not run.
+       *
+       * `status` and `error` are separate fields, so nothing tells the compiler that one is only ever
+       * `"error"` while the other is set — but the entry keeps them together. The one place that
+       * writes `status = "error"` assigns a normalised `Error` on the next line (`QueryClient`'s
+       * catch), and all three places that clear `error` set `status = "success"` immediately before
+       * doing so. A restored failure comes back as `ServerQueryError`, which is an `Error` too.
+       *
+       * A `??` here would have shipped a branch nothing can reach — two more paths to read and none
+       * to trust, which is the argument this branch already made for deleting one in `reanchor`.
+       */
+      return { status: "error", data: entry.data, error: entry.error! };
     }
     return { status: "pending", data: undefined, error: undefined };
   }

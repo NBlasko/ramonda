@@ -2,6 +2,7 @@ import { Hook, INSPECT, destroyed, StableProps, state } from "@ramonda/core";
 import { ClientConsumer, requireClient } from "./context";
 import type { QueryClient } from "./QueryClient";
 import type { QueryKey } from "./types";
+import { asError } from "./errors";
 
 /** Where a mutation is in its one round trip. */
 export type MutationStatus = "idle" | "pending" | "success" | "error";
@@ -46,7 +47,7 @@ export interface MutationProps<TData, TVars> {
    */
   onMutate?: (vars: TVars, ctx: MutationContext) => Rollback;
   onSuccess?: (data: TData, vars: TVars, ctx: MutationContext) => void;
-  onError?: (error: unknown, vars: TVars, ctx: MutationContext) => void;
+  onError?: (error: Error, vars: TVars, ctx: MutationContext) => void;
   /** Runs after success and after failure, for the spinner nobody wants to leave up. */
   onSettled?: (vars: TVars, ctx: MutationContext) => void;
   /**
@@ -144,7 +145,7 @@ export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVa
    * the same shape for the same reason.
    */
   private lastData?: TData;
-  private lastError?: unknown;
+  private lastError?: Error;
   /** Identifies the mutation in flight, so an earlier one cannot land over a later one. */
   private runId = 0;
   private controller?: AbortController;
@@ -162,7 +163,7 @@ export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVa
       data: this.lastData,
       // Serialised here rather than handed over raw: an Error survives the panel's value tree as
       // `{}`, which reads as "no error" beside a status that says otherwise.
-      error: this.lastError instanceof Error ? `${this.lastError.name}: ${this.lastError.message}` : this.lastError,
+      error: this.lastError ? `${this.lastError.name}: ${this.lastError.message}` : undefined,
       isInFlight: this.controller !== undefined,
     };
   }
@@ -247,7 +248,11 @@ export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVa
       this.props.onSettled?.(vars, this.context);
 
       return data;
-    } catch (error) {
+    } catch (thrown) {
+      // One shape for a failure, the same one a Query stores — see `asError`. The original is on
+      // `cause`, which is what an `onError` inspecting a thrown object reaches for.
+      const error = asError(thrown);
+
       // The rollback runs even for a superseded or unmounted mutation: it undoes a
       // write to the CACHE, which outlives this hook, and leaving an optimistic
       // value in there because the component went away is how a list ends up
@@ -330,7 +335,7 @@ export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVa
   }
 
   /** What the last failed mutation rejected with. */
-  get error(): unknown {
+  get error(): Error | undefined {
     void this.version;
     return this.lastError;
   }

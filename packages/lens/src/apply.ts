@@ -1,5 +1,5 @@
 import { exoticName, isArray, isContainer, isUnsafeKey, shallowClone } from "./clone";
-import { report } from "./diagnostics";
+import { fatal, report } from "./diagnostics";
 import { formatPath, type Step } from "./steps";
 
 /**
@@ -64,8 +64,19 @@ export function walk(node: unknown, w: Walk, i: number): unknown {
   const step = w.steps[i];
 
   if (!isContainer(node)) {
+    /**
+     * Thrown rather than reported, and only in development.
+     *
+     * Carrying on hands back the root unchanged, which is indistinguishable from a write that had
+     * nothing to do — so the fault reaches production as an update that quietly does not happen.
+     * That is the shape `fatal` exists for.
+     *
+     * A published build still returns the root. The check is here either way, so the throw is not
+     * what costs bytes — but an exception in front of a user, for something the author could have
+     * seen while writing the line, is not a trade worth making.
+     */
     if (__DEV__) {
-      report(
+      throw fatal(
         "RML001",
         `${formatPath(w.steps, i)} is ${node === undefined ? "undefined" : JSON.stringify(node)}, ` +
           `so ${formatPath(w.steps)} could not be reached. Nothing was changed.`,

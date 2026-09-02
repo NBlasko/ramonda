@@ -6,10 +6,15 @@ order: 55
 
 # Portal
 
-`Portal` renders a subtree into a DOM element **somewhere else** — `document.head`, a
-modal root at the end of `<body>`, a toast container — while the subtree stays part of
-the component that declared it. Its lifecycle, state and context all belong where you
-wrote it; only the DOM lands in the target.
+`Portal` renders a subtree into a DOM element **somewhere else** — a modal root at the end of
+`<body>`, a toast container, a tooltip layer — while the subtree stays part of the component that
+declared it. Its lifecycle, state and context all belong where you wrote it; only the DOM lands in
+the target.
+
+**For a page's `<title>` and `<meta>`, reach for [`Head`](/ssr/head) instead.** It is built on this
+hook and does the work a portal into `document.head` would leave to you: the tags are kept unique by
+their identity, collected on the server, and adopted on the client rather than written twice. This
+page uses the head to explain the mechanism, and every time it does, `Head` is what to use.
 
 It is a hook, so it renders **nothing** where you declare it:
 
@@ -95,10 +100,14 @@ ancestor of the target.
 
 ## Server rendering
 
-A portal into `document.head` is collected on the server and adopted on the client, so its
-tags are in the served HTML and are not duplicated on hydration. That is exactly how
-[`Head`](/ssr/head) puts a page's `<title>` and `<meta>` into the document — it is a portal
-into the head with the tags kept unique by their identity.
+A portal into `document.head` is collected on the server and adopted on the client, so its tags are
+in the served HTML and are not duplicated on hydration. That is exactly how [`Head`](/ssr/head) puts
+a page's `<title>` and `<meta>` into the document — it is a portal into the head with the tags kept
+unique by their identity.
+
+Which is to say: this paragraph describes how `Head` works, not something to build. Writing metadata
+through a raw portal means keeping the tags unique yourself, and two pages that both set a
+description would each add one.
 
 A **component** inside a portal is hydrated like any other: its host is adopted and its
 server state restored, not rebuilt from its initial values.

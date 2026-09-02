@@ -158,6 +158,90 @@ double-write guard above and `focusOn(root).remove()` throw in development and d
 at all in production. Neither is control flow to rely on — don't wrap either in a `try`
 expecting to catch something in a shipped build.
 
+## Recipes
+
+The writes an app actually asks for, over the same blog state the rest of these pages walk — posts
+with tags and an author, and a profile. Every one returns a new root and shares everything it did not
+touch.
+
+**Rename something nested.** The hops read like the shape:
+
+```tsx
+const renamed = focusOn(state).get("profile").get("city").set("Niš");
+```
+
+**Fill in a field that is not there yet.** The LAST hop creates what it names, so `labels?: string[]`
+needs nothing declared first:
+
+```tsx
+const labelled = focusOn(state).get("posts").at(0).get("labels").push("todo");
+```
+
+**Change one item, found by what is in it.** `where` selects, and everything after it applies to what
+was selected:
+
+```tsx
+const retitled = focusOn(state)
+  .get("posts")
+  .where((post) => post.id === 1)
+  .get("title")
+  .set("In review");
+```
+
+**Toggle a flag on that one item:**
+
+```tsx
+const toggled = focusOn(state)
+  .get("posts")
+  .where((post) => post.id === 1)
+  .get("draft")
+  .update((draft) => !draft);
+```
+
+**Append to an array one level down**, in the same walk that found the row:
+
+```tsx
+const tagged = focusOn(state)
+  .get("posts")
+  .where((post) => post.id === 1)
+  .get("tags")
+  .push("needs-review");
+```
+
+**Drop one item.** `remove` on an element takes it out of the array rather than leaving a hole:
+
+```tsx
+const withoutIt = focusOn(state)
+  .get("posts")
+  .where((post) => post.id === 1)
+  .remove();
+```
+
+**Change two things in one pass**, so one new root comes back rather than two:
+
+```tsx
+const both = focusOn(state).and(
+  (blog) => blog.get("profile").get("name").set("Bo"),
+  (blog) => blog.get("home").get("city").set("Niš"),
+);
+```
+
+**Read without writing** — the same path with a different ending. `value()` for one, `values()` for
+everything a `where` matched:
+
+```tsx
+const city = focusOn(state).get("profile").get("city").value();
+const draftTitles = focusOn(state)
+  .get("posts")
+  .where((post) => post.draft)
+  .get("title")
+  .values();
+```
+
+**Where the write actually lands.** Each line above produces a new root and nothing more — `focusOn`
+builds a value, it does not write your state. What the framework sees is the assignment you make with
+it: `this.data = focusOn(this.data)…`.
+
 ## Next
 
 - [Messages you might see](/lens/messages) — every development message, and its cause.

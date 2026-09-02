@@ -131,7 +131,7 @@ export type LensCode =
 const SPECS: Record<LensCode, Spec> = __DEV__
   ? {
       RML001: {
-        severity: "warn",
+        severity: "error",
         fix:
           "Only the LAST hop creates what it names, so a gap before it cannot be walked through. Set " +
           "the intermediate value first, or `merge` the whole object into place.",
@@ -242,8 +242,10 @@ function printed(code: LensCode, message: string): string {
  * Reports a diagnostic and returns the Error to throw, so the panel sees the
  * fault a throw would otherwise keep to itself.
  *
- * The two callers are the faults where carrying on would produce a plausible
- * result that is quietly wrong, which is why they are errors rather than reports.
+ * The callers are the faults where carrying on would produce a plausible result that is quietly
+ * wrong, which is why they are errors rather than reports. RML001 is the third and the clearest of
+ * them: a walk that cannot reach its target hands back the root, which reads exactly like a write
+ * that had nothing to do.
  * In production they are compiled out entirely and the operation is a no-op — so
  * neither is control flow to rely on.
  */

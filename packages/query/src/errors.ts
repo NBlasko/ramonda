@@ -39,6 +39,34 @@ export class ServerQueryError extends Error {
   }
 }
 
+/**
+ * Whatever was thrown, as an `Error` — the one place a rejection is normalised.
+ *
+ * A fetcher is app code and rejects with what it likes: `throw "not found"` after a validation, a
+ * status number, a plain object parsed out of a JSON error body, or `undefined` from a bare `throw`.
+ * Measured, every one of those reached `query.error` exactly as thrown, which is why `error` used to
+ * be `unknown` and why every example wrote `(error as Error).message` — a read that is `undefined`
+ * for three of those four shapes, so the page rendered an empty failure.
+ *
+ * Two things made a type alone insufficient. Saying "it is an `Error`" without making it one turns a
+ * visible cast into an invisible `undefined`. And the two halves of a page already disagreed: a
+ * failure restored from the server came back as `ServerQueryError`, a real `Error`, while the same
+ * failure fetched on the client came back as whatever was thrown — so identical app code behaved
+ * differently depending on whether the page was server-rendered.
+ *
+ * An `Error` is passed through as ITSELF rather than wrapped: wrapping would break
+ * `instanceof MyApiError` in an app that throws its own subclass, and put what the reader wants one
+ * `cause` deeper for nothing. Everything else keeps the original on `cause`, which is where a retry
+ * policy that inspects a thrown object reaches for it.
+ */
+export function asError(thrown: unknown): Error {
+  if (thrown instanceof Error) return thrown;
+  // `String(thrown)` rather than a stringify: an object with a `toString` says what it means, one
+  // without says `[object Object]`, and a stringify can throw on a cycle — which is the last thing a
+  // failing request needs.
+  return new Error(String(thrown), { cause: thrown });
+}
+
 /** Reduces anything a fetcher can reject with to the serializable shape. */
 export function serializeError(error: unknown): SerializedError {
   if (error instanceof Error) {

@@ -225,7 +225,9 @@ export const freshObjectInProps = {
   report: {
     severity: "warn",
     reportedWhen:
-      "a component is handed an object or array built during the render — written in the attribute, on one side of a ternary or a `??`, in a local one line up, or by a helper it calls — so it is a new value every time and comparison can never match",
+      "a component is handed an object or array built during the render, so it is a new value every " +
+      "time and comparison can never match — lift it to a field or a `@compute`, or declare it on the " +
+      "child with `@StableProps`",
     heading: (found) => `${found.length} prop(s) rebuilt on every render:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,

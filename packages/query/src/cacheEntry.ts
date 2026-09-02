@@ -20,7 +20,7 @@ export interface QueryEntry<TData = unknown> {
   fetchStatus: FetchStatus;
   data: TData | undefined;
   /** Whatever the fetcher rejected with, untouched. Serialized only on the way out. */
-  error: unknown;
+  error: Error | undefined;
   /** When data last arrived. 0 means never. */
   updatedAt: number;
   /** When the current error arrived. 0 means there has never been one. */

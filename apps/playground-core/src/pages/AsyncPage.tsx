@@ -1,5 +1,6 @@
 import { Component, state, AsyncLoad } from "@ramonda/core";
 import type { AsyncLoadFailure, Lazy } from "@ramonda/core";
+import { failureMessage } from "../failureMessage";
 
 /** Drives the "fails twice, then works" demo below. */
 let flakyAttempts = 0;
@@ -74,7 +75,7 @@ function retryableForever({ error, retry, attempt }: AsyncLoadFailure) {
   return (
     <div className="row">
       <span className="muted small">
-        attempt {attempt}: {(error as Error).message}
+        attempt {attempt}: {failureMessage(error)}
       </span>
       <button onclick={retry}>retry (will fail again)</button>
     </div>
@@ -85,7 +86,7 @@ function retryableTimed({ error, retry, attempt }: AsyncLoadFailure) {
   return (
     <div className="row">
       <span className="muted small">
-        attempt {attempt} failed: {(error as Error).message}
+        attempt {attempt} failed: {failureMessage(error)}
       </span>
       <button onclick={retry}>retry</button>
     </div>

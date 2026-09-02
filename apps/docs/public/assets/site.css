@@ -516,11 +516,41 @@ article img[src$=".gif"] {
   font-weight: 600;
 }
 
+/*
+ * A cell wraps rather than running past its own border.
+ *
+ * A cell is only as wide as the column makes it, and an unbroken run of characters is wider than
+ * that — `import.meta.env.RAMONDA_PUBLIC_API_BASE`, 39 of them, on /reference/build — so the text
+ * left the grey box and crossed the border beside it.
+ *
+ * Set here for every width and turned OFF again inside the reflow breakpoint below, rather than
+ * scoped to `min-width: 701px`. Two adjacent-integer queries leave a gap: at 700.5px — a real width
+ * on a scaled display — neither `max-width: 700px` nor `min-width: 701px` matches, and the bug came
+ * back at exactly that width. A rule plus an override cannot have a gap.
+ *
+ * It is off below the breakpoint because a `DataTable` gives every value cell a fixed width there so
+ * the columns line up down the page, and `anywhere` would break words earlier than it has to — the
+ * reason the note beside `article p` gives for leaving cells out of that rule.
+ *
+ * `anywhere` breaks at whatever character stops fitting; CSS has no way to prefer a break BEFORE a
+ * dot, so a long dotted path can still split mid-word. Where that reads badly the answer is in the
+ * content: put the short form in the cell and the full name in the code block under it.
+ */
+.table-wrap th,
+.table-wrap td {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 700px) {
   /* The heading row is gone, so it must not be read out either — `display: none` does both. Its
      text is not lost: it is on every cell as `data-label`. */
   .table-wrap thead {
     display: none;
+  }
+  /* And the wrapping above is turned off here: see its note. */
+  .table-wrap th,
+  .table-wrap td {
+    overflow-wrap: normal;
   }
   /* ONE scroll container for the whole table, so every row's values move together and the columns
      stay lined up down the page. A scroller per row would drift out of step the moment two rows were

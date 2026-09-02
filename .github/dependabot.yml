@@ -13,11 +13,21 @@ version: 2
 # and that volume teaches you to ignore the notifications that matter.
 updates:
   - package-ecosystem: npm
-    # The workspace root, and only the root: one `pnpm-lock.yaml` governs every
-    # package, and Dependabot resolves the workspace from here — it edits member
-    # manifests as needed. (If some member's `package.json` ever stops being
-    # updated, list its path under `directories` instead.)
-    directory: /
+    # The root AND every member, which is not where this started.
+    #
+    # It was `directory: /` alone, on the reasoning that one `pnpm-lock.yaml` governs every
+    # package, so Dependabot would resolve the workspace from here and edit member manifests as
+    # needed. That note named its own escape clause — "if some member's `package.json` ever stops
+    # being updated, list its path under `directories` instead" — and the clause came true.
+    #
+    # Measured on 2026-09-02, the first pass over dependencies in a long while: `@ramonda/devtools`
+    # sat on `@types/node@^24` while every other package was on `^26`, and twelve dependencies
+    # across the workspace were behind, none of them ever the subject of a pull request. Member
+    # manifests were not being edited.
+    directories:
+      - /
+      - /packages/*
+      - /apps/*
     schedule:
       interval: weekly
       day: monday

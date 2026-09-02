@@ -76,7 +76,7 @@ export class Markdown extends Component<MarkdownProps> {
   }
 
   render(): RamondaNode {
-    return <div onclick={this.onLinkClick}>{this.props.tree.map(toVNode) as RamondaNode}</div>;
+    return <div onclick={this.onLinkClick}>{this.props.tree.map(toVNode)}</div>;
   }
 }
 

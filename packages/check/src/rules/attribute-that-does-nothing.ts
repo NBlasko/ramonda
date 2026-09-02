@@ -121,7 +121,9 @@ export const attributeThatDoesNothing = {
 
   report: {
     severity: "warn",
-    reportedWhen: "an attribute is written whose name reaches the DOM verbatim and that nothing reads",
+    reportedWhen:
+      "one of six camelCase names — `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, " +
+      "`innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it",
     heading: (found) => `${found.length} attribute(s) that reach the DOM and do nothing:`,
     lines: (issue) => [
       `  ${issue.file}:${issue.line}:${issue.column}`,
@@ -135,6 +137,10 @@ export const attributeThatDoesNothing = {
       "browser has heard of. It renders, it does nothing, and there is nothing on the page to see.\n\n" +
       "The types refuse all of these at the call site, with the right spelling in the error — so\n" +
       "reaching this report means a `@ts-ignore`, a cast, or a file with no types at all.\n\n" +
+      "**It is six names and nothing else.** An attribute nothing in the framework reads is not a\n" +
+      "fault: a `data-*` written for a CSS selector or a test hook is exactly what `data-*` is for,\n" +
+      "and this never reports one. What is reported is a name that was MEANT to do something and\n" +
+      "cannot, because HTML spells it differently.\n\n" +
       "This is a warning today and an error in a later version.",
   },
 

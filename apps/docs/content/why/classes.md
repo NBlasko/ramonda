@@ -23,10 +23,9 @@ a lifecycle or a subscription is reused between components that share no markup.
 
 ## Why no fragment
 
-Other frameworks need one: an invisible tag whose job is to group children without
-being an element. Ramonda does not, because **a component is not an element**. A
-component puts what its `render()` returns on the page — one element, several, or
-none, whatever the render says.
+There is nothing to group with, because **a component is not an element**. What its `render()`
+returns goes on the page as it stands — one element, several, or none, whatever the render says — so
+there is no wrapper to avoid and no invisible tag to reach for.
 
 ```tsx
 class Cells extends Component<{ name: string; score: number }> {

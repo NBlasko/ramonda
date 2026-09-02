@@ -7,13 +7,18 @@ order: 33
 
 # One per component, or one per item
 
-Two decorators cache a value for you, and they look alike from the outside: both hold a
-result, both hand back the same thing until something they read has moved. People reach
-for the wrong one because the similarity is the visible part.
+Two decorators cache a value for you, and they hold it the same way: both hand back what they
+handed back last time, until a signal their body read has moved.
 
-The difference is the **key**.
+**`@compute` holds one value for the component.** A total, a filtered list, a flag — anything there
+is exactly one of. You write it as a getter and read it as a value.
 
-|  | `@compute` | `@memoized` |
+**`@memoized` holds one value per argument.** A handler for row 7, a config for the column you
+hovered — anything there is one of PER ITEM. You write it as a method and call it with the id.
+
+The difference is the **key**: `@compute` has none, `@memoized` has its arguments.
+
+| | `@compute` | `@memoized` |
 |---|---|---|
 | keyed by | nothing | its arguments |
 | how many values | **one per component** | **one per argument, per component** |
