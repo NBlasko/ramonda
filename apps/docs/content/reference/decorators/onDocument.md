@@ -58,7 +58,8 @@ the types — `"onkeydown"` or `"KeyDown"`, each refused with the sentence that 
 One listener per instance, attached at mount. A shortcut belongs on the component that owns the
 action, not on every row that might be affected by it.
 
-**Browser-only**, like every listener.
+**Browser-only**, like every listener — because this is built on the effect primitive, and effects
+never run during a server render.
 
 ## Next
 

@@ -70,8 +70,10 @@ class Poller extends Component<{ every: number }> {
 }
 ```
 
-**It is browser-only.** A server render never mounts, so nothing starts there — which is correct: a
-server render produces one string and is finished.
+**It is browser-only, and for a stronger reason than "the server has no timers".** This is built on
+the effect primitive, and effects never run during a server render — so a timer is not started and
+then cleared there, it is never started at all. Which is correct: a server render produces one
+string and is finished, and a clock that ticked during it would only delay the response.
 
 **A tick that writes state re-renders.** That is usually the point, and when it is not, see
 [Timers](/concepts/timers) for the value that moves without a render.

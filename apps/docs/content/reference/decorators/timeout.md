@@ -65,7 +65,8 @@ class Confirm extends Component {
 }
 ```
 
-**It is browser-only**, for the same reason as `@interval`.
+**It is browser-only**, for the same reason as [`@interval`](/reference/decorators/interval): both
+are built on the effect primitive, and effects never run during a server render.
 
 ## Next
 

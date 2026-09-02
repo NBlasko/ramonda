@@ -79,7 +79,9 @@ onScroll() {}
 Every instance of the component attaches its own listener. Fifty rows each listening for `resize` is
 fifty listeners — put it on the one component that owns the answer and pass it down.
 
-**It is browser-only.** A server render never mounts, so nothing is attached there.
+**It is browser-only, and for a stronger reason than "the server has no window".** This is built on
+the effect primitive, and effects never run during a server render — so the listener is not attached
+and then removed there, it is never attached at all.
 
 For an event on **this component's own element**, use the JSX attribute — `onclick={this.save}` —
 which needs no decorator at all. `@onWindow` is for the events that happen somewhere your markup
