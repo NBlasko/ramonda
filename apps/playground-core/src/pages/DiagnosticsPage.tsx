@@ -1,4 +1,5 @@
 import { Component, state } from "@ramonda/core";
+import { failureMessage } from "../failureMessage";
 
 /**
  * A page for making the framework complain on purpose.
@@ -39,7 +40,7 @@ export class DiagnosticsPage extends Component {
       // ramonda-check-ignore this page exists to MAKE RMD004 fire, and the write is caught below
       (this.props as unknown as Record<string, unknown>)[`anything${this.fired}`] = 1;
     } catch (error) {
-      this.last = (error as Error).message.split(" — ")[0];
+      this.last = failureMessage(error).split(" — ")[0];
     }
     this.fired++;
   }

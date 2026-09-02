@@ -202,7 +202,7 @@ class ProductDetail extends Component<{ id: number }> {
       return (
         <div className="panel error">
           <h3>Could not load product {String(this.props.id)}</h3>
-          <p>{(p.error as Error).message}</p>
+          <p>{p.error?.message}</p>
         </div>
       );
     }
@@ -282,7 +282,7 @@ export class ProductsPage extends Component {
         {feed.isError ? (
           <div className="panel error">
             <h3>Could not load the feed</h3>
-            <p>{(feed.error as Error).message}</p>
+            <p>{feed.error?.message}</p>
             <p className="meta">
               With no network this is what the server renders — a failed query is a state, not an exception that aborts
               the page.

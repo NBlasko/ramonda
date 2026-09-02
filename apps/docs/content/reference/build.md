@@ -109,7 +109,7 @@ Two kinds, and the difference is which side may see them.
 | where you read it | how | who can see it |
 |---|---|---|
 | server only | `process.env.DATABASE_URL` | the server. Name it whatever your host names it. |
-| the browser too | `import.meta.env.RAMONDA_PUBLIC_API_BASE` | **everyone.** It is compiled into the bundle as a literal. |
+| the browser too | `import.meta.env.RAMONDA_PUBLIC_…` | **everyone.** It is compiled into the bundle as a literal. |
 
 **The prefix is the decision.** Anything named `RAMONDA_PUBLIC_…` is inlined into the browser bundle;
 everything else stays on the server. That is the whole mechanism, and it exists so that adding a variable

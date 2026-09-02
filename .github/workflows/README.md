@@ -522,6 +522,12 @@ only with the fix in hand:
   the `esbuild: { jsx: "automatic" }` block the vitest configs use, so JSX stops
   compiling in tests (`SyntaxError`). To move to 8, configure oxc's JSX pragma in
   every vitest config. (See the note in `packages/router/vitest.config.ts`.)
+
+  **The pin has to be written in every package that runs vitest**, and for a while it was not:
+  `@ramonda/devtools`, `@ramonda/server` and `apps/docs` declared `vitest` and no `vite`, so they
+  inherited whatever vitest brought. Bumping vitest on 2026-09-02 was enough to pull vite 8 in for
+  them, and the docs suite failed with exactly the `SyntaxError` above. A pin that only some
+  manifests carry is not a pin.
 - **`jsdom` pinned to `28.0.0`.** 28.1+/29 changed CSSOM `cssText` serialization
   (a color keyword comes back as `rgb(...)`), which breaks the RMD007 style-
   normalization test and a test that spies on `cssText`.

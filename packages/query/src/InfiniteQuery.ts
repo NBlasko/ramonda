@@ -237,7 +237,7 @@ export class InfiniteQuery<TPage, K extends QueryKey = QueryKey> extends Hook<In
     return this.query.isError;
   }
 
-  get error(): unknown {
+  get error(): Error | undefined {
     return this.query.error;
   }
 

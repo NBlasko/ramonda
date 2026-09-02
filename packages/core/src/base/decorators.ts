@@ -475,7 +475,11 @@ function ownerOfDecoration(instance: object, name: string, fn: unknown): object 
  *   @state failed = "";
  *
  *   @catchError whenSomethingBreaks(e: unknown) {
- *     this.failed = (e as Error).message;
+ *     // `unknown`, and not out of caution: `throw "gone"` and a rejected string are both
+ *     // reachable, so `(e as Error).message` is `undefined` and the panel shows an empty
+ *     // failure. Measured on a query rejecting with a string, a number and a plain
+ *     // object: three of the four rendered nothing at all.
+ *     this.failed = e instanceof Error ? e.message : String(e);
  *   }
  *
  *   render() { … }

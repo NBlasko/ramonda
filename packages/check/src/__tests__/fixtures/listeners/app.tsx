@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, created, destroyed, state } from "@ramonda/core";
+import { Component, bootstrap, created, destroyed, state } from "@ramonda/core";
 
 const RESIZE = "resize";
 
@@ -156,7 +156,6 @@ class AddsOnABase extends Component {
   }
 }
 
-@Host("div")
 class RemovesInTheSubclass extends AddsOnABase {
   @destroyed
   stop() {

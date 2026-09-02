@@ -215,17 +215,19 @@ describe("Hook", () => {
   });
 });
 
-describe("@Host infers the class it is on", () => {
-  /**
-   * `self` and the tag callback's `props` need no annotation and no type argument: the
-   * decorated class is the inference site, because both parameter types are CONDITIONAL
-   * types (`InstanceOf<C>`, `PropsOf<C>`) and a conditional is not somewhere TypeScript
-   * infers from — so `C` stays open until the decorator is applied.
-   *
-   * Measured while writing it: with the type parameter sitting directly in the callback's
-   * parameter position, an unannotated arrow fixed it to `unknown` before the class was
-   * looked at, which is why this used to need `(self: Card)` spelled out.
-   */
+/**
+ * A component chooses its own element, in the render.
+ *
+ * Both tests below used to be about `@Host`'s type inference — how the decorated class became the
+ * inference site for `self` and for a tag callback's `props`. Neither of them uses a decorator now,
+ * because the feature they were written for is gone, and what replaced it needs no inference at all:
+ * the element is written in the markup, beside the attributes it takes.
+ *
+ * They are kept because the second one is the case that could never be typed. A tag callback had to
+ * answer `<h2>` or `<p>` with ONE props type, and those two share none — so the honest version is a
+ * ternary in the render, where each branch carries its own element and its own attributes.
+ */
+describe("a component chooses its own element", () => {
   test("self is the instance, with nothing written down", async () => {
     class Card extends Component<{ label: string }> {
       @state count = 2;

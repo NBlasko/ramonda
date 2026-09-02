@@ -738,15 +738,25 @@ describe("class instances and exotic containers", () => {
 });
 
 describe("missing paths", () => {
-  test("a missing property MID-PATH changes nothing and names the hop", () => {
+  /**
+   * It THROWS in development, and that is the point of the change.
+   *
+   * Handing the root back unchanged reads exactly like a write that had nothing to do, so the fault
+   * used to travel to production as an update that quietly does not happen. A published build still
+   * returns the root — see the production suite — because an exception in front of a user buys
+   * nothing the author could not have seen while writing the line.
+   */
+  test("a missing property MID-PATH throws in development, naming the hop", () => {
     const state = makeState();
-    const next = focusOn(state as unknown as { nope: { deep: number } })
-      .get("nope")
-      .get("deep")
-      .set(1);
 
-    expect(next).toBe(state);
-    expect(warned.join("\n")).toContain(".nope is undefined");
+    expect(() =>
+      focusOn(state as unknown as { nope: { deep: number } })
+        .get("nope")
+        .get("deep")
+        .set(1),
+    ).toThrow(/\.nope is undefined/);
+
+    // Reported as well as thrown, so a collector sees the fault a throw would otherwise keep.
     expect(warned.join("\n")).toContain("could not be reached");
   });
 
@@ -777,12 +787,11 @@ describe("missing paths", () => {
     expect(next.posts[1].tags).toBe(state.posts[1].tags);
   });
 
-  test("a null on the path changes nothing and says so", () => {
+  test("a null on the path throws in development too", () => {
     const state: { profile: { name: string } | null } = { profile: null };
-    const next = focusOn(state).get("profile").get("name").set("x");
 
-    expect(next).toBe(state);
-    expect(warned.join("\n")).toContain("could not be reached");
+    expect(() => focusOn(state).get("profile").get("name").set("x")).toThrow(/could not be reached/);
+    expect(state.profile).toBeNull();
   });
 });
 
@@ -896,11 +905,13 @@ describe("the whole registry", () => {
 
   /** One of each fault class, in code order, so a gap in the set names itself. */
   function raiseEverything(): void {
-    // RML001 — a hop before the last one holds nothing.
-    focusOn({} as { a?: { b: number } })
-      .get("a")
-      .get("b")
-      .set(1);
+    // RML001 — a hop before the last one holds nothing. Throws now, like RML010 and RML011 below.
+    expect(() =>
+      focusOn({} as { a?: { b: number } })
+        .get("a")
+        .get("b")
+        .set(1),
+    ).toThrow();
     // RML002 — a path into an exotic container.
     focusOn({ data: new Map([["a", 1]]) })
       .get("data")
@@ -1034,7 +1045,16 @@ describe("the documented messages", () => {
   const trigger = (fn: () => unknown): string => {
     warned = [];
     records = [];
-    fn();
+    /**
+     * A diagnostic that also THROWS still prints first — `fatal` reports and hands back the Error
+     * for the caller to throw — and what this helper is for is the printed text. So the throw is
+     * swallowed here rather than at every call site that only wants to read a message.
+     */
+    try {
+      fn();
+    } catch {
+      // Reported before it was thrown; the message is what this returns.
+    }
     return warned.join("\n");
   };
 

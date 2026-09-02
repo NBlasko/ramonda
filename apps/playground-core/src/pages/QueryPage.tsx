@@ -162,8 +162,8 @@ class FlakyCard extends Component {
         </p>
         {q.isError ? (
           <p className="muted small">
-            error: {(q.error as Error).message} — and the last good value above is still there, because a failed refresh
-            does not make it wrong, only unconfirmed
+            error: {q.error?.message} — and the last good value above is still there, because a failed refresh does not
+            make it wrong, only unconfirmed
           </p>
         ) : null}
         <p className="muted small">
@@ -232,7 +232,7 @@ class TodoPanel extends Component {
         </div>
         <p className="muted small">
           {this.add.isError
-            ? `rejected: ${(this.add.error as Error).message} — the optimistic row is gone again`
+            ? `rejected: ${this.add.error?.message} — the optimistic row is gone again`
             : 'add "read the docs" twice to see the rollback'}
         </p>
       </div>

@@ -1,9 +1,9 @@
 {
   "name": "@ramonda/devtools",
   "version": "0.6.2",
-  "description": "Development-time devtools panel for Ramonda — component tree, state, and logs.",
+  "description": "Development-time devtools panel for Ramonda \u2014 component tree, state, and logs.",
   "license": "MIT",
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "homepage": "https://ramonda.dev/devtools",
   "repository": {
     "type": "git",
@@ -44,11 +44,12 @@
     "@ramonda/check": "workspace:^",
     "@ramonda/lens": "workspace:^",
     "@ramonda/theme": "workspace:^",
-    "@types/node": "^24.10.1",
-    "esbuild": "0.28.1",
+    "@types/node": "^26.4.1",
+    "esbuild": "0.28.2",
     "jsdom": "28.0.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "vite": "^7.3.6",
+    "vitest": "^4.1.11"
   }
 }

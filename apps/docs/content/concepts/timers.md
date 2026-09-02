@@ -39,6 +39,40 @@ when the component is removed** — there is nothing to clean up.
 ```demo:TimeoutReveal
 ```
 
+## When the tick must not re-render
+
+The clock above writes `@state` every second, so the component renders every second. That is the
+right default and it is cheap — one component, and a diff that finds one changed text node — but it
+is still a render, and a component with a large subtree pays for the whole of it once a second.
+
+Where that matters, hold a [ref](/concepts/refs) and write the node yourself:
+
+```tsx
+import { createRef, interval } from "@ramonda/core";
+
+class Clock extends Component {
+  private readout = createRef<HTMLSpanElement>();
+
+  @interval(1000)
+  tick() {
+    // No state, so no render: the text is written straight to the node.
+    if (this.readout.current) this.readout.current.textContent = new Date().toLocaleTimeString();
+  }
+
+  render() {
+    return <span ref={this.readout} />;
+  }
+}
+```
+
+**What you give up is what makes it cheaper.** The value is no longer state, so it does not travel in
+the SSR payload, `@persist` cannot keep it, devtools does not show it, and nothing else in the
+component can derive from it — a `@compute` reading it would never be told it moved. The node is also
+empty until the first tick, where the state version renders its initial value immediately.
+
+So: `@state` unless the tick is expensive, and a ref when it is. Reaching for the ref first is the
+optimisation nobody asked for.
+
 ## A timer that starts when you say
 
 `@interval` and `@timeout` start at mount. When the clock starts on a click instead — a

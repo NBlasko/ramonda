@@ -49,8 +49,29 @@ interface State {
 focusOn(state).get("profile").get("name").set("Ada");
 ```
 
-If `profile` really is `null` at runtime, nothing changes and development reports
-which hop couldn't be reached.
+If `profile` really is `null` at runtime, **development throws**, naming the hop that was missing and
+the whole path it could not reach:
+
+```
+[Ramonda lens RML001] .profile is null, so .profile.name could not be reached.
+Nothing was changed.
+
+→ Only the LAST hop creates what it names, so a gap before it cannot be walked
+  through. Set the intermediate value first, or `merge` the whole object into place.
+```
+
+It throws rather than warns because of what carrying on looks like: the root comes back unchanged,
+which is indistinguishable from a write that had nothing to do. A warning in a busy console is easy
+to walk past; an update that silently does not happen is not something to find in production.
+
+**A published build does not throw, and says nothing.** Every lens diagnostic is behind `__DEV__`, so
+the check still runs and the write still returns the root — but there is no message and no record.
+That is deliberate: the text is bytes shipped to nobody, and an exception in front of a user buys
+nothing the author could not have seen while writing the line.
+
+So the rule is: the middle of a path has to be there. Only the LAST hop creates what it names, so set
+the intermediate value first, or `merge` the whole object into place, whenever a middle hop is
+genuinely optional rather than merely typed that way.
 
 ## Narrowing a type
 

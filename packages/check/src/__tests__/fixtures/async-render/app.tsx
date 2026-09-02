@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, fetch } from "@ramonda/core";
+import { Component, bootstrap, fetch } from "@ramonda/core";
 
 /**
  * `async render()`, in both spellings, beside the shapes that are correct.
@@ -19,7 +19,6 @@ class Feed extends Component {
   }
 }
 
-@Host("div")
 class Sidebar extends Component {
   /* REPORTED — the field spelling, which is the one an inferred type is likelier to wave through. */
   render = async () => {

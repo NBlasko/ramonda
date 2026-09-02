@@ -56,10 +56,29 @@ dependency.
 
 ## Why not `this.visible.map(...)`
 
-Because filtering removes items from the *middle*, and a bare `.map()` matches
-survivors by position — so a row can end up sitting on a removed row's component,
-showing its star. `list()` matches by identity instead, so the survivors stay
-themselves. No key is needed, because filtering returns the same objects it selected
+Because filtering removes items from the *middle*, and a bare `.map()` matches survivors by
+POSITION. Here is the whole fault in three lines. Three people, and Bo's row has a star toggled on
+it — a `@state` on `PersonRow`, so it lives in the row's component and not in the data:
+
+```
+before      Ada          Bo ★         Cy
+components  [ row 0 ]    [ row 1 ]    [ row 2 ]
+```
+
+Now the filter drops Bo. With `.map()` the survivors are `[Ada, Cy]`, and position is all the diff
+has to go on:
+
+```
+after       Ada          Cy
+components  [ row 0 ]    [ row 1 ]   ← Bo's component, and Bo's star
+```
+
+`Cy` is now rendered by the component that was Bo's, so **Cy shows Bo's star** — and nothing on the
+page looks broken, which is what makes it expensive to find. The same happens to a half-typed input,
+an open menu, a scroll position.
+
+`list()` matches by identity instead, so `Ada` and `Cy` keep their own components and the one that
+was Bo's is destroyed. No key is needed, because filtering returns the same objects it selected
 from.
 
 ## When the list isn't there at all
