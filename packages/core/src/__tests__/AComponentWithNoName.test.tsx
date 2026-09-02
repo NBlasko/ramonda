@@ -237,6 +237,36 @@ describe("a diagnostic about a component that has no name", () => {
     });
 
     /**
+     * RMD057's subject, which is `debug/contextPairing.ts`'s own fallback rather than this file's.
+     *
+     * It reads the name with a ternary, so the empty side was already correct — and unhit, which is
+     * a promise with nothing behind it. The report has to say SOMETHING: a consumer declared above
+     * the provider on the same component is a field-order mistake, and a message with no subject
+     * cannot tell the reader which component to reorder.
+     */
+    test("RMD057 says `a component` when there is no name to print", async () => {
+      const [Provider, Consumer] = createContext({ theme: "dark" }, { label: "Theme" });
+      const Anon = unnamed(
+        () =>
+          class extends Component {
+            // Declared BEFORE the provider, which is the fault: the consumer resolves its channel
+            // when it is constructed, so it reads an ancestor's provider rather than this one's.
+            read = this.use(Consumer);
+            give = this.use(Provider, () => ({ theme: "light" }));
+            render() {
+              return <p>{this.read.theme}</p>;
+            }
+          },
+      );
+
+      await getDOM((<Anon />) as never);
+
+      expect(of("RMD057")?.message).toContain("a component uses ThemeConsumer above ThemeProvider");
+      expect(of("RMD057")?.message).not.toMatch(/ {2}/);
+      expect(of("RMD057")?.message).not.toContain("<>");
+    });
+
+    /**
      * `listHostFor`'s label, which reaches a message as a bare word rather than a tag: "Two rows
      * rendered by ." was the sentence, and the dedup key was `:key` — so two nameless components
      * with the same duplicate key reported once between them.

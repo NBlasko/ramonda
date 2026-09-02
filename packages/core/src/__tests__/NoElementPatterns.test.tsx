@@ -193,4 +193,41 @@ describe("state and lifecycle without markup", () => {
     expect(captured.messages[0]).toContain("use a Hook");
     expect(captured.messages[0]).toContain("{sideBar()}");
   });
+
+  /**
+   * The same report when the function has no name to print.
+   *
+   * `jsxRules.ts` writes it with `||` and always did — this is the one place in the nameless family
+   * that was already right — but nothing exercised the empty side, so the branch sat unhit and the
+   * wording was a promise with nothing behind it. A function expression handed straight to a tag is
+   * genuinely anonymous: a `const` or a `function` declaration would lend it their name.
+   *
+   * The family, and the two directions it went wrong in elsewhere, is in
+   * `__tests__/AComponentWithNoName.test.tsx`.
+   */
+  test("an ANONYMOUS function used as a JSX tag is still given a subject", async () => {
+    // Built behind a CALL so nothing lends it a name: `const Rows = () => …` would name it `Rows`,
+    // because a function expression written directly as an initializer takes the variable's name.
+    // Capitalised because a lowercase JSX tag is an intrinsic element name, not this binding.
+    const Anonymous = ((): (() => unknown) => () => [<span key="a">a</span>])();
+    expect(Anonymous.name).toBe("");
+
+    class App extends Component {
+      render() {
+        return (
+          <div>
+            {/* @ts-expect-error a function is not a valid Ramonda tag — that is the point */}
+            <div>{<Anonymous />}</div>
+          </div>
+        );
+      }
+    }
+
+    await getDOM(<App />);
+
+    expect(captured.codes).toEqual(["RMD011"]);
+    expect(captured.messages[0]).toContain("An anonymous function was used as a JSX tag");
+    // The tag in the same sentence has its own fallback, and an empty one would read `<  />`.
+    expect(captured.messages[0]).toContain("<… />");
+  });
 });
