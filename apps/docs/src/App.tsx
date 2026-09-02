@@ -59,16 +59,12 @@ class Sidebar extends Component<SidebarProps> {
   render(): RamondaNode {
     return (
       <nav>
-        {
-          [
-            <button type="button" className="drawer-close" onclick={this.close} aria-label="Close navigation">
-              ✕
-            </button>,
-            <div className="sidebar-inner" data-pagefind-ignore onclick={this.onClick}>
-              {list(grouped, this.renderGroup)}
-            </div>,
-          ] as RamondaNode
-        }
+        <button type="button" className="drawer-close" onclick={this.close} aria-label="Close navigation">
+          ✕
+        </button>
+        <div className="sidebar-inner" data-pagefind-ignore onclick={this.onClick}>
+          {list(grouped, this.renderGroup)}
+        </div>
       </nav>
     );
   }
