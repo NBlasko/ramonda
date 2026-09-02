@@ -102,7 +102,9 @@ export interface ContextOptions<T extends object = Record<string, unknown>> {
  *   RMD056's **throw** is the one report on this page that survives the prod build — so it has no
  *   name to print and says "this component" instead.
  * - In DEV the holder is always there. Planted, to be sure of it rather than to assume: a throw on
- *   `!owner.holder` at every publish and every consumer construction passes all 1435 tests. What
+ *   `!owner.holder` here passes all 1443 tests, and an unconditional throw in its place fails four
+ *   of them — so the plant was reached rather than merely quiet. Re-measured after `createContext`
+ *   grew its `stableProps` option, because a clean merge is not a checked one. What
  *   is still empty is `constructor.name` for a class expression assigned to nothing, which a
  *   factory or a test really can produce — and measured, that used to print
  *   `[RMD056]  mounts ThemeProvider twice`, with the subject missing and a double space where it
