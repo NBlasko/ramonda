@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@ramonda/core": ["../framework.ts"],
+      "@ramonda/lens": ["./lens-stub.ts"]
+    }
+  },
+  "include": [".", "../framework.ts", "../jsx-runtime.ts"]
+}

@@ -69,7 +69,6 @@ export type DiagnosticCode =
   | "RMD038"
   | "RMD039"
   | "RMD040"
-  | "RMD041"
   | "RMD043"
   | "RMD044"
   | "RMD046"
@@ -333,11 +332,6 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "More than one `@ShouldUpdateOnPropsChange` on one class",
     fix: 'There can only be one answer to "take these props?", so one of them decides and the others never run — a gate that looks present and is not. **The HIGHEST of them is the one that decides**: the last declaration applied is the one that stands, and class decorators apply bottom-up, so the one written furthest from the class is applied last — the opposite of RMD032, where a member decorator initialises top to bottom. Remove the extras and combine their conditions into one callback. A SUBCLASS declaring its own is not this — that is an override, and it is silent on purpose.',
-  },
-  RMD041: {
-    severity: "warning",
-    title: "A listener with no target",
-    fix: "The handler is never attached, so the event it waits for cannot arrive. A listener decorator resolves its target when its effect runs on mount, and this one resolved nothing. `@onWindow` and `@onDocument` are the only two, and they answer with `window` and `document` — which are there for as long as the page is, and effects do not run on the server. So this means an effect ran somewhere with no DOM at all: a component mounted in a bare Node process, or a test environment set up without one. Check where the mount happened rather than the listener.",
   },
   RMD043: {
     severity: "warning",

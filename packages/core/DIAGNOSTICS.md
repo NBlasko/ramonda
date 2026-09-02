@@ -73,7 +73,6 @@ so a component that misuses the same property on every render reports once.
 | `RMD038` | error | A `@watchProp` selector threw |
 | `RMD039` | warning | `class` where `className` was meant |
 | `RMD040` | error | More than one `@ShouldUpdateOnPropsChange` on one class |
-| `RMD041` | warning | A listener with no target |
 | `RMD043` | warning | A `<meta>` with nothing to identify it |
 | `RMD044` | error | An unknown element type in JSX |
 | `RMD046` | warning | More than one `@StableProps` on one class |
@@ -178,7 +177,7 @@ and never again, and its inline functions keep their identity. `__tests__/PropsB
 both halves — and, in its second suite, what a DEVELOPMENT build adds on top: a second call at mount for
 RMD022's comparison and one per render for RMD027's freshness probe, both discarded.
 
-### RMD033–RMD041 — the nine that were messages before they were codes
+### RMD033–RMD040 — the eight that were messages before they were codes
 
 Each of these was a `ramondaLog` call with its advice written inline: a real fault, reported, but with
 no stable name to search for, no `fix` a panel could render apart from the message, and no way for a

@@ -997,18 +997,6 @@ Remove the extras and combine their conditions into one callback.
 A **subclass** declaring its own is not this. That is an override — the ordinary way to specialise the
 rule — and it is silent. This fires only for two applications on the same class.
 
-## RMD041 — A listener with no target
-
-The handler is never attached, so the event it waits for cannot arrive. A listener decorator resolves
-its target when its effect runs on mount, and this one resolved nothing.
-
-`@onWindow` and `@onDocument` are the only two, and they answer with `window` and `document` — which
-are there for as long as the page is, and effects do not run on the server. So this means an effect
-ran somewhere with no DOM at all: a component mounted in a bare Node process, or a test environment
-set up without one.
-
-Check where the mount happened rather than the listener.
-
 ## RMD043 — A `<meta>` with nothing to identify it
 
 ```tsx
@@ -1309,8 +1297,10 @@ separates is whether the *code* can be right —
 - **warn** — it may well be, and the data was simply empty or absent. A path through a `null`, a
   predicate that matched nothing, a key already gone.
 
-A path steps *through* a nullable value by design, so reporting that as an error would raise an alarm
-about a program doing exactly what it was written to do.
+One of them does not report at all. **RML001 throws in development**, because carrying on hands back
+the root unchanged — which is indistinguishable from a write that had nothing to do, so the fault
+reaches production as an update that quietly does not happen. A published build still returns the
+root, and says nothing.
 
 None of them is deduplicated. [Messages you might see](/lens/messages) maps every message text to its
 code, for when you have the console output and not the code.
@@ -1328,9 +1318,18 @@ A hop *before* the last one holds `undefined`, `null`, or a primitive, so there 
 into. Only the last hop creates what it names — `set`, `update`, `push` and `insert` all write where
 nothing is — and a gap before it cannot be walked through.
 
-Set the intermediate value first, or `merge` the whole object into place. A warning rather than an
-error because [stepping through an optional value](/lens/paths#stepping-through-optional-values) is
-what the types are built for: the path is legal, and this run found the value absent.
+Set the intermediate value first, or `merge` the whole object into place.
+
+**It throws, in development only.** Carrying on returns the root unchanged, which looks exactly like
+a write that had nothing to do — see [stepping through an optional
+value](/lens/paths#stepping-through-optional-values) for the whole argument. A published build
+returns the root and says nothing.
+
+`ramonda-check` reports the same fault before the line runs, as
+[`lens-path-through-a-gap`](/reference/check): a path through a hop the types declare `?`, `| null`
+or `| undefined`, with more path after it. The pair is the point — a gap is the state nobody sets up
+locally, so the rule speaks for the branch that has not been opened and the code for the one that
+has.
 
 ## RML002 — a path into a `Map`, `Set` or `Date`
 

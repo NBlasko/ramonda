@@ -86,14 +86,14 @@ export function hasContextConsumer(owner: object, contextId: number): boolean {
  */
 export function reportConsumedAboveProvider(
   contextId: number,
-  holder: string | undefined,
+  holder: string,
   providerName: string,
   consumerName: string,
 ): void {
   const subject = holder ? `<${holder} />` : "a component";
   diagnose(
     "RMD057",
-    `${contextId}:${holder ?? "?"}`,
+    `${contextId}:${holder || "?"}`,
     `${subject} uses ${consumerName} above ${providerName}, and a consumer resolves its channel when ` +
       `it is constructed — so it read the nearest provider on an ANCESTOR, not the one this component ` +
       `publishes below it. Swapping the two field declarations changes which value is read.`,

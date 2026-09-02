@@ -121,6 +121,7 @@ const EXPECTED_TYPES = [
   "UnknownRoleIssue",
   "UnnamedFrameIssue",
   "UnnamedImageIssue",
+  "LensPathThroughAGapIssue",
   "UnexposedEnvReadIssue",
   "UnserializableStateIssue",
   "UnsplittableImportIssue",

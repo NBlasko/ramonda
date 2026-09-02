@@ -45,8 +45,14 @@ describe("the rule catalogue", () => {
     for (const rule of ruleCatalogue()) {
       // A LIST now: one rule can answer several codes — `duplicate-decorators` answers four, one
       // per single-use decorator, because what the framework does about each differs.
+      //
+      // Any PACKAGE's prefix, not core's alone. `RMD` was the only one a rule had named, and
+      // `lens-path-through-a-gap` names `RML001` — the lens refusing a path through a gap, which
+      // is the same fault that rule reports before the line runs. The four in the workspace are
+      // `RMD` (core), `RML` (lens), `RMQ` (query) and `RMF` (form), and they are all documented on
+      // the one reference page the generator links to and checks against.
       for (const code of rule.alsoReportedAs ?? []) {
-        expect(code, rule.id).toMatch(/^RMD\d{3}$/);
+        expect(code, rule.id).toMatch(/^RM[A-Z]\d{3}$/);
       }
     }
   });
