@@ -198,7 +198,7 @@ production too, not only in development — so it cannot render into a detached 
 
 Cancel the work in `@destroyed`, or check before writing.
 
-## RMD009 — Update loop
+## RMD009 — Update loop: a component never stopped re-rendering
 
 A component kept re-rendering without settling. Two `@updated` methods writing what the other reads
 is the usual cause; a write inside `render()` is the other.
@@ -461,7 +461,7 @@ bootstrap(<App />, document.querySelector("#app")!);
 
 It is a no-op in a production build, where the check is not compiled in at all.
 
-## RMD021 — randomness during a render, a `@compute`, a `@memoized` member or a hook's props
+## RMD021 — A random number was read while a value was being derived
 
 `Math.random()`, `crypto.randomUUID()` and `crypto.getRandomValues()` are reported when
 they are called while one of the four pure phases is running. The same call fails
@@ -497,7 +497,7 @@ nothing catches it at runtime, which is why
 [`ramonda-check`](/reference/check) reads it out of the source instead, as
 `clock-read-while-rendering`.
 
-## RMD022 — a hook's props callback built a new value for the same contents
+## RMD022 — A hook's props callback built a new value for the same contents
 
 The props callback is called **twice in the same tick** and the two bags compared — the
 same check [RMD020](#rmd020-render-produced-a-different-value-the-second-time) runs on
@@ -570,7 +570,7 @@ a render and the rows are not — and a key is good practice there too.
 
 It does not fire for a single child, which has no sibling to be reordered against, nor when
 any child carries a key, which means you are managing identity yourself.
-## RMD024 — a `@compute` recomputes without its answer changing
+## RMD024 — A `@compute` recomputes without its answer changing
 
 Four recomputes in a row, each producing a value equal to the last. The cache is doing
 nothing.
@@ -597,7 +597,7 @@ in `@created` and keep it in [`@state`](/concepts/state). (The honest limit: a c
 *only* something non-reactive is never invalidated, so it is never observed either. Nothing can
 report a value nobody asked for again.)
 
-## RMD025 — per-request data read in the browser
+## RMD025 — Per-request data read in the browser
 
 `requestContext()` reads the real request on the **server**. In the browser only what the server
 explicitly exposed is there, so a read of anything else returns nothing — and this says so, rather
@@ -626,7 +626,7 @@ value straight from `requestContext()`.
 If the server rendered something where this read is, the two sides now disagree and hydration
 replaces the node — [`RMD007`](#rmd007-server-and-client-rendered-different-output) reports that separately.
 
-## RMD027 — a props callback reads a value that is not reactive
+## RMD027 — A props callback reads a value that is not reactive
 
 A hook's props callback is cached on the signals it reads, so a render where none of them moved
 does not call it again. This prop came out different anyway — which means the value reaching it
@@ -702,7 +702,7 @@ or ambient state during a render — `getBoundingClientRect()`, `window.innerWid
 much as a forced layout and a dependency on something outside the tree; `@updated` is
 where that work belongs.
 
-## RMD028 — an element the HTML parser is not allowed to keep here
+## RMD028 — An element the HTML parser is not allowed to keep here
 
 ```tsx
 <p>
@@ -748,7 +748,7 @@ list items in a list, rows in a table. A component in between is invisible to th
 is what the parser sees, so the pair reported is the real parent and the real child however many
 components sit between them in your JSX.
 
-## RMD029 — a boolean attribute given the string "false"
+## RMD029 — A boolean attribute given the string "false"
 
 ```tsx expect-report:false-on-a-boolean-attribute+control-with-no-label
 <input disabled="false" />     {/* reported — and the input IS disabled */}
@@ -782,7 +782,7 @@ they are probably mistakes, and probably is not enough to warn on.
 Nothing in the type system catches this: JSX attributes are typed with an index signature, so any
 value compiles.
 
-## RMD030 — state written during `[INSPECT]()`
+## RMD030 — State written during `[INSPECT]()`
 
 ```tsx
 [INSPECT]() {

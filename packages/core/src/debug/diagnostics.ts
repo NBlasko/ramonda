@@ -174,7 +174,10 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   },
   RMD009: {
     severity: "error",
-    title: "Update loop — a component never stopped re-rendering",
+    // A colon rather than an em dash: the reference writes a heading as "## RMD009 — <title>", and a
+    // title carrying its own dash reads as two separators there. The production counter says it the
+    // same way — `Task.ts`, "Update loop: one update rebuilt components …".
+    title: "Update loop: a component never stopped re-rendering",
     fix: "Rendering wrote state that scheduled another render of the same component, forever; without this guard the tab freezes. The usual causes are two @updated methods writing what the other reads (they re-trigger each other), and a write in render() itself (see RMD001). A post-render write must converge — assigning the same value is not a change, so it schedules nothing. Derive values with @compute instead of syncing them with an effect, and if two pieces of state must agree, make one of them @compute from the other rather than writing both.",
   },
   RMD011: {

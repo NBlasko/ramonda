@@ -147,8 +147,9 @@ const reference = readFileSync(join(root, "content", "reference", "api.md"), "ut
  * Prove the check can fail before trusting that it passes — and prove each one SEPARATELY.
  *
  * With a single flag the first check threw and the second never ran, so its self-test proved nothing
- * about it. `DOCS_SELFTEST=api`, `=prefix`, `=diagnostics`, `=retired`, or `=1` — which reaches only
- * the first, since one process observes one throw.
+ * about it. `DOCS_SELFTEST=api`, `=prefix`, `=diagnostics`, `=titles`, `=retired`,
+ * `=twice`, `=sections`, or `=1` — which reaches only the first, since one process observes one
+ * throw.
  */
 const selftest = process.env.DOCS_SELFTEST ?? "";
 const selftesting = (which) => selftest === "1" || selftest === which;
@@ -350,6 +351,110 @@ if (repeated.length > 0) {
   );
 }
 
+/**
+ * The WORDING, and this is the check that was missing for as long as this file has existed.
+ *
+ * Everything above asks whether a code has a section. Nothing asked whether the section is about the
+ * same fault: `RMD041` drifted until the shipped message blamed a decorator that had been removed
+ * while this page blamed a selector the framework never had — two different wrong explanations of
+ * one code, each convincing on its own. A rename left three more sections describing a check that no
+ * longer worked that way, and `RML001` was still called "a warning rather than an error" after it was
+ * made to throw.
+ *
+ * The TITLE is what makes a cheap check possible, because there is exactly one right answer: the
+ * words the code prints. Comparing the advice PROSE has no right answer — this page is meant to
+ * explain at more length than a console line — so a gate over the paragraphs would be either wrong
+ * or ignored. A reader arrives here having just read the title, and the heading has to be the
+ * sentence they read.
+ *
+ * Only core is compared, and the limit is worth naming: `lens`, `query` and `form` carry no `title`
+ * in their spec tables — their message is written at the call site, so one code has several — and
+ * there is nothing single to compare a heading against. Their headings are guarded only by existing.
+ */
+function shippedTitles() {
+  const source = readFileSync(join(packages, "core", "src", "debug", "diagnostics.ts"), "utf8");
+  const lines = source.split("\n");
+
+  /**
+   * Entry boundaries first, then the title inside one entry.
+   *
+   * A single lazy regex over the whole file — `RMD\d+:[\s\S]*?title:` — pairs a code with a LATER
+   * entry's title whenever an entry has no title of its own, and every comparison then reads as a
+   * confident mismatch about the wrong code. Slicing between boundaries cannot do that: a title
+   * found in the slice belongs to the code that opened it, or there is none.
+   */
+  const starts = [];
+  lines.forEach((line, index) => {
+    const match = /^ {2}(RMD\d{3}): \{$/.exec(line);
+    if (match) starts.push({ code: match[1], index });
+  });
+
+  const titles = new Map();
+  for (let k = 0; k < starts.length; k++) {
+    const upto = k + 1 < starts.length ? starts[k + 1].index : lines.length;
+    const line = lines.slice(starts[k].index, upto).find((text) => /^\s+title:/.test(text));
+    if (line === undefined) continue;
+
+    // The whole value on one line, ending in its comma. A title built by concatenation or spanning
+    // two lines would otherwise be read HALF, and half a title compared against a full heading is a
+    // failure that blames the page for the parser's shortcoming.
+    const value = /^\s+title:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`[^`]*`),$/.exec(line);
+    if (value === null) {
+      throw new Error(
+        `[docs] ${starts[k].code}'s title is not a single-line string this script can read:\n` +
+          `        ${line.trim()}\n\n        Teach shippedTitles() in check-api-coverage.mjs to read it, or\n` +
+          `        the comparison below would run against half a sentence.`,
+      );
+    }
+    if (value[1].includes("\\")) {
+      throw new Error(
+        `[docs] ${starts[k].code}'s title contains an escape this script does not unescape:\n` +
+          `        ${line.trim()}`,
+      );
+    }
+    titles.set(starts[k].code, value[1].slice(1, -1));
+  }
+
+  // The same floor as everywhere else in this file: a renamed field or a reformatted table would
+  // leave the map empty, and an empty map agrees with every page.
+  if (titles.size < 40) {
+    throw new Error(
+      `[docs] Read only ${titles.size} diagnostic titles from core's SPECS, which cannot be right — ` +
+        `the parser is broken and the wording check below would pass against nothing.`,
+    );
+  }
+  return titles;
+}
+
+/** The same sentence on both sides: markdown emphasis removed, runs of whitespace flattened. */
+const plain = (text) => text.replace(/[`*]/g, "").replace(/\s+/g, " ").trim();
+
+const titles = shippedTitles();
+const headings = new Map(documented.map(([, code, rest]) => [code, rest]));
+if (selftesting("titles")) titles.set("RMD001", "Something else entirely");
+
+const reworded = [...titles]
+  .filter(([code]) => headings.has(code))
+  .filter(([code, title]) => {
+    // Everything after the FIRST em dash, so a title carrying one of its own survives intact.
+    const heading = headings.get(code).split(" — ").slice(1).join(" — ");
+    return plain(heading) !== plain(title);
+  });
+
+if (reworded.length > 0) {
+  throw new Error(
+    `[docs] These diagnostics are described differently by the code and by the reference:\n` +
+      reworded
+        .map(
+          ([code, title]) =>
+            `        ${code}\n          reports: ${title}\n          heading: ## ${code}${headings.get(code)}`,
+        )
+        .join("\n") +
+      `\n\n        A reader arrives having just read the title. Write the heading as\n` +
+      `        "## CODE — <the words the code reports>" in content/reference/diagnostics.md.`,
+  );
+}
+
 const stale = documented
   .filter(([, code]) => !raised.has(code))
   .filter(([, , rest]) => !/retired/i.test(rest))
@@ -367,5 +472,6 @@ if (stale.length > 0) {
 
 console.log(
   `[docs] Diagnostics reference covers all ${raised.size} codes the packages raise ` +
-    `(${documented.length - raised.size} retired)`,
+    `(${documented.length - raised.size} retired), and names ${titles.size} of them in the ` +
+    `words the code reports`,
 );
