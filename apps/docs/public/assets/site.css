@@ -75,7 +75,10 @@ a:hover {
    page happens to be. `overscroll-behavior` stops that scroll from continuing into the page once
    the list ends, which is what makes the two feel separate rather than chained. */
 nav {
-  flex: 0 0 220px;
+  /* 240, not 220. `ShouldUpdateOnPropsChange` is 25 characters and measured just past the old
+     width, so it was cut with no sign that anything was missing — a truncated name in a list of
+     names is worse than a wrapped one, because a reader cannot tell WHICH name it is. */
+  flex: 0 0 240px;
   position: sticky;
   top: calc(var(--masthead-h) + 24px);
   /* Same reason as the drawer's height below: the breakpoint is 860px, so a phone in landscape and
@@ -118,6 +121,10 @@ nav::-webkit-scrollbar-thumb {
   border-radius: 6px;
   color: var(--rmd-fg);
   font-size: 14px;
+  /* An API name is ONE word with no space to break at, so a fixed width clips it however wide the
+     column is — widening only moves the name that fails. This lets the longest one wrap instead,
+     which is why the width above is a comfort rather than the fix. */
+  overflow-wrap: anywhere;
 }
 .sidebar-group .link:hover {
   background: var(--rmd-code-bg);
