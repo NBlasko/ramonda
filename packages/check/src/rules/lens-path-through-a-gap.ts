@@ -50,6 +50,10 @@ import type { ModuleContext, ModuleRule } from "./rule";
  * - **A NAMESPACE import.** `import * as lens from "@ramonda/lens"` writes the call as
  *   `lens.focusOn(state)`, and the chain's foot is then a property access rather than the
  *   identifier the package check reads.
+ * - **A chain held in a variable.** `const at = focusOn(state).get("profile").get("name")` ends in
+ *   a hop rather than a write, and whether it is ever written through is a question about the
+ *   variable. See {@link WRITE_TERMINALS}, which is also what keeps a READ out of this: `value()`
+ *   through a gap answers `undefined` by design and is not a fault at all.
  *
  * Both are misses, not false reports, and that is the direction this package errs in on purpose.
  *
@@ -84,6 +88,22 @@ export interface LensPathThroughAGapIssue {
 /** The hops that WALK a path. A terminal (`set`, `merge`, `value`) is not one of these. */
 const PATH_HOPS = new Set(["get", "at"]);
 
+/**
+ * The terminals that WRITE, which is the only kind of chain this reports.
+ *
+ * A read through a gap is not a fault and is not `RML001`: `value()` answers `undefined` and
+ * `values()` answers an empty array, both by documented design, and neither reports anything. The
+ * rule said otherwise until this set existed — it told an author to fix a line that was correct,
+ * which is the one failure this package cannot afford.
+ *
+ * The list is what `Focus` returns `Root` from: those are the calls that produce a new state, so
+ * those are the calls that had to walk the path to build it. Anything else — a read, an unfinished
+ * chain held in a variable, a method added later that this does not know — goes quiet. A chain
+ * ending in `.get(…)` and assigned to a name is the notable miss: it may be written through
+ * elsewhere, and following it would mean tracking the variable.
+ */
+const WRITE_TERMINALS = new Set(["set", "update", "merge", "remove", "and", "push", "insert"]);
+
 /** One `.get("key")` / `.at(0)` in a chain, in source order. */
 interface Hop {
   /** The method — `get` or `at`. */
@@ -105,6 +125,11 @@ function chainOf(
   outermost: ts.CallExpression,
   context: ModuleContext,
 ): { root: ts.Expression; hops: Hop[] } | undefined {
+  // The terminal first: a chain that does not end in a write is not this rule's business, and
+  // deciding that here means the walk below never runs for one.
+  const end = outermost.expression;
+  if (!ts.isPropertyAccessExpression(end) || !WRITE_TERMINALS.has(end.name.text)) return undefined;
+
   const hops: Hop[] = [];
   let node: ts.Expression = outermost;
 
@@ -268,15 +293,53 @@ function propertyNamed(
  * `if (!state.profile) return;` are the same proof reached from opposite sides, and a condition
  * about some other path is neither.
  */
-function narrowing(text: string): Means {
-  const isPath = (node: ts.Expression): boolean => pathText(stripParens(node)) === text;
+function narrowing(text: string, resolve: ModuleContext["resolve"]): Means {
+  /**
+   * The path itself, or a `const` that was read out of it.
+   *
+   * `const profile = state.profile; if (profile) …` is how the guard is ordinarily written, and
+   * without this the rule reported the write inside it — a false alarm on correct code, which is
+   * the one direction this package cannot afford. `const` is what makes it sound: the local cannot
+   * be reassigned, so its truthiness is the path's at the moment it was read.
+   */
+  const isPath = (node: ts.Expression): boolean => {
+    const bare = stripParens(node);
+    if (pathText(bare) === text) return true;
+    if (!ts.isIdentifier(bare)) return false;
+    const declaration = resolve(bare)?.declarations?.[0];
+    if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return false;
+    if (declaration.initializer === undefined || !isConstDeclaration(declaration)) return false;
+    return pathText(declaration.initializer) === text;
+  };
+
+  /**
+   * A LONGER path through this one, which truthiness alone proves: `state.profile?.name` can only
+   * be truthy if `state.profile` is there.
+   *
+   * Truthiness ONLY. A comparison does not carry the same proof — `state.profile?.name !== null` is
+   * true when the profile is missing, because `undefined !== null` — so this is deliberately not
+   * reached from the `!==` arm below.
+   */
+  const isThroughPath = (node: ts.Expression): boolean => {
+    const longer = pathText(stripParens(node));
+    return longer !== undefined && longer.startsWith(`${text}.`);
+  };
+
+  /** `Boolean(x)`, and only the global one: a name declared in this project resolves, the lib's does not. */
+  const asBooleanCall = (node: ts.Expression): ts.Expression | undefined => {
+    if (!ts.isCallExpression(node) || node.arguments.length !== 1) return undefined;
+    if (!ts.isIdentifier(node.expression) || node.expression.text !== "Boolean") return undefined;
+    return resolve(node.expression) === undefined ? node.arguments[0] : undefined;
+  };
 
   const proves = (condition: ts.Expression): boolean => {
     const node = stripParens(condition);
-    if (isPath(node)) return true;
+    if (isPath(node) || isThroughPath(node)) return true;
     if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
       return refutes(node.operand);
     }
+    const boolean = asBooleanCall(node);
+    if (boolean !== undefined) return proves(boolean);
     if (ts.isBinaryExpression(node)) {
       const { operatorToken: op, left, right } = node;
       // `a && b` proves the path when either side does: both have to hold for the guarded code to run.
@@ -288,10 +351,21 @@ function narrowing(text: string): Means {
 
   const refutes = (condition: ts.Expression): boolean => {
     const node = stripParens(condition);
-    if (isPath(node)) return true; // `!state.profile` — the operand being the path is the refutation.
+    /**
+     * The bare path is NOT a refutation, and reading it as one is the bug this comment replaces.
+     *
+     * `denies` licenses the OTHER branch — the `else`, the false arm of a ternary, the code after
+     * an early return. So `denies(state.profile)` claiming true said that `if (state.profile)
+     * return;` proves a profile below it, when that line proves the exact opposite: below it, the
+     * profile is gone. Four shapes went silent on the strongest instance of the fault there is —
+     * the branch where the gap is PROVEN. A `!` is already handled by the recursion below, which is
+     * what the line was reaching for.
+     */
     if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
       return proves(node.operand);
     }
+    const boolean = asBooleanCall(node);
+    if (boolean !== undefined) return refutes(boolean);
     if (ts.isBinaryExpression(node)) {
       const { operatorToken: op, left, right } = node;
       if (op.kind === ts.SyntaxKind.BarBarToken) return refutes(left) || refutes(right);
@@ -301,6 +375,12 @@ function narrowing(text: string): Means {
   };
 
   return { holds: proves, denies: refutes };
+}
+
+/** Whether a variable was declared `const`, which is what makes reading a path into it a proof. */
+function isConstDeclaration(declaration: ts.VariableDeclaration): boolean {
+  const list = declaration.parent;
+  return ts.isVariableDeclarationList(list) && (list.flags & ts.NodeFlags.Const) !== 0;
 }
 
 function stripParens(node: ts.Expression): ts.Expression {
@@ -339,7 +419,7 @@ export const lensPathThroughAGap = {
      */
     severity: "warn",
     reportedWhen:
-      "a `focusOn` path walks through a hop the types say may be `null` or `undefined`, which only the LAST hop creates",
+      "a `focusOn` write walks through a hop the types say may be `null` or `undefined`, which only the LAST hop creates",
     alsoReportedAs: "RML001",
     heading: (found) => `${found.length} lens path(s) that walk through a value that may be missing:`,
     lines: (issue) => [
@@ -424,7 +504,7 @@ export const lensPathThroughAGap = {
          * answer about the whole path. Found by planting: with a `return` here, a proven `profile`
          * hid an optional `address` two hops along, and the deeper gap was reported by nothing.
          */
-        if (admits !== undefined && next !== undefined && !guardedBy(hop.at, narrowing(path))) {
+        if (admits !== undefined && next !== undefined && !guardedBy(hop.at, narrowing(path, context.resolve))) {
           found.push({
             root: rootText,
             hop: hop.key,

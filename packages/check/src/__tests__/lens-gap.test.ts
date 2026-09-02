@@ -55,6 +55,17 @@ describe("a lens path that walks through a value that may be missing", () => {
       "state.profile.address | optional | .city",
       "state.settings.layout | optional | .columns",
       "state.profile | optional | .name",
+      // The four inverted guards: a presence check whose OTHER branch is the one the path is on.
+      // Each was silent until the `denies` base case was corrected, and each is the fault at its
+      // clearest — the branch where the gap is proven rather than merely possible.
+      "state.profile | optional | .name",
+      "state.profile | optional | .name",
+      "state.profile | optional | .name",
+      "state.profile | optional | .name",
+      // The two boundaries of the guards that ARE accepted: a comparison through an optional chain
+      // is true when the value is missing, and a `let` can be reassigned between read and guard.
+      "state.profile | optional | .name",
+      "state.profile | optional | .name",
     ]);
   });
 

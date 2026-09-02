@@ -18,13 +18,28 @@ rule arrives on the line as you type it. TypeScript does not object either way, 
 hole in the types: `keyof (Profile | null)` still offers `name`, so the chain type-checks because
 the chain is legal. Whether the value is THERE is a question about the value.
 
+Only a WRITE is reported. A read through a gap is what `value()` and `values()` are for — they
+answer `undefined` and `[]` by design and raise nothing — so the chain has to end in `set`, `update`,
+`merge`, `remove`, `and`, `push` or `insert` to be judged at all.
+
 A guard silences it, because a guard is what makes the write correct:
 
     if (state.profile) focusOn(state).get("profile").get("name").set("Ada");
 
-The `if`, `!== null`, `!= null`, `&&`, a ternary and the early return all count, and the walk carries
-on PAST a proven hop to whatever gap is deeper — found by planting, which is also how the six other
-mechanisms in the rule were each shown to fail the suite when broken.
+The shapes that count are the ones a guard is actually written in: the `if`, `!== null`, `!= null`,
+`&&`, a ternary, the early return, `!!`, `Boolean(…)`, a `const` the value was read into, and a
+longer path through the same hop (`state.profile?.name` can only be truthy if the profile is there).
+Two boundaries are held deliberately and asserted: a COMPARISON through an optional chain proves
+nothing, because `undefined !== null` is true when the value is missing, and a `let` can be
+reassigned between the read and the guard.
+
+An inverted guard is the fault at its clearest rather than an excuse for it: after
+`if (state.profile) return;`, in the `else` of a presence check, and inside `if (!state.profile)`,
+the gap is PROVEN — and each of those is reported.
+
+The walk carries on PAST a proven hop to whatever gap is deeper. Every one of those mechanisms was
+shown to fail the suite when broken, which is how three false alarms and four silences were found in
+the first place.
 
 It reads DECLARATIONS, not types, because this package may not ask the compiler for one: the root
 has to resolve to something with a written annotation, each hop's property has to be findable on an

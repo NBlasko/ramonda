@@ -160,3 +160,122 @@ export function throughOurOwnFocusOn(): void {
 export function throughAnAlias(): void {
   lens(state).get("profile").get("name").set("Ada");
 }
+
+/**
+ * ✗ The INVERTED early return, and it is the strongest instance of the fault rather than an edge:
+ * the line above proves the profile is gone from here down.
+ */
+export function afterAnEarlyReturnOnPresence(): void {
+  if (state.profile) return;
+  focusOn(state).get("profile").get("name").set("Ada");
+}
+
+/** ✗ The ELSE of a presence check is where the value is missing. */
+export function inTheElseOfAPresenceCheck(): void {
+  if (state.profile) {
+    return;
+  } else {
+    focusOn(state).get("profile").get("name").set("Ada");
+  }
+}
+
+/** ✗ The THEN of a refutation is where the value is missing. */
+export function inTheThenOfARefutation(): void {
+  if (!state.profile) {
+    focusOn(state).get("profile").get("name").set("Ada");
+  }
+}
+
+/** ✗ The FALSE arm of a ternary on presence — the same, written as an expression. */
+export function inTheFalseArmOfATernary(): string {
+  return state.profile ? "have it" : String(focusOn(state).get("profile").get("name").set("Ada"));
+}
+
+/**
+ * ✓ A READ through a gap is documented behaviour, not a fault: `value()` answers `undefined` and
+ * raises nothing. Only a chain that WRITES had to walk the path to build a new state.
+ */
+export function readThroughAGap(): string | undefined {
+  return focusOn(state).get("profile").get("name").value();
+}
+
+/** ✓ The same for `values()`, which answers an empty array. */
+export function readValuesThroughAGap(): string[] {
+  return focusOn(state).get("profile").get("name").values();
+}
+
+/**
+ * ✓ Optional chaining in the guard proves the hop is there: `state.profile?.name` can only be
+ * truthy if the profile exists.
+ */
+export function guardedByOptionalChaining(): void {
+  if (state.profile?.name) {
+    focusOn(state).get("profile").get("name").set("Ada");
+  }
+}
+
+/**
+ * ✗ The same path under a COMPARISON proves nothing, and this is the boundary of the one above:
+ * with no profile, `undefined !== null` is true and the guard lets the write through.
+ */
+export function comparedThroughOptionalChaining(): void {
+  if (state.profile?.name !== null) {
+    focusOn(state).get("profile").get("name").set("Ada");
+  }
+}
+
+/** ✓ Truthiness spelled with the global `Boolean`. */
+export function guardedByBoolean(): void {
+  if (Boolean(state.profile)) {
+    focusOn(state).get("profile").get("name").set("Ada");
+  }
+}
+
+/** ✓ And spelled with a double negation. */
+export function guardedByDoubleNegation(): void {
+  if (!!state.profile) {
+    focusOn(state).get("profile").get("name").set("Ada");
+  }
+}
+
+/** ✓ The guard nested one block above the write — `guard-walk` climbs to it. */
+export function guardedTwoBlocksUp(): void {
+  if (state.profile) {
+    for (const _ of [1]) {
+      focusOn(state).get("profile").get("name").set("Ada");
+    }
+  }
+}
+
+/** ✓ The value read into a `const` first, which is how the guard is ordinarily written. */
+export function guardedThroughALocal(): void {
+  const profile = state.profile;
+  if (profile) {
+    focusOn(state).get("profile").get("name").set("Ada");
+  }
+}
+
+/**
+ * ✗ A `let` is not the same claim: it can be reassigned between the read and the guard, so its
+ * truthiness is nobody's proof about the path.
+ */
+export function guardedThroughALet(): void {
+  let profile = state.profile;
+  profile = profile ?? { name: "x" };
+  if (profile) {
+    focusOn(state).get("profile").get("name").set("Ada");
+  }
+}
+
+/**
+ * ✓ A READ through a gap is documented behaviour, not a fault: `value()` answers `undefined` and
+ * raises nothing. Only a chain that WRITES had to walk the path to build a new state.
+ */
+export function readThroughAGap(): string | undefined {
+  return focusOn(state).get("profile").get("name").value();
+}
+
+/** ✓ The same for `values()`, which answers an empty array. */
+export function readValuesThroughAGap(): string[] {
+  return focusOn(state).get("profile").get("name").values();
+}

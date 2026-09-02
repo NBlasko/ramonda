@@ -166,7 +166,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unexposed-env-read` | `import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined` |
 | `row-reads-a-plain-field` | a `list()` row callback puts a field nothing can track into the markup, so a reused row keeps the old value |
 | `dev-guard-as-an-expression` | a `__DEV__` guard is written as `&&` or `?:` where an `if` would do the same thing |
-| `lens-path-through-a-gap` | a `focusOn` path walks through a hop the types say may be `null` or `undefined`, which only the LAST hop creates — also [`RML001`](/reference/diagnostics) |
+| `lens-path-through-a-gap` | a `focusOn` write walks through a hop the types say may be `null` or `undefined`, which only the LAST hop creates — also [`RML001`](/reference/diagnostics) |
 | `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
 | `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics), [`RMD051`](/reference/diagnostics) |
 | `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |

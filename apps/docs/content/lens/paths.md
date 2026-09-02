@@ -70,9 +70,10 @@ That is deliberate: the text is bytes shipped to nobody, and an exception in fro
 nothing the author could not have seen while writing the line.
 
 **And `ramonda-check` says it without running the line at all.** The rule is
-[`lens-path-through-a-gap`](/reference/check), and it reports a path through a hop your types declare
-`?`, `| null` or `| undefined` when there is more path after it. Prove the value is there and it goes
-quiet, because then the write is correct:
+[`lens-path-through-a-gap`](/reference/check), and it reports a WRITE through a hop your types declare
+`?`, `| null` or `| undefined` when there is more path after it. A read is left alone: `value()`
+through a missing hop answers `undefined` and `values()` answers `[]`, which is what they are for.
+Prove the value is there and the report goes quiet, because then the write is correct:
 
 ```tsx
 if (state.profile) {
