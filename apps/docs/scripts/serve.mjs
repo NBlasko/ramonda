@@ -27,11 +27,22 @@ createServer((req, res) => {
   let file = join(dist, url);
   let status = 200;
 
-  if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-  // Clean URLs: `/guide/installation` is served from the flat file
-  // `guide/installation.html`, the way Cloudflare Pages resolves it. Without this
-  // the built site 404s locally while working in production.
-  else if (!existsSync(file) && existsSync(`${file}.html`)) file = `${file}.html`;
+  /**
+   * The FLAT file first, and the order is the whole fix.
+   *
+   * `/guide/installation` is served from `guide/installation.html`, the way Cloudflare Pages
+   * resolves it — `outputPath` in `prerender.mjs` explains why the build is laid out that way.
+   *
+   * The directory test used to come first, which was harmless while no route had both a page and
+   * children. `/reference/diagnostics` now has both: the page is `reference/diagnostics.html` and
+   * the codes under it are `reference/diagnostics/rmd003.html`. The directory won, `index.html`
+   * inside it does not exist, and an index page that production serves perfectly well 404'd here.
+   *
+   * Which is this file's own warning pointed the other way: a dev server that disagrees with the
+   * host is worth nothing whichever direction it disagrees in.
+   */
+  if (existsSync(`${file}.html`)) file = `${file}.html`;
+  else if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
   if (!existsSync(file)) {
     // Serve the prerendered not-found page WITH a 404 status, the way a static
     // host does — a 200 on a missing URL would be a lie to crawlers and caches.
