@@ -64,7 +64,7 @@ describe("what a package may claim", () => {
     expect(raw.annotated).toHaveLength(1);
 
     // …and the package's own source really has something to judge, so this is not the empty case.
-    expect(raw.graph.nodes.length).toBeGreaterThan(0);
+    expect(raw.graph.nodes.length).toBe(5);
 
     const found = certify(raw, root as string, { name: "@fixture/certified", version: "1.2.3" });
     const held = Object.fromEntries(found.claims.map((claim) => [claim.id, claim.held]));
@@ -74,6 +74,17 @@ describe("what a package may claim", () => {
     expect(held.quiet).toBe(true);
     // `current` is the one claim a fixture cannot make: there is no built `dist` to fingerprint.
     expect(held.current).toBe(false);
+
+    /**
+     * And the HEADER counts the same surface the claims judge.
+     *
+     * The graph holds five nodes, two of them the nested package's — so counting `graph.nodes`
+     * printed a size a fifth larger than what was judged, above four claims about something else.
+     * Measured on `apps/docs` before the fix: 161 nodes, 33 of them core's, form's, query's and the
+     * router's. The header exists so a reader sees the size of what was judged BEFORE reading the
+     * verdict on it, which makes a count of something else worse than no count.
+     */
+    expect(found.covers.components).toBe(3);
   });
 
   test("the package root is the nearest directory above with a package.json", () => {

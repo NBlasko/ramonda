@@ -102,6 +102,19 @@ describe("params read off the route", () => {
   });
 
   /**
+   * The path from a root, which is what makes a report about somebody ELSE's component actionable.
+   *
+   * A component that reads params may come from another package, and then the read's own file is a
+   * line the reader cannot edit — measured on a plant, `@acme/widgets` reported at its own source
+   * while the thing to change was the app's `<Widget />` under the wrong route. `ContextIssue`
+   * already carried a path for the same reason; this one did not.
+   */
+  test("a finding names how the walk reached the component", () => {
+    const wrong = run().paramsOffRoute.find((issue) => issue.component === "WrongRouteChild");
+    expect(wrong?.path).toEqual(["App", "RouteOutlet", "Wrapper", "WrongRouteChild"]);
+  });
+
+  /**
    * Two routes that AGREE about a param, which the router documents as correct: a component
    * rendered by both `/users/:id` and `/people/:id` names one of them and is right on both, because
    * what it asked for is satisfied on both. The claim is about the params, not the spelling.

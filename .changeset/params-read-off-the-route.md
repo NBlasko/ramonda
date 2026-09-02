@@ -50,6 +50,11 @@ outlet that spreads props this cannot read (it may be handing over any table in 
 component no root reaches at all (that is the unreachable-declaration finding, and its fix is to
 mount the component, not to move the read).
 
+**Every finding names the path from a root** — `App > RouteOutlet > Page > Widget`. A component
+that reads params may come from ANOTHER package, and then the read's own file is a line the reader
+cannot edit: measured on a plant, a library component was reported at its own source while the thing
+to change was the app's tag under the wrong route.
+
 **Measured limits, each pinned in the fixture.** A route table whose keys are computed — a loop
 writing `table[page.path]` — names its paths at runtime: the views are known to be routed, and under
 what is not, so nothing is claimed about their reads. Same for a pattern in a `let` or built by

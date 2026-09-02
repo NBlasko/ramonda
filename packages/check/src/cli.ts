@@ -473,6 +473,9 @@ if (paramsOffRoute.length > 0) {
   console.error(`\n${TAG} ${paramsOffRoute.length} params(pattern) read(s) the routing cannot answer:\n`);
   for (const read of paramsOffRoute) {
     console.error(`  ${read.file}:${read.line}:${read.column}`);
+    // The path from a root, because the READ may be in a package the reader cannot edit — and then
+    // the line to change is the mount, which is the only part of this that is theirs.
+    if (read.path.length > 1) console.error(`    ${read.path.join(" > ")}`);
     console.error(
       read.why === "no-outlet"
         ? `    <${read.component}> reads \`${read.member}.params("${read.pattern}")\`, and no arrangement in ` +

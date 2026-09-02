@@ -106,6 +106,24 @@ function where(root: string, at: { file: string; line: number; column: number })
   return `${trimmed.split(sep).join("/")}:${at.line}:${at.column}`;
 }
 
+/**
+ * What the graph holds that belongs to THIS package, which is not the same as what it holds.
+ *
+ * A graph carries every package the program reached, each node's `at` prefixed with the package
+ * that owns it. Counting all of them made the header disagree with the claims below it: measured on
+ * `apps/docs`, 161 nodes of which 33 are core's, form's, query's and the router's — a header
+ * overstating the judged surface by a fifth, above four claims that judge only the app's own files.
+ *
+ * The header exists so a reader sees the SIZE of what was judged before reading the verdict on it,
+ * so a count of something else is worse than no count. Found reviewing this, and the fixture written
+ * for the scoping showed it too: 5 nodes, 3 of them the certified package's.
+ */
+function covered(graph: AnalyzeResult["graph"]): { components: number; exported: number } {
+  const prefix = `${graph.package.name}/`;
+  const own = graph.nodes.filter((node) => node.at.startsWith(prefix));
+  return { components: own.length, exported: own.filter((node) => node.exported).length };
+}
+
 export function certify(result: AnalyzeResult, root: string, pkg: { name: string; version: string }): Certificate {
   const graph = result.graph;
   /** Directory → the package root that owns it. One climb per directory, not per finding. */
@@ -146,10 +164,7 @@ export function certify(result: AnalyzeResult, root: string, pkg: { name: string
   return {
     package: pkg,
     scope: graph.scope,
-    covers: {
-      components: graph.nodes.length,
-      exported: graph.nodes.filter((node) => node.exported).length,
-    },
+    covers: covered(graph),
     claims: [
       {
         id: "complete",

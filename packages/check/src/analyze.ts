@@ -208,6 +208,16 @@ export interface ParamsOffRouteIssue {
   route?: string;
   /** For `wrong-route`: the `:name`s asked for that this route does not supply. */
   missing?: string[];
+  /**
+   * How the walk got here from a root — `App > Page > Widget`.
+   *
+   * Carried for the same reason `ContextIssue` carries one, and here it is not a nicety. A
+   * component that reads params may come from ANOTHER package, and then the read's own file is a
+   * line the reader cannot edit: measured on a plant, `@acme/widgets`' component reported at its own
+   * source while the thing to change was the app's `<Widget />` under the wrong route. The path is
+   * what makes such a report actionable.
+   */
+  path: string[];
   file: string;
   line: number;
   column: number;
@@ -631,7 +641,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * whether an outlet is above this component is a fact about arrangements, and no arrangement is
    * known until every root has been descended.
    */
-  const paramReads: (Omit<ParamsOffRouteIssue, "why" | "route" | "missing"> & { owner: ComponentNode })[] = [];
+  const paramReads: (Omit<ParamsOffRouteIssue, "why" | "route" | "missing" | "path"> & {
+    owner: ComponentNode;
+  })[] = [];
   const classesAsChildren: ClassAsChildIssue[] = [];
   const annotated: AnnotatedSite[] = [];
   const roots = new Set<ComponentNode>();
@@ -1118,11 +1130,13 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * with it.
    */
   const routesAbove = new Map<ComponentNode, Set<string | null | undefined>>();
-  const issues = walk(reached, routesAbove);
+  /** How the walk first reached each node, for a report that has to name a mount rather than a read. */
+  const pathTo = new Map<ComponentNode, string[]>();
+  const issues = walk(reached, routesAbove, pathTo);
   const unreachable = deadOnes(reached);
   const unreachableRoutes = strandedRoutes(reached);
   const renderCycles = endlessRings();
-  const paramsOffRoute = readsOffTheRoute(reached, routesAbove);
+  const paramsOffRoute = readsOffTheRoute(reached, routesAbove, pathTo);
 
   return {
     issues,
@@ -2605,13 +2619,15 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   function readsOffTheRoute(
     reached: Set<ComponentNode>,
     routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
+    pathTo: Map<ComponentNode, string[]>,
   ): ParamsOffRouteIssue[] {
     if (roots.size === 0 || anOutletSpreadsUnread) return [];
 
     const found: ParamsOffRouteIssue[] = [];
     for (const read of paramReads) {
       if (!reached.has(read.owner)) continue;
-      const { owner: _owner, ...issue } = read;
+      const { owner: _owner, ...rest } = read;
+      const issue = { ...rest, path: pathTo.get(read.owner) ?? [read.component] };
 
       const routes = routesAbove.get(read.owner);
       /**
@@ -2681,6 +2697,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   function walk(
     reached: Set<ComponentNode>,
     routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
+    pathTo: Map<ComponentNode, string[]>,
   ): ContextIssue[] {
     const issues: ContextIssue[] = [];
     const seen = new Set<string>();
@@ -2768,6 +2785,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
 
       const here = new Set(provided);
       const nextPath = [...path, node.name];
+      if (!pathTo.has(node)) pathTo.set(node, nextPath);
       for (const id of node.provides) {
         /**
          * Already provided ABOVE, and its author says two conflict.
