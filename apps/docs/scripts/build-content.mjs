@@ -403,14 +403,14 @@ function pageFor(rule, at) {
     `# \`${rule.id}\``,
     "",
     rule.severity === "error"
-      ? "**This fails the run.** It is not a matter of taste: the code below cannot do what it says."
+      ? "**This fails the run.** Not a matter of taste: what it reports cannot do what it says."
       : "**This is a warning.** It prints and lets the build through.",
     "",
     `**Reported when** ${rule.reportedWhen}.`,
     "",
     codes.length > 0
       ? `The framework reports the same fault while running, as ${codes
-          .map((code) => `[\`${code}\`](/reference/diagnostics)`)
+          .map((code) => `[\`${code}\`](/reference/diagnostics/${code.toLowerCase()})`)
           .join(
             " and ",
           )} — but only once the line actually runs. This is the same fault proved from the source instead.\n`

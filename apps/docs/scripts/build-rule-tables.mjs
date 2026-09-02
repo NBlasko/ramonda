@@ -78,7 +78,9 @@ function row(rule) {
   // A rule may answer several codes — `duplicate-decorators` answers four — so every one is linked.
   const codes = rule.alsoReportedAs ?? [];
   const also =
-    codes.length > 0 ? ` — also ${codes.map((code) => `[\`${code}\`](/reference/diagnostics)`).join(", ")}` : "";
+    codes.length > 0
+      ? ` — also ${codes.map((code) => `[\`${code}\`](/reference/diagnostics/${code.toLowerCase()})`).join(", ")}`
+      : "";
   return `| [\`${rule.id}\`](/rules/${rule.id}) | ${rule.reportedWhen}${also} |`;
 }
 
