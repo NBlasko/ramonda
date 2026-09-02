@@ -272,6 +272,7 @@ function diagnosticPages(source) {
         `title: ${mark.code}`,
         `description: ${mark.title.replace(/`/g, "")}`,
         "section: Diagnostics",
+        "nav: false",
         `order: ${400 + n}`,
         "---",
         "",
@@ -334,8 +335,8 @@ function rulePages() {
     "---",
     "title: Rules",
     `description: Every check \`ramonda-check\` runs — ${rules.length} of them, ${rules.filter((r) => r.severity === "error").length} that fail a build and ${rules.filter((r) => r.severity === "warn").length} that warn.`,
-    "section: Rules",
-    "order: 300",
+    "section: Reference",
+    "order: 111",
     "---",
     "",
     "# Rules",
@@ -395,6 +396,7 @@ function pageFor(rule, at) {
     `title: ${rule.id}`,
     `description: ${rule.severity === "error" ? "Fails the run" : "Warns"} when ${rule.reportedWhen}`,
     "section: Rules",
+    "nav: false",
     `order: ${301 + at}`,
     "---",
     "",
@@ -463,6 +465,9 @@ function pageOf(source, routePath, label) {
       description: data.description ?? "",
       section: data.section ?? "",
       order: Number(data.order ?? 0),
+      // Frontmatter is text, so the flag is compared as text — the same shape as `order` above,
+      // which is `Number(...)` for the same reason.
+      ...(String(data.nav) === "false" ? { nav: false } : {}),
       tree,
     };
   }

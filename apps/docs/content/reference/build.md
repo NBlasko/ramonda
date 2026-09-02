@@ -2,7 +2,7 @@
 title: Configuring your build
 description: "@ramonda/build carries the three bundler settings an app needs — as a Vite plugin, as esbuild options, and as the settings themselves for a bundler with no adapter."
 section: Reference
-order: 113
+order: 114
 ---
 
 # Configuring your build
