@@ -1559,11 +1559,21 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * write, and reading only the first went silent on it — the same shape of miss as reading only a
    * literal pattern, so both are followed the same one hop and no further.
    */
-  function navigatorMemberOf(receiver: ts.Expression, cls: ts.ClassDeclaration): string | undefined {
+  function navigatorMemberOf(receiver: ts.Expression, cls: ts.ClassDeclaration, hop = 0): string | undefined {
     if (ts.isPropertyAccessExpression(receiver) && receiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
       return holdsANavigator(cls, receiver.name.text) ? receiver.name.text : undefined;
     }
-    if (!ts.isIdentifier(receiver)) return undefined;
+    /**
+     * Bounded, and it is not a precaution. `const a = b; const b = a;` in one body is a ring, and
+     * this walked it until the stack gave out — measured, `RangeError: Maximum call stack size
+     * exceeded`, with the CLI dying rather than reporting anything at all. TypeScript refuses that
+     * pair, but this package does not typecheck by design and runs over projects whose types are
+     * loose or absent, so "tsc would have caught it" is not a guard this may lean on.
+     *
+     * A bound rather than a seen-set because the answer is one hop deep in every real spelling:
+     * `const n = this.nav`. Anything further is a shape nobody writes.
+     */
+    if (!ts.isIdentifier(receiver) || hop >= 4) return undefined;
 
     const declaration = resolve(receiver)?.declarations?.[0];
     if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return undefined;
@@ -1571,7 +1581,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     if ((declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
 
     const written = declaration.initializer;
-    return written === undefined ? undefined : navigatorMemberOf(written, cls);
+    return written === undefined ? undefined : navigatorMemberOf(written, cls, hop + 1);
   }
 
   /** Whether `this.<member>` was initialised with `this.use(Navigator)`, whatever it was imported as. */

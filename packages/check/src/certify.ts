@@ -95,12 +95,8 @@ export function packageRootOf(tsconfigPath: string): string | undefined {
  */
 function owns(root: string, file: string, cache: Map<string, string | undefined>): boolean {
   const dir = dirname(resolvePath(file));
-  let found = cache.get(dir);
-  if (found === undefined && !cache.has(dir)) {
-    found = packageRootOf(resolvePath(file));
-    cache.set(dir, found);
-  }
-  return (found ?? cache.get(dir)) === root;
+  if (!cache.has(dir)) cache.set(dir, packageRootOf(resolvePath(file)));
+  return cache.get(dir) === root;
 }
 
 /** `src/Grid.tsx:44:12`, relative to the package root, which is how a publisher reads their own tree. */

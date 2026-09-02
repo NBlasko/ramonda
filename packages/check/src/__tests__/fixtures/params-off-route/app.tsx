@@ -138,6 +138,24 @@ class NavAsProp extends Component<{ nav: Navigator }> {
   }
 }
 
+/**
+ * NOT reported, and the point is that the run SURVIVES it.
+ *
+ * Two consts naming each other. The alias walk followed the ring until the stack gave out —
+ * measured before the bound, `RangeError: Maximum call stack size exceeded`, with the command
+ * dying rather than reporting anything at all. TypeScript refuses this pair; this package does not
+ * typecheck by design and runs over projects whose types are loose or absent, so "tsc would have
+ * caught it" is not a guard it may lean on.
+ */
+class ARingOfAliases extends Component {
+  nav = this.use(Navigator);
+  render() {
+    const a = b;
+    const b = a;
+    return <i>{a.params("/guide/:slug").slug}</i>;
+  }
+}
+
 class Wrapper extends Component {
   nav = this.use(Navigator);
   render() {
@@ -150,6 +168,7 @@ class Wrapper extends Component {
         <ConstPattern />
         <AliasedRead />
         <NavAsProp nav={this.nav} />
+        <ARingOfAliases />
       </div>
     );
   }

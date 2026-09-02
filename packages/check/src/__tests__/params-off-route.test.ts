@@ -65,6 +65,20 @@ describe("params read off the route", () => {
    * The navigator arrives as a prop, so there is no `this.use(Navigator)` on the class to recognise
    * it by — the receiver is `this.props.nav`, whose type this walk does not ask for.
    */
+  /**
+   * The run has to SURVIVE a ring of aliases, which is a guard rather than a report.
+   *
+   * `const a = b; const b = a;` followed the ring until the stack gave out — measured before the
+   * bound, the command died with `RangeError` instead of reporting anything at all. Asserted as a
+   * successful run rather than as a finding, because the finding is that there is no finding.
+   */
+  test("two consts naming each other do not take the run down", () => {
+    const components = run().paramsOffRoute.map((issue) => issue.component);
+    expect(components).not.toContain("ARingOfAliases");
+    // The rest of the file is still judged, so the guard did not go quiet on everything.
+    expect(components).toContain("WrongRouteChild");
+  });
+
   test("a navigator passed as a prop is not seen", () => {
     const components = run().paramsOffRoute.map((issue) => issue.component);
     expect(components).not.toContain("NavAsProp");
