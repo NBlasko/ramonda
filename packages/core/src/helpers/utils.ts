@@ -9,9 +9,10 @@ export const isArray = Array.isArray;
  * expression, plus three more spellings in `base/decorators.ts`. That is not a
  * TypeScript problem; `unknown` only made it look like one.
  *
- * `base/Context.ts` keeps its own and should: it needs `undefined` when the holder is
- * not known, because RMD003's message branches on that, and "Unknown" would change
- * what it prints.
+ * `base/Context.ts` keeps its own — `holderName` — and should: its messages branch on not
+ * knowing the name and drop the subject, so "Unknown" would change what they print. It answers
+ * `""` for both absences it has to serve, an unnamed class and a production build with no
+ * `holder` at all.
  *
  * Both halves of the fallback are real: a `Object.create(null)` instance has no
  * `constructor`, and a class expression assigned to nothing has a `constructor`

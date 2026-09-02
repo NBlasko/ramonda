@@ -149,12 +149,16 @@ export class Listener extends Armed<ListenerProps> {
 /**
  * The target, resolved at ARM time rather than when the hook was declared.
  *
- * The words are checked against `typeof` rather than assumed, exactly as `@onWindow` does: this
- * runs only on the client, and a `null` here is a refusal rather than a throw for the same reason
- * the decorator's is — a component that renders on both sides must not have to branch on which.
+ * The globals are returned without asking whether they exist. This is reached only past `listen`'s
+ * `armable` check, and `armable` is false when `owner.env === "server"` — so by here there is a
+ * document. A `typeof` guard would be a branch nothing can enter.
+ *
+ * A FUNCTION target may still answer `null`, and that is a state rather than a fault: an element
+ * behind a branch that has not rendered, a ref before its node exists. `listen` returns `false` for
+ * it, which is the one thing a caller can act on.
  */
 function targetOf(on: ListenerProps["on"]): EventTarget | null {
-  if (on === "window") return typeof window === "undefined" ? null : window;
-  if (on === "document") return typeof document === "undefined" ? null : document;
+  if (on === "window") return window;
+  if (on === "document") return document;
   return on();
 }

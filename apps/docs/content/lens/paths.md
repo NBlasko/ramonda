@@ -69,6 +69,22 @@ the check still runs and the write still returns the root — but there is no me
 That is deliberate: the text is bytes shipped to nobody, and an exception in front of a user buys
 nothing the author could not have seen while writing the line.
 
+**And `ramonda-check` says it without running the line at all.** The rule is
+[`lens-path-through-a-gap`](/reference/check), and it reports a WRITE through a hop your types declare
+`?`, `| null` or `| undefined` when there is more path after it. A read is left alone: `value()`
+through a missing hop answers `undefined` and `values()` answers `[]`, which is what they are for.
+Prove the value is there and the report goes quiet, because then the write is correct:
+
+```tsx
+if (state.profile) {
+  focusOn(state).get("profile").get("name").set("Ada");
+}
+```
+
+That matters more than a second report of the same thing. A gap is the state nobody sets up locally —
+a fresh account, a failed fetch, a first render — so the throw arrives on somebody else's machine and
+the rule arrives on the line as you type it.
+
 So the rule is: the middle of a path has to be there. Only the LAST hop creates what it names, so set
 the intermediate value first, or `merge` the whole object into place, whenever a middle hop is
 genuinely optional rather than merely typed that way.

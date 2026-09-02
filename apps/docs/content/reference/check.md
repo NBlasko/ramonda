@@ -139,7 +139,7 @@ rules**, so a rule cannot be added without appearing here.
 | `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 75 of them.
+**Warnings.** These print and the run still passes. 76 of them.
 
 | rule | reported when |
 |---|---|
@@ -166,6 +166,7 @@ rules**, so a rule cannot be added without appearing here.
 | `unexposed-env-read` | `import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined` |
 | `row-reads-a-plain-field` | a `list()` row callback puts a field nothing can track into the markup, so a reused row keeps the old value |
 | `dev-guard-as-an-expression` | a `__DEV__` guard is written as `&&` or `?:` where an `if` would do the same thing |
+| `lens-path-through-a-gap` | a `focusOn` write walks through a hop the types say may be `null` or `undefined`, which only the LAST hop creates — also [`RML001`](/reference/diagnostics) |
 | `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
 | `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics), [`RMD051`](/reference/diagnostics) |
 | `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |

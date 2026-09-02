@@ -1500,7 +1500,15 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
 // (client-only, after mount) and removed by the effect's cleanup on unmount.
 // The decorated method is called with the event; `this` is the component.
 
-type EventDecoratorTarget = EventTarget | null | undefined;
+/**
+ * A resolver answers a target, and only a target.
+ *
+ * Every resolver in this file returns a global, and an effect runs only on the client — so there is
+ * no absent case to spell, and admitting one would only buy a guard for a state nothing produces.
+ * A resolver that CAN come up empty (an element behind a ref, say) belongs to the `Listener` hook,
+ * whose `listen()` answers `false` and hands the caller something it can act on.
+ */
+type EventDecoratorTarget = EventTarget;
 
 /**
  * The least an owner must be for a listener to hang off it: a runtime to attach the effect to. A
@@ -1594,18 +1602,17 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
         attachEffect(
           component,
           () => {
+            /**
+             * No guard on the target, because both resolvers answer a global.
+             *
+             * An effect does not run on the server, so `window` and `document` are there by the
+             * time this does. A check for their absence here would be a branch no test can enter,
+             * and a diagnostic beside it would name a fault the public API cannot produce.
+             *
+             * A decorator whose target is NOT a global — an element behind a ref, say — is what
+             * would need both: a check here, and a code to report the empty case with.
+             */
             const target = resolveTarget(component);
-            if (!target) {
-              if (__DEV__) {
-                diagnose(
-                  "RMD041",
-                  `${component.constructor.name}.${decoratorName}.${type}`,
-                  `@${decoratorName} found no target for its "${type}" listener.`,
-                  { component: component.constructor.name, decorator: decoratorName, event: type },
-                );
-              }
-              return;
-            }
 
             // The one cast, and it is confined here: addEventListener hands back
             // a plain `Event` at runtime, and no amount of typing changes what
@@ -1628,9 +1635,7 @@ function createEventListenerDecorator<Owner extends EventOwner, EventMap>(
  *
  *   @onWindow("resize") onResize(e: UIEvent) { … }
  */
-export const onWindow = createEventListenerDecorator<EventOwner, WindowEventMap>("onWindow", () =>
-  typeof window !== "undefined" ? window : null,
-);
+export const onWindow = createEventListenerDecorator<EventOwner, WindowEventMap>("onWindow", () => window);
 
 /**
  * Binds a listener on `document` for the owner's lifetime. Client only; works on
@@ -1638,9 +1643,7 @@ export const onWindow = createEventListenerDecorator<EventOwner, WindowEventMap>
  *
  *   @onDocument("keydown") onKey(e: KeyboardEvent) { … }
  */
-export const onDocument = createEventListenerDecorator<EventOwner, DocumentEventMap>("onDocument", () =>
-  typeof document !== "undefined" ? document : null,
-);
+export const onDocument = createEventListenerDecorator<EventOwner, DocumentEventMap>("onDocument", () => document);
 
 // --- Client-only timer decorators ------------------------------------------
 // Built on the effect primitive: the timer starts on mount (client only) and is
