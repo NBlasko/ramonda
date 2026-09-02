@@ -13,46 +13,10 @@ runs a method when it moves.
 
 ## The situation it is for
 
-A note editor beside a list of users. Click another user and the parent hands the editor a new
-`userId` — the same component instance, a different subject:
+A note editor. Its parent hands it a different `userId` when the reader picks another colleague —
+the same component instance, a new subject:
 
 ```tsx
-import { TextArea } from "@ramonda/core";
-
-class Editor extends Component<{ userId: string }> {
-  @state draft = "";
-
-  render() {
-    return (
-      <label>
-        Note for {this.props.userId}
-        <TextArea value={this.draft} />
-      </label>
-    );
-  }
-}
-
-class Notes extends Component {
-  @state chosen = "1";
-
-  pick(id: string) {
-    this.chosen = id;
-  }
-
-  render() {
-    return <Editor userId={this.chosen} />;
-  }
-}
-```
-
-Nothing here resets the draft. The reader clicks a colleague and sees the note they were writing
-about someone else, in a box that now says the new name.
-
-One decorator fixes it:
-
-```tsx
-import { TextArea } from "@ramonda/core";
-
 class Editor extends Component<{ userId: string }> {
   @state draft = "";
 
@@ -60,36 +24,23 @@ class Editor extends Component<{ userId: string }> {
   reset() {
     this.draft = "";
   }
-
-  render() {
-    return (
-      <label>
-        Note for {this.props.userId}
-        <TextArea value={this.draft} />
-      </label>
-    );
-  }
 }
 ```
 
-The method runs **before the render**, so the empty box is what the reader sees. There is no pass
-where the new name is on screen beside the old note — which is what separates this from doing the
-same work after the page has updated.
+Without the watcher the draft survives the switch, and the reader sees the note they were writing
+about someone else under the new name. The method runs **before the render**, so the empty box is
+what reaches the page — there is no pass where the two are on screen together.
 
 ## What the selector is
 
-A function from props to the value you care about — not a string. So it can go as deep as you like
+A function from props to the value you care about, not a string — so it can go as deep as you like
 and the compiler checks every step:
 
 ```tsx
-interface Search {
-  filters: { value: string }[];
-}
-
-class Results extends Component<Search> {
+class Results extends Component<{ filters: { value: string }[] }> {
   @state query = "";
 
-  @watchProp((p: Search) => p.filters[0].value)
+  @watchProp((p: { filters: { value: string }[] }) => p.filters[0].value)
   onValue(next: readonly [string]) {
     this.query = next[0];
   }
@@ -99,38 +50,30 @@ class Results extends Component<Search> {
 **It is typed from the class the decorator sits on**, so `p.usreId` is a compile error that names
 the typo.
 
-The method's own parameters still need annotating, and they are a **`readonly` tuple** — one slot
-per selector, in the order they were written. A decorator cannot type the signature it decorates,
-which is a TypeScript limitation rather than a choice. Take only the parameters you use: a method
-that reads neither declares neither.
+The method's own parameters are a **`readonly` tuple** — one slot per selector, in the order they
+were written — and they still need annotating: a decorator cannot type the signature it decorates.
+Take only what you use; a method that reads neither declares neither.
 
 ## Watching several props
 
-Give it more than one selector. The method runs **once** when any of them moves, and both arrays
-carry every value in the order the selectors were written:
+The method runs **once** when any of them moves, and both arrays carry every value:
 
 ```tsx
-interface Listing {
-  userId: string;
-  page: number;
-}
-
-class Rows extends Component<Listing> {
+class Rows extends Component<{ userId: string; page: number }> {
   @state page = 1;
 
   @watchProp(
-    (p: Listing) => p.userId,
-    (p: Listing) => p.page,
+    (p: { userId: string }) => p.userId,
+    (p: { page: number }) => p.page,
   )
   refetch(next: readonly [string, number], previous: readonly [string, number]) {
-    // The user changed, so the page a listing was on means nothing any more.
     if (next[0] !== previous[0]) this.page = 1;
   }
 }
 ```
 
 A selector whose value did not move keeps it in **both** arrays, so `previous[i] === next[i]` is how
-the method tells which one changed. That is usually the question a multi-selector watcher is asking.
+the method tells which one changed.
 
 Do not reach for one selector returning an array to get the same effect. Comparison is `Object.is`,
 so a fresh array is never equal to the last one and the method would fire on every props change with

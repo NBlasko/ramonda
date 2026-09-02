@@ -26,8 +26,13 @@ class Row extends Component<{ label: string; selected: boolean }> {
 
   @updated
   keepVisible() {
-    if (!this.props.selected) return;
-    this.element.current?.scrollIntoView({ block: "nearest" });
+    const li = this.element.current;
+    if (!this.props.selected || li === null) return;
+    // The question a guard here should ask: is the DOM already how I want it? Scrolling a row
+    // that is on screen is a jump the reader did not ask for.
+    const box = li.getBoundingClientRect();
+    if (box.top >= 0 && box.bottom <= window.innerHeight) return;
+    li.scrollIntoView({ block: "nearest" });
   }
 
   render() {

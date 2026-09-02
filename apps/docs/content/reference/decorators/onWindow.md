@@ -19,10 +19,6 @@ class Layout extends Component<{ children?: RamondaNode }> {
   @state wide = true;
 
   @mounted
-  first() {
-    this.measure();
-  }
-
   @onWindow("resize")
   measure() {
     this.wide = window.innerWidth > 900;
@@ -40,7 +36,8 @@ class Layout extends Component<{ children?: RamondaNode }> {
 ```
 
 Two decorators on one method, and both are needed: `resize` only fires when the window **changes**,
-so `@mounted` is what gets the first answer.
+so `@mounted` is what gets the first answer. They do different work, so neither is a duplicate of
+the other and nothing reports them.
 
 The listener is added at mount and removed when the component is destroyed. **There is nothing to
 clean up** — which is the reason to reach for this rather than calling `addEventListener` yourself,

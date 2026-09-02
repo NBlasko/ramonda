@@ -17,7 +17,6 @@ same list, and all three are read more than once per render:
 
 ```tsx
 interface Line {
-  id: string;
   price: number;
   qty: number;
 }
@@ -53,9 +52,10 @@ a tie. See [Compute](/concepts/compute) for the model.
 
 ## What it refuses
 
-**Parameters.** `@compute get user(id: string)` is refused, and it is worth knowing why rather than
-just obeying: the cache is keyed by **nothing**, so a second call with a different argument would
-hand back the first call's answer, silently. That is what
+**Parameters.** A getter cannot take one at all — that is TypeScript, not this framework — so the
+shape to watch for is a `@compute` on a METHOD: `@compute priceFor(id: string)`. It is refused, and
+the reason is worth knowing rather than just obeying: the cache is keyed by **nothing**, so a second
+call with a different argument would hand back the first call's answer, silently. That is what
 [`@memoized`](/reference/decorators/memoized) is for — it keys the cache by the arguments.
 
 `ramonda-check` refuses it before anything runs, as

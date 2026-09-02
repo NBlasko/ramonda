@@ -30,9 +30,9 @@ class Synced extends Component<{ at: number }> {
 }
 ```
 
-Written with `setInterval` this needs four things: somewhere to keep the id, a `@mounted` to start
-it, a `@destroyed` to clear it, and the discipline to remember all three. Forget the last and the
-timer keeps firing after the panel closes, writing state into a component that is gone —
+Written with `setInterval` this needs three things: somewhere to keep the id, a `@mounted` to start
+it, and a `@destroyed` to clear it. Forget the third and the timer keeps firing after the panel
+closes, writing state into a component that is gone —
 [`RMD008`](/reference/diagnostics/rmd008).
 
 **There is no id to keep and nothing to clear.** The timer starts when the component mounts and is

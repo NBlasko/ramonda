@@ -12,39 +12,33 @@ is assigned.
 
 ## The situation it is for
 
-A search box that filters a list. The typed text has to be remembered between renders, and changing
-it has to redraw the list — that is what a `@state` field is:
+A search box. The typed text has to be remembered between renders, and changing it has to redraw
+what is on screen — that is what a `@state` field is:
 
 ```tsx
-class Contacts extends Component<{ people: string[] }> {
+import type { EventOn } from "@ramonda/core";
+
+class Search extends Component {
   @state query = "";
 
-  onType(e: Event) {
-    this.query = (e.currentTarget as HTMLInputElement).value;
-  }
-
-  @compute get shown(): string[] {
-    return this.props.people.filter((name) => name.includes(this.query));
+  onType(e: EventOn<HTMLInputElement>) {
+    this.query = e.currentTarget.value;
   }
 
   render() {
     return (
-      <div>
-        <label>
-          Search
-          <input value={this.query} oninput={this.onType} />
-        </label>
-        <ul>{list(this.shown, (name) => <li key={name}>{name}</li>)}</ul>
-      </div>
+      <label>
+        Search
+        <input value={this.query} oninput={this.onType} />
+      </label>
     );
   }
 }
 ```
 
-Three things happen because of the one decorator. `this.query = …` in the handler is a **change**,
-so the component renders again. `render()` reading `this.query` is what **ties** it to the field —
-nothing declares that. And the [`@compute`](/reference/decorators/compute) reading it is tied too,
-so the filtered list is recomputed once and reused.
+Two things happen because of the one decorator. `this.query = …` in the handler is a **change**, so
+the component renders again. And `render()` reading `this.query` is what **ties** it to the field —
+nothing declares that, and a render that stopped reading it would stop being woken by it.
 
 There is no setter and no separate place for state to live. It is a field: read it with
 `this.query`, change it with `this.query = "ada"`.
@@ -56,14 +50,34 @@ See [State](/concepts/state) for the reactivity model this is the front door to.
 A signal fires when it is **assigned**, not when the value it holds changes inside. So this does
 nothing:
 
-```tsx expect-report:state-mutated-in-place
-this.items.push(next);
+```tsx
+class Recent extends Component {
+  @state queries: string[] = [];
+
+  remember(query: string) {
+    this.queries.push(query);
+  }
+
+  render() {
+    return <p>{this.queries.length} searched</p>;
+  }
+}
 ```
 
 and this does:
 
 ```tsx
-this.items = [...this.items, next];
+class Recent extends Component {
+  @state queries: string[] = [];
+
+  remember(query: string) {
+    this.queries = [...this.queries, query];
+  }
+
+  render() {
+    return <p>{this.queries.length} searched</p>;
+  }
+}
 ```
 
 Mutating in place is reported both ways — as [`RMD005`](/reference/diagnostics/rmd005) when it runs,

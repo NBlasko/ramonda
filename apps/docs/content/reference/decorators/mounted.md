@@ -18,14 +18,8 @@ while rendering — the input does not exist yet, and `focus()` on nothing does 
 ```tsx
 import { createRef } from "@ramonda/core";
 
-class RenameDialog extends Component<{ name: string }> {
-  @state draft = "";
+class RenameDialog extends Component {
   private box = createRef<HTMLInputElement>();
-
-  @created
-  seed() {
-    this.draft = this.props.name;
-  }
 
   @mounted
   takeFocus() {
@@ -34,20 +28,17 @@ class RenameDialog extends Component<{ name: string }> {
 
   render() {
     return (
-      <form>
-        <label>
-          New name
-          <input ref={this.box} value={this.draft} />
-        </label>
-        <button type="submit">Rename</button>
-      </form>
+      <label>
+        New name
+        <input ref={this.box} />
+      </label>
     );
   }
 }
 ```
 
-The two decorators are doing different jobs and the order is the difference: `@created` sets the
-value that the first render draws, `@mounted` reaches the element that render produced.
+The ref is empty while the render runs and holds the element by the time `@mounted` does. That gap
+is the whole reason this moment exists.
 
 **Children mount before their parent.** By the time a parent's `@mounted` runs, everything inside it
 is already on the page — so a parent measuring its children finds them there.

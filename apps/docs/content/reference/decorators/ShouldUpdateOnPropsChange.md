@@ -12,73 +12,64 @@ charge of that decision: return `true` to take the update, `false` to ignore it.
 
 ## The situation it is for
 
-A table of a thousand rows. Each row is handed the record it draws and a `theme` object the parent
-rebuilds on every render — a shape that turns up in real code more often than anyone admits:
+A parent that re-renders for its own reasons, handing a child an object it rebuilds each time:
 
 ```tsx expect-report:fresh-object-in-props
-interface Row {
-  id: number;
-  label: string;
-}
-
 interface RowProps {
-  row: Row;
+  label: string;
   theme: { dense: boolean };
 }
 
-class RowView extends Component<RowProps> {
+class Row extends Component<RowProps> {
   render() {
-    return <li>{this.props.row.label}</li>;
+    return <p>{this.props.label}</p>;
   }
 }
 
-class Table extends Component<{ rows: Row[] }> {
-  @state hovered = 0;
+class Panel extends Component {
+  @state count = 0;
+
+  bump() {
+    this.count++;
+  }
 
   render() {
     return (
-      <ul onmouseleave={this.clear}>
-        {list(this.props.rows, (row) => (
-          <RowView key={row.id} row={row} theme={{ dense: true }} />
-        ))}
-      </ul>
+      <div onclick={this.bump}>
+        <Row label="Ada" theme={{ dense: true }} />
+      </div>
     );
-  }
-
-  clear() {
-    this.hovered = 0;
   }
 }
 ```
 
-Move the mouse out of the table and `hovered` changes, so `Table` renders again — and
-`theme={{ dense: true }}` is a **new object every time**. Every one of the thousand rows is handed a
-changed prop, so every one of them renders, although nothing any of them draws has moved.
+Click the panel and `Panel` renders again — so `theme={{ dense: true }}` is a **new object**. `Row`
+is handed a changed prop and renders too, although its label has not moved and the theme's contents
+are identical.
 
 `ramonda-check` reports that literal as
 [`fresh-object-in-props`](/rules/fresh-object-in-props), and the first thing to try is its advice:
-[`@StableProps("theme")`](/reference/decorators/StableProps) on `RowView`, which compares the
-contents and hands back the identity it already had.
+[`@StableProps("theme")`](/reference/decorators/StableProps) on `Row`, which compares the contents
+and hands back the identity it already had.
 
-Where that is not enough — the prop really does change, and the row still does not care —
-`RowView` can refuse the update outright:
+Where that is not enough — the prop really does change, and the child still does not care —
+`Row` can refuse the update outright:
 
 ```tsx
 interface RowProps {
-  row: { id: number; label: string };
+  label: string;
   theme: { dense: boolean };
 }
 
-@ShouldUpdateOnPropsChange((self, previous: RowProps, next: RowProps) => previous.row !== next.row)
-class RowView extends Component<RowProps> {
+@ShouldUpdateOnPropsChange((self, previous: RowProps, next: RowProps) => previous.label !== next.label)
+class Row extends Component<RowProps> {
   render() {
-    return <li>{this.props.row.label}</li>;
+    return <p>{this.props.label}</p>;
   }
 }
 ```
 
-Now a row renders when *its record* changes and not when the table around it happened to render. The
-predicate is handed the instance, the props it currently has, and the props it is being offered.
+The predicate is handed the instance, the props it currently has, and the props it is being offered.
 
 ## Read this before reaching for it
 

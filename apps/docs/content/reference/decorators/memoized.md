@@ -40,6 +40,12 @@ re-renders — a thousand rows redrawn because one of them was deleted. `ramonda
 `@memoized` gives each id its own handler, and the same one back next time:
 
 ```tsx
+class Row extends Component<{ id: string; onRemove: () => void }> {
+  render() {
+    return <li><button onclick={this.props.onRemove}>{this.props.id}</button></li>;
+  }
+}
+
 class Table extends Component<{ rows: string[] }> {
   @memoized
   remover(id: string) {
@@ -56,7 +62,8 @@ class Table extends Component<{ rows: string[] }> {
 }
 ```
 
-Now a row's `onRemove` only changes when its id does, which is never.
+Now a row's `onRemove` changes only when its id does — so deleting one row leaves the others
+holding the very handler they already had, and none of them is redrawn.
 
 ## It caches a value, not only a handler
 
