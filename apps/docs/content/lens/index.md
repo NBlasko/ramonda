@@ -57,12 +57,18 @@ just any helper.
 ```
 
 Press the buttons and watch which rows say **same object** — those are the branches
-the diff will skip. A write whose value is already there produces no copies at all and
-returns the original:
+the diff will skip.
+
+**A write of the value that is already there copies nothing at all.** Not the object it lands in, not
+the ones above it — the root that comes back IS the root that went in:
 
 ```tsx
 focusOn(state).get("title").set(state.title) === state; // true
 ```
+
+Read the line inside out: `state.title` is what is already at `title`, so the write puts the same
+value in the same place. Nothing about the state differs afterwards, so there is nothing to copy, and
+`===` on the root says so.
 
 Anything that compares by reference gets the same benefit: a memo, a store subscriber,
 an equality check in a test.
