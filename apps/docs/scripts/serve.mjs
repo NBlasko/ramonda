@@ -23,15 +23,23 @@ const MIME = {
 };
 
 /**
- * The path a request asks for, or `undefined` when it asks for something outside `dist`.
+ * The path a request asks for, built from segments that CANNOT traverse.
  *
- * `join` NORMALISES, so `join(dist, "/../../etc/passwd")` is a path outside the directory this
- * serves — a traversal, and one that predates the flat-file rule below rather than arriving with
- * it. Resolving and then confining is the whole guard: everything after this derives from a path
- * already proved to be inside, so `${file}.html` and `index.html` are contained by construction.
+ * The first version resolved `join(dist, url)` and then checked the result was inside `dist`. That
+ * is correct — measured, `/../../../etc/passwd` went from serving the file to a 403 — and CodeQL
+ * still reported it, because the check sat in a different function from the `existsSync` calls and
+ * its taint tracking does not follow a guard across that boundary.
  *
- * `decodeURIComponent` throws on a stray `%`, which would take the server down for a malformed URL
- * a crawler produces by accident. A request nobody can decode is a request nobody can serve.
+ * So the traversal is removed rather than caught: the URL is split, and `..`, `.` and empty
+ * segments are DROPPED. What reaches `join` is a list of plain names, so there is nothing for a
+ * path to climb with — no check to be trusted, and none to be forgotten by whoever edits the
+ * resolution below.
+ *
+ * The containment test stays underneath it anyway. It should now be unreachable, and a guard that
+ * costs one string comparison is not worth removing to prove a point.
+ *
+ * `decodeURIComponent` throws on a stray `%`, which took the server down for a malformed URL a
+ * crawler produces by accident. A request nobody can decode is a request nobody can serve.
  */
 function asked(rawUrl) {
   let url;
@@ -40,7 +48,9 @@ function asked(rawUrl) {
   } catch {
     return undefined;
   }
-  const at = resolve(join(dist, url));
+
+  const parts = url.split("/").filter((part) => part !== "" && part !== "." && part !== "..");
+  const at = resolve(dist, ...parts);
   return at === dist || at.startsWith(dist + sep) ? at : undefined;
 }
 
