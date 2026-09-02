@@ -11,19 +11,38 @@ order: 136
 that**, with the new DOM already in place — so it is where a component reads or corrects the page
 once it has changed.
 
+## The situation it is for
+
+A long list where the reader moves the selection with the arrow keys. Each keystroke re-renders the
+list with a different row marked — and the newly selected row may be off screen. Scrolling it into
+view can only happen **after** the page has the new markup, because until then there is nothing at
+the new position to scroll to:
+
 ```tsx
-class Row extends Component<{ selected: boolean }> {
-  private element!: HTMLElement;
-  private scrolled = false;
+import { createRef } from "@ramonda/core";
+
+class Row extends Component<{ label: string; selected: boolean }> {
+  private element = createRef<HTMLLIElement>();
 
   @updated
   keepVisible() {
-    if (!this.props.selected || this.scrolled) return;
-    this.scrolled = true;
-    this.element.scrollIntoView({ block: "nearest" });
+    if (!this.props.selected) return;
+    this.element.current?.scrollIntoView({ block: "nearest" });
+  }
+
+  render() {
+    return (
+      <li ref={this.element} className={this.props.selected ? "on" : ""}>
+        {this.props.label}
+      </li>
+    );
   }
 }
 ```
+
+`@mounted` cannot do this: it runs once, and the selection moves a hundred times after that.
+[`@watchProp`](/reference/decorators/watchProp) cannot either — it runs *before* the render, when
+the row is still drawn at its old position.
 
 ## The `if` it always needs
 

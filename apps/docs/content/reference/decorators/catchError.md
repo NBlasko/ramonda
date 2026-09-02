@@ -11,8 +11,21 @@ An error thrown while a component renders travels **up the component tree** unti
 it. `@catchError` declares the method that does the catching, and everything below that component is
 covered.
 
+## The situation it is for
+
+A dashboard with a chart in it. The chart reads data that is sometimes malformed, and when it throws
+the error travels up — past the chart, past whatever wraps it — until something catches it. If
+nothing does, the whole dashboard goes.
+
 ```tsx
-class Panel extends Component {
+class Chart extends Component<{ points: number[] }> {
+  render() {
+    if (this.props.points.length === 0) throw new Error("No points to draw");
+    return <p>{this.props.points.length} points</p>;
+  }
+}
+
+class Panel extends Component<{ points: number[] }> {
   @state failed = "";
 
   @catchError
@@ -21,10 +34,19 @@ class Panel extends Component {
   }
 
   render() {
-    return this.failed ? <p>{this.failed}</p> : <Report />;
+    return (
+      <section>
+        <h2>Revenue</h2>
+        {this.failed ? <p>Chart unavailable: {this.failed}</p> : <Chart points={this.props.points} />}
+      </section>
+    );
   }
 }
 ```
+
+The heading stays, the rest of the page stays, and the one panel that broke says so. Writing to
+`@state` from the handler is what puts the message on screen — the handler runs, then the component
+renders again with `failed` set.
 
 [`<ErrorBoundary>`](/composition/error-boundaries) is built on this. Reach for the component when
 you want a fallback around a subtree; reach for the decorator when the component that should recover

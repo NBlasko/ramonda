@@ -10,18 +10,38 @@ order: 124
 Declares the method that says **when this component may hydrate**. Until the promise it returns
 settles, the subtree is left exactly as the server wrote it.
 
+## The situation it is for
+
+A panel whose contents live in a chunk that is loaded on demand. The **server** has the component
+and renders it fully. The browser, on its first pass, does not — the chunk has not arrived — so it
+would render a spinner where finished content already is, and hydration would replace the good
+markup with it.
+
 ```tsx
-class Panel extends Component {
+class Panel extends Component<{ id: string }> {
+  private ready = false;
+
   @deferHydration
-  untilReady() {
+  untilLoaded() {
     return this.load();
   }
 
-  load(): Promise<void> {
-    return Promise.resolve();
+  async load(): Promise<void> {
+    await import("./heavy-chart");
+    this.ready = true;
+  }
+
+  render() {
+    return <section>{this.ready ? <p>Chart</p> : <p>Loading…</p>}</section>;
   }
 }
 ```
+
+With the decorator, the subtree is left **exactly as the server wrote it** until the promise
+settles. The reader sees the finished chart the whole time; nothing flashes.
+
+Without it they watch finished content turn into a spinner and back — on a page that was already
+correct, which is what makes this fault so unpleasant to meet.
 
 ## The problem it exists for
 

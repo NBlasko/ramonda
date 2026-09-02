@@ -10,23 +10,46 @@ order: 122
 A value worked out from other values, cached until one of them moves. Write it as a getter and read
 it like a field.
 
+## The situation it is for
+
+A cart that shows a total, a line count and whether free delivery applies. All three come from the
+same list, and all three are read more than once per render:
+
 ```tsx
+interface Line {
+  id: string;
+  price: number;
+  qty: number;
+}
+
 class Cart extends Component {
-  @state items: number[] = [];
+  @state lines: Line[] = [];
 
   @compute get total(): number {
-    return this.items.reduce((sum, n) => sum + n, 0);
+    return this.lines.reduce((sum, line) => sum + line.price * line.qty, 0);
+  }
+
+  @compute get freeDelivery(): boolean {
+    return this.total > 50;
   }
 
   render() {
-    return <p>{this.total}</p>;
+    return (
+      <div>
+        <p>{this.lines.length} item(s), {this.total}</p>
+        {this.freeDelivery ? <p>Delivery is on us.</p> : <p>Spend {50 - this.total} more.</p>}
+      </div>
+    );
   }
 }
 ```
 
-**It follows what it reads.** Nothing declares the dependencies: reading `this.items` inside is what
-ties the two together, and adding a second read adds a second tie. See
-[Compute](/concepts/compute) for the model.
+Add a line and `total` is worked out **once**, however many times the render reads it — and
+`freeDelivery`, which reads `total`, is worked out once too. Change nothing and neither runs at all.
+
+**It follows what it reads.** Nothing declares the dependencies: reading `this.lines` inside `total`
+is what ties them, and `freeDelivery` reading `total` chains the two. Add a read and you have added
+a tie. See [Compute](/concepts/compute) for the model.
 
 ## What it refuses
 

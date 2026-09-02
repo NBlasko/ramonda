@@ -10,27 +10,53 @@ order: 127
 Caches a method's answer, **keyed by its arguments**. Called again with the same arguments, it hands
 back the same value — the same object, not an equal one.
 
+## The situation it is for
+
+A list where every row has a delete button. The row needs a handler that knows **which** row it is,
+so the obvious spelling builds one in the markup:
+
+```tsx expect-report:function-built-in-the-markup
+class Row extends Component<{ id: string; onRemove: () => void }> {
+  render() {
+    return <li><button onclick={this.props.onRemove}>{this.props.id}</button></li>;
+  }
+}
+
+class Table extends Component<{ rows: string[] }> {
+  drop(id: string) {}
+
+  render() {
+    return list(this.props.rows, (id) => (
+      <Row key={id} id={id} onRemove={() => this.drop(id)} />
+    ));
+  }
+}
+```
+
+That arrow is a **new function every render**, so every row is handed a changed prop and every row
+re-renders — a thousand rows redrawn because one of them was deleted. `ramonda-check` reports it as
+[`function-built-in-the-markup`](/rules/function-built-in-the-markup).
+
+`@memoized` gives each id its own handler, and the same one back next time:
+
 ```tsx
 class Table extends Component<{ rows: string[] }> {
   @memoized
-  remove(id: string) {
+  remover(id: string) {
     return () => this.drop(id);
   }
 
   drop(id: string) {}
 
   render() {
-    return list(this.props.rows, (id) => <Row key={id} onRemove={this.remove(id)} />);
+    return list(this.props.rows, (id) => (
+      <Row key={id} id={id} onRemove={this.remover(id)} />
+    ));
   }
 }
 ```
 
-That example is the case it is most often reached for: **a handler per row**. Written inline, the
-arrow is a new function on every render, so every row's prop has changed and every row re-renders.
-Memoised, each row gets the same function back for as long as its id is the same.
-
-`ramonda-check` reports the inline version as
-[`function-built-in-the-markup`](/rules/function-built-in-the-markup).
+Now a row's `onRemove` only changes when its id does, which is never.
 
 ## It caches a value, not only a handler
 

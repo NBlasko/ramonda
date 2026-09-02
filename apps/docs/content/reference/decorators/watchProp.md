@@ -11,7 +11,48 @@ Some values have to be *worked out* from a prop rather than read from it: a draf
 the record changes, a request that starts over when the id does. `@watchProp` names the prop and
 runs a method when it moves.
 
+## The situation it is for
+
+A note editor beside a list of users. Click another user and the parent hands the editor a new
+`userId` — the same component instance, a different subject:
+
 ```tsx
+import { TextArea } from "@ramonda/core";
+
+class Editor extends Component<{ userId: string }> {
+  @state draft = "";
+
+  render() {
+    return (
+      <label>
+        Note for {this.props.userId}
+        <TextArea value={this.draft} />
+      </label>
+    );
+  }
+}
+
+class Notes extends Component {
+  @state chosen = "1";
+
+  pick(id: string) {
+    this.chosen = id;
+  }
+
+  render() {
+    return <Editor userId={this.chosen} />;
+  }
+}
+```
+
+Nothing here resets the draft. The reader clicks a colleague and sees the note they were writing
+about someone else, in a box that now says the new name.
+
+One decorator fixes it:
+
+```tsx
+import { TextArea } from "@ramonda/core";
+
 class Editor extends Component<{ userId: string }> {
   @state draft = "";
 
@@ -21,13 +62,19 @@ class Editor extends Component<{ userId: string }> {
   }
 
   render() {
-    return <p>{this.draft}</p>;
+    return (
+      <label>
+        Note for {this.props.userId}
+        <TextArea value={this.draft} />
+      </label>
+    );
   }
 }
 ```
 
-The method runs **before the render**, so the empty draft is what the reader sees — there is no pass
-where the new user is on screen beside the old user's text.
+The method runs **before the render**, so the empty box is what the reader sees. There is no pass
+where the new name is on screen beside the old note — which is what separates this from doing the
+same work after the page has updated.
 
 ## What the selector is
 

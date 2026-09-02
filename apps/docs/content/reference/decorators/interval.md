@@ -9,16 +9,31 @@ order: 126
 
 Runs a method every `ms` for as long as the component is on the page.
 
-```tsx
-class Clock extends Component {
-  @state now = "";
+## The situation it is for
 
-  @interval(1000)
-  tick() {
-    this.now = new Date().toLocaleTimeString();
+A "last synced 4 minutes ago" line. The value has to move on its own, and it has to stop moving the
+moment the panel is closed:
+
+```tsx
+class Synced extends Component<{ at: number }> {
+  @state ago = "just now";
+
+  @interval(60_000)
+  retime() {
+    const minutes = Math.round((Date.now() - this.props.at) / 60_000);
+    this.ago = minutes === 0 ? "just now" : `${minutes} minute(s) ago`;
+  }
+
+  render() {
+    return <small>Last synced {this.ago}</small>;
   }
 }
 ```
+
+Written with `setInterval` this needs four things: somewhere to keep the id, a `@mounted` to start
+it, a `@destroyed` to clear it, and the discipline to remember all three. Forget the last and the
+timer keeps firing after the panel closes, writing state into a component that is gone —
+[`RMD008`](/reference/diagnostics/rmd008).
 
 **There is no id to keep and nothing to clear.** The timer starts when the component mounts and is
 cleared when it is removed, so it cannot outlive the thing it belongs to — which is the whole reason

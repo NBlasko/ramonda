@@ -16,13 +16,26 @@ class Lookup extends Hook<{ key: readonly unknown[] }> {}
 
 class UserCard extends Component<{ id: number }> {
   private user = this.use(Lookup, (self: UserCard) => ({ key: ["user", self.props.id] }));
+
+  render() {
+    return <p>{this.props.id}</p>;
+  }
 }
 ```
 
-Without it, `["user", 7]` built again is a **new array**, so it is a changed prop every time the
-callback runs: a `@compute` reading it recomputes, a `@watchProp` on it fires, a subscription
-reconnects. Measured across three renders of the owner, a compute reading a rebuilt array runs three
-times where one reading a scalar runs once.
+## What goes wrong without it
+
+`["user", 7]` written again is a **new array**. Every prop is a signal and a signal compares by
+reference, so the hook is handed a changed `key` every time that callback runs — which is every time
+anything the callback reads moves.
+
+For a data hook that is not a small waste. A changed key means a different question: the cache entry
+is a different one, so the answer already in hand is thrown away and the request goes out again.
+Measured across three renders of the owner, a `@compute` reading a rebuilt array runs three times
+where one reading a scalar runs once.
+
+With `key` declared a value, the framework compares the **contents** and hands back the identity it
+already had. Nothing downstream sees a change, and the call site keeps writing the plain literal.
 
 ## Why the receiver declares it, and not the call site
 

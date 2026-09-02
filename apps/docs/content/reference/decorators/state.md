@@ -10,22 +10,44 @@ order: 134
 Marks a field as **reactive**. Read it while rendering and the component renders again whenever it
 is assigned.
 
-```tsx
-class Counter extends Component {
-  @state count = 0;
+## The situation it is for
 
-  add() {
-    this.count++;
+A search box that filters a list. The typed text has to be remembered between renders, and changing
+it has to redraw the list — that is what a `@state` field is:
+
+```tsx
+class Contacts extends Component<{ people: string[] }> {
+  @state query = "";
+
+  onType(e: Event) {
+    this.query = (e.currentTarget as HTMLInputElement).value;
+  }
+
+  @compute get shown(): string[] {
+    return this.props.people.filter((name) => name.includes(this.query));
   }
 
   render() {
-    return <button onclick={this.add}>{this.count}</button>;
+    return (
+      <div>
+        <label>
+          Search
+          <input value={this.query} oninput={this.onType} />
+        </label>
+        <ul>{list(this.shown, (name) => <li key={name}>{name}</li>)}</ul>
+      </div>
+    );
   }
 }
 ```
 
+Three things happen because of the one decorator. `this.query = …` in the handler is a **change**,
+so the component renders again. `render()` reading `this.query` is what **ties** it to the field —
+nothing declares that. And the [`@compute`](/reference/decorators/compute) reading it is tied too,
+so the filtered list is recomputed once and reused.
+
 There is no setter and no separate place for state to live. It is a field: read it with
-`this.count`, change it with `this.count = 5`.
+`this.query`, change it with `this.query = "ada"`.
 
 See [State](/concepts/state) for the reactivity model this is the front door to.
 

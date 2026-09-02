@@ -10,21 +10,40 @@ order: 125
 Runs while the component is being removed. Whatever it set up that the framework does not own comes
 undone here.
 
+## The situation it is for
+
+A price ticker on a socket. The component opens the connection when it appears and has to close it
+when it goes — because nothing else will, and a socket left open keeps receiving, keeps calling
+back, and keeps a component alive that the page has already forgotten:
+
 ```tsx
-class Live extends Component {
+class Ticker extends Component<{ symbol: string }> {
+  @state price = "—";
   private socket?: WebSocket;
 
   @mounted
   connect() {
-    this.socket = new WebSocket("wss://example.test");
+    const socket = new WebSocket("wss://example.test");
+    socket.onmessage = (e) => {
+      this.price = String(e.data);
+    };
+    this.socket = socket;
   }
 
   @destroyed
   disconnect() {
     this.socket?.close();
   }
+
+  render() {
+    return <p>{this.props.symbol} {this.price}</p>;
+  }
 }
 ```
+
+Take the `@destroyed` away and the page still works — which is the trouble. The socket keeps
+arriving, `this.price = …` keeps being called on a component nobody can see, and the only sign is a
+report ([`RMD008`](/reference/diagnostics/rmd008)) that a state write had nowhere to go.
 
 ## What you do NOT have to undo
 

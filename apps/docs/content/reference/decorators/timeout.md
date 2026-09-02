@@ -10,8 +10,14 @@ order: 135
 Runs a method **once**, `ms` after the component mounts. If the component is removed first, it never
 runs.
 
+## The situation it is for
+
+A confirmation that fades itself out. It appears when something succeeded, and it has to disappear
+four seconds later — unless the reader navigates away first, in which case the timer must not
+outlive the page it belongs to:
+
 ```tsx
-class Toast extends Component {
+class Toast extends Component<{ message: string }> {
   @state shown = true;
 
   @timeout(4000)
@@ -20,7 +26,7 @@ class Toast extends Component {
   }
 
   render() {
-    return this.shown ? <p>Saved</p> : null;
+    return this.shown ? <p role="status">{this.props.message}</p> : null;
   }
 }
 ```

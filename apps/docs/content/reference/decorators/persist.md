@@ -11,8 +11,13 @@ Marks a field as **serializable state for hydration**. It creates no signal and 
 when it changes — it records that this value must travel from the server render into the browser and
 be restored there.
 
+## The situation it is for
+
+A page rendered on the server that stamps when it was built. The server works the value out; the
+browser must not work it out **again**, because it would get a different one:
+
 ```tsx
-class Report extends Component {
+class Report extends Component<{ rows: number }> {
   @persist generatedAt = "";
 
   @created({ env: "server" })
@@ -21,13 +26,23 @@ class Report extends Component {
   }
 
   render() {
-    return <small>{this.generatedAt}</small>;
+    return (
+      <article>
+        <p>{this.props.rows} rows</p>
+        <small>Generated {this.generatedAt}</small>
+      </article>
+    );
   }
 }
 ```
 
-Without it the field is recomputed in the browser, the two sides disagree, and the mismatch is
-reported as [`RMD007`](/reference/diagnostics/rmd007).
+Hydration works by rendering the same tree in the browser and matching it against the server's HTML.
+Take `@persist` away and the browser's `generatedAt` is `""` — the two disagree, the server's markup
+is replaced, and the reader watches a timestamp blink out. That mismatch is reported as
+[`RMD007`](/reference/diagnostics/rmd007).
+
+With it, the value travels in the hydration blob and the browser resumes holding exactly what the
+server held.
 
 ## When you need it, and when you do not
 

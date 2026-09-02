@@ -11,14 +11,33 @@ Listens to an event on `document` for as long as the component is on the page. E
 [`@onWindow`](/reference/decorators/onWindow) is true here — the same lifetime, the same refusals,
 the same options argument — and only the target differs.
 
+## The situation it is for
+
+A dialog that closes on Escape. The keystroke does not happen inside the dialog's markup — it
+happens wherever the reader's focus is, which may be nowhere in particular — so no `onkeydown`
+attribute can catch it:
+
 ```tsx
-class Dialog extends Component<{ onClose: () => void }> {
+class Dialog extends Component<{ title: string; onClose: () => void }> {
   @onDocument("keydown")
   escape(e: KeyboardEvent) {
     if (e.key === "Escape") this.props.onClose();
   }
+
+  render() {
+    return (
+      <div role="dialog" aria-label={this.props.title}>
+        <h2>{this.props.title}</h2>
+        <button type="button" onclick={this.props.onClose}>Close</button>
+      </div>
+    );
+  }
 }
 ```
+
+The listener exists for exactly as long as the dialog does. Open three dialogs and there are three;
+close them and there are none — which is the part that is easy to get wrong by hand, because the
+`removeEventListener` has to be handed the very same function.
 
 ## Which of the two to reach for
 

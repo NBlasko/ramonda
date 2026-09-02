@@ -7,17 +7,78 @@ order: 132
 
 # `@ShouldUpdateOnPropsChange`
 
-A class decorator carrying the rule a component follows when its parent hands it new props: return
-`true` to take them, `false` to ignore the update.
+A component re-renders when its parent hands it new props. `@ShouldUpdateOnPropsChange` puts you in
+charge of that decision: return `true` to take the update, `false` to ignore it.
 
-```tsx
-@ShouldUpdateOnPropsChange((self, previous: { id: number }, next: { id: number }) => previous.id !== next.id)
-class Row extends Component<{ id: number; noisy: unknown }> {
+## The situation it is for
+
+A table of a thousand rows. Each row is handed the record it draws and a `theme` object the parent
+rebuilds on every render — a shape that turns up in real code more often than anyone admits:
+
+```tsx expect-report:fresh-object-in-props
+interface Row {
+  id: number;
+  label: string;
+}
+
+interface RowProps {
+  row: Row;
+  theme: { dense: boolean };
+}
+
+class RowView extends Component<RowProps> {
   render() {
-    return <li>{this.props.id}</li>;
+    return <li>{this.props.row.label}</li>;
+  }
+}
+
+class Table extends Component<{ rows: Row[] }> {
+  @state hovered = 0;
+
+  render() {
+    return (
+      <ul onmouseleave={this.clear}>
+        {list(this.props.rows, (row) => (
+          <RowView key={row.id} row={row} theme={{ dense: true }} />
+        ))}
+      </ul>
+    );
+  }
+
+  clear() {
+    this.hovered = 0;
   }
 }
 ```
+
+Move the mouse out of the table and `hovered` changes, so `Table` renders again — and
+`theme={{ dense: true }}` is a **new object every time**. Every one of the thousand rows is handed a
+changed prop, so every one of them renders, although nothing any of them draws has moved.
+
+`ramonda-check` reports that literal as
+[`fresh-object-in-props`](/rules/fresh-object-in-props), and the first thing to try is its advice:
+[`@StableProps("theme")`](/reference/decorators/StableProps) on `RowView`, which compares the
+contents and hands back the identity it already had.
+
+Where that is not enough — the prop really does change, and the row still does not care —
+`RowView` can refuse the update outright:
+
+```tsx
+interface RowProps {
+  row: { id: number; label: string };
+  theme: { dense: boolean };
+}
+
+@ShouldUpdateOnPropsChange((self, previous: RowProps, next: RowProps) => previous.row !== next.row)
+class RowView extends Component<RowProps> {
+  render() {
+    return <li>{this.props.row.label}</li>;
+  }
+}
+```
+
+Now a row renders when *its record* changes and not when the table around it happened to render. The
+predicate is handed the instance, the props it currently has, and the props it is being offered.
 
 ## Read this before reaching for it
 

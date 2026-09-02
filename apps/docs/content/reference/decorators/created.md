@@ -10,16 +10,38 @@ order: 123
 Runs while the component is being built, **before its element exists**. This is where a component
 sets itself up from its props and seeds its state.
 
+## The situation it is for
+
+A wizard that starts on whichever step the URL asked for, and remembers where the reader got to from
+there. The starting value comes from a prop; every value after that comes from the reader:
+
 ```tsx
-class Panel extends Component<{ userId: string }> {
-  @state title = "";
+class Wizard extends Component<{ startAt: number; steps: string[] }> {
+  @state step = 0;
 
   @created
-  init() {
-    this.title = `User ${this.props.userId}`;
+  begin() {
+    this.step = this.props.startAt;
+  }
+
+  next() {
+    this.step = Math.min(this.step + 1, this.props.steps.length - 1);
+  }
+
+  render() {
+    return (
+      <section>
+        <h2>{this.props.steps[this.step]}</h2>
+        <button onclick={this.next}>Next</button>
+      </section>
+    );
   }
 }
 ```
+
+The seeding belongs here rather than in the field's initializer because a field cannot read
+`this.props` — the props are not there yet when initializers run. `@created` is the first moment
+they are.
 
 See [Lifecycle](/concepts/lifecycle) for how it sits beside the other three.
 

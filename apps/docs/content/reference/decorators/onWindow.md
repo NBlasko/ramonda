@@ -9,16 +9,38 @@ order: 130
 
 Listens to an event on `window` for as long as the component is on the page.
 
+## The situation it is for
+
+A layout that shows a sidebar on a wide window and a menu button on a narrow one. The decision
+depends on something no parent can pass down, and it changes while the page is open:
+
 ```tsx
-class Layout extends Component {
-  @state width = 0;
+class Layout extends Component<{ children?: RamondaNode }> {
+  @state wide = true;
+
+  @mounted
+  first() {
+    this.measure();
+  }
 
   @onWindow("resize")
   measure() {
-    this.width = window.innerWidth;
+    this.wide = window.innerWidth > 900;
+  }
+
+  render() {
+    return (
+      <div>
+        {this.wide ? <nav>Sections</nav> : <button type="button">Menu</button>}
+        {this.props.children}
+      </div>
+    );
   }
 }
 ```
+
+Two decorators on one method, and both are needed: `resize` only fires when the window **changes**,
+so `@mounted` is what gets the first answer.
 
 The listener is added at mount and removed when the component is destroyed. **There is nothing to
 clean up** — which is the reason to reach for this rather than calling `addEventListener` yourself,
