@@ -100,6 +100,7 @@ const {
   annotated,
   unreachable,
   unreachableRoutes,
+  paramsOffRoute,
   secondProviders,
   renderCycles,
   classesAsChildren,
@@ -356,6 +357,7 @@ if (
   unreachable.length === 0 &&
   unreachableRoutes.length === 0 &&
   secondProviders.length === 0 &&
+  paramsOffRoute.length === 0 &&
   renderCycles.length === 0 &&
   classesAsChildren.length === 0
 ) {
@@ -428,6 +430,32 @@ if (unreachableRoutes.length > 0) {
     `Hand the table to a <RouteOutlet>, and mount that outlet somewhere a root can reach —\n` +
       `or delete the table. Every page in it renders today's nothing, and each one on its own\n` +
       `looks perfectly well formed, which is why nothing else says a word.\n`,
+  );
+}
+
+/**
+ * The other read the runtime throws on, and the one nothing else can see.
+ *
+ * The params context is `optional` on purpose — a nav bar beside the outlet correctly has no
+ * matched route — so the missing provider is not the fault and cannot be reported. The fault is
+ * asking it for a pattern.
+ */
+if (paramsOffRoute.length > 0) {
+  console.error(`\n${TAG} ${paramsOffRoute.length} params(pattern) read(s) with no matched route above:\n`);
+  for (const read of paramsOffRoute) {
+    console.error(`  ${read.file}:${read.line}:${read.column}`);
+    console.error(
+      `    <${read.component}> reads \`${read.member}.params("${read.pattern}")\`, and no arrangement in ` +
+        `this build puts it under a <RouteOutlet>.`,
+    );
+    console.error("");
+  }
+  console.error(
+    `Params are published by the outlet that MATCHED, which is why chrome beside it — a nav bar, a\n` +
+      `header, a footer — has a pathname and no params. The router throws on this read in every\n` +
+      `build. Move it into the routed page, or use \`pathname\` if the component is not part of a\n` +
+      `route. A component written against no ONE route drops the argument: \`params<T>()\` names no\n` +
+      `pattern and claims nothing.\n`,
   );
 }
 

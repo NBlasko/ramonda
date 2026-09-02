@@ -79,6 +79,26 @@ pattern only writes that down.
 inside the routed page. A nav bar beside the outlet has `pathname` but no params —
 which is right, it isn't part of any route.
 
+Reading `pathname` there is correct, and reading `params(pattern)` there throws. `ramonda-check`
+says it first: it descends every arrangement your source can produce, and reports a
+`params(pattern)` in a component that **no** path puts under an outlet.
+
+```
+[ramonda-check] 1 params(pattern) read(s) with no matched route above:
+
+  src/App.tsx:264:29
+    <Layout> reads `route.params("/users/:id")`, and no arrangement in this build
+    puts it under a <RouteOutlet>.
+```
+
+A component rendered in both places — beside the outlet *and* inside a routed page — is silent: it
+is correct on a path it is mounted on. `params()` with no argument is never judged, because it
+names no pattern and claims no route.
+
+The types cannot answer this one. `params("/users/:id")` is checked against the paths your **table**
+declares, never against the route the component is standing on — so a page mounted at
+`/guide/:slug` naming `/users/:id` compiles, and the graph is what tells them apart.
+
 ## Params are always strings
 
 They come out of a URL, so they are strings. Parse them where you use them, and treat
