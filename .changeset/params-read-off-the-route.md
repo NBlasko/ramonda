@@ -33,8 +33,13 @@ which it is:
   now travels down with the view — the key being the only place a route's `:params` are written, and
   it used to be read and discarded.
 
-**What it will not claim.** A component reported here is one that no arrangement puts under an
-outlet, or one every arrangement contradicts. One rendered both beside the outlet and inside a routed page is silent — it is correct on a
+**One failing arrangement is enough.** A component rendered inside a routed page AND beside the
+outlet is reported: the second place has no matched route, and the read throws there. Both faults
+answer that way, and making them disagree was a real bug caught reviewing this — the wrong-route
+half reported a component whose routes disagreed, while the no-outlet half stayed silent unless the
+component was NEVER routed.
+
+**What it will not claim.** A component every arrangement satisfies. One rendered both beside the outlet and inside a routed page is silent — it is correct on a
 path it is mounted on, which is why the answer travels with the PATH rather than living on the
 class. `params()` with no argument is never judged: it names no pattern and claims no route, which
 is the documented door for a component written against no one route. A pattern that is not a

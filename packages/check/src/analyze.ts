@@ -1117,7 +1117,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * readable", which is a different answer from "under no outlet at all" and must not be confused
    * with it.
    */
-  const routesAbove = new Map<ComponentNode, Set<string | null>>();
+  const routesAbove = new Map<ComponentNode, Set<string | null | undefined>>();
   const issues = walk(reached, routesAbove);
   const unreachable = deadOnes(reached);
   const unreachableRoutes = strandedRoutes(reached);
@@ -2604,7 +2604,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    */
   function readsOffTheRoute(
     reached: Set<ComponentNode>,
-    routesAbove: Map<ComponentNode, Set<string | null>>,
+    routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
   ): ParamsOffRouteIssue[] {
     if (roots.size === 0 || anOutletSpreadsUnread) return [];
 
@@ -2614,14 +2614,19 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       const { owner: _owner, ...issue } = read;
 
       const routes = routesAbove.get(read.owner);
-      if (routes === undefined) {
+      /**
+       * One arrangement with NO outlet above is enough, even where others have one. The read throws
+       * there, and reporting only the never-routed case is the asymmetry this used to carry.
+       */
+      if (routes === undefined || routes.has(undefined)) {
         found.push({ ...issue, why: "no-outlet" });
         continue;
       }
 
       const wanted = paramNamesOf(read.pattern);
       for (const route of routes) {
-        if (route === null) continue;
+        // `null` is an outlet whose key could not be read; `undefined` was answered above.
+        if (route === null || route === undefined) continue;
         const supplied = new Set(paramNamesOf(route));
         const missing = wanted.filter((name) => !supplied.has(name));
         if (missing.length === 0) continue;
@@ -2673,7 +2678,10 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     return found.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
   }
 
-  function walk(reached: Set<ComponentNode>, routesAbove: Map<ComponentNode, Set<string | null>>): ContextIssue[] {
+  function walk(
+    reached: Set<ComponentNode>,
+    routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
+  ): ContextIssue[] {
     const issues: ContextIssue[] = [];
     const seen = new Set<string>();
     const seenSeconds = new Set<string>();
@@ -2744,11 +2752,19 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
         .join(";")}`;
       if (onPath.has(key) || path.length > PATH_LIMIT) return;
       reached.add(node);
-      if (underRoute !== undefined) {
-        const already = routesAbove.get(node);
-        if (already) already.add(underRoute);
-        else routesAbove.set(node, new Set([underRoute]));
-      }
+      /**
+       * EVERY arrival is recorded, `undefined` included — an arrival with no outlet above is an
+       * arrangement like any other, and the runtime throws on it.
+       *
+       * Recording only the routed ones made the two faults disagree: a component mounted under two
+       * routes that disagree about a param was reported, while the same component mounted under one
+       * route AND beside the outlet was silent — although the second arrangement throws just as
+       * surely. Found reviewing this branch, on `Badge` in its own fixture, which pinned the miss as
+       * correct.
+       */
+      const already = routesAbove.get(node);
+      if (already) already.add(underRoute);
+      else routesAbove.set(node, new Set([underRoute]));
 
       const here = new Set(provided);
       const nextPath = [...path, node.name];

@@ -100,7 +100,9 @@ knows because it carries the table's **key** down with the view, and the key is 
 route's params are written.
 
 A component under two routes that both supply what it asked for is silent: `/users/:id` and
-`/people/:id` both give `:id`, and the claim is about the params, not the spelling. `params()` with
+`/people/:id` both give `:id`, and the claim is about the params, not the spelling. But **one
+arrangement that fails is enough** — a component rendered inside a routed page *and* beside the
+outlet is reported, because the second place has no matched route and the read throws there. `params()` with
 no argument is never judged, because it names no pattern and claims no route.
 
 The types cannot answer either of these. `params("/users/:id")` is checked against the paths your

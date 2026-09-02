@@ -69,8 +69,14 @@ class Breadcrumbs extends Component {
 }
 
 /**
- * Not reported: rendered BOTH beside the outlet and inside a routed page. One arrangement works,
- * and a component that is right on any path it is mounted on is not a fault.
+ * REPORTED, and it used to be the fixture's proof of a silence that was really a MISS.
+ *
+ * Rendered BOTH inside a routed page and beside the outlet. The second arrangement has no matched
+ * route at all, so the read throws there — and reporting only components that are NEVER routed made
+ * the two faults disagree with each other: a component under two routes that disagree about a param
+ * was reported, while this one was not, although both throw on an arrangement the source produces.
+ *
+ * The silence that IS correct is `Shared` below: every route above it supplies what it asked for.
  */
 class Badge extends Component {
   nav = this.use(Navigator);

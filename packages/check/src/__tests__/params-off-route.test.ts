@@ -34,6 +34,7 @@ describe("params read off the route", () => {
       ),
     ).toEqual([
       "NavBar: no outlet",
+      "Badge: no outlet",
       "WrongRouteChild: on /users/:id, wanted slug",
       "ConstPattern: on /users/:id, wanted slug",
       "AliasedRead: on /users/:id, wanted slug",
@@ -123,11 +124,17 @@ describe("params read off the route", () => {
     expect(components).not.toContain("Breadcrumbs");
   });
 
-  test("a component right on ANY path it is mounted on is not reported", () => {
-    // `Badge` is rendered beside the outlet AND inside a routed page. One arrangement answers the
-    // read, and the walk has to remember that rather than judging each arrival on its own.
-    const components = run().paramsOffRoute.map((issue) => issue.component);
-    expect(components).not.toContain("Badge");
+  /**
+   * One arrangement with no outlet above is enough, even where others have one.
+   *
+   * `Badge` is rendered inside a routed page AND beside the outlet. This test used to assert the
+   * opposite, and that was the bug: reporting only components that are NEVER routed made the two
+   * faults disagree — a component under two routes that disagree about a param was reported, while
+   * this one was not, although both throw on an arrangement the source produces.
+   */
+  test("an arrangement with no outlet above is reported even where another has one", () => {
+    const badge = run().paramsOffRoute.find((issue) => issue.component === "Badge");
+    expect(badge?.why).toBe("no-outlet");
   });
 
   test("a read written outside render is still found", () => {
