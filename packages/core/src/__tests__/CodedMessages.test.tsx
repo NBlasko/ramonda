@@ -156,15 +156,6 @@ describe("the ten that were messages", () => {
   }
   const Missing = undefined as unknown as typeof Present;
 
-  /**
-   * `RMD041` — a listener whose target resolver returns nothing — is not here, and the reason is
-   * worth writing down rather than leaving as a gap: no supported decorator reaches it from an
-   * ordinary mount. `@onWindow` and `@onDocument` always
-   * resolve a global, and a component with no host throws at construction instead. It is reachable
-   * only by a resolver that gives up, which is why the check exists — but nothing in the public API
-   * can produce one to test with.
-   */
-
   test("RMD043 — a <meta> with nothing to identify it", async () => {
     class Page extends Component {
       // `as never`: the MetaTag union makes this a type error at the call site, which is the first

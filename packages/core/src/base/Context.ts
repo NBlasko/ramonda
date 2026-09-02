@@ -93,6 +93,32 @@ export interface ContextOptions<T extends object = Record<string, unknown>> {
 }
 
 /**
+ * What to call the component in a context diagnostic — its name, or `""` when there is none.
+ *
+ * Two different absences arrive here as the same empty string, and both read better with the
+ * subject dropped than with a placeholder standing in for it:
+ *
+ * - In PRODUCTION there is no `holder` at all. It is the DEV-only twin of `runtime.owner`, and
+ *   RMD056's **throw** is the one report on this page that survives the prod build — so it has no
+ *   name to print and says "this component" instead.
+ * - In DEV the holder is always there. Planted, to be sure of it rather than to assume: a throw on
+ *   `!owner.holder` here passes all 1443 tests, and an unconditional throw in its place fails four
+ *   of them — so the plant was reached rather than merely quiet. Re-measured after `createContext`
+ *   grew its `stableProps` option, because a clean merge is not a checked one. What
+ *   is still empty is `constructor.name` for a class expression assigned to nothing, which a
+ *   factory or a test really can produce — and measured, that used to print
+ *   `[RMD056]  mounts ThemeProvider twice`, with the subject missing and a double space where it
+ *   had been.
+ *
+ * Which is why every use below is `||` and not `??`: an empty name is the same question as an
+ * absent one. `helpers/utils.ts`'s `displayName` cannot serve here — it answers "Unknown", and
+ * these messages branch on not knowing rather than printing a stand-in.
+ */
+function holderName(owner: Runtime): string {
+  return (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name ?? "";
+}
+
+/**
  * Creates a context as a pair of hooks:
  *
  *   const [ThemeProvider, ThemeConsumer] = createContext({ color: "default" });
@@ -216,12 +242,12 @@ export function createContext<T extends object>(
        * finds its own with nothing passed down.
        */
       if (Object.hasOwn(owner.context, contextId)) {
-        const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
-        const owning = holder ?? "this component";
+        const holder = holderName(owner);
+        const owning = holder || "this component";
         if (__DEV__) {
           diagnose(
             "RMD056",
-            `${contextId}:${holder ?? "?"}`,
+            `${contextId}:${holder || "?"}`,
             `${holder ? `<${holder} /> ` : ""}uses ${Provider.name} twice, and the second would replace ` +
               `the first for every descendant.`,
             { keys: contextKeys.join(", ") },
@@ -242,8 +268,7 @@ export function createContext<T extends object>(
         // BEFORE the provider, so it resolved the channel from above and this publish will never
         // reach it. See `debug/contextPairing.ts`.
         if (hasContextConsumer(owner, contextId)) {
-          const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
-          reportConsumedAboveProvider(contextId, holder, Provider.name, Consumer.name);
+          reportConsumedAboveProvider(contextId, holderName(owner), Provider.name, Consumer.name);
         }
       }
 
@@ -333,10 +358,10 @@ export function createContext<T extends object>(
          * ContextOptions. Deduped per context + owning component, so each site says it once.
          */
         if (!channel && options?.optional !== true) {
-          const holder = (owner.holder as { constructor: { name: string } } | undefined)?.constructor.name;
+          const holder = holderName(owner);
           diagnose(
             "RMD003",
-            `${contextId}:${holder ?? "?"}`,
+            `${contextId}:${holder || "?"}`,
             `${holder ? `<${holder} /> mounts ` : ""}${Consumer.name} with no Provider on any ancestor, ` +
               `so every key it reads gets the default below.`,
             defaultValue,

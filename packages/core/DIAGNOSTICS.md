@@ -38,23 +38,23 @@ so a component that misuses the same property on every render reports once.
 | Code | Severity | Problem |
 | --- | --- | --- |
 | `RMD001` | error | State written during `render()` |
-| `RMD002` | error | Duplicate `key` among siblings |
-| `RMD003` | error | Context consumed with no Provider above it |
-| `RMD004` | error | Component wrote to its own props |
+| `RMD002` | error | Duplicate `key` in a child list |
+| `RMD003` | error | Context consumed without a provider above it |
+| `RMD004` | error | Props mutated by the receiving component |
 | `RMD005` | error | Array in state mutated in place |
 | `RMD006` | error | Timer still running after unmount |
 | `RMD007` | error | Server and client rendered different output |
 | `RMD008` | warning | State changed after the component was unmounted |
-| `RMD009` | error | Update loop — a component never stopped re-rendering |
+| `RMD009` | error | Update loop: a component never stopped re-rendering |
 | `RMD011` | error | A function was used as a JSX tag |
 | `RMD013` | error | A list item produced nothing |
-| `RMD015` | error | A hook wrote to its own props |
+| `RMD015` | error | A hook's props assigned by the hook that received them |
 | `RMD016` | error | A component updated while its element is not in the document |
 | `RMD017` | error | A deferred hydration never resumed |
 | `RMD018` | error | State written during a `@compute` |
 | `RMD019` | error | State set to a value that cannot be serialized |
 | `RMD020` | warning | `render()` produced a different value the second time |
-| `RMD021` | error | Randomness during a render, a `@compute`, a memoised handler or a hook's props |
+| `RMD021` | error | A random number was read while a value was being derived |
 | `RMD022` | warning | A hook's props callback built a new value for the same contents |
 | `RMD023` | warning | Children built from an array need a key |
 | `RMD024` | warning | A `@compute` recomputes without its answer changing |
@@ -73,11 +73,10 @@ so a component that misuses the same property on every render reports once.
 | `RMD038` | error | A `@watchProp` selector threw |
 | `RMD039` | warning | `class` where `className` was meant |
 | `RMD040` | error | More than one `@ShouldUpdateOnPropsChange` on one class |
-| `RMD041` | warning | A listener with no target |
 | `RMD043` | warning | A `<meta>` with nothing to identify it |
 | `RMD044` | error | An unknown element type in JSX |
 | `RMD046` | warning | More than one `@StableProps` on one class |
-| `RMD047` | error | A memoized handler was given an argument it cannot key on |
+| `RMD047` | error | A `@memoized` member was given an argument it cannot key on |
 | `RMD048` | error | Object in state changed in place |
 | `RMD049` | error | Two lazy functions with the same source |
 | `RMD050` | warning | A decorator whose effect this member already has |
@@ -178,7 +177,7 @@ and never again, and its inline functions keep their identity. `__tests__/PropsB
 both halves — and, in its second suite, what a DEVELOPMENT build adds on top: a second call at mount for
 RMD022's comparison and one per render for RMD027's freshness probe, both discarded.
 
-### RMD033–RMD041 — the nine that were messages before they were codes
+### RMD033–RMD040 — the eight that were messages before they were codes
 
 Each of these was a `ramondaLog` call with its advice written inline: a real fault, reported, but with
 no stable name to search for, no `fix` a panel could render apart from the message, and no way for a
@@ -221,7 +220,7 @@ changes nothing — and therefore schedules nothing — is not reported.
 Fix: `@compute` for derived values, `@watchProp` to sync from props, or write from
 `@created` / an event handler.
 
-### RMD002 — Duplicate key among siblings
+### RMD002 — Duplicate `key` in a child list
 
 Two children with the same key means only one can be matched; the other is treated
 as new, so state and DOM go to the wrong node. Use a stable id from the data, not
@@ -230,7 +229,7 @@ the array index.
 Mixing keyed and non-keyed children is **not** reported — `<ul><li>Header</li>{items.map(...)}</ul>`
 is legitimate, and reconciliation handles it.
 
-### RMD003 — Context consumed without a provider
+### RMD003 — Context consumed without a provider above it
 
 The consumer silently falls back to the context's default value, which usually
 looks like "my data never arrives".
@@ -292,7 +291,7 @@ that RENDERS a node.
 Splitting the keys between two Providers is not a way out, and the types already
 close it: a Provider takes `options: T` whole, so the second cannot supply half.
 
-### RMD057 — A context consumed above its provider
+### RMD057 — A context consumed above the provider on the same component
 
 A consumer resolves its channel ONCE, when it is constructed, and hooks are
 constructed in field-declaration order. So a consumer declared above the
@@ -325,7 +324,7 @@ report names the component, because the component's field order decides it.
 arrangement before anything runs. It sees only a pair written directly, so a
 provider wrapped in a hook of its own is this diagnostic's to catch.
 
-### RMD004 — Props mutated
+### RMD004 — Props mutated by the receiving component
 
 Props are owned by the parent, so the write has nothing to write to. The proxy's
 `set` trap **throws**, in every build.
@@ -464,7 +463,7 @@ the damage was wasted renders and retention, not resurrected listeners.
 `@destroyed` runs *before* the flag is set, so tearing down your own state there
 stays silent.
 
-### RMD009 — Update loop
+### RMD009 — Update loop: a component never stopped re-rendering
 
 Rendering wrote state that scheduled another render of the same component, with
 no end. Two ways in: two `@updated`s that write what the other reads, and a write
@@ -558,7 +557,7 @@ subclass that never mentions `handleClick`. That took a fix; it used
 to fail silently, which is exactly the kind of thing that makes people write
 constructors again.
 
-### RMD013 — a list item produced nothing
+### RMD013 — A list item produced nothing
 
 `helpers/listEngine.ts`, on the result of the row callback. The item is skipped rather than
 rendered, so the list on screen is a row shorter than the array — which is the kind of fault
@@ -709,7 +708,7 @@ The framework's own test suites turn the check off in their setup files
 (`configureDev({ strictRender: false })`), because they observe render ORDER by logging from
 `render()` — precisely the impurity this reports.
 
-### RMD021 — randomness during a render, a @compute, a memoised handler or a hook's props
+### RMD021 — A random number was read while a value was being derived
 
 `Math.random`, `crypto.randomUUID` and `crypto.getRandomValues` are patched in a
 development build (the trick `timerGuard` already uses) and report when they are called
@@ -770,7 +769,7 @@ or ambient state during a render — `getBoundingClientRect()`, `window.innerWid
 much as a forced layout and a dependency on something outside the tree; `@updated` is
 where that work belongs.
 
-### RMD022 — a hook's props callback built a new value for the same contents
+### RMD022 — A hook's props callback built a new value for the same contents
 
 The callback is called twice in one tick and the bags compared, key by key, with the same
 `classify` RMD020 uses — so the findings and their names are the same: `handler`, `object`,
@@ -823,7 +822,7 @@ objects, so comparing them by identity would report the fix as the fault. Conten
 DIFFER between the two calls are still reported: a wrapper cannot launder
 non-determinism.
 
-### RMD023 — children built from an array need a key
+### RMD023 — Children built from an array need a key
 
 Structural, and it has to be: RMD020's comparison cannot see a `.map()` at all — the mapper
 goes to `Array.prototype.map` and is never stored, and the output is a run of fresh vnodes,
@@ -853,7 +852,7 @@ against. One keyed child anywhere means the app is managing identity and this do
 second-guess it. Nested arrays and `list()` descriptors are skipped: each is matched as one
 child, so a key on it answers a question nobody asked.
 
-### RMD024 — a @compute recomputes without its answer changing
+### RMD024 — A `@compute` recomputes without its answer changing
 
 Recorded in `debug/computeChurn.ts`, from the recompute site in the `compute` decorator: one
 bounded `valueEqual` against the previous value, per recompute, DEV only. Reported after three
@@ -875,7 +874,7 @@ test asserts the report COUNT for that reason rather than its presence.
 is never invalidated, so it never recomputes and is never observed. The counter case is caught
 only when the compute is invalidated by something else.
 
-### RMD030 — state written during [INSPECT]()
+### RMD030 — State written during [INSPECT]()
 
 The third of the phase family, and built the same way as the other two: a slot is marked around the
 call, and the `@state` setter reads it. `inspectPhase` in `debug/renderPhase.ts`, set by `readDetail`
@@ -900,7 +899,7 @@ which is what the severity rule is about.
 not fire, because it watches for a component that will not stop rendering and this one only turns
 while somebody is looking.
 
-### RMD029 — a boolean attribute given the string "false"
+### RMD029 — A boolean attribute given the string "false"
 
 `debug/booleanAttribute.ts`, called from `setNextOnenhancedNode` — the point where the value is
 FINAL, after anything that was going to normalise it has. Two comparisons, and only for a string: a
@@ -927,7 +926,7 @@ carries them, and a diagnostic that fires on correct code teaches people to skip
 **Nothing in the types catches it:** `RamondaArgs` is `[val: Lowercase<string>]: any`, so every
 attribute value compiles.
 
-### RMD028 — an element the HTML parser is not allowed to keep here
+### RMD028 — An element the HTML parser is not allowed to keep here
 
 `debug/domNesting.ts`, called from the same point as `checkHostPlacement` — which already has the
 parent node and the freshly built child in hand. Reads `nodeName` on both, nothing else: no layout,
@@ -961,7 +960,7 @@ parser merely allows is absent, per the standard below.
 range rather than an element: the pair this reads is the real parent and the real child, whatever
 number of components sit between them in the JSX.
 
-### RMD027 — a props callback reads a value that is not reactive
+### RMD027 — A props callback reads a value that is not reactive
 
 The safety net under the props-callback cache, in `debug/propsStability.ts` next to RMD022.
 
@@ -992,7 +991,7 @@ check, which then fired from inside a check of its own — reporting churn on a 
 callback was not going to be called, and, having no `declared` list to hand down, naming every
 `@StableProps` key as unstable. See `probeProps` in `helpers/common.ts`.
 
-### RMD031 — a list item that is not an element
+### RMD031 — A list item that is not an element
 
 `helpers/listEngine.ts`, one line above the assignment it guards. A row's key lives on the vnode
 and the diff matches rows on it, so an item that is not one element has nowhere to carry its

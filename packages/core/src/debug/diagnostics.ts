@@ -69,7 +69,6 @@ export type DiagnosticCode =
   | "RMD038"
   | "RMD039"
   | "RMD040"
-  | "RMD041"
   | "RMD043"
   | "RMD044"
   | "RMD046"
@@ -175,7 +174,10 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
   },
   RMD009: {
     severity: "error",
-    title: "Update loop — a component never stopped re-rendering",
+    // A colon rather than an em dash: the reference writes a heading as "## RMD009 — <title>", and a
+    // title carrying its own dash reads as two separators there. The production counter says it the
+    // same way — `Task.ts`, "Update loop: one update rebuilt components …".
+    title: "Update loop: a component never stopped re-rendering",
     fix: "Rendering wrote state that scheduled another render of the same component, forever; without this guard the tab freezes. The usual causes are two @updated methods writing what the other reads (they re-trigger each other), and a write in render() itself (see RMD001). A post-render write must converge — assigning the same value is not a change, so it schedules nothing. Derive values with @compute instead of syncing them with an effect, and if two pieces of state must agree, make one of them @compute from the other rather than writing both.",
   },
   RMD011: {
@@ -333,11 +335,6 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "error",
     title: "More than one `@ShouldUpdateOnPropsChange` on one class",
     fix: 'There can only be one answer to "take these props?", so one of them decides and the others never run — a gate that looks present and is not. **The HIGHEST of them is the one that decides**: the last declaration applied is the one that stands, and class decorators apply bottom-up, so the one written furthest from the class is applied last — the opposite of RMD032, where a member decorator initialises top to bottom. Remove the extras and combine their conditions into one callback. A SUBCLASS declaring its own is not this — that is an override, and it is silent on purpose.',
-  },
-  RMD041: {
-    severity: "warning",
-    title: "A listener with no target",
-    fix: "The handler is never attached, so the event it waits for cannot arrive. A listener decorator resolves its target when its effect runs on mount, and this one resolved nothing. `@onWindow` and `@onDocument` are the only two, and they answer with `window` and `document` — which are there for as long as the page is, and effects do not run on the server. So this means an effect ran somewhere with no DOM at all: a component mounted in a bare Node process, or a test environment set up without one. Check where the mount happened rather than the listener.",
   },
   RMD043: {
     severity: "warning",

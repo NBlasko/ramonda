@@ -88,6 +88,7 @@ export type {
   UnknownRoleIssue,
   UnnamedFrameIssue,
   UnnamedImageIssue,
+  LensPathThroughAGapIssue,
   UnexposedEnvReadIssue,
   RowReadsAPlainFieldIssue,
   UnserializableStateIssue,

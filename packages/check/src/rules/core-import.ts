@@ -39,8 +39,28 @@ export function importedFromCore(
   resolveStep?: (node: ts.Node) => ts.Symbol | undefined,
   exportedAs?: string,
 ): boolean {
+  return importedFromPackage(id, "@ramonda/core", resolveLocal, resolveStep, exportedAs);
+}
+
+/**
+ * The same question about ANY `@ramonda` package, which is what the walk above always answered.
+ *
+ * `lens-path-through-a-gap` needs it for `focusOn`, and needs it for the reason every caller of
+ * {@link importedFromCore} needs that one: an app may have a `focusOn` of its own, or a local of
+ * that name shadowing the import, and a rule going by the written name would judge somebody else's
+ * function by the lens's semantics. Nothing about the walk was ever specific to core — the
+ * specifier was a literal in two places and the sub-path form (`@ramonda/core/jsx-runtime`) is a
+ * shape every package here has.
+ */
+export function importedFromPackage(
+  id: ts.Node,
+  pkg: string,
+  resolveLocal: (node: ts.Node) => ts.Symbol | undefined,
+  resolveStep?: (node: ts.Node) => ts.Symbol | undefined,
+  exportedAs?: string,
+): boolean {
   if (!ts.isIdentifier(id)) return false;
-  return reaches(resolveLocal(id), resolveStep, exportedAs, 0);
+  return reaches(resolveLocal(id), pkg, resolveStep, exportedAs, 0);
 }
 
 /**
@@ -166,6 +186,7 @@ function nameAtCore(
  */
 function reaches(
   symbol: ts.Symbol | undefined,
+  pkg: string,
   resolveStep: ((node: ts.Node) => ts.Symbol | undefined) | undefined,
   exportedAs: string | undefined,
   hop: number,
@@ -174,7 +195,7 @@ function reaches(
 
   return (symbol.declarations ?? []).some((declaration) => {
     const from = specifierOf(declaration);
-    if (from === "@ramonda/core" || from?.startsWith("@ramonda/core/") === true) {
+    if (from === pkg || from?.startsWith(`${pkg}/`) === true) {
       return exportedAs === undefined || exportedName(declaration) === exportedAs;
     }
     if (resolveStep === undefined) return false;
@@ -184,7 +205,7 @@ function reaches(
      * `ExportSpecifier` in that module, and the hop after it on core's own import.
      */
     const named = ts.isImportSpecifier(declaration) || ts.isExportSpecifier(declaration) ? declaration.name : undefined;
-    return named === undefined ? false : reaches(resolveStep(named), resolveStep, exportedAs, hop + 1);
+    return named === undefined ? false : reaches(resolveStep(named), pkg, resolveStep, exportedAs, hop + 1);
   });
 }
 

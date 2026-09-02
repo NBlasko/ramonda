@@ -95,6 +95,7 @@ import { headingSkipsALevel } from "./heading-skips-a-level";
 import { contextConsumedAboveItsProvider } from "./context-consumed-above-its-provider";
 import { clientOnlyRequestRead } from "./client-only-request-read";
 import { oneProviderPerComponent } from "./one-provider-per-component";
+import { lensPathThroughAGap } from "./lens-path-through-a-gap";
 import { unexposedEnvRead } from "./unexposed-env-read";
 import { rowReadsAPlainField } from "./row-reads-a-plain-field";
 import { serverEnvInSharedCode } from "./server-env-in-shared-code";
@@ -252,6 +253,7 @@ export { duplicateId, type DuplicateIdIssue } from "./duplicate-id";
 export { headingSkipsALevel, type HeadingSkipsALevelIssue } from "./heading-skips-a-level";
 export { clientOnlyRequestRead, type ClientOnlyRequestReadIssue } from "./client-only-request-read";
 export { oneProviderPerComponent, type OneProviderPerComponentIssue } from "./one-provider-per-component";
+export { lensPathThroughAGap, type LensPathThroughAGapIssue } from "./lens-path-through-a-gap";
 export { unexposedEnvRead, type UnexposedEnvReadIssue } from "./unexposed-env-read";
 export { computeTakesNoArguments, type ComputeTakesNoArgumentsIssue } from "./compute-takes-no-arguments";
 export { rowReadsAPlainField, type RowReadsAPlainFieldIssue } from "./row-reads-a-plain-field";
@@ -309,6 +311,7 @@ export const MODULE_RULES = [
   unexposedEnvRead,
   rowReadsAPlainField,
   devGuardAsAnExpression,
+  lensPathThroughAGap,
 ] as const;
 
 /**
