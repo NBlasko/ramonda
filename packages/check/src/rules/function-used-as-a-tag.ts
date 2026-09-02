@@ -68,16 +68,33 @@ export interface FunctionUsedAsATagIssue {
  * answers `undefined`, which is the silence contract: a maybe is the one thing this may not report.
  */
 function functionBehind(
-  tagName: ts.JsxTagNameExpression,
+  tagName: ts.Node,
   resolve: Resolver,
+  seen: Set<ts.Node> = new Set(),
 ): ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression | undefined {
-  if (!ts.isIdentifier(tagName)) return undefined;
+  if (!ts.isIdentifier(tagName) || seen.has(tagName)) return undefined;
+  seen.add(tagName);
+
   const declaration = resolve(tagName)?.declarations?.[0];
   if (declaration === undefined) return undefined;
   if (ts.isFunctionDeclaration(declaration)) return declaration;
   if (!ts.isVariableDeclaration(declaration) || declaration.initializer === undefined) return undefined;
+
   const held = declaration.initializer;
-  return ts.isArrowFunction(held) || ts.isFunctionExpression(held) ? held : undefined;
+  if (ts.isArrowFunction(held) || ts.isFunctionExpression(held)) return held;
+
+  /**
+   * An ALIAS is one hop, and the fault survives it.
+   *
+   * `const Row = SideBar` then `<Row />` is the same function in the same position, and reading
+   * only the initializer's shape went silent on it — the exact failure `one-hop-away` exists to
+   * catch, in a rule written after that file. Found because the user said the point is that a
+   * function must not be callable as a component, which is a claim about the CALL SITE however the
+   * name got there.
+   *
+   * Cycle-guarded: `const A = B; const B = A` terminates rather than recursing.
+   */
+  return ts.isIdentifier(held) ? functionBehind(held, resolve, seen) : undefined;
 }
 
 /**

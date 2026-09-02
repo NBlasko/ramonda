@@ -15,9 +15,11 @@ share one `this`, so they can reach each other without being passed around, and 
 component has a real identity that survives re-renders. State is just a field; there
 is no separate place for it to live and no rules about when you may read it.
 
-It also makes reuse first-class. Because a component is a class, one component can
-*extend* another — keep what it had, change what differs — so reuse does not mean
-nesting, and nesting costs nothing. See [extending components](/composition/inheritance).
+It also makes reuse first-class. Because a component is a class, one component can *extend*
+another — keep what it had, change what differs, and reach the original with `super.render()`.
+That is something a wrapper cannot offer, and it is available alongside wrapping rather than
+instead of it: neither adds an element to the page. See [extending
+components](/composition/inheritance) for which one a given job wants.
 
 ## Why no fragment
 
