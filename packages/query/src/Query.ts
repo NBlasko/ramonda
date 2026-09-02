@@ -1039,18 +1039,18 @@ export class Query<TData, K extends QueryKey = QueryKey> extends Hook<QueryProps
     }
     if (entry.status === "error") {
       /**
-       * `entry.error` is `Error | undefined` on the entry and an `Error` here, and the narrowing has
-       * to be written because the two facts live apart: `status` and `error` are separate fields, so
-       * nothing tells the compiler that one is only ever `"error"` while the other is set.
+       * Asserted rather than defaulted, because the fallback could not run.
        *
-       * The fallback is not a guess about a normal state — a failure with no error is a bug in this
-       * package, and the message says so rather than leaving the arm blank.
+       * `status` and `error` are separate fields, so nothing tells the compiler that one is only ever
+       * `"error"` while the other is set — but the entry keeps them together. The one place that
+       * writes `status = "error"` assigns a normalised `Error` on the next line (`QueryClient`'s
+       * catch), and all three places that clear `error` set `status = "success"` immediately before
+       * doing so. A restored failure comes back as `ServerQueryError`, which is an `Error` too.
+       *
+       * A `??` here would have shipped a branch nothing can reach — two more paths to read and none
+       * to trust, which is the argument this branch already made for deleting one in `reanchor`.
        */
-      return {
-        status: "error",
-        data: entry.data,
-        error: entry.error ?? new Error("The query failed and the reason was lost."),
-      };
+      return { status: "error", data: entry.data, error: entry.error! };
     }
     return { status: "pending", data: undefined, error: undefined };
   }

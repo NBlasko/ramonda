@@ -163,7 +163,7 @@ export class Mutation<TData, TVars = void> extends Hook<MutationProps<TData, TVa
       data: this.lastData,
       // Serialised here rather than handed over raw: an Error survives the panel's value tree as
       // `{}`, which reads as "no error" beside a status that says otherwise.
-      error: this.lastError && `${this.lastError.name}: ${this.lastError.message}`,
+      error: this.lastError ? `${this.lastError.name}: ${this.lastError.message}` : undefined,
       isInFlight: this.controller !== undefined,
     };
   }
