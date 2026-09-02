@@ -57,12 +57,40 @@ class Sidebar extends Component<SidebarProps> {
     );
   }
 
+  /**
+   * Whether the page being read is in this group — which is the one that opens.
+   *
+   * The second test is for the pages the sidebar does NOT list: a reader on
+   * `/rules/row-without-a-key` should find Reference open, because `/rules` is the entry that
+   * would have taken them there. Without it the accordion is shut on exactly the pages a reader
+   * most needs to get out of.
+   */
+  holdsTheReader(items: readonly { path: string }[]): boolean {
+    const here = this.route.pathname;
+    return items.some((page) => here === page.path || here.startsWith(`${page.path}/`));
+  }
+
+  /**
+   * A group is `<details>`, and that is a decision rather than a default.
+   *
+   * The links inside a CLOSED one are still in the HTML, so a crawler reaches every page whatever
+   * the reader has open — which a sidebar that drew its items on click would not. It is also the
+   * accessible control for this without writing one: a summary is a button, it takes the keyboard,
+   * and it announces its own state.
+   */
   renderGroup([section, items]: (typeof grouped)[number]): VNode {
+    if (!section) {
+      return (
+        <div className="sidebar-group">
+          <ul>{list(items, this.renderPage)}</ul>
+        </div>
+      );
+    }
     return (
-      <div className="sidebar-group">
-        {section ? <h4>{section}</h4> : null}
+      <details className="sidebar-group" open={this.holdsTheReader(items)}>
+        <summary>{section}</summary>
         <ul>{list(items, this.renderPage)}</ul>
-      </div>
+      </details>
     );
   }
 

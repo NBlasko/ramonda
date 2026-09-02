@@ -100,12 +100,53 @@ nav::-webkit-scrollbar-thumb {
   background: var(--rmd-line);
   border-radius: 4px;
 }
-.sidebar-group h4 {
+.sidebar-group h4,
+.sidebar-group > summary {
   margin: 20px 0 8px;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--rmd-muted);
+}
+/* A summary is a button, so it gets a button's affordances: a pointer, a hit area that matches the
+   links under it, and a visible focus ring for the keyboard. */
+.sidebar-group > summary {
+  cursor: pointer;
+  padding: 4px 10px;
+  margin-left: -10px;
+  margin-right: -10px;
+  border-radius: 6px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sidebar-group > summary::-webkit-details-marker {
+  display: none;
+}
+.sidebar-group > summary:hover {
+  background: var(--rmd-code-bg);
+  color: var(--rmd-fg);
+}
+/* The marker is drawn rather than borrowed, so it points the same way in every browser and can be
+   sized against 12px uppercase text — the default triangle is neither. */
+.sidebar-group > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  transition: transform 120ms ease;
+  flex: 0 0 auto;
+}
+.sidebar-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-group > summary::before {
+    transition: none;
+  }
 }
 .sidebar-group ul {
   list-style: none;
