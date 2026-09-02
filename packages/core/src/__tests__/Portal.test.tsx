@@ -267,6 +267,58 @@ describe("Portal follows a reactive target", () => {
     b.remove();
   });
 
+  /**
+   * Absent at mount, supplied later — which the class doc promises and nothing measured.
+   *
+   * It is not an error state. A portal declared beside a container that is not on screen yet is
+   * ordinary: a toast layer revealed on first use, a modal root a route mounts. So it places nothing,
+   * says nothing, and places the children the moment the target arrives.
+   *
+   * **The target has to be read from a SIGNAL for that to happen**, and this is the shape that makes
+   * the promise true. `reconcile` runs again on `@watchProp(props.children)`, and `children` only gets
+   * a new identity when the props factory re-runs — which it does when a signal it read has moved.
+   * A factory that reads none is built once: `target: document.getElementById("x")!` with nothing
+   * reactive around it places nothing and then never tries again. The class doc calls that "the
+   * uncommon case, worth knowing"; the portal page now says it too.
+   */
+  test("a target absent at mount is placed the moment it arrives", async () => {
+    class Toast extends Component {
+      /** A signal, which is what makes the props factory run again. */
+      @state root: Element | null = null;
+
+      portal = this.use(Portal, (self: Toast) => ({
+        children: <b id="late-toast">saved</b>,
+        // biome-ignore lint/style/noNonNullAssertion: null at mount is the case under test
+        target: self.root as Element,
+      }));
+
+      render() {
+        return <div id="toast-app">app</div>;
+      }
+    }
+
+    const { container, instance, settle } = await getDOM<Toast>(<Toast />);
+
+    // Nothing placed, nothing thrown, and the owner rendered normally.
+    expect(document.getElementById("late-toast")).toBeNull();
+    expect(container.querySelector("#toast-app")!.textContent).toBe("app");
+
+    const root = document.createElement("aside");
+    root.id = "late-root";
+    document.body.appendChild(root);
+
+    try {
+      instance.root = root;
+      await settle();
+
+      // Placed on the render that first had a target — not lost.
+      expect(root.querySelector("#late-toast")).not.toBeNull();
+      expect(root.querySelector("#late-toast")!.textContent).toBe("saved");
+    } finally {
+      root.remove();
+    }
+  });
+
   test("a component nested inside a moved block re-renders into the NEW target", async () => {
     /**
      * A region carries the DOM parent it sits in, and the move has to reach every one of them.

@@ -36,6 +36,27 @@ class Toast extends Component<{ message: string }> {
 `children` is whatever an expression slot accepts — one element, a string, or an array —
 and `target` is the element it renders into.
 
+**If the target may not exist yet, read it from state.** The lookup above is right when the container
+is in your `index.html`, because it is there before the app starts. When it is not — a toast layer
+mounted on first use, a modal root a route brings in — a portal placed once with `null` places
+nothing, and a factory that read no signal is never asked again:
+
+```tsx
+class Toast extends Component {
+  @state root: Element | null = null;                 // a signal, so the factory re-runs
+
+  portal = this.use(Portal, (self: Toast) => ({
+    children: <div className="toast">saved</div>,
+    target: self.root as Element,
+  }));
+}
+```
+
+Nothing is placed while `root` is `null`, nothing is reported — an absent target is a state, not a
+mistake — and the children go in on the render where it first has one. Written as
+`document.getElementById("toast-root")!` with nothing reactive around it, the portal would place
+nothing and never try again.
+
 ## It owns only its own nodes
 
 Two portals into one target coexist, and neither touches what was already there: a shell
