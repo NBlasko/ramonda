@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, mounted, state } from "@ramonda/core";
+import { Component, bootstrap, mounted, state } from "@ramonda/core";
 
 declare class Dates {
   setHours(n: number): void;
@@ -71,7 +71,6 @@ class Inventory extends Component {
   }
 }
 
-@Host("div")
 class Restocked extends Inventory {
   @mounted seed() {
     /* REPORTED — the base's array, changed in place. */

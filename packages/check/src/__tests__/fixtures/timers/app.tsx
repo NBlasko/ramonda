@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, destroyed, interval, mounted, state } from "@ramonda/core";
+import { Component, bootstrap, destroyed, interval, mounted, state } from "@ramonda/core";
 
 /**
  * A raw interval a component never clears.
@@ -97,7 +97,6 @@ class Once extends Component {
  * A base's members are the component's members, so a `@destroyed` on a shared base answers an
  * interval its subclass started. Reading one class body missed that and reported the subclass.
  */
-@Host("div")
 abstract class Clearing extends Component {
   protected handle = 0;
 
@@ -126,7 +125,6 @@ class StartsBelow extends Clearing {
  * reporting it would be a guess. A local or a discarded id stays certain, because no subclass can
  * reach either.
  */
-@Host("div")
 abstract class StartsAbove extends Component {
   protected handle = 0;
 

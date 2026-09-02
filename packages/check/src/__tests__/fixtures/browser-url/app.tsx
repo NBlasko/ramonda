@@ -41,7 +41,7 @@ class OtherSpellings extends Component {
  * ✓ A LOCAL called `self`, which is the commonest of the four to be one.
  *
  * `const self = this` is an ordinary line, and `(self) => …` is the framework's OWN convention for
- * a `@Host` props callback. Both read a component's own field and neither is the global.
+ * a hook's props callback. Both read a component's own field and neither is the global.
  */
 class SelfIsALocal extends Component {
   route = this.use(Router);

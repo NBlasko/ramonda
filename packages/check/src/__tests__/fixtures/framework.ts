@@ -55,7 +55,6 @@ export declare function renderPage(vnode: unknown): Promise<{ body: string }>;
 export declare function list<T>(each: T[], render: (item: T) => unknown): unknown;
 
 export declare function catchError(value: unknown, context: unknown): void;
-export declare function Host(tag: string, props?: unknown): (ctor: unknown) => void;
 export declare function ShouldUpdateOnPropsChange(decide: unknown): (ctor: unknown) => void;
 export declare function StableProps(...keys: string[]): (ctor: unknown) => void;
 export declare function state(value: unknown, context: unknown): void;

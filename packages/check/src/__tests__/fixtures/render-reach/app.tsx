@@ -1,4 +1,4 @@
-import { Component, Host, bootstrap, compute, state } from "@ramonda/core";
+import { Component, bootstrap, compute, state } from "@ramonda/core";
 
 declare const rows: string[];
 
@@ -65,7 +65,6 @@ class Immediate extends Component {
 }
 
 /** `render` written as an arrow FIELD, which is a property rather than a method. */
-@Host("div")
 class ArrowRender extends Component {
   @state n = 0;
 
@@ -93,8 +92,8 @@ class ComputedMethod extends Component {
   }
 }
 
-/** The `@Host` props callback, which runs during the render and is in no member body. */
-class HostProps extends Component {
+/** An expression in the markup, which runs during the render and is in no member body. */
+class InlineInMarkup extends Component {
   render() {
     return (
       <div id={`x-${Date.now()}`}>
@@ -109,4 +108,4 @@ bootstrap(<Deferred />, null);
 bootstrap(<Immediate />, null);
 bootstrap(<ArrowRender />, null);
 bootstrap(<ComputedMethod />, null);
-bootstrap(<HostProps />, null);
+bootstrap(<InlineInMarkup />, null);

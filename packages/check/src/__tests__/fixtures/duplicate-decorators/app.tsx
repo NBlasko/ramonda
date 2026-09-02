@@ -4,7 +4,6 @@ import {
   catchError,
   compute,
   createContext,
-  Host,
   ShouldUpdateOnPropsChange,
   StableProps,
   state,
@@ -101,7 +100,6 @@ class Base extends Component {
   }
 }
 
-@Host("div")
 class Sub extends Base {
   @catchError ownHandle() {}
 }

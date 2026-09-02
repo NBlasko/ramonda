@@ -8,7 +8,7 @@ export class HomePage extends Component {
         <h2>Ramonda Router 🌸</h2>
         <p className="muted">
           State-first, race-free routing. Click the links, use the browser's Back/Forward, or open a link in a new tab
-          (real <code>&lt;a href&gt;</code> via <code>@Host("a")</code>).
+          (a real <code>&lt;a href&gt;</code>, written in <code>Link</code>'s own render).
         </p>
         <ul>
           <li>
