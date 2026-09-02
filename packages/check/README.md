@@ -588,6 +588,62 @@ though a node carries a component class inside it, a mapped type is not read, an
 function that returns a component: answering those means asking for a TYPE, and this resolver is on
 symbols.
 
+## What a package may claim
+
+Every package ships its graph. `--certify` says how much of it can be trusted:
+
+```bash
+$ ramonda-check tsconfig.json --certify
+
+[ramonda-certify] @ramonda/router 0.11.0
+
+  Covers 6 component(s) and hook(s), 4 of them exported.
+
+  ✓ complete  every component it names, it can follow
+  ✓ plain     nothing needed an exemption written beside it
+  ✓ quiet     no rule warns about anything it ships
+  ✓ current   the graph fingerprints the declaration file it ships
+
+  Every claim holds. An app that installs this can walk its graph end to end.
+```
+
+A claim that is not held comes FIRST, and carries the work rather than a count:
+
+```
+  ✗ plain     nothing needed an exemption written beside it
+
+      src/render.ts:132:7
+        bootstrap is exempted: the caller hands us the tree to mount, which is what
+        this helper is for
+```
+
+**There is no score, and that is deliberate.** A number tells a publisher where they stand and
+nothing about what to do; the honest answer to *how far should I go* is a list that gets shorter.
+Every unheld claim names the file, the line, and — where a hole has a spelling to suggest — what to
+write instead.
+
+**The graph ships either way.** A certificate that gated it would give a publisher who cannot
+qualify a reason to ship nothing at all, and the consumer would lose twice: no map AND no warning.
+
+**Claims are scoped to the package's own files.** Measured before that filter existed:
+`@ramonda/form`, `@ramonda/query` and `@ramonda/router` each reported two written exemptions, and
+all six were the same two lines in `@ramonda/testing-library`, pulled into the program by their
+tests. Three packages would have carried somebody else's excuse.
+
+**A package with nothing in its graph prints no claims at all.** Every one would hold — there is
+nothing to fail them with — and a tick reads as approval whatever sentence sits beside it. Printing
+them would make *ship no components* the cheapest route to a perfect certificate there is.
+
+### What a certificate cannot do
+
+A publisher writes their own graph, so nothing here proves that graph is a truthful reading of the
+source. `current` proves it matches the declaration file **shipped**, which is a smaller claim than
+it looks.
+
+What makes a certificate earned is that a third party can REPRODUCE it. npm provenance attests
+which commit and which public workflow built a tarball; from there anyone can run this command on
+that commit and compare. Trust the process, not the file.
+
 ## What loads when
 
 A bundler splits at a dynamic import and nowhere else, so the graph splits at a `lazy` edge and

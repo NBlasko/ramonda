@@ -6,6 +6,7 @@ import { analyzeProject } from "./analyze";
 import { graphHtml } from "./graph-html";
 import { diffGraphs, refuseToDiff } from "./diff";
 import type { ComponentGraph } from "./graph";
+import { certify, packageRootOf, renderCertificate } from "./certify";
 import { type AnyRule, failingRules, RULES } from "./rules";
 import { filesOf, splitOf } from "./split";
 
@@ -24,6 +25,10 @@ import { filesOf, splitOf } from "./split";
  *   which nothing at runtime can report, because the form cannot see who is rendering.
  *
  * Meant to sit in an app's `build` script: a check nobody runs is a check that does not exist.
+ *
+ * `--certify` prints what this PACKAGE can and cannot claim about the graph it ships: four claims,
+ * each held or not, and every unheld one carrying the sites with what to write instead. A report,
+ * never a gate — see `certify.ts` for why the graph ships either way.
  *
  * `--graph <file>` also writes the composition graph the checks are computed from — which
  * components exist and which one can mount which, including the edges nothing could resolve.
@@ -51,6 +56,7 @@ const graphHtmlAt = valueOf("--graph-html");
 const diffAgainst = valueOf("--diff");
 const wantsSplit = argv.includes("--split");
 const wantsFix = argv.includes("--fix");
+const wantsCertify = argv.includes("--certify");
 const dryRun = argv.includes("--dry-run");
 const values = new Set([graphAt, graphHtmlAt, diffAgainst].filter((v): v is string => v !== undefined));
 const arg = argv.find((a) => !a.startsWith("--") && !values.has(a));
@@ -93,6 +99,7 @@ if (diffAgainst && !existsSync(resolve(diffAgainst))) {
   process.exit(2);
 }
 
+const result = analyzeProject(tsconfig);
 const {
   issues,
   findings,
@@ -107,7 +114,7 @@ const {
   counts,
   graph,
   notes,
-} = analyzeProject(tsconfig);
+} = result;
 
 for (const note of notes) console.warn(`${TAG} ${note}`);
 
@@ -122,6 +129,28 @@ if (graphAt) {
     `${TAG} graph written to ${graphAt} — ${graph.nodes.length} nodes, ${graph.edges.length} edges` +
       (holes > 0 ? `, ${holes} of them unresolved` : ""),
   );
+}
+
+/**
+ * What this package can and cannot CLAIM about the graph it ships — see `certify.ts`.
+ *
+ * Beside `--graph` and never instead of it. Every package ships its graph whatever this says: an
+ * app splices the fragment in and walks it, and a partial map is worth more than none. A
+ * certificate that gated the graph would give a publisher who cannot qualify a reason to ship
+ * nothing at all, and the consumer would lose twice.
+ *
+ * A report, like `--split` and `--diff`: it describes and never fails a run. What it is FOR is a
+ * publisher who will not read a graph — a real one is hundreds of nodes — so the JSON stays the
+ * machine\'s artefact and this is the person\'s, and it says what to do rather than what is.
+ */
+if (wantsCertify) {
+  const root = packageRootOf(tsconfig);
+  if (root === undefined) {
+    console.error(`${TAG} --certify needs a package: no package.json above ${tsconfig}`);
+    process.exit(2);
+  }
+  console.log(renderCertificate(certify(result, root, graph.package)));
+  console.log("");
 }
 
 /**
