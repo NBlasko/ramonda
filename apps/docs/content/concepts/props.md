@@ -107,8 +107,10 @@ export class Panel extends Component<{ filter: { q: string } }> {}
 Now the call site writes the plain literal and the child is not re-rendered at all. Contents that
 really move still reach it — a declaration is not a freeze.
 
-It takes as many names as you like — `@StableProps("filter", "flags")` — and a subclass that
-declares more **adds** to what its parent declared.
+It takes as many names as you like — `@StableProps("filter", "flags")`. A
+[context](/composition/context) says the same thing where it is created, because a Provider is a
+class the framework hands you rather than one you wrote: `createContext(defaults, { stableProps:
+["conf"] })`.
 
 **Why the receiving component declares it, and not the call site.** Whether a prop is a value or an
 identity is that component's knowledge, and declaring it once settles every call site. It is also
