@@ -91,7 +91,9 @@ Because `createRouter` knows your table, `<Link href>` only accepts a real path 
 rename a route and every stale link becomes a **compile error**, not a broken link you find by
 clicking:
 
-```tsx
+```tsx expect-error
+import { Link, route } from "./routes";
+
 <Link href="/">Home</Link>                          // ✓
 <Link href="/nope">Home</Link>                       // ✗ not a route
 <Link href={route("/players/:id", { id: "9" })}>…</Link>  // ✓ params typed; a missing/misspelled param errors

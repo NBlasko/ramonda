@@ -15,9 +15,11 @@ share one `this`, so they can reach each other without being passed around, and 
 component has a real identity that survives re-renders. State is just a field; there
 is no separate place for it to live and no rules about when you may read it.
 
-It also makes reuse first-class. Because a component is a class, one component can
-*extend* another — keep what it had, change what differs — so reuse does not mean
-nesting, and nesting costs nothing. See [extending components](/composition/inheritance).
+It also makes reuse first-class. Because a component is a class, one component can *extend*
+another — keep what it had, change what differs, and reach the original with `super.render()`.
+That is something a wrapper cannot offer, and it is available alongside wrapping rather than
+instead of it: neither adds an element to the page. See [extending
+components](/composition/inheritance) for which one a given job wants.
 
 ## Why no fragment
 
@@ -74,8 +76,13 @@ names nothing the framework can keep hold of, and `<Thing />` and `Thing()` woul
 the same thing written two ways.
 
 For markup you want to reuse without state, call the function in an expression slot —
-`{sideBar()}` — where it reads as the value it is. TypeScript rejects a function as a
-tag; if one reaches the runtime it is reported as `RMD011`.
+`{sideBar()}` — where it reads as the value it is.
+
+TypeScript catches most of this on its own: `JSX.ElementType` is deliberately left undeclared, so
+the compiler's default rule applies — a tag must return one `JSX.Element` — and a function
+returning several nodes, or anything that is not a node, is refused (`TS2786`). The one it lets
+through is a function returning exactly ONE element, which is also the way somebody writes a
+function component out of habit. That one is [`RMD011`](/reference/diagnostics).
 
 ## Why decorators, not reserved method names
 

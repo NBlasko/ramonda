@@ -80,4 +80,13 @@ declare global {
   };
   const keyFromRuntime: string;
   const register: (name: string) => Record<string, unknown>;
+
+  /** A row handed to a field example, and the markup helper beside it. */
+  const row: any;
+  const html: any;
+  /** The reader's own wrapper around a field. */
+  class TextField extends Component<any> {
+    [key: string]: any;
+    render(): any;
+  }
 }

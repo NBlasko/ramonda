@@ -166,11 +166,11 @@ A list is not a component: it has no state, no lifecycle, and nothing of its own
 is a plain function call in a `{ }` slot rather than a tag, and that is what lets it sit anywhere an
 expression can:
 
-```tsx
+```tsx expect-report:row-without-a-key
 {this.open ? list(this.results, (item) => <ResultRow item={item} />) : null}
 
-<ul>{list(this.todo, (item) => <TaskRow item={item} />)}</ul>
-<ul>{list(this.done, (item) => <TaskRow item={item} />)}</ul>
+<ul>{list(this.todo, (item: Task) => <TaskRow item={item} />)}</ul>
+<ul>{list(this.done, (item: Task) => <TaskRow item={item} />)}</ul>
 ```
 
 `each` is read when the list is built, so it is always the current array. **It accepts

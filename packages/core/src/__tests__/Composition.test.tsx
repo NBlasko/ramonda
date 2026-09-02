@@ -20,12 +20,16 @@ function captureDiagnostics() {
 }
 
 /**
- * Composition where a wrapper element is illegal.
+ * Composition where a wrapper ELEMENT is illegal.
  *
- * Where the unit of reuse is a function, reuse means NESTING — functions cannot
- * extend one another — and nesting costs an element unless a fragment hides it.
- * Ramonda's units of reuse are the class and the Hook, neither of which nests, so
- * the wrapper never appears and there is nothing for a fragment to hide.
+ * Inside a `<tr>` only `<td>` is legal, and the parser foster-parents anything else out in front
+ * of the whole table. So this is the place where the framework's claim about composition is
+ * settled rather than asserted: whatever a component contributes to the page has to be nothing.
+ *
+ * Both ways of reusing survive it. EXTENDING adds no element by construction — a subclass renders
+ * what its parent renders. WRAPPING adds none either, because a component puts on the page exactly
+ * what its `render()` returns, so a wrapper handing back `this.props.children` contributes no node
+ * of its own. Neither needs a fragment to hide anything, because there is nothing to hide.
  */
 describe("composition inside a <tr>, where only <td> is legal", () => {
   let captured: ReturnType<typeof captureDiagnostics>;

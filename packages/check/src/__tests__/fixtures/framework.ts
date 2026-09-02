@@ -53,6 +53,7 @@ export declare const TextArea: (props: { [attribute: Lowercase<string>]: unknown
 export declare function renderToString(vnode: unknown): Promise<string>;
 export declare function renderPage(vnode: unknown): Promise<{ body: string }>;
 export declare function list<T>(each: T[], render: (item: T) => unknown): unknown;
+
 export declare function catchError(value: unknown, context: unknown): void;
 export declare function Host(tag: string, props?: unknown): (ctor: unknown) => void;
 export declare function ShouldUpdateOnPropsChange(decide: unknown): (ctor: unknown) => void;

@@ -37,7 +37,7 @@ declare global {
     [key: string]: any;
     render(): any;
   }
-  class Row extends Component<{ item: any }> {
+  class Row extends Component<{ item?: any; [prop: string]: any }> {
     [key: string]: any;
     render(): any;
   }

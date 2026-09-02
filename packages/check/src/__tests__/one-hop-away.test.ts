@@ -23,6 +23,11 @@ const run = () => analyzeProject(join(here, "fixtures", "one-hop", "tsconfig.jso
  * — and every one of those was still literal-only afterwards. None of it is visible from a rule's
  * own source: each calls something whose name says it reads the attribute. `element-family` and
  * `id-table-hop` are that measurement, and two of the four were reporting correct markup.
+ *
+ * **Six rules arrived after the ladder and none was in here.** Three read a value and are asked the
+ * same question below; three cannot be walked around at all and say so rather than staying silent.
+ * A rule missing from this file is a rule nobody re-asks the question of, which is how the four
+ * readers above went unnoticed for as long as they did.
  */
 describe("a value written one hop from where the rule looks", () => {
   test("the direct shape is reported by every one of them", () => {
@@ -33,6 +38,48 @@ describe("a value written one hop from where the rule looks", () => {
     expect(findings["unknown-role"].map((issue) => issue.role)).toContain("buton");
     expect(findings["positive-tabindex"].map((issue) => issue.value)).toContain(5);
     expect(findings["link-without-a-destination"].length).toBeGreaterThan(0);
+  });
+
+  /**
+   * The rules added since this fixture was written, asked the same question.
+   *
+   * Six arrived after the ladder and none was in here. Three of them read a VALUE, which is the
+   * kind an author walks around by moving it one `const` away — so each is planted twice, written
+   * where the rule looks and then one hop from it, and the two must land on DIFFERENT lines. A
+   * count of two proves nothing on its own: a rule reporting the direct site twice would say the
+   * same number.
+   *
+   * All three go through `attr`, so they inherited the walk rather than needing one. Measured
+   * rather than assumed — that is the whole point of the fixture, and this makes it a standing
+   * claim instead of a check somebody did once before a PR.
+   */
+  test("the rules added since read a value through the same walk", () => {
+    const findings = run().findings;
+
+    for (const rule of ["region-with-no-name", "false-on-a-boolean-attribute", "half-built-keyboard-path"]) {
+      const lines = findings[rule].map((issue) => issue.line);
+      expect(lines, rule).toHaveLength(2);
+      expect(new Set(lines).size, `${rule}: the direct site and the hop are different lines`).toBe(2);
+    }
+  });
+
+  /**
+   * And the three that CANNOT be walked around, said out loud rather than left silent.
+   *
+   * `misspelled-element-property` reads a property NAME, `element-html-removed` reads a TAG, and
+   * `option-that-cannot-choose` asks whether an attribute is there and reads no value at all. None
+   * of those can be moved behind a `const`: a name is not an expression. So there is no one-hop
+   * form to plant, and their absence from the list above is a fact about them rather than a gap.
+   *
+   * Written as a test because "this rule needs no walk" is a decision, and a decision with no test
+   * is one somebody undoes — here by adding a walk nothing asked for.
+   */
+  test("and the three with no value to move report from the source itself", () => {
+    const findings = run().findings;
+
+    expect(findings["misspelled-element-property"].map((issue) => issue.written)).toEqual(["playbackrate"]);
+    expect(findings["element-html-removed"]).toHaveLength(1);
+    expect(findings["option-that-cannot-choose"]).toHaveLength(1);
   });
 
   test("and so is the same value a `const` or a helper away", () => {
