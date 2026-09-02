@@ -31,6 +31,15 @@ describe("a decorator core exports, written under another name", () => {
     ]);
   });
 
+  /**
+   * The same lesson one step further out: the declaration a context Provider carries is not on a
+   * class at all, it is an argument to `createContext` — so the CALL has to be identified as core's,
+   * and matching the letters would report the very key that was declared.
+   */
+  test("an aliased `createContext` still declares its stableProps", () => {
+    expect(run().findings["fresh-object-in-hook-props"]).toEqual([]);
+  });
+
   /** The declaration is what makes the literal safe, whatever the decorator is called here. */
   test("an aliased `@StableProps` still declares the prop, so the literal is not reported", () => {
     const found = run().findings["fresh-object-in-props"];

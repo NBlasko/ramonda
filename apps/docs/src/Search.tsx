@@ -1,11 +1,28 @@
 import { Component, state, createRef, onDocument, list } from "@ramonda/core";
 import type { RamondaNode } from "@ramonda/core";
 import { Link } from "./routes";
+import { pages } from "./generated/content";
+import type { DocPath } from "./generated/content";
 
 interface Result {
-  url: string;
+  /** A path this site really has — see `toRoutePath`, which is what narrows it. */
+  url: DocPath;
   title: string;
   excerpt: string;
+}
+
+/** Every path the site has, for the narrowing below. Built once. */
+const routePaths = new Set<string>(pages.map((page) => page.path));
+
+/**
+ * A type predicate rather than a cast at the call site.
+ *
+ * The claim is the same either way — a string that is in this set is one of the table's paths — but
+ * written here it is named, in one place, next to the set that makes it true. A cast where the
+ * value is used says nothing about why it holds.
+ */
+function isDocPath(path: string): path is DocPath {
+  return routePaths.has(path);
 }
 
 /** The subset of Pagefind's API this uses. */
@@ -133,11 +150,19 @@ export class Search extends Component {
     const top = await Promise.all(search.results.slice(0, 8).map((result) => result.data()));
 
     if (ticket !== this.latest) return;
-    this.results = top.map((data) => ({
-      url: toRoutePath(data.url),
-      title: data.meta?.title ?? data.url,
-      excerpt: data.excerpt,
-    }));
+    /**
+     * A result whose path is not a route is DROPPED rather than linked.
+     *
+     * The index is built from the last prerender, so a page renamed or deleted since then is still
+     * in it — and a `<Link>` to a path the table does not have falls through to `*`, which is a
+     * result that reads as a hit and lands on "Not found". The same shape as the trailing-slash bug
+     * `toRoutePath` was written for, one step further along.
+     */
+    this.results = top.flatMap((data) => {
+      const url = toRoutePath(data.url);
+      if (url === undefined) return [];
+      return [{ url, title: data.meta?.title ?? data.url, excerpt: data.excerpt }];
+    });
     this.loading = false;
   }
 
@@ -237,11 +262,16 @@ class SearchResult extends Component<{ item: Result }> {
  * The route table does not have trailing slashes, so a `<Link>` to one falls
  * through to the `*` route: measured, a search result navigated to "Not found"
  * while the URL bar showed the right page.
+ *
+ * It NARROWS as well as normalises, and the two belong together: the answer is only useful if it
+ * is a path the table has, and `<Link href>` is typed to exactly that union — so a result the
+ * index still carries for a page that is gone cannot be turned into a link by accident.
  */
-function toRoutePath(url: string): string {
+function toRoutePath(url: string): DocPath | undefined {
   const clean = url.replace(/index\.html$/, "").replace(/\.html$/, "");
   const trimmed = clean.replace(/\/+$/, "");
-  return trimmed === "" ? "/" : trimmed;
+  const path = trimmed === "" ? "/" : trimmed;
+  return isDocPath(path) ? path : undefined;
 }
 
 /**

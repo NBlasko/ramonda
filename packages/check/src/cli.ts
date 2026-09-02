@@ -6,6 +6,7 @@ import { analyzeProject } from "./analyze";
 import { graphHtml } from "./graph-html";
 import { diffGraphs, refuseToDiff } from "./diff";
 import type { ComponentGraph } from "./graph";
+import { certify, packageRootOf, renderCertificate } from "./certify";
 import { type AnyRule, failingRules, RULES } from "./rules";
 import { filesOf, splitOf } from "./split";
 
@@ -24,6 +25,10 @@ import { filesOf, splitOf } from "./split";
  *   which nothing at runtime can report, because the form cannot see who is rendering.
  *
  * Meant to sit in an app's `build` script: a check nobody runs is a check that does not exist.
+ *
+ * `--certify` prints what this PACKAGE can and cannot claim about the graph it ships: four claims,
+ * each held or not, and every unheld one carrying the sites with what to write instead. A report,
+ * never a gate — see `certify.ts` for why the graph ships either way.
  *
  * `--graph <file>` also writes the composition graph the checks are computed from — which
  * components exist and which one can mount which, including the edges nothing could resolve.
@@ -51,6 +56,7 @@ const graphHtmlAt = valueOf("--graph-html");
 const diffAgainst = valueOf("--diff");
 const wantsSplit = argv.includes("--split");
 const wantsFix = argv.includes("--fix");
+const wantsCertify = argv.includes("--certify");
 const dryRun = argv.includes("--dry-run");
 const values = new Set([graphAt, graphHtmlAt, diffAgainst].filter((v): v is string => v !== undefined));
 const arg = argv.find((a) => !a.startsWith("--") && !values.has(a));
@@ -93,6 +99,7 @@ if (diffAgainst && !existsSync(resolve(diffAgainst))) {
   process.exit(2);
 }
 
+const result = analyzeProject(tsconfig);
 const {
   issues,
   findings,
@@ -100,13 +107,14 @@ const {
   annotated,
   unreachable,
   unreachableRoutes,
+  paramsOffRoute,
   secondProviders,
   renderCycles,
   classesAsChildren,
   counts,
   graph,
   notes,
-} = analyzeProject(tsconfig);
+} = result;
 
 for (const note of notes) console.warn(`${TAG} ${note}`);
 
@@ -121,6 +129,28 @@ if (graphAt) {
     `${TAG} graph written to ${graphAt} — ${graph.nodes.length} nodes, ${graph.edges.length} edges` +
       (holes > 0 ? `, ${holes} of them unresolved` : ""),
   );
+}
+
+/**
+ * What this package can and cannot CLAIM about the graph it ships — see `certify.ts`.
+ *
+ * Beside `--graph` and never instead of it. Every package ships its graph whatever this says: an
+ * app splices the fragment in and walks it, and a partial map is worth more than none. A
+ * certificate that gated the graph would give a publisher who cannot qualify a reason to ship
+ * nothing at all, and the consumer would lose twice.
+ *
+ * A report, like `--split` and `--diff`: it describes and never fails a run. What it is FOR is a
+ * publisher who will not read a graph — a real one is hundreds of nodes — so the JSON stays the
+ * machine\'s artefact and this is the person\'s, and it says what to do rather than what is.
+ */
+if (wantsCertify) {
+  const root = packageRootOf(tsconfig);
+  if (root === undefined) {
+    console.error(`${TAG} --certify needs a package: no package.json above ${tsconfig}`);
+    process.exit(2);
+  }
+  console.log(renderCertificate(certify(result, root, graph.package)));
+  console.log("");
 }
 
 /**
@@ -356,6 +386,7 @@ if (
   unreachable.length === 0 &&
   unreachableRoutes.length === 0 &&
   secondProviders.length === 0 &&
+  paramsOffRoute.length === 0 &&
   renderCycles.length === 0 &&
   classesAsChildren.length === 0
 ) {
@@ -428,6 +459,42 @@ if (unreachableRoutes.length > 0) {
     `Hand the table to a <RouteOutlet>, and mount that outlet somewhere a root can reach —\n` +
       `or delete the table. Every page in it renders today's nothing, and each one on its own\n` +
       `looks perfectly well formed, which is why nothing else says a word.\n`,
+  );
+}
+
+/**
+ * The other read the runtime throws on, and the one nothing else can see.
+ *
+ * Two faults printed as one section because they are the same mistake at two distances, and each
+ * line says which it is: nothing routes to this component at all, or something does and it is a
+ * different route from the one the read names. The router's own two messages make the same split.
+ */
+if (paramsOffRoute.length > 0) {
+  console.error(`\n${TAG} ${paramsOffRoute.length} params(pattern) read(s) the routing cannot answer:\n`);
+  for (const read of paramsOffRoute) {
+    console.error(`  ${read.file}:${read.line}:${read.column}`);
+    // The path from a root, because the READ may be in a package the reader cannot edit — and then
+    // the line to change is the mount, which is the only part of this that is theirs.
+    if (read.path.length > 1) console.error(`    ${read.path.join(" > ")}`);
+    console.error(
+      read.why === "no-outlet"
+        ? `    <${read.component}> reads \`${read.member}.params("${read.pattern}")\`, and no arrangement in ` +
+            `this build puts it under a <RouteOutlet>.`
+        : `    <${read.component}> reads \`${read.member}.params("${read.pattern}")\`, but the route that ` +
+            `mounts it is "${read.route}", which supplies no ${(read.missing ?? [])
+              .map((name) => `\`:${name}\``)
+              .join(", ")}.`,
+    );
+    console.error("");
+  }
+  console.error(
+    `Params are published by the outlet that MATCHED, and each outlet publishes only its own — so a\n` +
+      `component reads the pattern of the route that mounts IT, and chrome beside the outlet (a nav\n` +
+      `bar, a header, a footer) has a pathname and no params at all. The router throws on both of\n` +
+      `these in every build.\n\n` +
+      `Name the route this component is really rendered by, or move the read into the page that is\n` +
+      `on that route and pass the value down as a prop. Use \`pathname\` if it is not part of a route,\n` +
+      `and \`params<T>()\` with no argument when it is genuinely written against no ONE route.\n`,
   );
 }
 

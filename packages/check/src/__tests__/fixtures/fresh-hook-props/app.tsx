@@ -15,9 +15,16 @@ const [BaseProvider, Consumer] = createContext({ conf: { dense: false }, n: 0 })
 const [UpstreamProvider, UpstreamConsumer] = createContext({ conf: { dense: false }, n: 0 });
 void UpstreamProvider;
 
-/** A provider with the key DECLARED, which is how a context pair takes the declaration. */
+/** A provider with the key DECLARED on a subclass, which is how it had to be said before. */
 @StableProps("conf")
 class SettledProvider extends BaseProvider {}
+
+/** The same declaration made where the context is CREATED, which is what the docs teach now. */
+const [SettledAtCreation, AtCreationConsumer] = createContext(
+  { conf: { dense: false }, n: 0 },
+  { stableProps: ["conf"] },
+);
+void AtCreationConsumer;
 
 /** A hook of our own, whose source is in front of the rule. */
 class Plain extends Hook<{ conf: unknown; n: number }> {}
@@ -68,6 +75,9 @@ class Reporting extends Component<{ id: string }> {
 
   // Not reported: a hook with no callback at all.
   k = this.use(UpstreamConsumer);
+
+  // Not reported: the context declared the key where it was created, and the rule reads that too.
+  l = this.use(SettledAtCreation, () => ({ conf: { dense: true }, n: this.tick }));
 
   render() {
     return <li>{this.tick}</li>;
