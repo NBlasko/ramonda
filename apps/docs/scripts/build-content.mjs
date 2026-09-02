@@ -389,12 +389,32 @@ function section(rules, heading) {
  * which is the order the COMMAND prints its reports in, and therefore the order a reader has
  * already met them in.
  */
+/**
+ * The `<meta name="description">` a search result shows under the title.
+ *
+ * A `reportedWhen` is one clause and eight of them run past 250 characters, where a search engine
+ * shows about 155 and cuts the rest mid-word — so the sentence a reader is offered ends nowhere.
+ * Cut at the last CLAUSE boundary that fits instead: these clauses are built with em dashes and
+ * commas, so there is almost always one, and what is left is a whole thought rather than a stump.
+ *
+ * The page itself still carries the full sentence under **Reported when**; only the summary is
+ * shortened, which is the difference between a description and a truncation.
+ */
+function describe(rule) {
+  const full = `${rule.severity === "error" ? "Fails the run" : "Warns"} when ${rule.reportedWhen}`;
+  if (full.length <= 155) return full;
+
+  const cut = full.slice(0, 155);
+  const at = Math.max(cut.lastIndexOf(" — "), cut.lastIndexOf(", "), cut.lastIndexOf(" so "));
+  return at > 80 ? `${cut.slice(0, at)}…` : `${cut.slice(0, cut.lastIndexOf(" "))}…`;
+}
+
 function pageFor(rule, at) {
   const codes = rule.alsoReportedAs ?? [];
   return [
     "---",
     `title: ${rule.id}`,
-    `description: ${rule.severity === "error" ? "Fails the run" : "Warns"} when ${rule.reportedWhen}`,
+    `description: ${describe(rule)}`,
     "section: Rules",
     "nav: false",
     `order: ${301 + at}`,
