@@ -35,8 +35,8 @@ still looks right.
 
 There are three answers, tried in this order, and the first two are exact.
 
-**The object.** While a row is the same object it is the same row. Nothing is declared
-and nothing can be got wrong. This covers every update that keeps its references —
+**The object.** A row is identified by the object itself — the same object is the same row, a
+different object is a different row. Nothing is declared and nothing can be got wrong. This covers every update that keeps its references —
 `filter`, a spread that touches one row, a [lens](/lens) write. A repeated primitive is
 told apart by which occurrence it is, so `["a", "a", "b"]` is three stable rows.
 

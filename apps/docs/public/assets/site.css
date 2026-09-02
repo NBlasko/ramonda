@@ -516,6 +516,28 @@ article img[src$=".gif"] {
   font-weight: 600;
 }
 
+/*
+ * A cell wraps rather than running past its own border.
+ *
+ * Above the reflow breakpoint a cell is only as wide as the column makes it, and an unbroken run of
+ * characters is wider than that — `import.meta.env.RAMONDA_PUBLIC_API_BASE`, 39 of them, on
+ * /reference/build — so the text left the grey box and crossed the border beside it.
+ *
+ * Scoped ABOVE the breakpoint on purpose. Below it a `DataTable` gives every value cell a fixed
+ * width so the columns line up down the page, and `anywhere` there would break words earlier than
+ * it has to — which is what the note beside `article p` says about leaving cells out of that rule.
+ *
+ * `anywhere` breaks at whatever character stops fitting; CSS has no way to prefer a break BEFORE a
+ * dot, so a long dotted path can still split mid-word. Where that reads badly the answer is in the
+ * content: put the short form in the cell and the full name in the code block under it.
+ */
+@media (min-width: 701px) {
+  .table-wrap th,
+  .table-wrap td {
+    overflow-wrap: anywhere;
+  }
+}
+
 @media (max-width: 700px) {
   /* The heading row is gone, so it must not be read out either — `display: none` does both. Its
      text is not lost: it is on every cell as `data-label`. */
