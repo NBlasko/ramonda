@@ -1,5 +1,6 @@
 ---
 title: Portal
+description: Render a subtree into a DOM element somewhere else — a modal root, a toast layer — while its state, lifecycle and context stay where you wrote it.
 section: Composition
 order: 55
 ---

@@ -1,6 +1,6 @@
 ---
 title: Diagnostics
-description: Every diagnostic — RMD from the core, RMQ from the query cache, RMF from forms, RML from immutable updates — what it means, what causes it, and what to do instead.
+description: Every diagnostic the framework can report — RMD, RMQ, RMF and RML — what each one means, what causes it, and what to write instead.
 section: Reference
 order: 110
 ---

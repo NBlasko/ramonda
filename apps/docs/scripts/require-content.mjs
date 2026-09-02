@@ -16,6 +16,14 @@ import { fileURLToPath } from "node:url";
  * workflow called the package script directly, bypassing turbo and its `dependsOn`.
  *
  * So this says which step is missing, and how to get it. It costs one `existsSync` per build.
+ *
+ * The task also `dependsOn: ["^build"]`, and that is not decoration either: `build-content.mjs`
+ * imports `ruleCatalogue()` from `@ramonda/check`, because a page is generated per rule. Without
+ * the dependency CI failed on a clean checkout — `ERR_MODULE_NOT_FOUND` for
+ * `@ramonda/check/dist/index.js` — while every machine that had ever built passed, because the
+ * `dist` was left over from a previous run. Turbo's cache then hid it a second time by replaying
+ * this task's output over a `dist` that was no longer there, so the first attempt to reproduce it
+ * locally came back green.
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const generated = join(here, "..", "src", "generated", "content.ts");

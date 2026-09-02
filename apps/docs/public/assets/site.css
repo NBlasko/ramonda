@@ -75,7 +75,14 @@ a:hover {
    page happens to be. `overscroll-behavior` stops that scroll from continuing into the page once
    the list ends, which is what makes the two feel separate rather than chained. */
 nav {
-  flex: 0 0 220px;
+  /* 264, and the arithmetic is the reason rather than taste. A link's text is what is left of this
+     after the nav's own 6px, the tree's 4px margin, its 11px padding and 1px rule, and the link's
+     own 20px — 222px, which `ShouldUpdateOnPropsChange` fits on one line at 14px.
+
+     It was 220 and the name was CUT; then 240, where the tree indent took it back and the name
+     broke mid-word. `overflow-wrap` below stays either way: it is the backstop for whatever name
+     is longer than this one, and a wrap is a great deal better than a clip. */
+  flex: 0 0 264px;
   position: sticky;
   top: calc(var(--masthead-h) + 24px);
   /* Same reason as the drawer's height below: the breakpoint is 860px, so a phone in landscape and
@@ -97,17 +104,84 @@ nav::-webkit-scrollbar-thumb {
   background: var(--rmd-line);
   border-radius: 4px;
 }
-.sidebar-group h4 {
-  margin: 20px 0 8px;
+/* The spacing lives on the GROUP, not on its heading.
+   It was `margin: 20px 0 8px` on the heading, inherited from when every group was open and the gap
+   separated a heading from the list above it. With fifteen groups collapsed those margins are all
+   that is left, so the sidebar became a column of headings 28px apart — a lot of nothing to scroll
+   past. Closed groups sit close together; an open one takes room because it has content. */
+.sidebar-group {
+  margin: 1px 0;
+}
+.sidebar-group[open] {
+  margin: 10px 0;
+}
+.sidebar-group > summary {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--rmd-muted);
 }
+/* A summary is a button, so it gets a button's affordances: a pointer, a hit area that matches the
+   links under it, and a visible focus ring for the keyboard. */
+.sidebar-group > summary {
+  cursor: pointer;
+  /* No left padding, because the MARKER lives in that space: 4px of triangle plus the 6px gap is
+     the 10px a link pads by, so a heading's text starts exactly where its items' text does.
+     Padding it as well pushed the heading further right than the list it labels.
+
+     The right inset stays as padding rather than the negative margin this had first — that version
+     lined the two up by pushing the summary 10px past the nav's edge, and the nav answered with a
+     horizontal scrollbar. */
+  padding: 4px 10px 4px 0;
+  border-radius: 6px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sidebar-group > summary::-webkit-details-marker {
+  display: none;
+}
+.sidebar-group > summary:hover {
+  background: var(--rmd-code-bg);
+  color: var(--rmd-fg);
+}
+/* The marker is drawn rather than borrowed, so it points the same way in every browser and can be
+   sized against 12px uppercase text — the default triangle is neither. */
+.sidebar-group > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  transition: transform 120ms ease;
+  flex: 0 0 auto;
+}
+.sidebar-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-group > summary::before {
+    transition: none;
+  }
+}
 .sidebar-group ul {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+/* A group's items sit UNDER its heading, not beside it.
+   The heading's text starts at 10px (the marker occupies that gutter); its items start at 22px, so
+   the accordion reads as a tree rather than as one flat column where a heading and its contents
+   are told apart only by capitals. The rule beside the items is what carries the eye down them.
+
+   `details` and not every group: the section-less one at the top has no heading to sit under, so
+   indenting it would draw a branch off nothing. */
+details.sidebar-group > ul {
+  padding-left: 11px;
+  margin-left: 4px;
+  border-left: 1px solid var(--rmd-line);
 }
 .sidebar-group li {
   margin: 2px 0;
@@ -118,6 +192,10 @@ nav::-webkit-scrollbar-thumb {
   border-radius: 6px;
   color: var(--rmd-fg);
   font-size: 14px;
+  /* An API name is ONE word with no space to break at, so a fixed width clips it however wide the
+     column is — widening only moves the name that fails. This lets the longest one wrap instead,
+     which is why the width above is a comfort rather than the fix. */
+  overflow-wrap: anywhere;
 }
 .sidebar-group .link:hover {
   background: var(--rmd-code-bg);

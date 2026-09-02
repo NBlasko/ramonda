@@ -154,7 +154,7 @@ through [`unknownRefPaths`](/forms/bguard) the same way.
 remove, a bulk write. It is not rebuilt per render.
 
 That is deliberate. `list()`'s `each` is what
-[RMD020](/reference/diagnostics#rmd020-render-produced-a-different-value-the-second-time)
+[RMD020](/reference/diagnostics/rmd020)
 compares, and a freshly built array on every render is a changed value: every row would be
 re-keyed and the identity the ids exist to protect would be lost to the thing meant to preserve
 it.
@@ -175,4 +175,4 @@ A field whose value is `undefined` or `null` reads as an empty list — `length`
 rows instead of throwing. `append` on it builds the array.
 
 A field that holds something that is *not* a list is a mistake worth hearing about: see
-[RMF002](/reference/diagnostics#rmf002-the-list-members-were-used-on-a-field-that-is-not-a-list).
+[RMF002](/reference/diagnostics/rmf002).

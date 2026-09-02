@@ -129,96 +129,96 @@ rules**, so a rule cannot be added without appearing here.
 
 | rule | reported when |
 |---|---|
-| `props-written-by-the-receiver` | a component or hook assigns to its own `props` — the write throws in every build, and the value belonged to whoever rendered the element — also [`RMD004`](/reference/diagnostics), [`RMD015`](/reference/diagnostics) |
-| `compute-takes-no-arguments` | a `@compute` declares a parameter, and its cache is keyed by nothing so the argument is ignored |
-| `async-render` | `render()` is `async`, so it returns a promise where the diff expects markup — also [`RMD060`](/reference/diagnostics) |
-| `arrow-fields` | a class field holds a function literal, so every instance builds a fresh one and props comparison can never match |
-| `duplicate-decorators` | a single-use decorator is written twice: `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` — also [`RMD032`](/reference/diagnostics), [`RMD040`](/reference/diagnostics), [`RMD046`](/reference/diagnostics), [`RMD050`](/reference/diagnostics) |
-| `unwatched-fields` | a component reads a form field it does not watch, so it never re-renders when that field changes |
-| `one-provider-per-component` | one component mounts two Providers of the same context, which core refuses at runtime — also [`RMD056`](/reference/diagnostics) |
-| `server-env-in-shared-code` | `process.env` is read from a member the browser also runs, where `process` does not exist |
-| `fresh-value-from-a-watch-selector` | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
+| [`props-written-by-the-receiver`](/rules/props-written-by-the-receiver) | a component or hook assigns to its own `props` — the write throws in every build, and the value belonged to whoever rendered the element — also [`RMD004`](/reference/diagnostics/rmd004), [`RMD015`](/reference/diagnostics/rmd015) |
+| [`compute-takes-no-arguments`](/rules/compute-takes-no-arguments) | a `@compute` declares a parameter, and its cache is keyed by nothing so the argument is ignored |
+| [`async-render`](/rules/async-render) | `render()` is `async`, so it returns a promise where the diff expects markup — also [`RMD060`](/reference/diagnostics/rmd060) |
+| [`arrow-fields`](/rules/arrow-fields) | a class field holds a function literal, so every instance builds a fresh one and props comparison can never match |
+| [`duplicate-decorators`](/rules/duplicate-decorators) | a single-use decorator is written twice: `@catchError`, `@ShouldUpdateOnPropsChange` or `@StableProps` — also [`RMD032`](/reference/diagnostics/rmd032), [`RMD040`](/reference/diagnostics/rmd040), [`RMD046`](/reference/diagnostics/rmd046), [`RMD050`](/reference/diagnostics/rmd050) |
+| [`unwatched-fields`](/rules/unwatched-fields) | a component reads a form field it does not watch, so it never re-renders when that field changes |
+| [`one-provider-per-component`](/rules/one-provider-per-component) | one component mounts two Providers of the same context, which core refuses at runtime — also [`RMD056`](/reference/diagnostics/rmd056) |
+| [`server-env-in-shared-code`](/rules/server-env-in-shared-code) | `process.env` is read from a member the browser also runs, where `process` does not exist |
+| [`fresh-value-from-a-watch-selector`](/rules/fresh-value-from-a-watch-selector) | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
 **Warnings.** These print and the run still passes. 76 of them.
 
 | rule | reported when |
 |---|---|
-| `state-written-while-rendering` | a state write is reached from `render()` or a `@compute` — directly, through a helper it calls, or three files away — also [`RMD001`](/reference/diagnostics), [`RMD018`](/reference/diagnostics) |
-| `state-mutated-in-place` | a `@state` array or object is changed in place — `this.items.push(…)`, `this.user.name = …` — so the signal never fires — also [`RMD005`](/reference/diagnostics), [`RMD048`](/reference/diagnostics) |
-| `decorator-that-adds-nothing` | two decorators on one member give it the same thing — `@persist` beside `@state`, or one written twice — also [`RMD050`](/reference/diagnostics) |
-| `unkeyable-memoized-argument` | a `@memoized` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean — also [`RMD047`](/reference/diagnostics) |
-| `clock-read-while-rendering` | `Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path — also [`RMD021`](/reference/diagnostics) |
-| `cached-read-of-a-plain-field` | a `@compute` or a hook's props callback reads an ordinary field that is written after the first render, so the cached value goes stale — also [`RMD027`](/reference/diagnostics) |
-| `browser-url` | a component reads `window.location` in a project whose router already holds the answer |
-| `dom-writes` | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
-| `watch-of-a-prop-that-is-not-there` | a `@watchProp` selector names something the component's props type does not declare, so the method never runs |
-| `persist-of-a-lossy-value` | a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries — also [`RMD033`](/reference/diagnostics) |
-| `unserializable-state` | a `@state` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, and the project renders on a server — also [`RMD019`](/reference/diagnostics), [`RMD033`](/reference/diagnostics) |
-| `interval-with-no-cleanup` | a component starts a raw `setInterval` whose id nothing ever clears, so it keeps firing after unmount — also [`RMD006`](/reference/diagnostics) |
-| `listener-added-by-hand` | a component adds a `window` or `document` listener by hand, where `@onWindow` or `@onDocument` would do it — or, inside `if (__DEV__)` where a decorator cannot be used, adds one that nothing ever removes |
-| `late-request-read` | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics) |
-| `head-tags-collide` | two tags in one `Head` resolve to the same identity, so only the second is written |
-| `unguarded-async-lifecycle` | an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure — also [`RMD059`](/reference/diagnostics) |
-| `context-consumed-above-its-provider` | a component consumes a context on a line above the Provider that publishes it, so the consumer reads an ancestor's value — also [`RMD057`](/reference/diagnostics) |
-| `client-only-request-read` | a `requestContext()` read is on a path that only runs in the browser, where the value it names is never available — also [`RMD025`](/reference/diagnostics) |
-| `fresh-object-in-hook-props` | a hook — a context Provider above all — is handed an object or array built inside its props callback, where the callback also reads something reactive, so the value is rebuilt and every consumer of that key wakes with contents that did not change — also [`RMD022`](/reference/diagnostics) |
-| `unsplittable-import` | a dynamic import's path is neither a literal nor a template a bundler can read, so no chunk is emitted for it |
-| `unexposed-env-read` | `import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined` |
-| `row-reads-a-plain-field` | a `list()` row callback puts a field nothing can track into the markup, so a reused row keeps the old value |
-| `dev-guard-as-an-expression` | a `__DEV__` guard is written as `&&` or `?:` where an `if` would do the same thing |
-| `lens-path-through-a-gap` | a `focusOn` write walks through a hop the types say may be `null` or `undefined`, which only the LAST hop creates — also [`RML001`](/reference/diagnostics) |
-| `duplicate-key-among-siblings` | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics) |
-| `row-without-a-key` | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics), [`RMD051`](/reference/diagnostics) |
-| `index-as-key` | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics) |
-| `class-instead-of-classname` | an element carries `class` where Ramonda reads `className` — also [`RMD039`](/reference/diagnostics) |
-| `tag-needs-its-parent` | a tag is written outside the parent it requires — `<tr>` with no table above it, `<option>` with no select — also [`RMD028`](/reference/diagnostics) |
-| `parent-with-a-foreign-child` | a container whose children are fixed by the content model holds a tag that is not one of them — also [`RMD028`](/reference/diagnostics) |
-| `interactive-inside-interactive` | an interactive element is nested inside another of the same kind: a link in a link, a button in a button, a form in a form |
-| `unnamed-image` | an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, `aria-labelledby` or `title` |
-| `unknown-aria-attribute` | an `aria-*` attribute is not a name the ARIA specification has |
-| `unknown-role` | a `role` names nothing, or names an abstract role that markup may not use |
-| `role-missing-required-aria` | an explicit `role` is written without the `aria-*` its specification requires |
-| `role-takes-no-name` | an `aria-label` or `aria-labelledby` is written on a role the specification forbids naming |
-| `region-with-no-name` | `role="region"` is written with no `aria-label`, `aria-labelledby` or `title`, so it is not a landmark at all |
-| `false-on-a-boolean-attribute` | a boolean attribute is written `"false"`, which turns it ON because the parser reads only that it is there — also [`RMD029`](/reference/diagnostics) |
-| `misspelled-element-property` | a name is written in the wrong case for element state that lives only in a property, so it is written as an attribute nothing reads |
-| `half-built-keyboard-path` | an element with an interactive `role` and a pointer handler is missing the `tabIndex` or the key handler that would finish it |
-| `element-html-removed` | a tag HTML has removed is written, so nothing defines what it means |
-| `option-that-cannot-choose` | `selected` is written on an `<option>` inside a `<Select>`, which sets it from `value` instead |
-| `aria-value` | an `aria-*` attribute carries a literal value its specification does not permit |
-| `aria-with-no-subject` | a `role` or an `aria-*` sits on an element with no accessibility tree node to describe |
-| `empty-heading-or-link` | a heading or a link has nothing inside it to announce |
-| `unnamed-frame` | an `iframe` has no `title` |
-| `positive-tabindex` | a `tabIndex` is above zero, which reorders the whole document rather than one element |
-| `aria-hidden-on-focusable` | `aria-hidden="true"` is written on an element a keyboard can still focus |
-| `aria-hidden-around-something-focusable` | `aria-hidden="true"` wraps something a keyboard can still tab to |
-| `presentation-role-on-focusable` | `role="presentation"` is written on an element a keyboard can still focus, where the role is ignored |
-| `aria-state-with-no-role` | an `aria-*` belonging to a role is written on an element that has no role |
-| `aria-state-the-role-does-not-have` | an `aria-*` sits beside a `role` that does not support it, so nothing exposes it |
-| `aria-that-contradicts-the-tag` | an `aria-*` is written `false` beside the HTML attribute that says the opposite |
-| `role-that-fights-the-tag` | a `role` says the element behaves in a way the tag does not — a link as a button, or a button as a link |
-| `live-region-that-contradicts-its-role` | an `aria-live` replaces the politeness the element's role already carries |
-| `autocomplete-that-fills-nothing` | an `autocomplete` value names no autofill field, so the browser ignores it entirely |
-| `label-that-names-nothing` | a `<label>` has no `htmlFor` and no control inside it, so it labels nothing |
-| `table-with-no-headers` | a `<table>` written out with data rows has no `<th>` anywhere in it |
-| `link-without-a-destination` | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |
-| `fresh-object-in-props` | a component is handed an object or array built during the render, so it is a new value every time and comparison can never match — lift it to a field or a `@compute`, or declare it on the child with `@StableProps` |
-| `function-built-in-the-markup` | a function literal is written into a JSX attribute — in the attribute, on one side of a ternary or a `??`, or in a local one line up — so its identity is fresh every render, and the listener is removed and re-added or the child can never compare its prop equal — also [`RMD020`](/reference/diagnostics) |
-| `object-among-the-children` | a plain object is written among an element's children, where the runtime drops it and the page renders without it — also [`RMD037`](/reference/diagnostics) |
-| `function-used-as-a-tag` | a plain function is written in tag position, where it names nothing the framework can construct — and the compiler only refuses the shapes that do not return exactly one element — also [`RMD011`](/reference/diagnostics) |
-| `click-with-no-keyboard-path` | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
-| `access-key` | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |
-| `attribute-that-does-nothing` | one of six camelCase names — `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, `innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it |
-| `media-with-no-captions` | a `video` or `audio` element carries no `<track>`, so nothing on the page says what is in it |
-| `duplicate-id` | two elements in one render carry the same literal `id`, and both are always present |
-| `heading-skips-a-level` | a heading is more than one level below the heading before it, both written in the same render |
-| `more-than-one-main` | one render has more than one `main` landmark, where HTML allows one |
-| `landmarks-that-cannot-be-told-apart` | one render has two or more landmarks of the same kind and none of them is named |
-| `lazy-imports-that-collide` | two `lazy` functions are written identically but name different modules — the module cache is keyed by the function's source, so one entry has to serve both — also [`RMD049`](/reference/diagnostics) |
-| `fragment-link-to-nowhere` | an `href="#name"` points at an id no element in the project carries |
-| `reference-to-an-id-that-is-not-there` | an `aria-labelledby`, `htmlFor` or other id reference names an id no element in the project carries |
-| `control-with-no-label` | a form control has no label, no `aria-label`, no `aria-labelledby` and no `title`, so nothing says what it is for |
-| `named-only-by-a-placeholder` | a form control's only name is its `placeholder`, which disappears as soon as anybody types |
+| [`state-written-while-rendering`](/rules/state-written-while-rendering) | a state write is reached from `render()` or a `@compute` — directly, through a helper it calls, or three files away — also [`RMD001`](/reference/diagnostics/rmd001), [`RMD018`](/reference/diagnostics/rmd018) |
+| [`state-mutated-in-place`](/rules/state-mutated-in-place) | a `@state` array or object is changed in place — `this.items.push(…)`, `this.user.name = …` — so the signal never fires — also [`RMD005`](/reference/diagnostics/rmd005), [`RMD048`](/reference/diagnostics/rmd048) |
+| [`decorator-that-adds-nothing`](/rules/decorator-that-adds-nothing) | two decorators on one member give it the same thing — `@persist` beside `@state`, or one written twice — also [`RMD050`](/reference/diagnostics/rmd050) |
+| [`unkeyable-memoized-argument`](/rules/unkeyable-memoized-argument) | a `@memoized` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean — also [`RMD047`](/reference/diagnostics/rmd047) |
+| [`clock-read-while-rendering`](/rules/clock-read-while-rendering) | `Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path — also [`RMD021`](/reference/diagnostics/rmd021) |
+| [`cached-read-of-a-plain-field`](/rules/cached-read-of-a-plain-field) | a `@compute` or a hook's props callback reads an ordinary field that is written after the first render, so the cached value goes stale — also [`RMD027`](/reference/diagnostics/rmd027) |
+| [`browser-url`](/rules/browser-url) | a component reads `window.location` in a project whose router already holds the answer |
+| [`dom-writes`](/rules/dom-writes) | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |
+| [`watch-of-a-prop-that-is-not-there`](/rules/watch-of-a-prop-that-is-not-there) | a `@watchProp` selector names something the component's props type does not declare, so the method never runs |
+| [`persist-of-a-lossy-value`](/rules/persist-of-a-lossy-value) | a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries — also [`RMD033`](/reference/diagnostics/rmd033) |
+| [`unserializable-state`](/rules/unserializable-state) | a `@state` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, and the project renders on a server — also [`RMD019`](/reference/diagnostics/rmd019), [`RMD033`](/reference/diagnostics/rmd033) |
+| [`interval-with-no-cleanup`](/rules/interval-with-no-cleanup) | a component starts a raw `setInterval` whose id nothing ever clears, so it keeps firing after unmount — also [`RMD006`](/reference/diagnostics/rmd006) |
+| [`listener-added-by-hand`](/rules/listener-added-by-hand) | a component adds a `window` or `document` listener by hand, where `@onWindow` or `@onDocument` would do it — or, inside `if (__DEV__)` where a decorator cannot be used, adds one that nothing ever removes |
+| [`late-request-read`](/rules/late-request-read) | `requestContext()` is read below an `await`, after the request it names is gone — also [`RMD053`](/reference/diagnostics/rmd053) |
+| [`head-tags-collide`](/rules/head-tags-collide) | two tags in one `Head` resolve to the same identity, so only the second is written |
+| [`unguarded-async-lifecycle`](/rules/unguarded-async-lifecycle) | an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure — also [`RMD059`](/reference/diagnostics/rmd059) |
+| [`context-consumed-above-its-provider`](/rules/context-consumed-above-its-provider) | a component consumes a context on a line above the Provider that publishes it, so the consumer reads an ancestor's value — also [`RMD057`](/reference/diagnostics/rmd057) |
+| [`client-only-request-read`](/rules/client-only-request-read) | a `requestContext()` read is on a path that only runs in the browser, where the value it names is never available — also [`RMD025`](/reference/diagnostics/rmd025) |
+| [`fresh-object-in-hook-props`](/rules/fresh-object-in-hook-props) | a hook — a context Provider above all — is handed an object or array built inside its props callback, where the callback also reads something reactive, so the value is rebuilt and every consumer of that key wakes with contents that did not change — also [`RMD022`](/reference/diagnostics/rmd022) |
+| [`unsplittable-import`](/rules/unsplittable-import) | a dynamic import's path is neither a literal nor a template a bundler can read, so no chunk is emitted for it |
+| [`unexposed-env-read`](/rules/unexposed-env-read) | `import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined` |
+| [`row-reads-a-plain-field`](/rules/row-reads-a-plain-field) | a `list()` row callback puts a field nothing can track into the markup, so a reused row keeps the old value |
+| [`dev-guard-as-an-expression`](/rules/dev-guard-as-an-expression) | a `__DEV__` guard is written as `&&` or `?:` where an `if` would do the same thing |
+| [`lens-path-through-a-gap`](/rules/lens-path-through-a-gap) | a `focusOn` write walks through a hop the types say may be `null` or `undefined`, which only the LAST hop creates — also [`RML001`](/reference/diagnostics/rml001) |
+| [`duplicate-key-among-siblings`](/rules/duplicate-key-among-siblings) | two children written side by side claim the same literal `key` — also [`RMD002`](/reference/diagnostics/rmd002) |
+| [`row-without-a-key`](/rules/row-without-a-key) | a row built by `map` or by `list()` has no `key` — also [`RMD023`](/reference/diagnostics/rmd023), [`RMD051`](/reference/diagnostics/rmd051) |
+| [`index-as-key`](/rules/index-as-key) | a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had — also [`RMD023`](/reference/diagnostics/rmd023) |
+| [`class-instead-of-classname`](/rules/class-instead-of-classname) | an element carries `class` where Ramonda reads `className` — also [`RMD039`](/reference/diagnostics/rmd039) |
+| [`tag-needs-its-parent`](/rules/tag-needs-its-parent) | a tag is written outside the parent it requires — `<tr>` with no table above it, `<option>` with no select — also [`RMD028`](/reference/diagnostics/rmd028) |
+| [`parent-with-a-foreign-child`](/rules/parent-with-a-foreign-child) | a container whose children are fixed by the content model holds a tag that is not one of them — also [`RMD028`](/reference/diagnostics/rmd028) |
+| [`interactive-inside-interactive`](/rules/interactive-inside-interactive) | an interactive element is nested inside another of the same kind: a link in a link, a button in a button, a form in a form |
+| [`unnamed-image`](/rules/unnamed-image) | an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, `aria-labelledby` or `title` |
+| [`unknown-aria-attribute`](/rules/unknown-aria-attribute) | an `aria-*` attribute is not a name the ARIA specification has |
+| [`unknown-role`](/rules/unknown-role) | a `role` names nothing, or names an abstract role that markup may not use |
+| [`role-missing-required-aria`](/rules/role-missing-required-aria) | an explicit `role` is written without the `aria-*` its specification requires |
+| [`role-takes-no-name`](/rules/role-takes-no-name) | an `aria-label` or `aria-labelledby` is written on a role the specification forbids naming |
+| [`region-with-no-name`](/rules/region-with-no-name) | `role="region"` is written with no `aria-label`, `aria-labelledby` or `title`, so it is not a landmark at all |
+| [`false-on-a-boolean-attribute`](/rules/false-on-a-boolean-attribute) | a boolean attribute is written `"false"`, which turns it ON because the parser reads only that it is there — also [`RMD029`](/reference/diagnostics/rmd029) |
+| [`misspelled-element-property`](/rules/misspelled-element-property) | a name is written in the wrong case for element state that lives only in a property, so it is written as an attribute nothing reads |
+| [`half-built-keyboard-path`](/rules/half-built-keyboard-path) | an element with an interactive `role` and a pointer handler is missing the `tabIndex` or the key handler that would finish it |
+| [`element-html-removed`](/rules/element-html-removed) | a tag HTML has removed is written, so nothing defines what it means |
+| [`option-that-cannot-choose`](/rules/option-that-cannot-choose) | `selected` is written on an `<option>` inside a `<Select>`, which sets it from `value` instead |
+| [`aria-value`](/rules/aria-value) | an `aria-*` attribute carries a literal value its specification does not permit |
+| [`aria-with-no-subject`](/rules/aria-with-no-subject) | a `role` or an `aria-*` sits on an element with no accessibility tree node to describe |
+| [`empty-heading-or-link`](/rules/empty-heading-or-link) | a heading or a link has nothing inside it to announce |
+| [`unnamed-frame`](/rules/unnamed-frame) | an `iframe` has no `title` |
+| [`positive-tabindex`](/rules/positive-tabindex) | a `tabIndex` is above zero, which reorders the whole document rather than one element |
+| [`aria-hidden-on-focusable`](/rules/aria-hidden-on-focusable) | `aria-hidden="true"` is written on an element a keyboard can still focus |
+| [`aria-hidden-around-something-focusable`](/rules/aria-hidden-around-something-focusable) | `aria-hidden="true"` wraps something a keyboard can still tab to |
+| [`presentation-role-on-focusable`](/rules/presentation-role-on-focusable) | `role="presentation"` is written on an element a keyboard can still focus, where the role is ignored |
+| [`aria-state-with-no-role`](/rules/aria-state-with-no-role) | an `aria-*` belonging to a role is written on an element that has no role |
+| [`aria-state-the-role-does-not-have`](/rules/aria-state-the-role-does-not-have) | an `aria-*` sits beside a `role` that does not support it, so nothing exposes it |
+| [`aria-that-contradicts-the-tag`](/rules/aria-that-contradicts-the-tag) | an `aria-*` is written `false` beside the HTML attribute that says the opposite |
+| [`role-that-fights-the-tag`](/rules/role-that-fights-the-tag) | a `role` says the element behaves in a way the tag does not — a link as a button, or a button as a link |
+| [`live-region-that-contradicts-its-role`](/rules/live-region-that-contradicts-its-role) | an `aria-live` replaces the politeness the element's role already carries |
+| [`autocomplete-that-fills-nothing`](/rules/autocomplete-that-fills-nothing) | an `autocomplete` value names no autofill field, so the browser ignores it entirely |
+| [`label-that-names-nothing`](/rules/label-that-names-nothing) | a `<label>` has no `htmlFor` and no control inside it, so it labels nothing |
+| [`table-with-no-headers`](/rules/table-with-no-headers) | a `<table>` written out with data rows has no `<th>` anywhere in it |
+| [`link-without-a-destination`](/rules/link-without-a-destination) | an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:` |
+| [`fresh-object-in-props`](/rules/fresh-object-in-props) | a component is handed an object or array built during the render, so it is a new value every time and comparison can never match — lift it to a field or a `@compute`, or declare it on the child with `@StableProps` |
+| [`function-built-in-the-markup`](/rules/function-built-in-the-markup) | a function literal is written into a JSX attribute — in the attribute, on one side of a ternary or a `??`, or in a local one line up — so its identity is fresh every render, and the listener is removed and re-added or the child can never compare its prop equal — also [`RMD020`](/reference/diagnostics/rmd020) |
+| [`object-among-the-children`](/rules/object-among-the-children) | a plain object is written among an element's children, where the runtime drops it and the page renders without it — also [`RMD037`](/reference/diagnostics/rmd037) |
+| [`function-used-as-a-tag`](/rules/function-used-as-a-tag) | a plain function is written in tag position, where it names nothing the framework can construct — and the compiler only refuses the shapes that do not return exactly one element — also [`RMD011`](/reference/diagnostics/rmd011) |
+| [`click-with-no-keyboard-path`](/rules/click-with-no-keyboard-path) | a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it |
+| [`access-key`](/rules/access-key) | an `accessKey` is written, which overrides a shortcut the reader's own software may be using |
+| [`attribute-that-does-nothing`](/rules/attribute-that-does-nothing) | one of six camelCase names — `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, `innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it |
+| [`media-with-no-captions`](/rules/media-with-no-captions) | a `video` or `audio` element carries no `<track>`, so nothing on the page says what is in it |
+| [`duplicate-id`](/rules/duplicate-id) | two elements in one render carry the same literal `id`, and both are always present |
+| [`heading-skips-a-level`](/rules/heading-skips-a-level) | a heading is more than one level below the heading before it, both written in the same render |
+| [`more-than-one-main`](/rules/more-than-one-main) | one render has more than one `main` landmark, where HTML allows one |
+| [`landmarks-that-cannot-be-told-apart`](/rules/landmarks-that-cannot-be-told-apart) | one render has two or more landmarks of the same kind and none of them is named |
+| [`lazy-imports-that-collide`](/rules/lazy-imports-that-collide) | two `lazy` functions are written identically but name different modules — the module cache is keyed by the function's source, so one entry has to serve both — also [`RMD049`](/reference/diagnostics/rmd049) |
+| [`fragment-link-to-nowhere`](/rules/fragment-link-to-nowhere) | an `href="#name"` points at an id no element in the project carries |
+| [`reference-to-an-id-that-is-not-there`](/rules/reference-to-an-id-that-is-not-there) | an `aria-labelledby`, `htmlFor` or other id reference names an id no element in the project carries |
+| [`control-with-no-label`](/rules/control-with-no-label) | a form control has no label, no `aria-label`, no `aria-labelledby` and no `title`, so nothing says what it is for |
+| [`named-only-by-a-placeholder`](/rules/named-only-by-a-placeholder) | a form control's only name is its `placeholder`, which disappears as soon as anybody types |
 
 [rules:end]: #
 

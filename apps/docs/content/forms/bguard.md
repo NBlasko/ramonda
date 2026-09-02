@@ -91,7 +91,7 @@ and an input whose field has gone should render plainly instead of breaking the 
 ### Answers are cached, and that matters
 
 The same path returns the **same object** every render. That is not a micro-optimisation:
-[RMD020](/reference/diagnostics#rmd020-render-produced-a-different-value-the-second-time) compares a
+[RMD020](/reference/diagnostics/rmd020) compares a
 vnode's attributes key by key, so a freshly built object would be reported for every input on the
 page. Build the lookup once, outside `render`.
 

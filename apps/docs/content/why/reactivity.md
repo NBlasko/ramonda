@@ -62,9 +62,9 @@ shape of a hook-heavy component.
 
 The one way this cache can hand a hook a stale value is a bag that reads something no signal backs —
 a module-level variable, an object mutated in place — because nothing marks the cache dirty. Under the
-[double render](/reference/diagnostics#rmd020-render-produced-a-different-value-the-second-time) a
+[double render](/reference/diagnostics/rmd020) a
 development build does, the framework calls the callback anyway and compares, and reports the
-difference as [`RMD027`](/reference/diagnostics#rmd027-a-props-callback-reads-a-value-that-is-not-reactive).
+difference as [`RMD027`](/reference/diagnostics/rmd027).
 Keep what a bag reads in `@state`, a `@compute`, or props.
 
 ## Props are coarse like state; context is per-key

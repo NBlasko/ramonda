@@ -19,6 +19,7 @@
       "inputs": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx"]
     },
     "content": {
+      "dependsOn": ["^build"],
       "outputs": ["src/generated/**"]
     },
     "check-types": {
