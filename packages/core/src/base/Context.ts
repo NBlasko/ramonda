@@ -1,11 +1,12 @@
 import { createId } from "../helpers/createId";
-import { CONTEXT_READS } from "../helpers/constants";
+import { CONTEXT_READS, STABLE_PROPS } from "../helpers/constants";
 import { type Runtime, HOOK_RUNTIME } from "../core/runtime";
 import { attach, detach } from "../helpers/constants";
 import { Hook } from "./Hook";
 import type { State } from "../reactivity/State";
 import type { BaseHook } from "../types/HookTypes";
 import { diagnose } from "../debug/diagnostics";
+import { assertStablePropKeys } from "../debug/validateDecorator";
 import { hasContextConsumer, recordContextConsumer, reportConsumedAboveProvider } from "../debug/contextPairing";
 
 /**
@@ -16,7 +17,13 @@ interface ContextChannel {
   getSignal(key: string): State<unknown> | undefined;
 }
 
-export interface ContextOptions {
+/**
+ * The `T` is the context's own value type, so `stableProps` can be checked against its keys. It
+ * defaults to a permissive record for the sake of anybody who writes the type bare — `let o:
+ * ContextOptions` — which is why the default is not `object`: `keyof object` is `never`, and that
+ * would make the bare spelling refuse every name.
+ */
+export interface ContextOptions<T extends object = Record<string, unknown>> {
   /**
    * Display name for devtools. The framework cannot see the names you
    * destructure into (`ThemeProvider`/`ThemeConsumer` exist only at the call
@@ -57,6 +64,32 @@ export interface ContextOptions {
    * REPORTED rather than what is read.
    */
   single?: boolean;
+  /**
+   * Names the keys that are **values** rather than references — so the framework hands back one
+   * identity for as long as their contents are equal, and a consumer of that key is not woken by a
+   * literal that was merely rebuilt.
+   *
+   *     const [ConfProvider, ConfConsumer] = createContext(
+   *       { conf: { dense: false }, tick: 0 },
+   *       { stableProps: ["conf"] },
+   *     );
+   *
+   * Measured in `ContextValueIdentity.test.tsx`: a consumer reading only `conf`, while a DIFFERENT
+   * key of the same provider moves three times, renders four times without this and once with it.
+   * A key that really changes still arrives — this is a comparison, not a freeze.
+   *
+   * Behaviour, unlike `label`, `optional` and `single`: it changes what the runtime hands a
+   * consumer, in every build.
+   *
+   * This is the same declaration `@StableProps` makes on a class, said where the context is
+   * created. It belongs here because whether a key is a value or an identity is the context
+   * author's knowledge, and because this end knows the context's keys: a name that is not one of
+   * `defaultValue`'s is refused, which a decorator on a class cannot see.
+   *
+   * Functions are not covered, as with the decorator: two closures with the same body are not equal
+   * by any comparison that is safe to make, so a listed function key is left exactly as it came.
+   */
+  stableProps?: readonly (keyof T & string)[];
 }
 
 /**
@@ -101,7 +134,7 @@ export interface ContextOptions {
  */
 export function createContext<T extends object>(
   defaultValue: T,
-  options?: ContextOptions,
+  options?: ContextOptions<T>,
 ): readonly [
   new (owner: Runtime, options: T) => BaseHook<T> & Readonly<T>,
   new (owner: Runtime) => BaseHook<undefined> & T,
@@ -227,6 +260,50 @@ export function createContext<T extends object>(
         });
       }
     }
+  }
+
+  /**
+   * `stableProps`, applied to the Provider the same way `@StableProps` applies to a class — because
+   * it IS the same declaration, and the diff and the hook prop path must not have two answers to
+   * look up. Written with `defineProperty` rather than assignment for the same reason the decorator
+   * does: the list is not something an app may reach in and change afterwards.
+   *
+   * Outside `__DEV__`, unlike `label`, `optional` and `single`: those change what is REPORTED, and
+   * this changes what a consumer is handed. A production build that compared differently from the
+   * development one would be the worst kind of difference — the fault appears only where it cannot
+   * be read.
+   */
+  if (options?.stableProps !== undefined) {
+    if (__DEV__) {
+      assertStablePropKeys(options.stableProps as readonly string[], {
+        named: "stableProps",
+        example: 'createContext(defaults, { stableProps: ["key"] })',
+      });
+
+      /**
+       * A name that is not one of the context's own keys, which is the check the DECORATOR cannot
+       * make. A context's keys are `defaultValue`'s keys — a Provider prop outside them is never
+       * published and no consumer can read it — so this end knows the whole set, while a decorator
+       * on a class only knows the type it was given. Types close this in TypeScript; this closes it
+       * for a caller who has none, and it is the reason the declaration belongs here.
+       */
+      for (const key of options.stableProps) {
+        if (!contextKeys.includes(key)) {
+          throw new Error(
+            `[Ramonda] createContext was given stableProps: ["${key}"], but "${key}" is not a key of ` +
+              `this context. Its keys come from the default value: ${contextKeys.join(", ") || "(none)"}. ` +
+              `A key outside that set is never published, so no consumer could read it.`,
+          );
+        }
+      }
+    }
+
+    Object.defineProperty(Provider, STABLE_PROPS, {
+      value: [...new Set(options.stableProps)],
+      writable: false,
+      enumerable: false,
+      configurable: true,
+    });
   }
 
   class Consumer extends Hook {

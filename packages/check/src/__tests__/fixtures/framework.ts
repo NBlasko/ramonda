@@ -30,7 +30,7 @@ export interface RamondaNode {
 }
 export declare function createContext<T>(
   d: T,
-  o?: { label?: string; optional?: boolean; single?: boolean },
+  o?: { label?: string; optional?: boolean; single?: boolean; stableProps?: readonly string[] },
 ): [unknown, unknown];
 export declare function createRoutes(table: unknown): unknown;
 export declare function bootstrap(vnode: unknown, el: unknown): void;

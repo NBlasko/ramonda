@@ -196,9 +196,12 @@ export const freshObjectInHookProps = {
       "The fix is on the HOOK, which is the thing that knows whether a prop is a value or an\n" +
       'identity: `@StableProps("conf")`. The framework then hands back the identity it already had\n' +
       "while the contents match, and consumers stay asleep.\n\n" +
-      "For a Provider that `createContext` handed back, declare it on a subclass:\n\n" +
-      '    @StableProps("conf")\n' +
-      "    class ConfProvider extends BaseProvider {}\n\n" +
+      "A context Provider is not a class you wrote, so it takes the declaration where the context is\n" +
+      "CREATED:\n\n" +
+      "    const [ConfProvider, ConfConsumer] = createContext(\n" +
+      "      { conf: { dense: false } },\n" +
+      '      { stableProps: ["conf"] },\n' +
+      "    );\n\n" +
       "Or move the value out of the callback entirely — a `@compute` gives you the same object back\n" +
       "until something it reads changes, which is exactly what a consumer needs.\n\n" +
       "This is a warning today and an error in a later version.",

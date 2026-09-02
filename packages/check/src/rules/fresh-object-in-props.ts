@@ -125,7 +125,58 @@ export interface FreshObjectInPropsIssue {
 }
 
 /**
- * The prop names a component declared with `@StableProps`, its bases included.
+ * The names `createContext` was given in `stableProps`, when this binding is a Provider it made.
+ *
+ * A context Provider is not a class an app WROTE — `createContext` returns it, and the app
+ * destructures it — so there is no declaration to carry a decorator and the walk below finds
+ * nothing. The declaration is at the call instead:
+ *
+ *     const [ConfProvider, ConfConsumer] = createContext(defaults, { stableProps: ["conf"] });
+ *
+ * Only the FIRST element is asked. The second is the Consumer, which takes no props callback at
+ * all, so reading a declaration off it could only ever answer a question nobody asks.
+ *
+ * `createContext` is identified through core rather than by the name at the call, for the reason
+ * every other read here is: an alias is a different binding with the same letters, and a rule that
+ * matches letters reports the fix it recommends.
+ */
+function stablePropsFromCreateContext(binding: ts.Declaration, resolve: ElementContext["resolve"]): string[] {
+  if (!ts.isBindingElement(binding)) return [];
+
+  const pattern = binding.parent;
+  if (!ts.isArrayBindingPattern(pattern)) return [];
+  if (pattern.elements.indexOf(binding) !== 0) return [];
+
+  const declaration = pattern.parent;
+  if (!ts.isVariableDeclaration(declaration)) return [];
+
+  const call = declaration.initializer;
+  if (call === undefined || !ts.isCallExpression(call)) return [];
+  if (resolve.coreName(call.expression) !== "createContext") return [];
+
+  const options = call.arguments[1];
+  if (options === undefined || !ts.isObjectLiteralExpression(options)) return [];
+
+  const declared = options.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) && ts.isIdentifier(property.name) && property.name.text === "stableProps",
+  );
+  if (declared === undefined || !ts.isArrayLiteralExpression(declared.initializer)) return [];
+
+  return declared.initializer.elements
+    .filter(
+      (one): one is ts.StringLiteral | ts.NoSubstitutionTemplateLiteral =>
+        ts.isStringLiteral(one) || ts.isNoSubstitutionTemplateLiteral(one),
+    )
+    .map((one) => one.text);
+}
+
+/**
+ * The prop names a component declared as values, its bases included.
+ *
+ * Two spellings, one answer. A class says it with `@StableProps`; a context Provider says it in the
+ * `createContext` call that made it, because there is no class of the app's own to decorate. Both
+ * are read here so a caller asks one question.
  *
  * Resolved rather than matched by name — a class whose name happens to equal this one's is a
  * different class — and the chain is walked because `@StableProps` merges along it: a base that
@@ -138,9 +189,12 @@ export function stablePropsOf(tagName: ts.Node, resolve: ElementContext["resolve
   const found = new Set<string>();
   const seen = new Set<ts.Node>();
 
-  let declaration = resolve(tagName)?.declarations?.find((one): one is ts.ClassDeclaration =>
-    ts.isClassDeclaration(one),
-  );
+  const declarations = resolve(tagName)?.declarations ?? [];
+  for (const one of declarations) {
+    for (const name of stablePropsFromCreateContext(one, resolve)) found.add(name);
+  }
+
+  let declaration = declarations.find((one): one is ts.ClassDeclaration => ts.isClassDeclaration(one));
 
   for (let hop = 0; hop < 4 && declaration !== undefined && !seen.has(declaration); hop++) {
     seen.add(declaration);

@@ -1422,6 +1422,13 @@ type DeclarablePropsOf<C> = C extends new (
  *
  * **The names are type-checked** against the props of whatever it is on — `@StableProps("kye")` is
  * a compile error that names `"kye"` — with no type argument to write at the call site.
+ *
+ * **A context Provider says the same thing at its creation instead**: `createContext(defaults, {
+ * stableProps: ["conf"] })`. `createContext` returns a class rather than a declaration site, so
+ * reaching this decorator meant subclassing purely to carry it. The option is not a second
+ * mechanism — it writes this same list on the Provider — and it can do one thing this cannot: a
+ * context knows its own keys, so a name that is not one of them is refused rather than merely
+ * unmatched. This still works on a Provider subclass, and is still checked there.
  */
 export function StableProps<const K extends readonly string[]>(...keys: K) {
   if (__DEV__) {
