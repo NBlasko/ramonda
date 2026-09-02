@@ -66,7 +66,7 @@ jobs:
         run: echo "version=$(pnpm --filter playground-core exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
       - name: Restore the browser
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-headless-shell-${{ runner.os }}-${{ steps.playwright.outputs.version }}
@@ -102,7 +102,7 @@ jobs:
       # explain it.
       - name: Keep what the failure left behind
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: browser-failure
           path: |
