@@ -458,7 +458,18 @@ export interface RuleSummary {
   severity: "warn" | "error";
   /** The condition, as a clause completing "reported when". */
   reportedWhen: string;
-  /** The runtime diagnostic reporting the same fault, for the rules that have one. */
+  /**
+   * What the command prints under a report: why the fault matters and what to write instead.
+   *
+   * Carried here because it is the rule's own READER-FACING text — written for a person, kept
+   * beside the code it describes, and already impossible to drift from it. The documentation site
+   * builds a page per rule out of exactly this, so the page and the terminal say one thing.
+   *
+   * Deliberately not the rule's docstring, which is the longer and better prose. A docstring argues
+   * with the PAST — why a shape was rejected, what a measurement disproved — and that is right in
+   * the source and wrong on a page a reader meets cold.
+   */
+  advice: string;
   /** Every runtime code this rule answers, in the order the reference should list them. */
   alsoReportedAs?: readonly string[];
 }
@@ -474,6 +485,7 @@ export function ruleCatalogue(): RuleSummary[] {
     id: rule.id,
     severity: rule.report.severity,
     reportedWhen: rule.report.reportedWhen,
+    advice: rule.report.advice,
     // Normalised to a list here so every consumer has one shape to read. A rule may write a single
     // code, because most answer exactly one and a list of one reads as ceremony.
     ...("alsoReportedAs" in rule.report && rule.report.alsoReportedAs !== undefined

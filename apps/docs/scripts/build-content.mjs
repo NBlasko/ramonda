@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 import MarkdownIt from "markdown-it";
 import { JSDOM } from "jsdom";
 import { createHighlighter } from "shiki";
+import { ruleCatalogue } from "@ramonda/check";
 
 /**
  * Turns `content/**.md` into one generated module the site imports.
@@ -216,9 +217,139 @@ function toRoutePath(file) {
   return "/" + withoutExt.replace(/\/index$/, "");
 }
 
-const pages = walkFiles(contentDir)
-  .map((file) => {
-    const { data, body } = splitFrontmatter(readFileSync(file, "utf8"));
+/**
+ * A page for every rule the checker runs, built from the rule itself.
+ *
+ * ## Why generated and not written
+ *
+ * There are 84 of them, and the reference page that stood in for all of them was one table. Written
+ * by hand they would be 84 things that can go stale — and this site has already proved that happens:
+ * the table was NINE rows out of date the day the rules landed beside it, which is why
+ * `build-rule-tables.mjs` exists at all. A rule cannot now be added without its page appearing.
+ *
+ * ## Why the ADVICE and not the docstring
+ *
+ * The docstrings are the better prose — 8,751 lines of it, the best-argued writing in the
+ * repository. They are also the wrong text for a page, and not by a little: a docstring argues with
+ * the PAST. It says which shape was rejected, what a measurement disproved, why the obvious fix is
+ * wrong. That is exactly right beside the code, where it stops somebody undoing a decision, and
+ * exactly wrong for a reader meeting the rule cold — who does not care what was, only how it works
+ * now.
+ *
+ * `advice` is already the reader's text: it is what the command prints to a person under a report.
+ * So the page and the terminal say ONE thing, and neither can drift from the other.
+ *
+ * ## Why a page each, rather than the table
+ *
+ * The table is still there and still generated. What it cannot do is be FOUND: a search engine
+ * ranks a page, and eighty-four rules sharing one URL is one result for eighty-four questions.
+ * Somebody whose build just printed `row-without-a-key` types that, and it should land on the rule.
+ */
+function rulePages() {
+  const rules = ruleCatalogue();
+  const index = [
+    "---",
+    "title: Rules",
+    `description: Every check \`ramonda-check\` runs — ${rules.length} of them, ${rules.filter((r) => r.severity === "error").length} that fail a build and ${rules.filter((r) => r.severity === "warn").length} that warn.`,
+    "section: Rules",
+    "order: 300",
+    "---",
+    "",
+    "# Rules",
+    "",
+    `\`ramonda-check\` runs **${rules.length} rules**. Each has its own page: what it reports, why that`,
+    "is a fault, and what to write instead. The page and the terminal say the same thing, because both",
+    "come from the rule.",
+    "",
+    "An **error** fails the run. A **warning** prints and lets it through — for now; a rule that warns",
+    "today may fail a build in a later version, and each says so.",
+    "",
+    ...section(
+      rules.filter((rule) => rule.severity === "error"),
+      "Errors",
+    ),
+    ...section(
+      rules.filter((rule) => rule.severity === "warn"),
+      "Warnings",
+    ),
+    "## Next",
+    "",
+    "- [Checking your app](/reference/check) — how to run it, and what it proves that a running page cannot.",
+    "- [Diagnostics](/reference/diagnostics) — what the framework reports at runtime.",
+  ].join("\n");
+
+  return [
+    { source: index, path: "/rules", label: "rules/index (generated)" },
+    ...rules.map((rule, at) => ({
+      source: pageFor(rule, at),
+      path: `/rules/${rule.id}`,
+      label: `rules/${rule.id} (generated)`,
+    })),
+  ];
+}
+
+/** One heading and its list, for the index. */
+function section(rules, heading) {
+  return [
+    `## ${heading}`,
+    "",
+    ...rules.map((rule) => `- [\`${rule.id}\`](/rules/${rule.id}) — ${rule.reportedWhen}`),
+    "",
+  ];
+}
+
+/**
+ * One rule's page.
+ *
+ * `order` runs from 301 so the whole set sorts after the reference, in the catalogue's own order —
+ * which is the order the COMMAND prints its reports in, and therefore the order a reader has
+ * already met them in.
+ */
+function pageFor(rule, at) {
+  const codes = rule.alsoReportedAs ?? [];
+  return [
+    "---",
+    `title: ${rule.id}`,
+    `description: ${rule.severity === "error" ? "Fails the run" : "Warns"} when ${rule.reportedWhen}`,
+    "section: Rules",
+    `order: ${301 + at}`,
+    "---",
+    "",
+    `# \`${rule.id}\``,
+    "",
+    rule.severity === "error"
+      ? "**This fails the run.** It is not a matter of taste: the code below cannot do what it says."
+      : "**This is a warning.** It prints and lets the build through.",
+    "",
+    `**Reported when** ${rule.reportedWhen}.`,
+    "",
+    codes.length > 0
+      ? `The framework reports the same fault while running, as ${codes
+          .map((code) => `[\`${code}\`](/reference/diagnostics)`)
+          .join(
+            " and ",
+          )} — but only once the line actually runs. This is the same fault proved from the source instead.\n`
+      : "",
+    rule.advice,
+    "",
+    "## Next",
+    "",
+    "- [All rules](/rules) — the other checks this one runs beside.",
+    "- [Checking your app](/reference/check) — how to run it, and what it proves.",
+  ].join("\n");
+}
+
+/**
+ * One page, from its markdown — the SAME pipeline for a file on disk and for a generated page.
+ *
+ * A second renderer beside this one is the shape this repository has been bitten by repeatedly: two
+ * things answering one question, drifting apart quietly. So the rule pages below are markdown
+ * handed to this function, not markup built another way.
+ */
+function pageOf(source, routePath, label) {
+  {
+    const file = label;
+    const { data, body } = splitFrontmatter(source);
     const dom = new JSDOM(`<body>${md.render(body)}</body>`);
     addHeadingIds(dom.window.document);
     const tree = Array.from(dom.window.document.body.childNodes)
@@ -227,7 +358,7 @@ const pages = walkFiles(contentDir)
 
     if (!data.title) {
       throw new Error(
-        `[docs] ${relative(root, file)} has no \`title\` in its frontmatter. ` +
+        `[docs] ${file} has no \`title\` in its frontmatter. ` +
           `Every page needs one: it is the <title>, the search result, and the sidebar label.`,
       );
     }
@@ -236,7 +367,7 @@ const pages = walkFiles(contentDir)
     const rawHtml = findRawHtml(process.env.DOCS_SELFTEST === "rawhtml" ? [...tree, "<kbd>Alt</kbd>"] : tree);
     if (rawHtml) {
       throw new Error(
-        `[docs] ${relative(root, file)} contains raw HTML in prose: ${rawHtml}\n\n` +
+        `[docs] ${file} contains raw HTML in prose: ${rawHtml}\n\n` +
           `        Markdown here is rendered with html: false, so that tag reaches the reader as those\n` +
           `        exact characters. Put it in backticks if you meant to show it, or use markdown\n` +
           `        (**bold**, *italic*) if you meant to format.`,
@@ -244,15 +375,20 @@ const pages = walkFiles(contentDir)
     }
 
     return {
-      path: toRoutePath(file),
+      path: routePath,
       title: data.title,
       description: data.description ?? "",
       section: data.section ?? "",
       order: Number(data.order ?? 0),
       tree,
     };
-  })
-  .sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
+  }
+}
+
+const pages = [
+  ...walkFiles(contentDir).map((file) => pageOf(readFileSync(file, "utf8"), toRoutePath(file), relative(root, file))),
+  ...rulePages().map((made) => pageOf(made.source, made.path, made.label)),
+].sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
 
 /**
  * One module per page, plus a metadata index.

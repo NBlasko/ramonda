@@ -6,6 +6,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { ruleCatalogue } from "@ramonda/check";
 
 /**
  * Every internal link on the site, resolved.
@@ -78,7 +79,28 @@ function anchorsIn(text: string): Set<string> {
 }
 
 const files = pages(content);
-const routes = new Map(files.map((file) => [routeOf(file), anchorsIn(readFileSync(file, "utf8"))]));
+
+/**
+ * Not every page is a file. `build-content.mjs` generates one per rule — 84 of them plus an index —
+ * from `ruleCatalogue()`, so a link to `/rules/row-without-a-key` lands on a real page although
+ * nothing under `content/` names it.
+ *
+ * Read from the same catalogue the generator reads, rather than listed here: a hand-written list
+ * would be a second thing to keep in step, which is the fault this whole file exists to catch.
+ *
+ * Their ANCHORS are not modelled. A generated page's headings come from the rule's own advice and
+ * move with it, so an anchor into one is a link this could not keep honest — and the pages are
+ * linked to whole, never to a section of one.
+ */
+const generated = new Map<string, Set<string>>([
+  ["/rules", new Set()],
+  ...ruleCatalogue().map((rule) => [`/rules/${rule.id}`, new Set<string>()] as const),
+]);
+
+const routes = new Map([
+  ...files.map((file) => [routeOf(file), anchorsIn(readFileSync(file, "utf8"))] as const),
+  ...generated,
+]);
 
 /** `](/route)`, `](/route#anchor)` and `](#anchor)` — the three shapes an internal link takes. */
 const INTERNAL = /\]\((\/[A-Za-z0-9/-]*)?(?:#([A-Za-z0-9-]+))?\)/g;
