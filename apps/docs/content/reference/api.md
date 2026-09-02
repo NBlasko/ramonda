@@ -28,7 +28,7 @@ Everything every package exports. Each entry links to the page that explains it.
 | `SAME_ITEM` | The option for a lens `set` that replaces a list item with the same item rebuilt, so it keeps its element and its component. [Lens](/lens#editing-an-item-and-replacing-one) |
 | `merge(previous, next, identity?)` | Keeps the previous value where the new one equals it, so a refetch is not a change. With `identity`, rows are paired across a reorder or a resize and a changed row keeps its identity. [Lists](/lists#refetched-data-and-objects-that-are-re-created) |
 | `list<T>(each, render)` | Renders a list, minting identity from the items. `render` is a function taking one item. [Lists](/lists) |
-| `@StableProps(...names)` | Declares which props are values, so a caller writes the plain literal. On a hook and on a component alike. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) · [A prop that is a value](/concepts/props#a-prop-that-is-a-value) |
+| [`@StableProps(...names)`](/reference/decorators/StableProps) | Declares which props are values, so a caller writes the plain literal. On a hook and on a component alike. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) · [A prop that is a value](/concepts/props#a-prop-that-is-a-value) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
 | `Timeout` / `Interval` | A scheduled call the app starts and the framework clears: `this.use(Timeout, () => ({ run }))`, then `start(ms)` and `stop()`. One instance is one timer; `start` returns whether it started, and teardown clears it. [Timers](/concepts/timers#a-timer-that-starts-when-you-say) |
 | `Listener` | A DOM listener the app arms and the framework removes: `this.use(Listener, () => ({ on: "document", type: "keydown", run }))`, then `listen()` and `stop()`. The target is named — `"window"`, `"document"` or a function — so a server render has nothing to evaluate. One instance is one listener, and teardown removes it. |
@@ -77,19 +77,19 @@ for a declared slot.
 
 | | |
 |---|---|
-| `@state` | Turns a field into a signal. [State](/concepts/state) |
-| `@compute` | Caches a derived value; method or getter. [Derived values](/concepts/compute) |
-| `@persist` | Marks a non-reactive field as part of the hydration payload. [env](/ssr/env) |
-| `@memoized` | Caches a function by its arguments, per instance. |
+| [`@state`](/reference/decorators/state) | Turns a field into a signal. [State](/concepts/state) |
+| [`@compute`](/reference/decorators/compute) | Caches a derived value; method or getter. [Derived values](/concepts/compute) |
+| [`@persist`](/reference/decorators/persist) | Marks a non-reactive field as part of the hydration payload. [env](/ssr/env) |
+| [`@memoized`](/reference/decorators/memoized) | Caches a function by its arguments, per instance. |
 
 ### Decorators — lifecycle
 
 | | |
 |---|---|
-| `@created(options?)` | Runs while building; no DOM yet. [Lifecycle](/concepts/lifecycle) |
-| `@mounted(options?)` | Runs once the element is in the document. Returning a promise makes a server render wait. [Async on the server](/ssr/async) |
-| `@updated` | Runs after every commit **after** the first, with the new DOM in place. No deps, no previous values, no cleanup. [Lifecycle](/concepts/lifecycle) |
-| `@destroyed` | Runs on teardown, while state is still readable. |
+| [`@created(options?)`](/reference/decorators/created) | Runs while building; no DOM yet. [Lifecycle](/concepts/lifecycle) |
+| [`@mounted(options?)`](/reference/decorators/mounted) | Runs once the element is in the document. Returning a promise makes a server render wait. [Async on the server](/ssr/async) |
+| [`@updated`](/reference/decorators/updated) | Runs after every commit **after** the first, with the new DOM in place. No deps, no previous values, no cleanup. [Lifecycle](/concepts/lifecycle) |
+| [`@destroyed`](/reference/decorators/destroyed) | Runs on teardown, while state is still readable. |
 | `createSubscriptionDecorator(name, connect)` | Your own subscription decorator: connect after the commit, and what it returns is the cleanup. [Subscriptions](/concepts/subscriptions) |
 
 `@created`, `@mounted` and `@destroyed` take `{ env: "client" | "server" | "shared" }`, and `shared` is
@@ -107,17 +107,17 @@ anyway under a server DOM shim.
 
 | | |
 |---|---|
-| `@watchProp(selector)` | Runs when one prop changes, **before** the render. [Props](/concepts/props) |
-| `@ShouldUpdateOnPropsChange` | A CLASS decorator taking `(self, previous, next) => boolean`: gates whether new props from the parent are taken up (their signals update + a render). For ignoring a change that really happened — a prop merely rebuilt with equal contents is `@StableProps`' job. Components only. |
-| `@deferHydration` | Keeps the server's markup while a promise settles. [Async on the server](/ssr/async) |
-| `@catchError` | Declares the method that handles an error thrown anywhere below this component. Return `false` to decline it and let the next one above take over. Components only; one per class ([RMD032](/reference/diagnostics/rmd032)). |
+| [`@watchProp(selector)`](/reference/decorators/watchProp) | Runs when one prop changes, **before** the render. [Props](/concepts/props) |
+| [`@ShouldUpdateOnPropsChange`](/reference/decorators/ShouldUpdateOnPropsChange) | A CLASS decorator taking `(self, previous, next) => boolean`: gates whether new props from the parent are taken up (their signals update + a render). For ignoring a change that really happened — a prop merely rebuilt with equal contents is `@StableProps`' job. Components only. |
+| [`@deferHydration`](/reference/decorators/deferHydration) | Keeps the server's markup while a promise settles. [Async on the server](/ssr/async) |
+| [`@catchError`](/reference/decorators/catchError) | Declares the method that handles an error thrown anywhere below this component. Return `false` to decline it and let the next one above take over. Components only; one per class ([RMD032](/reference/diagnostics/rmd032)). |
 
 ### Decorators — the DOM
 
 | | |
 |---|---|
-| `@onWindow(type, options?)` / `@onDocument(...)` | Listeners on `window` / `document`. Work on a Hook too. |
-| `@interval(ms)` / `@timeout(ms)` | Timers cleared on unmount. Client only; work on a Hook. [Timers](/concepts/timers) |
+| [`@onWindow(type, options?)`](/reference/decorators/onWindow) / [`@onDocument(...)`](/reference/decorators/onDocument) | Listeners on `window` / `document`. Work on a Hook too. |
+| [`@interval(ms)`](/reference/decorators/interval) / [`@timeout(ms)`](/reference/decorators/timeout) | Timers cleared on unmount. Client only; work on a Hook. [Timers](/concepts/timers) |
 
 ### Building your own
 

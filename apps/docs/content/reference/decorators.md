@@ -17,21 +17,21 @@ Three questions come up about every decorator, and none of them is guessable fro
 
 | | Runs on | Goes on | More than once |
 |---|---|---|---|
-| [`@state`](/concepts/state) | both | component · hook | yes — one per field |
-| [`@persist`](/ssr/env) | both | component · hook | yes — one per field |
-| [`@compute`](/concepts/compute) | both | component · hook | yes |
-| [`@memoized`](/reference/api) | both | component · hook | yes |
-| [`@created`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
-| [`@mounted`](/concepts/lifecycle) | both — `env` chooses | component · hook | yes, in order |
-| [`@destroyed`](/concepts/lifecycle) | client in practice¹ | component · hook | yes, reverse order |
-| [`@updated`](/concepts/lifecycle) | client in practice¹ | component · hook | yes |
-| [`@watchProp`](/concepts/props) | client in practice¹ | component · hook | yes — one per selector |
-| [`@deferHydration`](/ssr/async) | client (hydration only) | component · hook | yes — all are awaited |
-| [`@catchError`](/composition/error-boundaries) | both | **component only** | **no** — a subclass may override |
-| [`@ShouldUpdateOnPropsChange`](/concepts/props) | client in practice¹ | **component only** | **no** — a subclass may override |
-| [`@StableProps`](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) | client in practice¹ | both | **no** — it takes a list |
-| [`@onWindow` / `@onDocument`](/concepts/events) | **client only**² | component · hook | yes |
-| [`@interval` / `@timeout`](/concepts/timers) | **client only**² | component · hook | yes |
+| [`@state`](/reference/decorators/state) | both | component · hook | yes — one per field |
+| [`@persist`](/reference/decorators/persist) | both | component · hook | yes — one per field |
+| [`@compute`](/reference/decorators/compute) | both | component · hook | yes |
+| [`@memoized`](/reference/decorators/memoized) | both | component · hook | yes |
+| [`@created`](/reference/decorators/created) | both — `env` chooses | component · hook | yes, in order |
+| [`@mounted`](/reference/decorators/mounted) | both — `env` chooses | component · hook | yes, in order |
+| [`@destroyed`](/reference/decorators/destroyed) | client in practice¹ | component · hook | yes, reverse order |
+| [`@updated`](/reference/decorators/updated) | client in practice¹ | component · hook | yes |
+| [`@watchProp`](/reference/decorators/watchProp) | client in practice¹ | component · hook | yes — one per selector |
+| [`@deferHydration`](/reference/decorators/deferHydration) | client (hydration only) | component · hook | yes — all are awaited |
+| [`@catchError`](/reference/decorators/catchError) | both | **component only** | **no** — a subclass may override |
+| [`@ShouldUpdateOnPropsChange`](/reference/decorators/ShouldUpdateOnPropsChange) | client in practice¹ | **component only** | **no** — a subclass may override |
+| [`@StableProps`](/reference/decorators/StableProps) | client in practice¹ | both | **no** — it takes a list |
+| [`@onWindow`](/reference/decorators/onWindow) / [`@onDocument`](/reference/decorators/onDocument) | **client only**² | component · hook | yes |
+| [`@interval`](/reference/decorators/interval) / [`@timeout`](/reference/decorators/timeout) | **client only**² | component · hook | yes |
 | [your own subscription](/hooks/own-decorators) | **client only**² | component · hook | yes |
 
 ¹ **"client in practice"** means the decorator is not gated to a side — it would run on the
