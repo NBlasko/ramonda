@@ -68,13 +68,20 @@ const ISSUES_END = "[issues:end]: #";
  * it is the key in `findings`, and it is what the command prints when a rule is named. A title
  * would be a second name for the same rule, written here and nowhere else — which is the drift
  * this script exists to end.
+ *
+ * It LINKS to the rule's own page, which `build-content.mjs` generates from the same catalogue. The
+ * table answers "what does this tool check"; the page answers "what is this one, and what do I write
+ * instead" — and only the second is something a search engine can rank, which is why a rule living
+ * only in a row is a rule nobody arrives at.
  */
 function row(rule) {
   // A rule may answer several codes — `duplicate-decorators` answers four — so every one is linked.
   const codes = rule.alsoReportedAs ?? [];
   const also =
-    codes.length > 0 ? ` — also ${codes.map((code) => `[\`${code}\`](/reference/diagnostics)`).join(", ")}` : "";
-  return `| \`${rule.id}\` | ${rule.reportedWhen}${also} |`;
+    codes.length > 0
+      ? ` — also ${codes.map((code) => `[\`${code}\`](/reference/diagnostics/${code.toLowerCase()})`).join(", ")}`
+      : "";
+  return `| [\`${rule.id}\`](/rules/${rule.id}) | ${rule.reportedWhen}${also} |`;
 }
 
 function table(rules) {

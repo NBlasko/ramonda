@@ -33,4 +33,16 @@ export interface PageMeta {
   section: string;
   /** Sort order within a section. */
   order: number;
+  /**
+   * Whether the sidebar lists this page. Absent means yes.
+   *
+   * For the generated sets — 84 rules and 74 diagnostics — which are reached from their index, from
+   * a report that named one, or from search, and never by scrolling a list of 158 names. Measured
+   * before they were dropped: the sidebar was **83% of every page's HTML**, on all 252 of them.
+   *
+   * They are still crawled. `sitemap.xml` carries every route, and each index links its own set from
+   * a page every other page links to — so a rule is one hop away instead of nought, which is the
+   * ordinary shape of a site rather than a loss.
+   */
+  nav?: boolean;
 }

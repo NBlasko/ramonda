@@ -9,10 +9,20 @@ interface SidebarProps {
   onNavigate?: () => void;
 }
 
-/** Sidebar entries grouped by their frontmatter `section`. */
+/**
+ * Sidebar entries grouped by their frontmatter `section`.
+ *
+ * A page may opt out with `nav: false`, and 158 of them do — the generated rules and diagnostics.
+ * They are reached from their index, from a report that named one, or from search; nobody scrolls a
+ * list of 158 names looking for `RMD047`. Measured while they were still listed: the sidebar was
+ * **83% of every page's HTML**, repeated across all 252 pages.
+ */
 const grouped = (() => {
   const groups = new Map<string, (typeof pages)[number][]>();
   for (const page of pages) {
+    // `in` rather than a property read: `pages` is `as const`, so the union's members only carry
+    // the keys they were written with, and most were written without this one.
+    if ("nav" in page && page.nav === false) continue;
     const key = page.section || "";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(page);
@@ -47,12 +57,40 @@ class Sidebar extends Component<SidebarProps> {
     );
   }
 
+  /**
+   * Whether the page being read is in this group — which is the one that opens.
+   *
+   * The second test is for the pages the sidebar does NOT list: a reader on
+   * `/rules/row-without-a-key` should find Reference open, because `/rules` is the entry that
+   * would have taken them there. Without it the accordion is shut on exactly the pages a reader
+   * most needs to get out of.
+   */
+  holdsTheReader(items: readonly { path: string }[]): boolean {
+    const here = this.route.pathname;
+    return items.some((page) => here === page.path || here.startsWith(`${page.path}/`));
+  }
+
+  /**
+   * A group is `<details>`, and that is a decision rather than a default.
+   *
+   * The links inside a CLOSED one are still in the HTML, so a crawler reaches every page whatever
+   * the reader has open — which a sidebar that drew its items on click would not. It is also the
+   * accessible control for this without writing one: a summary is a button, it takes the keyboard,
+   * and it announces its own state.
+   */
   renderGroup([section, items]: (typeof grouped)[number]): VNode {
+    if (!section) {
+      return (
+        <div className="sidebar-group">
+          <ul>{list(items, this.renderPage)}</ul>
+        </div>
+      );
+    }
     return (
-      <div className="sidebar-group">
-        {section ? <h4>{section}</h4> : null}
+      <details className="sidebar-group" open={this.holdsTheReader(items)}>
+        <summary>{section}</summary>
         <ul>{list(items, this.renderPage)}</ul>
-      </div>
+      </details>
     );
   }
 

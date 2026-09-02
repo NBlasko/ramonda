@@ -187,7 +187,7 @@ class SignupForm extends Component {
 
 A method rather than an inline arrow, because methods are auto-bound: the identity never changes, so
 the listener is not removed and re-added on every render. An arrow here would be reported by
-[RMD020](/reference/diagnostics#rmd020-render-produced-a-different-value-the-second-time).
+[RMD020](/reference/diagnostics/rmd020).
 
 ## Fields without `bind`
 
@@ -215,7 +215,7 @@ error before it is anything else:
 Cannot assign to 'value' because it is a read-only property. ts(2540)
 ```
 
-It also throws at runtime ([RMF001](/reference/diagnostics#rmf001-a-field-was-assigned-to)), which
+It also throws at runtime ([RMF001](/reference/diagnostics/rmf001)), which
 is what catches it in JavaScript and in a file the checker is not covering. A field node is a proxy
 over a path rather than a place values live, so an assignment would land nowhere and the next read
 would hand back the old value.
@@ -393,7 +393,7 @@ form above it.
 
 **Two forms side by side are two components**, and that is the only way to write them: a component
 publishes the form context once, so a second `Form` on the same component throws
-([`RMD056`](/reference/diagnostics#rmd056-one-context-provided-twice-by-the-same-component)) rather
+([`RMD056`](/reference/diagnostics/rmd056)) rather
 than quietly handing every button below it the second form. Give each form the subtree it belongs to —
 a component that renders `this.props.children` is enough — and a plain `this.use(FormState)` inside
 each finds its own with nothing passed down. See

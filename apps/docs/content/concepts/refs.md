@@ -104,7 +104,7 @@ class Watched extends Component {
 The callback goes to `createRef`, not into the JSX. A `ref` prop takes a ref — something
 that can receive the element — and a function written in the attribute would also be a new
 one on every render, which
-[`RMD020`](/reference/diagnostics#rmd020-render-produced-a-different-value-the-second-time)
+[`RMD020`](/reference/diagnostics/rmd020)
 reports.
 
 A ref is cleared when its element is removed, so it can't keep a detached node alive.

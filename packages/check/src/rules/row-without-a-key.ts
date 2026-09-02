@@ -67,7 +67,7 @@ export const rowWithoutAKey = {
     advice:
       "Give each row a `key` from your data — an id. Not the array index, which IS the position and\n" +
       "so says nothing a position did not already say.\n\n" +
-      "Each line above says which of the two you are looking at, and they fail differently.\n\n" +
+      "A finding names which of the two it found, and they fail differently.\n\n" +
       "`map` has no identity without a key at all: rows are matched by position, so inserting or\n" +
       "removing anywhere but the end hands every row below it the previous row's state and DOM.\n\n" +
       "`list` infers one from what makes a row different from its siblings, and a key you write\n" +

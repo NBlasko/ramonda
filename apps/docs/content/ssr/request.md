@@ -161,7 +161,7 @@ Now the server sends that value with the page and the browser reads it back from
 
 **Cookies and headers can never be exposed.** They are the server's — and an httpOnly cookie is
 invisible to JavaScript anyway. Reading them in the browser (or reading a key that did not opt in)
-returns nothing and reports [`RMD025`](/reference/diagnostics#rmd025-per-request-data-read-in-the-browser)
+returns nothing and reports [`RMD025`](/reference/diagnostics/rmd025)
 in development. It does not throw: breaking the page would be the worse outcome, and if the server
 rendered a value where that read is, hydration reports the divergence too.
 
@@ -247,7 +247,7 @@ client reads back what the server decided and hydration agrees.
 server sends the table, the phone shows the table after hydration, and **nothing is reported at all**.
 Hydration agrees — on the wrong answer, permanently, because the decision is frozen into the page. The
 version that reads the window inside `render()` instead ends up *correct* and is reported as
-[`RMD007`](/reference/diagnostics#rmd007-server-and-client-rendered-different-output), at the cost of a
+[`RMD007`](/reference/diagnostics/rmd007), at the cost of a
 flicker. So the trade is **flickers-but-right against silent-and-possibly-wrong-for-ever**, and it is
 worth choosing on purpose.
 

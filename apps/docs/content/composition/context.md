@@ -211,9 +211,9 @@ class Panel extends Component {
 Reversed, the consumer is constructed before the provider has published, and what it reads for the
 rest of its life depends on what is ABOVE this component. With no provider on any ancestor it reads
 the context's default and says so with
-[`RMD003`](/reference/diagnostics#rmd003-context-consumed-without-a-provider-above-it). With one, it
+[`RMD003`](/reference/diagnostics/rmd003). With one, it
 reads that ancestor's value — quietly, and correctly as far as anything can tell, which is why
-[`RMD057`](/reference/diagnostics#rmd057-a-context-consumed-above-the-provider-on-the-same-component)
+[`RMD057`](/reference/diagnostics/rmd057)
 exists: moving one of the two lines past the other changes the answer, and nothing else would say so.
 
 Reading it through the **provider** avoids the question altogether. A provider reads as well as
@@ -232,7 +232,7 @@ descendants.
 
 One component publishes a context **once**. A second Provider of the same context on the same
 component throws
-([`RMD056`](/reference/diagnostics#rmd056-one-context-provided-twice-by-the-same-component)), and not
+([`RMD056`](/reference/diagnostics/rmd056)), and not
 as a matter of taste: a component has one context object, so the second would replace the first and
 hand every descendant the second whichever part of the tree it is in — while the component itself
 could still read both through its own hooks. The one place that made the mistake is the one place it

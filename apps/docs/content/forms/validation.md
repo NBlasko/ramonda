@@ -248,7 +248,7 @@ as strings. It is cleared by the next validation of that field — which is what
 message goes away as soon as the reader changes the thing it is about.
 
 If `onSubmit` throws instead of handling its own failure, the form reports
-[RMF003](/reference/diagnostics#rmf003-onsubmit-threw) in development and leaves `isSubmitting`
+[RMF003](/reference/diagnostics/rmf003) in development and leaves `isSubmitting`
 behind it. The form cannot know whether a network error should become a message, a retry or a
 redirect, so it does not guess.
 
