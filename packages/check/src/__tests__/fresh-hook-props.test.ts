@@ -53,6 +53,17 @@ describe("a hook prop rebuilt when the callback runs again", () => {
   });
 
   /**
+   * The declaration made at the context's CREATION, which is the spelling the advice now gives.
+   *
+   * It has to be read here or the rule reports the very fix it recommends — the failure this rule
+   * has already had once, when an alias hid a subclass's decorator.
+   */
+  test("a key declared in createContext's stableProps is not reported either", () => {
+    const hooks = run().findings["fresh-object-in-hook-props"].map((issue) => issue.hook);
+    expect(hooks).not.toContain("SettledAtCreation");
+  });
+
+  /**
    * The guard that keeps this shippable: a `.d.ts` carries no decorators, so `@StableProps` on an
    * installed hook cannot be seen from outside the package that wrote it — `@ramonda/query`
    * declares `key` and `invalidates` exactly that way. A rule that cannot tell a missing

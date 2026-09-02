@@ -245,17 +245,32 @@ export function assertEnv(env: unknown, decorator: string): void {
 }
 
 /**
- * `@StableProps()` with nothing to declare is a mistake rather than a no-op, and a
+ * How the declaration being checked is written, so one checker can answer for both spellings.
+ *
+ * The names and the rules are identical; only the syntax around them differs, and a message that
+ * shows the decorator to somebody who wrote the option sends them to fix the wrong line.
+ */
+export interface StablePropsSpelling {
+  /** What to call it: `@StableProps`, or `stableProps`. */
+  named: string;
+  /** One correct example of that spelling. */
+  example: string;
+}
+
+const AS_A_DECORATOR: StablePropsSpelling = { named: "@StableProps", example: '@StableProps("key")' };
+
+/**
+ * A declaration with nothing to declare is a mistake rather than a no-op, and a
  * non-string key means the call site passed something that will never match a prop name.
  */
-export function assertStablePropKeys(keys: readonly string[]): void {
+export function assertStablePropKeys(keys: readonly string[], spelling: StablePropsSpelling = AS_A_DECORATOR): void {
   if (keys.length === 0) {
-    throw new Error('[Ramonda] @StableProps needs at least one prop name: @StableProps("key").');
+    throw new Error(`[Ramonda] ${spelling.named} needs at least one prop name: ${spelling.example}.`);
   }
 
   for (const key of keys) {
     if (typeof key !== "string" || key.length === 0) {
-      throw new Error(`[Ramonda] @StableProps takes prop names as strings; got ${JSON.stringify(key)}.`);
+      throw new Error(`[Ramonda] ${spelling.named} takes prop names as strings; got ${JSON.stringify(key)}.`);
     }
   }
 }

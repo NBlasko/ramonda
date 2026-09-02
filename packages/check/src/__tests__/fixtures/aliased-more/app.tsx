@@ -4,6 +4,7 @@ import {
   StableProps,
   StableProps as Stable,
   bootstrap,
+  createContext as makeContext,
   state,
   watchProp,
   watchProp as onPropChange,
@@ -67,8 +68,26 @@ class HandsAStableProp extends Component {
   }
 }
 
+/**
+ * A context whose Provider declares `conf` a value — with `createContext` itself under an alias.
+ *
+ * The declaration is not on a class here, it is an argument to the call, so the rule has to
+ * identify the CALL as core's. Matching the letters `createContext` would go quiet on this line and
+ * report the literal below, which is the declared key.
+ */
+const [AliasedProvider] = makeContext({ conf: { dense: false }, n: 0 }, { stableProps: ["conf"] });
+
+class HandsAStableContextValue extends Component {
+  @state tick = 0;
+  provider = this.use(AliasedProvider, () => ({ conf: { dense: true }, n: this.tick }));
+  render() {
+    return <p>{this.tick}</p>;
+  }
+}
+
 void Hook;
 
 bootstrap(<Plain />, null);
 bootstrap(<HandsAStableProp />, null);
 bootstrap(<Aliased />, null);
+bootstrap(<HandsAStableContextValue />, null);

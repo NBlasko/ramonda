@@ -4,7 +4,6 @@ import { Counter } from "./Counter";
 import { ListDemo } from "./ListDemo";
 import { FilteredList } from "./FilteredList";
 import { FormDemo } from "./FormDemo";
-import { InheritanceDemo } from "./InheritanceDemo";
 import { LazyPanel } from "./LazyPanel";
 import { LensSharing } from "./LensSharing";
 import { EffectCleanup } from "./EffectCleanup";
@@ -59,7 +58,6 @@ export const demos: Record<string, ComponentClassKind> = {
   RouteInfo,
   QueryDemo,
   MutationDemo,
-  InheritanceDemo,
   LazyPanel,
   FormDemo,
 };
@@ -88,7 +86,6 @@ export const demoTitles: Record<string, string> = {
   QueryDemo: "Query — one request per key, cached",
   MutationDemo: "Mutation — optimistic, with rollback",
   RouteInfo: "Navigator — the live route of this site",
-  InheritanceDemo: "Inheritance — the unit of reuse",
   LazyPanel: "AsyncLoad — a component in its own chunk",
   FormDemo: "Form — fields, validation and array rows",
 };

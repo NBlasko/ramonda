@@ -110,19 +110,30 @@ of the table and the row falls apart.
 
 ## Reusing a component
 
-Because a component is a class, one that is *almost* another can **extend** it: keep
-what it had, change what differs.
+You reuse a component by **using** it — inside another component's render, with props:
 
 ```tsx
-export class HeaderCell extends Cell {
+class Cell extends Component<{ value: string }> {
   render() {
-    return <th>{super.render()}</th>;
+    return <td>{this.props.value}</td>;
+  }
+}
+
+class NameCell extends Component<{ contact: { name: string } }> {
+  render() {
+    return <Cell value={this.props.contact.name} />;
   }
 }
 ```
 
-Inherited state, hooks and lifecycle keep working. More in
-[inheritance](/composition/inheritance).
+The outer component adds **nothing of its own to the page**: what lands in the DOM is
+exactly what `Cell`'s render returned. So a component that exists only to fill in a prop,
+or to put a context or a boundary around something, is free — there is no wrapper element
+to pay for and no `<div>` to work around.
+
+That is reuse of *markup*. Reusing **behaviour** — state, a lifecycle, a subscription —
+is a different question with its own answer: a [hook](/hooks), which is a class exactly
+like a component with everything except a `render()`.
 
 ## Why there is no fragment (optional)
 

@@ -78,8 +78,9 @@ of links, a sentence about which one is theirs.
 The slowest way for a page to go wrong is not to be written badly. It is to be written well about a
 design that has since moved, and then to keep being right about everything except the reason.
 
-**A worked example, which is why this check is here.** `composition/inheritance.md` answered *"ten
-`<td>`s, what do I wrap them in?"* with **"None — nothing wraps anything."** That was a true and
+**A worked example, which is why this check is here.** The page on extending components — since
+removed, for a separate reason — answered *"ten `<td>`s, what do I wrap them in?"* with
+**"None — nothing wraps anything."** That was a true and
 good answer while a wrapper cost a DOM element. It stopped being one when a component became a
 range of nodes: a wrapper handing back `this.props.children` now contributes nothing to the page,
 so "nothing wraps anything" no longer distinguishes the two options it was written to choose

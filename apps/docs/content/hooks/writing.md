@@ -161,8 +161,7 @@ export class Query extends Hook<QueryProps> {}
 ```
 
 A class decorator, because the declaration is about the hook rather than about any one member — props are not members at all, they live behind the
-`this.props` proxy. A subclass that declares more **adds** to what its parent declared
-rather than replacing it, so nothing can be dropped by forgetting to carry it over.
+`this.props` proxy.
 
 **The names are checked against your props**, with no type argument to write:
 `@StableProps("kye")` is a compile error that names `"kye"`, and an optional prop counts as

@@ -148,3 +148,79 @@ describe("a declared context key that changes", () => {
     dom.unmount();
   });
 });
+
+/**
+ * The same declaration made where the context is CREATED, which is the spelling the docs teach.
+ *
+ * `createContext` hands back a class rather than a site, so the only way to decorate it was to
+ * subclass it — and subclassing to attach a declaration is not what inheritance is for. The option
+ * says the same thing at the only place that knows the whole context: its keys are `defaultValue`'s
+ * keys, so a name that is not one of them is a mistake this end can SEE, and the decorator cannot.
+ *
+ * Measured against the rows above: same context, same three ticks, same consumer.
+ */
+const [SettledAtCreation, SettledAtCreationConsumer] = createContext(
+  { conf: { dense: false } as { dense: boolean }, tick: 0 },
+  { stableProps: ["conf"] },
+);
+
+class BadgeAtCreation extends Component {
+  ctx = this.use(SettledAtCreationConsumer);
+  render() {
+    consumerRenders++;
+    return <span>{String(this.ctx.conf.dense)}</span>;
+  }
+}
+
+class DeclaredAtCreation extends Component {
+  @state tick = 0;
+  provider = this.use(SettledAtCreation, () => ({ conf: { dense: true }, tick: this.tick }));
+  render() {
+    return <BadgeAtCreation />;
+  }
+}
+
+describe("stableProps declared on createContext", () => {
+  test("settles a consumer exactly as the decorator does", async () => {
+    expect(await consumerRendersOver(DeclaredAtCreation)).toBe(1);
+  });
+
+  test("is not a freeze — a key that really moves still arrives", async () => {
+    class Moving extends Component {
+      @state dense = false;
+      provider = this.use(SettledAtCreation, () => ({ conf: { dense: this.dense }, tick: 0 }));
+      render() {
+        return <BadgeAtCreation />;
+      }
+    }
+
+    consumerRenders = 0;
+    const dom = await getDOM<Moving>(<Moving />);
+    await dom.settle();
+
+    dom.instance.dense = true;
+    await dom.settle();
+
+    expect(consumerRenders).toBe(2);
+    expect(dom.container.querySelector("span")?.textContent).toBe("true");
+    dom.unmount();
+  });
+
+  /**
+   * The names are checked against the DEFAULT VALUE's keys, which is the whole context — a Provider
+   * publishes nothing outside them, so a name outside them can never match. Nothing is written at
+   * the call site to make this work: `T` is already inferred from the first argument.
+   *
+   * This case only has to fail to COMPILE, which `@ts-expect-error` asserts. The runtime refusal
+   * below is the same question asked again for a caller who has no types.
+   */
+  test("a name that is not a key of the default value is refused, twice over", () => {
+    expect(() =>
+      createContext(
+        { conf: { dense: false }, tick: 0 },
+        // @ts-expect-error — the compile-time half: "cnof" is not a key of the default value.
+        { stableProps: ["cnof"] },
+      ),
+    ).toThrow(/cnof/);
+  });
+});

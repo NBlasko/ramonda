@@ -277,10 +277,9 @@ what you would have written by hand:
 That is where the class, the label and the message belong anyway — and the class sits on the element
 it styles, so it follows the message on every render without any work.
 
-### Defaults and variants come from the class
+### Defaults come from the class, variants from a component
 
-There is no `defaultProps`, and none is needed — a getter with a fallback is one, and a subclass
-specialises it:
+There is no `defaultProps`, and none is needed — a getter with a fallback is one:
 
 ```tsx
 class TextField extends Component<{ of: FieldNode<string>; label?: string }> {
@@ -288,16 +287,18 @@ class TextField extends Component<{ of: FieldNode<string>; label?: string }> {
     return this.props.label ?? "Field";
   }
 }
+```
 
-class EmailField extends TextField {
-  protected override get labelText(): string {
-    return this.props.label ?? "E-mail";
+A **variant** is a component that fills the props in, and it costs nothing: what lands on the page
+is what `TextField`'s render returned, with no wrapper element around it.
+
+```tsx
+class EmailField extends Component<{ of: FieldNode<string> }> {
+  render() {
+    return <TextField of={this.props.of} label="E-mail" />;
   }
 }
 ```
-
-A subclass inherits the render along with everything else, and may override it to change the wrapper
-as well as the label.
 
 ### One keystroke, one field
 

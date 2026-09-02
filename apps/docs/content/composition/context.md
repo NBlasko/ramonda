@@ -87,17 +87,26 @@ class App extends Component {
 }
 ```
 
-Four renders where one was enough. The fix is on the PROVIDER, which is the thing that knows
-whether a key is a value or an identity. `createContext` hands back a class, so declare it on a
-subclass of that:
+Four renders where one was enough. Say which keys are **values** rather than identities, and the
+framework hands back the same object for as long as the contents match:
 
 ```tsx
-@StableProps("conf")
-class ConfProvider extends ThemeProvider {}
+const [ThemeProvider, ThemeConsumer] = createContext(
+  { conf: { dense: false }, tick: 0 },
+  { stableProps: ["conf"] },
+);
 ```
 
-Now the callback writes the plain literal and no consumer wakes for it. Contents that really move
-still arrive — a declaration is not a freeze.
+One render. The callback still writes the plain literal, and no consumer wakes for it. Contents
+that really move still arrive — this is a comparison, not a freeze.
+
+The declaration belongs at the context rather than at the call site because whether `conf` is a
+value or an identity is the context's own knowledge, and it is true for every provider of it. Names
+are checked against the keys of the default value, so a typo is refused rather than ignored.
+
+Functions are the exception: two functions with the same body are never equal by any comparison
+that is safe to make, so a listed function key is left exactly as it came. Pass a bound method
+instead.
 
 **A callback that reads nothing is called once.** It is cached on the signals it read, so one that
 reads no state, no `@compute`, no prop and no other hook runs at mount and never again — and a
