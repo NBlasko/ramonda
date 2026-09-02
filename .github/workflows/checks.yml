@@ -207,6 +207,8 @@ jobs:
         run: |
           SELFTEST=import node scripts/check-bare-import.mjs
           SELFTEST=browser node scripts/check-bare-import.mjs
+          SELFTEST=reason node scripts/check-bare-import.mjs
+          SELFTEST=unbuilt node scripts/check-bare-import.mjs
           node scripts/check-bare-import.mjs
 
       # In this job because it packs the built packages and installs them into a generated

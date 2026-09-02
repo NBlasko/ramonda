@@ -289,8 +289,10 @@ describe("a diagnostic about a component that has no name", () => {
 
       await getDOM((<Anon />) as never);
 
-      expect(of("RMD002")?.data?.owner).toBe("list");
-      expect(of("RMD002")?.message).toContain("rendered by list");
+      expect(of("RMD002")?.data?.owner).toBe("a list");
+      // The subject reads as one: `rendered by list` was the first spelling, and this message
+      // interpolates the name bare where a named owner needs no article.
+      expect(of("RMD002")?.message).toContain("Two rows rendered by a list");
     });
 
     /** And in `lintChildren`, whose no-owner word is `the root` — in the message and in the key. */

@@ -40,8 +40,13 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  * is required to fail, and one that stops failing is reported too.
  */
 const BROWSER_ONLY = {
-  "@ramonda/devtools":
-    "its entry registers the <ramonda-devtools> custom element, so it extends HTMLElement at module load",
+  "@ramonda/devtools": {
+    why: "its entry registers the <ramonda-devtools> custom element, so it extends HTMLElement at module load",
+    // The failure has to be the one written down. Asking only "did it still fail?" would let a broken
+    // build — a SyntaxError, a missing dependency — read as "still browser-only, as expected", and the
+    // table would be covering for it.
+    expect: /HTMLElement is not defined/,
+  },
 };
 
 /** Published means somebody installs it: a private package is never resolved by a consumer. */
@@ -65,6 +70,19 @@ function entriesOf(dir) {
   ].filter((entry) => existsSync(entry.file));
 }
 
+/**
+ * How long one import may take before it counts as a failure.
+ *
+ * A gate that can HANG is worse than one that fails: CI spends the job's whole budget and says
+ * nothing. And the shape it hangs on is the shape this hunts — a module-load `setInterval` keeps the
+ * event loop alive, so the child never exits and `execFileSync` waits for ever. Measured: without
+ * this it waited until something else killed it.
+ *
+ * Generous on purpose. A cold `import` of a built entry is tens of milliseconds here; the limit is
+ * for a process that is never going to finish, not for a slow machine.
+ */
+const IMPORT_TIMEOUT_MS = 30_000;
+
 /** Imports one file in its own process, and answers with what went wrong or `undefined`. */
 function importFails(file) {
   try {
@@ -74,10 +92,17 @@ function importFails(file) {
       {
         stdio: ["ignore", "ignore", "pipe"],
         encoding: "utf8",
+        timeout: IMPORT_TIMEOUT_MS,
+        killSignal: "SIGKILL",
       },
     );
     return undefined;
   } catch (error) {
+    // A timeout is its own answer, and it has to say so: `stderr` is empty for one, so the branch
+    // below would report "exited non-zero" about a process that never exited at all.
+    if (error.killed === true || error.signal !== null) {
+      return `did not finish importing within ${IMPORT_TIMEOUT_MS / 1000}s — something at module load is keeping the process alive`;
+    }
     const stderr = String(error.stderr ?? "");
     return (
       stderr
@@ -101,24 +126,50 @@ function run() {
 
   const broke = [];
   const noLongerBrowserOnly = [];
+  const unbuilt = [];
   let checked = 0;
 
   for (const pkg of packages) {
     const browserOnly = BROWSER_ONLY[pkg.name];
-    for (const entry of entriesOf(pkg.dir)) {
+    const entries = entriesOf(pkg.dir);
+    // A package with no built entry is SKIPPED, and a skip is what this must not do quietly: the
+    // floor below counts entries, so one package dropping out of the run leaves it comfortably
+    // above the limit and the report reads exactly as it does today. Every published package has a
+    // development entry — measured, all eleven — so the absence of one is a build that did not run.
+    if (entries.length === 0) unbuilt.push(pkg.name);
+    for (const entry of entries) {
       checked += 1;
       let failure = importFails(entry.file);
       if (selftest("import") && pkg.name === "@ramonda/core" && entry.build === "development") {
         failure = "ReferenceError: (selftest) window is not defined";
       }
       if (selftest("browser") && browserOnly !== undefined) failure = undefined;
+      if (selftest("reason") && browserOnly !== undefined) failure = "SyntaxError: (selftest) something else";
 
       if (browserOnly === undefined) {
         if (failure !== undefined) broke.push({ pkg: pkg.name, build: entry.build, failure });
       } else if (failure === undefined) {
-        noLongerBrowserOnly.push({ pkg: pkg.name, build: entry.build, why: browserOnly });
+        noLongerBrowserOnly.push({ pkg: pkg.name, build: entry.build, why: browserOnly.why });
+      } else if (!browserOnly.expect.test(failure)) {
+        // Listed, still failing, and failing at something else — which the table must not absorb.
+        broke.push({
+          pkg: pkg.name,
+          build: entry.build,
+          failure: `${failure}\n          (listed as browser-only for ${browserOnly.expect}, which this is not)`,
+        });
       }
     }
+  }
+
+  if (selftest("unbuilt")) unbuilt.push("(selftest) @ramonda/nothing");
+
+  if (unbuilt.length > 0) {
+    throw new Error(
+      `[bare-import] These published packages have no built entry to import:\n` +
+        unbuilt.map((name) => `        ${name}`).join("\n") +
+        `\n\n        Run \`turbo run build\` first. A package with nothing to import is skipped, and a\n` +
+        `        skip here looks exactly like a pass.`,
+    );
   }
 
   if (checked < 8) {
@@ -155,7 +206,7 @@ function run() {
   );
 }
 
-const planted = ["import", "browser"].find((which) => selftest(which));
+const planted = ["import", "browser", "reason", "unbuilt"].find((which) => selftest(which));
 
 if (planted === undefined) {
   run();

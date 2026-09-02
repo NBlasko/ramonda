@@ -54,8 +54,9 @@ function track(component: BaseComponent, timer: TrackedTimer): void {
  * report that no test could ever justify.
  */
 function untrack(id: number | undefined): void {
-  const component = id === undefined ? undefined : owners.get(id);
-  if (component === undefined || id === undefined) return;
+  if (id === undefined) return;
+  const component = owners.get(id);
+  if (component === undefined) return;
   owners.delete(id);
   byComponent.get(component)?.delete(id);
 }

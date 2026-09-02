@@ -937,9 +937,11 @@ export function listHostFor(owner: MaybeComponent): ListHost {
     reBuild: () => {
       if (owner) addTaskToQueue(owner);
     },
-    // `||`, so a nameless owner reads as `list` rather than as an empty label in the panel. The two
-    // absences take the same word here on purpose: what the row IS, is a list.
-    name: owner?.constructor.name || "list",
+    // `||`, so a nameless owner reads as something rather than as a gap. `a list` rather than
+    // `list` because the one message that uses this as a SUBJECT interpolates it bare — RMD002's
+    // "Two rows rendered by …" — and every other use is a dedup key, where either reads the same.
+    // The two absences take the same word on purpose: what the rows were rendered by IS a list.
+    name: owner?.constructor.name || "a list",
   };
 }
 
