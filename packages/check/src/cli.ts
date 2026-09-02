@@ -436,26 +436,33 @@ if (unreachableRoutes.length > 0) {
 /**
  * The other read the runtime throws on, and the one nothing else can see.
  *
- * The params context is `optional` on purpose — a nav bar beside the outlet correctly has no
- * matched route — so the missing provider is not the fault and cannot be reported. The fault is
- * asking it for a pattern.
+ * Two faults printed as one section because they are the same mistake at two distances, and each
+ * line says which it is: nothing routes to this component at all, or something does and it is a
+ * different route from the one the read names. The router's own two messages make the same split.
  */
 if (paramsOffRoute.length > 0) {
-  console.error(`\n${TAG} ${paramsOffRoute.length} params(pattern) read(s) with no matched route above:\n`);
+  console.error(`\n${TAG} ${paramsOffRoute.length} params(pattern) read(s) the routing cannot answer:\n`);
   for (const read of paramsOffRoute) {
     console.error(`  ${read.file}:${read.line}:${read.column}`);
     console.error(
-      `    <${read.component}> reads \`${read.member}.params("${read.pattern}")\`, and no arrangement in ` +
-        `this build puts it under a <RouteOutlet>.`,
+      read.why === "no-outlet"
+        ? `    <${read.component}> reads \`${read.member}.params("${read.pattern}")\`, and no arrangement in ` +
+            `this build puts it under a <RouteOutlet>.`
+        : `    <${read.component}> reads \`${read.member}.params("${read.pattern}")\`, but the route that ` +
+            `mounts it is "${read.route}", which supplies no ${(read.missing ?? [])
+              .map((name) => `\`:${name}\``)
+              .join(", ")}.`,
     );
     console.error("");
   }
   console.error(
-    `Params are published by the outlet that MATCHED, which is why chrome beside it — a nav bar, a\n` +
-      `header, a footer — has a pathname and no params. The router throws on this read in every\n` +
-      `build. Move it into the routed page, or use \`pathname\` if the component is not part of a\n` +
-      `route. A component written against no ONE route drops the argument: \`params<T>()\` names no\n` +
-      `pattern and claims nothing.\n`,
+    `Params are published by the outlet that MATCHED, and each outlet publishes only its own — so a\n` +
+      `component reads the pattern of the route that mounts IT, and chrome beside the outlet (a nav\n` +
+      `bar, a header, a footer) has a pathname and no params at all. The router throws on both of\n` +
+      `these in every build.\n\n` +
+      `Name the route this component is really rendered by, or move the read into the page that is\n` +
+      `on that route and pass the value down as a prop. Use \`pathname\` if it is not part of a route,\n` +
+      `and \`params<T>()\` with no argument when it is genuinely written against no ONE route.\n`,
   );
 }
 

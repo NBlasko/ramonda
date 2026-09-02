@@ -79,18 +79,97 @@ class Badge extends Component {
   }
 }
 
+/**
+ * REPORTED, and this is the case the whole pattern-keeping exists for.
+ *
+ * A CHILD of a routed page, reading a DIFFERENT route's param. It is under an outlet, so the
+ * coarse question — "is anything routing to this?" — answers yes and says nothing. The route above
+ * it is `/users/:id`, which supplies no `:slug`, so the router throws the moment the page opens.
+ */
+class WrongRouteChild extends Component {
+  nav = this.use(Navigator);
+  render() {
+    return <i>{this.nav.params("/guide/:slug").slug}</i>;
+  }
+}
+
+/**
+ * Not reported: mounted under BOTH `/users/:id` and `/people/:id`, and every route above it
+ * supplies the `:id` it asked for. Two routes that agree about a param are the arrangement the
+ * router documents as correct — the claim is about the params, not the spelling.
+ */
+class Shared extends Component {
+  nav = this.use(Navigator);
+  render() {
+    return <u>{this.nav.params("/users/:id").id}</u>;
+  }
+}
+
+/**
+ * REPORTED through a constant, on BOTH sides — the pattern here and the table's key below.
+ *
+ * Extracting the routes into constants is the tidier way to write this, and reading only literals
+ * went silent on exactly that: the tidier the code, the less was checked. One hop, `const` only.
+ */
+class ConstPattern extends Component {
+  nav = this.use(Navigator);
+  render() {
+    return <i>{this.nav.params(GUIDE).slug}</i>;
+  }
+}
+
+/** REPORTED through a local alias, which is the other spelling people write. */
+class AliasedRead extends Component {
+  nav = this.use(Navigator);
+  render() {
+    const n = this.nav;
+    return <i>{n.params("/guide/:slug").slug}</i>;
+  }
+}
+
+/**
+ * NOT reported, and this is a known limit rather than a decision: the navigator arrives as a PROP,
+ * so there is no `this.use(Navigator)` on this class to recognise it by. Pinned here so the day it
+ * starts being reported is a day somebody chose.
+ */
+class NavAsProp extends Component<{ nav: Navigator }> {
+  render() {
+    return <i>{this.props.nav.params("/guide/:slug").slug}</i>;
+  }
+}
+
 class Wrapper extends Component {
+  nav = this.use(Navigator);
   render() {
     return (
       <div>
         <UserPage />
         <Badge />
+        <WrongRouteChild />
+        <Shared />
+        <ConstPattern />
+        <AliasedRead />
+        <NavAsProp nav={this.nav} />
       </div>
     );
   }
 }
 
-const routes = createRoutes({ "/users/:id": <Wrapper />, "/guide/:slug": <GuidePage /> });
+/** `/people/:id` is the second route that agrees about `:id` — the silence `Shared` stands for. */
+class PeoplePage extends Component {
+  render() {
+    return <Shared />;
+  }
+}
+
+/** The pattern as a constant, used on BOTH sides — the read above and the key below. */
+const GUIDE = "/guide/:slug";
+
+const routes = createRoutes({
+  "/users/:id": <Wrapper />,
+  "/guide/:slug": <GuidePage />,
+  "/people/:id": <PeoplePage />,
+});
 
 class App extends Component {
   render() {

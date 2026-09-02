@@ -80,24 +80,37 @@ inside the routed page. A nav bar beside the outlet has `pathname` but no params
 which is right, it isn't part of any route.
 
 Reading `pathname` there is correct, and reading `params(pattern)` there throws. `ramonda-check`
-says it first: it descends every arrangement your source can produce, and reports a
-`params(pattern)` in a component that **no** path puts under an outlet.
+says it first, and it says the other half too — naming a route that is not the one you are on:
 
 ```
-[ramonda-check] 1 params(pattern) read(s) with no matched route above:
+[ramonda-check] 2 params(pattern) read(s) the routing cannot answer:
 
   src/App.tsx:264:29
     <Layout> reads `route.params("/users/:id")`, and no arrangement in this build
     puts it under a <RouteOutlet>.
+
+  src/UserPanel.tsx:12:19
+    <UserPanel> reads `nav.params("/guide/:slug")`, but the route that mounts it
+    is "/users/:id", which supplies no `:slug`.
 ```
 
-A component rendered in both places — beside the outlet *and* inside a routed page — is silent: it
-is correct on a path it is mounted on. `params()` with no argument is never judged, because it
-names no pattern and claims no route.
+The second one is the case nothing else can reach. `<UserPanel>` is a child of a routed page, so it
+*is* under an outlet — the fault is that the outlet above it matched a different route. The checker
+knows because it carries the table's **key** down with the view, and the key is the only place a
+route's params are written.
 
-The types cannot answer this one. `params("/users/:id")` is checked against the paths your **table**
-declares, never against the route the component is standing on — so a page mounted at
-`/guide/:slug` naming `/users/:id` compiles, and the graph is what tells them apart.
+A component under two routes that both supply what it asked for is silent: `/users/:id` and
+`/people/:id` both give `:id`, and the claim is about the params, not the spelling. `params()` with
+no argument is never judged, because it names no pattern and claims no route.
+
+The types cannot answer either of these. `params("/users/:id")` is checked against the paths your
+**table** declares, never against the route the component is standing on.
+
+**What it cannot see.** A route table whose keys are computed — `table[page.path] = …` in a loop —
+names its paths at runtime, so the checker knows the views are routed but not under what; it reports
+neither. A pattern in a `let`, or one built by concatenation, is the same. And a navigator handed
+over as a prop rather than taken with `this.use(Navigator)` is not recognised. A pattern or a table
+key held in a `const` **is** followed, so extracting your routes into constants costs you nothing.
 
 ## Params are always strings
 

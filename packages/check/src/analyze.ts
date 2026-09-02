@@ -196,6 +196,18 @@ export interface ParamsOffRouteIssue {
   member: string;
   /** The pattern named at the call, which is what the runtime message would quote. */
   pattern: string;
+  /**
+   * Which of the two faults this is, because they read differently to whoever has to fix it.
+   *
+   * `no-outlet` — nothing routes to this component, so there are no params at all; the read belongs
+   * in the routed page, or it wanted `pathname`. `wrong-route` — it IS routed, and the pattern it
+   * names is a different route from the one that mounts it.
+   */
+  why: "no-outlet" | "wrong-route";
+  /** For `wrong-route`: the route that really mounts it. */
+  route?: string;
+  /** For `wrong-route`: the `:name`s asked for that this route does not supply. */
+  missing?: string[];
   file: string;
   line: number;
   column: number;
@@ -333,6 +345,14 @@ interface ContextFact {
 interface Reference {
   target: ComponentNode | undefined;
   site: ts.Node;
+  /** For a route table's view: the pattern it is keyed by, when that key is a literal. */
+  route?: string;
+}
+
+/** One view in a route table, and the pattern keying it — `undefined` when the key is computed. */
+interface RouteView {
+  node: ts.Node;
+  route?: string;
 }
 
 /** What a package's fragment contributed, looked up by the name an app imports. */
@@ -356,6 +376,13 @@ interface MountSite {
   always: boolean;
   /** Slot path → the components handed to it at THIS site; a ternary hands over both arms. */
   binds: Map<string, ComponentNode[]>;
+  /**
+   * The route pattern this view sits under, when the mount is an outlet's and the key is readable.
+   *
+   * `undefined` on every other mount, and on a route whose key is not a literal — a table built in a
+   * loop names its paths at runtime, and what cannot be read cannot be judged.
+   */
+  route?: string;
 }
 
 interface ComponentNode {
@@ -569,12 +596,14 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   const contexts = new Map<string, ContextFact>();
 
   /**
-   * Symbol of a `createRoutes(...)` binding → the tag names in its table, as NODES.
+   * Symbol of a `createRoutes(...)` binding → the tag names in its table, as NODES, each with the
+   * PATTERN it is keyed by.
    *
    * The nodes rather than their text, because a view is resolved to a component by symbol and the
-   * table is read in pass 1, before every class is known.
+   * table is read in pass 1, before every class is known. The pattern comes along because it is the
+   * only place the route's `:params` are written down, and it is thrown away everywhere else.
    */
-  const routeTables = new Map<ts.Symbol, ts.Node[]>();
+  const routeTables = new Map<ts.Symbol, RouteView[]>();
   /** Which of them some `<RouteOutlet routes={…}>` in this run actually named, and from where. */
   const mountedTables = new Map<ts.Symbol, ComponentNode[]>();
   /**
@@ -602,7 +631,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * whether an outlet is above this component is a fact about arrangements, and no arrangement is
    * known until every root has been descended.
    */
-  const paramReads: (ParamsOffRouteIssue & { owner: ComponentNode })[] = [];
+  const paramReads: (Omit<ParamsOffRouteIssue, "why" | "route" | "missing"> & { owner: ComponentNode })[] = [];
   const classesAsChildren: ClassAsChildIssue[] = [];
   const annotated: AnnotatedSite[] = [];
   const roots = new Set<ComponentNode>();
@@ -736,8 +765,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     site: ts.Node,
     binds: Map<string, ComponentNode[]> = new Map(),
     kind: GraphEdge["kind"] = "renders",
+    route?: string,
   ): void => {
-    owner.mounts.push({ target, binds, always: alwaysRuns(site) });
+    owner.mounts.push({ target, binds, always: alwaysRuns(site), ...(route === undefined ? {} : { route }) });
     edge(owner.id, target.id, kind, via, site, binds);
   };
   /**
@@ -1082,12 +1112,17 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
 
   resolveHookContexts();
   const reached = new Set<ComponentNode>();
-  const underAnOutlet = new Set<ComponentNode>();
-  const issues = walk(reached, underAnOutlet);
+  /**
+   * Which routes each node was reached under — `null` for "under an outlet whose key is not
+   * readable", which is a different answer from "under no outlet at all" and must not be confused
+   * with it.
+   */
+  const routesAbove = new Map<ComponentNode, Set<string | null>>();
+  const issues = walk(reached, routesAbove);
   const unreachable = deadOnes(reached);
   const unreachableRoutes = strandedRoutes(reached);
   const renderCycles = endlessRings();
-  const paramsOffRoute = readsOffTheRoute(reached, underAnOutlet);
+  const paramsOffRoute = readsOffTheRoute(reached, routesAbove);
 
   return {
     issues,
@@ -1289,16 +1324,77 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * So an identifier is followed to its declaration and to every WRITE into that binding, and a
    * view is read whether it is written as a tag or handed to the factory directly.
    */
-  function viewsOf(call: ts.CallExpression): ts.Node[] {
-    const found: ts.Node[] = [];
+  /**
+   * A string written here, or held by a `const` one hop away.
+   *
+   * Extracting the routes into constants and using them on BOTH sides — in the table and in the
+   * read — is the tidier way to write this, and reading only literals went silent on exactly that:
+   * the tidier the code, the less was checked. One hop, and `const` only, because a `let` may hold
+   * something else by the time it is used and this is a claim a build can fail on.
+   */
+  function literalStringOf(node: ts.Node | undefined): string | undefined {
+    if (node === undefined) return undefined;
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+    if (!ts.isIdentifier(node)) return undefined;
+
+    const declaration = resolve(node)?.declarations?.[0];
+    if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return undefined;
+    if (!ts.isVariableDeclarationList(declaration.parent)) return undefined;
+    if ((declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+
+    const written = declaration.initializer;
+    return written !== undefined && (ts.isStringLiteral(written) || ts.isNoSubstitutionTemplateLiteral(written))
+      ? written.text
+      : undefined;
+  }
+
+  /**
+   * The route pattern a view is keyed by — `"/users/:id"` in `{ "/users/:id": <UserPage /> }`.
+   *
+   * The ONLY place a route's `:params` are written down. Everything downstream of the table knows
+   * which component an outlet mounts and, until this existed, nothing knew under which path — so
+   * `params("/bar/:barId")` inside a page mounted at `/foo/:fooId` was a runtime throw that no
+   * static reading could reach.
+   *
+   * Climbs to the nearest key rather than reading the object literal directly, because the scan
+   * that finds views goes arbitrarily deep: `{ "/": <Layout><Home /></Layout> }` has two views under
+   * one key, and both really are on that route.
+   *
+   * `undefined` for a key that is not a literal, which is what a table built in a loop has —
+   * `table[page.path] = …` names its paths at runtime. Unknown, and therefore unjudged.
+   */
+  function routeKeyOf(node: ts.Node): string | undefined {
+    for (let at: ts.Node | undefined = node; at !== undefined; at = at.parent) {
+      if (ts.isPropertyAssignment(at)) {
+        const name = at.name;
+        // A COMPUTED key — `{ [USER_ROUTE]: <UserPage /> }` — is read through the same one hop as
+        // the read side, so a table and a `params()` that share a constant are both understood.
+        return literalStringOf(ts.isComputedPropertyName(name) ? name.expression : name);
+      }
+      if (ts.isBinaryExpression(at) && at.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+        const target = at.left;
+        if (!ts.isElementAccessExpression(target)) return undefined;
+        return literalStringOf(target.argumentExpression);
+      }
+      if (ts.isSourceFile(at)) return undefined;
+    }
+    return undefined;
+  }
+
+  function viewsOf(call: ts.CallExpression): RouteView[] {
+    const found: RouteView[] = [];
+    const take = (node: ts.Node): void => {
+      const route = routeKeyOf(node);
+      found.push(route === undefined ? { node } : { node, route });
+    };
     const scan = (from: ts.Node): void => {
       ts.forEachChild(from, function walk(n) {
         const opening = openingOf(n);
-        if (opening && jsxTagName(n)) found.push(opening.tagName);
+        if (opening && jsxTagName(n)) take(opening.tagName);
         // `__h(DocPage, …)` — the same edge, written through the factory the JSX compiles to.
         if (ts.isCallExpression(n) && /^_*h$/.test(n.expression.getText())) {
           const first = n.arguments[0];
-          if (first && ts.isIdentifier(first) && /^[A-Z]/.test(first.text)) found.push(first);
+          if (first && ts.isIdentifier(first) && /^[A-Z]/.test(first.text)) take(first);
         }
         ts.forEachChild(n, walk);
       });
@@ -1441,21 +1537,41 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     const access = node.expression;
     if (!ts.isPropertyAccessExpression(access) || access.name.text !== "params") return;
 
-    const pattern = node.arguments[0];
+    const pattern = literalStringOf(node.arguments[0]);
     if (pattern === undefined) return;
-    if (!ts.isStringLiteral(pattern) && !ts.isNoSubstitutionTemplateLiteral(pattern)) return;
 
-    const receiver = access.expression;
-    if (!ts.isPropertyAccessExpression(receiver) || receiver.expression.kind !== ts.SyntaxKind.ThisKeyword) return;
-    if (!holdsANavigator(cls, receiver.name.text)) return;
+    const member = navigatorMemberOf(access.expression, cls);
+    if (member === undefined) return;
 
     paramReads.push({
       owner: self,
       component: self.name,
-      member: receiver.name.text,
-      pattern: pattern.text,
+      member,
+      pattern,
       ...positionOf(node),
     });
+  }
+
+  /**
+   * The member name behind the receiver of a `.params(…)` call, when it holds a navigator.
+   *
+   * `this.nav` is the ordinary spelling. `const n = this.nav` one line up is the other one people
+   * write, and reading only the first went silent on it — the same shape of miss as reading only a
+   * literal pattern, so both are followed the same one hop and no further.
+   */
+  function navigatorMemberOf(receiver: ts.Expression, cls: ts.ClassDeclaration): string | undefined {
+    if (ts.isPropertyAccessExpression(receiver) && receiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      return holdsANavigator(cls, receiver.name.text) ? receiver.name.text : undefined;
+    }
+    if (!ts.isIdentifier(receiver)) return undefined;
+
+    const declaration = resolve(receiver)?.declarations?.[0];
+    if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return undefined;
+    if (!ts.isVariableDeclarationList(declaration.parent)) return undefined;
+    if ((declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+
+    const written = declaration.initializer;
+    return written === undefined ? undefined : navigatorMemberOf(written, cls);
   }
 
   /** Whether `this.<member>` was initialised with `this.use(Navigator)`, whatever it was imported as. */
@@ -2199,9 +2315,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
         if (views.length > 0) {
           const outlet = outletSite(node, self);
           if (table) mountedTables.set(table, [...(mountedTables.get(table) ?? []), outlet]);
-          for (const { target, site } of views) {
+          for (const { target, site, route } of views) {
             if (target) {
-              mount(outlet, target, "route", site);
+              mount(outlet, target, "route", site, undefined, undefined, route);
             } else {
               unresolvedEdge(outlet.id, "route", site, whyUnresolved(site, "the route's view"));
             }
@@ -2436,31 +2552,74 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       const why =
         outlets.length === 0 ? "unmounted" : outlets.some((outlet) => reached.has(outlet)) ? undefined : "stranded";
       if (why === undefined) continue;
-      found.push({ views: views.length, why, ...positionOf(views[0]) });
+      found.push({ views: views.length, why, ...positionOf(views[0].node) });
     }
     return found.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
   }
 
+  /** The `:name`s in a pattern — the same scan the router's own `assertPattern` does. */
+  function paramNamesOf(pattern: string): string[] {
+    return (pattern.match(/:\w+/g) ?? []).map((name) => name.slice(1));
+  }
+
   /**
-   * The `params(pattern)` reads no arrangement puts under an outlet — see `ParamsOffRouteIssue`.
+   * The `params(pattern)` reads the routing cannot answer — see `ParamsOffRouteIssue`.
    *
-   * Three silences, and each is the difference between a report that can fail a build and one that
-   * cannot:
+   * Two faults, one finding, because they are the same mistake seen from two distances: a read with
+   * NO outlet above it, and a read whose pattern names a `:param` the route above does not supply.
+   * The router throws on both, in `assertPattern`, and with two different messages — so this says
+   * which one it is rather than making a reader work it out.
+   *
+   * ## What "the route above" means when there are several
+   *
+   * A component may be reached under more than one route, and the runtime throws on whichever path
+   * is actually taken. So a read is reported when ANY reaching route fails it — that arrival is a
+   * real arrangement and it really throws. A component rendered by both `/users/:id` and
+   * `/people/:id` naming either one is silent, because what it asked for is satisfied on both: the
+   * claim is about the params, not about the spelling, exactly as the router documents.
+   *
+   * ## Three silences, and each is why this can fail a build
    *
    * - **No root.** A library has no arrangement to judge, exactly as in `deadOnes`.
-   * - **An outlet that spreads props this cannot read.** Such an outlet may be handing over any
-   *   table in the program, so "nothing routes to this component" is a claim nobody can make. The
-   *   same sentence the declaration rules live by: what cannot tell a missing thing from an
-   *   invisible one may not report either.
-   * - **A component no root reaches at all.** That is `deadOnes`' finding and not this one's, and
-   *   reporting it here would say the wrong thing about it — the fix is to mount it or delete it,
-   *   not to move the read.
+   * - **An outlet that spreads props this cannot read.** It may be handing over any table in the
+   *   program, so nothing about routing can be claimed anywhere. The same sentence the declaration
+   *   rules live by: what cannot tell a missing thing from an invisible one may not report either.
+   * - **A component no root reaches at all.** That is `deadOnes`\' finding and not this one\'s, and
+   *   reporting it here would say the wrong thing — the fix is to mount it, not to move the read.
+   *
+   * And the fourth, narrower than the others: a route reached under a key that is not a LITERAL is
+   * `null` rather than a pattern. Such an arrival proves there is an outlet above, so the first
+   * fault is answered, and says nothing about the names, so the second is not asked. A table built
+   * in a loop puts every one of its views in that state.
    */
-  function readsOffTheRoute(reached: Set<ComponentNode>, underAnOutlet: Set<ComponentNode>): ParamsOffRouteIssue[] {
+  function readsOffTheRoute(
+    reached: Set<ComponentNode>,
+    routesAbove: Map<ComponentNode, Set<string | null>>,
+  ): ParamsOffRouteIssue[] {
     if (roots.size === 0 || anOutletSpreadsUnread) return [];
-    return paramReads
-      .filter((read) => reached.has(read.owner) && !underAnOutlet.has(read.owner))
-      .map(({ owner: _owner, ...issue }) => issue);
+
+    const found: ParamsOffRouteIssue[] = [];
+    for (const read of paramReads) {
+      if (!reached.has(read.owner)) continue;
+      const { owner: _owner, ...issue } = read;
+
+      const routes = routesAbove.get(read.owner);
+      if (routes === undefined) {
+        found.push({ ...issue, why: "no-outlet" });
+        continue;
+      }
+
+      const wanted = paramNamesOf(read.pattern);
+      for (const route of routes) {
+        if (route === null) continue;
+        const supplied = new Set(paramNamesOf(route));
+        const missing = wanted.filter((name) => !supplied.has(name));
+        if (missing.length === 0) continue;
+        found.push({ ...issue, why: "wrong-route", route, missing });
+        break;
+      }
+    }
+    return found;
   }
 
   function deadOnes(reached: Set<ComponentNode>): UnreachableIssue[] {
@@ -2504,13 +2663,13 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     return found.sort((a, b) => (a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1));
   }
 
-  function walk(reached: Set<ComponentNode>, underAnOutlet: Set<ComponentNode>): ContextIssue[] {
+  function walk(reached: Set<ComponentNode>, routesAbove: Map<ComponentNode, Set<string | null>>): ContextIssue[] {
     const issues: ContextIssue[] = [];
     const seen = new Set<string>();
     const seenSeconds = new Set<string>();
 
     for (const root of rootMounts) {
-      visit(root.target, new Set(), [], new Set(), new Map(), true, false);
+      visit(root.target, new Set(), [], new Set(), new Map(), true, undefined);
     }
 
     return issues;
@@ -2541,15 +2700,25 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
        */
       judging = true,
       /**
-       * Whether an outlet's matched route is above this node — which is what makes `params(pattern)`
-       * answerable here.
+       * The route whose params are published above this node, which is what `params(pattern)` reads.
+       *
+       * Three states, and the middle one is the whole reason it is not a boolean:
+       *
+       * - `undefined` — no outlet above. `params(pattern)` throws here.
+       * - `null` — an outlet is above, and its key is not readable (a table built in a loop). Under
+       *   a route, but which one is unknown, so nothing may be said about the NAMES.
+       * - a pattern — known, and its `:names` are what a read may ask for.
        *
        * It travels with the PATH for the same reason `bound` does: a component rendered both beside
        * the outlet and inside a routed page arrives twice, in two arrangements, and it is right on
        * one of them. Merged onto the class, the two would be one answer and the wrong one either
        * way.
+       *
+       * A nested outlet REPLACES it rather than adding to it, which mirrors the runtime: each outlet
+       * publishes only the params it matched, so an inner page reads the inner pattern and the outer
+       * one is not there to be read.
        */
-      underRoute = false,
+      underRoute: string | null | undefined = undefined,
     ): void {
       /**
        * Keyed on the node AND what is bound to its slots, because those are different arrangements.
@@ -2565,7 +2734,11 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
         .join(";")}`;
       if (onPath.has(key) || path.length > PATH_LIMIT) return;
       reached.add(node);
-      if (underRoute) underAnOutlet.add(node);
+      if (underRoute !== undefined) {
+        const already = routesAbove.get(node);
+        if (already) already.add(underRoute);
+        else routesAbove.set(node, new Set([underRoute]));
+      }
 
       const here = new Set(provided);
       const nextPath = [...path, node.name];
@@ -2613,15 +2786,18 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       // Everything an outlet SITE mounts is a matched route's view, so the params it publishes are
       // above all of it. The site is the node to ask, not the `RouteOutlet` class: two outlets in
       // one app are two arrangements, which is why each gets a node of its own.
-      const routedBelow = underRoute || outletSiteNodes.has(node);
-      for (const site of node.mounts)
+      const anOutlet = outletSiteNodes.has(node);
+      for (const site of node.mounts) {
+        // `?? null` is the middle state: an outlet mounts this, and its key was not readable.
+        const routedBelow = anOutlet ? (site.route ?? null) : underRoute;
         visit(site.target, here, nextPath, nextOnPath, site.binds, judgeBelow, routedBelow);
+      }
       // A tag naming a prop mounts whatever this caller handed over. With nothing bound the hole
       // stays a hole: the analyzer says nothing rather than guessing, which is what makes a report
       // here safe to fail a build on.
       for (const hole of node.slotHoles) {
         for (const filled of bound.get(hole.slot) ?? [])
-          visit(filled, here, nextPath, nextOnPath, new Map(), judgeBelow, routedBelow);
+          visit(filled, here, nextPath, nextOnPath, new Map(), judgeBelow, underRoute);
       }
     }
   }
@@ -3211,7 +3387,14 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     const symbol = routesGivenTo(opening);
     const views = symbol ? routeTables.get(symbol) : undefined;
     if (!views || !symbol) return { views: [] };
-    return { table: symbol, views: views.map((site) => ({ target: componentAt(site), site })) };
+    return {
+      table: symbol,
+      views: views.map((view) => ({
+        target: componentAt(view.node),
+        site: view.node,
+        ...(view.route === undefined ? {} : { route: view.route }),
+      })),
+    };
   }
 
   // ── the graph ───────────────────────────────────────────────────────────────────────────────
