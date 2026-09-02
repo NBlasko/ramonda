@@ -192,6 +192,23 @@ jobs:
           SELFTEST=honoured node scripts/check-side-effects.mjs
           node scripts/check-side-effects.mjs
 
+      # Next to it because it asks the opposite question about the same artefacts: that one asks a
+      # BUNDLER what survives importing each entry, and a bundler never evaluates the module. This
+      # one EXECUTES the import, in a Node process with no DOM.
+      #
+      # It exists because `debug/logger.ts` called `window.addEventListener` at module load inside
+      # `if (__DEV__)`, and the development build is the `default` export condition — so
+      # `import "@ramonda/core"` in a bare Node process threw before the caller's first line. Our
+      # own SSR installs a DOM shim first and the suites run under jsdom, so nothing here could see
+      # it.
+      #
+      # Both self-tests first, each planting a fault the check must report.
+      - name: Import every package with no DOM
+        run: |
+          SELFTEST=import node scripts/check-bare-import.mjs
+          SELFTEST=browser node scripts/check-bare-import.mjs
+          node scripts/check-bare-import.mjs
+
       # In this job because it packs the built packages and installs them into a generated
       # project — the tarballs a publish would push, not what npm already has.
       #
