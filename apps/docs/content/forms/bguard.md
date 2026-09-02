@@ -176,3 +176,8 @@ It is also the only thing that is correct. A cross-field rule reads a value the 
 change, so validating one field in isolation would leave a stale message under the field that
 depends on it — and which fields those are is only knowable by running the rules, since a `custom`
 is an opaque function.
+
+## Next
+
+- [Validation](/forms/validation) — the schema half, for any library rather than this one.
+- [Fields](/forms/fields) — where the attributes this derives are actually written.

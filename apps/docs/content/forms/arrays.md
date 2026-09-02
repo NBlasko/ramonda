@@ -176,3 +176,9 @@ rows instead of throwing. `append` on it builds the array.
 
 A field that holds something that is *not* a list is a mistake worth hearing about: see
 [RMF002](/reference/diagnostics/rmf002).
+
+## Next
+
+- [Forms on the server](/forms/server) — why a row's identity has to match on both sides, and how
+  it does.
+- [Rendering lists](/lists) — the same identity question outside a form.

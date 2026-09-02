@@ -208,3 +208,10 @@ That comparison is the whole cost of defaults that did not move: around 2 µs on
 - [Array fields](/forms/arrays) — rows that survive a splice
 - [On the server](/forms/server) — what a form does during SSR, and what it does on hydration
 - [The bguard submodule](/forms/bguard) — HTML attributes from the schema, and a check for typo'd cross-field rules
+
+## Next
+
+- [Fields](/forms/fields) — the field tree in full: property access instead of string paths, and
+  what `bind` hands a control.
+- [Validation](/forms/validation) — a schema from any Standard Schema library, and when a message
+  is ready to be seen.

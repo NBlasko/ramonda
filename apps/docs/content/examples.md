@@ -12,3 +12,8 @@ same file that renders above it, so what you read is what you are looking at.
 
 ```demo:__all__
 ```
+
+## Next
+
+- [Your first component](/guide/first-component) — if one of these made you want to write one.
+- [Core concepts](/concepts) — the same features explained rather than demonstrated.

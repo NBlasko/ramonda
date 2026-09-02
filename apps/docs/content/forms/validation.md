@@ -280,3 +280,9 @@ Three things follow from how it is scoped:
   the form looking as inert as before.
 - **A programmatic `form.submit()` moves nothing.** No event, no element — and the right boundary
   anyway: your code called it, so your code decides where the reader should be looking.
+
+## Next
+
+- [Array fields](/forms/arrays) — validating rows, where an error has to survive the row moving.
+- [The bguard submodule](/forms/bguard) — HTML validation attributes derived from the same schema.
+- [Forms on the server](/forms/server) — what a validated form looks like before any script runs.

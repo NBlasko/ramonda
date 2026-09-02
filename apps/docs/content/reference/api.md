@@ -433,3 +433,10 @@ A separate entry point, for building a test harness rather than for apps.
 
 It exists so the main entry does not have to be widened for a test utility: a separate,
 narrow door that a harness reaches for and an app never sees.
+
+## Next
+
+- [Every decorator, at a glance](/reference/decorators) — the table for the half of this page that
+  is decorators.
+- [Core concepts](/concepts) — if what you actually wanted was the idea behind the name.
+- [Reference](/reference) — everything else you come back to rather than read once.

@@ -94,3 +94,9 @@ bundle blocked or still loading. Point the `<form>` at an endpoint and let the b
 browser's own submission does not. Before that, the plain HTML submission is what happens. The
 schema still has to run on the server in that path — the browser's validation is a convenience,
 never the check.
+
+## Next
+
+- [Rendering on the server](/ssr/render) — the render this form is part of.
+- [Hydration mismatches](/ssr/mismatches) — what a form disagreeing across the two sides looks like.
+- [Forms](/forms) — back to the start, if you arrived here from a search.

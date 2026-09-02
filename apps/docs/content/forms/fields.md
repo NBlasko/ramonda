@@ -462,3 +462,9 @@ whole page and only you know what else is on it.
 `aria-invalid` comes from `bind` and follows the same rule the visible message does: it is set
 only once the message is ready to be seen. To connect the message itself, add
 `aria-describedby` pointing at your own element.
+
+## Next
+
+- [Validation](/forms/validation) — the errors a field shows, and the moment they appear.
+- [Array fields](/forms/arrays) — the same tree where a row can be inserted or removed.
+- [Refs](/concepts/refs) — for the one thing `bind` does not do: reaching the element itself.
