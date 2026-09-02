@@ -138,7 +138,7 @@ Three are single:
   overrides the base's — that is not a duplicate and is not reported.
 - **`@StableProps`** — it takes as many names as you like, so a second one adds nothing you could not
   write in the first. Two on one class **merge** into the union and are reported as
-  [RMD046](/reference/diagnostics#rmd046-more-than-one-stableprops-on-one-class): the result is what you
+  [RMD046](/reference/diagnostics/rmd046): the result is what you
   asked for, spelled twice, so it is a warning rather than a refusal
   names have no union. A **subclass** may declare its own, and that one *merges* with what the parent
   declared rather than replacing it, which is the intended way to extend the list.

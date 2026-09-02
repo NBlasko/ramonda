@@ -218,6 +218,89 @@ function toRoutePath(file) {
 }
 
 /**
+ * A page for every diagnostic, split out of the one page they all shared.
+ *
+ * ## Why split rather than generate
+ *
+ * The runtime HAS a structured table — `SPECS` in `core/src/debug/diagnostics.ts`, with a title and
+ * a fix per code — and generating from it was the obvious move. Two things against it. The prose
+ * here is richer: it carries examples, the reasoning, and what the fault looks like from the
+ * outside, where `SPECS.fix` is one paragraph for a console. And that table is DEV-only and
+ * stripped from production builds, so publishing it as surface would invite it back into a bundle.
+ *
+ * So the markdown stays the source, and this reads it. The file is unchanged and still checked by
+ * `check-api-coverage.mjs`, which asserts every code raised in the source has a section here.
+ *
+ * ## What this buys, beyond a page each
+ *
+ * The anchors it replaces were the whole HEADING — `#rmd003-context-consumed-without-a-provider-
+ * above-it` — so rewording a title broke every link to it. That is the exact fault `links.test.ts`
+ * was written for, after twenty-two of them died at once. `/reference/diagnostics/rmd003` cannot
+ * break that way: the code is the one part of a diagnostic that never changes, because a code is
+ * never reused.
+ */
+function diagnosticPages(source) {
+  const { data, body } = splitFrontmatter(source);
+  const lines = body.split("\n");
+
+  /** Where each family and each code starts, in file order. */
+  const marks = [];
+  lines.forEach((line, at) => {
+    const family = /^# (.+)$/.exec(line);
+    const code = /^## (RM[A-Z]\d{3})\s+—\s+(.+)$/.exec(line);
+    if (family && at > 0) marks.push({ kind: "family", at, name: family[1] });
+    if (code) marks.push({ kind: "code", at, code: code[1], title: code[2] });
+  });
+
+  const first = marks.find((mark) => mark.kind === "family");
+  if (first === undefined) throw new Error("[docs] diagnostics.md has no family heading to split on");
+
+  const made = [];
+  const index = [lines.slice(0, first.at).join("\n")];
+
+  for (const [n, mark] of marks.entries()) {
+    const until = marks[n + 1]?.at ?? lines.length;
+    if (mark.kind === "family") {
+      index.push(`# ${mark.name}`, "");
+      continue;
+    }
+    const path = `/reference/diagnostics/${mark.code.toLowerCase()}`;
+    index.push(`- [\`${mark.code}\`](${path}) — ${mark.title}`);
+    made.push({
+      source: [
+        "---",
+        `title: ${mark.code}`,
+        `description: ${mark.title.replace(/`/g, "")}`,
+        "section: Diagnostics",
+        `order: ${400 + n}`,
+        "---",
+        "",
+        `# ${mark.code} — ${mark.title}`,
+        "",
+        lines
+          .slice(mark.at + 1, until)
+          .join("\n")
+          .replace(/\n*---\n*$/, "")
+          .trim(),
+        "",
+        "## Next",
+        "",
+        "- [All diagnostics](/reference/diagnostics) — every code the framework can report.",
+        "- [Checking your app](/reference/check) — the faults proved from the source, before anything runs.",
+      ].join("\n"),
+      path,
+      label: `reference/diagnostics/${mark.code.toLowerCase()} (generated)`,
+    });
+  }
+
+  const front = Object.entries(data).map(([key, value]) => `${key}: ${value}`);
+  return {
+    index: { source: ["---", ...front, "---", "", ...index, ""].join("\n"), path: "/reference/diagnostics" },
+    pages: made,
+  };
+}
+
+/**
  * A page for every rule the checker runs, built from the rule itself.
  *
  * ## Why generated and not written
@@ -385,8 +468,22 @@ function pageOf(source, routePath, label) {
   }
 }
 
+/**
+ * `diagnostics.md` is the one file that is not one page.
+ *
+ * It carried 74 codes in 1,845 lines — one URL for 74 questions, which is one search result for 74
+ * of them. Split here rather than on disk so the file stays a single readable source, and so
+ * `check-api-coverage.mjs` keeps checking the same thing it always has.
+ */
+const diagnosticsFile = join(contentDir, "reference", "diagnostics.md");
+const split = diagnosticPages(readFileSync(diagnosticsFile, "utf8"));
+
 const pages = [
-  ...walkFiles(contentDir).map((file) => pageOf(readFileSync(file, "utf8"), toRoutePath(file), relative(root, file))),
+  ...walkFiles(contentDir)
+    .filter((file) => file !== diagnosticsFile)
+    .map((file) => pageOf(readFileSync(file, "utf8"), toRoutePath(file), relative(root, file))),
+  pageOf(split.index.source, split.index.path, "reference/diagnostics (index)"),
+  ...split.pages.map((made) => pageOf(made.source, made.path, made.label)),
   ...rulePages().map((made) => pageOf(made.source, made.path, made.label)),
 ].sort((a, b) => a.order - b.order || a.path.localeCompare(b.path));
 

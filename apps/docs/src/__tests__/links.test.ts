@@ -95,6 +95,18 @@ const files = pages(content);
 const generated = new Map<string, Set<string>>([
   ["/rules", new Set()],
   ...ruleCatalogue().map((rule) => [`/rules/${rule.id}`, new Set<string>()] as const),
+  /**
+   * `diagnostics.md` is split into a page per code by the same generator — 74 of them, where the
+   * file itself is one route. Read from the file rather than listed, for the same reason as the
+   * rules: a list here would be the second thing to keep in step.
+   *
+   * This is also what those links USED to be. An anchor was the whole heading, so rewording a title
+   * broke every link into it — the fault this file was written for, after twenty-two died at once.
+   * A code never changes, because a code is never reused.
+   */
+  ...[...readFileSync(join(content, "reference", "diagnostics.md"), "utf8").matchAll(/^## (RM[A-Z]\d{3})\s+—/gm)].map(
+    ([, code]) => [`/reference/diagnostics/${code.toLowerCase()}`, new Set<string>()] as const,
+  ),
 ]);
 
 const routes = new Map([
