@@ -60,7 +60,11 @@ function lossyKind(value: unknown, depth = 0): string | undefined {
   if (!Array.isArray(value)) {
     const proto = Object.getPrototypeOf(value);
     if (proto !== Object.prototype && proto !== null) {
-      return (value as { constructor?: { name?: string } }).constructor?.name ?? "object";
+      // `||` and `class instance`, which is the word this function's own note uses. `?? "object"`
+      // missed a class expression assigned to nothing — `name` is `""` there — and the sentence read
+      // `holds a , which survives JSON`. The old word was ungrammatical in the case it DID catch:
+      // `holds a object`.
+      return (value as { constructor?: { name?: string } }).constructor?.name || "class instance";
     }
   }
 

@@ -1,4 +1,5 @@
 import { diagnose } from "./diagnostics";
+import { displayName } from "../helpers/utils";
 import type { BaseComponent } from "../types/vdom";
 import { BOOLEAN_ATTRIBUTES } from "../helpers/constants";
 import { isInvisibleOnScreen } from "../core/Attribute";
@@ -63,9 +64,15 @@ function normalizeStyle(value: string): string {
     .join(";");
 }
 
-/** Names the component that produced the markup, for the message and dedup key. */
+/**
+ * Names the component that produced the markup, for the message and dedup key.
+ *
+ * `root` means there is no component; a component whose class has no name is not the root, so the
+ * two absences take different words. `??` handed the second one `root` and the message then blamed
+ * the root for a component's markup.
+ */
 function ownerName(owner: BaseComponent | undefined): string {
-  return owner?.constructor.name ?? "root";
+  return owner === undefined ? "root" : displayName(owner);
 }
 
 export function reportTextMismatch(owner: BaseComponent | undefined, expected: string, found: string): void {

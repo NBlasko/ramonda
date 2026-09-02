@@ -82,7 +82,9 @@ export function diffAndMerge(
    * (`normalizeChildren`, `generateRenderOutput`), so reaching this is a framework bug.
    */
   throw new Error(
-    `[Ramonda] <${(vnode.name as { name?: string })?.name ?? "component"}> reached the element diff. ` +
+    // `||` for uniformity, not pinned: reaching this line at all is a framework bug, so there is no
+    // shape to write a test around. See `helpers/utils.ts`.
+    `[Ramonda] <${(vnode.name as { name?: string })?.name || "component"}> reached the element diff. ` +
       "A component is a region and is reconciled by reconcileEntries; the children array it arrived " +
       "in was not marked as holding one.",
   );
@@ -935,7 +937,9 @@ export function listHostFor(owner: MaybeComponent): ListHost {
     reBuild: () => {
       if (owner) addTaskToQueue(owner);
     },
-    name: owner?.constructor.name ?? "list",
+    // `||`, so a nameless owner reads as `list` rather than as an empty label in the panel. The two
+    // absences take the same word here on purpose: what the row IS, is a list.
+    name: owner?.constructor.name || "list",
   };
 }
 

@@ -1,4 +1,5 @@
 import { renderPhase } from "./renderPhase";
+import { displayName } from "../helpers/utils";
 import { diagnose } from "./diagnostics";
 
 /**
@@ -18,6 +19,8 @@ import { diagnose } from "./diagnostics";
  * per item.
  */
 export function reportFunctionTag(name: string): void {
+  // `||`, and it is the shape the rest of this family had to be corrected to: a function expression
+  // assigned to nothing has a `name` of `""`, which is the same question as having none.
   const shown = name || "An anonymous function";
   diagnose("RMD011", shown, `${shown} was used as a JSX tag: <${name || "…"} />.`);
 }
@@ -61,7 +64,8 @@ export function reportFunctionTag(name: string): void {
  * children.
  */
 export function reportUnkeyedArrayChildren(names: string[]): void {
-  const owner = renderPhase.component?.constructor.name ?? "A render";
+  // `A render` is for markup no component owns; a nameless component owns this one.
+  const owner = renderPhase.component === undefined ? "A render" : displayName(renderPhase.component);
   const shown = [...new Set(names)].join(", ");
   diagnose(
     "RMD023",

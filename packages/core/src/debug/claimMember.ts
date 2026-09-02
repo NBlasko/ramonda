@@ -70,7 +70,10 @@ export function claimMember(instance: object, member: string, decorator: string,
     if (claims.has(said)) return;
     claims.add(said);
 
-    const component = owner.constructor?.name ?? "a component";
+    // `||` for uniformity with the rest of this family, and NOT pinned by a test, because the
+    // empty half cannot be reached here: this fires only where a member carries two decorators, and
+    // a class expression with a decorated member is named by the transpiler. See `helpers/utils.ts`.
+    const component = owner.constructor?.name || "a component";
     diagnose("RMD050", `${component}.${member}:${gives}`, `\`${member}\` on <${component} /> already has it.`, {
       component,
       member,

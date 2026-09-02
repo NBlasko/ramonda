@@ -38,7 +38,7 @@ function normalizeClassName(name: ComponentKind, attributes: Record<string, any>
     // `"class"` would report the first of these in an application and none of the rest, for a
     // mistake people make in every file they convert.
     const isHost = typeof name === "string";
-    const tag = isHost ? name : (name.name ?? "a component");
+    const tag = isHost ? name : name.name || "a component";
     const owner = renderingOwner();
     const dropped = attributes.className !== undefined;
     const what = dropped
