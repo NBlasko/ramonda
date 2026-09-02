@@ -1,4 +1,5 @@
 import type { BaseComponent } from "../types/vdom";
+import { displayName } from "../helpers/utils";
 import { diagnose } from "./diagnostics";
 import { stateProperty } from "./stateLabels";
 
@@ -35,7 +36,10 @@ export const renderPhase: { component: BaseComponent | undefined } = {
  * does share a source with every other hoisted vnode, in that no component is responsible for it.
  */
 export function renderingOwner(): string {
-  return renderPhase.component?.constructor.name ?? "outside a render";
+  // Three states, not two. `outside a render` is the GROUP above; a component whose class has no
+  // name is INSIDE one, so it cannot borrow that word — `??` gave it the group and said the vnode
+  // belonged to nobody. See `helpers/utils.ts`'s note on the empty name.
+  return renderPhase.component === undefined ? "outside a render" : displayName(renderPhase.component);
 }
 
 /**

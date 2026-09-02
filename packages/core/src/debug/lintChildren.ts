@@ -1,4 +1,5 @@
 import { diagnose } from "./diagnostics";
+import { displayName } from "../helpers/utils";
 import type { MaybeComponent } from "../types/vdom";
 import { isListNode, isVNode } from "../vdom/guards";
 
@@ -40,10 +41,13 @@ function scanKeys(vnodeChildren: unknown[], owner: MaybeComponent): void {
     if (!seen) seen = new Set();
 
     if (seen.has(asString)) {
-      const where = owner ? `<${owner.constructor.name} />` : "the root";
+      // Both absences get their own word: no owner is `the root`, an owner with no class name is
+      // whatever `displayName` calls it. The key followed the same `??` and grouped every nameless
+      // component under `root`.
+      const where = owner ? `<${displayName(owner)} />` : "the root";
       diagnose(
         "RMD002",
-        `${owner?.constructor.name ?? "root"}:${asString}`,
+        `${owner === undefined ? "root" : displayName(owner)}:${asString}`,
         `${where} rendered two children with key "${asString}".`,
       );
       continue;

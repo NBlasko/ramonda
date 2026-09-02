@@ -221,7 +221,7 @@ function readProps(instance: Inspectable): Record<string, unknown> | undefined {
  * form it collides at once, since a form is full of labels.
  */
 function hookName(hook: Inspectable): string {
-  const name = hook.constructor?.name ?? "Hook";
+  const name = hook.constructor?.name || "Hook";
   const label = (hook as { [HOOK_META]?: HookMeta })[HOOK_META]?.label;
   if (typeof label !== "string") return name;
 
@@ -313,7 +313,9 @@ function scanEntries(entries: RecordEntry[], depth: number): InspectedNode[] {
     }
 
     const instance = entry.instance as unknown as Inspectable;
-    const name = (entry.definition as { name?: string })?.name ?? instance.constructor?.name ?? "Unknown";
+    // `||` at both steps: an unnamed class expression has a `name` of `""`, and a panel row labelled
+    // with nothing is the one outcome a tree of names must not produce.
+    const name = (entry.definition as { name?: string })?.name || instance.constructor?.name || "Unknown";
 
     tree.push({
       id: handles.push(instance) - 1,
