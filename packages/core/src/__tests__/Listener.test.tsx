@@ -172,6 +172,51 @@ describe("Listener", () => {
    * `document` does not exist there, and a component that renders on both sides must not have to
    * branch on which — the same reason `@onWindow` resolves to `null` instead of failing.
    */
+  /**
+   * The third `false` its own doc promises, and the only one nothing measured.
+   *
+   * `listen()` says it returns `false` on the server, `false` once the owner is gone, and `false`
+   * when the target resolves to nothing. The first two have tests above. The third is the one a
+   * caller most easily gets wrong, because it is not a mistake at all: `on` is a FUNCTION, and a
+   * function that reaches for a ref before the node exists — or for an element a branch did not
+   * render — answers `null`. Nothing is attached, and the return value is the only way to know.
+   *
+   * The refusal has to be silent, too. A `null` target is a state, not a fault: a dialog arming its
+   * own listener before the dialog is on screen is ordinary, and a throw there would make the caller
+   * branch on readiness it should not have to know about.
+   */
+  test("a target that resolves to nothing refuses, and says so", async () => {
+    class Late extends Component {
+      /** No node yet — the element this reaches for is behind a branch that has not rendered. */
+      private node: HTMLElement | null = null;
+
+      drag = this.use(Listener, (self: Late) => ({
+        on: () => self.node,
+        type: "pointermove",
+        run: () => log.push("moved"),
+      }));
+
+      render(): RamondaNode {
+        return <div id="late">late</div>;
+      }
+    }
+
+    const app = await getDOM<Late>(<Late />);
+
+    // The one thing a caller can act on: it did not attach.
+    expect(app.instance.drag.listen()).toBe(false);
+
+    // And nothing was attached, so nothing fires.
+    document.getElementById("late")!.dispatchEvent(new Event("pointermove", { bubbles: true }));
+    expect(log).toEqual([]);
+
+    // Once the node is there, the same call attaches — the refusal was about the target, not the hook.
+    (app.instance as unknown as { node: HTMLElement | null }).node = document.getElementById("late");
+    expect(app.instance.drag.listen()).toBe(true);
+    document.getElementById("late")!.dispatchEvent(new Event("pointermove"));
+    expect(log).toEqual(["moved"]);
+  });
+
   test("on the server it refuses, and the render is unaffected", async () => {
     const html = await renderToString(<Dialog />);
 
