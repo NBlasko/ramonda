@@ -284,6 +284,27 @@ value, and let real authorization live behind an API the browser calls. `env` an
 choose *where code runs*, not what is safe to ship — see
 [client / server / shared](/ssr/env).
 
+## The types — `RequestContext` and `RequestKey`
+
+Five names, and only two of them are usually written by hand.
+
+| | |
+|---|---|
+| `RequestContext` | What `requestContext()` returns: `url`, `cookies`, `headers`, and `get(key)`. |
+| `RequestCookies` | The cookie reader — `get(name)` and `has(name)`, both read-only. Both throw during a static build, because a cookie is per-request by definition. |
+| `RequestKey<T>` | What `requestKey<T>(label)` hands back, and what `get` is typed by. Declare it once at module scope. |
+| `RequestKeyOptions` | `requestKey`'s second argument. One field, `exposeToClient`, and its default of `false` is [the whole safety of this](#in-the-browser-nothing-travels-unless-you-say-so). |
+| `RequestMode` | `"server"`, `"build"` or `"client"` — which of the three a render is in. |
+
+`RequestKey<T>` is the one you name most: a module declaring a slot writes
+`export const user: RequestKey<User> = requestKey("user")`, and everything that reads it is typed
+from there.
+
+**A key is a declaration and nothing else.** `requestKey` registers nothing — the exposure flag is
+read off the key when the scope is built. That matters because a registry filled as a side effect of
+the call would make what a page exposes depend on whether the declaring module had been imported
+yet, and a key declared in a lazily-loaded route is exactly the case that loses.
+
 ## Next
 
 - [Rendering modes](/ssr/modes) — how a route picks static, dynamic, or ISR.

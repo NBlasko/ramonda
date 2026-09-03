@@ -35,7 +35,7 @@ always client-only. That is why a subscription never leaks into a server render.
 server render and says so by returning `false`, so a method that starts one is safe to call
 from `shared` code.)
 
-## Knowing the side inside a shared method
+## Knowing the side inside a shared method — `RenderEnv`
 
 Sometimes a shared method runs mostly the same both ways but must skip one step on one
 side — fetch on the client, not during the server render. Rather than split it in two,

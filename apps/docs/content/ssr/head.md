@@ -45,7 +45,7 @@ route with its title — both contribute: different tags coexist, and only a gen
 conflict (both set the title) is resolved, in favour of the deeper one. `Head` writes into
 one `<head>` the way many [portals](/composition/portal) share one target.
 
-## What you can set
+## What you can set — `HeadOptions`
 
 | | |
 |---|---|
@@ -53,6 +53,9 @@ one `<head>` the way many [portals](/composition/portal) share one target.
 | `description` | `<meta name="description">` — the snippet under the title in a result |
 | `meta` | anything else: Open Graph, Twitter cards, robots, viewport |
 | `link` | canonical URLs, alternates, icons, preloads |
+
+`meta` takes `MetaTag`s and `link` takes `LinkTag`s — a `<link>` is identified by its `rel` plus its
+`href`, and carries `type`, `sizes`, `crossOrigin` and `hreflang` where they apply.
 
 `title` and `description` come first because they are the two that decide clicks.
 **Set them on every page** — a site whose pages all share one title competes with
@@ -66,7 +69,7 @@ The callback form follows a value:
 head = this.use(Head, (self: Page) => ({ title: `${self.section} — Ramonda` }));
 ```
 
-## Each `<meta>` needs an identifier
+## Each `<meta>` needs an identifier — `MetaTag`
 
 ```tsx
 meta: [{ property: "og:type", content: "article" }]   // ✓

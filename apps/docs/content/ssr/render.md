@@ -54,6 +54,28 @@ Where they *disagree*, the browser wins — the DOM is corrected — and develop
 reports it as [`RMD007`](/reference/diagnostics/rmd007). See
 [hydration mismatches](/ssr/mismatches) for why that happens and how to avoid it.
 
+## Rendering one REQUEST — `RenderToStringOptions` and `ServerRequestInit`
+
+`renderToString(vnode)` renders a page that knows nothing about who asked for it. Pass a `request`
+and it becomes a per-request render: `requestContext()` reads answer from what you seeded.
+
+```ts
+const html = await renderToString(<App />, {
+  request: { url: new URL(req.url ?? "/", "http://localhost"), headers: new Headers(), cookies: new Map() },
+});
+```
+
+`ServerRequestInit` carries `url` — which is also what the router reads as the current page —
+plus optional `cookies`, `headers` and `values`.
+
+**`values` is keyed by the `requestKey` itself, not by its label**, and that is the whole reason it
+is shaped this way. A label is a string the server writes and the app writes again, with nothing
+relating the two: seeding `"currentUsr"` against a key declared `"currentUser"` renders `undefined`
+into the page **on the server**, with no diagnostic anywhere, because a read is legitimately allowed
+to find nothing — an anonymous visitor has no user, so nothing can tell the two cases apart. Naming
+the key removes the category. It is also what tells the serializer a value may travel, since
+`exposeToClient` is read off the key you hand in. See [the request](/ssr/request).
+
 ## Fetching on the server
 
 A component that fetches when it mounts has that finished before the HTML is produced,

@@ -93,7 +93,7 @@ defineServer(routes, { /* … */ }, { defaultMode: "static" });
 
 Now unmarked routes are baked, and you mark the few dynamic ones with `prerender: false`.
 
-## The build refuses to bake a per-request page
+## The build refuses to bake a per-request page — `renderStatic` and `StaticRender`
 
 This is the rule the whole design protects: **a baked page must never contain per-request
 data.** You don't have to audit every component to be sure — the build proves it. When it
@@ -107,6 +107,12 @@ and what it read:
 
 So a page that reads the request simply can't be marked `prerender` — the guard enforces it.
 Mark it dynamic (the default) and it renders per request instead.
+
+**`renderStatic(vnode, url)` is what the build calls, and `StaticRender` is what it answers.** One
+of two shapes: `html` with the baked markup plus the `title` and `head` this route's `Head` set, or
+`blockedBy` naming the per-request field that was read. A static page is the one that needs the head
+MOST — nothing runs on a crawler that does not execute JavaScript, so what is baked into the file is
+the whole of what it sees.
 
 ## A route with a `:param` — the build has to be told which pages exist
 

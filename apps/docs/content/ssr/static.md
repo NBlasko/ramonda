@@ -47,7 +47,7 @@ if (needsData.length && extra.length === 0) {
 (`"*"` is left out — it matches what nothing else did, so it has no URL. Render a 404
 page explicitly at whatever path your host serves for missing files.)
 
-## `renderDocument`
+## `renderDocument` and `DocumentOptions`
 
 Wraps a rendered page in a complete HTML document — doctype, charset, viewport, title,
 the page's own head, a root element, your stylesheets and scripts.
@@ -60,9 +60,17 @@ the page's own head, a root element, your stylesheets and scripts.
 | `headExtra` | raw markup for anything it doesn't model (favicon, analytics). **Not escaped** |
 | `rootId` | the element the app mounts into, default `"app"` |
 
+Those options are `DocumentOptions`. It takes a `RenderedPage` — what `renderPage` hands back:
+the app's `body`, the `title` and `head` a `Head` hook set, and `portals`, which is what each named
+[portal target](/composition/portal) collected, kept apart from `head` because they land somewhere
+else in the document.
+
 It is deliberately small: the document shell is the one part every project wants
 slightly differently, so it does the parts that are always the same and leaves the
 rest to `headExtra`.
+
+`lang` defaults to `"en"`, and that is a default rather than a recommendation — a screen reader
+picks pronunciation from it and a search engine decides which audience the page is for.
 
 ## Your bundler needs two builds
 
