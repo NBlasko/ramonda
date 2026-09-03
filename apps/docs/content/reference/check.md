@@ -139,7 +139,7 @@ rules**, so a rule cannot be added without appearing here.
 | [`server-env-in-shared-code`](/rules/server-env-in-shared-code) | `process.env` is read from a member the browser also runs, where `process` does not exist |
 | [`fresh-value-from-a-watch-selector`](/rules/fresh-value-from-a-watch-selector) | a `@watchProp` selector builds the value it returns — an object or an array — so `Object.is` can never match it and the watcher fires on every props change with nothing changed |
 
-**Warnings.** These print and the run still passes. 76 of them.
+**Warnings.** These print and the run still passes. 77 of them.
 
 | rule | reported when |
 |---|---|
@@ -148,6 +148,7 @@ rules**, so a rule cannot be added without appearing here.
 | [`decorator-that-adds-nothing`](/rules/decorator-that-adds-nothing) | two decorators on one member give it the same thing — `@persist` beside `@state`, or one written twice — also [`RMD050`](/reference/diagnostics/rmd050) |
 | [`unkeyable-memoized-argument`](/rules/unkeyable-memoized-argument) | a `@memoized` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean — also [`RMD047`](/reference/diagnostics/rmd047) |
 | [`clock-read-while-rendering`](/rules/clock-read-while-rendering) | `Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path — also [`RMD021`](/reference/diagnostics/rmd021) |
+| [`ref-built-where-it-cannot-be-kept`](/rules/ref-built-where-it-cannot-be-kept) | `createRef()` is called from a render, a `@compute`, a `@memoized` member a render calls, or a hook's props callback — so it answers a new identity every pass, the child re-renders for a `ref` that only looks changed, and nothing can read `current` — also [`RMD061`](/reference/diagnostics/rmd061) |
 | [`cached-read-of-a-plain-field`](/rules/cached-read-of-a-plain-field) | a `@compute` or a hook's props callback reads an ordinary field that is written after the first render, so the cached value goes stale — also [`RMD027`](/reference/diagnostics/rmd027) |
 | [`browser-url`](/rules/browser-url) | a component reads `window.location` in a project whose router already holds the answer |
 | [`dom-writes`](/rules/dom-writes) | a component writes the document — `document.body.classList.add(…)` and its family — where `render()` could have said it |

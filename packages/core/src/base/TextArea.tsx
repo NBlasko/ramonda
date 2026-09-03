@@ -76,8 +76,25 @@ export class TextArea extends Component<TextAreaProps> {
     const field = this.e.current;
     if (!field) return;
 
-    // A caller may hand over a DIFFERENT ref between renders, and the element's own ref did not
-    // change, so nothing else would notice. This is the one moment that can.
+    /**
+     * A caller may hand over a DIFFERENT ref between renders, and the element's own ref did not
+     * change, so nothing else would notice. This is the one moment that can — **but it does not
+     * arrive on the swap itself.**
+     *
+     * `helpers/arePropsBagsEqual.ts` ignores `ref` on purpose, and its reason is measured: an
+     * inline `ref={createRef()}` would otherwise re-render the child on every parent render. So a
+     * render whose ONLY change is the ref is not a props change at all — this component is never
+     * queued, `rawProps` is not even replaced, and the line below does not run. The swap is honoured
+     * by the next update, whatever causes it.
+     *
+     * That premise — "pointed at the host element when the component is created and never read
+     * again" — stopped being true when this component and `Select` were written to hand the caller's
+     * ref over themselves. `Select` passes its own version of this test only because its children
+     * are rebuilt on every parent render, so it always has another reason to update; a `TextArea`
+     * whose value did not change has none. Measured and pinned in
+     * `__tests__/ControlledTextarea.test.tsx`, and the fix is a decision about that comparison
+     * rather than about this line.
+     */
     if (this.h !== this.props.ref) this.g(field);
 
     field.value = String(this.props.value);

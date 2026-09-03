@@ -162,9 +162,11 @@ export function list<T>(each: Each<T>, render: ItemRender<T>): ListNode {
  * reaching here means the types were bypassed — a `any`, a cast, plain JavaScript
  * — and that is exactly when a message is worth having.
  *
- * DEV only: these are three property definitions per `list()` call, which is not
- * something to pay for in a shipped build to explain a mistake the types already
- * refuse.
+ * DEV only: these are FIVE property definitions per `list()` call — `length`, `map`, `forEach`,
+ * `filter` and `Symbol.iterator` — which is not something to pay for in a shipped build to explain
+ * a mistake the types already refuse. The number used to read "three" here, and the number is the
+ * whole argument of the sentence; measured on the descriptor itself, and asserted from both sides
+ * in `__tests__/prod/AListInProduction.prod.test.tsx`.
  */
 function guardAgainstArrayUse(descriptor: object): void {
   const explain = (reached: string): never => {

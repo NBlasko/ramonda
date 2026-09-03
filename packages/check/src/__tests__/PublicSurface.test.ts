@@ -58,6 +58,7 @@ const EXPECTED_TYPES = [
   "ClickWithNoKeyboardPathIssue",
   "ClientOnlyRequestReadIssue",
   "ClockReadWhileRenderingIssue",
+  "RefBuiltWhereItCannotBeKeptIssue",
   "ComponentGraph",
   "CachedReadOfAPlainFieldIssue",
   "ContextConsumedAboveItsProviderIssue",

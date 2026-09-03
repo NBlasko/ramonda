@@ -219,3 +219,117 @@ describe("a controlled textarea on the client", () => {
     expect({ ref: app.instance.mine.current, value: field.value }).toEqual({ ref: field, value: "held" });
   });
 });
+
+/**
+ * A caller's own ref, and the swap that used to go unnoticed.
+ *
+ * `TextArea` takes the element's `ref` for itself — one element takes one ref, and a component that
+ * loses its own element cannot drive it — so the caller's is handed the node by hand, in `g()`, and
+ * `settle()` re-checks it on every update because the element's own ref never changes.
+ *
+ * **That re-check could not run for a swap, and this suite is what found it.** `arePropsBagsEqual`
+ * ignored `ref`, so a render whose ONLY change was the ref was not a props change: the component
+ * was never queued, `rawProps` was not even replaced, and the caller's old ref kept pointing at a
+ * live node until something else happened to update the field. `Select` has identical code and
+ * passed its own version of this test the whole time, because its children are rebuilt on every
+ * parent render and it always had another reason to update. A `TextArea` whose value did not change
+ * had none.
+ *
+ * `ref` is compared now. The wasted render that exclusion existed to prevent is reported instead of
+ * absorbed — `fresh-object-in-props` at the call site, `RMD061` at runtime — and a stable
+ * `ref={this.mine}` costs nothing, because an identical value never notifies.
+ */
+describe("a caller's own ref on a textarea", () => {
+  class Swapping extends Component {
+    first = createRef<HTMLTextAreaElement>();
+    second = createRef<HTMLTextAreaElement>();
+    @state useSecond = false;
+    @state text = "hello";
+    render() {
+      return <TextArea id="t" value={this.text} ref={this.useSecond ? this.second : this.first} />;
+    }
+  }
+
+  test("gets the element, and the value is still applied", async () => {
+    const app = await getDOM<Swapping>(<Swapping />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    expect(app.instance.first.current).toBe(field);
+    expect(app.instance.second.current).toBeNull();
+    // The component kept its own element, so the model still drives the field.
+    expect(field.value).toBe("hello");
+  });
+
+  test("a swap is honoured at once: the dropped ref is let go, the new one is handed the node", async () => {
+    const app = await getDOM<Swapping>(<Swapping />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+
+    app.instance.useSecond = true;
+    await app.settle();
+
+    expect(app.instance.first.current).toBeNull();
+    expect(app.instance.second.current).toBe(field);
+    // The same element throughout — the component was re-rendered, not rebuilt.
+    expect(app.container.querySelector("#t")).toBe(field);
+    expect(field.value).toBe("hello");
+  });
+
+  /**
+   * Dropping the ref entirely, which was invisible for a second reason: `ref` used to be subtracted
+   * from the key COUNT on both sides, so `<TextArea ref={r} />` becoming `<TextArea />` read as the
+   * same shape.
+   */
+  test("removing the ref releases it", async () => {
+    class Dropping extends Component {
+      mine = createRef<HTMLTextAreaElement>();
+      @state keep = true;
+      render() {
+        return this.keep ? <TextArea id="t" value="hello" ref={this.mine} /> : <TextArea id="t" value="hello" />;
+      }
+    }
+
+    const app = await getDOM<Dropping>(<Dropping />);
+    await app.settle();
+    const field = app.container.querySelector("#t") as HTMLTextAreaElement;
+    expect(app.instance.mine.current).toBe(field);
+
+    app.instance.keep = false;
+    await app.settle();
+
+    expect(app.instance.mine.current).toBeNull();
+    // The field is still the same element and still driven by the model.
+    expect(app.container.querySelector("#t")).toBe(field);
+    expect(field.value).toBe("hello");
+  });
+
+  /** A stable ref is not a props change, so nothing extra is rendered for it. */
+  test("a stable ref costs no render", async () => {
+    let renders = 0;
+    class Stable extends Component {
+      mine = createRef<HTMLTextAreaElement>();
+      @state other = 1;
+      render() {
+        renders++;
+        return (
+          <div>
+            <span>{String(this.other)}</span>
+            <TextArea id="t" value="hello" ref={this.mine} />
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Stable>(<Stable />);
+    await app.settle();
+    const before = renders;
+
+    app.instance.other = 2;
+    await app.settle();
+
+    // The parent rendered once more; the ref was identical, so it added nothing.
+    expect(renders).toBe(before + 1);
+    expect(app.instance.mine.current).toBe(app.container.querySelector("#t"));
+  });
+});

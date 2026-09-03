@@ -59,6 +59,8 @@ export declare function ShouldUpdateOnPropsChange(decide: unknown): (ctor: unkno
 export declare function StableProps(...keys: string[]): (ctor: unknown) => void;
 export declare function state(value: unknown, context: unknown): void;
 /** Caches by its arguments, per instance — the answer this package recommends for a per-item handler. */
+/** A ref, for `ref-built-where-it-cannot-be-kept`. The callback form is the one a FIELD uses. */
+export declare function createRef<T>(cb?: (node: T | null) => void): { current: T | null };
 export declare function memoized(value: unknown, context: unknown): void;
 export declare function compute(value: unknown, context: unknown): void;
 /** Serialized-but-not-reactive state — the hydration blob's own decorator. */

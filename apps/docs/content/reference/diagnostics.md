@@ -1848,3 +1848,47 @@ Where the promise itself is the subject, [`AsyncLoad`](/composition/lazy) takes 
 fallback while it settles.
 
 `ramonda-check` reports the same method before it ships, as [`async-render`](/reference/check).
+
+## RMD061 — A ref was built while a value was being derived
+
+```tsx expect-report:ref-built-where-it-cannot-be-kept
+import { Component, TextArea, createRef, state } from "@ramonda/core";
+
+class Editor extends Component {
+  @state text = "";
+
+  render() {
+    return <TextArea aria-label="Draft" value={this.text} ref={createRef()} />;   // ✗ a new ref every render
+  }
+}
+```
+
+`createRef()` returns a **new object** every call, and a ref is an identity — the caller keeps it
+and reads `current` later. Built inside a render, a `@compute`, a `@memoized` member or a hook's
+props callback, it is a different ref every time.
+
+Two things follow, and the second is the one that surprises people. The child is handed a changed
+`ref` on every parent render, and `ref` is compared like any other prop, so the child re-renders
+for nothing. And the ref the author meant to read is replaced before they can read it — nothing
+kept a reference to it.
+
+A ref belongs on a **field**, where an identity belongs:
+
+```tsx
+import { Component, TextArea, createRef, state } from "@ramonda/core";
+
+class Editor extends Component {
+  private field = createRef<HTMLTextAreaElement>();       // ✓ one identity, for its whole life
+  @state text = "";
+
+  render() {
+    return <TextArea aria-label="Draft" value={this.text} ref={this.field} />;
+  }
+}
+```
+
+A callback belongs on a field too — `createRef<T>((node) => this.arrived(node))` is how
+[`Select`](/forms/fields) and `TextArea` learn their element has appeared.
+
+`ramonda-check` reports the same call before it ships, as
+[`ref-built-where-it-cannot-be-kept`](/reference/check).

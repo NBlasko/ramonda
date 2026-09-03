@@ -1,25 +1,38 @@
 /**
- * `ref` is not data, so it is not compared.
+ * `ref` is compared like every other prop, and it took a measurement to get here.
  *
- * A component's `ref` is consumed by the framework — it is pointed at the host
- * element when the component is created and never read again — so its identity
- * says nothing about whether the component should re-render. Compared anyway, an
- * inline `ref={createRef()}` handed the child a new object on every parent
- * render, which read as "the props changed" and re-rendered the child every time,
- * forever, with no diagnostic. Measured: one wasted child render per parent
- * render.
+ * It was NOT, for a reason that was true when it was written (`4ec436c9`): a component's `ref` was
+ * pointed at its host element at creation and never read again, so its identity said nothing about
+ * whether the component should re-render — while an inline `ref={createRef()}` handed the child a
+ * new object every parent render, which read as a props change and re-rendered it forever, with no
+ * diagnostic. Measured then: one wasted child render per parent render.
  *
- * It stays IN the props bag: `generateRenderOutput` reads `props.key` to put the
- * key on the host element, and a component's `ref` has to survive to creation.
- * Only the comparison ignores it.
+ * **"Never read again" stopped being true.** `base/Select.tsx` and `base/TextArea.tsx` take the
+ * element's ref for themselves — one element takes one ref, and a component that loses its own
+ * element cannot drive it — so each hands the CALLER's ref the node by hand and re-checks it on
+ * every update. With `ref` out of the comparison, a render whose ONLY change is the ref was not a
+ * props change at all: the component was never queued, `rawProps` was not even replaced, and the
+ * caller's old ref kept pointing at a live node until something else updated that component.
+ * Measured on `TextArea`; `Select` was saved only by always having children to rebuild.
  *
- * `key` is deliberately still compared. It could be dropped for the same reason
- * — but a matched component always has an equal key (`areSimilarNodes` refuses a
- * node whose key differs), so ignoring it would remove nothing while adding a
- * rule to remember.
+ * So a changed ref is a reason to do the work, which is how React answers the same question — the
+ * ref lives on the fiber rather than being compared as data, and a changed one defeats the memo
+ * bailout. What it costs is the wasted render above, and that is no longer silent:
+ * `@ramonda/check`'s `fresh-object-in-props` reports `ref={createRef(…)}` at the call site, and
+ * `RMD061` reports a `createRef()` reached from a render, a `@compute` or a `@memoized` builder.
+ * The answer to both is the same as it always was — a ref belongs on a field.
+ *
+ * A stable `ref={this.mine}` costs nothing: the value is identical, so `State.set` never notifies
+ * and no render is queued.
+ *
+ * And it fixes a second case nobody had noticed. `ref` used to be subtracted from the key COUNT on
+ * both sides, so `<Child ref={r} />` becoming `<Child />` read as the same shape — the ref was
+ * never released. Now it is a props change like any other.
+ *
+ * `key` is compared for its own reason: a matched component always has an equal key
+ * (`areSimilarNodes` refuses a node whose key differs), so ignoring it would remove nothing while
+ * adding a rule to remember.
  */
-const IGNORED_IN_COMPARISON = "ref";
-
 /**
  * Shallow equality over two props bags, by key and by `!==`.
  *
@@ -32,22 +45,11 @@ export function arePropsBagsEqual(obj1: Record<string, unknown>, obj2: Record<st
   const keys1 = Object.keys(obj1);
   const keys2 = Object.keys(obj2);
 
-  if (keys1.length === 0 && keys2.length === 0) {
-    return true;
-  }
-
-  // Counted rather than compared, so `ref` appearing on one side only does not
-  // read as a different shape. The subtraction is two `in` checks instead of a
-  // filtered copy, because this runs per component per update.
-  const length1 = keys1.length - (IGNORED_IN_COMPARISON in obj1 ? 1 : 0);
-  const length2 = keys2.length - (IGNORED_IN_COMPARISON in obj2 ? 1 : 0);
-
-  if (length1 !== length2) {
+  if (keys1.length !== keys2.length) {
     return false;
   }
 
   for (const key of keys1) {
-    if (key === IGNORED_IN_COMPARISON) continue;
     if (obj1[key] !== obj2[key]) {
       return false;
     }

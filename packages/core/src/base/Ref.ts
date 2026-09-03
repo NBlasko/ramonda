@@ -1,3 +1,5 @@
+import { reportRefBuiltInAPurePhase } from "../debug/purityGuard";
+
 export type RefCallback<T> = (current: T | null) => void;
 
 /**
@@ -25,6 +27,20 @@ export class Ref<T = unknown> {
   }
 }
 
+/**
+ * Makes a ref, and refuses to be a good place to do it from.
+ *
+ * A ref is an IDENTITY: the caller keeps it and reads `current` later. So it belongs where an
+ * identity belongs — a field, or anywhere that runs once. Called from a render, a `@compute`, a
+ * `@memoized` member or a hook's props callback, it is a new object every time: the child is handed
+ * a changed `ref` on every parent render, which is a props change (see `helpers/arePropsBagsEqual.ts`)
+ * and costs a render for nothing, and the ref the author meant to read is replaced before they can.
+ *
+ * Reported rather than refused, because throwing would take down a page over something that still
+ * renders correctly. `@ramonda/check`'s `ref-built-where-it-cannot-be-kept` says the same thing
+ * before it runs.
+ */
 export function createRef<T>(cb?: RefCallback<T>) {
+  if (__DEV__) reportRefBuiltInAPurePhase();
   return new Ref<T>(cb);
 }
