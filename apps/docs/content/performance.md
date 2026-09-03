@@ -13,7 +13,7 @@ nothing else does. There is no tree-wide diff to opt out of, so there is nothing
 in by default.
 
 Which leaves a much smaller subject: one class of mistake that costs renders, three declarations
-that answer it, and two ways to see which is happening to you.
+that answer it, and two ways to see what your app is actually doing.
 
 ## What is already free
 
@@ -22,7 +22,12 @@ table of ten rebuilds the page component and not the ten rows — `list()` keeps
 its node, so the rows are never asked to render.
 
 **A context consumer wakes per key.** Reading `theme` from a context whose `tick` moved does not
-re-render you. See [context](/composition/context).
+re-render you.
+
+**With one caveat, and it is the commonest surprise here:** a key holding an object literal is a
+new object every time the provider's callback runs, and a new object is a changed key — so every
+consumer of that key wakes however unchanged the contents are. That is what `stableProps` below is
+for. See [an object as a value](/composition/context#an-object-as-a-value-and-the-callback-that-builds-it).
 
 **A hook's props callback is fine-grained**, unlike a component's own state: it re-runs when
 something it read changed, which is what lets a hook take a live value without its owner

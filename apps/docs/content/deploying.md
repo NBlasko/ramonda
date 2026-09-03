@@ -12,7 +12,7 @@ files: static HTML and JavaScript for the parts that can be baked, and a Node pr
 that need the request.
 
 What is worth reading before the first deploy is the shape of the build, why it ends with a check,
-and the two things that are decided while it runs rather than when it starts.
+and the two things that are decided while the build runs rather than when the server starts.
 
 ## The build has four steps, and the order is the point
 
@@ -22,7 +22,7 @@ This is what `create-ramonda` writes for a server-rendered project:
 ramonda-check && npm run build:bundles && node scripts/prerender.mjs && ramonda-check-bundle dist
 ```
 
-A client-only project is the same shape with the middle two collapsed:
+A client-only project is the same shape with the middle two as one:
 
 ```sh
 ramonda-check && vite build && ramonda-check-bundle dist
@@ -38,7 +38,8 @@ page that has actually broken a build here.
 
 ## Why the last step exists
 
-`@state`, `@compute` and the rest are TC39 decorators, and **no engine can parse them**. Your
+`@state`, `@compute` and the rest are TC39 decorators, and **no browser engine parses them
+today**. Your
 bundler has to transform them away, and whether it does comes down to one setting: below `esnext`,
 esbuild rewrites them into helpers; at `esnext` it leaves them exactly as written.
 

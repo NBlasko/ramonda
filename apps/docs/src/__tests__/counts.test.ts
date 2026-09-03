@@ -75,21 +75,34 @@ describe("the numbers /accessibility spells out", () => {
     for (const id of linked) expect(ruleCatalogue().map((rule) => rule.id)).toContain(id);
   });
 
-  it("claims as many accessibility rules as it links to", () => {
-    expect(page).toContain(`**${spelled(linked.size)} of its `);
+  /**
+   * The NUMBERS, not the sentence around them.
+   *
+   * The first version pinned `**thirty-five of its eighty-six rules**` as a substring, and the very
+   * next edit to that sentence broke it — a test that forbids rewording a sentence is a test that
+   * fights the writer, and it would be deleted rather than obeyed. So each number is asserted as a
+   * word the page contains, and the neighbouring numbers as words it must not.
+   */
+  const says = (n: number): boolean => new RegExp(`\\b${spelled(n)}\\b`).test(page);
+
+  it("says how many accessibility rules it links to, and no other number", () => {
+    expect(says(linked.size)).toBe(true);
+    expect(says(linked.size - 1)).toBe(false);
+    expect(says(linked.size + 1)).toBe(false);
   });
 
-  it("claims the number of rules there actually are", () => {
-    const total = spelled(ruleCatalogue().length);
-    expect(page).toContain(`of its ${total} rules**`);
-    expect(page).toContain(`all ${total},`);
+  it("says how many rules there actually are, and no other number", () => {
+    const total = ruleCatalogue().length;
+    expect(says(total)).toBe(true);
+    expect(says(total - 1)).toBe(false);
+    expect(says(total + 1)).toBe(false);
   });
 
-  it("can tell a wrong number from a right one", () => {
-    // The control. Without it a matcher that passed on anything would make the three above unable
-    // to fail — which is exactly how the original sentence stayed wrong.
+  it("spells a number the way the page does", () => {
+    // The control. Without it a converter that answered "" for everything would make both checks
+    // above pass on any page at all.
     expect(spelled(35)).toBe("thirty-five");
     expect(spelled(86)).toBe("eighty-six");
-    expect(page).not.toContain(`**${spelled(linked.size + 1)} of its `);
+    expect(spelled(7)).toBe("seven");
   });
 });

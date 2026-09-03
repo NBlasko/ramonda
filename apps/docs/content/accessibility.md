@@ -7,21 +7,23 @@ order: 116
 
 # Accessibility
 
-A third of `ramonda-check` is about accessibility — **thirty-five of its eighty-six rules** — and
-it is the part of the framework that is least visible until you run it. This page says what runs
-without being asked, what the checker reads, and, at the end, the part none of it can answer.
+**Two of every five rules `ramonda-check` runs are about accessibility** — thirty-five of
+eighty-six — and it is the part of the framework that is least visible until you run it. This page
+says what runs without being asked, what the checker reads, and, at the end, the part none of it
+can answer.
 
 ## What you get without asking
 
 **An ARIA attribute is written as a string, never as a presence flag.** HTML's own booleans work by
 being *there*: `disabled=""` disables a control, and the parser never reads the value — which is why
 `disabled="false"` disables it too and is [reported](/reference/diagnostics/rmd029). ARIA is the
-opposite: its attributes are enumerated strings, and `aria-hidden` means something different from
-`aria-hidden="true"`.
+opposite: its attributes are enumerated strings, so an `aria-hidden` written with no value is not
+`aria-hidden="true"` — the empty one means neither true nor false, and the element stays exactly
+where it was.
 
 ```tsx
-<div aria-hidden={true} />            {/* aria-hidden="true" */}
-<button disabled={true}>Save</button>  {/* disabled="" */}
+<div aria-hidden={true} />             {/* aria-hidden="true" */}
+<button disabled={true}>Save</button>  {/* disabled=""        */}
 ```
 
 The framework keys this on the NAME rather than on the value being a boolean, so both are right

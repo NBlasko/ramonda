@@ -23,7 +23,7 @@ alternative failed silently.
 **This is the one place the JSX deliberately differs from HTML**, and the reason is the language:
 `class` is a reserved word in the object a JSX factory receives.
 
-A `class` you write anyway is **renamed** before the vnode is built, so the element is styled and
+A `class` you write anyway is **renamed** before the element is built, so it is styled and
 the page is not broken. It is still reported — [`RMD039`](/reference/diagnostics/rmd039) at runtime
 and [`class-instead-of-classname`](/rules/class-instead-of-classname) before it — because the source
 should say what the element gets, and because the rename cannot save two cases:
@@ -48,11 +48,11 @@ conversion worth knowing about. Without it the browser drops what it cannot read
 a time and silently: `{ backgroundColor: "red", color: "blue" }` measured as `style="color: blue;"`
 — half the style gone and nothing said so.
 
-**A custom property is passed through unchanged**, because `--brandColor` is already in its final
-form and CSS treats it as case-sensitive:
+**A custom property is passed through unchanged**, because `--brandColor` is already in its final form
+and CSS treats it as case-sensitive — unlike every other property here:
 
 ```tsx
-<div style={{ "--brand": "hotpink", color: "var(--brand)" }} />
+<div style={{ "--brandColor": "hotpink", color: "var(--brandColor)" }} />
 ```
 
 A value of `undefined`, `null` or `""` drops that declaration rather than emitting `key:;`, which
@@ -80,8 +80,9 @@ takes the hrefs, or you place them yourself if you write the shell by hand. See
 in your source is the class in the served HTML — which is what makes a stylesheet, a browser
 inspector and a CSS module all work without the framework knowing about them.
 
-**No CSS-in-JS.** There is no styled-component equivalent and none is planned: a style written in
-JavaScript ships in the bundle, runs on every render, and cannot be cached by the browser as a file.
+**No CSS-in-JS.** There is no way to write a style as JavaScript here, and that is a choice rather
+than something missing: a style built in JavaScript ships inside the bundle, is rebuilt on every
+render, and cannot be cached by the browser as a file of its own.
 
 **No theme system.** A theme is a context and some custom properties — publish the values with
 [`createContext`](/composition/context), or set `--` properties high up and let CSS cascade them,
