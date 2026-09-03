@@ -40,6 +40,27 @@ export class Toolbar extends Component {
 | `updateHashTags(next, opts?)` | change only the hash |
 | `back()` / `forward()` | move through history |
 
+## The types — `NavigateOptions` and the updaters
+
+The second argument to `push` and `replace` is `NavigateOptions`: `replace` to leave no history
+entry, and `scroll`, which is [the one knob](#scrolling-is-your-choice-per-call). The partial
+updaters take `PartialNavigateOptions` instead — the same two fields with a different default for
+`scroll`, because those are in-place edits rather than a move to another page.
+
+| | |
+|---|---|
+| `SearchParamsUpdater` | what `updateSearchParams` takes: an object of the new query, or a function of the current one |
+| `HashTagsUpdater` | the same for hash tags — a `HashTag[]`, or a function of the current ones |
+| `StateUpdater` | a whole `RouterState` from the previous one, for the rare change that touches several parts at once |
+
+**The function forms exist to be race-free.** An object says what the query should BE; a function
+says what it should be *given what it is now*, which is the form that survives two updates in the
+same tick.
+
+`RouterState` is the whole URL structured — `baseUrl`, `queryParams` as a flat record, and
+`hashTags` as ordered `HashTag`s with a `key`, a `value` and a `level`. It is the source of truth at
+runtime: the URL is rebuilt from it, and read back only at startup and on back/forward.
+
 ## Scrolling is your choice, per call
 
 A `push` or `replace` moves to another page, so it scrolls to the top by default.
