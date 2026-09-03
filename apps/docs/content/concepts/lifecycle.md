@@ -173,7 +173,7 @@ Runs when the component is removed. Your state and computed values are still rea
 so you can clean up based on them. It runs exactly once — even for a component that
 failed while building — so write it to tolerate a half-set-up instance.
 
-## Server vs. browser: `env`
+## Server vs. browser: `env` — `LifecycleOptions`
 
 `@created`, `@mounted` and `@destroyed` can be limited to one side with `env`:
 

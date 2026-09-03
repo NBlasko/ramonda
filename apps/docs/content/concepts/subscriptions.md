@@ -47,6 +47,15 @@ reason this is not just "subscribe in `@mounted`, unsubscribe in `@destroyed`".
 ```demo:EffectCleanup
 ```
 
+## The types — `Disconnect` and `SubscriptionOwner`
+
+`connect` returns a `Disconnect`: the function that undoes it, or nothing when there is nothing to
+undo. Both are the same declaration — a `connect` that only reads does not have to invent a
+teardown.
+
+`SubscriptionOwner` is what `connect` is given — the component or hook the subscription belongs to.
+Name it when the `connect` is written outside the decorator call, so the parameter has a type.
+
 ## The built-in ones
 
 Several decorators are this same machinery with the connect already written, which is why

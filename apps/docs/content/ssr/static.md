@@ -47,6 +47,9 @@ if (needsData.length && extra.length === 0) {
 (`"*"` is left out — it matches what nothing else did, so it has no URL. Render a 404
 page explicitly at whatever path your host serves for missing files.)
 
+Those two fields are a `RoutePaths`, which is the shape this answers in: `paths` ready to render,
+and `needsData` for the patterns it cannot enumerate.
+
 ## `renderDocument` and `DocumentOptions`
 
 Wraps a rendered page in a complete HTML document — doctype, charset, viewport, title,

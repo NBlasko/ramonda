@@ -47,7 +47,7 @@ class Report extends Component {
 It is an ordinary component written as a tag — `lazy` is just a function that returns
 a promise (a dynamic `import()`), and `onLoading` is what to show until it arrives.
 
-## The pieces of `AsyncLoad`
+## The pieces of `AsyncLoad` — `AsyncLoadProps`
 
 - **`lazy`** — a function returning `import("…")`.
 - **`namedExport`** — which export to use; defaults to the module's `default`.
@@ -55,7 +55,8 @@ a promise (a dynamic `import()`), and `onLoading` is what to show until it arriv
   apart from `AsyncLoad`'s own attributes (`lazy`, `onLoading`) so the two can't be
   confused.
 - **`onLoading`** — shown while the module downloads.
-- **`errorFallback`** — a node, or a function given `{ error, retry, attempt }`. It
+- **`errorFallback`** — a node, or a function given an `AsyncLoadFailure`
+  (`{ error, retry, attempt }`). It
   plays the same role as an [`ErrorBoundary`](/composition/error-boundaries) fallback —
   a failure UI with a way back — though the fields are named for a *load*: `error` is
   whatever the import rejected with, `retry` really does re-attempt the download, and

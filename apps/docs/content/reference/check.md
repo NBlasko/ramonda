@@ -457,6 +457,28 @@ fifty-six components that now arrive with the first page.
 
 Both flags describe. Neither fails a build.
 
+### The types
+
+| | |
+|---|---|
+| `AnalyzeResult` | everything a run answers: `issues`, `findings`, `counts`, `graph` and `notes` |
+| `Findings` | the by-rule map, derived from the rule registry — so `findings["arrow-fields"]` is typed as that rule's own issue rather than as a union |
+| `RuleSummary` | one rule as `ruleCatalogue()` describes it |
+| `ComponentGraph` | the graph itself, carrying a `schema` and a `scope` |
+| `GraphNode` | one declaration. Its `id` is `<file>#<Name>` |
+| `GraphEdge` | one relation: a `kind` (renders, provides, consumes, uses, calls, unresolved) and a `via` (tag, children, route, lazy, …) |
+| `Split`, `SplitPoint` | what `splitOf` answers |
+| `GraphDiff` | what `diffGraphs` answers |
+
+**A node's id carries its file, and deliberately not its line.** A name alone identifies nothing —
+this documentation app declares `class Page` seventy-five times — and leaving the line out means
+moving a class down a file changes no identity, so a diff between two commits says what actually
+moved rather than what merely shifted.
+
+**`scope` is why a library's graph answers fewer questions.** An app has roots and can be judged
+whole; a library has none, so "unreachable" and "no provider above this" cannot be decided without
+knowing what mounts it, and its graph is a fragment.
+
 ## Reading the graph from a script
 
 `--split` and `--diff` are the command's two readings of the graph, and both are exported. A script

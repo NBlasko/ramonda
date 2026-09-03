@@ -464,6 +464,9 @@ bootstrap(<App />, document.querySelector("#app")!);
 
 It is a no-op in a production build, where the check is not compiled in at all.
 
+`configureDev` takes a `DevFlags` — one field, `strictRender`, on by default because the mistakes
+this check names are silent otherwise.
+
 ## RMD021 — A random number was read while a value was being derived
 
 `Math.random()`, `crypto.randomUUID()` and `crypto.getRandomValues()` are reported when
