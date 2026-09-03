@@ -12,6 +12,9 @@ in `if (__DEV__)`, so a production build ships none of them. Nearly every *check
 its message; the exception is named where it applies (`RML009`), because a guard that ran only in
 development would protect the one build that was never exposed to a request.
 
+**Arrived with a symptom rather than a code?** [Something is wrong](/symptoms) lists what you can
+see and sends each one here.
+
 **They exist because these mistakes are silent.** Almost every bug this framework has had produced
 a *wrong result* rather than an error: state landing on the wrong row, a click doing nothing, a
 subtree rendering into nodes nobody can see. None of them threw. A diagnostic is the framework

@@ -364,6 +364,9 @@ function rulePages() {
     "An **error** fails the run. A **warning** prints and lets it through — for now; a rule that warns",
     "today may fail a build in a later version, and each says so.",
     "",
+    "Looking for a rule by the trouble it explains rather than by its name?",
+    "[Something is wrong](/symptoms) is indexed by what you can see.",
+    "",
     ...section(
       rules.filter((rule) => rule.severity === "error"),
       "Errors",
