@@ -224,6 +224,13 @@ jobs:
           SELFTEST=stale node scripts/check-nameless-class.mjs
           node scripts/check-nameless-class.mjs
 
+          # Rides along here rather than in a step of its own: it reads nineteen files and needs no
+          # build. It exists because a manifest rewritten by a serializer that escapes non-ASCII put
+          # `"author": "Nikola Blagojevi\u0107"` on npm — twice by me in one branch, and twice more
+          # that had been there long enough that nobody remembered.
+          SELFTEST=escape node scripts/check-manifest-text.mjs
+          node scripts/check-manifest-text.mjs
+
       # In this job because it packs the built packages and installs them into a generated
       # project — the tarballs a publish would push, not what npm already has.
       #

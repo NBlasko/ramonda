@@ -2,9 +2,9 @@
   "name": "@ramonda/dom-facts",
   "version": "0.1.0",
   "private": true,
-  "description": "Facts about the DOM that the framework and the checker have to agree on. Build-time only \u2014 every consumer bundles it.",
+  "description": "Facts about the DOM that the framework and the checker have to agree on. Build-time only — every consumer bundles it.",
   "license": "MIT",
-  "author": "Nikola Blagojevi\u0107",
+  "author": "Nikola Blagojević",
   "homepage": "https://ramonda.dev",
   "repository": {
     "type": "git",
