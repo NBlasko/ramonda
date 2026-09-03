@@ -1,4 +1,5 @@
 import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../core/runtime";
+import { displayName } from "./utils";
 import { STABLE_PROPS, attach, detach } from "./constants";
 import { valueEqual } from "./valueEqual";
 import { checkPropsStability, checkCachedProps, reportObjectPropsBag } from "../debug/propsStability";
@@ -56,7 +57,7 @@ function buildProps(
   // The count that used to be written here (21) is left out on purpose: it was true on the
   // day and there are more than twice as many now, so a number here only ages.
   if (__DEV__) {
-    const label = `${that.constructor.name} → ${hookName}`;
+    const label = `${displayName(that)} → ${hookName}`;
     const previous = propsPhase.label;
     propsPhase.label = label;
     try {
@@ -99,7 +100,7 @@ function buildProps(
  */
 function probeProps(that: object, hookName: string, hookProps: unknown): Bag {
   const previous = propsPhase.label;
-  propsPhase.label = `${that.constructor.name} → ${hookName}`;
+  propsPhase.label = `${displayName(that)} → ${hookName}`;
   try {
     return (hookProps as (owner: unknown) => Bag)(that);
   } finally {
@@ -226,13 +227,13 @@ export function useCommon<T extends BaseHook<unknown>, P>(
   if (hookProps !== undefined && typeof hookProps !== "function") {
     if (__DEV__) {
       reportObjectPropsBag(
-        that.constructor.name,
+        displayName(that),
         hook.name,
         typeof hookProps === "object" && hookProps !== null ? Object.keys(hookProps) : [],
       );
     }
     throw new TypeError(
-      `[RMD055] <${hook.name} /> was given a plain object as its props in ${that.constructor.name} — a hook's props must be a callback: \`this.use(${hook.name}, () => ({ ... }))\`. An object literal is evaluated once, so it can only ever carry what was true while ${that.constructor.name} was being constructed.`,
+      `[RMD055] <${hook.name} /> was given a plain object as its props in ${displayName(that)} — a hook's props must be a callback: \`this.use(${hook.name}, () => ({ ... }))\`. An object literal is evaluated once, so it can only ever carry what was true while ${displayName(that)} was being constructed.`,
     );
   }
 
@@ -315,7 +316,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
       // difference means it read something no signal backs, which is the one way this cache
       // can serve a stale bag. Untracked deliberately: this call is an observation, and letting
       // it record dependencies would make the check change the thing it is checking.
-      checkCachedProps(`${that.constructor.name} → ${hook.name}`, cache.bag, probeProps(that, hook.name, hookProps));
+      checkCachedProps(`${displayName(that)} → ${hook.name}`, cache.bag, probeProps(that, hook.name, hookProps));
     }
 
     // Whatever this callback read, an enclosing tracker read too. Without this a `use()` nested

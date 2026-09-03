@@ -1,4 +1,5 @@
 import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
+import { displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
 import { applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
@@ -605,7 +606,7 @@ function closeBlock(open: Comment, walk: HydrationWalk, component: BaseComponent
 
   const extra: ChildNode[] = [];
   const close = skipToClose(stop, extra);
-  const name = component.constructor.name;
+  const name = displayName(component);
 
   if (close === undefined) {
     // No closing marker anywhere after the cursor: the server never closed this block, which is not a
@@ -996,13 +997,13 @@ function watchForStalledHydration(component: BaseComponent): void {
     if (!componentRuntime.hydrationPending) return;
     if (componentRuntime.isDestroyed) return;
 
-    const dedupKey = `stalled-hydration:${component.constructor.name}`;
+    const dedupKey = `stalled-hydration:${displayName(component)}`;
 
     if (__DEV__) {
       diagnose(
         "RMD017",
         dedupKey,
-        `<${component.constructor.name} /> deferred its hydration and never resumed. ` +
+        `<${displayName(component)} /> deferred its hydration and never resumed. ` +
           `The server's markup is still on screen, so the page looks finished — but this subtree ` +
           `has no listeners and no state, and nothing in it responds. The promise returned by ` +
           `deferHydration() has not settled after ${STALLED_HYDRATION_MS / 1000}s; a failed dynamic ` +

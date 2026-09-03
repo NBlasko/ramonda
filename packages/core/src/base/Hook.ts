@@ -1,4 +1,5 @@
 import type { BaseHook, HookMeta, HookProps, PropsFactory } from "../types/HookTypes";
+import { displayName } from "../helpers/utils";
 import type { PROPS_TYPE } from "../types/HookTypes";
 import { useCommon } from "../helpers/common";
 import type { HookClassKind } from "../types/commonTypes";
@@ -44,9 +45,9 @@ function createPropsProxy(hook: Hook<HookProps>) {
           reportHookPropWrite(hook, String(key));
         }
         throw new TypeError(
-          `[RMD015] Cannot assign to \`props.${String(key)}\` in <${
-            hook.constructor.name
-          } /> — a hook's props are read-only and owned by the caller of this.use(). Copy it into @state, or take a callback prop and ask the owner to change it.`,
+          `[RMD015] Cannot assign to \`props.${String(key)}\` in <${displayName(
+            hook,
+          )} /> — a hook's props are read-only and owned by the caller of this.use(). Copy it into @state, or take a callback prop and ask the owner to change it.`,
         );
       },
     },

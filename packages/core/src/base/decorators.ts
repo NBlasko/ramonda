@@ -258,7 +258,7 @@ export function state(_value: unknown, context: EnhancedClassFieldDecoratorConte
     const contextName = ensureStringContextName(context.name, "state");
     const initialValue = this[contextName];
     const runtime = this[GLOBAL_RUNTIME];
-    const owner = this.constructor.name;
+    const owner = displayName(this);
 
     // The value straight from the field initializer (`@state x = …`) — the
     // "through the constructor" case. Later writes are checked in the setter below.
@@ -530,7 +530,7 @@ export function catchError<This extends CatchErrorOwner>(
       throw new Error(
         `[Ramonda] @catchError is for components, not hooks. An error travels up the COMPONENT tree, ` +
           `and a hook is not on it — the handler would never be called. Put it on the component that ` +
-          `uses ${this.constructor.name}, or drop it.`,
+          `uses ${displayName(this)}, or drop it.`,
       );
     }
 
@@ -539,8 +539,8 @@ export function catchError<This extends CatchErrorOwner>(
       if (runtime.catchError !== undefined && catchErrorOwners.get(runtime) === owner) {
         diagnose(
           "RMD032",
-          `${this.constructor.name}:catchError`,
-          `<${this.constructor.name} /> declares @catchError on more than one method.`,
+          `${displayName(this)}:catchError`,
+          `<${displayName(this)} /> declares @catchError on more than one method.`,
         );
       }
       catchErrorOwners.set(runtime, owner);
@@ -1135,7 +1135,7 @@ export function memoized<T extends (...args: any[]) => any>(
          */
         reportFault(
           "RMD047",
-          `${(this as { constructor: { name: string } }).constructor.name}:${String(context.name)}`,
+          `${displayName(this)}:${String(context.name)}`,
           "@memoized was called with an argument it cannot build a cache key from, so it is not memoised.",
         );
       }

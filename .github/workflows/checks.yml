@@ -211,6 +211,19 @@ jobs:
           SELFTEST=unbuilt node scripts/check-bare-import.mjs
           node scripts/check-bare-import.mjs
 
+      # No build needed — it reads the source. Here so it runs beside the other two source-shape
+      # checks rather than in its own job for four seconds of work.
+      #
+      # It exists because the SWEEP was done and missed most of them: the sites with an explicit
+      # `??` or `||` fallback were fixed by grepping for those operators, and the twenty-nine with
+      # no fallback at all matched neither. A grep for the operators cannot find a site that has
+      # none; a grep for the READ can.
+      - name: Refuse a bare constructor.name in a message
+        run: |
+          SELFTEST=bare node scripts/check-nameless-class.mjs
+          SELFTEST=stale node scripts/check-nameless-class.mjs
+          node scripts/check-nameless-class.mjs
+
       # In this job because it packs the built packages and installs them into a generated
       # project — the tarballs a publish would push, not what npm already has.
       #

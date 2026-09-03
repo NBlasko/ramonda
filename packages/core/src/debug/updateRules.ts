@@ -1,4 +1,5 @@
 import { diagnose } from "./diagnostics";
+import { displayName } from "../helpers/utils";
 import { COMPONENT_RUNTIME } from "../core/runtime";
 import { firstNodeOf } from "../core/DiffAndMerge";
 import type { BaseComponent } from "../types/vdom";
@@ -11,7 +12,7 @@ import type { BaseComponent } from "../types/vdom";
 
 /** Reports a state write that landed after the component was torn down. */
 export function reportWriteAfterUnmount(component: BaseComponent): void {
-  const name = component.constructor.name;
+  const name = displayName(component);
   diagnose("RMD008", name, `<${name} /> changed state after it was unmounted; the update is ignored.`);
 }
 
@@ -72,7 +73,7 @@ export function reportOrphanedUpdate(component: BaseComponent): void {
   const node = firstNodeOf(region.entries) ?? region.parent;
   if (!node || node.isConnected) return;
 
-  const name = component.constructor.name;
+  const name = displayName(component);
   diagnose("RMD016", name, `<${name} /> updated while the markup it renders into is not in the document.`);
 }
 
@@ -116,7 +117,7 @@ export function isRunawayUpdate(component: BaseComponent): boolean {
 
   if (!loopedThisDrain.has(component)) {
     loopedThisDrain.add(component);
-    const name = component.constructor.name;
+    const name = displayName(component);
     diagnose(
       "RMD009",
       name,

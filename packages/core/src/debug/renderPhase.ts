@@ -8,7 +8,7 @@ import { stateProperty } from "./stateLabels";
  * proxy, which throws; this only supplies the explanation and the devtools entry.
  */
 export function reportHookPropWrite(hook: object, property: string): void {
-  const name = hook.constructor.name;
+  const name = displayName(hook);
   diagnose("RMD015", `${name}:${property}`, `<${name} /> assigned to \`props.${property}\`.`);
 }
 
@@ -48,7 +48,7 @@ export function renderingOwner(): string {
  * arrangement as a hook's props above.
  */
 export function reportPropWrite(component: BaseComponent, property: string): void {
-  const name = component.constructor.name;
+  const name = displayName(component);
   diagnose("RMD004", `${name}:${property}`, `<${name} /> assigned to \`props.${property}\`.`);
 }
 
@@ -61,7 +61,7 @@ export function reportWriteDuringRender(signal: object): void {
   const component = renderPhase.component;
   if (!component) return;
 
-  const name = component.constructor.name;
+  const name = displayName(component);
   const target = stateProperty(signal) ?? "a signal";
 
   diagnose("RMD001", `${name}:${target}`, `<${name} /> wrote to \`${target}\` while its render() was running.`);
@@ -98,7 +98,7 @@ export function reportWriteDuringInspect(signal: object): void {
   const instance = inspectPhase.instance;
   if (!instance) return;
 
-  const name = instance.constructor.name;
+  const name = displayName(instance);
   const target = stateProperty(signal) ?? "a signal";
 
   diagnose("RMD030", `${name}:${target}`, `<${name} /> wrote to \`${target}\` from inside its \`[INSPECT]()\`.`);
