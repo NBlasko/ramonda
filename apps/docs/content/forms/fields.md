@@ -85,6 +85,11 @@ built once per field and reused, so spreading it on every render does not re-att
 The last row is deliberate: no single control holds an object, so asking for one is a mistake
 worth catching at compile time.
 
+`Bind<T>` is the type of that spread, and it resolves to one of four shapes — `TextBind`,
+`NumberBind`, `CheckboxBind` or `DateBind`, all extending `CommonBind` with the four attributes
+every control gets. You rarely write any of them: they are what makes the table above a type error
+rather than a convention.
+
 **What `bind` cannot check** is which element you spread it onto. `<Select {...bind} />` and
 `<TextArea {...bind} />` both type-check, because the attributes are the same and a type cannot
 see the tag. Either is fine when the field holds a string.
@@ -129,7 +134,7 @@ On a server-rendered page the choice arrives as `selected` on the chosen option,
 where HTML keeps it and a select has no `value` attribute to carry. The reader sees the right option
 before any script runs.
 
-### A `<textarea>` keeps its value inside the element
+### `TextArea` — a `<textarea>` keeps its value inside the element
 
 HTML gives a textarea no `value` attribute — the value is the element's **text** — so `<textarea>` is
 a type error and you write `<TextArea>`:
@@ -188,6 +193,24 @@ class SignupForm extends Component {
 A method rather than an inline arrow, because methods are auto-bound: the identity never changes, so
 the listener is not removed and re-added on every render. An arrow here would be reported by
 [RMD020](/reference/diagnostics/rmd020).
+
+### The node types — `LeafNode`, `ObjectNode` and `ArrayNode`
+
+A node's shape follows the value's, and each carries a different `$`.
+
+| the value | the node | its `$` |
+|---|---|---|
+| a string, number, boolean or `Date` | `LeafNode<T>` | `LeafApi<T>` — a `FieldApi` plus `bind` |
+| an object | `ObjectNode<T>` | `FieldApi<T>`, with the properties beside it |
+| an array | `ArrayNode<E, T>` | `ArrayApi<E, T>` — a `FieldApi` plus `length` and `rows` |
+
+`FieldTarget<T>` is the smallest of them: anything with a `$`. Take it when you write a component
+that accepts a field without caring which kind — that is what
+[a field in its own component](#a-field-in-its-own-component) does.
+
+**A schema with a property named `$` gets `Collision` instead of a node**, and the type carries its
+own explanation so the compiler prints it: the error names `.$.at('$')` and the option of renaming,
+rather than saying that some property does not exist on some type.
 
 ## Fields without `bind`
 

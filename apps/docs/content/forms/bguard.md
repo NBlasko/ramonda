@@ -25,7 +25,7 @@ form over zod pulls in nothing from here.
 pnpm add bguard
 ```
 
-## HTML attributes from the schema
+## HTML attributes from the schema — `htmlConstraints`
 
 ```tsx
 import { htmlConstraints } from "@ramonda/form/bguard";
@@ -53,6 +53,11 @@ class SignupForm extends Component {
 
 `html("nick")` returns `{ required: true, minlength: 3, maxlength: 20 }` — read off the schema, so it
 cannot disagree with what the validator will actually enforce.
+
+That returned object is `HtmlConstraints`: `required`, `minlength`, `maxlength`, `pattern`, `min`,
+`max`, and a `type` derived from a `format` only where the browser's own input type means the same
+thing. `htmlConstraints(schema)` hands back the LOOKUP rather than the attributes, so the schema is
+converted once per form and each path is cached.
 
 What is derived:
 
@@ -109,7 +114,7 @@ which validation the reader sees:
 Spread `bind` first and these second, so a `type` derived from the schema wins over the one `bind`
 inferred from the value.
 
-## Cross-field rules that point at nothing
+## Cross-field rules that point at nothing — `unknownRefPaths`
 
 ```ts
 import { unknownRefPaths } from "@ramonda/form/bguard";
@@ -118,6 +123,10 @@ test("every cross-field rule points at a real field", () => {
   expect(unknownRefPaths(signupSchema, DEFAULTS)).toEqual([]);
 });
 ```
+
+It answers a list of `UnknownRef`s, and each one names **the rule rather than the row it ran on**:
+a path inside a list shows its index as `*`, so a typo in a rule over fifty contacts is
+`contacts.*.kynd` once and not fifty entries counting up.
 
 `ctx.ref('pasword')` yields `undefined` for ever. The comparison against it then quietly succeeds or
 quietly fails — whichever the typo happens to produce — and nothing anywhere says so. It is the shape

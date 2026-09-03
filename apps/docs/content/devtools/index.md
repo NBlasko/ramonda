@@ -314,7 +314,7 @@ component that provides the context, and the one badge that consumes it.
 
 That is the shape you are looking for. A commit that says `Row ×40` after one row changed is not a slow
 component; it is forty renders that did not need to happen, and it is usually a `key`, a `@compute` or a
-`@StableProps` away from being one.
+`@StableProps` away from being one. [Performance](/performance) is which of the three, and why.
 
 ## Docked or floating
 

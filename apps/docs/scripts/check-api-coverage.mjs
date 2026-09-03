@@ -139,6 +139,26 @@ const expected = [
   // looking, which is the whole argument for this file.
   ...publicSurfaceOf("check", 5),
   ...publicTypesOf("check", 30),
+  // The four packages that declared no surface at all, and were therefore invisible HERE as well:
+  // this script reads `PublicSurface.test.ts`, so a package without one contributed nothing to the
+  // expected list and its exports could be — and were — undocumented with the build staying green.
+  // Twenty-four names were missing from the reference when these lines were added, sixteen of them
+  // absent from the whole site, and `@ramonda/devtools` had no section on the page at all.
+  ...publicSurfaceOf("router", 10),
+  ...publicTypesOf("router", 15),
+  // `@ramonda/router/server` is a second entry point and a second surface, the same way
+  // `@ramonda/form/bguard` is. Its own file, because `Object.keys` on one entry cannot see the other.
+  ...publicSurfaceOf("router", 5, "ServerSurface.test.ts"),
+  ...publicTypesOf("router", 10, "ServerSurface.test.ts"),
+  ...publicSurfaceOf("devtools", 2),
+  ...publicTypesOf("devtools", 9),
+  ...publicSurfaceOf("server", 5),
+  ...publicTypesOf("server", 2),
+  // `@ramonda/testing-library` re-exports `@testing-library/dom` wholesale, so its entry publishes
+  // 84 names. Its surface test lists only the five this package ADDS — the rest are somebody else's
+  // API, documented on the reference by pointing at that library rather than by copying its index.
+  ...publicSurfaceOf("testing-library", 5),
+  ...publicTypesOf("testing-library", 5),
 ];
 
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");

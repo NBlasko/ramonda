@@ -15,7 +15,7 @@ Synchronous: `render` builds the tree, runs `@mounted`, and commits anything the
 — so there is nothing left to await. Queries are bound to `document.body` (the DOM
 Testing Library convention), so content rendered outside the container is still found.
 
-## Options
+## Options — `RenderOptions`
 
 | | |
 |---|---|
@@ -23,6 +23,10 @@ Testing Library convention), so content rendered outside the container is still 
 | `baseElement` | what queries bind to |
 | `wrapper` | a component mounted above the tree — a context provider, a router shell |
 | `hydrate` | adopt server markup: `true` for what's already in `container`, or a **string** of markup |
+
+`render` hands back a `RenderResult`: the `container`, the bound queries, `rerender`, `unmount`, and
+the `instance` below. A `wrapper` in the options is a `WrapperComponent` — a component taking
+`children`, for a provider a test needs above the subject.
 
 ## `instance` — driving a component directly
 

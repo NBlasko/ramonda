@@ -64,7 +64,7 @@ limitation rather than a choice, and the same one [`@watchProp`](/concepts/props
 You write the connect — subscribe, and return the unsubscribe — and Ramonda handles
 the teardown. Nothing in `Panel` has to remember the subscription exists.
 
-## What it's for
+## What `createSubscriptionDecorator` is for
 
 Connecting to anything with a subscribe/unsubscribe pair: an external state store, a
 plain event emitter, a `WebSocket`, an `IntersectionObserver`.

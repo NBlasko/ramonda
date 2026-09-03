@@ -42,7 +42,7 @@ Break the `Report` and everything *outside* the boundary keeps working. So put
 boundaries around the parts of a page that can fail on their own — a widget, a panel,
 a route — rather than one at the very top.
 
-## The fallback is a function
+## The fallback is a function — `ErrorBoundaryFallbackProps`
 
 It receives:
 

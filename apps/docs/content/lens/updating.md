@@ -26,6 +26,8 @@ this.data = focusOn(this.data).get("title").set("Renamed");
 With no hops at all the focused value *is* the root, so `focusOn(state).set(other)` replaces
 the whole tree and `focusOn(state).merge({ … })` rewrites its top level.
 
+## `SAME_ITEM` — a rebuilt item, not a new one
+
 `set` is the only one that REPLACES rather than derives, and that costs the value anything a
 library had attached to it under a hidden symbol — which for an item in a
 [`list()`](/lists) is what that item's component state is following. When the value you

@@ -93,7 +93,25 @@ defineServer(routes, { /* … */ }, { defaultMode: "static" });
 
 Now unmarked routes are baked, and you mark the few dynamic ones with `prerender: false`.
 
-## The build refuses to bake a per-request page
+## The types — `ServerRoutes` and `RoutePlan`
+
+| | |
+|---|---|
+| `ServerRoute` | one route's mode: `prerender`, and `revalidate` for ISR |
+| `ServerConfig<C>` | the per-route map, and it is **exhaustive** — every navigable path in the table must appear |
+| `ServerOptions` | `defineServer`'s third argument. One field, `defaultMode` |
+| `ServerRoutes<C>` | what `defineServer` returns: the table, its config, and the default mode |
+| `RoutePlan` | what `routePlan(server)` returns — the same routes partitioned by how they render |
+
+**`ServerConfig` being exhaustive is the point of it.** A route added to the table and forgotten
+here is a compile error rather than a page that quietly renders per request.
+
+`RoutePlan` has four lists, and the fourth is the one worth knowing: `static`, `isr` and `server`
+are paths ready to act on, while **`needsData` is the `:param` patterns that are meant to be baked
+and cannot be enumerated** — the values live in your data, so the build has to be told them. That is
+[the next section](#a-route-with-a-param-the-build-has-to-be-told-which-pages-exist).
+
+## The build refuses to bake a per-request page — `renderStatic` and `StaticRender`
 
 This is the rule the whole design protects: **a baked page must never contain per-request
 data.** You don't have to audit every component to be sure — the build proves it. When it
@@ -107,6 +125,12 @@ and what it read:
 
 So a page that reads the request simply can't be marked `prerender` — the guard enforces it.
 Mark it dynamic (the default) and it renders per request instead.
+
+**`renderStatic(vnode, url)` is what the build calls, and `StaticRender` is what it answers.** One
+of two shapes: `html` with the baked markup plus the `title` and `head` this route's `Head` set, or
+`blockedBy` naming the per-request field that was read. A static page is the one that needs the head
+MOST — nothing runs on a crawler that does not execute JavaScript, so what is baked into the file is
+the whole of what it sees.
 
 ## A route with a `:param` — the build has to be told which pages exist
 
@@ -204,7 +228,7 @@ if (page) return sendHtml(res, page.html, page.mode);
 `page.mode` is `isr-hit` (fresh), `isr-stale` (the old copy, with a rebake already running behind
 it), or `isr-cold` (nothing cached, so this request waited for the render).
 
-### Choosing a store
+### Choosing a store — `IsrStore`
 
 | | keeps pages | use it when |
 |---|---|---|
@@ -236,6 +260,22 @@ failure is reported rather than raised, so the cache would grow instead of stopp
 A store may lose an entry at any time — eviction, expiry, a cleared directory. That is not an
 error: a missing entry is a cold render, which is always correct and only slower.
 
+### The ISR types — `IsrCache` and `IsrCacheOptions`
+
+| | |
+|---|---|
+| `IsrCacheOptions` | what `createIsrCache` takes: the `plan` from `routePlan(server)`, a `store`, and your `render` |
+| `IsrCache` | what it returns — one method, `serve(path)` |
+| `IsrPage` | what `serve` resolves to: the `html`, and the `mode` it came from |
+| `IsrMode` | `"isr-hit"`, `"isr-stale"` or `"isr-cold"` — sent as `X-Ramonda-Mode`, and worth logging |
+| `IsrEntry` | one baked page as a store holds it: the `html`, and `at`, when it was baked |
+| `FileStoreOptions` | `fileStore`'s argument. One field, `dir`, created on first write |
+
+**`serve` answers `undefined` for a path that is not an ISR route**, which is what lets a server
+write `const page = await isr.serve(path); if (page) …` and fall through to its own static or
+dynamic handling. A fresh page comes back as-is; a stale one comes back **now**, with a rebake
+started behind it; nothing cached renders inline and waits, because there is nothing else to send.
+
 ### What the cache promises, and what it does not
 
 - **One rebake at a time, per instance.** Ten requests arriving while a stale page is rebaking
@@ -260,6 +300,9 @@ error: a missing entry is a cold render, which is always correct and only slower
 
 Splitting a site this way lets you host the static majority anywhere and run a server only for
 the routes that truly need the request.
+
+[Deploying](/deploying) is the rest of it — the build's four steps, and the two things that are
+decided while it runs rather than when the server starts.
 
 ## Next
 

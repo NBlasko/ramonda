@@ -168,3 +168,4 @@ If that counts up, you're set.
 ## Next
 
 - [Your first component](/guide/first-component).
+- [Deploying](/deploying) — for later, but worth knowing the build ends by checking its own output.

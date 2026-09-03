@@ -24,7 +24,7 @@ A hook can't stand alone — `use()` gives it its owner's runtime. So `renderHoo
 builds a throwaway host component and uses the hook on it, exercising the same
 machinery that ships.
 
-## `current` stays the same object
+## `current` stays the same object — `RenderHookResult`
 
 Unlike function-hook libraries, where each render returns a fresh value:
 
@@ -47,7 +47,7 @@ A hook's props reach it through signals owned by the caller, updated when the ca
 re-renders — so passing new props here makes anything that reacts to one react exactly
 as it would under a real parent.
 
-## `wrapper`
+## `wrapper` — `RenderHookProps`
 
 For a hook that needs a provider above it:
 
