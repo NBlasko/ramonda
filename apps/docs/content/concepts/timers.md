@@ -121,6 +121,51 @@ run:
 if (!this.deadline.start(1000)) this.settle();
 ```
 
+## Asking whether it is running
+
+`pending` is `true` from `start` until the call fires or `stop` clears it. `Timeout` also has
+`done` — whether the call has happened. Both are reactive, so a render that reads one is
+re-rendered when it flips:
+
+```tsx
+import { Component, Timeout } from "@ramonda/core";
+
+class Row extends Component<{ id: string }> {
+  private removal = this.use(Timeout, () => ({ run: this.drop }));
+
+  private drop() {
+    // … actually remove the row
+  }
+
+  // Methods, not inline arrows: a function built in the markup is a new value on every render,
+  // which `ramonda-check` reports as `function-built-in-the-markup`.
+  private undo() {
+    this.removal.stop();
+  }
+
+  private remove() {
+    this.removal.start(5000);
+  }
+
+  render() {
+    return this.removal.pending ? (
+      <button type="button" onclick={this.undo}>
+        Undo
+      </button>
+    ) : (
+      <button type="button" onclick={this.remove}>
+        Remove
+      </button>
+    );
+  }
+}
+```
+
+The two are never both true, and **both false is the third answer** a caller needs: nothing has
+been started yet, or `stop` cancelled it before it fired.
+
+`Interval` has no `done`. It does not finish, so there would be nothing for it to mean.
+
 ## What goes where, and when it is read
 
 **`run` belongs to the hook** and is read **when the call fires**. So a `run` chosen by a

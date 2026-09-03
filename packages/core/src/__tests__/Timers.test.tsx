@@ -663,3 +663,138 @@ describe("a delay that is not one", () => {
     app.unmount();
   });
 });
+
+/**
+ * `pending` and `done` — what a caller had to keep a second field for.
+ *
+ * The state was always there, in `disarm`, and `protected`. So a component that wanted to show
+ * "Cancel" while a deadline ran kept its own `@state waiting` beside the timer and wrote it in three
+ * places — `start`, `stop`, and the body — and a fourth if the body restarted the timer. Every one
+ * of those is a chance for the flag and the timer to disagree, and nothing would say so.
+ *
+ * Both are `@state`, so a render that reads one is re-rendered when it flips. That is the point of
+ * putting them on the hook rather than answering `disarm !== undefined` from a getter: a plain
+ * getter would read correctly and never wake the render that read it.
+ */
+describe("pending and done", () => {
+  class Deadline extends Component {
+    timer = this.use(Timeout, () => ({ run: this.fire }));
+    beat = this.use(Interval, () => ({ run: this.tick }));
+    private fire() {
+      log.push("fired");
+    }
+    private tick() {
+      log.push("tick");
+    }
+    render(): RamondaNode {
+      return <p>{this.timer.pending ? "waiting" : "idle"}</p>;
+    }
+  }
+
+  test("a timeout is pending from start until it fires, and done after", async () => {
+    const app = await getDOM<Deadline>(<Deadline />);
+
+    // Before anything is started, neither is true — an untouched timer makes no claim.
+    expect([app.instance.timer.pending, app.instance.timer.done]).toEqual([false, false]);
+
+    app.instance.timer.start(1000);
+    expect([app.instance.timer.pending, app.instance.timer.done]).toEqual([true, false]);
+
+    vi.advanceTimersByTime(1000);
+    expect(log).toEqual(["fired"]);
+    // The two are never both true: firing ends the wait.
+    expect([app.instance.timer.pending, app.instance.timer.done]).toEqual([false, true]);
+
+    app.unmount();
+  });
+
+  test("stopping it before it fires leaves both false, which is how a caller sees a cancel", async () => {
+    const app = await getDOM<Deadline>(<Deadline />);
+
+    app.instance.timer.start(1000);
+    app.instance.timer.stop();
+
+    expect([app.instance.timer.pending, app.instance.timer.done]).toEqual([false, false]);
+    vi.advanceTimersByTime(5000);
+    expect(log).toEqual([]);
+
+    app.unmount();
+  });
+
+  test("starting it again clears done, so the two never lie about the same run", async () => {
+    const app = await getDOM<Deadline>(<Deadline />);
+
+    app.instance.timer.start(1000);
+    vi.advanceTimersByTime(1000);
+    expect(app.instance.timer.done).toBe(true);
+
+    app.instance.timer.start(1000);
+    expect([app.instance.timer.pending, app.instance.timer.done]).toEqual([true, false]);
+
+    app.unmount();
+  });
+
+  /** The render is woken by it, which is the whole reason both are `@state` and not plain getters. */
+  test("a render that reads pending is re-rendered when it flips", async () => {
+    const app = await getDOM<Deadline>(<Deadline />);
+    expect(app.container.textContent).toBe("idle");
+
+    app.instance.timer.start(1000);
+    await app.settle();
+    expect(app.container.textContent).toBe("waiting");
+
+    vi.advanceTimersByTime(1000);
+    await app.settle();
+    expect(app.container.textContent).toBe("idle");
+
+    app.unmount();
+  });
+
+  /**
+   * An interval is pending while it runs and has no `done` at all — it does not finish, so a field
+   * for it would be a question with no answer.
+   */
+  test("an interval is pending until it is stopped, and carries no done", async () => {
+    const app = await getDOM<Deadline>(<Deadline />);
+
+    expect(app.instance.beat.pending).toBe(false);
+    app.instance.beat.start(100);
+    expect(app.instance.beat.pending).toBe(true);
+
+    vi.advanceTimersByTime(300);
+    expect(log).toEqual(["tick", "tick", "tick"]);
+    // Still pending: it fired three times and is waiting for the fourth.
+    expect(app.instance.beat.pending).toBe(true);
+
+    app.instance.beat.stop();
+    expect(app.instance.beat.pending).toBe(false);
+
+    expect("done" in app.instance.beat).toBe(false);
+    app.unmount();
+  });
+
+  /** Teardown goes through `stop`, so an unmounted timer makes no claim about a callback. */
+  test("an unmounted timer is not pending", async () => {
+    const app = await getDOM<Deadline>(<Deadline />);
+
+    app.instance.timer.start(1000);
+    const timer = app.instance.timer;
+    app.unmount();
+
+    expect(timer.pending).toBe(false);
+  });
+
+  /**
+   * And it costs nothing to hydrate.
+   *
+   * A hook's `@state` travels in the blob, but the serializer writes only what MOVED off its
+   * initializer — and nothing arms on the server, because `armable` is false there. So a served page
+   * carries neither flag, and this is the assertion that says so rather than the argument.
+   */
+  test("neither flag is written into the hydration blob", async () => {
+    const html = await renderToString(<Deadline />);
+
+    expect(html).not.toContain("scheduled");
+    expect(html).not.toContain("fired");
+  });
+});
