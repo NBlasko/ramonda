@@ -13,6 +13,18 @@
  * key on the host element, and a component's `ref` has to survive to creation.
  * Only the comparison ignores it.
  *
+ * **"Never read again" is no longer true, and the consequence is measured.** `base/Select.tsx` and
+ * `base/TextArea.tsx` both take the element's ref for themselves and hand the CALLER's ref the node
+ * by hand, so they read `props.ref` on every update. Ignoring it here means a render whose only
+ * change is the ref does not queue the component at all — `rawProps` is not replaced — so a caller
+ * who SWAPS its ref keeps the old one pointing at a live node until something else updates that
+ * component. `Select` is saved by always having children; `TextArea` is not. Pinned in
+ * `__tests__/ControlledTextarea.test.tsx`.
+ *
+ * Comparing `ref` again would fix it and bring back the wasted render this exists to prevent. The
+ * cheaper shape, if it is worth doing: keep it out of the comparison, and hand a changed ref over
+ * WITHOUT queueing a render.
+ *
  * `key` is deliberately still compared. It could be dropped for the same reason
  * — but a matched component always has an equal key (`areSimilarNodes` refuses a
  * node whose key differs), so ignoring it would remove nothing while adding a
