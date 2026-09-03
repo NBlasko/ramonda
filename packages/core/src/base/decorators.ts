@@ -2,7 +2,7 @@ import { attach, detach, STATE_KEYS, PERSIST_KEYS, PROPS_GATE, INITIAL_PRIMITIVE
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
 import { isComponentClass } from "../vdom/guards";
-import { displayName } from "../helpers/utils";
+import { className, displayName } from "../helpers/utils";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
 import { trackerContainer, trackDependency } from "../reactivity/tracker";
@@ -258,7 +258,7 @@ export function state(_value: unknown, context: EnhancedClassFieldDecoratorConte
     const contextName = ensureStringContextName(context.name, "state");
     const initialValue = this[contextName];
     const runtime = this[GLOBAL_RUNTIME];
-    const owner = this.constructor.name;
+    const owner = displayName(this);
 
     // The value straight from the field initializer (`@state x = …`) — the
     // "through the constructor" case. Later writes are checked in the setter below.
@@ -530,7 +530,7 @@ export function catchError<This extends CatchErrorOwner>(
       throw new Error(
         `[Ramonda] @catchError is for components, not hooks. An error travels up the COMPONENT tree, ` +
           `and a hook is not on it — the handler would never be called. Put it on the component that ` +
-          `uses ${this.constructor.name}, or drop it.`,
+          `uses ${displayName(this)}, or drop it.`,
       );
     }
 
@@ -539,8 +539,8 @@ export function catchError<This extends CatchErrorOwner>(
       if (runtime.catchError !== undefined && catchErrorOwners.get(runtime) === owner) {
         diagnose(
           "RMD032",
-          `${this.constructor.name}:catchError`,
-          `<${this.constructor.name} /> declares @catchError on more than one method.`,
+          `${displayName(this)}:catchError`,
+          `<${displayName(this)} /> declares @catchError on more than one method.`,
         );
       }
       catchErrorOwners.set(runtime, owner);
@@ -622,7 +622,7 @@ export function ShouldUpdateOnPropsChange<
       throw new Error(
         `[Ramonda] @ShouldUpdateOnPropsChange is for components, not hooks. A hook's props come from its ` +
           `this.use() callback and refresh on every owner render — there is no parent-driven prop update to gate. ` +
-          `Put the decorator on the component that renders <${ctor.name} />, or drop it.`,
+          `Put the decorator on the component that renders <${className(ctor)} />, or drop it.`,
       );
     }
 
@@ -635,7 +635,9 @@ export function ShouldUpdateOnPropsChange<
     // declaration. The write is unconditional, which is what makes the one written furthest from the
     // class the one that decides — measured, because the order is the opposite of how it reads.
     if (__DEV__ && Object.hasOwn(ctor, PROPS_GATE)) {
-      diagnose("RMD040", ctor.name, `<${ctor.name} /> declares more than one.`, { component: ctor.name });
+      diagnose("RMD040", className(ctor), `<${className(ctor)} /> declares more than one.`, {
+        component: className(ctor),
+      });
     }
 
     (ctor as unknown as { [PROPS_GATE]?: unknown })[PROPS_GATE] = decide;
@@ -1135,7 +1137,7 @@ export function memoized<T extends (...args: any[]) => any>(
          */
         reportFault(
           "RMD047",
-          `${(this as { constructor: { name: string } }).constructor.name}:${String(context.name)}`,
+          `${displayName(this)}:${String(context.name)}`,
           "@memoized was called with an argument it cannot build a cache key from, so it is not memoised.",
         );
       }
@@ -1470,8 +1472,8 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
      * symbol and no advice.
      */
     if (__DEV__ && Object.hasOwn(ctor, STABLE_PROPS)) {
-      diagnose("RMD046", ctor.name, `${ctor.name} declares more than one @StableProps.`, {
-        component: ctor.name,
+      diagnose("RMD046", className(ctor), `${className(ctor)} declares more than one @StableProps.`, {
+        component: className(ctor),
         added: keys.join(", "),
       });
     }

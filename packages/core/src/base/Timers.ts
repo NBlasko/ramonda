@@ -1,5 +1,6 @@
 import { delayFault } from "../debug/validateDecorator";
 import { Armed } from "./Armed";
+import { state } from "./decorators";
 
 /** What a scheduled call runs. Declared once, with the hook, and read again every time it fires. */
 export interface ScheduledProps {
@@ -118,13 +119,52 @@ abstract class Scheduled extends Armed<ScheduledProps> {
    * Without that, a refusal is indistinguishable from a timer that has not fired yet — measured on the
    * first caller, where it left a view transition holding a snapshot over the page for ever.
    */
+  /**
+   * Whether a run is scheduled and has not happened yet.
+   *
+   * `@state`, so a render that reads it is re-rendered when it flips — which is the whole point: a
+   * button that says "Cancel" while a deadline is running, a row that shows a spinner until the
+   * retry fires. Before this the only way to know was to keep a second field beside the timer and
+   * remember to write it in three places.
+   *
+   * **It costs no hydration bytes.** A hook's `@state` travels in the blob, but the serializer
+   * writes only what MOVED off its initializer — and nothing arms on the server, because `armable`
+   * is false there. So this is `false` on both sides and is never written. Asserted in
+   * `Timers.test.tsx`.
+   *
+   * **The devtools panel shows it under THIS name, not `pending`.** `readState` lists every
+   * `@state` key with no privacy filter, so a `Timeout` in the panel reads `scheduled: true` while
+   * the API a caller writes is `pending`. The two cannot share a name — a public field would let
+   * anybody assign it — and a rename facility for the panel is machinery this does not earn. Named
+   * here so the next reader knows it is the design and not a leak.
+   */
+  @state private scheduled = false;
+
+  /** Whether a run is scheduled and has not happened yet. See {@link scheduled}. */
+  get pending(): boolean {
+    return this.scheduled;
+  }
+
   start(ms: number): boolean {
     this.checkDelay(ms);
     this.stop();
     if (!this.armable) return false;
 
     this.disarm = this.schedule(ms);
+    this.scheduled = true;
     return true;
+  }
+
+  /**
+   * Clears the timer AND the state, which is why this is overridden rather than inherited.
+   *
+   * `Armed.stop()` knows about `disarm` and nothing else. Teardown goes through it as well, so an
+   * unmounted timer reads `pending === false` — a hook whose state said otherwise after its owner
+   * was gone would be a claim about a callback that can never run.
+   */
+  override stop(): void {
+    super.stop();
+    this.scheduled = false;
   }
 
   /** Arms the platform timer and hands back how to clear it. */
@@ -139,6 +179,7 @@ abstract class Scheduled extends Armed<ScheduledProps> {
    */
   protected spent(): void {
     this.disarm = undefined;
+    this.scheduled = false;
   }
 
   /**
@@ -172,6 +213,34 @@ abstract class Scheduled extends Armed<ScheduledProps> {
 /** Runs `run` once, `ms` after `start`. See `Scheduled`. */
 export class Timeout extends Scheduled {
   protected readonly label = "Timeout";
+
+  /**
+   * Whether the run has HAPPENED — a one-shot's other half, and only a one-shot's.
+   *
+   * `Interval` deliberately has no `done`: it does not finish, so a field for it would be a
+   * question with no answer, and one more thing on every instance. That asymmetry is the reason
+   * this lives here rather than on `Scheduled`.
+   *
+   * Reset by `start`, so a timer started again is pending and not done — the two are never both
+   * true, and after a `stop()` before it fired both are false, which is the third state a caller
+   * needs (`cancelled`, in their own words) without a third field.
+   */
+  @state private fired = false;
+
+  /** Whether the run has happened. See {@link fired}. */
+  get done(): boolean {
+    return this.fired;
+  }
+
+  override start(ms: number): boolean {
+    this.fired = false;
+    return super.start(ms);
+  }
+
+  protected override spent(): void {
+    super.spent();
+    this.fired = true;
+  }
 
   protected schedule(ms: number): () => void {
     const id = setTimeout(() => {

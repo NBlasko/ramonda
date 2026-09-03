@@ -1,4 +1,5 @@
 import { diagnose } from "./diagnostics";
+import { displayName } from "../helpers/utils";
 import type { BaseComponent } from "../types/vdom";
 
 /**
@@ -115,7 +116,7 @@ export function reportLeakedTimers(component: BaseComponent): void {
   const timers = byComponent.get(component);
   if (!timers || timers.size === 0) return;
 
-  const name = component.constructor.name;
+  const name = displayName(component);
 
   for (const timer of timers.values()) {
     diagnose(

@@ -1,4 +1,5 @@
 import { STABLE_PROPS } from "../helpers/constants";
+import { displayName } from "../helpers/utils";
 import { devFlags } from "../config";
 import { isPlainObject, valueEqualThorough } from "../helpers/valueEqual";
 import { isListNode } from "../vdom/guards";
@@ -201,7 +202,7 @@ interface Walk {
  * function for the same arguments, so it shows up as stable rather than as a fault.
  */
 export function checkRenderStability(component: BaseComponent, first: unknown, second: unknown): void {
-  const walk: Walk = { owner: component.constructor.name, budget: MAX_NODES };
+  const walk: Walk = { owner: displayName(component), budget: MAX_NODES };
 
   /**
    * A cached render is the one shape this cannot look into, so it says so instead of comparing. It is the

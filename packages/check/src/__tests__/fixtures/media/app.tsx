@@ -20,6 +20,16 @@ class Player extends Component {
         <video src="/talk.mp4" controls />
         {/* REPORTED — audio has the same problem and a different fix. */}
         <audio src="/episode.mp3" controls />
+        {/* Not reported: a LABEL is the answer for music, which is what the advice asks for. */}
+        <audio src="/song.mp3" controls aria-label="Chopin, Nocturne op. 9 no. 2, 4:33" />
+        {/* Not reported: the same, said by reference. */}
+        <audio src="/other.mp3" controls aria-labelledby="now-playing" />
+        {/* Not reported: a name computed at runtime is a name. */}
+        <audio src="/live.mp3" controls aria-label={rest.title as string} />
+        {/* REPORTED — a label written and nothing said. */}
+        <audio src="/quiet.mp3" controls aria-label="" />
+        {/* Not reported: a labelled VIDEO is the same argument. */}
+        <video src="/loop.mp4" controls aria-label="Rotating logo, 6s" />
         {/* REPORTED — `chapters` is navigation rather than the words. */}
         <video src="/talk.mp4">
           <track kind="chapters" src="/c.vtt" />

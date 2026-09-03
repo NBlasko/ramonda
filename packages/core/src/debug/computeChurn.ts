@@ -1,4 +1,5 @@
 import { diagnose } from "./diagnostics";
+import { displayName } from "../helpers/utils";
 import { valueEqual } from "../helpers/valueEqual";
 
 /**
@@ -79,7 +80,7 @@ export function recordCompute(instance: object, member: string, value: unknown):
   // time. Reset so a later burst after a genuine change reports again.
   seen.equalRuns = 0;
 
-  const owner = instance.constructor.name;
+  const owner = displayName(instance);
   diagnose(
     "RMD024",
     `${owner}.${member}`,

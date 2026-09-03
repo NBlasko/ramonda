@@ -1,4 +1,5 @@
 import type { BaseComponent } from "../types/vdom";
+import { displayName } from "../helpers/utils";
 import { refreshComponentRegion } from "./DiffAndMerge";
 import { errorHandler } from "./errorHandler";
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME, INTERNAL_HOOKS } from "./runtime";
@@ -321,7 +322,7 @@ function processTask() {
         }
 
         if (++builds > MAX_BUILDS_PER_DRAIN) {
-          const name = component.constructor.name;
+          const name = displayName(component);
           abandonQueue();
           throw new Error(
             `[Ramonda] Update loop: one update rebuilt components ${MAX_BUILDS_PER_DRAIN} times without settling, ` +
@@ -340,7 +341,7 @@ function processTask() {
            * timestamps it reports.
            */
           if (__DEV__ && isRecording()) {
-            const name = component.constructor.name;
+            const name = displayName(component);
             const started = performance.now();
             updateBuild(component);
             recordBuild(name, performance.now() - started);

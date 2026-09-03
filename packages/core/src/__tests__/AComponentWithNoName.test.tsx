@@ -1,6 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach, vi } from "vitest";
 import { getDOM, unnamed } from "../test/setup";
 import { Component } from "../base/Component";
+import { Hook } from "../base/Hook";
 import { createContext } from "../base/Context";
 import { list } from "../base/list";
 import { displayName } from "../helpers/utils";
@@ -120,6 +121,87 @@ describe("a diagnostic about a component that has no name", () => {
     expect(displayName(undefined)).toBe("Unknown");
     class Named {}
     expect(displayName(new Named())).toBe("Named");
+  });
+
+  /**
+   * The two THROWN messages a nameless class can actually reach, and why they are the only two.
+   *
+   * Twenty-nine sites read `constructor.name` bare and put it in a message; all of them now go
+   * through `displayName`, and `scripts/check-nameless-class.mjs` refuses a new one. Most cannot be
+   * pinned from a test at all, and the reason is written into `test/setup.ts`'s `unnamed()`: a class
+   * expression with a DECORATED member is named by the transpiler. `RMD001`, `RMD006`, `RMD008`,
+   * `RMD009` and the hydration family all need `@state`, `@created` or `@deferHydration` to fire, so
+   * the class that reaches them always has a name.
+   *
+   * These two need no decorator, which is what makes them reachable — and they are the two that
+   * THROW, so a reader meets them with nothing else on the page to explain what happened.
+   */
+  test("the RMD004 throw names a nameless component", async () => {
+    const Anon = unnamed(
+      () =>
+        class extends Component<{ label?: string }> {
+          wrong() {
+            (this.props as { label?: string }).label = "changed";
+          }
+          render() {
+            return <p>{this.props.label ?? "none"}</p>;
+          }
+        },
+    );
+    expect(Anon.name).toBe("");
+
+    const app = await getDOM((<Anon />) as never);
+    const instance = app.instance as unknown as { wrong(): void };
+
+    expect(() => instance.wrong()).toThrow(/\[RMD004\] Cannot assign to `props\.label` in <Unknown \/>/);
+    app.unmount();
+  });
+
+  test("the RMD015 throw names a nameless hook", async () => {
+    const Store = unnamed(() => class extends Hook<{ n: number }> {});
+    expect(Store.name).toBe("");
+
+    class Holder extends Component {
+      store = this.use(Store as never, () => ({ n: 1 }));
+      render() {
+        return <p>x</p>;
+      }
+    }
+
+    const app = await getDOM<Holder>(<Holder />);
+    const store = app.instance.store as unknown as { props: { n: number } };
+
+    expect(() => {
+      store.props.n = 2;
+    }).toThrow(/\[RMD015\] Cannot assign to `props\.n` in <Unknown \/>/);
+    app.unmount();
+  });
+
+  /**
+   * The other half of the family, and the one that got past the gate.
+   *
+   * `scripts/check-nameless-class.mjs` greps for `constructor.name`, so it never saw the messages
+   * that hold the CLASS itself — `${hook.name}`, `${ctor.name}`, `${vnode.name.name}`. Seven of
+   * those existed while the commit that added the gate said the family was closed. They read
+   * `className()` now, and this is the one a user meets: RMD055 THROWS, so it arrives with nothing
+   * else on the page to explain it.
+   *
+   * The gate cannot cheaply cover this half, and the helper's own note says why: `${x.name}` is
+   * indistinguishable from an ordinary data read.
+   */
+  test("the RMD055 throw names a nameless hook class", async () => {
+    const Store = unnamed(() => class extends Hook<{ n: number }> {});
+    expect(Store.name).toBe("");
+
+    class Holder extends Component {
+      // An object literal instead of a callback, which is the fault RMD055 refuses.
+      store = this.use(Store as never, { n: 1 } as never);
+      render() {
+        return <p>x</p>;
+      }
+    }
+
+    await expect(getDOM(<Holder />)).rejects.toThrow(/\[RMD055\] <Unknown \/> was given a plain object/);
   });
 
   describe("a diagnostic raised while a nameless component renders", () => {

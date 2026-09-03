@@ -1,4 +1,5 @@
 import { COMPONENT_RUNTIME, GLOBAL_RUNTIME } from "../core/runtime";
+import { displayName } from "./utils";
 import type { BaseComponent } from "../types/vdom";
 import { detach } from "./constants";
 import { reportLeakedTimers } from "../debug/timerGuard";
@@ -27,7 +28,7 @@ function runCleanup(what: string, component: BaseComponent<unknown>, cb: () => v
      * armed.
      */
     console.error(
-      `[Ramonda] ${what} threw while <${component.constructor.name} /> was being destroyed. The rest of its cleanup still ran.`,
+      `[Ramonda] ${what} threw while <${displayName(component)} /> was being destroyed. The rest of its cleanup still ran.`,
       error,
     );
   }
