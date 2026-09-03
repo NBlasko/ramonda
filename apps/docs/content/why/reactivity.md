@@ -90,3 +90,11 @@ parameter changes.
 
 The division of labour, then: **`@state` and a component's props are coarse and simple; `@compute`,
 `@watchProp`, subscriptions, context and a hook's props callback are fine-grained where it matters.**
+
+## Next
+
+- [No global state](/why/no-globals) — the third of these arguments, and the one the server forces.
+- [State](/concepts/state) and [Derived values](/concepts/compute) — the model above, as the two
+  decorators you actually write.
+- [One per component, or one per item](/concepts/caching) — where the granularity here starts to
+  matter in practice.

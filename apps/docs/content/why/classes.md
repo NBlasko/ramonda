@@ -82,7 +82,7 @@ TypeScript catches most of this on its own: `JSX.ElementType` is deliberately le
 the compiler's default rule applies — a tag must return one `JSX.Element` — and a function
 returning several nodes, or anything that is not a node, is refused (`TS2786`). The one it lets
 through is a function returning exactly ONE element, which is also the way somebody writes a
-function component out of habit. That one is [`RMD011`](/reference/diagnostics).
+function component out of habit. That one is [`RMD011`](/reference/diagnostics/rmd011).
 
 ## Why decorators, not reserved method names
 
@@ -112,3 +112,12 @@ Ramonda uses the standard (TC39 stage-3) decorators — the ones on their way in
 JavaScript itself — not the older experimental TypeScript ones. That is why
 [installation](/guide/installation) asks your bundler to transpile them: they are new
 enough that not every runtime parses them yet, but they are the version with a future.
+
+## Next
+
+- [The reactivity model](/why/reactivity) — the other half of the design: what a class buys is
+  identity, and this is what identity buys.
+- [Components](/concepts/components) — the same subject as something to write rather than to argue
+  about.
+- [Every decorator, at a glance](/reference/decorators) — the whole set, once the reasoning has
+  landed.

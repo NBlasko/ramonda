@@ -125,7 +125,7 @@ section runs to completion with nothing able to interrupt it, and that is what s
 render from reading another visitor's user. Reading synchronously is what makes the shared value
 safe.
 
-Two things say so when you break it. [`RMD053`](/reference/diagnostics) reports the read when the
+Two things say so when you break it. [`RMD053`](/reference/diagnostics/rmd053) reports the read when the
 line runs — and it reports as well as throwing, because inside an async `@mounted` the throw goes
 into the server's work drain and is swallowed, so the page would otherwise be served complete and
 quietly missing the value. [`ramonda-check`](/reference/check) reports it from the source, before

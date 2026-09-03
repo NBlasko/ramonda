@@ -99,7 +99,7 @@ render() {
 ```
 
 That produces different output on the two sides by design — exactly what
-[`RMD007`](/ssr/mismatches) reports. Decide by side in the lifecycle, where `env` says
+[`RMD007`](/reference/diagnostics/rmd007) reports. Decide by side in the lifecycle, where `env` says
 so out loud.
 
 ## Next

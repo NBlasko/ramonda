@@ -294,6 +294,22 @@ function diagnosticPages(source) {
     });
   }
 
+  /**
+   * The index's own `Next`, added HERE rather than written at the end of the file.
+   *
+   * A `## Next` in `diagnostics.md` would sit after the last code's section, so the split would
+   * carry it onto that code's PAGE and the index would still end nowhere — the one page on the site
+   * where the obvious place to write it is the wrong one.
+   */
+  index.push(
+    "## Next",
+    "",
+    "- [Checking your app](/reference/check) — the same faults proved from your source, before any",
+    "  of these can be reported.",
+    "- [Rules](/rules) — every check that runs there, one page each.",
+    "- [Reference](/reference) — the other pages you come back to rather than read once.",
+  );
+
   const front = Object.entries(data).map(([key, value]) => `${key}: ${value}`);
   return {
     index: { source: ["---", ...front, "---", "", ...index, ""].join("\n"), path: "/reference/diagnostics" },
@@ -347,6 +363,9 @@ function rulePages() {
     "",
     "An **error** fails the run. A **warning** prints and lets it through — for now; a rule that warns",
     "today may fail a build in a later version, and each says so.",
+    "",
+    "Looking for a rule by the trouble it explains rather than by its name?",
+    "[Something is wrong](/symptoms) is indexed by what you can see.",
     "",
     ...section(
       rules.filter((rule) => rule.severity === "error"),

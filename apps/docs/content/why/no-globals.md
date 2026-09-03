@@ -43,3 +43,10 @@ Not much, in practice. Share values down the tree with [props](/concepts/props) 
 [context](/composition/context); keep behaviour reusable with [hooks](/hooks). It is
 the same discipline that keeps the server safe and the client easy to follow — one
 rule, both sides.
+
+## Next
+
+- [Context](/composition/context) — where a value shared by a subtree goes instead of a module.
+- [The router on the server](/routing/server) — the concrete case this argument is really about.
+- [Rendering on the server](/ssr/render) — why one process holding one app's state is the thing
+  that breaks.

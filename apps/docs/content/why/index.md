@@ -47,3 +47,10 @@ see it. None of them threw. So Ramonda ships [development-time
 checks](/reference/diagnostics) that name the mistake and say what to do instead; in
 production they compile away to nothing. That "make it loud" instinct shapes the
 framework as much as any single rule.
+
+## Next
+
+- [Classes and decorators](/why/classes) — why the unit is a class, and why the decorators are
+  TC39's rather than a compiler trick of ours.
+- [The reactivity model](/why/reactivity) — what is fine-grained here and what deliberately is not.
+- [No global state](/why/no-globals) — the argument the server forces, and what it asks of you.

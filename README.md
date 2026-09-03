@@ -16,6 +16,10 @@ A UI framework. **Explicit. Predictable. Readable.**
 > becomes a rule rather than a courtesy, and the work turns to performance and
 > bugs. The point of these `0.x` months is to arrive at an API worth keeping,
 > because the way it works then is the way it goes on working.
+>
+> Until then a breaking change ships as a **minor**, so `0.23` → `0.24` may ask you
+> to change something and `0.23.1` → `0.23.2` never will.
+> **[Upgrading](https://ramonda.dev/reference/upgrading)** is the whole of it.
 
 📖 **Documentation: [ramonda.dev](https://ramonda.dev)**
 

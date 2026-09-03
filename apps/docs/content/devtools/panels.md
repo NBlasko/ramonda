@@ -216,3 +216,8 @@ splits on `::` and looks both up. A plain `"ws-1"` is just as good when a plain 
 **What an id must be is stable across polls**, because that is how the panel knows the row it is
 looking at is the same row. An id built from something that moves — a position in a list, a counter —
 makes every poll look like a different set of rows, which resets whatever the reader had open.
+
+## Next
+
+- [Devtools](/devtools) — the tabs that ship, if you have arrived here first.
+- [Writing a hook](/hooks/writing) — where the state a panel shows usually lives.

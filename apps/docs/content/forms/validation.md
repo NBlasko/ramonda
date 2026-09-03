@@ -89,7 +89,7 @@ private message(text: string): RamondaNode {
 ```
 
 `list()` rather than `.map()`, even for markup this plain. Either works, and a `.map()` here
-would ask for a key ([`RMD023`](/reference/diagnostics)) — messages have no id to give it. A
+would ask for a key ([`RMD023`](/reference/diagnostics/rmd023)) — messages have no id to give it. A
 list identifies each message by itself, so there is nothing to invent. See
 [rendering lists](/lists).
 
@@ -280,3 +280,9 @@ Three things follow from how it is scoped:
   the form looking as inert as before.
 - **A programmatic `form.submit()` moves nothing.** No event, no element — and the right boundary
   anyway: your code called it, so your code decides where the reader should be looking.
+
+## Next
+
+- [Array fields](/forms/arrays) — validating rows, where an error has to survive the row moving.
+- [The bguard submodule](/forms/bguard) — HTML validation attributes derived from the same schema.
+- [Forms on the server](/forms/server) — what a validated form looks like before any script runs.

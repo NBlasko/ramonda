@@ -9,7 +9,9 @@ it. The bundler is already configured.
 [![license](https://img.shields.io/npm/l/create-ramonda)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
 
 > **Status: `0.x`.** The API changes freely between releases while the design is
-> being explored; from `1.0` the interfaces hold. See the
+> being explored; from `1.0` the interfaces hold. A breaking change ships as a
+> **minor** until then — see [Upgrading](https://ramonda.dev/reference/upgrading)
+> for what that means for a version range, and the
 > [root README](https://github.com/NBlasko/ramonda#readme).
 
 ```sh

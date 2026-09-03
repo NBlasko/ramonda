@@ -344,7 +344,7 @@ cannot be watched anywhere — there is no signal to hear from.
 
 Press the identity button: the same arguments give back the same function, which is
 what keeps the listener from being re-attached — and what stops
-[RMD020](/reference/diagnostics) reporting the row.
+[RMD020](/reference/diagnostics/rmd020) reporting the row.
 
 ## Which to use
 

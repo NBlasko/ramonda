@@ -54,7 +54,7 @@ The client's first render has to produce what the server produced. If it rendere
 spinner instead, hydration would find markup that disagrees with it and resolve that
 by **throwing the server's markup away** — the reader watches finished content flash
 into a placeholder, and the framework reports it as
-[RMD007](/ssr/mismatches).
+[RMD007](/reference/diagnostics/rmd007).
 
 So the restored data is put into the cache on the read path, before anything renders,
 rather than from a lifecycle that runs after the first commit. Nothing to do; it is

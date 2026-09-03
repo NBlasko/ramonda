@@ -175,7 +175,7 @@ const DETAIL: Record<Kind, (owner: string, path: string) => string> = {
 
 const FIX: Record<Kind, string> = {
   handler:
-    "Give the function a stable identity: a bound method (`onClick={this.submit}`), or `@memoized` when it has to be built per item — that caches by its arguments, per instance.",
+    "Give the function a stable identity: a bound method (`onclick={this.submit}`), or `@memoized` when it has to be built per item — that caches by its arguments, per instance.",
   object:
     "Hold the value somewhere stable instead of rebuilding it: a `@compute` getter (recomputed only when what it reads changes), a field, or a module constant if it never varies.\n" +
     "PER ITEM, none of those works — a `@compute` belongs to the component, not to the row. `@memoized` is the one that does: it caches by its arguments, per instance, and it caches a value as readily as a handler.",
@@ -286,7 +286,7 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
    * literal. `h.ts` wraps it in the same branded shape a `list()` has, and its rows are already
    * BUILT: they sit in `vnodes`, in both outputs, because both renders ran the `.map()`. Comparing
    * them costs nothing — nobody has to build anything that was not built anyway. Skipping them
-   * meant `{items.map((i) => <li onClick={() => …}>)}` was reported when the same `<li>` was
+   * meant `{items.map((i) => <li onclick={() => …}>)}` was reported when the same `<li>` was
    * written by hand and silent the moment it came from an array.
    *
    * **A `list()` DESCRIPTOR** has no rows yet: the builder is called by the engine during the

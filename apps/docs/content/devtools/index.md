@@ -400,3 +400,9 @@ it. Anything with state worth looking at can do the same, and it takes about fif
 
 Nothing here ships. The panel is a separate package you import behind a development-only condition,
 and the framework's own inspection hooks are inside `if (__DEV__)` blocks that your bundler removes.
+
+## Next
+
+- [Adding a tab](/devtools/panels) — a panel of your own, if your package has state worth seeing.
+- [Diagnostics](/reference/diagnostics) — what the framework reports into the Logs tab, and what
+  each code means.

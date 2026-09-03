@@ -120,7 +120,7 @@ rendering when it should. The worst a wrong name here can do is fail to type-che
 
 **A function is not settled by it.** Two closures with the same body are not equal by any
 comparison that is safe to make, so a listed function prop is left exactly as it came. Pass a bound
-method — `onSelect={this.select}` — or `@memoized` when it has to be built per row.
+method — `onPick={this.pick}` — or `@memoized` when it has to be built per row.
 
 **Children are a prop, and they can be declared too.** A rendered node is built during the render,
 so anything a parent writes between the tags is a fresh value every time — a component given
