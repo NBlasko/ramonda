@@ -53,6 +53,26 @@ export const isArray = Array.isArray;
  * construct — the test written for it passed with the operator changed back, so it was deleted
  * rather than kept).
  */
+/**
+ * What to call a CLASS in a diagnostic — the other half of the same fault.
+ *
+ * `displayName` above takes an INSTANCE and reads its constructor. Several messages hold the class
+ * itself instead: the hook handed to `use()`, the component on a vnode, the constructor a class
+ * decorator was applied to. A class expression assigned to nothing has a `name` of `""` there too,
+ * so `<${hook.name} /> was given a plain object` printed `<>`.
+ *
+ * `scripts/check-nameless-class.mjs` does NOT catch this half, and cannot cheaply: `${x.name}` is
+ * indistinguishable from an ordinary data read — `${issue.name}`, `${graph.package.name}` — so a
+ * gate over it would need an allowlist longer than the rule. What keeps it from coming back is that
+ * all seven sites now read the same, so a reader copying a neighbour copies this.
+ */
+export function className(cls: unknown): string {
+  // `unknown` and a cast, the same shape `displayName` takes below and for the same reason: a
+  // generic class parameter is constrained by its CONSTRUCT signature, which does not structurally
+  // include `name`, so a narrower type is rejected at every real call site.
+  return (cls as { name?: string } | null | undefined)?.name || "Unknown";
+}
+
 export function displayName(value: unknown): string {
   return (value as { constructor?: { name?: string } } | null | undefined)?.constructor?.name || "Unknown";
 }

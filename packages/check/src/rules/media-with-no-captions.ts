@@ -77,6 +77,24 @@ function hasATrackOrCannotTell(children: readonly ts.JsxChild[], resolve: Elemen
   );
 }
 
+/**
+ * Whether the element says what it is, for a reader who cannot hear it.
+ *
+ * `truth` answers `undefined` for anything it cannot read, which is what makes
+ * `aria-label={title}` count: a name computed at runtime is a name. Only the empty string is
+ * refused, because that is a label written and nothing said.
+ */
+function labelled(has: ElementContext["has"], attr: ElementContext["attr"]): boolean {
+  for (const name of ["aria-label", "aria-labelledby"]) {
+    if (!has(name)) continue;
+    // `attr` answers the WRITTEN text, and `undefined` for anything it cannot read — so a computed
+    // `aria-label={title}` counts, and only a literal empty string does not.
+    if (attr(name) === "") continue;
+    return true;
+  }
+  return false;
+}
+
 export const mediaWithNoCaptions = {
   id: "media-with-no-captions",
 
@@ -101,10 +119,13 @@ export const mediaWithNoCaptions = {
       "player rather than a track: the title, the performer, the length. What is being asked for is\n" +
       "not a transcript of every sound, it is that the page not be silent ABOUT the sound.\n\n" +
       "A `<video muted>` is NOT reported — there is no sound to caption, which is the decorative\n" +
-      "background loop and not this fault.\n\n",
+      "background loop and not this fault.\n\n" +
+      "A label is taken as the answer, which is what music needs: an `aria-label` or an\n" +
+      "`aria-labelledby` on the element silences this. An empty one does not — that is a label\n" +
+      "written and nothing said.",
   },
 
-  read(element, { tag, has, truth, children, resolve }) {
+  read(element, { tag, has, truth, attr, children, resolve }) {
     if (tag !== "video" && tag !== "audio") return [];
 
     /**
@@ -117,6 +138,28 @@ export const mediaWithNoCaptions = {
      * `muted={quiet}` — still counts, which is the direction that cannot report working markup.
      */
     if (tag === "video" && has("muted") && truth("muted") !== false) return [];
+
+    /**
+     * A LABEL is the other answer, and this rule asked for it before it accepted it.
+     *
+     * Its own advice says so: "a song without words needs a label beside the player rather than a
+     * track: the title, the performer, the length. What is being asked for is not a transcript of
+     * every sound, it is that the page not be silent ABOUT the sound." A `<track>` for an
+     * instrumental is close to meaningless, so the advice was right — and the code went on
+     * demanding the track anyway, which made the rule inconsistent with itself. Measured on
+     * `<audio src="/song.mp3" controls aria-label="Chopin, Nocturne op. 9 no. 2, 4:33" />`: still
+     * reported, with advice telling the author to do what they had already done.
+     *
+     * So a label silences it. It is a weaker alternative than captions and it is not pretending
+     * otherwise — what it buys is that somebody who cannot hear the player still knows what it is
+     * playing, which for music is the whole of what there is to say.
+     *
+     * `aria-labelledby` counts for the same reason, and an EMPTY label does not: `aria-label=""` is
+     * the attribute written and nothing said, which is the shape the muted check above is careful
+     * about too. An unreadable one — `aria-label={title}` — counts, because the direction this rule
+     * errs in is silence rather than a false report about working markup.
+     */
+    if (labelled(has, attr)) return [];
 
     if (hasATrackOrCannotTell(children, resolve)) return [];
 

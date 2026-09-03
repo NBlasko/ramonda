@@ -181,8 +181,13 @@ export class QueryClientAccess extends Hook {
 export function requireClient(client: QueryClient | null, readerName: string): QueryClient {
   if (client) return client;
 
+  // `||`, not the name straight through: a class expression assigned to nothing has a
+  // `constructor.name` of `""`, and `<> needs a QueryClientProvider` names nobody. The one caller
+  // passes `this.constructor.name`, so this is the choke point for it.
+  const subject = readerName || "a component";
+
   throw new Error(
-    `[Ramonda Query] <${readerName}> needs a QueryClientProvider above it. The cache belongs to a provider ` +
+    `[Ramonda Query] <${subject}> needs a QueryClientProvider above it. The cache belongs to a provider ` +
       `instance and reaches components through context — there is no global client to fall back on, because a ` +
       `module-level cache is shared by every request a server handles at once, and would serve one visitor's data ` +
       `to another. Add \`this.use(QueryClientProvider)\` to the component that wraps your app.`,

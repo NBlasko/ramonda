@@ -1,4 +1,5 @@
 import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
+import { className, displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
 import { applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
@@ -321,7 +322,7 @@ function hydrateComponentRegion(
    */
   if (open === null || !isComponentOpen(open)) {
     if (__DEV__) {
-      reportStructureMismatch(placeholder, `<${vnode.name.name}>`, describeFound(open));
+      reportStructureMismatch(placeholder, `<${className(vnode.name)}>`, describeFound(open));
     }
     const region = buildComponentRegion(vnode, placeholder, owner, parent as ChildNode);
     const built: ChildNode[] = [];
@@ -370,8 +371,8 @@ function hydrateComponentRegion(
         restoreComponentTree(component, JSON.parse(blob));
       } catch (e) {
         if (__DEV__) {
-          diagnose("RMD036", vnode.name.name, `The blob on <${vnode.name.name}> could not be parsed.`, {
-            component: vnode.name.name,
+          diagnose("RMD036", className(vnode.name), `The blob on <${className(vnode.name)}> could not be parsed.`, {
+            component: className(vnode.name),
             reason: e instanceof Error ? e.message : String(e),
           });
         }
@@ -605,7 +606,7 @@ function closeBlock(open: Comment, walk: HydrationWalk, component: BaseComponent
 
   const extra: ChildNode[] = [];
   const close = skipToClose(stop, extra);
-  const name = component.constructor.name;
+  const name = displayName(component);
 
   if (close === undefined) {
     // No closing marker anywhere after the cursor: the server never closed this block, which is not a
@@ -996,13 +997,13 @@ function watchForStalledHydration(component: BaseComponent): void {
     if (!componentRuntime.hydrationPending) return;
     if (componentRuntime.isDestroyed) return;
 
-    const dedupKey = `stalled-hydration:${component.constructor.name}`;
+    const dedupKey = `stalled-hydration:${displayName(component)}`;
 
     if (__DEV__) {
       diagnose(
         "RMD017",
         dedupKey,
-        `<${component.constructor.name} /> deferred its hydration and never resumed. ` +
+        `<${displayName(component)} /> deferred its hydration and never resumed. ` +
           `The server's markup is still on screen, so the page looks finished — but this subtree ` +
           `has no listeners and no state, and nothing in it responds. The promise returned by ` +
           `deferHydration() has not settled after ${STALLED_HYDRATION_MS / 1000}s; a failed dynamic ` +
@@ -1031,7 +1032,10 @@ function watchForStalledHydration(component: BaseComponent): void {
 
 /** Element vnodes carry an uppercased tag (it matches nodeName); components carry a class. */
 function vnodeName(vnode: VNode): string {
-  return typeof vnode.name === "string" ? vnode.name.toLowerCase() : vnode.name.name;
+  // The class branch goes through `className`, the tag branch cannot: a tag is a string and always
+  // has one. Its only caller is `reportStructureMismatch`, so this is a message and nothing matches
+  // on it.
+  return typeof vnode.name === "string" ? vnode.name.toLowerCase() : className(vnode.name);
 }
 
 function hydrationFallback(
