@@ -193,6 +193,12 @@ describe("decorators", () => {
       @destroyed({ env: "client" }) goneClient() {
         ran.push("destroy:client");
       }
+      // The other side of the same question, and the one nothing asked: a teardown declared for the
+      // SERVER must stay quiet in a browser. Its branch in `runDestroyLifecycle` was the only
+      // unhit one left in that file.
+      @destroyed({ env: "server" }) goneServer() {
+        ran.push("destroy:server");
+      }
       render() {
         return (
           <div>
@@ -208,6 +214,9 @@ describe("decorators", () => {
 
     app.unmount();
     expect(ran).toContain("destroy:client");
+    expect(ran).not.toContain("destroy:server");
+    // Named as the whole list, so a teardown appearing from anywhere else fails here too.
+    expect(ran).toEqual(["create:client", "mount:client", "destroy:client"]);
   });
 
   test("an unknown env is refused", async () => {

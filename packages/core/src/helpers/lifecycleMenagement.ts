@@ -47,8 +47,21 @@ export function lifecycleCleanupManagement(component: BaseComponent<unknown>) {
 
   const runtime = component[GLOBAL_RUNTIME];
 
+  /**
+   * No check for the array being there, and that is not an oversight.
+   *
+   * `effects` and `destroys` below are non-optional on `Runtime` and are assigned `[]` by
+   * `createRuntime`, which is the only producer of one — verified: it is called from `Component`'s
+   * constructor and nowhere else, a `Hook` is handed its OWNER's runtime, and `renderHook` mounts a
+   * real component rather than building a runtime by hand. Neither assignment sits under
+   * `if (__DEV__)`, so both builds have arrays.
+   *
+   * They were guarded with `if (effects)` / `if (destroys)`. Removing both changed nothing across
+   * 1466 tests, which is what a branch nothing can enter looks like — two more paths to read and
+   * none to trust. `reactivity/effect.ts` had the third copy and lost it too.
+   */
   const effects = runtime.effects;
-  if (effects) {
+  {
     for (let i = effects.length - 1; i >= 0; i--) {
       const eff = effects[i];
       for (const dep of eff.deps) {
@@ -64,7 +77,7 @@ export function lifecycleCleanupManagement(component: BaseComponent<unknown>) {
   // clearReactives), so user code in @destroyed can still read reactive and
   // computed values.
   const destroys = runtime.destroys;
-  if (destroys) {
+  {
     for (let i = destroys.length - 1; i >= 0; i--) {
       const entry = destroys[i];
       if (entry.env !== "server")
