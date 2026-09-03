@@ -135,7 +135,7 @@ class ProfileForm extends Component {
   /**
    * Bound per argument, so the row's × is the SAME function across renders.
    *
-   * `onClick={() => f.tags.$.remove(row.index)}` is a fresh closure every render, which RMD020
+   * `onclick={() => f.tags.$.remove(row.index)}` is a fresh closure every render, which RMD020
    * reports — and this page should be the model rather than the counter-example.
    *
    * The decorator sat on `tagRow` until `unkeyable-memoized-argument` said so: a doc comment written

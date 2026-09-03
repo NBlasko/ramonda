@@ -552,7 +552,7 @@ component: it would have to be an element, and only `<td>` is legal there. That
 is a **Hook** — state and lifecycle, no node — spliced in as `{group.cells()}`.
 See "State and lifecycle with no markup of your own" above.
 
-Auto-binding covers inherited methods, so `onClick={this.handleClick}` works in a
+Auto-binding covers inherited methods, so `onclick={this.handleClick}` works in a
 subclass that never mentions `handleClick`. That took a fix; it used
 to fail silently, which is exactly the kind of thing that makes people write
 constructors again.

@@ -59,7 +59,7 @@ describe("RMD020 — values built inside render()", () => {
     await getDOM<Panel>(<Panel />);
 
     expect(reported()).toContain("RMD020");
-    expect(reported()).toContain("onClick");
+    expect(reported()).toContain("onclick");
     // The source is identical between the two calls — only the identity is fresh,
     // which is exactly how "built in place" is told apart from "a different value".
     expect(reported()).toContain("the source is the same");
@@ -264,7 +264,7 @@ describe("RMD020 — values built inside render()", () => {
     await settle();
 
     expect(reported()).toContain("RMD020");
-    expect(reported()).toContain("onClick");
+    expect(reported()).toContain("onclick");
   });
 
   test("the report names the component", async () => {

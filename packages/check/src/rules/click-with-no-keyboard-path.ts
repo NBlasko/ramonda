@@ -8,7 +8,7 @@ import type { ElementContext, ElementRule } from "./rule";
 /**
  * A click handler on something a keyboard can never reach.
  *
- * A `<div onClick={…}>` works for a mouse and for nothing else. It is not in the tab order, so it
+ * A `<div onclick={…}>` works for a mouse and for nothing else. It is not in the tab order, so it
  * cannot be focused; not being focusable, it cannot be activated by Enter or Space; and having no
  * role, a screen reader announces it as a piece of text rather than something to do. The control
  * simply is not there for anybody not using a pointer — and the page looks entirely correct.
@@ -24,7 +24,7 @@ import type { ElementContext, ElementRule } from "./rule";
  * area:
  *
  * ```tsx
- * <div className="card" onClick={open}>
+ * <div className="card" onclick={open}>
  *   <h3>{title}</h3>
  *   <a href={href}>Read more</a>      ← the real control, reachable by keyboard
  * </div>
@@ -40,7 +40,7 @@ import type { ElementContext, ElementRule } from "./rule";
  * and both were correct: a backdrop.
  *
  * ```tsx
- * <div className="search-backdrop" onClick={this.close} />
+ * <div className="search-backdrop" onclick={this.close} />
  * ```
  *
  * A backdrop's click is a convenience — Escape and a close button are the real exits, and the
@@ -55,7 +55,7 @@ import type { ElementContext, ElementRule } from "./rule";
 export interface ClickWithNoKeyboardPathIssue {
   /** The tag it was written on. */
   tag: string;
-  /** The handler's name, since `onClick` is not the only one. */
+  /** The handler's name, since `onclick` is not the only one. */
   handler: string;
   file: string;
   line: number;

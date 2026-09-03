@@ -78,7 +78,7 @@ export const stateWrittenWhileRendering = {
       "Move it to where the change belongs: an event handler, `@mounted`, `@updated`, or a\n" +
       "`@watchProp` if it follows a prop. If the value is derived from state you already have, it is\n" +
       "a `@compute` and does not need to be written at all.\n\n" +
-      "A function written as a JSX attribute is NOT reported: `onClick={() => this.n++}` is a\n" +
+      "A function written as a JSX attribute is NOT reported: `onclick={() => this.n++}` is a\n" +
       "handler, and that is exactly where writing state is right.\n\n" +
       "This is a warning today and an error in a later version.",
   },

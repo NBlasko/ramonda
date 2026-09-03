@@ -210,7 +210,7 @@ describe("Router: chrome above the outlet", () => {
   });
 
   test("Navigator methods work when passed as bare callbacks", () => {
-    // The playground does `<button onClick={this.route.back}>`. The methods
+    // The playground does `<button onclick={this.route.back}>`. The methods
     // reach navigation through `this.ctx` now, so they must stay bound.
     const { container } = render(app());
 

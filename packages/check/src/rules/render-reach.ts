@@ -18,7 +18,7 @@ import type { Resolver } from "./rule";
  *
  * ## The one place it deliberately stops
  *
- * **A function written as the value of a JSX attribute is not walked.** `onClick={() => this.count
+ * **A function written as the value of a JSX attribute is not walked.** `onclick={() => this.count
  * += 1}` is a handler: it runs when somebody clicks, which is exactly when writing state is the
  * right thing to do. Walking into it would report the single commonest correct line in any
  * application, and a rule that does that is a rule somebody switches off.
@@ -191,7 +191,7 @@ export function entryPoints(cls: ts.ClassDeclaration, resolve: Resolver): { memb
  * @memoized finish(id: number) {
  *   return () => { this.todo = …; this.done = …; };   // ← reported, and correct
  * }
- * render() { return <button onClick={this.finish(t.id)}>done</button>; }
+ * render() { return <button onclick={this.finish(t.id)}>done</button>; }
  * ```
  *
  * The render really does call `finish`, so the walk was right to follow it — but what `finish`
