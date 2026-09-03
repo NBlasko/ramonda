@@ -201,7 +201,8 @@ See [`RMD009`](/reference/diagnostics/rmd009) and [`RMD001`](/reference/diagnost
 
 It is handed a value built during the render. Every prop is a signal and a signal compares by
 reference, so an array or an object rebuilt each time is a *changed* prop — which recomputes every
-`@compute` reading it and fires every `@watchProp` on it. See [props](/concepts/props),
+`@compute` reading it and fires every `@watchProp` on it. See [performance](/performance),
+[props](/concepts/props),
 [`RMD022`](/reference/diagnostics/rmd022) and
 [`fresh-object-in-props`](/rules/fresh-object-in-props).
 
