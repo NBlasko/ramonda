@@ -4,6 +4,7 @@ import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { compute, memoized, state } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
+import { installPurityGuard } from "../debug/purityGuard";
 
 /**
  * RMD021 — randomness generated while a render, a `@compute` or a `@memoized`
@@ -209,5 +210,122 @@ describe("RMD021", () => {
      * into the output, nothing catches it.
      */
     expect(reported()).not.toContain("RMD021");
+  });
+});
+
+/**
+ * What `installPurityGuard` promises, as opposed to what it reports.
+ *
+ * Every test above asks whether a diagnostic comes out. None asked whether the PATCHED FUNCTIONS
+ * STILL WORK — and they replace `Math.random` and two `crypto` methods for the whole life of a
+ * development build, so a patch that dropped a return value or lost its `this` would break every
+ * app that runs in dev. The union of both coverage runs put this file's three install branches
+ * among the thinnest in the package, which is what sent me here.
+ *
+ * All three turned out to be correct. Nothing below is a fix; it is the proof, and from here on it
+ * is a regression test.
+ */
+describe("installing the purity guard", () => {
+  /**
+   * The patch is a wrapper, so everything about the call has to survive it: the value, the range,
+   * the `this` a destructured reference does NOT bring, and — for `getRandomValues` — the array it
+   * is handed, which it fills in place and returns.
+   */
+  test("the patched functions still do what they did", () => {
+    const values = new Set<number>();
+    for (let i = 0; i < 1000; i++) values.add(Math.random());
+    // 1000 distinct values out of 1000 draws, measured. A wrapper that returned a constant, or the
+    // wrapper itself rather than the result, would fail here rather than in somebody's app.
+    expect(values.size).toBeGreaterThan(990);
+    expect([...values].every((value) => value >= 0 && value < 1)).toBe(true);
+
+    // Destructured, so there is no receiver at the call. This asserts less than it looks like it
+    // does, and the plant is why: replacing `.apply(this, args)` with `.apply(host, args)` passes
+    // every test here, because for all three patched functions the host IS the natural receiver —
+    // `Math.random.apply(Math)` and `.apply(undefined)` answer the same. So what this pins is that
+    // a call with no receiver works at all, not that the receiver is forwarded.
+    const { random } = Math;
+    expect(typeof random()).toBe("number");
+
+    expect(crypto.randomUUID()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
+    const array = new Uint8Array(16);
+    // The SAME array back, and filled: `getRandomValues` writes in place, so a wrapper that
+    // returned a copy would satisfy a caller reading the return and betray one reading the argument.
+    expect(crypto.getRandomValues(array)).toBe(array);
+    expect(array.every((byte) => byte === 0)).toBe(false);
+  });
+
+  /** "Safe to call more than once", which `index.ts` relies on and nothing checked. */
+  test("installing again does not wrap the wrapper", () => {
+    const patched = Math.random;
+    installPurityGuard();
+    expect(Math.random).toBe(patched);
+  });
+
+  /**
+   * With no `crypto` at all, the check does not give up on `Math.random`.
+   *
+   * A fresh copy of the module is needed because `installed` is module state — the copy this suite
+   * imported was patched when `index.ts` loaded. `globalThis.crypto` is a configurable GETTER here,
+   * so it is deleted and put back by descriptor; and the fresh module patches `Math.random` a
+   * second time, over the live one, which has to be undone or every later test reports twice.
+   */
+  test("with no crypto, Math.random is still patched", async () => {
+    const savedCrypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    // Asserted rather than assumed: the restore below is `if (savedCrypto)`, so an environment where
+    // `crypto` is inherited rather than an OWN property would leave it deleted for every test after
+    // this one — a poisoned file reported as an unrelated failure. Measured here: it is an own,
+    // configurable getter.
+    expect(savedCrypto).toBeDefined();
+    const livePatch = Math.random;
+    vi.resetModules();
+    const fresh = await import("../debug/purityGuard");
+
+    try {
+      Reflect.deleteProperty(globalThis, "crypto");
+      expect(typeof (globalThis as { crypto?: unknown }).crypto).toBe("undefined");
+
+      fresh.installPurityGuard();
+
+      // It reached `Math.random` before it reached the `crypto` question — the one that matters most
+      // is the one every app calls.
+      expect(Math.random).not.toBe(livePatch);
+      expect(typeof Math.random()).toBe("number");
+    } finally {
+      if (savedCrypto) Object.defineProperty(globalThis, "crypto", savedCrypto);
+      Math.random = livePatch;
+    }
+  });
+
+  /**
+   * A `crypto` that has `getRandomValues` and NOT `randomUUID`, which is a real platform rather
+   * than a contrivance: `randomUUID` exists only in a secure context, so an app served over plain
+   * `http://` from anything but localhost has exactly this object.
+   *
+   * The guard must patch what is there and **must not define what is not.** Adding
+   * `crypto.randomUUID` would hand a feature detection — `if (crypto.randomUUID)` — a function
+   * whose native is `undefined`, so the app would call it and crash in development only.
+   */
+  test("a partial crypto is patched where it can be, and nothing is added to it", async () => {
+    const savedCrypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    expect(savedCrypto).toBeDefined();
+    const livePatch = Math.random;
+    const native = (array: Uint8Array) => array;
+    const partial: { getRandomValues: typeof native; randomUUID?: unknown } = { getRandomValues: native };
+    vi.resetModules();
+    const fresh = await import("../debug/purityGuard");
+
+    try {
+      Object.defineProperty(globalThis, "crypto", { value: partial, configurable: true, writable: true });
+
+      fresh.installPurityGuard();
+
+      expect(partial.getRandomValues).not.toBe(native);
+      expect("randomUUID" in partial).toBe(false);
+    } finally {
+      if (savedCrypto) Object.defineProperty(globalThis, "crypto", savedCrypto);
+      Math.random = livePatch;
+    }
   });
 });
