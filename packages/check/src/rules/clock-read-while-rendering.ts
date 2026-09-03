@@ -62,7 +62,7 @@ export const clockReadWhileRendering = {
   id: "clock-read-while-rendering",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "`Date.now()`, `new Date()` or `Math.random()` is reached from a render, by any path",
     alsoReportedAs: "RMD021",
     heading: (found) => `${found.length} clock or random read(s) reached from a render:`,
@@ -85,8 +85,7 @@ export const clockReadWhileRendering = {
       "leaves the clock alone — the platform reads the clock behind your back, so a guard on it\n" +
       "reports calls the app never made. `new Date()` is caught by `RMD020` as a fresh identity, and\n" +
       "`Date.now()` only when a hydration disagrees (`RMD007`); in a client-only app nothing catches\n" +
-      "it at all. That gap is what this rule is for.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "it at all. That gap is what this rule is for.\n\n",
   },
 
   read(cls, { self, resolve }) {

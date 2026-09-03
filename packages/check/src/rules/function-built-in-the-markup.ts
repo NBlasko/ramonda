@@ -143,7 +143,7 @@ export const functionBuiltInTheMarkup = {
   id: "function-built-in-the-markup",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a function literal is written into a JSX attribute — in the attribute, on one side of a ternary or a `??`, or in a local one line up — so its identity is fresh every render, and the listener is removed and re-added or the child can never compare its prop equal",
     alsoReportedAs: "RMD020",
@@ -172,8 +172,7 @@ export const functionBuiltInTheMarkup = {
       "holding an arrow, which is one identity per instance rather than per render. `arrow-fields`\n" +
       "reports that one, where it is written.\n\n" +
       "The page is correct either way, which is why this is a warning: what it costs is work, not\n" +
-      "output. `RMD020` reports the same fault at runtime, in a development build.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "output. `RMD020` reports the same fault at runtime, in a development build.\n\n",
   },
 
   evenWhenSpreading: true,

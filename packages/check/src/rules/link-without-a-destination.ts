@@ -78,7 +78,7 @@ export const linkWithoutADestination = {
   id: "link-without-a-destination",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `<a>` has no `href`, or one that goes nowhere — empty, `#`, or `javascript:`",
     heading: (found) => `${found.length} link(s) with nowhere to go:`,
     lines: (issue) => [
@@ -99,8 +99,7 @@ export const linkWithoutADestination = {
       "which writes a real one. If it does not navigate, it is a `<button>`: that is the element\n" +
       "for something that acts on this page, and it is focusable, announced and keyboard-operable\n" +
       "without anything being written on it.\n\n" +
-      '`href="#section"` is a real destination and is not reported. Only the bare `#` is.\n\n' +
-      "This is a warning today and an error in a later version.",
+      '`href="#section"` is a real destination and is not reported. Only the bare `#` is.\n\n',
   },
 
   read(element, { tag, attr, has }) {

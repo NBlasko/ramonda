@@ -44,7 +44,7 @@ export const regionWithNoName = {
   id: "region-with-no-name",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       '`role="region"` is written with no `aria-label`, `aria-labelledby` or `title`, so it is not a landmark at all',
     heading: (found) => `${found.length} \`region\` landmark(s) that never become one:`,
@@ -70,8 +70,7 @@ export const regionWithNoName = {
       '`aria-label="Filters region"` is read out as "Filters region region".\n\n' +
       "If the section is not important enough to navigate to, it does not need the role. A plain\n" +
       "`<section>` or `<div>` is the right element, and an unnamed `<section>` is not this report:\n" +
-      "it maps to a generic box by design rather than by mistake.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "it maps to a generic box by design rather than by mistake.\n\n",
   },
 
   // No `evenWhenSpreading`, deliberately: this reports an ABSENCE, a spread may be carrying the

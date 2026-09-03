@@ -53,7 +53,7 @@ export const misspelledElementProperty = {
   id: "misspelled-element-property",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a name is written in the wrong case for element state that lives only in a property, so it is written as an attribute nothing reads",
     heading: (found) => `${found.length} property name(s) written in a case the element does not have:`,
@@ -77,8 +77,7 @@ export const misspelledElementProperty = {
       "it — which is exactly why this is reported here instead.\n\n" +
       "None of this state survives a server render, whichever way it is spelled: there is nowhere in\n" +
       "markup to put it, so it is set when the page hydrates. That is HTML's limit rather than the\n" +
-      "framework's.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "framework's.\n\n",
   },
 
   /**

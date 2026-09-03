@@ -105,7 +105,7 @@ export const parentWithAForeignChild = {
   id: "parent-with-a-foreign-child",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a container whose children are fixed by the content model holds a tag that is not one of them",
     alsoReportedAs: "RMD028",
     heading: (found) => `${found.length} container(s) holding a tag that does not belong in them:`,
@@ -132,8 +132,7 @@ export const parentWithAForeignChild = {
       "</li>\n" +
       "```\n\n" +
       "Nobody writes this on purpose. It arrives when a row gets wrapped for layout, or a tooltip is\n" +
-      "put around one, and nothing on screen changes — the CSS was on the row all along.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "put around one, and nothing on screen changes — the CSS was on the row all along.\n\n",
   },
 
   read(_element, { tag, children }: ElementContext) {

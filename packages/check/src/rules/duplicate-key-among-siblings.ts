@@ -76,7 +76,7 @@ export const duplicateKeyAmongSiblings = {
      * accept a gate is that it never arrives as a surprise. This becomes an error in a later
      * version.
      */
-    severity: "warn",
+    severity: "error",
     reportedWhen: "two children written side by side claim the same literal `key`",
     alsoReportedAs: "RMD002",
     heading: (found) => `${found.length} child(ren) sharing a \`key\` with a sibling:`,
@@ -92,8 +92,7 @@ export const duplicateKeyAmongSiblings = {
       "Keys have to be unique among SIBLINGS, and only among siblings — the same key under a\n" +
       "different parent is a different key and is fine.\n\n" +
       "A key this cannot read is never compared: `key={row.id}` may collide at run time, and\n" +
-      "deciding that needs the data.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "deciding that needs the data.\n\n",
   },
 
   /**

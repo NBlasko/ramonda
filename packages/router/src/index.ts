@@ -8,7 +8,6 @@ export type {
   StateUpdater,
 } from "./types";
 export {
-  parseUrl,
   parseUrlString,
   buildUrl,
   sanitizeHref,
@@ -20,7 +19,6 @@ export {
 export type { RouterNavigator } from "./store";
 export {
   matchParams,
-  matchRoute,
   createRoutes,
   matchCompiled,
   routePaths,

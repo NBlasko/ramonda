@@ -38,7 +38,7 @@ export class MemoHandlers extends Component {
         <div>
           <ul className="demo-log">
             {list(this.items, (name: string) => (
-              <li>
+              <li key={name}>
                 {name}{" "}
                 <button type="button" onclick={this.remove(name)}>
                   remove

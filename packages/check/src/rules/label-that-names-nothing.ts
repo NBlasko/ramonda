@@ -55,7 +55,7 @@ export const labelThatNamesNothing = {
   id: "label-that-names-nothing",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a `<label>` has no `htmlFor` and no control inside it, so it labels nothing",
     heading: (found) => `${found.length} \`<label>\` with nothing to label:`,
     lines: (issue) => [
@@ -78,8 +78,7 @@ export const labelThatNamesNothing = {
       "affordance everybody uses without thinking about it, and the one that makes a form usable\n" +
       "for somebody with a tremor.\n\n" +
       "If the text really is not a caption for anything, it is not a label: use a `<span>`, or a\n" +
-      "`<legend>` if it heads a `<fieldset>`.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "`<legend>` if it heads a `<fieldset>`.\n\n",
   },
 
   read(element, { tag, has, spreads, children }: ElementContext) {

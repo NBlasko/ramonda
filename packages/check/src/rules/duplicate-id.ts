@@ -41,7 +41,7 @@ export const duplicateId = {
   id: "duplicate-id",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "two elements in one render carry the same literal `id`, and both are always present",
     heading: (found) => `${found.length} element(s) claiming an \`id\` another element already has:`,
     // The same-line wording is not decoration. Written only as "line N", a duplicate written
@@ -64,8 +64,7 @@ export const duplicateId = {
       "unreachable by the name it was given.\n\n" +
       "If the two are the same control in two states, give them one element. If they are two\n" +
       "controls, give them two ids — and if the markup repeats, build the id from the row's own\n" +
-      "identity rather than writing it in.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "identity rather than writing it in.\n\n",
   },
 
   read({ elements }) {

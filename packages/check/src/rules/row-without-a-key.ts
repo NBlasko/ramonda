@@ -39,7 +39,7 @@ export const rowWithoutAKey = {
   id: "row-without-a-key",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a row built by `map` or by `list()` has no `key`",
     // `RMD023` is the `map` half — no identity at all. `RMD051` is the `list()` half: an identity
     // was inferred and could not tell the row from its siblings. This rule reports the source of
@@ -73,8 +73,7 @@ export const rowWithoutAKey = {
       "`list` infers one from what makes a row different from its siblings, and a key you write\n" +
       "wins over it. The inference can fail — a row whose every field is nested or shared with its\n" +
       "siblings has nothing to be told apart by — and it matters most in the commonest case of all:\n" +
-      "data that arrives fresh, where every object is new and no reference is left to recognise.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "data that arrives fresh, where every object is new and no reference is left to recognise.\n\n",
   },
 
   read(element, { has, resolve }) {

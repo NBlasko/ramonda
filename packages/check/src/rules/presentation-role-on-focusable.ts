@@ -50,7 +50,7 @@ export const presentationRoleOnFocusable = {
   id: "presentation-role-on-focusable",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       '`role="presentation"` is written on an element a keyboard can still focus, where the role is ignored',
     heading: (found) => `${found.length} presentational role(s) the accessibility tree keeps anyway:`,
@@ -70,8 +70,7 @@ export const presentationRoleOnFocusable = {
       "a plain `<div>`/`<span>` instead of a `<button>`. Scaffolding a keyboard can reach is not\n" +
       "scaffolding.\n\n" +
       "Or keep it focusable and drop the role. If a reader can tab to it, it is a control, and it\n" +
-      "needs a name and a role that says what it does.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "needs a name and a role that says what it does.\n\n",
   },
 
   /**

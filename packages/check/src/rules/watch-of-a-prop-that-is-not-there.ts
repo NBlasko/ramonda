@@ -206,7 +206,7 @@ export const watchOfAPropThatIsNotThere = {
   id: "watch-of-a-prop-that-is-not-there",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `@watchProp` selector names something the component's props type does not declare, so the method never runs",
     heading: (found) => `${found.length} \`@watchProp\`(s) watching a prop that is not there:`,
@@ -228,8 +228,7 @@ export const watchOfAPropThatIsNotThere = {
       "Usually it is a rename that reached the props type and not the selector, or a typo. Check the\n" +
       "spelling against the props the report lists.\n\n" +
       "`tsc` refuses this too — until somebody writes `(p: any) => …`, a `@ts-ignore`, or widens the\n" +
-      "props type for an unrelated reason. That is why it is checked here as well.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "props type for an unrelated reason. That is why it is checked here as well.\n\n",
   },
 
   read(cls, { self, resolve }) {

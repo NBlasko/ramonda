@@ -120,7 +120,7 @@ export const attributeThatDoesNothing = {
   id: "attribute-that-does-nothing",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "one of six camelCase names — `httpEquiv`, `acceptCharset`, `defaultValue`, `defaultChecked`, " +
       "`innerHTML`, `textContent` — reaches the DOM as itself, where no browser reads it",
@@ -140,8 +140,7 @@ export const attributeThatDoesNothing = {
       "**It is six names and nothing else.** An attribute nothing in the framework reads is not a\n" +
       "fault: a `data-*` written for a CSS selector or a test hook is exactly what `data-*` is for,\n" +
       "and this never reports one. What is reported is a name that was MEANT to do something and\n" +
-      "cannot, because HTML spells it differently.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "cannot, because HTML spells it differently.\n\n",
   },
 
   /**

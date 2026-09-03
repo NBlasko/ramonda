@@ -27,7 +27,7 @@ export const positiveTabIndex = {
   id: "positive-tabindex",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a `tabIndex` is above zero, which reorders the whole document rather than one element",
     heading: (found) => `${found.length} element(s) with a positive \`tabIndex\`:`,
     lines: (issue) => [
@@ -40,8 +40,7 @@ export const positiveTabIndex = {
       "and what breaks is the file nobody edited.\n\n" +
       "`tabIndex={0}` puts an element in the tab order where it sits, which is almost always what\n" +
       "was meant. `tabIndex={-1}` takes it out while leaving it focusable from script, for a thing\n" +
-      "you focus yourself. To change the ORDER, change the order of the markup.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "you focus yourself. To change the ORDER, change the order of the markup.\n\n",
   },
 
   /**

@@ -49,7 +49,7 @@ export const ariaStateTheRoleDoesNotHave = {
   id: "aria-state-the-role-does-not-have",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `aria-*` sits beside a `role` that does not support it, so nothing exposes it",
     heading: (found) => `${found.length} accessibility state(s) the element's role does not have:`,
     lines: (issue) => [
@@ -67,8 +67,7 @@ export const ariaStateTheRoleDoesNotHave = {
       "something uses `aria-expanded`, and a `button` that stays pressed uses `aria-pressed`.\n\n" +
       "Not every attribute is judged here. Only those whose set of roles is small and settled — and\n" +
       "where this is unsure whether a role belongs, it assumes it does, because a missed report is\n" +
-      "cheaper than a wrong one.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "cheaper than a wrong one.\n\n",
   },
 
   /**

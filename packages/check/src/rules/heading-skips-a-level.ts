@@ -84,7 +84,7 @@ export const headingSkipsALevel = {
   id: "heading-skips-a-level",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a heading is more than one level below the heading before it, both written in the same render",
     heading: (found) => `${found.length} heading(s) that skip a level:`,
     lines: (issue) => [
@@ -105,8 +105,7 @@ export const headingSkipsALevel = {
       "Use the next level down and style it however you like; `font-size` is a stylesheet's\n" +
       "decision and the level is the document's.\n\n" +
       "Going back UP is not reported: an `h3` followed by an `h2` is one section ending and another\n" +
-      "beginning, which is what an outline does.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "beginning, which is what an outline does.\n\n",
   },
 
   read({ elements }) {

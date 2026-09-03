@@ -71,7 +71,7 @@ export const elementHtmlRemoved = {
   id: "element-html-removed",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a tag HTML has removed is written, so nothing defines what it means",
     heading: (found) => `${found.length} tag(s) HTML no longer has:`,
     lines: (issue) => [
@@ -95,8 +95,7 @@ export const elementHtmlRemoved = {
       "}\n" +
       "```\n\n" +
       "A name nobody has ever heard of is a different report. This one is for names that WERE right,\n" +
-      "so each has a replacement rather than a correction.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "so each has a replacement rather than a correction.\n\n",
   },
 
   /**

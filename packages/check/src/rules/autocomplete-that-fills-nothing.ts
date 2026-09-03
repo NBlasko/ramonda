@@ -53,7 +53,7 @@ export const autocompleteThatFillsNothing = {
   id: "autocomplete-that-fills-nothing",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `autocomplete` value names no autofill field, so the browser ignores it entirely",
     heading: (found) => `${found.length} \`autocomplete\` value(s) no browser recognises:`,
     lines: (issue) => [
@@ -76,8 +76,7 @@ export const autocompleteThatFillsNothing = {
       '`autocomplete="shipping street-address"`.\n\n' +
       "This matters most for the people who have the least room to absorb it: filling an address by\n" +
       "hand is real effort and real errors for somebody with a motor impairment, and voice control\n" +
-      "may have no other way to enter a long string accurately.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "may have no other way to enter a long string accurately.\n\n",
   },
 
   /**

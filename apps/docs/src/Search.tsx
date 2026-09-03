@@ -228,7 +228,7 @@ export class Search extends Component {
                   URL keeps those rows instead of rebuilding on every character.
                 */}
                 {list(this.results, (item) => (
-                  <SearchResult item={item} />
+                  <SearchResult key={item.url} item={item} />
                 ))}
               </ul>
             )}

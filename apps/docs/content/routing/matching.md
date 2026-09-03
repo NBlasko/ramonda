@@ -17,14 +17,15 @@ content goes somewhere, a test asserting that a pattern extracts what you think 
 Everything here is a plain function. None of them touches the router's state, and none of them
 renders anything.
 
-## `parseUrl()`
+## `parseUrlString(url)`
 
-The URL the browser is on, as a `RouterState` — the pathname, the query as an object, and the hash
-tags. This is what the router reads when it starts and on every back and forward.
+A URL as a `RouterState` — the pathname, the query as an object, and the hash tags. This is what
+the router reads on every navigation, and what a `<Link href>` is turned into.
 
 ```ts
-// at https://example.com/players/8?tab=stats#open
-parseUrl();
+import { parseUrlString } from "@ramonda/router";
+
+parseUrlString("/players/8?tab=stats#open");
 // { baseUrl: "/players/8", queryParams: { tab: "stats" }, hashTags: [{ key: "open", value: "", level: 0 }] }
 ```
 
@@ -32,24 +33,16 @@ parseUrl();
 tidiness: a static host that serves `dir/index.html` will redirect `/x` to `/x/`, and without this
 every direct load of such a URL would match no route and fall through to `*`.
 
-**It reads `window.location`, so it is browser-only.** On the server the request's URL is what you
-have — see [the router on the server](/routing/server).
+**A relative URL resolves against the page you are on**, which is what makes `href="../settings"`
+work — and it is also why this is browser-only: resolving a relative URL needs a URL to resolve it
+against, and reading the one you are on means `window.location`. On the server the request's URL is
+what you have; see [the router on the server](/routing/server).
 
-## `parseUrlString(url)`
-
-The same, for a URL you hand it rather than the one you are on. A relative URL resolves against the
-current page, which is what makes `href="../settings"` work.
-
-```ts
-parseUrlString("/players/8?tab=stats");
-```
-
-Also browser-only, and for the same reason: resolving a relative URL needs a URL to resolve it
-against.
+For the URL you are currently on, hand it `location.href`.
 
 ## `buildUrl(state)`
 
-The inverse of `parseUrl` — a `RouterState` back into a string.
+The inverse of `parseUrlString` — a `RouterState` back into a string.
 
 ```ts
 buildUrl({ baseUrl: "/players/8", queryParams: { tab: "stats" }, hashTags: [] });
@@ -96,19 +89,6 @@ matchParams("/teams/8", "/players/:id");     // null
 **It compiles a regular expression on every call.** That is fine for a test or a one-off and wrong
 for anything that runs per render — use `createRoutes` and `matchCompiled` below, which compile
 once.
-
-## `matchRoute(pathname, keys)`
-
-The first key in a list that matches, with its params. Falls back to `"*"`, matching nothing.
-
-```ts
-import { matchRoute } from "@ramonda/router";
-
-matchRoute("/players/8", ["/", "/players/:id"]);
-// { key: "/players/:id", params: { id: "8" } }
-```
-
-Order matters: the first match wins, so a broader pattern written before a narrower one takes both.
 
 ## `matchCompiled(pathname, routes)`
 

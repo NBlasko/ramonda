@@ -131,7 +131,7 @@ export const cachedReadOfAPlainField = {
   id: "cached-read-of-a-plain-field",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `@compute` or a hook's props callback reads an ordinary field that is written after the first render, so the cached value goes stale",
     alsoReportedAs: ["RMD027"],
@@ -152,8 +152,7 @@ export const cachedReadOfAPlainField = {
       "Mark the field `@state`. That is what it is: data the render depends on and something\n" +
       "changes. Nothing else about the component has to move.\n\n" +
       "A field nothing writes after the first render is NOT reported — a constant a compute reads\n" +
-      "can never go stale, and neither can one written in the constructor or `@created`.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "can never go stale, and neither can one written in the constructor or `@created`.\n\n",
   },
 
   read(cls, { self, resolve }) {

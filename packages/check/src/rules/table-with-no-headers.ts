@@ -43,7 +43,7 @@ export const tableWithNoHeaders = {
   id: "table-with-no-headers",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a `<table>` written out with data rows has no `<th>` anywhere in it",
     heading: (found) => `${found.length} table(s) whose cells are announced with no heading:`,
     lines: (issue) => [
@@ -66,8 +66,7 @@ export const tableWithNoHeaders = {
       '`scope="row"` is for a heading down the left of each row, which is the other half of a table\n' +
       "that has both.\n\n" +
       'If the table is LAYOUT rather than data, say so with `role="presentation"` — that is what it\n' +
-      "is for, and nothing here will ask again.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "is for, and nothing here will ask again.\n\n",
   },
 
   read(element, { tag, attr, children }: ElementContext) {

@@ -31,7 +31,7 @@ export const fragmentLinkToNowhere = {
   id: "fragment-link-to-nowhere",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: 'an `href="#name"` points at an id no element in the project carries',
     heading: (found) => `${found.length} fragment link(s) pointing at nothing:`,
     lines: (issue) => [
@@ -47,8 +47,7 @@ export const fragmentLinkToNowhere = {
       "this cannot see it.\n\n" +
       "The people this costs most are the ones least likely to be in the room when it is tested: a\n" +
       "skip link is the first thing a keyboard reader uses on a page, and the one nobody testing\n" +
-      "with a mouse ever presses.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "with a mouse ever presses.\n\n",
   },
 
   read(project) {

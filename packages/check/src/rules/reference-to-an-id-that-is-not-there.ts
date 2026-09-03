@@ -66,7 +66,7 @@ export const referenceToAnIdThatIsNotThere = {
   id: "reference-to-an-id-that-is-not-there",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `aria-labelledby`, `htmlFor` or other id reference names an id no element in the project carries",
     heading: (found) => `${found.length} id reference(s) resolving to nothing:`,
     lines: (issue) => [
@@ -85,8 +85,7 @@ export const referenceToAnIdThatIsNotThere = {
       "Check the spelling against the element you meant, and remember that `aria-labelledby` takes\n" +
       "a LIST — every id in it has to resolve, and each is checked here on its own.\n\n" +
       "Where a name is a single string rather than a pointer at existing markup, `aria-label` says\n" +
-      "it directly and cannot break this way.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "it directly and cannot break this way.\n\n",
   },
 
   read(project) {

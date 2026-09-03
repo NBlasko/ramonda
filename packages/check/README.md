@@ -380,8 +380,9 @@ rule that reports the only thing you could have written is a rule people switch 
 variable called `location` is not the global either, and telling them apart costs no type: this
 runs with no lib, so the browser's name resolves to nothing while yours resolves where you wrote it.
 
-This is a **warning** today and an error in a later version, which is the rule for adding a rule
-here.
+Like every rule, it **fails the run**. Where the only place the answer lives really is `location`,
+say so on the line — `// ramonda-check-ignore <reason>` — and the reason is recorded rather than
+hidden.
 
 ## Rendering, done imperatively
 
@@ -410,7 +411,9 @@ Nor is an element you made yourself — `document.createElement("style")` and th
 your own element — or one held in a `ref`. What is reported is the document, its `body`, its
 `documentElement`, and whatever a global query hands back: elements the component did not render.
 
-This is a **warning** today and an error in a later version.
+Like every rule, it **fails the run**. Where an imperative write is genuinely what there is, say
+which case did not fit on the line — `// ramonda-check-ignore <reason>` — and the run goes green
+with the reason recorded.
 
 ## A component it cannot follow is an error
 
@@ -603,7 +606,6 @@ $ ramonda-check tsconfig.json --certify
 
   ✓ complete  every component it names, it can follow
   ✓ plain     nothing needed an exemption written beside it
-  ✓ quiet     no rule warns about anything it ships
   ✓ current   the graph fingerprints the declaration file it ships
 
   Every claim holds. An app that installs this can walk its graph end to end.

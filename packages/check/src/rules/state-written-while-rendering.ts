@@ -59,7 +59,7 @@ export const stateWrittenWhileRendering = {
   id: "state-written-while-rendering",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a state write is reached from `render()` or a `@compute` — directly, through a " +
       "helper it calls, or three files away",
@@ -79,8 +79,7 @@ export const stateWrittenWhileRendering = {
       "`@watchProp` if it follows a prop. If the value is derived from state you already have, it is\n" +
       "a `@compute` and does not need to be written at all.\n\n" +
       "A function written as a JSX attribute is NOT reported: `onclick={() => this.n++}` is a\n" +
-      "handler, and that is exactly where writing state is right.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "handler, and that is exactly where writing state is right.\n\n",
   },
 
   read(cls, { self, resolve }) {

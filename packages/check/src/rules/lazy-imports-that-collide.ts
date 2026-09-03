@@ -56,7 +56,7 @@ export const lazyImportsThatCollide = {
   id: "lazy-imports-that-collide",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "two `lazy` functions are written identically but name different modules — the module cache is keyed by the function's source, so one entry has to serve both",
     alsoReportedAs: "RMD049",
@@ -73,8 +73,7 @@ export const lazyImportsThatCollide = {
       "notice once both have actually rendered, in a development build. From the source both are\n" +
       "visible at once.\n\n" +
       "Give one of them a `cacheKey`. It is the app saying which entry it means, and it is believed\n" +
-      "by the runtime and by this rule alike.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "by the runtime and by this rule alike.\n\n",
   },
 
   read({ lazySites }) {

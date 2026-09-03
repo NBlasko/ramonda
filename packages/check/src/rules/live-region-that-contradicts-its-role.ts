@@ -58,7 +58,7 @@ export const liveRegionThatContradictsItsRole = {
   id: "live-region-that-contradicts-its-role",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `aria-live` replaces the politeness the element's role already carries",
     heading: (found) => `${found.length} live region(s) whose urgency was undone:`,
     lines: (issue) => [
@@ -84,8 +84,7 @@ export const liveRegionThatContradictsItsRole = {
       '<div role="status">{count} results</div>\n' +
       "```\n\n" +
       "If the politeness genuinely has to move, drop the role and keep `aria-live` alone — one\n" +
-      "source for it rather than two.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "source for it rather than two.\n\n",
   },
 
   /**

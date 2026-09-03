@@ -83,7 +83,7 @@ export const unknownAriaAttribute = {
   id: "unknown-aria-attribute",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `aria-*` attribute is not a name the ARIA specification has",
     heading: (found) => `${found.length} \`aria-*\` attribute(s) that do not exist:`,
     lines: (issue) => [
@@ -96,8 +96,7 @@ export const unknownAriaAttribute = {
       "it is an attribute nothing reads. Assistive technology ignores it, the browser keeps it, and\n" +
       "the source looks correct.\n\n" +
       "The commonest cause is CASE. HTML attribute names are lowercase and JSX writes what you\n" +
-      "typed, so `aria-labelledBy` is a different attribute from `aria-labelledby` and does nothing.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "typed, so `aria-labelledBy` is a different attribute from `aria-labelledby` and does nothing.\n\n",
   },
 
   /**

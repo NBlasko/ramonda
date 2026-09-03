@@ -20,8 +20,6 @@ const EXPECTED = [
   "createRoutes",
   "matchCompiled",
   "matchParams",
-  "matchRoute",
-  "parseUrl",
   "parseUrlString",
   "RouteOutlet",
   "routePaths",

@@ -86,10 +86,18 @@ Ramonda repository sets an attribute on `<html>` or `<body>` from a component.**
 design, not one anybody has fallen into.
 
 If you need it now, an imperative write in `@mounted` with its undo in `@destroyed` is what there
-is. [`ramonda-check`](/reference/check) will say so, and there is no way to silence it on the line —
-the `// ramonda-check-ignore` directive covers a path the analyzer cannot resolve, not this. It is a
-**warning**, so it prints and your build still passes; write a comment beside the line saying which
-of the cases above did not fit, so the next reader knows it was a decision.
+is. [`ramonda-check`](/reference/check) reports it as
+[`dom-writes`](/rules/dom-writes) and **fails the run**, like every rule.
+
+Say which of the cases above did not fit, on the line, and the run goes green with the reason
+recorded rather than hidden:
+
+```tsx
+@mounted paint(): void {
+  // ramonda-check-ignore the theme class belongs on <html>, which no component owns
+  document.body.classList.add("dark");
+}
+```
 
 If it is ever built it will not be called `Body`: `lang` belongs on `<html>`, so one hook has to
 cover both, shaped like `Head` — last mount wins, restored on `@destroyed`, one path for the server

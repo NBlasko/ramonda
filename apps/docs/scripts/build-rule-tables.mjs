@@ -112,16 +112,28 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+/**
+ * Split only when there is something to split.
+ *
+ * Every rule fails the run today, so emitting both labels produced "**Warnings.** These print and
+ * the run still passes. 0 of them." above a table with no rows — a heading over nothing, which
+ * reads as a list that failed to render rather than as a fact. The split comes back on its own the
+ * day a rule warns again.
+ */
 const region = [
   START,
   "",
-  `**Errors.** These fail the run. ${errors.length} of them.`,
-  "",
-  table(errors),
-  "",
-  `**Warnings.** These print and the run still passes. ${warnings.length} of them.`,
-  "",
-  table(warnings),
+  ...(warnings.length > 0
+    ? [
+        `**Errors.** These fail the run. ${errors.length} of them.`,
+        "",
+        table(errors),
+        "",
+        `**Warnings.** These print and the run still passes. ${warnings.length} of them.`,
+        "",
+        table(warnings),
+      ]
+    : [`**Every one of them fails the run.** ${errors.length} rules.`, "", table(errors)]),
   "",
   END,
 ].join("\n");

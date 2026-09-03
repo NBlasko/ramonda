@@ -50,7 +50,7 @@ export const roleMissingRequiredAria = {
   id: "role-missing-required-aria",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an explicit `role` is written without the `aria-*` its specification requires",
     heading: (found) => `${found.length} role(s) missing what the specification requires of them:`,
     // One line, and no attempt to say what each role MEANS: the first version ended every report
@@ -74,8 +74,7 @@ export const roleMissingRequiredAria = {
       "brings the state, the keyboard behaviour and the focus handling with it, none of which a\n" +
       "role provides.\n\n" +
       "Only an EXPLICIT role is judged: a native element's own role is the host language's, and it\n" +
-      "supplies what it needs.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "supplies what it needs.\n\n",
   },
 
   read(_element, { tag, attr, has, attributes, at }) {

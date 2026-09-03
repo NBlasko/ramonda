@@ -49,7 +49,7 @@ export const ariaStateWithNoRole = {
   id: "aria-state-with-no-role",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `aria-*` belonging to a role is written on an element that has no role",
     heading: (found) => `${found.length} accessibility state(s) with no role to belong to:`,
     lines: (issue) => [
@@ -67,8 +67,7 @@ export const ariaStateWithNoRole = {
       '`role="checkbox"` for `aria-checked`, `role="option"` for `aria-selected` — and with it the\n' +
       "rest of what that role needs: a name, a tab stop, and a keyboard path.\n\n" +
       "Or use the element that has the role already. `<button aria-expanded>` needs no role written\n" +
-      "at all, and arrives focusable and announced without a line being spent on it.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "at all, and arrives focusable and announced without a line being spent on it.\n\n",
   },
 
   /**

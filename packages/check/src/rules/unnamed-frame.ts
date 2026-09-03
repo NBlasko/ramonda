@@ -24,7 +24,7 @@ export const unnamedFrame = {
   id: "unnamed-frame",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `iframe` has no `title`",
     heading: (found) => `${found.length} frame(s) with no name:`,
     lines: (issue) => [`  ${issue.file}:${issue.line}:${issue.column}`, `    <iframe> has no \`title\`.`],
@@ -32,8 +32,7 @@ export const unnamedFrame = {
       "A frame is a document inside a document, and assistive technology lists them the way it\n" +
       'lists headings and links. With no title the row says "frame", which does not tell a reader\n' +
       "whether entering it is what they want — and entering the wrong one means leaving the page.\n\n" +
-      'Say what is in it: `title="Payment form"`, `title="Map of the venue"`.\n\n' +
-      "This is a warning today and an error in a later version.",
+      'Say what is in it: `title="Payment form"`, `title="Map of the venue"`.\n\n',
   },
 
   read(element, { tag, has, attr }) {

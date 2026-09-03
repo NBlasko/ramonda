@@ -39,7 +39,7 @@ export const unnamedImage = {
   id: "unnamed-image",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "an `img`, `area`, image `input` or empty `object` has no `alt`, `aria-label`, " + "`aria-labelledby` or `title`",
     heading: (found) => `${found.length} image(s) with nothing to announce them by:`,
@@ -52,8 +52,7 @@ export const unnamedImage = {
       'word "image", or nothing at all.\n\n' +
       'If the image carries meaning, describe it: `alt="Revenue, rising through Q3"`. If it is\n' +
       'decoration — a spacer, a divider, an icon beside a word that already says it — write `alt=""`\n' +
-      "and the screen reader skips it. Both are answers; only silence is not.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "and the screen reader skips it. Both are answers; only silence is not.\n\n",
   },
 
   read(element, { tag, has, attr }) {

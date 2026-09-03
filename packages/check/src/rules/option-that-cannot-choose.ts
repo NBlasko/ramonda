@@ -65,7 +65,7 @@ export const optionThatCannotChoose = {
   id: "option-that-cannot-choose",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "`selected` is written on an `<option>` inside a `<Select>`, which sets it from `value` instead",
     heading: (found) => `${found.length} \`<option selected>\` that decide(s) nothing:`,
     lines: (issue) => [
@@ -92,8 +92,7 @@ export const optionThatCannotChoose = {
       "its first option — so the same markup meant different things depending on the order the\n" +
       "options reached it, and that is not an order anybody writes. `<Select value={x}>` settles it\n" +
       "once they all exist; the option's own attribute is the one line that still looks like it\n" +
-      "chooses.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "chooses.\n\n",
   },
 
   /**

@@ -28,7 +28,7 @@ export const ariaWithNoSubject = {
   id: "aria-with-no-subject",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a `role` or an `aria-*` sits on an element with no accessibility tree node to describe",
     heading: (found) => `${found.length} accessibility attribute(s) on an element that cannot carry one:`,
     lines: (issue) => [
@@ -40,8 +40,7 @@ export const ariaWithNoSubject = {
       "or they are the document itself. Assistive technology exposes no node for them, so a `role`\n" +
       "or an `aria-*` here has nothing to apply to.\n\n" +
       "If something was meant to be hidden, hide the element that shows it. `aria-hidden` on the\n" +
-      "thing a reader can actually reach is what does that.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "thing a reader can actually reach is what does that.\n\n",
   },
 
   /**

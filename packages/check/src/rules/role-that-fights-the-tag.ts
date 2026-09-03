@@ -56,7 +56,7 @@ export const roleThatFightsTheTag = {
   id: "role-that-fights-the-tag",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `role` says the element behaves in a way the tag does not — a link as a button, or a button as a link",
     heading: (found) => `${found.length} element(s) announced as something they do not behave like:`,
@@ -81,8 +81,7 @@ export const roleThatFightsTheTag = {
       "keys already working.\n\n" +
       "An `<a>` with no `href` is not a link at all and is not this — that is\n" +
       "`link-without-a-destination`, and building a button out of an anchor is a different\n" +
-      "conversation.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "conversation.\n\n",
   },
 
   /**

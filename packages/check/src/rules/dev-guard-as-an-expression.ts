@@ -80,7 +80,7 @@ export const devGuardAsAnExpression = {
   id: "dev-guard-as-an-expression",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a `__DEV__` guard is written as `&&` or `?:` where an `if` would do the same thing",
     heading: (found) => `${found.length} \`__DEV__\` guard(s) written as an operator:`,
     lines: (issue) => [
@@ -99,8 +99,7 @@ export const devGuardAsAnExpression = {
       "code for being written the other way until it was taught both.\n\n" +
       'Only a STATEMENT is reported. `const name = __DEV__ ? displayName(x) : ""` uses the value and\n' +
       "an `if` is no replacement for it, so it is left alone — and `if (__DEV__ && ready)` is the\n" +
-      "shape being asked for, not an instance of the fault.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "shape being asked for, not an instance of the fault.\n\n",
   },
 
   read(file) {

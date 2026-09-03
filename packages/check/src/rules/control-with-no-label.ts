@@ -94,7 +94,7 @@ export const controlWithNoLabel = {
   id: "control-with-no-label",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a form control has no label, no `aria-label`, no `aria-labelledby` and no `title`, so nothing says what it is for",
     heading: (found) => `${found.length} form control(s) with nothing to say what they are for:`,
@@ -118,8 +118,7 @@ export const controlWithNoLabel = {
       "both. An `aria-labelledby` naming text already on the page. Or `aria-label` where there is\n" +
       "genuinely nothing visible to point at — a search box whose only marking is an icon.\n\n" +
       "A `placeholder` is not a label and is not counted as one: it disappears the moment somebody\n" +
-      "types, taking the only description of the field with it.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "types, taking the only description of the field with it.\n\n",
   },
 
   read(project) {

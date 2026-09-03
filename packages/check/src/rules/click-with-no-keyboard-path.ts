@@ -101,7 +101,7 @@ export const clickWithNoKeyboardPath = {
   id: "click-with-no-keyboard-path",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a click handler sits on a non-interactive element with no key handler, no `tabIndex`, no `role` and nothing interactive inside it",
     heading: (found) => `${found.length} click handler(s) a keyboard cannot reach:`,
@@ -123,8 +123,7 @@ export const clickWithNoKeyboardPath = {
       "Two shapes are NOT reported. A wrapper that only widens an existing control's hit area — if\n" +
       "there is anything interactive inside it, the keyboard already has somewhere to land. And an\n" +
       "element with nothing inside it, which is a backdrop or an overlay rather than a control:\n" +
-      "there is nothing to announce, and its click is a convenience beside a real exit.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "there is nothing to announce, and its click is a convenience beside a real exit.\n\n",
   },
 
   read(element, context: ElementContext) {

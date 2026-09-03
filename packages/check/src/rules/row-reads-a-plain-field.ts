@@ -152,7 +152,7 @@ export const rowReadsAPlainField = {
      * rebuild every row anyway. So the report names the field and lets the reader close it, rather than
      * failing a build over a sequence it cannot see.
      */
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `list()` row callback puts a field nothing can track into the markup, so a reused row keeps the old value",
     heading: (found) => `${found.length} row callback read(s) that a rebuild cannot follow:`,

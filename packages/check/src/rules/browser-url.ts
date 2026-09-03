@@ -64,7 +64,7 @@ export const browserUrl = {
   exempt: "@ramonda/router/",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a component reads `window.location` in a project whose router already holds the answer",
     // Components, not reads — four reads in one class is one component with a habit, and saying
     // "4 component(s)" of a file that has one is a count nobody can reconcile with what follows.
@@ -85,8 +85,7 @@ export const browserUrl = {
       "router, a component re-renders when the route moves; read from `window`, it is a snapshot\n" +
       "taken once and never corrected, so the page quietly goes out of date. The router also keeps a\n" +
       "distinction the URL hands over as one string — `#tab=film` is route state, `#a-section` names\n" +
-      "an element — so a hash tag with no value is a section and one with a value is not.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "an element — so a hash tag with no value is a section and one with a value is not.\n\n",
   },
 
   read(cls, { self, resolve }) {

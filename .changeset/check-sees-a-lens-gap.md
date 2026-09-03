@@ -45,7 +45,7 @@ It reads DECLARATIONS, not types, because this package may not ask the compiler 
 has to resolve to something with a written annotation, each hop's property has to be findable on an
 interface or type literal, and "may be missing" is the annotation as written. An array index, a
 computed key, a generic instantiation, an inferred root, or a `focusOn` that is not the lens's — each
-stops the walk without a word. A warning, like every new rule here, and an error in a later version.
+stops the walk without a word. It fails the run, like every rule here.
 
 `importedFromCore` became `importedFromPackage` underneath, which is what lets the rule tell the
 lens's `focusOn` from an app's own function of that name, alias and re-export included.

@@ -82,7 +82,7 @@ export const lateRequestRead = {
   id: "late-request-read",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "`requestContext()` is read below an `await`, after the request it names is gone",
     alsoReportedAs: "RMD053",
     // Components, not reads — the same count the sibling rules print, for the same reason: four
@@ -114,8 +114,7 @@ export const lateRequestRead = {
       "Holding the object does not: every member of it is a getter over the current request.\n\n" +
       "The framework reports the same read as RMD053 when the line actually runs. It cannot always\n" +
       "be heard — inside an async `@mounted` the throw beside it goes into the server's work drain\n" +
-      "and is swallowed, and the page is served complete and quietly missing the value.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "and is swallowed, and the page is served complete and quietly missing the value.\n\n",
   },
 
   read(cls, { self, resolveLocal, resolveStep }) {
