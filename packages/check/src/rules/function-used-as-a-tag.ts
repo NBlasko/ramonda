@@ -154,7 +154,7 @@ export const functionUsedAsATag = {
   id: "function-used-as-a-tag",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a plain function is written in tag position, where it names nothing the framework can construct — and the compiler only refuses the shapes that do not return exactly one element",
     alsoReportedAs: "RMD011",
@@ -178,8 +178,7 @@ export const functionUsedAsATag = {
       "`TS2786`. What it accepts is a function returning exactly ONE element — which is how a\n" +
       "function component gets written by habit, and why this rule exists.\n\n" +
       "None of this restricts arrays. A component returning several nodes is the ordinary case, and\n" +
-      "so is `{rows()}`. Only tag position is constrained.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "so is `{rows()}`. Only tag position is constrained.\n\n",
   },
 
   read(element, { resolve }) {

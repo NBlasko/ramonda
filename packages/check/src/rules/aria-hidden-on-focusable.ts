@@ -113,7 +113,7 @@ export const ariaHiddenOnFocusable = {
   id: "aria-hidden-on-focusable",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: '`aria-hidden="true"` is written on an element a keyboard can still focus',
     heading: (found) => `${found.length} focusable element(s) hidden from the accessibility tree:`,
     lines: (issue) => [
@@ -130,8 +130,7 @@ export const ariaHiddenOnFocusable = {
       "Pick the one that was meant. To hide it from everyone, `hidden` or `display: none` removes it\n" +
       "from both lists. To keep it visible but skip it, `disabled` on a form control, or\n" +
       "`tabIndex={-1}` beside the `aria-hidden` so the two agree. To hide only the DECORATION inside\n" +
-      "a control, move `aria-hidden` onto the icon and leave the control itself announced.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "a control, move `aria-hidden` onto the icon and leave the control itself announced.\n\n",
   },
 
   evenWhenSpreading: true,

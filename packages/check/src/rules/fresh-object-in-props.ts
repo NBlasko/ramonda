@@ -223,7 +223,7 @@ export const freshObjectInProps = {
   id: "fresh-object-in-props",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a component is handed an object or array built during the render, so it is a new value every " +
       "time and comparison can never match — lift it to a field or a `@compute`, or declare it on the " +
@@ -261,8 +261,7 @@ export const freshObjectInProps = {
       "the identity it already had, and this stops reporting the call site.\n\n" +
       "The page is correct either way, which is why this is a warning: what it costs is work, not\n" +
       "output. `<div style={{…}}>` is NOT reported — a host element hands nothing to a component,\n" +
-      "so there is nothing to compare.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "so there is nothing to compare.\n\n",
   },
 
   evenWhenSpreading: true,

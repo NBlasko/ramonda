@@ -178,7 +178,7 @@ export const listenerAddedByHand = {
   id: "listener-added-by-hand",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a component adds a `window` or `document` listener by hand, where `@onWindow` or `@onDocument` would do it — " +
       "or, inside `if (__DEV__)` where a decorator cannot be used, adds one that nothing ever removes",
@@ -230,8 +230,7 @@ export const listenerAddedByHand = {
       "with a `removeEventListener` for the same event in `@destroyed`, with the same handler\n" +
       "reference. `{ once: true }` and `{ signal }` close it as well, and neither is reported.\n\n" +
       "A listener on anything else is not this rule's business: an `AbortSignal` dies with its\n" +
-      "request and an element with the element, and no decorator covers either.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "request and an element with the element, and no decorator covers either.\n\n",
   },
 
   read(cls, { self, resolve }) {

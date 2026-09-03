@@ -49,7 +49,7 @@ export const classInsteadOfClassName = {
   id: "class-instead-of-classname",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an element carries `class` where Ramonda reads `className`",
     alsoReportedAs: "RMD039",
     heading: (found) => `${found.length} element(s) with \`class\` where \`className\` was meant:`,

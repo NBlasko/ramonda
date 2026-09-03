@@ -417,7 +417,7 @@ export const lensPathThroughAGap = {
      * a gate that fails a build over something nobody has seen yet is a gate somebody switches off.
      * It becomes an error in a later version.
      */
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `focusOn` write walks through a hop the types say may be `null` or `undefined`, which only the LAST hop creates",
     alsoReportedAs: "RML001",

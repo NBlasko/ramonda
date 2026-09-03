@@ -61,6 +61,7 @@ export class DataTable extends Component<DataTableProps> {
           </thead>
           <tbody>
             {list(this.items, (item) => (
+              // ramonda-check-ignore a row is an array of cells, with no identity of its own to key by
               <DataTableRow item={item} />
             ))}
           </tbody>

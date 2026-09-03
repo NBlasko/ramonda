@@ -64,7 +64,7 @@ export const contextConsumedAboveItsProvider = {
     // arrangement has a legitimate reading — read the outer value and provide a derived one, which
     // works ONLY in this order — as well as a mistake, and nothing static can tell them apart. So it
     // says what it found rather than failing the build over it.
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a component consumes a context on a line above the Provider that publishes it, so the consumer reads an ancestor's value",
     alsoReportedAs: "RMD057",
@@ -91,8 +91,7 @@ export const contextConsumedAboveItsProvider = {
       "The other order is not reported: `this.use(QueryClientProvider)` followed by\n" +
       "`this.use(Query, …)` is mount-a-client-then-query-on-it, and that is what the packages do.\n\n" +
       "A BASE CLASS is part of the order. Its fields initialise first, so a consumer inherited from a\n" +
-      "base is always above a provider mounted here, however the two files are laid out.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "base is always above a provider mounted here, however the two files are laid out.\n\n",
   },
 
   read(cls, context) {

@@ -123,7 +123,7 @@ export const unkeyableMemoizedArgument = {
   id: "unkeyable-memoized-argument",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `@memoized` is called with — or declared to take — something a cache key cannot hold: a key holds a string, a number or a boolean",
     alsoReportedAs: ["RMD047"],
@@ -145,8 +145,7 @@ export const unkeyableMemoizedArgument = {
       "the handler and moves on WITHOUT caching that call: the page works and only the memoisation\n" +
       "is lost, silently — which is why it is worth saying before anything runs.\n\n" +
       "An argument this cannot read is left alone. `this.pick(row.id)` and `this.pick(row)` look the\n" +
-      "same from here, and reporting a maybe is the one thing this package will not do.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "same from here, and reporting a maybe is the one thing this package will not do.\n\n",
   },
 
   read(cls, { self, resolve }) {

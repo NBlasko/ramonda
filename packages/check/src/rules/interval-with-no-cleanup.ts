@@ -188,7 +188,7 @@ export const intervalWithNoCleanup = {
   id: "interval-with-no-cleanup",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a component starts a raw `setInterval` whose id nothing ever clears, so it keeps firing after unmount",
     alsoReportedAs: ["RMD006"],
@@ -221,8 +221,7 @@ export const intervalWithNoCleanup = {
       "rather than a cleanup function.\n\n" +
       "`setTimeout` is NOT reported: it stops on its own, and telling a long one from a short one is\n" +
       "a judgement about a number. The framework catches those at runtime, where it can see what is\n" +
-      "still armed.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "still armed.\n\n",
   },
 
   read(cls, { self, resolve }) {

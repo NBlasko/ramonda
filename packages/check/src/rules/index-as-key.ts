@@ -121,7 +121,7 @@ export const indexAsKey = {
   id: "index-as-key",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a row's `key` is built from the `.map` index and nothing else, which is the identity the diff already had",
     alsoReportedAs: "RMD023",
@@ -140,8 +140,7 @@ export const indexAsKey = {
       "right.\n\n" +
       "Use whatever makes the row itself different — an id from the data, or a field combination\n" +
       "that is unique among siblings. If the rows have nothing of the kind, `list()` derives an\n" +
-      "identity from the row rather than from its position, which is the whole reason it exists.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "identity from the row rather than from its position, which is the whole reason it exists.\n\n",
   },
 
   read(element, { tag, resolve }) {

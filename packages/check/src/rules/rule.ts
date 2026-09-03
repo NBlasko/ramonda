@@ -49,7 +49,7 @@ export interface Report<Issue> {
    * README's argument: a gate that fails a build on something nobody has seen yet is a gate people
    * switch off. It also decides the stream, so a warning cannot be mistaken for a failure in a log.
    */
-  severity: "warn" | "error";
+  severity: "error" | "error";
 
   /**
    * The one-line condition the reference prints, in the rule's own words.

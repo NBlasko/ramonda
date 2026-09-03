@@ -1,7 +1,6 @@
 import { dirname, resolve as resolvePath, sep } from "node:path";
 import ts from "typescript";
 import type { AnalyzeResult } from "./analyze";
-import { ruleCatalogue } from "./rules";
 
 /**
  * What a package can and cannot claim about its own graph.
@@ -53,7 +52,7 @@ export interface Claim {
   against: Against[];
 }
 
-export type ClaimId = "complete" | "quiet" | "plain" | "current";
+export type ClaimId = "complete" | "plain" | "current";
 
 /** One place a claim fails, in the shape a reader can act on without opening anything else. */
 export interface Against {
@@ -138,23 +137,6 @@ export function certify(result: AnalyzeResult, root: string, pkg: { name: string
   const holes = result.unresolved.filter((issue) => mine(issue.file));
 
   /**
-   * Warnings. Not errors: an error already fails the run, so a package that publishes at all has
-   * none, and a claim nobody can fail is not worth printing.
-   */
-  const warns = new Set(
-    ruleCatalogue()
-      .filter((rule) => rule.severity === "warn")
-      .map((rule) => rule.id),
-  );
-  const warned: Against[] = [];
-  for (const [id, found] of Object.entries(result.findings)) {
-    if (!warns.has(id)) continue;
-    for (const issue of found as { file: string; line: number; column: number }[]) {
-      if (mine(issue.file)) warned.push({ at: where(root, issue), why: id });
-    }
-  }
-
-  /**
    * Written escape hatches. A hole with a reason beside it is a RECORD rather than a silence, which
    * is why it is allowed at all — but it is still a blank on the map, so a package carrying one
    * cannot claim to be plain reading.
@@ -180,12 +162,6 @@ export function certify(result: AnalyzeResult, root: string, pkg: { name: string
           at: where(root, site),
           why: `${site.what} is exempted: ${site.reason}`,
         })),
-      },
-      {
-        id: "quiet",
-        held: warned.length === 0,
-        says: "no rule warns about anything it ships",
-        against: warned,
       },
       {
         id: "current",

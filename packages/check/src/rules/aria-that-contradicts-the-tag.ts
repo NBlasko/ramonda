@@ -64,7 +64,7 @@ export const ariaThatContradictsTheTag = {
   id: "aria-that-contradicts-the-tag",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `aria-*` is written `false` beside the HTML attribute that says the opposite",
     heading: (found) => `${found.length} element(s) telling a screen reader the opposite of what they do:`,
     lines: (issue) => [
@@ -85,8 +85,7 @@ export const ariaThatContradictsTheTag = {
       "the HTML attribute alone carry it:\n\n" +
       "```tsx\n" +
       '<button type="button" disabled={busy}>Save</button>\n' +
-      "```\n\n" +
-      "This is a warning today and an error in a later version.",
+      "```\n\n",
   },
 
   /**

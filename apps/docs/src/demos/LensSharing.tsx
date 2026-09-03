@@ -156,7 +156,7 @@ export class LensSharing extends Component {
 
           <ul className="demo-log">
             {list(this.rows, (item) => (
-              <PathRow item={item} />
+              <PathRow key={item.path} item={item} />
             ))}
           </ul>
 

@@ -50,7 +50,7 @@ export const roleTakesNoName = {
   id: "role-takes-no-name",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `aria-label` or `aria-labelledby` is written on a role the specification forbids naming",
     heading: (found) => `${found.length} name(s) on something that cannot be named:`,
     lines: (issue) => [
@@ -71,8 +71,7 @@ export const roleTakesNoName = {
       'element that already has it. `<section aria-label="Filters">` is a named region and is\n' +
       'correct; `<nav aria-label="Breadcrumb">` is how two navs are told apart.\n\n' +
       "A written `role` always wins over the tag's own, so an element you have given a real role is\n" +
-      "never reported.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "never reported.\n\n",
   },
 
   /**

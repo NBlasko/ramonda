@@ -29,7 +29,7 @@ export const accessKey = {
   id: "access-key",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `accessKey` is written, which overrides a shortcut the reader's own software may be using",
     heading: (found) => `${found.length} element(s) claiming a keyboard shortcut with \`accessKey\`:`,
     lines: (issue) => [
@@ -47,8 +47,7 @@ export const accessKey = {
       "differ by screen reader, and nothing announces the binding — so the page cannot even tell\n" +
       "the reader the shortcut is there.\n\n" +
       "Where a shortcut really is wanted, own it: a key handler the page documents on screen, which\n" +
-      "can be listed, chosen to avoid the common bindings, and turned off.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "can be listed, chosen to avoid the common bindings, and turned off.\n\n",
   },
 
   /**

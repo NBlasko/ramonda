@@ -40,7 +40,7 @@ export const namedOnlyByAPlaceholder = {
   id: "named-only-by-a-placeholder",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a form control's only name is its `placeholder`, which disappears as soon as anybody types",
     heading: (found) => `${found.length} form control(s) named only by a placeholder:`,
     lines: (issue) => [
@@ -58,8 +58,7 @@ export const namedOnlyByAPlaceholder = {
       "Placeholder text is also low-contrast by every browser's default.\n\n" +
       "Give the control a real name and keep the placeholder for what it is good at — an example of\n" +
       'the format. `<label htmlFor={id}>Email</label>` with `placeholder="you@example.com"` says\n' +
-      "both things, and neither one disappears.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "both things, and neither one disappears.\n\n",
   },
 
   read(project) {

@@ -71,7 +71,7 @@ export class ListDemo extends Component {
           </p>
           <ul className="demo-list">
             {list(this.tasks, (item) => (
-              <TaskRow item={item} />
+              <TaskRow key={item.title} item={item} />
             ))}
           </ul>
         </div>

@@ -71,7 +71,6 @@ describe("what a package may claim", () => {
 
     expect(held.complete).toBe(true);
     expect(held.plain).toBe(true);
-    expect(held.quiet).toBe(true);
     // `current` is the one claim a fixture cannot make: there is no built `dist` to fingerprint.
     expect(held.current).toBe(false);
 
@@ -79,7 +78,7 @@ describe("what a package may claim", () => {
      * And the HEADER counts the same surface the claims judge.
      *
      * The graph holds five nodes, two of them the nested package's — so counting `graph.nodes`
-     * printed a size a fifth larger than what was judged, above four claims about something else.
+     * printed a size a fifth larger than what was judged, above three claims about something else.
      * Measured on `apps/docs` before the fix: 161 nodes, 33 of them core's, form's, query's and the
      * router's. The header exists so a reader sees the size of what was judged BEFORE reading the
      * verdict on it, which makes a count of something else worse than no count.

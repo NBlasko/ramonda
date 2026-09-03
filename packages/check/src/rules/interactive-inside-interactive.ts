@@ -46,7 +46,7 @@ export const interactiveInsideInteractive = {
   id: "interactive-inside-interactive",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "an interactive element is nested inside another of the same kind: a link in a " +
       "link, a button in a button, a form in a form",
@@ -63,8 +63,7 @@ export const interactiveInsideInteractive = {
       "Put them side by side, or make the inner one something that is not interactive — a `<span>`\n" +
       "styled to look like a button is not a button, and that is the point.\n\n" +
       "An element reached through a component is not reported: what that component renders is\n" +
-      "decided inside it.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "decided inside it.\n\n",
   },
 
   read(element, { tag }) {

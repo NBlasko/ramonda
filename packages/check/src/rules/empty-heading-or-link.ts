@@ -88,7 +88,7 @@ export const emptyHeadingOrLink = {
   id: "empty-heading-or-link",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a heading or a link has nothing inside it to announce",
     heading: (found) => {
       const headings = found.filter((issue) => issue.kind === "heading").length;
@@ -122,8 +122,7 @@ export const emptyHeadingOrLink = {
       "The icon button is the commonest of the three, and the one where nothing on screen will ever\n" +
       "remind anybody: it looks finished, and a reader hears only the word `button`.\n\n" +
       "An element whose content this cannot read is left alone: `<h2>{title}</h2>` may well have\n" +
-      "text and nothing here can prove it does not.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "text and nothing here can prove it does not.\n\n",
   },
 
   read(element, { tag, has, attr, children, resolve }) {

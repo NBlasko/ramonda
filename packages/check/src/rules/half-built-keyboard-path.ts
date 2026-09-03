@@ -102,7 +102,7 @@ export const halfBuiltKeyboardPath = {
   id: "half-built-keyboard-path",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "an element with an interactive `role` and a pointer handler is missing the `tabIndex` or the key handler that would finish it",
     heading: (found) => `${found.length} hand-built control(s) a keyboard cannot finish using:`,
@@ -121,8 +121,7 @@ export const halfBuiltKeyboardPath = {
       '<button type="button" onclick={save}>Save</button>\n' +
       "```\n\n" +
       "If it must be a `<div>` — a drag target, a cell in a grid — the key handler has to answer\n" +
-      "both keys a button answers, because the reader was told it is a button and will try either.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "both keys a button answers, because the reader was told it is a button and will try either.\n\n",
   },
 
   // No `evenWhenSpreading`, and here the family's default IS the guard this rule wants: a spread

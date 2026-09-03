@@ -38,7 +38,7 @@ export const tagNeedsItsParent = {
   id: "tag-needs-its-parent",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a tag is written outside the parent it requires — `<tr>` with no table above it, " + "`<option>` with no select",
     alsoReportedAs: "RMD028",
@@ -57,8 +57,7 @@ export const tagNeedsItsParent = {
       "the client's tree stops matching the server's, and it is reported as a hydration mismatch\n" +
       "whose advice is about clocks and random numbers.\n\n" +
       "An element reached through a component is NOT reported here — what a component renders is\n" +
-      "decided inside it, and it may well be the parent this tag needs.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "decided inside it, and it may well be the parent this tag needs.\n\n",
   },
 
   /**

@@ -88,7 +88,7 @@ export const landmarksThatCannotBeToldApart = {
   id: "landmarks-that-cannot-be-told-apart",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "one render has two or more landmarks of the same kind and none of them is named",
     heading: (found) => `${found.length} landmark(s) a screen reader announces identically:`,
     lines: (issue) => [
@@ -110,8 +110,7 @@ export const landmarksThatCannotBeToldApart = {
       "Where a visible heading already says what the section is, point at it instead and the two\n" +
       "cannot drift apart: `aria-labelledby={headingId}`.\n\n" +
       "Only reported when NEITHER is named. One named and one unnamed are two different entries in\n" +
-      "the list, and can be told apart.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "the list, and can be told apart.\n\n",
   },
 
   read(tree) {

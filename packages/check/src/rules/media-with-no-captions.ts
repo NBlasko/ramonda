@@ -81,7 +81,7 @@ export const mediaWithNoCaptions = {
   id: "media-with-no-captions",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a `video` or `audio` element carries no `<track>`, so nothing on the page says what is in it",
     heading: (found) => `${found.length} media element(s) with no text of what is said:`,
     lines: (issue) => [
@@ -101,8 +101,7 @@ export const mediaWithNoCaptions = {
       "player rather than a track: the title, the performer, the length. What is being asked for is\n" +
       "not a transcript of every sound, it is that the page not be silent ABOUT the sound.\n\n" +
       "A `<video muted>` is NOT reported — there is no sound to caption, which is the decorative\n" +
-      "background loop and not this fault.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "background loop and not this fault.\n\n",
   },
 
   read(element, { tag, has, truth, children, resolve }) {

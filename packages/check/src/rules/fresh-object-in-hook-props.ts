@@ -175,7 +175,7 @@ export const freshObjectInHookProps = {
   id: "fresh-object-in-hook-props",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a hook — a context Provider above all — is handed an object or array built inside its props callback, where the callback also reads something reactive, so the value is rebuilt and every consumer of that key wakes with contents that did not change",
     alsoReportedAs: "RMD022",
@@ -203,8 +203,7 @@ export const freshObjectInHookProps = {
       '      { stableProps: ["conf"] },\n' +
       "    );\n\n" +
       "Or move the value out of the callback entirely — a `@compute` gives you the same object back\n" +
-      "until something it reads changes, which is exactly what a consumer needs.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "until something it reads changes, which is exactly what a consumer needs.\n\n",
   },
 
   read(cls, { self, resolve }) {

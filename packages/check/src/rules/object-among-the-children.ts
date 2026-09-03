@@ -77,7 +77,7 @@ export const objectAmongTheChildren = {
   id: "object-among-the-children",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a plain object is written among an element's children, where the runtime drops it and the page renders without it",
     alsoReportedAs: "RMD037",
@@ -96,8 +96,7 @@ export const objectAmongTheChildren = {
       "the whole object really is what you want to see, say how — `{JSON.stringify(item)}` in a\n" +
       "debugging view, or a component that takes it as a prop and renders the parts.\n\n" +
       "An ARRAY is not this: the runtime flattens one into the children, so a group of nodes is\n" +
-      "markup and is never reported.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "markup and is never reported.\n\n",
   },
 
   read(element, { resolve }) {

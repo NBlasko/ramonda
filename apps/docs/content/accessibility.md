@@ -96,19 +96,26 @@ announces nothing.
 - [`duplicate-id`](/rules/duplicate-id),
   [`reference-to-an-id-that-is-not-there`](/rules/reference-to-an-id-that-is-not-there)
 
-## Not one of them fails your build
+## Every one of them fails your build
 
-`ramonda-check` has **nine error rules**, and all nine are about fighting the framework: writing a
-prop you were given, an `async render()`, two of a decorator that may appear once. Every
-accessibility rule is a **warning** — it prints and lets the run through.
+There is no warning level. An accessibility rule reports a fault exactly as an `async render()`
+does, and a reported fault fails the command.
 
-That is a deliberate position rather than an oversight, and the README's argument is the reason: a
-gate that fails a build on something nobody has seen yet gets switched off, and a switched-off gate
-reports nothing at all. Each of these rules says in its own advice that it is a warning today and an
-error in a later version.
+That is deliberate, and the reason is what a warning actually does: it is read once and then not
+read at all. Thirty-five of them printing under a passing build is thirty-five things nobody has to
+decide about.
 
-**If you want them to fail now**, that is your build's decision to make rather than the framework's
-— the run's exit code is what you already have, and you can treat any output as a failure.
+**Where a rule is wrong about your markup, say so on the line:**
+
+```tsx
+// ramonda-check-ignore this div is a backdrop; the real exit is the button beside it
+<div className="scrim" onclick={this.close} />
+```
+
+The reason is **mandatory** — an empty directive is itself reported — and every annotated site is
+printed back on every run with the words its author wrote. So an exception is a decision somebody
+made and can be asked about, which is more than a warning ever was. See
+[how to say "not here"](/reference/check#every-rule-fails-the-run-and-how-to-say-not-here).
 
 ## What it cannot see
 

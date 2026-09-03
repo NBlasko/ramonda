@@ -76,7 +76,7 @@ export const falseOnABooleanAttribute = {
   id: "false-on-a-boolean-attribute",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       'a boolean attribute is written `"false"`, which turns it ON because the parser reads only that it is there',
     alsoReportedAs: "RMD029",
@@ -98,8 +98,7 @@ export const falseOnABooleanAttribute = {
       'This does not apply to `aria-*`, which are enumerated STRINGS: `aria-hidden="false"` really\n' +
       'does mean "not hidden", and there the empty and absent forms mean a third thing again.\n\n' +
       "The framework reports it at runtime as `RMD029` — but only for markup that renders. This is\n" +
-      "the same fault found in a branch nobody has opened.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "the same fault found in a branch nobody has opened.\n\n",
   },
 
   /**

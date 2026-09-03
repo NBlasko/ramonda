@@ -86,7 +86,7 @@ export class FilteredList extends Component {
           */}
           <ul className="demo-list">
             {list(this.visible, (item) => (
-              <PersonRow item={item} />
+              <PersonRow key={item.name} item={item} />
             ))}
           </ul>
           {this.visible.length === 0 ? <p className="demo-note">No one matches “{this.query}”.</p> : null}

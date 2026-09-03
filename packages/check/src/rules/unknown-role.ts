@@ -30,7 +30,7 @@ export const unknownRole = {
   id: "unknown-role",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "a `role` names nothing, or names an abstract role that markup may not use",
     heading: (found) => `${found.length} \`role\` attribute(s) that do not name a usable role:`,
     lines: (issue) => [
@@ -49,8 +49,7 @@ export const unknownRole = {
       "Before reaching for `role` at all, check whether a tag already says it. `<nav>` is\n" +
       '`role="navigation"` and `<button>` is `role="button"`, and the tag brings behaviour the\n' +
       "attribute does not.\n\n" +
-      "A role this cannot read — `role={kind}` — is never reported.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "A role this cannot read — `role={kind}` — is never reported.\n\n",
   },
 
   /**

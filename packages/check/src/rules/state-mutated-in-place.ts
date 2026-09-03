@@ -135,7 +135,7 @@ export const stateMutatedInPlace = {
   id: "state-mutated-in-place",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `@state` array or object is changed in place — `this.items.push(…)`, `this.user.name = …` — so the signal never fires",
     alsoReportedAs: ["RMD005", "RMD048"],
@@ -156,8 +156,7 @@ export const stateMutatedInPlace = {
       "  this.items = this.items.filter(keep);   // rather than splice\n" +
       "  this.user = { ...this.user, name };     // rather than this.user.name = name\n\n" +
       "`map`, `filter`, `slice` and a spread are all left alone — they return a new value, which is\n" +
-      "the fix rather than the fault.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "the fix rather than the fault.\n\n",
   },
 
   read(cls, { self, resolve }) {

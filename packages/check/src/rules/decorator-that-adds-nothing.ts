@@ -85,7 +85,7 @@ export const decoratorThatAddsNothing = {
   id: "decorator-that-adds-nothing",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "two decorators on one member give it the same thing — `@persist` beside `@state`, or one written twice",
     alsoReportedAs: ["RMD050"],
@@ -103,8 +103,7 @@ export const decoratorThatAddsNothing = {
       "delete the `@persist`. Where the same decorator is written twice, delete one.\n\n" +
       "Two decorators doing DIFFERENT work on one member are not this: `@created` with `@mounted`,\n" +
       "`@onWindow` with `@onDocument`, `@watchProp` with `@updated` each run twice on purpose, and\n" +
-      "neither this nor the framework says anything about them.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "neither this nor the framework says anything about them.\n\n",
   },
 
   read(cls, context) {

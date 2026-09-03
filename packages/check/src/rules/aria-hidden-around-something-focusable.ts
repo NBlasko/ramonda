@@ -54,7 +54,7 @@ export const ariaHiddenAroundSomethingFocusable = {
   id: "aria-hidden-around-something-focusable",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: '`aria-hidden="true"` wraps something a keyboard can still tab to',
     heading: (found) => `${found.length} hidden subtree(s) a keyboard can still tab into:`,
     lines: (issue) => [
@@ -77,8 +77,7 @@ export const ariaHiddenAroundSomethingFocusable = {
       "by hand — which is a list that has to be kept in step, and is why `inert` exists.\n\n" +
       "This is the commonest thing to get wrong about a modal: the dialog opens, the page behind it\n" +
       "is hidden with one attribute, and the first Tab takes the reader out of the dialog and into\n" +
-      "a void.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "a void.\n\n",
   },
 
   read(element, { tag, truth, has, children, resolve }: ElementContext) {

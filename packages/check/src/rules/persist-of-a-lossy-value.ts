@@ -51,7 +51,7 @@ export const persistOfALossyValue = {
   id: "persist-of-a-lossy-value",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `@persist` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, none of which JSON carries",
     alsoReportedAs: "RMD033",
@@ -71,8 +71,7 @@ export const persistOfALossyValue = {
       "Persist a form of it that survives — an id, an ISO string, an array of entries — and rebuild\n" +
       "the object where it is used, or in a `@compute` beside it. Where the value is only ever\n" +
       "needed in the browser, build it in `@created`, which hydration skips, and do not persist it\n" +
-      "at all.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "at all.\n\n",
   },
 
   read(cls, { self, resolve }) {

@@ -76,7 +76,7 @@ export const ariaValue = {
   id: "aria-value",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `aria-*` attribute carries a literal value its specification does not permit",
     heading: (found) => `${found.length} \`aria-*\` value(s) the specification does not allow:`,
     lines: (issue) => [
@@ -91,8 +91,7 @@ export const ariaValue = {
       '`false` is a value and never reported — `aria-hidden="false"` is the documented way to say\n' +
       "an element is exposed, which is not the same as leaving the attribute off.\n\n" +
       "Only literals are judged. An attribute whose value is an expression is left alone, and so is\n" +
-      "one whose type is a label or an id reference, where any string is well formed.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "one whose type is a label or an id reference, where any string is well formed.\n\n",
   },
 
   /**

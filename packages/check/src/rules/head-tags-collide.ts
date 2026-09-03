@@ -223,7 +223,7 @@ export const headTagsCollide = {
   id: "head-tags-collide",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "two tags in one `Head` resolve to the same identity, so only the second is written",
     heading: (found) => `${found.length} head tag(s) written twice and served once:`,
     // Naming both entries was the first version, and reading what it printed killed it: for the
@@ -246,8 +246,7 @@ export const headTagsCollide = {
       "`description` is a shorthand for the meta tag named `description`, and it is collected FIRST,\n" +
       "so writing both loses the shorthand — which is usually the line that was meant.\n\n" +
       "Two byte-identical entries are not reported: they collapse to the tag they both describe and\n" +
-      "nothing is lost.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "nothing is lost.\n\n",
   },
 
   read(cls, { self, resolve, resolveLocal, resolveStep }) {

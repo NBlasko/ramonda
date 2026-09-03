@@ -126,7 +126,7 @@ export class FormDemo extends Component {
             <legend>Tags</legend>
             <ul className="demo-rows">
               {list(f.tags.$.rows, (row) => (
-                <li>
+                <li key={row.id}>
                   <input {...row.field.$.bind} />
                   <button type="button" onclick={this.moveTagUp(row.id)} disabled={row.index === 0}>
                     up

@@ -69,7 +69,7 @@ export const moreThanOneMain = {
   id: "more-than-one-main",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "one render has more than one `main` landmark, where HTML allows one",
     heading: (found) => `${found.length} extra \`main\` landmark(s) — a page may have one:`,
     lines: (issue) => [
@@ -93,8 +93,7 @@ export const moreThanOneMain = {
       "`aria-labelledby` and a role that says what it actually is — `region`, `complementary`,\n" +
       "`search`.\n\n" +
       "Two route views that each own a `main` are NOT this: they are never on the page together, and\n" +
-      "this only ever reads one render.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "this only ever reads one render.\n\n",
   },
 
   read(tree) {

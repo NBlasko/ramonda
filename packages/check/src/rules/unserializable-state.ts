@@ -57,7 +57,7 @@ export const unserializableState = {
   needsServerRendering: true,
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `@state` field holds a `Map`, a `Set`, a `Date`, a function or a class instance, and the project renders on a server",
     alsoReportedAs: ["RMD019", "RMD033"],
@@ -77,8 +77,7 @@ export const unserializableState = {
       "object where it is used, or in a `@compute` beside it. Where the value is only ever wanted in\n" +
       "the browser, build it in `@created`, which hydration skips, and leave it out of state.\n\n" +
       "This is only asked of a project that renders on a server. With no blob to cross, a `Map` in\n" +
-      "state is correct and nothing here has an opinion about it.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "state is correct and nothing here has an opinion about it.\n\n",
   },
 
   read(cls, { self, resolve }) {

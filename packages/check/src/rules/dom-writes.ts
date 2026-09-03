@@ -155,7 +155,7 @@ export const domWrites = {
   id: "dom-writes",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a component writes the document — `document.body.classList.add(…)` and its family — " +
       "where `render()` could have said it",
@@ -178,8 +178,7 @@ export const domWrites = {
       "from a class a descendant renders, so even the page itself can be styled from state.\n\n" +
       "A COMMAND is not this and is not reported: `scrollIntoView()`, `focus()`, `select()` and\n" +
       "`getBoundingClientRect()` have no declarative form. Nor is an element you created yourself,\n" +
-      "or one held in a `ref` — that one is your own.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "or one held in a `ref` — that one is your own.\n\n",
   },
 
   read(cls, { self, resolve }) {

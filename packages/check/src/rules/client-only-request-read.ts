@@ -307,7 +307,7 @@ export const clientOnlyRequestRead = {
   report: {
     // A warning, which is this repository's rule for a new rule: one version that says so, the next
     // that refuses.
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a `requestContext()` read is on a path that only runs in the browser, where the value it names is never available",
     alsoReportedAs: "RMD025",
@@ -341,8 +341,7 @@ export const clientOnlyRequestRead = {
       "`requestContext().url` is live in the browser and is never reported.\n\n" +
       "A STATIC build will not catch this for you. The read never runs during the render, so the\n" +
       "build's per-request poison is never touched: the page bakes cleanly and the fault arrives in\n" +
-      "the browser as RMD025. That is the reason this rule exists.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "the browser as RMD025. That is the reason this rule exists.\n\n",
   },
 
   read(cls, context) {

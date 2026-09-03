@@ -87,7 +87,7 @@ export const unsplittableImport = {
   id: "unsplittable-import",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "a dynamic import's path is neither a literal nor a template a bundler can read, so no chunk is emitted for it",
     heading: (found) => `${found.length} dynamic import(s) the bundler cannot split:`,
@@ -103,8 +103,7 @@ export const unsplittableImport = {
       'Write the path as a plain string: `import("./feature/heavy.js")`. For one of several, a\n' +
       "literal per branch splits each of them; a variable splits none.\n\n" +
       "If it is deliberate, say so and this stops reporting it — either the bundler's own marker,\n" +
-      "`import(/* @vite-ignore */ name)`, or `// ramonda-check-ignore why` on the line above.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "`import(/* @vite-ignore */ name)`, or `// ramonda-check-ignore why` on the line above.\n\n",
   },
 
   read(file) {

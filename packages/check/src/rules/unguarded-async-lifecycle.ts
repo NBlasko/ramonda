@@ -166,7 +166,7 @@ export const unguardedAsyncLifecycle = {
   id: "unguarded-async-lifecycle",
 
   report: {
-    severity: "warn",
+    severity: "error",
     reportedWhen: "an `async` lifecycle awaits something with no `try` or `.catch` to handle a failure",
     alsoReportedAs: "RMD059",
     heading: (found) => `${found.length} async lifecycle(s) whose failure nothing would report:`,
@@ -191,8 +191,7 @@ export const unguardedAsyncLifecycle = {
       "If the failure really should take the page down, re-throw it from `render()` — that IS a\n" +
       "render, and a boundary can see it.\n\n" +
       "A method that never awaits is not reported: it can only throw synchronously, and the\n" +
-      "lifecycle runner catches that. Any `try` or `.catch` in the body is taken as handling it.\n\n" +
-      "This is a warning today and an error in a later version.",
+      "lifecycle runner catches that. Any `try` or `.catch` in the body is taken as handling it.\n\n",
   },
 
   read(cls, context) {

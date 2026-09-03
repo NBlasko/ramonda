@@ -106,7 +106,7 @@ export const unexposedEnvRead = {
      * scaffolded tsconfigs leave out of `include`. So the premise is stated in the message instead of
      * being enforced, and the run is not failed over it.
      */
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "`import.meta.env` is read for a name `@ramonda/build` does not expose, so the value reads `undefined`",
     heading: (found) => `${found.length} environment variable(s) read but never exposed:`,

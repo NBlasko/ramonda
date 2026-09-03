@@ -99,7 +99,7 @@ export const refBuiltWhereItCannotBeKept = {
      * did not need, while the ref the author wanted is unreadable. It becomes an error in a later
      * version, which is how every new rule here starts.
      */
-    severity: "warn",
+    severity: "error",
     reportedWhen:
       "`createRef()` is called from a render, a `@compute`, a `@memoized` member a render calls, or a hook's props callback — so it answers a new identity every pass, the child re-renders for a `ref` that only looks changed, and nothing can read `current`",
     alsoReportedAs: "RMD061",

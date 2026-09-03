@@ -303,23 +303,6 @@ if (annotated.length > 0) {
  * the next that refuses. It is printed above the verdict and counts for nothing in it.
  */
 /**
- * Every rule that WARNS, printed from what the rule itself says.
- *
- * The sections below this used to be one hand-written block per rule — a heading, a loop, and a
- * closing paragraph, twenty-odd lines each, in a file that knew nothing about the rule it was
- * printing. They are on the rules now, so this loop is the whole of it and adding a rule adds no
- * line here.
- */
-for (const rule of RULES) {
-  if (rule.report.severity !== "warn") continue;
-  const found = findings[rule.id];
-  if (found.length === 0) continue;
-  console.warn(sectionHeading(rule, found));
-  for (const issue of found) for (const line of rule.report.lines(issue as never)) console.warn(line);
-  console.warn(`\n${rule.report.advice}\n`);
-}
-
-/**
  * Whether anything below would fail the run.
  *
  * The rule half is DERIVED rather than listed. It was a clause per rule — `arrowFields.length === 0
@@ -571,13 +554,17 @@ if (issues.length > 0) {
 }
 
 /**
- * Every rule that FAILS the run. The same loop as the warnings, one stream over.
+ * Every rule that reported, printed from what the rule itself says.
  *
  * After the graph's own errors rather than before them, because a missing provider is a fact about
  * the whole app and one of these is a fact about one class: the reader wants the first one first.
+ *
+ * **Not filtered by severity, and that is deliberate.** Every rule is an error today, so a filter
+ * would have one arm — and the arm it dropped would be the one a future warning rule landed in,
+ * which would then report NOWHERE. A severity decides the exit code, through `failingRules`. It
+ * does not decide whether the reader is told.
  */
 for (const rule of RULES) {
-  if (rule.report.severity !== "error") continue;
   const found = findings[rule.id];
   if (found.length === 0) continue;
   console.error(sectionHeading(rule, found));

@@ -350,7 +350,7 @@ function rulePages() {
   const index = [
     "---",
     "title: Rules",
-    `description: Every check \`ramonda-check\` runs — ${rules.length} of them, ${rules.filter((r) => r.severity === "error").length} that fail a build and ${rules.filter((r) => r.severity === "warn").length} that warn.`,
+    `description: Every check \`ramonda-check\` runs — ${rules.length} of them, each one able to fail a build.`,
     "section: Reference",
     "order: 111",
     "---",
@@ -361,21 +361,31 @@ function rulePages() {
     "is a fault, and what to write instead. The page and the terminal say the same thing, because both",
     "come from the rule.",
     "",
-    "An **error** fails the run. A **warning** prints and lets it through — for now; a rule that warns",
-    "today may fail a build in a later version, and each says so.",
+    "**Every one of them fails the run.** There is no warning level: a warning that never fails",
+    "anything is read once and then not read at all. Where a rule is wrong about your code, the",
+    "answer is `// ramonda-check-ignore <reason>` on the line — which records the decision rather",
+    "than hiding it, and is printed back on every run. See",
+    '[how to say "not here"](/reference/check#every-rule-fails-the-run-and-how-to-say-not-here).',
     "",
     "Looking for a rule by the trouble it explains rather than by its name?",
     "[Something is wrong](/symptoms) is indexed by what you can see, and",
     "[Accessibility](/accessibility) groups the thirty-five that are about it.",
     "",
-    ...section(
-      rules.filter((rule) => rule.severity === "error"),
-      "Errors",
-    ),
-    ...section(
-      rules.filter((rule) => rule.severity === "warn"),
-      "Warnings",
-    ),
+    // Split only when there is something to split. Every rule fails the run today, so two headings
+    // would be one list and a heading over nothing — and a "Warnings" heading with no rules under
+    // it reads as a list that failed to render rather than as a fact.
+    ...(rules.some((rule) => rule.severity === "warn")
+      ? [
+          ...section(
+            rules.filter((rule) => rule.severity === "error"),
+            "Errors",
+          ),
+          ...section(
+            rules.filter((rule) => rule.severity === "warn"),
+            "Warnings",
+          ),
+        ]
+      : section(rules, "Every rule")),
     "## Next",
     "",
     "- [Checking your app](/reference/check) — how to run it, and what it proves that a running page cannot.",
@@ -443,7 +453,7 @@ function pageFor(rule, at) {
     `# \`${rule.id}\``,
     "",
     rule.severity === "error"
-      ? "**This fails the run.** Not a matter of taste: what it reports cannot do what it says."
+      ? "**This fails the run.** Where it is wrong about your code, `// ramonda-check-ignore <reason>` on the line says so, and the reason is printed on every run."
       : "**This is a warning.** It prints and lets the build through.",
     "",
     `**Reported when** ${rule.reportedWhen}.`,

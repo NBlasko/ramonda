@@ -22,15 +22,26 @@ describe("what fails a run", () => {
   });
 
   /**
-   * Every rule is accounted for, so a new one cannot be neither.
+   * Every rule is an error, and adding one that is not has to be a decision.
    *
-   * The list this replaced could be short by one and still compile. This cannot: a rule is in
-   * `RULES` or it does not run at all, and its severity decides which half it lands in.
+   * There were seventy-seven warnings and nine errors, and seventy-two of the warnings said in
+   * their own advice that they would become errors "in a later version". Nothing was tracking
+   * that, and a warning that never fails anything is worse than an error with an escape hatch: the
+   * warning is ignored in silence, while `// ramonda-check-ignore <reason>` is a decision somebody
+   * wrote down and every run prints back.
+   *
+   * So this is a tripwire rather than an invariant. A warning may be the right answer for some
+   * future rule — the CLI still honours one, and `failingRules` still reads severity — but it may
+   * not happen by accident, because nothing else would notice.
    */
-  test("every rule is either a warning or a failure", () => {
-    const warns = RULES.filter((rule) => rule.report.severity === "warn");
-    const errors = RULES.filter((rule) => rule.report.severity === "error");
-    expect(warns.length + errors.length).toBe(RULES.length);
+  test("no rule is a warning", () => {
+    // Widened on purpose. `RULES` is `as const`, so every severity is the literal `"error"` and
+    // `=== "warn"` is a comparison `tsc` refuses as provably false — which is the compiler making
+    // this test's own point and then preventing it from being written. Reading through the
+    // declared union asks the question at runtime, where it belongs.
+    const severities: readonly ("warn" | "error")[] = RULES.map((rule) => rule.report.severity);
+
+    expect(severities.filter((severity) => severity === "warn")).toEqual([]);
     expect(RULES.length).toBeGreaterThan(0);
   });
 
@@ -55,9 +66,17 @@ describe("what fails a run", () => {
     expect(result.classesAsChildren).toEqual([]);
   });
 
-  test("a warning-only finding does not fail the run", () => {
+  /**
+   * The fixture that used to prove the opposite.
+   *
+   * `unsplittable-import` was a warning, and this asserted that finding it left the run passing.
+   * It is an error now, so the same fixture proves the other half of the same mechanism: a
+   * severity is what puts a rule in the verdict, and this one is in it.
+   */
+  test("a finding from a rule that was once a warning fails the run now", () => {
     const result = run("dynamic-import");
+
     expect(result.findings["unsplittable-import"].length).toBeGreaterThan(0);
-    expect(failingRules(result.findings)).toEqual([]);
+    expect(failingRules(result.findings).map((rule) => rule.id)).toContain("unsplittable-import");
   });
 });
