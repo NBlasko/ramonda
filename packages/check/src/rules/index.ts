@@ -69,6 +69,7 @@ import { roleThatFightsTheTag } from "./role-that-fights-the-tag";
 import { liveRegionThatContradictsItsRole } from "./live-region-that-contradicts-its-role";
 import { arrowFields } from "./arrow-fields";
 import { clockReadWhileRendering } from "./clock-read-while-rendering";
+import { refBuiltWhereItCannotBeKept } from "./ref-built-where-it-cannot-be-kept";
 import { stateWrittenWhileRendering } from "./state-written-while-rendering";
 import { stateMutatedInPlace } from "./state-mutated-in-place";
 import { decoratorThatAddsNothing } from "./decorator-that-adds-nothing";
@@ -232,6 +233,10 @@ export { asyncRender, type AsyncRenderIssue } from "./async-render";
 export { cachedReadOfAPlainField, type CachedReadOfAPlainFieldIssue } from "./cached-read-of-a-plain-field";
 export { watchOfAPropThatIsNotThere, type WatchOfAPropThatIsNotThereIssue } from "./watch-of-a-prop-that-is-not-there";
 export { clockReadWhileRendering, type ClockReadWhileRenderingIssue } from "./clock-read-while-rendering";
+export {
+  refBuiltWhereItCannotBeKept,
+  type RefBuiltWhereItCannotBeKeptIssue,
+} from "./ref-built-where-it-cannot-be-kept";
 export { stateWrittenWhileRendering, type StateWrittenWhileRenderingIssue } from "./state-written-while-rendering";
 export { stateMutatedInPlace, type StateMutatedInPlaceIssue } from "./state-mutated-in-place";
 export { decoratorThatAddsNothing, type DecoratorThatAddsNothingIssue } from "./decorator-that-adds-nothing";
@@ -283,6 +288,7 @@ export const CLASS_RULES = [
   decoratorThatAddsNothing,
   unkeyableMemoizedArgument,
   clockReadWhileRendering,
+  refBuiltWhereItCannotBeKept,
   cachedReadOfAPlainField,
   arrowFields,
   browserUrl,
