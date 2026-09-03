@@ -36,6 +36,8 @@ declare global {
   const routes: any;
   const paths: any;
   const createRoutes: (...args: any[]) => any;
+  /** The reader's own session check, for the async-guard example. */
+  const loadSession: () => Promise<{ user: string } | undefined>;
   /** A node server's request and response, for the server-routing page. */
   const req: any;
   const res: any;

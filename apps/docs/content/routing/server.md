@@ -198,6 +198,34 @@ try {
 
 The earliest guard to fire wins, so one redirect decides where the request goes.
 
+### `captureServerRedirect()` — redirecting from an `async` lifecycle
+
+`this.route.replace()` reaches the server render's redirect slot through the render that is running
+right now, and an `async` lifecycle can resolve long after that synchronous window has closed.
+`captureServerRedirect` is the way to keep the handle:
+
+```tsx
+class Account extends Component {
+  private redirect = captureServerRedirect();
+
+  @mounted async guard() {
+    const session = await loadSession();
+    if (session === undefined) this.redirect?.("/login");
+  }
+}
+```
+
+**Call it once, synchronously, while the tree is being built** — a field initializer is the intended
+spot. The function it returns closes over that render's own work, so it still writes to the right
+slot when it is finally called.
+
+**It returns `undefined` on the client**, which is why the call above is optional-chained: there is
+no server render in progress, and a client navigation is an ordinary `replace`. First writer wins
+here too — a second request in the same render is ignored.
+
+This is the escape hatch, not the shape to reach for. Deciding before rendering, above, is still
+the answer for anything a guard can answer synchronously.
+
 > **A guard routes people; it does not protect data.** It decides which page someone
 > lands on. It does not stop the component's code from shipping to the browser, and it
 > cannot stop anyone from calling your API directly — the network tab is right there.

@@ -109,6 +109,24 @@ reports.
 
 A ref is cleared when its element is removed, so it can't keep a detached node alive.
 
+## The three names, if you write them down
+
+`createRef` is the only one of these you call. The other two appear when a type is written by hand
+— a field annotation, a function that takes a ref.
+
+**`Ref<T>`** is what `createRef<T>()` hands back: a `current` that is the node or `null`, and the
+`setCurrent` the framework calls. Annotating a field with it is the usual reason to name it —
+`private input: Ref<HTMLInputElement> = createRef()`.
+
+**`RefTarget<T>`** is what a `ref` prop accepts, and it is deliberately smaller than `Ref<T>`: only
+`setCurrent`. `Ref<T>` holds a mutable `current`, which makes it invariant — a
+`createRef<HTMLElement>()` would be refused on a `<p>`, because `Ref<HTMLElement>` is not a
+`Ref<HTMLParagraphElement>`. Asking only for the setter is the direction that is safe: a ref that
+can hold any element can certainly hold this one. Take `RefTarget<T>` when you write a component
+that forwards a ref onward.
+
+**`RefCallback<T>`** is the function `createRef` takes — `(current: T | null) => void`.
+
 ## Next
 
 - [Hooks](/hooks) — state and lifecycle with no element at all.

@@ -175,6 +175,25 @@ template, and written out in the SSR one, which has no Vite types to reference â
 *extends* it rather than introducing it. Writing the `ImportMeta` half again is harmless either way, since
 an interface of the same name merges.
 
+### `PUBLIC_ENV_PREFIX` and `publicEnv(env)`
+
+The prefix is exported, so a script of your own can apply the same rule rather than repeating the
+string: `PUBLIC_ENV_PREFIX` is `"RAMONDA_PUBLIC_"`, and `publicEnv(env)` returns the entries of an
+environment that start with it and have a value.
+
+```ts
+import { publicEnv } from "@ramonda/build";
+
+const safe = publicEnv(process.env);
+```
+
+**It takes the environment rather than reading `process.env` itself**, which is what makes it usable
+at all: a build script may have loaded a `.env` of its own, and a test can hand it a fixture. The
+caller decides what "the environment" is.
+
+Use it when something outside the bundler has to know which variables may travel â€” a deployment
+step writing a runtime config, a check that a secret has not been given a public name.
+
 ## It refuses rather than corrects
 
 If your config names any of the three as something Ramonda cannot work with, the build stops and
