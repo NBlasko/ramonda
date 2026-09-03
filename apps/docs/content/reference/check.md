@@ -524,6 +524,10 @@ console.log(`${diffGraphs(before, after).intoInitial.length} declaration(s) ente
 
 ## Markup nothing can announce
 
+**[Accessibility](/accessibility)** is the page for this subject rather than this section — all
+thirty-five rules grouped, what the framework does without being asked, and what none of it can
+answer. What follows is how a few of them work, for a reader already here.
+
 Four of the rules above read your JSX one element at a time and are all about the same thing: an
 element assistive technology cannot name. `unnamed-image` and `unnamed-frame` are the two with
 nothing to announce them by; `empty-heading-or-link` is a row in the screen reader's list of

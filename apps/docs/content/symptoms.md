@@ -137,7 +137,9 @@ serialized, and anything else needs [`@persist`](/reference/decorators/persist).
 The mouse works and the keyboard does not, because it is a `<div>` or a `<span>` with a click
 handler on it. A click handler works for a pointer and for nothing else: the element is not in
 the tab order, so it cannot be focused, and a screen reader announces it as text rather than as
-something to do. A `<button>` is all three of those things with nothing written on it. See [`click-with-no-keyboard-path`](/rules/click-with-no-keyboard-path).
+something to do. A `<button>` is all three of those things with nothing written on it.
+
+See [accessibility](/accessibility) for the other thirty-four checks of this kind. See [`click-with-no-keyboard-path`](/rules/click-with-no-keyboard-path).
 
 ### My link does not navigate, or cannot be opened in a new tab
 

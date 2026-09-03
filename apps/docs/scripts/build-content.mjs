@@ -365,7 +365,8 @@ function rulePages() {
     "today may fail a build in a later version, and each says so.",
     "",
     "Looking for a rule by the trouble it explains rather than by its name?",
-    "[Something is wrong](/symptoms) is indexed by what you can see.",
+    "[Something is wrong](/symptoms) is indexed by what you can see, and",
+    "[Accessibility](/accessibility) groups the thirty-five that are about it.",
     "",
     ...section(
       rules.filter((rule) => rule.severity === "error"),
