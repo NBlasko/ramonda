@@ -98,3 +98,5 @@ The division of labour, then: **`@state` and a component's props are coarse and 
   decorators you actually write.
 - [One per component, or one per item](/concepts/caching) — where the granularity here starts to
   matter in practice.
+- [Performance](/performance) — what this model already gives you, and the one class of mistake
+  that gives it back.

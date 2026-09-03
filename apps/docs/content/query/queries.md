@@ -309,6 +309,31 @@ Also on the client: `setData` (write straight into the cache — a fetch in flig
 abandoned, because an explicit write is newer information than a request made before
 it), `peek`, `invalidate`, `remove` for a logout, and `cancel`.
 
+### `hashKey(key)` and `keyStartsWith(key, prefix)`
+
+The two functions the cache is addressed by, exported for a tool that has to agree with it — a
+devtools panel listing entries, a script warming a cache from outside the app.
+
+`hashKey` turns a key into the string the cache is keyed by. **Object keys are sorted**, so
+`{ page: 1, tag: "a" }` and `{ tag: "a", page: 1 }` are the same query rather than two — which
+matters more than it looks: the server hashes a key, the data travels in the hydration blob, and the
+client hashes it again in another process. Disagree by so much as key order and the lookup misses,
+the client refetches everything the server already fetched, and the server render bought nothing.
+Nothing reports it, because a cache miss looks exactly like a cold start.
+
+`keyStartsWith` is the relation `invalidate(["user"])` uses — whether one key begins with another,
+compared part by part through the same hash, so a prefix holding an object still matches.
+
+```ts
+import { hashKey, keyStartsWith } from "@ramonda/query";
+
+hashKey(["user", { id: 1, tab: "a" }]) === hashKey(["user", { tab: "a", id: 1 }]);  // true
+keyStartsWith(["user", 1, "posts"], ["user", 1]);                                   // true
+```
+
+A key may hold anything JSON can carry. That is not a rule invented for the cache — the key crosses
+the wire with the data, so it is the same constraint hydration puts on `@state`.
+
 ## Next
 
 - [Mutations](/query/mutations) — writing, and rolling back.

@@ -103,6 +103,30 @@ A static path goes in directly; a `:param` path must be built with `route(...)`,
 params and rejects a wrong one. The same paths type `Navigator.push` / `replace`. More in
 [links](/routing/links).
 
+## The types the kit is made of — `TypedRouterKit`
+
+`createRouter(routes)` returns a `TypedRouterKit`, and every name below exists so that the route
+table's paths reach a type annotation.
+
+| | |
+|---|---|
+| `RouteConfig` | what `createRoutes` returns — the compiled table, carrying its literal path keys |
+| `PathOf<C>` | the navigable paths of a config: every declared key except the `"*"` fallback |
+| `TypedLinkProps` | `Link`'s props, with `href` narrowed to those paths |
+| `TypedNavigator` | the `Navigator` hook's type, with `push` and `replace` narrowed the same way |
+| `Href` | a path that `route(...)` has built and checked — a string the kit will accept |
+| `RouteParams` | the `:param` values a matched route supplies, as a record of strings |
+| `RouteOutletProps` | `RouteOutlet`'s props |
+
+**`RouteConfig` carries its paths in a phantom field.** Nothing at runtime holds them: they exist
+only so `createRoutes({ "/": …, "/u/:id": … })` remembers the literal union `"/" | "/u/:id"`, and
+`createRouter` can type a `Link` against it. The field defaults to `string`, which is what lets a
+function taking a plain `RouteConfig` still accept a narrower one.
+
+`RouterNavigator` is the untyped shape underneath `TypedNavigator` — the methods themselves, before
+the paths are narrowed. You would name it only when writing something that takes any router's
+navigator rather than this one's.
+
 ## One Router per app
 
 Mounting a second `Router` while one is live throws — there is a single source of

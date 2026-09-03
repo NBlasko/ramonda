@@ -156,6 +156,8 @@ the attribute the element actually has:
 > lowercase — `onclick`, `onmouseenter`, not `onMouseEnter` — and SVG attributes stay
 > literal, so `stroke-width` is `stroke-width`, not `strokeWidth`.
 
+See [styling](/styling) for `className` and the two forms `style` takes.
+
 ## Children
 
 What sits between the tags: text, other elements, components, and `null` for nothing.
@@ -177,6 +179,26 @@ render() {
 ```
 
 See [rendering lists](/lists).
+
+### The types — `RamondaNode` and `VNode`
+
+`render()` returns a `RamondaNode`, and that is deliberately wide: a single element, an array of
+them, a list, a string, a number, or `null` and `undefined` for nothing.
+
+**The array is not an exception it has to apologise for.** A component owns a RANGE of nodes, so
+returning two siblings is an ordinary answer — there is no wrapper to make several look like one and
+no fragment tag to write. The array IS the spelling.
+
+| | |
+|---|---|
+| `RamondaNode` | anything `render()` may return, including an array of them |
+| `VNode` | one element or one component, as JSX produced it |
+| `ComponentChild` | a `VNode` or a string — what a single child is |
+| `ComponentClassKind` | a component CLASS, as opposed to an instance of one. What a `VNode` holds when the tag was a component |
+| `ItemRender<T>` | `list()`'s second argument: one item to one `VNode`. See [rendering lists](/lists) |
+
+Annotate with `RamondaNode` when a method other than `render()` returns markup — a helper that
+builds a row, a fallback passed as a prop.
 
 ## `ref` — reaching the real element
 

@@ -134,7 +134,7 @@ description would each add one.
 A **component** inside a portal is hydrated like any other: its host is adopted and its
 server state restored, not rebuilt from its initial values.
 
-### A target outside the app: name it
+### A target outside the app — `portalTarget`
 
 `document.head` works because the server's document has one. Every other container — a modal
 root in the body — does not exist during a server render: your shell is assembled *after* the

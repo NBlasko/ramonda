@@ -137,7 +137,10 @@ serialized, and anything else needs [`@persist`](/reference/decorators/persist).
 The mouse works and the keyboard does not, because it is a `<div>` or a `<span>` with a click
 handler on it. A click handler works for a pointer and for nothing else: the element is not in
 the tab order, so it cannot be focused, and a screen reader announces it as text rather than as
-something to do. A `<button>` is all three of those things with nothing written on it. See [`click-with-no-keyboard-path`](/rules/click-with-no-keyboard-path).
+something to do. A `<button>` is all three of those things with nothing written on it.
+
+See [`click-with-no-keyboard-path`](/rules/click-with-no-keyboard-path), and
+[accessibility](/accessibility) for the other thirty-four checks of this kind.
 
 ### My link does not navigate, or cannot be opened in a new tab
 
@@ -199,7 +202,8 @@ See [`RMD009`](/reference/diagnostics/rmd009) and [`RMD001`](/reference/diagnost
 
 It is handed a value built during the render. Every prop is a signal and a signal compares by
 reference, so an array or an object rebuilt each time is a *changed* prop — which recomputes every
-`@compute` reading it and fires every `@watchProp` on it. See [props](/concepts/props),
+`@compute` reading it and fires every `@watchProp` on it. See [performance](/performance),
+[props](/concepts/props),
 [`RMD022`](/reference/diagnostics/rmd022) and
 [`fresh-object-in-props`](/rules/fresh-object-in-props).
 

@@ -54,7 +54,7 @@ The shell is your built `index.html` with markers where the render goes:
 </html>
 ```
 
-## `installDom(url)`
+## `installDom(url)` — and the `DomHandle` it returns
 
 Installs a fresh DOM on `globalThis` for one render, seeded at the request URL — which is also how
 [the router](/routing/server) learns which page it is on. It answers a handle with `close()`, and
@@ -92,7 +92,7 @@ linkedom's window falls through to `globalThis` for anything it does not define,
 including to `hasOwnProperty`. A "use the DOM's if it has one" rule therefore reads as true from the
 second request onward and pins every later render to the first request's URL.
 
-## `fillDocument({ template, html, title, head, portals })`
+## `fillDocument(document)` — the `Document` it takes
 
 Puts the render into the shell and answers the finished page.
 

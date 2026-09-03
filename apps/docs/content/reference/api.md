@@ -30,13 +30,13 @@ Everything every package exports. Each entry links to the page that explains it.
 | `list<T>(each, render)` | Renders a list, minting identity from the items. `render` is a function taking one item. [Lists](/lists) |
 | [`@StableProps(...names)`](/reference/decorators/StableProps) | Declares which props are values, so a caller writes the plain literal. On a hook and on a component alike. [Writing a hook](/hooks/writing#when-a-value-in-the-bag-should-keep-its-identity) · [A prop that is a value](/concepts/props#a-prop-that-is-a-value) |
 | `Head` | Per-page `<title>` and `<meta>`. [Head and metadata](/ssr/head) |
-| `Timeout` / `Interval` | A scheduled call the app starts and the framework clears: `this.use(Timeout, () => ({ run }))`, then `start(ms)` and `stop()`. One instance is one timer; `start` returns whether it started, and teardown clears it. [Timers](/concepts/timers#a-timer-that-starts-when-you-say) |
+| `Timeout` / `Interval` | A scheduled call the app starts and the framework clears: `this.use(Timeout, () => ({ run }))`, then `start(ms)` and `stop()`. One instance is one timer; `start` returns whether it started, and teardown clears it. [Timers](/concepts/timers#a-timer-that-starts-when-you-say-timeout-and-interval) |
 | `Listener` | A DOM listener the app arms and the framework removes: `this.use(Listener, () => ({ on: "document", type: "keydown", run }))`, then `listen()` and `stop()`. The target is named — `"window"`, `"document"` or a function — so a server render has nothing to evaluate. One instance is one listener, and teardown removes it. |
 | `EventOn<T, E>` | The type to annotate a handler with when it reads a field off its OWN element: `onChange(e: EventOn<HTMLInputElement>)`, passed as `onchange={this.onChange}`. `currentTarget` is the element the listener is attached to; `target` is deliberately left as `EventTarget \| null`, because for anything that bubbles it is a descendant. |
 | `Portal` | Renders a subtree into a DOM target elsewhere — e.g. `document.head`. [Portal](/composition/portal) |
 | `portalTarget(name)` | Names a portal target outside the app's root, so it exists on the server too. `PORTAL_TARGET_ATTR` marks the container a shell emits. [Portal](/composition/portal) |
 | `Select` | A `<select>`, whose value is which of its children is chosen. The plain tag is refused: `selected` on an option means whatever the render order made it mean. `<option>` is untouched. [Fields](/forms/fields#a-choice-lives-on-select) |
-| `TextArea` | A `<textarea>`, whose value is the element's TEXT rather than an attribute. The plain tag is refused: nothing written as an attribute can carry the value, so a served page showed an empty field. [Fields](/forms/fields#a-textarea-keeps-its-value-inside-the-element) |
+| `TextArea` | A `<textarea>`, whose value is the element's TEXT rather than an attribute. The plain tag is refused: nothing written as an attribute can carry the value, so a served page showed an empty field. [Fields](/forms/fields#textarea-a-textarea-keeps-its-value-inside-the-element) |
 | `AsyncLoad` | Loads a module the first time it is rendered. [Lazy loading](/composition/lazy) |
 | `ErrorBoundary` | Catches what a subtree throws while rendering. [Error boundaries](/composition/error-boundaries) |
 | `createContext(default, options?)` | Returns `[Provider, Consumer]`. Options: `label` names the pair in devtools; `optional: true` says the default is a real answer, so a consumer with no provider above it is not reported. [Context](/composition/context) |
@@ -155,7 +155,7 @@ All 32, grouped by what they belong to. The server and per-request ones are expl
 `HookMeta` is the third argument to `this.use()` — what a `use()` says **about** a hook rather than
 what it passes into one. One field today, `label`, which devtools adds to the hook's class name:
 `Form (Sign Up)`. Development-only, and the hook never sees it. See
-[naming a hook](/hooks#naming-one-for-devtools).
+[naming a hook](/hooks#naming-one-for-devtools-hookmeta).
 
 ---
 
@@ -262,8 +262,8 @@ reaches this module. [The bguard submodule](/forms/bguard)
 
 | | |
 |---|---|
-| `htmlConstraints(schema)` | Returns a lookup by field path giving `required` · `minlength` · `maxlength` · `pattern` · `min` · `max` · `type`, derived from the schema. Answers are cached, so the same path is the same object every render. [HTML attributes](/forms/bguard#html-attributes-from-the-schema) |
-| `unknownRefPaths(schema, values)` | Every `ctx.ref` path that names no field — the typo that otherwise passes silently for ever. Belongs in a test. [Cross-field rules](/forms/bguard#cross-field-rules-that-point-at-nothing) |
+| `htmlConstraints(schema)` | Returns a lookup by field path giving `required` · `minlength` · `maxlength` · `pattern` · `min` · `max` · `type`, derived from the schema. Answers are cached, so the same path is the same object every render. [HTML attributes](/forms/bguard#html-attributes-from-the-schema-htmlconstraints) |
+| `unknownRefPaths(schema, values)` | Every `ctx.ref` path that names no field — the typo that otherwise passes silently for ever. Belongs in a test. [Cross-field rules](/forms/bguard#cross-field-rules-that-point-at-nothing-unknownrefpaths) |
 
 Types: `HtmlConstraints` · `UnknownRef`
 
@@ -305,6 +305,25 @@ Immutable updates by path. Zero dependencies, usable on its own. [Immutable upda
 | `.values()` | Every focused value. |
 
 Types: `Focus` · `FocusCommon` · `FocusArray` · `ElementOf` · `KeepSymbols`
+
+---
+
+## `@ramonda/server`
+
+The plumbing a server render needs, so an app does not write its own. Knows nothing about routes —
+those are `@ramonda/router/server`. [Server rendering](/ssr/server)
+
+| | |
+|---|---|
+| `installDom(url)` | Installs a DOM and the globals a render reads, and hands back a `DomHandle`. [The whole loop](/ssr/server#installdom-url-and-the-domhandle-it-returns) |
+| `installWindow(dom, options?)` | The globals only, for a DOM you brought yourself — a jsdom, or one document reused across a prerender. `navigation: "dom"` takes that DOM's own `location` and `history` instead of building them from `url`. |
+| `DomHandle` | What `installDom` hands back: a `close()` that shuts the render down without the caller knowing what built it. |
+| `fillDocument(document)` | Puts the rendered html, title, head and portal targets into the shell. [Filling the shell](/ssr/server#filldocument-document-the-document-it-takes) |
+| `Document` | The shape `fillDocument` takes — the shell with `<!--ssr-->` where the app goes, and optionally `<!--head-->` and `<!--portals-->`. |
+| `escapeHtml(value)` | Escapes a value for markup. What keeps an app's own title out of the parser. |
+| `PORTAL_TARGET_ATTR` | The attribute a shell puts on a portal container, so a target exists on the server too. [Portal](/composition/portal) |
+| `parseCookies(header)` | A `Cookie` header as a `Map`. [Requests](/ssr/server#parsecookies-header-and-mimefor-path) |
+| `mimeFor(path)` | The content type for a static file's path. |
 
 ---
 
@@ -406,6 +425,33 @@ internals somebody's dependency and every change to a rule's shape a breaking ch
 
 ---
 
+## `@ramonda/devtools`
+
+The development panel, and the surface a package uses to add a tab to it. Importing this package
+registers `<ramonda-devtools>` — it has that effect on purpose, so a build that includes it has the
+panel. [Devtools](/devtools)
+
+| | |
+|---|---|
+| `panelRegistry()` | Where live panels are found. `register(plugin)` adds one and returns the function that removes it; registered from an instance's lifecycle, so the list is exactly the live sources. [Writing a panel](/devtools/panels) |
+| `installDiagnostics(collector)` | Sends every diagnostic record to a collector of your own, and returns the function that stops it. [Capturing diagnostics](/devtools#collecting-them-yourself) |
+
+**Writing a panel** — the shapes a plugin is made of. [Panels](/devtools/panels)
+
+| | |
+|---|---|
+| `PanelPlugin` | One tab: a `version`, an `id`, a `label`, a `snapshot()` read only while the tab is open, and an optional `run(rowId, actionId)`. |
+| `PanelRegistry` | What `panelRegistry()` returns — `register`, `list` and `subscribe`. |
+| `PanelSnapshot` | What one poll produces: `groups`, and an `empty` sentence for when there are none. |
+| `RowGroup` | An optional heading above a run of rows. |
+| `PanelRow` | One row — `id`, `title`, and optionally a `status`, `fields`, an `error`, a `value` and `actions`. |
+| `RowStatus` | What a row's dot means: `"ok"`, `"busy"`, `"error"` or `"idle"`. The panel owns the colours. |
+| `RowField` | One line of a row's metadata — `text`, `badge`, or `live`, whose text the panel rewrites in place so a clock does not destroy hover and selection. |
+| `RowValue` | A value the panel renders with its own tree and edits with its own editor, plus a `preview` for when the value was too large to copy. |
+| `RowAction` | A button on a row — `id`, `label`, and a `title` shown on hover. |
+
+---
+
 ## `@ramonda/testing-library`
 
 | | |
@@ -415,6 +461,11 @@ internals somebody's dependency and every change to a rule's shape a breaking ch
 | `act(callback?)` | Commits everything the callback caused. [act](/testing/act) |
 | `fireEvent` | The DOM library's, wrapped so the render is committed. |
 | `cleanup()` | Unmounts everything. Registered automatically. |
+| `RenderResult` | What `render` hands back: the container, the bound queries, and `unmount`. |
+| `RenderOptions` | `render`'s second argument — where to mount, and a `wrapper` to put around the tree. |
+| `WrapperComponent` | The shape of that wrapper: a component taking `children`, for a provider a test needs above the subject. |
+| `RenderHookResult` | What `renderHook` hands back: the hook's `result`, and `unmount`. |
+| `RenderHookProps` | `renderHook`'s options — the same `wrapper`, and the props the hook is mounted with. |
 
 Everything from `@testing-library/dom` is re-exported — `screen`, `waitFor`, `within`,
 `prettyDOM`, every query.

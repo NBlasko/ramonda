@@ -283,6 +283,27 @@ Mounting is enough to be checked, but a component that never mounts is never che
 about a branch nobody has opened, run [`ramonda-check-context`](/reference/check) — it proves the
 same thing from the source, before the app starts, and it honours `optional` the same way.
 
+## `createContext`'s second argument — `ContextOptions`
+
+Four options, and each is explained where it matters above. Together, so the shape can be read in
+one place:
+
+| | |
+|---|---|
+| `label` | The name the devtools show instead of `Provider` / `Consumer`. Cosmetic, and stripped from a production build. |
+| `optional` | Whether the default is a real answer rather than a stand-in. Default `false`, so a consumer with no provider above it is [reported](#no-provider-above-it). Set it where "nobody provided this" is a legitimate arrangement. |
+| `single` | Whether a second one on the same path is a fault rather than [an override](#when-two-of-them-conflict). Default `false`: nesting is ordinary, and the nearest provider wins. |
+| `stableProps` | Names the keys that are **values** rather than references, so a consumer of one is not woken by a literal that was merely [rebuilt](#an-object-as-a-value-and-the-callback-that-builds-it). |
+
+**Three of them change what is REPORTED; one changes what is read.** `label`, `optional` and
+`single` are declarations for the development checks and are stripped from production.
+`stableProps` is behaviour — it changes the identity a consumer is handed, in every build.
+
+The decision belongs here rather than at the consumer for all four: the context's author is the one
+who knows what the default means and which keys are values. `stableProps` also has to be here
+because this end knows the context's keys — a name that is not one of the default value's is
+refused, which a declaration on a class could not see.
+
 ## When not to use it
 
 Context is for values a whole subtree needs and nothing in between should have to

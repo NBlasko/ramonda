@@ -354,6 +354,43 @@ matters for something that goes first in a build.
 
 A project that does not compile is still `tsc`'s news to break. Run both.
 
+### `analyzeProgram(program, notes?)`
+
+`analyzeProject` reads a tsconfig and builds a `ts.Program` from it. Hand over one you already have
+instead, because **the program is the cost of a run** — the rules themselves are close to free — so
+a tool holding several would otherwise pay for each of them twice.
+
+```ts
+import ts from "typescript";
+import { analyzeProgram } from "@ramonda/check";
+
+const program = ts.createProgram(["src/index.ts"], { noEmit: true });
+const { findings, notes } = analyzeProgram(program);
+```
+
+It also keeps the checker looking at exactly what your type-check looked at, which a re-derived
+tsconfig cannot promise. `notes` is what the run wants to say about the program it was given — a
+graph fragment it refused, a package whose declarations it could not read.
+
+### `ruleCatalogue()`
+
+Every rule, as the data its reports are built from.
+
+```ts
+import { ruleCatalogue } from "@ramonda/check";
+
+for (const rule of ruleCatalogue()) {
+  console.log(`${rule.id} (${rule.severity}) — reported when ${rule.reportedWhen}`);
+}
+```
+
+`id` is also the key in `findings`. `advice` is the paragraph the command prints under a report, and
+`alsoReportedAs` names the runtime codes that report the same fault. [Every rule's page](/rules) is
+generated from exactly this, which is what keeps the page and the terminal saying one thing.
+
+The order is the order reports are printed in rather than alphabetical: a table that sorted them
+would disagree with the command.
+
 ## What loads when, and what a change moved
 
 ## Seeing the graph
@@ -421,7 +458,76 @@ fifty-six components that now arrive with the first page.
 
 Both flags describe. Neither fails a build.
 
+### The types — `AnalyzeResult` and `ComponentGraph`
+
+| | |
+|---|---|
+| `AnalyzeResult` | everything a run answers: `issues`, `findings`, `counts`, `graph` and `notes` |
+| `Findings` | the by-rule map, derived from the rule registry — so `findings["arrow-fields"]` is typed as that rule's own issue rather than as a union |
+| `RuleSummary` | one rule as `ruleCatalogue()` describes it |
+| `ComponentGraph` | the graph itself, carrying a `schema` and a `scope` |
+| `GraphNode` | one declaration. Its `id` is `<file>#<Name>` |
+| `GraphEdge` | one relation: a `kind` (renders, provides, consumes, uses, calls, unresolved) and a `via` (tag, children, route, lazy, …) |
+| `Split`, `SplitPoint` | what `splitOf` answers |
+| `GraphDiff` | what `diffGraphs` answers |
+
+**A node's id carries its file, and deliberately not its line.** A name alone identifies nothing —
+this documentation app declares `class Page` seventy-five times — and leaving the line out means
+moving a class down a file changes no identity, so a diff between two commits says what actually
+moved rather than what merely shifted.
+
+**`scope` is why a library's graph answers fewer questions.** An app has roots and can be judged
+whole; a library has none, so "unreachable" and "no provider above this" cannot be decided without
+knowing what mounts it, and its graph is a fragment.
+
+## Reading the graph from a script
+
+`--split` and `--diff` are the command's two readings of the graph, and both are exported. A script
+can ask the same questions — a size budget that fails a build, a note on a pull request.
+
+### `splitOf(graph)` and `filesOf(ids)`
+
+`splitOf` answers what loads when. `initial` is what a root reaches without crossing a `lazy`
+edge, `points` is one entry per split point, and `shared` is what more than one of them pulls in.
+Every id is `file#name`, so `filesOf(ids)` counts the files a set of them lives in.
+
+```ts
+import { analyzeProject, filesOf, splitOf } from "@ramonda/check";
+
+const { graph } = analyzeProject("tsconfig.json");
+const split = splitOf(graph);
+
+console.log(`${split.initial.length} declaration(s) in ${filesOf(split.initial)} file(s)`);
+```
+
+### `diffGraphs(before, after)` and `refuseToDiff(before, after)`
+
+`diffGraphs` answers what moved: the nodes and edges each side has and the other does not, and
+`intoInitial` — what is in the first payload now and was not before, which is the number the whole
+comparison exists for.
+
+**Ask `refuseToDiff` first.** Two graphs of different things subtract to nonsense, and a diff nobody
+can trust is worse than no diff: it returns a sentence when the two disagree about schema, scope or
+package, and `undefined` when they can be compared.
+
+```ts
+import { readFileSync } from "node:fs";
+import { analyzeProject, diffGraphs, refuseToDiff, type ComponentGraph } from "@ramonda/check";
+
+const before = JSON.parse(readFileSync(".ramonda/main.json", "utf8")) as ComponentGraph;
+const { graph: after } = analyzeProject("tsconfig.json");
+
+const why = refuseToDiff(before, after);
+if (why !== undefined) throw new Error(`these graphs cannot be compared: ${why}`);
+
+console.log(`${diffGraphs(before, after).intoInitial.length} declaration(s) entered the first payload`);
+```
+
 ## Markup nothing can announce
+
+**[Accessibility](/accessibility)** is the page for this subject rather than this section — all
+thirty-five rules grouped, what the framework does without being asked, and what none of it can
+answer. What follows is how a few of them work, for a reader already here.
 
 Four of the rules above read your JSX one element at a time and are all about the same thing: an
 element assistive technology cannot name. `unnamed-image` and `unnamed-frame` are the two with

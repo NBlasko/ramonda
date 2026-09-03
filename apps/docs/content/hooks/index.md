@@ -127,7 +127,7 @@ export class UserProfile extends Hook<{ id: string }> {
 The whole chain shares one owner and updates together — when the owner re-renders,
 each hook's props are re-evaluated in turn, down through the nested ones.
 
-## Naming one for devtools
+## Naming one for devtools — `HookMeta`
 
 Two of the same hook in one component are two nodes with one name, because a class is shared by
 every instance — `this.constructor.name` is `Resource` for both of the ones above. A **third

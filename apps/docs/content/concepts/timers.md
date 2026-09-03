@@ -30,7 +30,7 @@ keep state to plain, serialisable values and format for display.)
 
 `@interval` runs the method every `ms` for as long as the component is on the page.
 `@timeout` runs it once, `ms` after the component mounts. For a timer that starts on a
-click instead, see [`Timeout` and `Interval`](#a-timer-that-starts-when-you-say) below. **Both stop automatically
+click instead, see [`Timeout` and `Interval`](#a-timer-that-starts-when-you-say-timeout-and-interval) below. **Both stop automatically
 when the component is removed** — there is nothing to clean up.
 
 ```demo:IntervalClock
@@ -73,7 +73,7 @@ empty until the first tick, where the state version renders its initial value im
 So: `@state` unless the tick is expensive, and a ref when it is. Reaching for the ref first is the
 optimisation nobody asked for.
 
-## A timer that starts when you say
+## A timer that starts when you say — `Timeout` and `Interval`
 
 `@interval` and `@timeout` start at mount. When the clock starts on a click instead — a
 delay before a row is removed, a deadline inside a promise, a retry after a failure —

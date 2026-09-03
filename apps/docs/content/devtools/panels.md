@@ -22,6 +22,13 @@ if (import.meta.env.DEV) {
 
 A tab lives in its own entry, and importing that entry registers it. Nothing is exported to call.
 
+The entry registers itself through `panelRegistry()`, which is the one value this package exports
+for a panel author: `register(plugin)` adds a tab and hands back the function that removes exactly
+that one, `list()` gives every live panel, and `subscribe(listener)` fires when the list changes.
+**Register from an instance's lifecycle rather than at module import** — a provider mounting adds one
+and unmounting removes it, so the list is exactly the live sources rather than every module that
+happened to load.
+
 This is why: a package that imported the panel would put its whole tab description into the bundle
 of every application using it, whether or not anyone opens the devtools. A separate entry is only in
 the bundle of an app that asked for one. `create-ramonda` writes these lines for the add-ons you
@@ -75,7 +82,7 @@ your template cannot break the thing somebody opened *because* something was alr
 It also keeps the contract small enough to version honestly — `version: 1`, and a panel that meets a
 version it does not know skips the tab rather than half-drawing it.
 
-## A row is a card
+## A row is a card — `PanelRow`
 
 | Part | What it is for |
 | --- | --- |
@@ -91,7 +98,7 @@ Rows come in groups, and a group's `label` is a heading above its rows — worth
 source has more than one of something, like a page with two query clients. One group with no label
 is the ordinary case.
 
-### Fields
+### Fields — `RowField`
 
 ```ts
 { kind: "text",  text: "3 observers" }
@@ -106,7 +113,7 @@ rebuilds a list only when its *shape* changes, and a live field is excluded from
 is written straight into its own node. Without it, a row saying "updated 12s ago" would rebuild the
 whole list twice a second, which resets hover, text selection and any editor the reader has open.
 
-### Values
+### Values — `RowValue`
 
 ```ts
 value: {
@@ -129,6 +136,25 @@ payload on every poll, is the most expensive thing the panel could do.
 writing back would be dishonest: `@ramonda/form` refuses because a form's values are the schema's
 input side and JSON cannot round-trip a `Date`; `@ramonda/query` refuses for a value that arrived
 bounded, because sending it back would put the truncation markers into the cache.
+
+## The types a plugin is made of — `PanelPlugin`
+
+| | |
+|---|---|
+| `PanelPlugin` | one tab: `version`, `id`, `label`, a `snapshot()`, and an optional `run(rowId, actionId)` |
+| `PanelRegistry` | what `panelRegistry()` returns — `register`, `list` and `subscribe` |
+| `PanelSnapshot` | what one poll produces: `groups`, and an `empty` sentence for when there are none |
+| `RowGroup` | an optional `label` above a run of `rows` |
+| `PanelRow` | one row, [as above](#a-row-is-a-card-panelrow) |
+| `RowStatus` | `"ok"`, `"busy"`, `"error"` or `"idle"` |
+| `RowField` | one line of metadata — `text`, `live` or `badge` |
+| `RowValue` | a value the panel renders with its own tree, plus a `preview` for when it was too large to copy |
+| `RowAction` | a button — `id`, `label`, and a `title` shown on hover |
+
+**`snapshot()` is PULL, and that is the whole cost model.** It is read while the tab is open and
+never otherwise, so a cache that changes on every fetch, observer and sweep costs a development
+build nothing until somebody looks. Which also means it should read state rather than compute over
+it.
 
 ## Announce from your package; listen from the entry
 

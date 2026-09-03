@@ -32,7 +32,7 @@ const schema = z.object({
 
 Whatever you pass, `defaultValues` and the `values` handed to `onSubmit` are typed from it.
 
-## Input and output are not the same type
+## Input and output are not the same type — `InferIn` and `InferOut`
 
 A schema often *changes* what goes through it: a string becomes a number, an absent field
 becomes a default, a date string becomes a `Date`. So the form distinguishes the two sides.
@@ -43,6 +43,10 @@ becomes a default, a date string becomes a `Date`. So the form distinguishes the
 
 Which is why `onSubmit` never has to re-check anything or narrow a type. If it ran, the values
 are valid.
+
+`InferIn<S>` and `InferOut<S>` are those two sides, read off the schema. Name them when a function
+outside the component has to take one — `function save(values: InferOut<typeof schema>)` — so the
+signature follows the schema rather than repeating it.
 
 ## When a message appears
 
@@ -280,6 +284,24 @@ Three things follow from how it is scoped:
   the form looking as inert as before.
 - **A programmatic `form.submit()` moves nothing.** No event, no element — and the right boundary
   anyway: your code called it, so your code decides where the reader should be looking.
+
+## The schema contract — `StandardSchemaV1`
+
+The package validates through **Standard Schema v1** and depends on no validator. The interface is
+vendored rather than imported, which is what the spec intends: it is a contract between libraries
+rather than a runtime package.
+
+| | |
+|---|---|
+| `StandardSchemaV1<In, Out>` | the contract a schema implements. bguard, zod, valibot and arktype all do, so none of them needs an adapter |
+| `StandardResult<Out>` | what a validation returns: a `value`, or `issues` |
+| `StandardIssue` | one problem — a `message`, and a `path` of keys, with numbers for array positions. No path means the root |
+| `FormProps<S>` | the `Form` hook's options: `schema`, `defaultValues`, `onSubmit`, and `validateOn` |
+| `ValidateOn` | `"change"`, `"blur"` or `"submit"` — [when a message appears](#when-a-message-appears) |
+
+**A schema may validate synchronously or asynchronously, decided per call.** The contract allows
+either, which is why a form built on a synchronous schema never awaits anything — see
+[async schemas](#async-schemas).
 
 ## Next
 
