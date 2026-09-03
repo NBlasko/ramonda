@@ -458,7 +458,7 @@ fifty-six components that now arrive with the first page.
 
 Both flags describe. Neither fails a build.
 
-### The types
+### The types — `AnalyzeResult` and `ComponentGraph`
 
 | | |
 |---|---|
