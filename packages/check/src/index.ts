@@ -18,6 +18,7 @@ export type {
   ClickWithNoKeyboardPathIssue,
   ClientOnlyRequestReadIssue,
   ClockReadWhileRenderingIssue,
+  RefBuiltWhereItCannotBeKeptIssue,
   CachedReadOfAPlainFieldIssue,
   ContextConsumedAboveItsProviderIssue,
   ControlWithNoLabelIssue,

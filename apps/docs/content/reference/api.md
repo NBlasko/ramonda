@@ -388,14 +388,14 @@ Every rule publishes its own issue shape, named for the rule: `AccessKeyIssue`,
 `NamedOnlyByAPlaceholderIssue`, `ObjectAmongTheChildrenIssue`, `OneProviderPerComponentIssue`,
 `OptionThatCannotChooseIssue`, `ParentWithAForeignChildIssue`, `PersistOfALossyValueIssue`,
 `PositiveTabIndexIssue`, `PresentationRoleOnFocusableIssue`, `PropsWrittenByTheReceiverIssue`,
-`ReferenceToAnIdThatIsNotThereIssue`, `RegionWithNoNameIssue`, `RoleMissingRequiredAriaIssue`,
-`RoleTakesNoNameIssue`, `RoleThatFightsTheTagIssue`, `RowReadsAPlainFieldIssue`,
-`RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`, `StateMutatedInPlaceIssue`,
-`StateWrittenWhileRenderingIssue`, `TableWithNoHeadersIssue`, `TagNeedsItsParentIssue`,
-`UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`, `UnkeyableMemoizedArgumentIssue`,
-`UnknownAriaAttributeIssue`, `UnknownRoleIssue`, `UnnamedFrameIssue`, `UnnamedImageIssue`,
-`UnserializableStateIssue`, `UnsplittableImportIssue`, `UnwatchedFieldIssue`,
-`WatchOfAPropThatIsNotThereIssue`.
+`RefBuiltWhereItCannotBeKeptIssue`, `ReferenceToAnIdThatIsNotThereIssue`, `RegionWithNoNameIssue`,
+`RoleMissingRequiredAriaIssue`, `RoleTakesNoNameIssue`, `RoleThatFightsTheTagIssue`,
+`RowReadsAPlainFieldIssue`, `RowWithoutAKeyIssue`, `ServerEnvInSharedCodeIssue`,
+`StateMutatedInPlaceIssue`, `StateWrittenWhileRenderingIssue`, `TableWithNoHeadersIssue`,
+`TagNeedsItsParentIssue`, `UnexposedEnvReadIssue`, `UnguardedAsyncLifecycleIssue`,
+`UnkeyableMemoizedArgumentIssue`, `UnknownAriaAttributeIssue`, `UnknownRoleIssue`,
+`UnnamedFrameIssue`, `UnnamedImageIssue`, `UnserializableStateIssue`, `UnsplittableImportIssue`,
+`UnwatchedFieldIssue`, `WatchOfAPropThatIsNotThereIssue`.
 
 [issues:end]: #
 

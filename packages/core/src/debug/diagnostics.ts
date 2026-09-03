@@ -84,7 +84,8 @@ export type DiagnosticCode =
   | "RMD057"
   | "RMD058"
   | "RMD059"
-  | "RMD060";
+  | "RMD060"
+  | "RMD061";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -418,6 +419,13 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "An async lifecycle rejected",
     fix: "An `async` `@created`, `@mounted` or `@destroyed` that rejects is NOT caught by an error boundary, and that is deliberate: the rejection arrives at an arbitrary later moment, when the page is already interactive and there is no render left to fail — replacing it with a fallback then is the worse outcome. So the page keeps running and this says what happened, which is the part that used to be missing. Handle it where it happens: wrap the body in `try`/`catch` and put the failure in `@state` — an `error` field the render can show — which is also the only way to tell the reader anything. If the work must take the page down, re-throw from `render()` rather than from the lifecycle, because that IS a render and a boundary can see it. `ramonda-check` reports the same method before it ships, as `unguarded-async-lifecycle`.",
+  },
+  RMD061: {
+    // A warning: the page is not wrong, it costs a render it did not need and loses a ref the author
+    // meant to keep. An error in a later version, the standing rule for a new code.
+    severity: "warning",
+    title: "A ref was built while a value was being derived",
+    fix: "`createRef()` returns a NEW object every call, and a ref is an identity — so one built inside a render, a `@compute`, a `@memoized` member or a hook's props callback is a different ref every time. Two things follow. The child is handed a changed `ref` on every parent render, which IS a props change (`ref` is compared like any other prop), so it re-renders for nothing. And the ref the author meant to read is replaced before they can read it — nothing kept a reference to it. Put it on a FIELD: `private field = createRef<HTMLInputElement>()`, and write `ref={this.field}` in the render. A callback belongs there too — `createRef<T>((node) => this.arrived(node))` on a field is how `Select` and `TextArea` learn their element has appeared.",
   },
   RMD060: {
     // error: nothing renders. The component's output is a promise, so the diff is handed an object
