@@ -301,6 +301,9 @@ started behind it; nothing cached renders inline and waits, because there is not
 Splitting a site this way lets you host the static majority anywhere and run a server only for
 the routes that truly need the request.
 
+[Deploying](/deploying) is the rest of it — the build's four steps, and the two things that are
+decided while it runs rather than when the server starts.
+
 ## Next
 
 - [Reading the request](/ssr/request) — `requestContext`, and the guard up close.

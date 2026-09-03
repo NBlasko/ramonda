@@ -276,3 +276,5 @@ was made, which is what makes it worth running whichever bundler you use.
 
 - [Installation](/guide/installation) — the settings in context, and the tsconfig that has to agree.
 - [Checking your app](/reference/check) — the source check and the bundle check.
+- [Deploying](/deploying) — where these settings matter most, and why a build ends by proving its
+  own output parses.
