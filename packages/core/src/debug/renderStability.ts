@@ -344,7 +344,11 @@ function compareNode(a: unknown, b: unknown, path: string, depth: number, walk: 
 
   if (bothVNodes) {
     const tag =
-      typeof aNode.name === "string" ? aNode.name.toLowerCase() : ((aNode.name as { name?: string })?.name ?? "?");
+      // `||` so a nameless component does not leave a hole in the path — `div >  > button`. NOT
+      // pinned: an RMD020 whose comparison walks THROUGH a component vnode at this position is a
+      // shape I could not construct, and a test that passes with the operator changed back proves
+      // nothing, so none was kept. See `helpers/utils.ts`.
+      typeof aNode.name === "string" ? aNode.name.toLowerCase() : (aNode.name as { name?: string })?.name || "?";
     const here = path ? `${path} > ${tag}` : tag;
 
     if (aNode.attributes && bNode.attributes) {

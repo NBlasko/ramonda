@@ -4,6 +4,7 @@ import { Component } from "../../base/Component";
 import { hydrateRoot } from "../../hydration/hydrate";
 import { renderToString } from "../../hydration/ssr";
 import { resetDiagnostics } from "../../debug/diagnostics";
+import { unnamed } from "../../test/setup";
 
 /**
  * Collects diagnostics off the dev-log channel instead of scraping console.
@@ -139,6 +140,39 @@ describe("hydration mismatch (RMD007)", () => {
     expect(captured.codes).toEqual(["RMD007"]);
     expect(captured.messages[0]).toContain('rendered the text "client"');
     expect(captured.messages[0]).toContain('the server sent "server"');
+  });
+
+  /**
+   * The subject of the message when the component has no class name.
+   *
+   * `root` is this file's word for markup no component produced. A class expression assigned to
+   * nothing has a `name` of `""`, and `??` gave it `root` — so the report blamed the root for a
+   * component's markup, and every nameless component shared one dedup key. The full family of this
+   * fault, and why only the decorator-free paths can reach it, is in
+   * `__tests__/AComponentWithNoName.test.tsx`.
+   */
+  test("a nameless component is not reported as the root", async () => {
+    const Anon = unnamed(
+      () =>
+        class extends Component {
+          render() {
+            return (
+              <div>
+                <span>{SIDE}</span>
+              </div>
+            );
+          }
+        },
+    );
+    expect(Anon.name).toBe("");
+
+    const container = await serverHtmlInto((<Anon />) as never);
+    SIDE = "client";
+    hydrateRoot((<Anon />) as never, container);
+
+    expect(captured.codes).toEqual(["RMD007"]);
+    expect(captured.messages[0]).toContain("<Unknown />");
+    expect(captured.messages[0]).not.toContain("<root />");
   });
 
   test("a mismatch inside a fused run is pinpointed and still repaired", async () => {

@@ -61,6 +61,7 @@
   },
   "devDependencies": {
     "@ramonda/check": "workspace:^",
+    "@ramonda/core": "workspace:^",
     "@ramonda/testing-library": "workspace:^",
     "@types/node": "^26.4.1",
     "bguard": "^0.9.0",

@@ -14,11 +14,45 @@ export const isArray = Array.isArray;
  * `""` for both absences it has to serve, an unnamed class and a production build with no
  * `holder` at all.
  *
- * Both halves of the fallback are real: a `Object.create(null)` instance has no
- * `constructor`, and a class expression assigned to nothing has a `constructor`
- * whose `name` is the empty string — which is why the `??` cannot become a `||`
- * without changing "" into "Unknown".
+ * **Both absences answer the same word here, and that is the correction.** A
+ * `Object.create(null)` instance has no `constructor`; a class expression assigned to nothing has
+ * one whose `name` is the empty string. This was `?? "Unknown"`, which catches the first and not
+ * the second — so `""` reached every caller that writes `<${name} />` and the message read
+ * `< />`. Measured on `RMD060`, the one in this family a nameless class can actually reach:
+ *
+ *     [RMD060] render() is async
+ *     < />'s `render()` is async — it returns a promise, not markup.
+ *
+ * A reader sees a subject that looks like a syntax error rather than a name. Nothing wants `""`:
+ * every caller either interpolates it or puts it in a dedup key, and an empty key groups two
+ * different nameless components together.
+ *
+ * **Why half the family cannot be reached the same way, which is worth knowing before probing it:**
+ * a class expression with a DECORATED member is named by the transpiler. esbuild lowers the class
+ * into a temporary to apply the decorator, and the temporary's name — `_b` — becomes the class's.
+ * So `RMD059`, `RMD038` and `RMD047`, which all need a member decorator to fire at all, never see
+ * an empty name. Only the decorator-free paths do.
+ *
+ * ## Where the same `??` was corrected, and which of them a test holds
+ *
+ * The two absences take one word at some sites and two at others, and reading them as one is what
+ * went wrong in BOTH directions. `debug/renderPhase.ts`, `debug/hydrationMismatch.ts`,
+ * `debug/jsxRules.ts` and `debug/lintChildren.ts` each distinguish "no component at all" — `outside
+ * a render`, `root`, `A render`, `the root` — from a component, and `??` handed the nameless one the
+ * word for NO component: the report then says the markup belongs to nobody, about a component that
+ * is right there, and every nameless component shares that group's dedup key.
+ *
+ * Pinned by a test, each proven by putting the `??` back and watching the suite fail: this helper,
+ * `RMD060`'s subject, those four sites, `debug/inspector.ts`'s two panel labels,
+ * `vdom/CreateRamonda.ts`'s tag, `core/DiffAndMerge.ts`'s list label, and `hydration/serialize.ts`
+ * (whose fallback word was ungrammatical in the case `??` DID catch — `holds a object`).
+ *
+ * Changed for uniformity and NOT pinned, each saying so where it stands: `debug/claimMember.ts`
+ * (needs a member decorator, so the class is named), `core/DiffAndMerge.ts`'s element-diff throw
+ * (reaching it is a framework bug) and `debug/renderStability.ts`'s path label (a shape I could not
+ * construct — the test written for it passed with the operator changed back, so it was deleted
+ * rather than kept).
  */
 export function displayName(value: unknown): string {
-  return (value as { constructor?: { name?: string } } | null | undefined)?.constructor?.name ?? "Unknown";
+  return (value as { constructor?: { name?: string } } | null | undefined)?.constructor?.name || "Unknown";
 }

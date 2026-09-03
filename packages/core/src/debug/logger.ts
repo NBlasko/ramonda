@@ -60,15 +60,42 @@ export const ramondaLog = (type: LogType, message: string, data?: unknown) => {
       data || "",
     );
 
-    // 3. Emit the event, for a devtools panel that is already open.
-    window.dispatchEvent(new CustomEvent("ramonda:dev-log", { detail: logEntry }));
+    /**
+     * 3. Emit the event, for a devtools panel that is already open — where there is a `window`.
+     *
+     * A diagnostic can be raised with no DOM anywhere in sight. A decorator reports at class
+     * DEFINITION time, and a Node process that imports a component module — a route table, a
+     * codegen step, a script — evaluates those classes without rendering anything. Without this
+     * check the report is replaced by a `ReferenceError` about `window`, which says nothing about
+     * the fault it was trying to name. The console line above has already run and the vault has the
+     * entry, so a panel that connects later still gets it.
+     */
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("ramonda:dev-log", { detail: logEntry }));
+    }
   }
 };
 
-// Waits for the devtools panel to wake up. A panel opened after the logs were
-// written would otherwise start empty, missing everything that happened during
-// startup — which is where the interesting diagnostics tend to be.
-if (typeof __DEV__ !== "undefined" && __DEV__) {
+/**
+ * Waits for the devtools panel to wake up. A panel opened after the logs were written would
+ * otherwise start empty, missing everything that happened during startup — which is where the
+ * interesting diagnostics tend to be.
+ *
+ * **`typeof window` is load-bearing, and it was missing.** This runs at MODULE LOAD, and the
+ * development build is the `default` export condition — so `import "@ramonda/core"` in a Node
+ * process with no DOM threw `ReferenceError: window is not defined` before a single line of the
+ * caller ran. Measured against `dist/index.js`, not argued from the source: the build replaces
+ * `__DEV__` with `true`, so the block is `if (true)` there.
+ *
+ * Nobody noticed because our own SSR installs its DOM shim first (`@ramonda/server`'s `dom.ts`),
+ * so every path we exercise has a `window` by the time this loads. A script, a CLI, a test runner
+ * in the node environment, or an app that imports core before its shim does not.
+ *
+ * `debug/timerGuard.ts` guards the same thing for the same reason and always did, which is what
+ * pointed at this: its `typeof window === "undefined"` branch is unhit in our suites and is not
+ * dead — it is the one place that had it right.
+ */
+if (typeof __DEV__ !== "undefined" && __DEV__ && typeof window !== "undefined") {
   window.addEventListener("ramonda:devtools-ready", () => {
     // As soon as it says it is ready, hand over the whole vault.
     window.dispatchEvent(

@@ -44,9 +44,19 @@ function track(component: BaseComponent, timer: TrackedTimer): void {
   owners.set(timer.id, component);
 }
 
-function untrack(id: number): void {
+/**
+ * Forgets one timer, and answers for a missing id here rather than at each caller.
+ *
+ * `clearTimeout()` and `clearInterval()` take an optional argument, and both patches used to test
+ * for it before calling — three checks for one question. Measured: removing them changes nothing,
+ * because a lookup for `undefined` finds no owner and this returns on the next line. So the two
+ * were not guards, they were a duplicate of the line below, and they left a branch in the coverage
+ * report that no test could ever justify.
+ */
+function untrack(id: number | undefined): void {
+  if (id === undefined) return;
   const component = owners.get(id);
-  if (!component) return;
+  if (component === undefined) return;
   owners.delete(id);
   byComponent.get(component)?.delete(id);
 }
@@ -87,12 +97,12 @@ export function installTimerGuard(): void {
   } as typeof window.setTimeout;
 
   window.clearInterval = function (id?: number): void {
-    if (id != null) untrack(id);
+    untrack(id);
     nativeClearInterval(id);
   } as typeof window.clearInterval;
 
   window.clearTimeout = function (id?: number): void {
-    if (id != null) untrack(id);
+    untrack(id);
     nativeClearTimeout(id);
   } as typeof window.clearTimeout;
 }

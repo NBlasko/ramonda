@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { list } from "../base/list";
-import { getDOM } from "../test/setup";
+import { getDOM, unnamed } from "../test/setup";
 import { created, state, persist } from "../base/decorators";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
@@ -9,6 +9,37 @@ import { scanComponentTree } from "../debug/inspector";
 import { inspectTree, setInspectRoot } from "../debug/devtoolsBridge";
 
 describe("inspector: component + hook state", () => {
+  /**
+   * A row in the panel needs a label, and a nameless class is where it used to lose one.
+   *
+   * A class expression assigned to nothing has a `name` of `""`, and the label was read with `??`
+   * — which catches an absent name and not an empty one. So the tree came back with a row whose
+   * name was the empty string: a component the reader can see on the page and cannot pick out of
+   * the panel, and two of them indistinguishable from each other. The same for a hook.
+   *
+   * The whole family of this fault is in `__tests__/AComponentWithNoName.test.tsx`.
+   */
+  test("labels a nameless component and a nameless hook rather than leaving the row blank", async () => {
+    const Store = unnamed(() => class extends Hook {});
+    const Anon = unnamed(
+      () =>
+        class extends Component {
+          store = this.use(Store as never);
+          render() {
+            return <div>x</div>;
+          }
+        },
+    );
+    expect(Anon.name).toBe("");
+    expect(Store.name).toBe("");
+
+    const app = await getDOM((<Anon />) as never);
+    const tree = scanComponentTree(app.container);
+
+    expect(tree[0].name).toBe("Unknown");
+    expect(tree[0].hooks[0].name).toBe("Hook");
+  });
+
   test("reads @state and @persist off a component", async () => {
     class Widget extends Component {
       @state count = 0;

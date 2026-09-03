@@ -69,6 +69,26 @@ export function instanceOf<T>(node: Node | null | undefined): T {
 }
 
 /**
+ * A class with no name, built through a factory so `name` is genuinely `""`.
+ *
+ * An inline `const X = class {}` INFERS a name from the variable, so the case has to be built
+ * behind a call. Two more things a caller would otherwise rediscover:
+ *
+ * - the constraint is a CLASS rather than `typeof Component` or `typeof Hook`. An anonymous
+ *   subclass's constructor takes its props concretely while those are generic in them, and the two
+ *   construct signatures are not assignable — `TS2419`. It is generic so the CONCRETE class comes
+ *   back, which is what JSX will accept as a tag.
+ * - a class expression with a DECORATED member is named by the transpiler: esbuild lowers it into a
+ *   temporary and the temporary's name (`_b`) becomes the class's. So this cannot build a nameless
+ *   class that uses `@state` or `@mounted`; only decorator-free ones stay empty.
+ *
+ * What it is for is in `__tests__/AComponentWithNoName.test.tsx`.
+ */
+export function unnamed<T extends abstract new (...args: never[]) => unknown>(make: () => T): T {
+  return make();
+}
+
+/**
  * The components of a given class name under `root`, outermost first.
  *
  * What `[data-ramonda="Child"]` used to find. That attribute was a DEV marker on the host element,

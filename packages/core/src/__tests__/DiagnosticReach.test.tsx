@@ -348,6 +348,42 @@ describe("the codes that no test reached", () => {
     dom.unmount();
   });
 
+  /**
+   * The same code when the value's class has no name.
+   *
+   * `lossyKind` read the constructor name with `??`, so a class expression assigned to nothing —
+   * `name` is `""` — produced `holds a , which survives JSON`. The word it falls back to is the one
+   * the function's own note uses, and it also repairs the case `??` did catch: `holds a object`.
+   * The family this belongs to is in `__tests__/AComponentWithNoName.test.tsx`.
+   */
+  test("RMD033 — a value whose class has no name is still named as something", async () => {
+    const Bag = ((): (new () => object) => class {})();
+    expect(Bag.name).toBe("");
+
+    class Holder extends Component {
+      @persist @state bag: object = {};
+      render() {
+        return (
+          <div>
+            <span>x</span>
+          </div>
+        );
+      }
+    }
+
+    const dom = await getDOM<Holder>(<Holder />);
+    dom.instance.bag = new Bag();
+    await dom.settle();
+
+    records = [];
+    serializeComponentToJSON(instanceOf<any>(dom.container.firstElementChild));
+
+    const bag = records.find((r) => r.code === "RMD033" && (r.data as { key?: string })?.key === "bag");
+    expect((bag?.data as { kind?: string })?.kind).toBe("class instance");
+    expect(bag?.message).toContain("holds a class instance");
+    dom.unmount();
+  });
+
   /** A `Date` inside a plain object is the commonest shape of all, and a shallow check misses it. */
   test("RMD033 — a Date nested inside a plain object is still found", async () => {
     class Nested extends Component {

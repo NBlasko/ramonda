@@ -82,7 +82,9 @@ export function diffAndMerge(
    * (`normalizeChildren`, `generateRenderOutput`), so reaching this is a framework bug.
    */
   throw new Error(
-    `[Ramonda] <${(vnode.name as { name?: string })?.name ?? "component"}> reached the element diff. ` +
+    // `||` for uniformity, not pinned: reaching this line at all is a framework bug, so there is no
+    // shape to write a test around. See `helpers/utils.ts`.
+    `[Ramonda] <${(vnode.name as { name?: string })?.name || "component"}> reached the element diff. ` +
       "A component is a region and is reconciled by reconcileEntries; the children array it arrived " +
       "in was not marked as holding one.",
   );
@@ -935,7 +937,11 @@ export function listHostFor(owner: MaybeComponent): ListHost {
     reBuild: () => {
       if (owner) addTaskToQueue(owner);
     },
-    name: owner?.constructor.name ?? "list",
+    // `||`, so a nameless owner reads as something rather than as a gap. `a list` rather than
+    // `list` because the one message that uses this as a SUBJECT interpolates it bare — RMD002's
+    // "Two rows rendered by …" — and every other use is a dedup key, where either reads the same.
+    // The two absences take the same word on purpose: what the rows were rendered by IS a list.
+    name: owner?.constructor.name || "a list",
   };
 }
 
