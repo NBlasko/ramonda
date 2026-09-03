@@ -273,6 +273,11 @@ describe("installing the purity guard", () => {
    */
   test("with no crypto, Math.random is still patched", async () => {
     const savedCrypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    // Asserted rather than assumed: the restore below is `if (savedCrypto)`, so an environment where
+    // `crypto` is inherited rather than an OWN property would leave it deleted for every test after
+    // this one — a poisoned file reported as an unrelated failure. Measured here: it is an own,
+    // configurable getter.
+    expect(savedCrypto).toBeDefined();
     const livePatch = Math.random;
     vi.resetModules();
     const fresh = await import("../debug/purityGuard");
@@ -304,6 +309,7 @@ describe("installing the purity guard", () => {
    */
   test("a partial crypto is patched where it can be, and nothing is added to it", async () => {
     const savedCrypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    expect(savedCrypto).toBeDefined();
     const livePatch = Math.random;
     const native = (array: Uint8Array) => array;
     const partial: { getRandomValues: typeof native; randomUUID?: unknown } = { getRandomValues: native };

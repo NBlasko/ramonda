@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import { Component } from "../../base/Component";
-import { state } from "../../base/decorators";
 import { getDOM } from "../../test/setup";
 
 /**
@@ -28,7 +27,6 @@ import { getDOM } from "../../test/setup";
 describe("props in a production build", () => {
   test("a write still throws, and the message still names the code and the component", async () => {
     class Panel extends Component<{ label?: string }> {
-      @state clicked = false;
       wrong() {
         // @ts-expect-error assigning to props is what this test is about
         this.props.label = "changed";

@@ -194,8 +194,8 @@ describe("decorators", () => {
         ran.push("destroy:client");
       }
       // The other side of the same question, and the one nothing asked: a teardown declared for the
-      // SERVER must stay quiet in a browser. Its branch in `runDestroyLifecycle` was the only
-      // unhit one left in that file.
+      // SERVER must stay quiet in a browser. Its `entry.env !== "server"` branch in
+      // `helpers/lifecycleMenagement.ts` was unhit in both coverage runs until this line existed.
       @destroyed({ env: "server" }) goneServer() {
         ran.push("destroy:server");
       }

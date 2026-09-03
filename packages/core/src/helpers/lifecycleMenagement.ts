@@ -59,17 +59,20 @@ export function lifecycleCleanupManagement(component: BaseComponent<unknown>) {
    * They were guarded with `if (effects)` / `if (destroys)`. Removing both changed nothing across
    * 1466 tests, which is what a branch nothing can enter looks like — two more paths to read and
    * none to trust. `reactivity/effect.ts` had the third copy and lost it too.
+   *
+   * And it is not an arbitrary pick of two: `Runtime` holds nine of these arrays, and the other
+   * seven — `mounts`, `updates`, `creates`, `watchProps`, `deferHydrations`, `hooksOptions`,
+   * `clearReactives` — were never guarded anywhere. `clearReactives` is read three lines below this
+   * loop, in exactly the shape these two now have.
    */
   const effects = runtime.effects;
-  {
-    for (let i = effects.length - 1; i >= 0; i--) {
-      const eff = effects[i];
-      for (const dep of eff.deps) {
-        dep[detach](eff.id);
-      }
-      const cleanup = eff.cleanup;
-      if (cleanup) runCleanup("a subscription cleanup", component, cleanup);
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const eff = effects[i];
+    for (const dep of eff.deps) {
+      dep[detach](eff.id);
     }
+    const cleanup = eff.cleanup;
+    if (cleanup) runCleanup("a subscription cleanup", component, cleanup);
   }
 
   // One destroy pass cleans up after both @created and @mounted.
@@ -77,11 +80,10 @@ export function lifecycleCleanupManagement(component: BaseComponent<unknown>) {
   // clearReactives), so user code in @destroyed can still read reactive and
   // computed values.
   const destroys = runtime.destroys;
-  {
-    for (let i = destroys.length - 1; i >= 0; i--) {
-      const entry = destroys[i];
-      if (entry.env !== "server")
-        runCleanup("a @destroyed", component, () => entry.cb(component[COMPONENT_RUNTIME].env));
+  for (let i = destroys.length - 1; i >= 0; i--) {
+    const entry = destroys[i];
+    if (entry.env !== "server") {
+      runCleanup("a @destroyed", component, () => entry.cb(component[COMPONENT_RUNTIME].env));
     }
   }
 
