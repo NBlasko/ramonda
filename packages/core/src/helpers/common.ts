@@ -228,7 +228,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
     if (__DEV__) {
       reportObjectPropsBag(
         displayName(that),
-        hook.name,
+        className(hook),
         typeof hookProps === "object" && hookProps !== null ? Object.keys(hookProps) : [],
       );
     }
@@ -288,7 +288,8 @@ export function useCommon<T extends BaseHook<unknown>, P>(
    * happen anyway.
    */
   const readProps = (prevProps: Bag | undefined): Bag => {
-    if (!cache) return resolveStable(buildProps(that, hook.name, hookProps, declaredStable), prevProps, declaredStable);
+    if (!cache)
+      return resolveStable(buildProps(that, className(hook), hookProps, declaredStable), prevProps, declaredStable);
 
     if (cache.isDirty) {
       // Detach first, then re-track: a callback with a branch in it reads a DIFFERENT set of
@@ -302,7 +303,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
 
       let raw: Bag;
       try {
-        raw = buildProps(that, hook.name, hookProps, declaredStable, cache);
+        raw = buildProps(that, className(hook), hookProps, declaredStable, cache);
       } finally {
         trackerContainer.current = prevTracker;
       }

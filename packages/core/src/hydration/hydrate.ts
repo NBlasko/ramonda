@@ -372,7 +372,7 @@ function hydrateComponentRegion(
       } catch (e) {
         if (__DEV__) {
           diagnose("RMD036", className(vnode.name), `The blob on <${className(vnode.name)}> could not be parsed.`, {
-            component: vnode.name.name,
+            component: className(vnode.name),
             reason: e instanceof Error ? e.message : String(e),
           });
         }
@@ -1032,7 +1032,10 @@ function watchForStalledHydration(component: BaseComponent): void {
 
 /** Element vnodes carry an uppercased tag (it matches nodeName); components carry a class. */
 function vnodeName(vnode: VNode): string {
-  return typeof vnode.name === "string" ? vnode.name.toLowerCase() : vnode.name.name;
+  // The class branch goes through `className`, the tag branch cannot: a tag is a string and always
+  // has one. Its only caller is `reportStructureMismatch`, so this is a message and nothing matches
+  // on it.
+  return typeof vnode.name === "string" ? vnode.name.toLowerCase() : className(vnode.name);
 }
 
 function hydrationFallback(

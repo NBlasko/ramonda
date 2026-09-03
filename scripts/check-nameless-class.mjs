@@ -33,11 +33,15 @@ import { fileURLToPath } from "node:url";
  * such sites were live while this file said the family was closed. They read `className()` from
  * `helpers/utils.ts` now.
  *
- * It is not extended to cover them, and that is a decision rather than an omission: `${x.name}` is
- * indistinguishable from an ordinary data read — `${issue.name}`, `${graph.package.name}`,
- * `${point.name}` — so a gate over it would need an allowlist longer than the rule, and an
- * allowlist that long is a list nobody maintains. What keeps that half from coming back is that all
- * seven sites read the same, so a reader copying a neighbour copies the right thing.
+ * A gate over `${x.name}` in GENERAL is not possible cheaply: it is indistinguishable from an
+ * ordinary data read — `${issue.name}`, `${graph.package.name}`, `${point.name}` — and an allowlist
+ * for those would be longer than the rule.
+ *
+ * So it covers the three spellings this codebase uses for a class, by name: `ctor`, `hook`, and a
+ * vnode's `name.name`. That is narrower than the fault and wider than nothing, and it is the
+ * difference between catching six sites and missing them twice — which is what happened. A future
+ * `cls.name` escapes it, and the honest reading of this check is "the shapes we have written",
+ * not "every shape there is".
  */
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -55,6 +59,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  * than absorbed — the lesson `check-bare-import.mjs` learned about its own table.
  */
 const DECIDED = {
+  "packages/core/src/debug/sourceLocation.ts": {
+    why: '`recordDefinition` reads the name and BRANCHES on it being empty — a nameless class gets no source location, deliberately. `className()` answers `"Unknown"`, which is truthy, so putting it here would make that check never fire and hand every nameless class a bogus definition. Nearly done while fixing the others',
+    expect: /const name = ctor\.name;/,
+  },
   "packages/query/src/context.ts": {
     why: "the name is handed to `requireClient`, which answers for an empty one at the single place it is printed — and core's `displayName` is not published, so there is nothing to call here",
     expect: /requireClient\(this\.ctx\.client/,
@@ -92,6 +100,24 @@ function withoutComments(text) {
 
 const READ = /\.constructor(?:\?)?\.name\b/;
 
+/**
+ * The three spellings a CLASS's name is written in here.
+ *
+ * `ctor` and `hook` are the receivers this codebase uses when it holds a class rather than an
+ * instance, and `vnode.name.name` is the component on a vnode. Matched by name because there is
+ * nothing else to match on — a class's `.name` reads exactly like a data field's.
+ *
+ * **`cls` is deliberately not in the set**, and it was, for one run: in `@ramonda/check` a `cls` is
+ * an AST NODE, so `cls.name?.text` is an identifier node and has nothing to do with a class value.
+ * Measured — it reported `row-reads-a-plain-field.ts:221`, which was already answered with
+ * `?? "(anonymous)"`.
+ *
+ * The lookahead is the other half of that lesson: a `.name` followed by another property is a
+ * chain into something else, never the class name itself. `vnode.name.name` is the one chain that
+ * IS it, and it is named rather than inferred.
+ */
+const CLASS_READ = /\b(?:ctor|hook)\.name\b(?!\s*[.?])|\bvnode\.name\.name\b/;
+
 /** A read used to COMPARE rather than to name something. `=== name`, `!== other`. */
 const COMPARISON = /\.constructor(?:\?)?\.name\s*(?:===|!==|==|!=)/;
 
@@ -116,7 +142,7 @@ function run() {
       const code = withoutComments(readFileSync(file, "utf8"));
 
       code.split("\n").forEach((line, index) => {
-        if (!READ.test(line)) return;
+        if (!READ.test(line) && !CLASS_READ.test(line)) return;
         if (COMPARISON.test(line) || GUARDED.test(line)) return;
         const decided = DECIDED[where];
         if (decided !== undefined && decided.expect.test(line)) {

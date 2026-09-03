@@ -1473,7 +1473,7 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
      */
     if (__DEV__ && Object.hasOwn(ctor, STABLE_PROPS)) {
       diagnose("RMD046", className(ctor), `${className(ctor)} declares more than one @StableProps.`, {
-        component: ctor.name,
+        component: className(ctor),
         added: keys.join(", "),
       });
     }
