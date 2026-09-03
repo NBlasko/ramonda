@@ -109,7 +109,7 @@ reports.
 
 A ref is cleared when its element is removed, so it can't keep a detached node alive.
 
-## The three names, if you write them down
+## `Ref`, `RefTarget` and `RefCallback`
 
 `createRef` is the only one of these you call. The other two appear when a type is written by hand
 — a field annotation, a function that takes a ref.

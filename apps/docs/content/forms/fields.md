@@ -129,7 +129,7 @@ On a server-rendered page the choice arrives as `selected` on the chosen option,
 where HTML keeps it and a select has no `value` attribute to carry. The reader sees the right option
 before any script runs.
 
-### A `<textarea>` keeps its value inside the element
+### `TextArea` — a `<textarea>` keeps its value inside the element
 
 HTML gives a textarea no `value` attribute — the value is the element's **text** — so `<textarea>` is
 a type error and you write `<TextArea>`:

@@ -30,7 +30,7 @@ class Account extends Component {
 }
 ```
 
-## What it gives you
+## `requestContext()` — what it gives you
 
 ```tsx
 const ctx = requestContext();
@@ -131,7 +131,7 @@ into the server's work drain and is swallowed, so the page would otherwise be se
 quietly missing the value. [`ramonda-check`](/reference/check) reports it from the source, before
 anything runs at all.
 
-## The guard, up close
+## The guard, up close — `RequestReadDuringBuild`
 
 When the build prerenders a route, the request context is *poisoned*: any per-request read
 throws `RequestReadDuringBuild`, and the build fails naming the route and the field:

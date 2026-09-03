@@ -47,7 +47,7 @@ class Report extends Component {
 It is an ordinary component written as a tag — `lazy` is just a function that returns
 a promise (a dynamic `import()`), and `onLoading` is what to show until it arrives.
 
-## The pieces
+## The pieces of `AsyncLoad`
 
 - **`lazy`** — a function returning `import("…")`.
 - **`namedExport`** — which export to use; defaults to the module's `default`.

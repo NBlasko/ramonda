@@ -30,7 +30,7 @@ stampBuildTime() {} // only during a server render
 
 (Subscriptions — `@interval`, timers, `@onWindow`, your own — have no `env`; they are
 always client-only. That is why a subscription never leaks into a server render. The
-[`Timeout` and `Interval`](/concepts/timers#a-timer-that-starts-when-you-say) hooks have no
+[`Timeout` and `Interval`](/concepts/timers#a-timer-that-starts-when-you-say-timeout-and-interval) hooks have no
 `env` either, for the same reason and by a different route: `start` does nothing during a
 server render and says so by returning `false`, so a method that starts one is safe to call
 from `shared` code.)

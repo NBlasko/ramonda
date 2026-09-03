@@ -176,6 +176,8 @@ So: **guard in `@mounted`**. `@created` runs earlier on a client navigation — 
 `render()` rather than after the commit — but it is silent on the one path where the
 browser's answer can differ from the server's.
 
+### `ServerRedirect`, and turning it into a response
+
 Your server boundary translates the throw into a response. The SSR starter does this
 for you; by hand it is:
 
