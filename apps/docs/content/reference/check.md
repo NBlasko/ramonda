@@ -250,8 +250,8 @@ its author wrote:
 ```
 [ramonda-check] 1 site(s) this cannot resolve, with a reason written beside them:
 
-  src/Search.tsx:41:7  click-with-no-keyboard-path
-    this div is a backdrop; the real exit is the button beside it
+  src/Search.tsx:41:7
+    click-with-no-keyboard-path — this div is a backdrop; the real exit is the button beside it
 ```
 
 So a reason that has stopped being true cannot sit there unread, and the count cannot grow

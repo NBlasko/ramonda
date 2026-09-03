@@ -464,7 +464,7 @@ export interface RuleSummary {
   /** The id, which is also the key in `findings`. */
   id: string;
   /** `error` fails a run; `warn` prints and lets it through. */
-  severity: "error" | "error";
+  severity: "warn" | "error";
   /** The condition, as a clause completing "reported when". */
   reportedWhen: string;
   /**

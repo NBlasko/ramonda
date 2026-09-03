@@ -45,11 +45,16 @@ export interface Report<Issue> {
   /**
    * `warn` says so and lets the build through; `error` fails it.
    *
-   * A new rule is a warning first and an error in a later version — the repository's rule, and the
-   * README's argument: a gate that fails a build on something nobody has seen yet is a gate people
-   * switch off. It also decides the stream, so a warning cannot be mistaken for a failure in a log.
+   * **Every rule is `error` today.** A warning that never fails anything is read once and then not
+   * read at all, and the escape hatch is what makes refusing affordable: `ramonda-check-ignore`
+   * with a reason, on the line, recorded and printed on every run rather than silencing.
+   *
+   * The field stays a union because a warning may still be the right answer for some future rule —
+   * and `verdict.test.ts` has a tripwire so that becomes a decision rather than an accident. What
+   * it decides is the EXIT CODE, through `failingRules`. It does not decide whether the reader is
+   * told: the CLI prints every rule that reported.
    */
-  severity: "error" | "error";
+  severity: "warn" | "error";
 
   /**
    * The one-line condition the reference prints, in the rule's own words.

@@ -413,9 +413,9 @@ export const lensPathThroughAGap = {
   report: {
     /**
      * A WARNING, and not because the fault is mild — `RML001` is an `error` and now throws in
-     * development. Because it is a NEW rule, which the repository answers the same way every time:
-     * a gate that fails a build over something nobody has seen yet is a gate somebody switches off.
-     * It becomes an error in a later version.
+     * development. It fails the run like every rule — and where a hop really is guaranteed by
+     * something the types cannot see, `ramonda-check-ignore` with that reason on the line is what
+     * says so, recorded rather than hidden.
      */
     severity: "error",
     reportedWhen:
