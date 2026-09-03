@@ -16,7 +16,7 @@ list(this.tags, (tag) => <span className="chip">{tag.label}</span>);
 
 One item, one element. That element is what carries the row's `key` and what the diff
 matches rows on, so a callback that returns a string, a number, or another `list()`
-is reported ([`RMD031`](/reference/diagnostics)) — wrap it in an element instead.
+is reported ([`RMD031`](/reference/diagnostics/rmd031)) — wrap it in an element instead.
 
 ## When the row is a component
 

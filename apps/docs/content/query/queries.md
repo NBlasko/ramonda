@@ -58,7 +58,7 @@ comparison costs 31 ns. You do not wrap it in anything.
 `fetch` is the one to watch, because a function cannot be compared that way. Pass a
 **bound method** — `fetch: self.load`, reading `this.props` when it is called — rather than
 an inline closure, which is a new prop on every render. Development builds report the
-closure form as [RMD022](/reference/diagnostics).
+closure form as [RMD022](/reference/diagnostics/rmd022).
 
 ## Freshness
 

@@ -9,7 +9,7 @@ order: 112
 
 A context that has no provider above it does not crash. The consumer falls back to the default, the
 page renders, and someone reads a number that was never real. The framework reports it
-([`RMD003`](/reference/diagnostics)) — but only once that component actually mounts.
+([`RMD003`](/reference/diagnostics/rmd003)) — but only once that component actually mounts.
 
 That is the gap. A panel behind a condition nobody clicked, a page in a chunk nobody opened: the
 fault ships, and nothing has said a word. The commonest way to get there is a **reorder** — the
@@ -92,7 +92,7 @@ They are not alternatives — each catches what the other cannot.
 | | when it speaks | catches |
 |---|---|---|
 | `ramonda-check` | before the app runs | every path it can prove, exercised or not |
-| [`RMD003`](/reference/diagnostics) | when the component **mounts** | dynamic composition the checker cannot resolve |
+| [`RMD003`](/reference/diagnostics/rmd003) | when the component **mounts** | dynamic composition the checker cannot resolve |
 
 The static one is the only one that can speak about a branch nobody has opened yet. The runtime one
 is the only one that sees a tree assembled at runtime.
@@ -115,7 +115,7 @@ the run.
 | A route table whose views can never appear | the table is built but its outlet is unreachable |
 | A second provider for a context that allows one | `createContext(…, { single: true })` — only `Router` sets it |
 | A ring of mounts that nothing can skip | A mounts B mounts A, with no lazy boundary to break it |
-| A component named among children | `{Panel}` where `<Panel />` was meant — also [`RMD052`](/reference/diagnostics) |
+| A component named among children | `{Panel}` where `<Panel />` was meant — also [`RMD052`](/reference/diagnostics/rmd052) |
 
 ### The rules
 
@@ -242,7 +242,7 @@ mistakes — `list()` infers an identity from what makes a row different from it
 one of these relies on that inference and gets a correct answer. The rule reports them anyway,
 because an inferred identity is one that can fail and a written one cannot: a row whose every field
 is nested or shared with its siblings has nothing to be told apart by, which is what
-[`RMD051`](/reference/diagnostics) exists to say. It stays a warning for as long as that is the
+[`RMD051`](/reference/diagnostics/rmd051) exists to say. It stays a warning for as long as that is the
 only argument for it.
 
 ### Reading the request after the render yielded

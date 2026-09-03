@@ -400,7 +400,7 @@ each finds its own with nothing passed down. See
 [Context](/composition/context#two-of-one-context-a-scope-per-subtree).
 
 With no form above it at all, every fact reads as its default and core reports
-[`RMD003`](/reference/diagnostics) when the component mounts.
+[`RMD003`](/reference/diagnostics/rmd003) when the component mounts.
 
 ## The recipe for a big form
 

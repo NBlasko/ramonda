@@ -60,7 +60,7 @@ Everything every package exports. Each entry links to the page that explains it.
 | `hydrateRoot(vnode, element)` | Adopts the server's DOM instead of rebuilding it. |
 | `ServerRedirect` | Thrown by `renderToString` when a render asks to redirect; catch it and answer with a 302. [Guards](/routing/server) |
 | `captureServerRedirect()` | Low-level hook to record a server redirect for the current render. [Guards](/routing/server) |
-| `requestContext()` | Per-request data — `url`, `cookies`, `headers`, `get(key)`. Read it **synchronously**: on the server the scope is cleared before the render's first `await` ([RMD053](/reference/diagnostics)). Per-request reads throw during a static build (that guards prerendering). |
+| `requestContext()` | Per-request data — `url`, `cookies`, `headers`, `get(key)`. Read it **synchronously**: on the server the scope is cleared before the render's first `await` ([RMD053](/reference/diagnostics/rmd053)). Per-request reads throw during a static build (that guards prerendering). |
 | `requestKey<T>(label)` | Declares a typed per-request slot for `requestContext().get`. |
 | `seedRequest(key, value)` | Server-only: fills a slot for the render already under way. Values known beforehand go to `renderToString` as `request.values`, keyed by the key itself. [Details](/ssr/request) |
 | `RequestReadDuringBuild` | Thrown when per-request data is read during a static build — the route cannot be prerendered. |
@@ -129,7 +129,7 @@ anyway under a server DOM shim.
 
 | | |
 |---|---|
-| `configureDev({ strictRender })` | Turns off the double render behind [RMD020](/reference/diagnostics). A no-op in production. |
+| `configureDev({ strictRender })` | Turns off the double render behind [RMD020](/reference/diagnostics/rmd020). A no-op in production. |
 | `INSPECT` | A symbol. Define `[INSPECT]()` on a component or hook and the devtools panel shows what it returns, under **Holds**. [Devtools](/devtools#what-an-instance-holds) |
 
 ### Types

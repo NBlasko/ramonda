@@ -143,13 +143,13 @@ a rebuilt array recomputes, a `@watchProp` on it fires, and a subscription whose
 reads it reconnects, for the one key that changed and the ones that did not.
 
 That is the case the rest of this section is about. Development builds report it as
-[RMD022](/reference/diagnostics), which names a value only once it has been rebuilt several
+[RMD022](/reference/diagnostics/rmd022), which names a value only once it has been rebuilt several
 times running *without ever changing*. A key that genuinely differs each time is not churn, and
 is not reported.
 
 The other half of the bargain: a value that reaches the bag *without* passing through a signal
 is invisible to the cache, so the bag keeps the version it last built.
-[RMD027](/reference/diagnostics) reports that; the fix is to make the value reactive.
+[RMD027](/reference/diagnostics/rmd027) reports that; the fix is to make the value reactive.
 
 **If you are WRITING the hook: declare which props are values.** A query key is a value —
 `["user", 7]` built again is the same question — and that is the hook's knowledge, not
@@ -195,7 +195,7 @@ A `@compute` is invalidated by the signals it **read**, so this holds one array 
 A compute whose answer is coarser than its inputs — `this.noise > 5`, `items.length` — produces a
 fresh value whenever those inputs move, even though the answer did not, and splitting it into two
 computes does not help because invalidation propagates rather than being deduplicated by value.
-[RMD024](/reference/diagnostics) is the report for that.
+[RMD024](/reference/diagnostics/rmd024) is the report for that.
 
 **Absorbing that belongs to the hook, not to the call site.** `Query.onKeyChanged` is the worked
 example: it compares the key part by part before doing anything, *even though the framework
@@ -244,7 +244,7 @@ the bag, the key array and the closure are all the same objects as last time.
 compute refreshes itself when it moves. If it is *not* reactive — `Date.now()`, a module
 variable, the DOM — the compute freezes it at the moment it was first asked for and
 nothing ever refreshes it. Development builds report randomness read inside a compute for
-exactly that reason ([RMD021](/reference/diagnostics)).
+exactly that reason ([RMD021](/reference/diagnostics/rmd021)).
 
 ## What you cannot assume about your props
 

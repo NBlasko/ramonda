@@ -72,7 +72,7 @@ argument, [`@memoized`](/concepts/caching) is the decorator keyed by them.
 A compute *derives* a value and returns it — it must not write state or cause side
 effects. Ramonda calls it whenever something reads it, on no schedule you control, so
 a write in there is a bug: it is reported as
-[RMD018](/reference/diagnostics). (To count a compute's runs for yourself, use a
+[RMD018](/reference/diagnostics/rmd018). (To count a compute's runs for yourself, use a
 plain field rather than `@state`, as the demo does.)
 
 ## When to reach for it

@@ -7,12 +7,13 @@ order: 1
 
 # Something is wrong
 
-Every check this framework runs is filed under a code — `RMD023`, `RMQ001` — and that is a fine
-way in when you have one. It is no way in at all when what you have is *the text I typed showed up
-in a different row*.
+What the framework reports, it reports under an identifier — a code like `RMD023` while the app
+runs, a name like `index-as-key` from the checker — and the reference is indexed the same way. That
+is a fine way in when you have one. It is no way in at all when what you have is *the text I typed
+showed up in a different row*.
 
 This page is the other door. It lists what you can **see**, and sends each one to the page that
-explains it. If you do have a code, [every diagnostic](/reference/diagnostics) and
+explains it. If you do have an identifier, [every diagnostic](/reference/diagnostics) and
 [every rule](/rules) have a page of their own.
 
 **Open the browser console first.** Most of what follows already has a message waiting there,

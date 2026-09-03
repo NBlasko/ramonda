@@ -77,6 +77,25 @@ function* filesUnder(directory) {
  *
  * `[^<>]` spans newlines, so an attribute on its own line is still found; it cannot leave the tag,
  * because the next `<` or `>` ends the match.
+ *
+ * ## The one shape it misses, and why making it quote-aware was rejected
+ *
+ * A `>` inside a quoted attribute value ends the match early, so `<div title="a>b" onClick={…}>`
+ * is not seen. Teaching the pattern about quotes is one alternation and it is CORRECT: measured, it
+ * catches that case, still refuses a component tag, and does not leak onto the next element.
+ *
+ * It is also exponential. The alternation gives the engine two ways to consume every quoted
+ * attribute, and a lazy quantifier makes it try all of them before failing:
+ *
+ * ```
+ *   quoted attributes on one tag    8     12      16       20         24
+ *   time to fail                  0.2ms  1.3ms  50.3ms  2,306ms  108,313ms
+ * ```
+ *
+ * Twenty-four attributes on one element is an ordinary form control, and it would hang the build
+ * for two minutes. **A gate that can stop a build is worse than one that misses a rare shape**, so
+ * the shape stays missed and this note stays here — the fix looks obviously right, and it is the
+ * measurement that says otherwise.
  */
 const WRITTEN = /<([a-z][a-z0-9-]*)\b[^<>]*?\b(on[A-Z][A-Za-z]*)\s*=/g;
 

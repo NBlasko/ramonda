@@ -188,7 +188,7 @@ defaultValues: self.profile.data ?? BLANK,                     // ✓ one object
 
 The callback runs whenever a signal it reads moves — for a form fed by a query, every time the
 request settles or the key changes — and the first line builds a fresh object on each of those,
-which [RMD022](/reference/diagnostics) reports in development once it has happened four times
+which [RMD022](/reference/diagnostics/rmd022) reports in development once it has happened four times
 running without the contents moving. Holding the object is the fix it names, and it is the right
 one here: nothing is rebuilt, so there is nothing to report.
 
