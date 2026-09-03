@@ -308,6 +308,25 @@ Types: `Focus` · `FocusCommon` · `FocusArray` · `ElementOf` · `KeepSymbols`
 
 ---
 
+## `@ramonda/server`
+
+The plumbing a server render needs, so an app does not write its own. Knows nothing about routes —
+those are `@ramonda/router/server`. [Server rendering](/ssr/server)
+
+| | |
+|---|---|
+| `installDom(url)` | Installs a DOM and the globals a render reads, and hands back a `DomHandle`. [The whole loop](/ssr/server#installdom-url) |
+| `installWindow(dom, options?)` | The globals only, for a DOM you brought yourself — a jsdom, or one document reused across a prerender. `navigation: "dom"` takes that DOM's own `location` and `history` instead of building them from `url`. |
+| `DomHandle` | What `installDom` hands back: a `close()` that shuts the render down without the caller knowing what built it. |
+| `fillDocument(document)` | Puts the rendered html, title, head and portal targets into the shell. [Filling the shell](/ssr/server#filldocument-template-html-title-head-portals) |
+| `Document` | The shape `fillDocument` takes — the shell with `<!--ssr-->` where the app goes, and optionally `<!--head-->` and `<!--portals-->`. |
+| `escapeHtml(value)` | Escapes a value for markup. What keeps an app's own title out of the parser. |
+| `PORTAL_TARGET_ATTR` | The attribute a shell puts on a portal container, so a target exists on the server too. [Portal](/composition/portal) |
+| `parseCookies(header)` | A `Cookie` header as a `Map`. [Requests](/ssr/server#parsecookies-header-and-mimefor-path) |
+| `mimeFor(path)` | The content type for a static file's path. |
+
+---
+
 ## `@ramonda/build`
 
 The three bundler settings an app needs, so the app names none of them. [Configuring your
@@ -406,6 +425,33 @@ internals somebody's dependency and every change to a rule's shape a breaking ch
 
 ---
 
+## `@ramonda/devtools`
+
+The development panel, and the surface a package uses to add a tab to it. Importing this package
+registers `<ramonda-devtools>` — it has that effect on purpose, so a build that includes it has the
+panel. [Devtools](/devtools)
+
+| | |
+|---|---|
+| `panelRegistry()` | Where live panels are found. `register(plugin)` adds one and returns the function that removes it; registered from an instance's lifecycle, so the list is exactly the live sources. [Writing a panel](/devtools/panels) |
+| `installDiagnostics(collector)` | Sends every diagnostic record to a collector of your own, and returns the function that stops it. [Capturing diagnostics](/devtools#collecting-them-yourself) |
+
+**Writing a panel** — the shapes a plugin is made of. [Panels](/devtools/panels)
+
+| | |
+|---|---|
+| `PanelPlugin` | One tab: a `version`, an `id`, a `label`, a `snapshot()` read only while the tab is open, and an optional `run(rowId, actionId)`. |
+| `PanelRegistry` | What `panelRegistry()` returns — `register`, `list` and `subscribe`. |
+| `PanelSnapshot` | What one poll produces: `groups`, and an `empty` sentence for when there are none. |
+| `RowGroup` | An optional heading above a run of rows. |
+| `PanelRow` | One row — `id`, `title`, and optionally a `status`, `fields`, an `error`, a `value` and `actions`. |
+| `RowStatus` | What a row's dot means: `"ok"`, `"busy"`, `"error"` or `"idle"`. The panel owns the colours. |
+| `RowField` | One line of a row's metadata — `text`, `badge`, or `live`, whose text the panel rewrites in place so a clock does not destroy hover and selection. |
+| `RowValue` | A value the panel renders with its own tree and edits with its own editor, plus a `preview` for when the value was too large to copy. |
+| `RowAction` | A button on a row — `id`, `label`, and a `title` shown on hover. |
+
+---
+
 ## `@ramonda/testing-library`
 
 | | |
@@ -415,6 +461,11 @@ internals somebody's dependency and every change to a rule's shape a breaking ch
 | `act(callback?)` | Commits everything the callback caused. [act](/testing/act) |
 | `fireEvent` | The DOM library's, wrapped so the render is committed. |
 | `cleanup()` | Unmounts everything. Registered automatically. |
+| `RenderResult` | What `render` hands back: the container, the bound queries, and `unmount`. |
+| `RenderOptions` | `render`'s second argument — where to mount, and a `wrapper` to put around the tree. |
+| `WrapperComponent` | The shape of that wrapper: a component taking `children`, for a provider a test needs above the subject. |
+| `RenderHookResult` | What `renderHook` hands back: the hook's `result`, and `unmount`. |
+| `RenderHookProps` | `renderHook`'s options — the same `wrapper`, and the props the hook is mounted with. |
 
 Everything from `@testing-library/dom` is re-exported — `screen`, `waitFor`, `within`,
 `prettyDOM`, every query.
