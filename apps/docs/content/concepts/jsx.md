@@ -156,6 +156,8 @@ the attribute the element actually has:
 > lowercase — `onclick`, `onmouseenter`, not `onMouseEnter` — and SVG attributes stay
 > literal, so `stroke-width` is `stroke-width`, not `strokeWidth`.
 
+See [styling](/styling) for `className` and the two forms `style` takes.
+
 ## Children
 
 What sits between the tags: text, other elements, components, and `null` for nothing.
