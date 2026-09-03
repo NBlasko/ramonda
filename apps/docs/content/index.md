@@ -47,6 +47,9 @@ watches for the common mistakes — changing data at the wrong moment, a list it
 tell apart — and prints a plain-language note naming the component and what to do
 instead. In the finished app, those checks are gone and add nothing.
 
+Already stuck on one? **[Something is wrong](/symptoms)** is the list of what you can
+see — a row with the wrong text, a click nobody answers — and where each one comes from.
+
 ## Start here
 
 1. **[Installation](/guide/installation)** — get a project running. It is short.

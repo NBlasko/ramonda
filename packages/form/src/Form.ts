@@ -25,7 +25,7 @@ import { report } from "./diagnostics";
  *   render() {
  *     const email = this.form.fields.email.$;
  *     return (
- *       <form onSubmit={this.form.submit}>
+ *       <form onsubmit={this.form.submit}>
  *         <input {...email.bind} />
  *         {email.error && <span>{email.error}</span>}
  *         <button disabled={this.form.isSubmitting}>Sign up</button>
@@ -691,7 +691,7 @@ export class Form<S extends StandardSchemaV1> extends Hook<FormProps<S>> impleme
    * Validates, then calls `onSubmit` if nothing failed. Never rejects — a failed submit is
    * a state to render, the same stance `Mutation.mutate` takes.
    *
-   * Bound, like every method on a hook, so `<form onSubmit={this.form.submit}>` keeps one
+   * Bound, like every method on a hook, so `<form onsubmit={this.form.submit}>` keeps one
    * identity across renders (RMD020).
    */
   submit(event?: Event): void {

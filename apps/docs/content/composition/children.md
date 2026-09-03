@@ -173,7 +173,7 @@ this.rows = merge(this.rows, await api.getRows(), (row) => row.id);
 ```
 
 Said once, at the boundary, rather than on every list that renders those rows.
-[`RMD051`](/reference/diagnostics) reports a row that carries nothing to tell it apart, and
+[`RMD051`](/reference/diagnostics/rmd051) reports a row that carries nothing to tell it apart, and
 [lists](/lists#which-row-is-which) has the whole story.
 
 ## Next

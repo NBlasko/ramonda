@@ -51,7 +51,7 @@ handlers, wiring refs, restoring state, running client lifecycle. Nothing is reb
 when the two agree (on this page: every element adopted, none replaced).
 
 Where they *disagree*, the browser wins — the DOM is corrected — and development
-reports it as [`RMD007`](/ssr/mismatches). See
+reports it as [`RMD007`](/reference/diagnostics/rmd007). See
 [hydration mismatches](/ssr/mismatches) for why that happens and how to avoid it.
 
 ## Fetching on the server

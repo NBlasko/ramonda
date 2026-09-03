@@ -1,6 +1,6 @@
 /**
  * Binds every method of a class to its instance, so `this` survives being passed
- * around (`onClick={this.handleClick}`) with no constructor and no arrow fields.
+ * around (`onclick={this.handleClick}`) with no constructor and no arrow fields.
  *
  * ## Why there is a plan
  *
@@ -49,7 +49,7 @@
  * not paid for them. Removed, because the convention is not this framework's to claim.
  * typescript-eslint's `naming-convention` rule is commonly configured with
  * `leadingUnderscore: "require"` for private members, so a project with that rule wrote
- * `private _apply()` and got a method that silently did not bind — `onClick={this._apply}`
+ * `private _apply()` and got a method that silently did not bind — `onclick={this._apply}`
  * then lost `this`, with no error and no diagnostic. A lint rule the developer chose for
  * unrelated reasons broke the framework's central promise about methods.
  *

@@ -21,7 +21,7 @@ import type { FetchContext, InfiniteData, InfiniteQueryProps, QueryKey, QuerySta
  *
  * // render
  * {list(this.feed.pages, PostList)}
- * <button type="button" onClick={this.feed.fetchNextPage} disabled={!this.feed.hasNextPage}>more</button>
+ * <button type="button" onclick={this.feed.fetchNextPage} disabled={!this.feed.hasNextPage}>more</button>
  * ```
  *
  * ## Why this composes `Query` instead of extending or duplicating it

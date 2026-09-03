@@ -92,7 +92,7 @@ const INPUT_TYPES: Record<string, HtmlConstraints["type"]> = {
  * its own bubble instead — which means the form's messages never appear. Decide which validation the
  * reader sees:
  *
- * - **`<form noValidate onSubmit={this.form.submit}>`** keeps the schema's messages and the
+ * - **`<form noValidate onsubmit={this.form.submit}>`** keeps the schema's messages and the
  *   attributes' accessibility benefit: a screen reader still announces a required field, and mobile
  *   keyboards still follow `type="email"`.
  * - **Without `noValidate`**, the browser answers first. Reasonable if you want native behaviour and

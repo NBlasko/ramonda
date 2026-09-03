@@ -160,6 +160,32 @@ describe("internal links", () => {
     expect(dead).toEqual([]);
   });
 
+  /**
+   * A link that NAMES a code has to land on that code's page.
+   *
+   * `/reference/diagnostics` is a real route, so the two checks above are perfectly happy with
+   * `[`RMD002`](/reference/diagnostics)` — the reader clicks a code and arrives at the top of a
+   * seventy-four-entry index to look for it by hand. That is the same failure a dead anchor
+   * produces, and it is invisible for the same reason: nothing 404s.
+   *
+   * Twenty-two of them were written this way. Every one predates the split into a page per code:
+   * the generated pages were pointed at their own targets and the hand-written ones were never
+   * swept, so the site linked the same code two different ways depending on who wrote the line.
+   */
+  it("sends a named code to that code's own page", () => {
+    const NAMED = /\[`?(RM[A-Z]\d{3})`?\]\((\/[A-Za-z0-9/-]*)\)/g;
+    const wrong: string[] = [];
+
+    for (const file of files) {
+      for (const [, code, route] of readFileSync(file, "utf8").matchAll(NAMED)) {
+        const own = `/reference/diagnostics/${code.toLowerCase()}`;
+        if (route !== own) wrong.push(`${relative(content, file)}: ${code} → ${route}, not ${own}`);
+      }
+    }
+
+    expect(wrong).toEqual([]);
+  });
+
   it("can tell a dead anchor from a live one", () => {
     // The control. Without it, a mistake in `anchorsIn` — a selector that matched every heading,
     // say — would make the two checks above unable to fail.

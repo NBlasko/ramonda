@@ -50,7 +50,7 @@ list(this.users, (user) => <UserRow key={user.id} item={user} />);
 
 Write it from your data, never from the array index — the index *is* the position, so
 keying by it says "this is the second row", which is exactly what stops being true when
-rows move. Two rows under one key are reported ([`RMD002`](/reference/diagnostics)).
+rows move. Two rows under one key are reported ([`RMD002`](/reference/diagnostics/rmd002)).
 
 **A guess.** With no key and a new object, the incoming array is aligned against the one
 on screen by what the rows still have in common. It is right for the shapes data takes —
@@ -275,7 +275,7 @@ turn on.
 ## What about `.map()`?
 
 `.map()` renders a list perfectly well, and it is not discouraged. What it needs is a
-key on every row ([`RMD023`](/reference/diagnostics) asks for one), because a `.map()`
+key on every row ([`RMD023`](/reference/diagnostics/rmd023) asks for one), because a `.map()`
 has no identity of its own — without a key the rows are matched by position, so a
 reorder or a removal from the middle hands every row below it the previous row's state
 and DOM.

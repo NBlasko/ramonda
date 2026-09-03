@@ -130,7 +130,7 @@ class Cards extends Component {
         <div onclick={() => {}}>Open</div>
         {/* REPORTED — `onMouseDown` is the same fault. */}
         <span onmousedown={() => {}}>Drag</span>
-        {/* Reported too, and it is the OLD spelling on purpose: the framework's types refuse
+        {/* refused-spelling-on-purpose. Reported too, and it is the OLD spelling: the types refuse
             `onMouseUp` now, but a project with no types still compiles it and the rule has to see
             it. The lookup is lower-cased, so both reach the same answer. */}
         <span onMouseUp={() => {}}>Also drag</span>

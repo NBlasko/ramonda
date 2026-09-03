@@ -13,7 +13,7 @@ import type { ElementRule } from "./rule";
  *
  * Four spellings say the same thing and all four are reported:
  *
- * - **No `href` at all.** Usually an `onClick` was added instead, which is a button wearing a link's
+ * - **No `href` at all.** Usually an `onclick` was added instead, which is a button wearing a link's
  *   clothes.
  * - **`href=""`.** A destination that is the page it is already on, so following it RELOADS —
  *   losing what the reader had typed and where they had scrolled to. Worse than the bare `#` below
@@ -86,7 +86,7 @@ export const linkWithoutADestination = {
       // The handler is named only where it is the diagnosis: an `<a>` with a click and no `href` is
       // a button wearing a link's clothes, which is the whole sentence. Beside `href="#"` it adds
       // nothing the line does not already say.
-      `    <a> has ${issue.kind === "no href" && issue.handled ? "an `onClick` but " : ""}${SAYS[issue.kind]}${
+      `    <a> has ${issue.kind === "no href" && issue.handled ? "an `onclick` but " : ""}${SAYS[issue.kind]}${
         issue.kind !== "no href" && issue.handled ? ", and the handler has to cancel the navigation it asked for" : ""
       }.`,
     ],
@@ -106,7 +106,7 @@ export const linkWithoutADestination = {
   read(element, { tag, attr, has }) {
     if (tag !== "a") return [];
 
-    const handled = has("onClick");
+    const handled = has("onclick");
     const at = positionOf(openingOf(element));
 
     if (!has("href")) {

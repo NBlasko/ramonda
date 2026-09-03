@@ -113,3 +113,9 @@ never reported. Reach for a [`ref`](/concepts/refs) and call them.
 
 The line is not "never touch the DOM". It is that **rendering** done imperatively is a second copy
 of state, and a command is not.
+
+## Next
+
+- [Portal](/composition/portal) — the mechanism this page keeps pointing at, in full.
+- [Head and metadata](/ssr/head) — the one case worth using instead of a portal into `<head>`.
+- [Composition](/composition) — the other five ways components fit together.

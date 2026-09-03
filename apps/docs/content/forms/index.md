@@ -188,7 +188,7 @@ defaultValues: self.profile.data ?? BLANK,                     // ✓ one object
 
 The callback runs whenever a signal it reads moves — for a form fed by a query, every time the
 request settles or the key changes — and the first line builds a fresh object on each of those,
-which [RMD022](/reference/diagnostics) reports in development once it has happened four times
+which [RMD022](/reference/diagnostics/rmd022) reports in development once it has happened four times
 running without the contents moving. Holding the object is the fix it names, and it is the right
 one here: nothing is rebuilt, so there is nothing to report.
 
@@ -208,3 +208,10 @@ That comparison is the whole cost of defaults that did not move: around 2 µs on
 - [Array fields](/forms/arrays) — rows that survive a splice
 - [On the server](/forms/server) — what a form does during SSR, and what it does on hydration
 - [The bguard submodule](/forms/bguard) — HTML attributes from the schema, and a check for typo'd cross-field rules
+
+## Next
+
+- [Fields](/forms/fields) — the field tree in full: property access instead of string paths, and
+  what `bind` hands a control.
+- [Validation](/forms/validation) — a schema from any Standard Schema library, and when a message
+  is ready to be seen.

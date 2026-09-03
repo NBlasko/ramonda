@@ -155,3 +155,8 @@ Every SSR app had grown its own copy of these — a DOM installer, a shell fille
 and the copies drifted. Two faults were found and fixed in **one copy each**: an unescaped
 `<title>`, and the `$` sequence above. The scaffolded template still shipped both. A fix that has to
 be applied by hand to every app reaches one of them.
+
+## Next
+
+- [Rendering on the server](/ssr/render) — what calls this plumbing, and what it produces.
+- [The router on the server](/routing/server) — the other half of a request, if yours has routes.
