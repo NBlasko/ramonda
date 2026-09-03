@@ -102,7 +102,7 @@ export type {
 export type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
 // Two readings of that graph, both computed from it alone with no second walk over the source:
 // where the app splits and what each piece carries, and what changed between two graphs.
-export { filesOf, splitOf } from "./split";
+export { splitOf } from "./split";
 export type { Split, SplitPoint } from "./split";
 export { diffGraphs, refuseToDiff } from "./diff";
 export type { GraphDiff } from "./diff";

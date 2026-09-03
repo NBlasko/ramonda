@@ -485,19 +485,20 @@ knowing what mounts it, and its graph is a fragment.
 `--split` and `--diff` are the command's two readings of the graph, and both are exported. A script
 can ask the same questions — a size budget that fails a build, a note on a pull request.
 
-### `splitOf(graph)` and `filesOf(ids)`
+### `splitOf(graph)`
 
 `splitOf` answers what loads when. `initial` is what a root reaches without crossing a `lazy`
 edge, `points` is one entry per split point, and `shared` is what more than one of them pulls in.
-Every id is `file#name`, so `filesOf(ids)` counts the files a set of them lives in.
+Every id is `file#name`, so the file a declaration lives in is the part before the `#`.
 
 ```ts
-import { analyzeProject, filesOf, splitOf } from "@ramonda/check";
+import { analyzeProject, splitOf } from "@ramonda/check";
 
 const { graph } = analyzeProject("tsconfig.json");
 const split = splitOf(graph);
 
-console.log(`${split.initial.length} declaration(s) in ${filesOf(split.initial)} file(s)`);
+const files = new Set(split.initial.map((id) => id.split("#")[0]));
+console.log(`${split.initial.length} declaration(s) in ${files.size} file(s)`);
 ```
 
 ### `diffGraphs(before, after)` and `refuseToDiff(before, after)`

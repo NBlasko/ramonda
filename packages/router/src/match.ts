@@ -76,16 +76,6 @@ export function matchParams(pathname: string, pattern: string): RouteParams | nu
   return params;
 }
 
-/** Finds the first matching route key for a pathname (or "*"). */
-export function matchRoute(pathname: string, routeKeys: string[]): { key: string; params: RouteParams } {
-  for (const key of routeKeys) {
-    if (key === "*") continue;
-    const params = matchParams(pathname, key);
-    if (params) return { key, params };
-  }
-  return { key: "*", params: {} };
-}
-
 // --- Precompiled matching (hot path) ---------------------------------------
 
 interface CompiledRoute {

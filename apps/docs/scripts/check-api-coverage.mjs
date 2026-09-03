@@ -164,6 +164,62 @@ const expected = [
 const reference = readFileSync(join(root, "content", "reference", "api.md"), "utf8");
 
 /**
+ * The other direction: a name the reference PRESENTS as an export has to be one.
+ *
+ * The check above catches an export missing from the page. It cannot catch the reverse — a row
+ * for something that is no longer exported — and that half is just as wrong, because a reader
+ * copies the name and it is not there. It happened while removing `parseUrl`, `matchRoute` and
+ * `filesOf`: three names were taken off the surface, and the reference kept a row for one of them
+ * until it was found by hand.
+ *
+ * A row's FIRST CELL is the claim. Only a bare identifier is judged — `render(ui, options?)` has
+ * its arguments stripped, and anything with a dot, a space or a symbol in it is a method, an
+ * option or prose, and is none of this check's business.
+ */
+const NOT_EXPORTS = new Set([
+  // From `createRouter`, deliberately never exported bare: they carry the route table's types,
+  // and the untyped versions of themselves are the API this package was rebuilt to remove.
+  "Navigator",
+  "Link",
+  "route",
+  // `@ramonda/build`'s two adapter entries, guarded by their own surface tests. `ramonda` is not
+  // in the expected list for the reason given above — every page mentioning `@ramonda/anything`
+  // would satisfy a search for it.
+  "ramonda",
+  "ramondaOptions",
+  "ramondaDefine",
+  // The `@ramonda/core/testing` entry, which has no surface test of its own yet.
+  "flushSync",
+  "rerenderRoot",
+  "getComponentInstance",
+]);
+
+const claimed = [
+  ...new Set(
+    [...reference.matchAll(/^\|\s*`([^`]+)`\s*(?:·|\|)/gm)]
+      .map(([, cell]) => cell.replace(/\(.*\)$/, "").trim())
+      .filter((name) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name)),
+  ),
+];
+
+if (claimed.length < 80) {
+  throw new Error(
+    `[docs] Read only ${claimed.length} export claims out of the API reference, which is too few to ` +
+      `be checking anything. The table shape it reads has probably changed.`,
+  );
+}
+
+const invented = claimed.filter((name) => !expected.includes(name) && !NOT_EXPORTS.has(name));
+
+if (invented.length > 0) {
+  throw new Error(
+    `[docs] The API reference has a row for ${invented.length} name(s) nothing exports:\n` +
+      invented.map((name) => `        ${name}`).join("\n") +
+      `\n\n        Remove the row, or add the name to NOT_EXPORTS with the reason it is not an export.`,
+  );
+}
+
+/**
  * Prove the check can fail before trusting that it passes — and prove each one SEPARATELY.
  *
  * With a single flag the first check threw and the second never ran, so its self-test proved nothing

@@ -171,8 +171,8 @@ what it passes into one. One field today, `label`, which devtools adds to the ho
 | `createRouter(routes)` | Returns `{ Router, RouteOutlet, Navigator, Link, route }` bound to the table, so `<Link href>` is type-checked. [Setup](/routing) |
 | `route(pattern, params)` | Builds a `:param` href — the only way to make one; params are typed. [Links](/routing/links) |
 | `routePaths(config, extra?)` | `{ paths, needsData }` for a static build. [Static builds](/ssr/static) |
-| `matchRoute` · `matchParams` · `matchCompiled` | Matching, for tooling. |
-| `parseUrl` · `parseUrlString` · `buildUrl` · `sanitizeHref` | URL helpers. |
+| `matchParams` · `matchCompiled` | Matching, for tooling. |
+| `parseUrlString` · `buildUrl` · `sanitizeHref` | URL helpers. |
 
 Types: `RouteConfig` · `PathOf` · `Href` · `TypedRouterKit` · `TypedLinkProps` · `TypedNavigator` ·
 `RouteParams` · `RoutePaths` · `RouterState` · `RouterNavigator` · `NavigateOptions` ·
@@ -365,7 +365,6 @@ The analyzer behind `ramonda-check`, as an import. [Checking your app](/referenc
 | `analyzeProgram(program, notes?)` | The same analysis over a `ts.Program` you already have. The program is the cost of a run — the rules themselves are close to free — so a tool holding its own programs pays once rather than twice. |
 | `ruleCatalogue()` | Every rule as four strings: its `id`, its severity, when it reports, and the runtime diagnostic that reports the same fault. The rule tables on the check page are built from this. |
 | `splitOf(graph)` | What loads before anything, what each split point brings, and what they share. |
-| `filesOf(declarations)` | How many files a set of declarations lives in. |
 | `diffGraphs(before, after)` | What moved between two graphs — nodes, edges, and the size of the first payload. |
 | `refuseToDiff(before, after)` | Why two graphs cannot be compared, or `undefined` when they can. |
 
