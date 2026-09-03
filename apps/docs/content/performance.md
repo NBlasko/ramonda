@@ -2,7 +2,7 @@
 title: Performance
 description: What is already free, the one class of mistake that costs you renders, the three declarations that fix it, and how to see which is happening.
 section: Across the app
-order: 106
+order: 117
 ---
 
 # Performance

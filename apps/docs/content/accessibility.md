@@ -2,7 +2,7 @@
 title: Accessibility
 description: What Ramonda does for you, the thirty-five checks it runs on your markup, and the part of accessibility that no tool can answer.
 section: Across the app
-order: 105
+order: 116
 ---
 
 # Accessibility

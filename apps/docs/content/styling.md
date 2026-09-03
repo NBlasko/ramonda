@@ -2,7 +2,7 @@
 title: Styling
 description: className and the two forms of style, what the framework converts for you, and the parts of styling it deliberately leaves to CSS.
 section: Across the app
-order: 107
+order: 118
 ---
 
 # Styling

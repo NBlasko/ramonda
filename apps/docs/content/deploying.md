@@ -2,7 +2,7 @@
 title: Deploying
 description: The four steps of a build and why the last one exists, where each route can live, and what is decided at build time.
 section: Across the app
-order: 108
+order: 119
 ---
 
 # Deploying
