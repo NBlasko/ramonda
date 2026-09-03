@@ -1,5 +1,5 @@
 import { COMPONENT_TYPE, CHILD_RECORD, ORIGIN_SYM, REQUEST_ATTR } from "../helpers/constants";
-import { displayName } from "../helpers/utils";
+import { className, displayName } from "../helpers/utils";
 import { installClientRequestScope } from "./requestContext";
 import { applyChangesOnAttributes, formatAttributes } from "../core/Attribute";
 import { generateRenderOutput } from "../helpers/generateRenderOutput";
@@ -322,7 +322,7 @@ function hydrateComponentRegion(
    */
   if (open === null || !isComponentOpen(open)) {
     if (__DEV__) {
-      reportStructureMismatch(placeholder, `<${vnode.name.name}>`, describeFound(open));
+      reportStructureMismatch(placeholder, `<${className(vnode.name)}>`, describeFound(open));
     }
     const region = buildComponentRegion(vnode, placeholder, owner, parent as ChildNode);
     const built: ChildNode[] = [];
@@ -371,7 +371,7 @@ function hydrateComponentRegion(
         restoreComponentTree(component, JSON.parse(blob));
       } catch (e) {
         if (__DEV__) {
-          diagnose("RMD036", vnode.name.name, `The blob on <${vnode.name.name}> could not be parsed.`, {
+          diagnose("RMD036", className(vnode.name), `The blob on <${className(vnode.name)}> could not be parsed.`, {
             component: vnode.name.name,
             reason: e instanceof Error ? e.message : String(e),
           });

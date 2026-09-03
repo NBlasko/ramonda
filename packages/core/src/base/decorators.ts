@@ -2,7 +2,7 @@ import { attach, detach, STATE_KEYS, PERSIST_KEYS, PROPS_GATE, INITIAL_PRIMITIVE
 import { reportNonSerializableState } from "../debug/serializableState";
 import { createId } from "../helpers/createId";
 import { isComponentClass } from "../vdom/guards";
-import { displayName } from "../helpers/utils";
+import { className, displayName } from "../helpers/utils";
 import type { Effect } from "../reactivity/effect";
 import { State } from "../reactivity/State";
 import { trackerContainer, trackDependency } from "../reactivity/tracker";
@@ -622,7 +622,7 @@ export function ShouldUpdateOnPropsChange<
       throw new Error(
         `[Ramonda] @ShouldUpdateOnPropsChange is for components, not hooks. A hook's props come from its ` +
           `this.use() callback and refresh on every owner render — there is no parent-driven prop update to gate. ` +
-          `Put the decorator on the component that renders <${ctor.name} />, or drop it.`,
+          `Put the decorator on the component that renders <${className(ctor)} />, or drop it.`,
       );
     }
 
@@ -635,7 +635,9 @@ export function ShouldUpdateOnPropsChange<
     // declaration. The write is unconditional, which is what makes the one written furthest from the
     // class the one that decides — measured, because the order is the opposite of how it reads.
     if (__DEV__ && Object.hasOwn(ctor, PROPS_GATE)) {
-      diagnose("RMD040", ctor.name, `<${ctor.name} /> declares more than one.`, { component: ctor.name });
+      diagnose("RMD040", className(ctor), `<${className(ctor)} /> declares more than one.`, {
+        component: className(ctor),
+      });
     }
 
     (ctor as unknown as { [PROPS_GATE]?: unknown })[PROPS_GATE] = decide;
@@ -1470,7 +1472,7 @@ export function StableProps<const K extends readonly string[]>(...keys: K) {
      * symbol and no advice.
      */
     if (__DEV__ && Object.hasOwn(ctor, STABLE_PROPS)) {
-      diagnose("RMD046", ctor.name, `${ctor.name} declares more than one @StableProps.`, {
+      diagnose("RMD046", className(ctor), `${className(ctor)} declares more than one @StableProps.`, {
         component: ctor.name,
         added: keys.join(", "),
       });

@@ -1,5 +1,5 @@
 import { HOOK_RUNTIME, INTERNAL_HOOKS, GLOBAL_RUNTIME, CHILD_HOOKS } from "../core/runtime";
-import { displayName } from "./utils";
+import { className, displayName } from "./utils";
 import { STABLE_PROPS, attach, detach } from "./constants";
 import { valueEqual } from "./valueEqual";
 import { checkPropsStability, checkCachedProps, reportObjectPropsBag } from "../debug/propsStability";
@@ -233,7 +233,7 @@ export function useCommon<T extends BaseHook<unknown>, P>(
       );
     }
     throw new TypeError(
-      `[RMD055] <${hook.name} /> was given a plain object as its props in ${displayName(that)} — a hook's props must be a callback: \`this.use(${hook.name}, () => ({ ... }))\`. An object literal is evaluated once, so it can only ever carry what was true while ${displayName(that)} was being constructed.`,
+      `[RMD055] <${className(hook)} /> was given a plain object as its props in ${displayName(that)} — a hook's props must be a callback: \`this.use(${className(hook)}, () => ({ ... }))\`. An object literal is evaluated once, so it can only ever carry what was true while ${displayName(that)} was being constructed.`,
     );
   }
 
@@ -316,7 +316,11 @@ export function useCommon<T extends BaseHook<unknown>, P>(
       // difference means it read something no signal backs, which is the one way this cache
       // can serve a stale bag. Untracked deliberately: this call is an observation, and letting
       // it record dependencies would make the check change the thing it is checking.
-      checkCachedProps(`${displayName(that)} → ${hook.name}`, cache.bag, probeProps(that, hook.name, hookProps));
+      checkCachedProps(
+        `${displayName(that)} → ${className(hook)}`,
+        cache.bag,
+        probeProps(that, className(hook), hookProps),
+      );
     }
 
     // Whatever this callback read, an enclosing tracker read too. Without this a `use()` nested

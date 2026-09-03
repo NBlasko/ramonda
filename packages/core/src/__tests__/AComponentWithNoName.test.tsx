@@ -177,6 +177,33 @@ describe("a diagnostic about a component that has no name", () => {
     app.unmount();
   });
 
+  /**
+   * The other half of the family, and the one that got past the gate.
+   *
+   * `scripts/check-nameless-class.mjs` greps for `constructor.name`, so it never saw the messages
+   * that hold the CLASS itself — `${hook.name}`, `${ctor.name}`, `${vnode.name.name}`. Seven of
+   * those existed while the commit that added the gate said the family was closed. They read
+   * `className()` now, and this is the one a user meets: RMD055 THROWS, so it arrives with nothing
+   * else on the page to explain it.
+   *
+   * The gate cannot cheaply cover this half, and the helper's own note says why: `${x.name}` is
+   * indistinguishable from an ordinary data read.
+   */
+  test("the RMD055 throw names a nameless hook class", async () => {
+    const Store = unnamed(() => class extends Hook<{ n: number }> {});
+    expect(Store.name).toBe("");
+
+    class Holder extends Component {
+      // An object literal instead of a callback, which is the fault RMD055 refuses.
+      store = this.use(Store as never, { n: 1 } as never);
+      render() {
+        return <p>x</p>;
+      }
+    }
+
+    await expect(getDOM(<Holder />)).rejects.toThrow(/\[RMD055\] <Unknown \/> was given a plain object/);
+  });
+
   describe("a diagnostic raised while a nameless component renders", () => {
     let records: RamondaDiagnostic[] = [];
 

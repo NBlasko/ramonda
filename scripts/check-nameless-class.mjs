@@ -24,6 +24,20 @@ import { fileURLToPath } from "node:url";
  *
  * A grep for the operators cannot find a site that has none. A grep for the READ can, which is what
  * this is. Nothing has to be remembered: a new bare read fails here.
+ *
+ * ## The half it does NOT cover, said plainly because the commit that added it claimed otherwise
+ *
+ * This finds `constructor.name` — an INSTANCE's class. Several messages hold the CLASS itself
+ * instead: the hook handed to `use()`, the component on a vnode, the constructor a class decorator
+ * was applied to. A class expression assigned to nothing has an empty `name` there too, and seven
+ * such sites were live while this file said the family was closed. They read `className()` from
+ * `helpers/utils.ts` now.
+ *
+ * It is not extended to cover them, and that is a decision rather than an omission: `${x.name}` is
+ * indistinguishable from an ordinary data read — `${issue.name}`, `${graph.package.name}`,
+ * `${point.name}` — so a gate over it would need an allowlist longer than the rule, and an
+ * allowlist that long is a list nobody maintains. What keeps that half from coming back is that all
+ * seven sites read the same, so a reader copying a neighbour copies the right thing.
  */
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

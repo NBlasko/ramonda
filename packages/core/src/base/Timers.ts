@@ -131,6 +131,12 @@ abstract class Scheduled extends Armed<ScheduledProps> {
    * writes only what MOVED off its initializer — and nothing arms on the server, because `armable`
    * is false there. So this is `false` on both sides and is never written. Asserted in
    * `Timers.test.tsx`.
+   *
+   * **The devtools panel shows it under THIS name, not `pending`.** `readState` lists every
+   * `@state` key with no privacy filter, so a `Timeout` in the panel reads `scheduled: true` while
+   * the API a caller writes is `pending`. The two cannot share a name — a public field would let
+   * anybody assign it — and a rename facility for the panel is machinery this does not earn. Named
+   * here so the next reader knows it is the design and not a leak.
    */
   @state private scheduled = false;
 
