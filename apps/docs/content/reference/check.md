@@ -236,9 +236,10 @@ Which only works because there is somewhere to put "I know, and it is right here
 ```
 
 **It goes on the line the report names, or on the line above it** — which is the element or the
-call the finding points at, not the statement that contains it. It works for every rule — the same
-mechanism for all five families, applied where every finding already passes, rather than something
-each rule has to remember to ask for.
+call the report points at, not the statement that contains it.
+
+**It works for every rule**, without any rule having to know about it: a finding is checked for one
+on its way out, so there is no list of rules that honour it and none that quietly do not.
 
 **A reason is mandatory.** `// ramonda-check-ignore` with nothing after it silences nothing and is
 itself reported: an empty directive would be the quietest way to switch a rule off, and the quiet

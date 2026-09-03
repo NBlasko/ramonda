@@ -98,8 +98,8 @@ announces nothing.
 
 ## Every one of them fails your build
 
-There is no warning level. An accessibility rule reports a fault exactly as an `async render()`
-does, and a reported fault fails the command.
+There is no warning level. An accessibility rule reports a fault exactly as the rule for an
+`async render()` does, and a reported fault fails the command.
 
 That is deliberate, and the reason is what a warning actually does: it is read once and then not
 read at all. Thirty-five of them printing under a passing build is thirty-five things nobody has to
