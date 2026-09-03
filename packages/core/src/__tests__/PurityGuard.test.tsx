@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { getDOM } from "../test/setup";
+import { getDOM, unnamed } from "../test/setup";
 import { Component } from "../base/Component";
 import { Hook } from "../base/Hook";
 import { compute, memoized, state } from "../base/decorators";
@@ -254,6 +254,34 @@ describe("installing the purity guard", () => {
     // returned a copy would satisfy a caller reading the return and betray one reading the argument.
     expect(crypto.getRandomValues(array)).toBe(array);
     expect(array.every((byte) => byte === 0)).toBe(false);
+  });
+
+  /**
+   * The subject of the render message when the class has no name.
+   *
+   * `report`'s render branch read `component.constructor.name` bare — no fallback at all — so a
+   * class expression assigned to nothing printed `<  /> called Math.random()`. It belongs to the
+   * family fixed in `__tests__/AComponentWithNoName.test.tsx`, and that sweep MISSED it: the sweep
+   * grepped for `??` and `||`, and this site had neither. It was changed while `purePhase` was
+   * being split out of the same function, so it is pinned here rather than left for the pass that
+   * will take the other two dozen.
+   */
+  test("a nameless component's random read still names a subject", async () => {
+    const Anon = unnamed(
+      () =>
+        class extends Component {
+          render() {
+            return <p>{String(Math.random() > 2)}</p>;
+          }
+        },
+    );
+    expect(Anon.name).toBe("");
+
+    await getDOM((<Anon />) as never);
+
+    expect(reported()).toContain("[RMD021]");
+    expect(reported()).toContain("<Unknown /> called Math.random()");
+    expect(reported()).not.toContain("<  />");
   });
 
   /** "Safe to call more than once", which `index.ts` relies on and nothing checked. */
