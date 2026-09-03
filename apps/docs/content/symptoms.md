@@ -139,7 +139,8 @@ handler on it. A click handler works for a pointer and for nothing else: the ele
 the tab order, so it cannot be focused, and a screen reader announces it as text rather than as
 something to do. A `<button>` is all three of those things with nothing written on it.
 
-See [accessibility](/accessibility) for the other thirty-four checks of this kind. See [`click-with-no-keyboard-path`](/rules/click-with-no-keyboard-path).
+See [`click-with-no-keyboard-path`](/rules/click-with-no-keyboard-path), and
+[accessibility](/accessibility) for the other thirty-four checks of this kind.
 
 ### My link does not navigate, or cannot be opened in a new tab
 

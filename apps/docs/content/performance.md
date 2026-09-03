@@ -47,11 +47,12 @@ the second time, [`RMD022`](/reference/diagnostics/rmd022) for a hook's props ca
 same, and [`RMD024`](/reference/diagnostics/rmd024) for a `@compute` that recomputes without its
 answer changing.
 
-`ramonda-check` finds the same class before anything runs — fourteen rules, of which
+`ramonda-check` finds the same class before anything runs, and the ones that come up most are
 [`fresh-object-in-props`](/rules/fresh-object-in-props),
 [`function-built-in-the-markup`](/rules/function-built-in-the-markup),
-[`arrow-fields`](/rules/arrow-fields) and [`index-as-key`](/rules/index-as-key) are the ones that
-come up most.
+[`arrow-fields`](/rules/arrow-fields),
+[`ref-built-where-it-cannot-be-kept`](/rules/ref-built-where-it-cannot-be-kept) and
+[`index-as-key`](/rules/index-as-key).
 
 ## The three declarations
 

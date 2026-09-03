@@ -114,6 +114,13 @@ A ref is cleared when its element is removed, so it can't keep a detached node a
 `createRef` is the only one of these you call. The other two appear when a type is written by hand
 — a field annotation, a function that takes a ref.
 
+**Call `createRef` where an identity belongs** — a field, or anywhere that runs once. From a
+`render()`, a `@compute`, a `@memoized` member or a hook's props callback it answers a new object
+every pass: the child is handed a changed `ref` on every render, and the ref you meant to read is
+replaced before you can. [`RMD061`](/reference/diagnostics/rmd061) reports it, and
+[`ref-built-where-it-cannot-be-kept`](/rules/ref-built-where-it-cannot-be-kept) says the same before
+it runs.
+
 **`Ref<T>`** is what `createRef<T>()` hands back: a `current` that is the node or `null`, and the
 `setCurrent` the framework calls. Annotating a field with it is the usual reason to name it —
 `private input: Ref<HTMLInputElement> = createRef()`.
