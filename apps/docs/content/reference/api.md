@@ -262,8 +262,8 @@ reaches this module. [The bguard submodule](/forms/bguard)
 
 | | |
 |---|---|
-| `htmlConstraints(schema)` | Returns a lookup by field path giving `required` · `minlength` · `maxlength` · `pattern` · `min` · `max` · `type`, derived from the schema. Answers are cached, so the same path is the same object every render. [HTML attributes](/forms/bguard#html-attributes-from-the-schema) |
-| `unknownRefPaths(schema, values)` | Every `ctx.ref` path that names no field — the typo that otherwise passes silently for ever. Belongs in a test. [Cross-field rules](/forms/bguard#cross-field-rules-that-point-at-nothing) |
+| `htmlConstraints(schema)` | Returns a lookup by field path giving `required` · `minlength` · `maxlength` · `pattern` · `min` · `max` · `type`, derived from the schema. Answers are cached, so the same path is the same object every render. [HTML attributes](/forms/bguard#html-attributes-from-the-schema-htmlconstraints) |
+| `unknownRefPaths(schema, values)` | Every `ctx.ref` path that names no field — the typo that otherwise passes silently for ever. Belongs in a test. [Cross-field rules](/forms/bguard#cross-field-rules-that-point-at-nothing-unknownrefpaths) |
 
 Types: `HtmlConstraints` · `UnknownRef`
 
