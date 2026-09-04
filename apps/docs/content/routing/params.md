@@ -146,8 +146,9 @@ export class OwnerChip extends Component {
 ```
 
 A default does the same job — `const { teamId = "" } = params()` — and so does reading off a variable
-one line later, which stays unjudged on purpose. Two things are deliberately not answered: a type
-argument that is a **name** rather than a written-out shape, and a key built from an expression.
+one line later, which stays unjudged on purpose. Asking *whether* a key is there is not claiming that
+it is, so `params().hasOwnProperty("teamId")` is fine. Two things are deliberately not answered: a
+type argument that is a **name** rather than a written-out shape, and a key built from an expression.
 
 **What it cannot see.** A route table whose keys are computed — `table[page.path] = …` in a loop —
 names its paths at runtime, so the checker knows the views are routed but not under what; it reports

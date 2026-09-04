@@ -82,6 +82,14 @@ class NamedType extends Component {
   }
 }
 
+/** PROBE: a legitimate way to ask whether a key is there at all. */
+class AsksIfPresent extends Component {
+  nav = this.use(Navigator);
+  render() {
+    return <em>{this.nav.params().hasOwnProperty("teamId") ? "yes" : "no"}</em>;
+  }
+}
+
 /** Not reported: nothing is named, so nothing is claimed. */
 class NamesNothing extends Component {
   nav = this.use(Navigator);
@@ -119,6 +127,7 @@ class TeamPage extends Component {
         <DefaultedDestructure />
         <ThroughAVariable />
         <NamedType />
+        <AsksIfPresent />
         <NamesNothing />
         {this.hooked.who}
       </div>

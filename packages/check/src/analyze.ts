@@ -207,6 +207,23 @@ export interface UnreachableRouteIssue {
  * `if (pattern !== undefined)`, so this read does not throw: it hands back a params object without
  * the key, and a type that promised `string` delivers `undefined`. Nothing says a word.
  */
+/**
+ * What `Object.prototype` gives every object, so a read of one names no param.
+ *
+ * Module scope rather than inside the walk: a `const` below its own use site is in the temporal dead
+ * zone when the walk reaches it, and this one was — `ReferenceError: Cannot access 'OBJECT_MEMBERS'
+ * before initialization`, from reviewing this branch.
+ */
+const OBJECT_MEMBERS = new Set([
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+  "toString",
+  "valueOf",
+  "constructor",
+]);
+
 export interface UnsuppliedKeyIssue {
   /** The component or hook that reads. */
   component: string;
@@ -1686,6 +1703,11 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     }
 
     if (parent !== undefined && ts.isPropertyAccessExpression(parent) && parent.expression === node) {
+      // A member every object has is not a claim about a param. `params().hasOwnProperty("teamId")`
+      // is the ordinary way to ask whether a key is there AT ALL, and reporting it as a claim on a
+      // key called `hasOwnProperty` turns a careful read into a fault — measured, on a fixture that
+      // keeps the case.
+      if (OBJECT_MEMBERS.has(parent.name.text)) return undefined;
       return { how: "property", keys: [parent.name.text] };
     }
 

@@ -8,6 +8,15 @@ const here = dirname(fileURLToPath(import.meta.url));
 const CLI = join(here, "../../dist/cli.js");
 const fixture = (name: string) => join(here, "fixtures", name, "tsconfig.json");
 
+/**
+ * Whether this run is a gate, which is what makes a missing CLI a failure rather than a skip.
+ *
+ * `CI=false` is a real thing people write — Create React App made a convention of it — and
+ * `!process.env.CI` reads that as "in CI", which would fail a bare local `vitest` with no build for
+ * a reason nobody could guess. So the string is read rather than its truthiness.
+ */
+const inAGate = process.env.CI !== undefined && process.env.CI !== "" && process.env.CI !== "false";
+
 function run(...args: string[]): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
     execFile(process.execPath, [CLI, ...args], (error, stdout, stderr) => {
@@ -48,7 +57,7 @@ function run(...args: string[]): Promise<{ code: number; output: string }> {
  * are identical — so it is the two that read the output which carry this.
  */
 describe("the gate's fixable-fault step", () => {
-  test.skipIf(!existsSync(CLI) && !process.env.CI)("fails when a fault has an answer nobody applied", async () => {
+  test.skipIf(!existsSync(CLI) && !inAGate)("fails when a fault has an answer nobody applied", async () => {
     const { code, output } = await run(fixture("mechanical-fixes"), "--fix", "--dry-run");
 
     expect(code).toBe(1);
@@ -58,7 +67,7 @@ describe("the gate's fixable-fault step", () => {
     expect(output).toContain("run `--fix` to apply them");
   });
 
-  test.skipIf(!existsSync(CLI) && !process.env.CI)("passes when every remaining fault needs a person", async () => {
+  test.skipIf(!existsSync(CLI) && !inAGate)("passes when every remaining fault needs a person", async () => {
     // `foreign-child` reports plenty, and not one of its faults has a single mechanical answer.
     const { code, output } = await run(fixture("foreign-child"), "--fix", "--dry-run");
 
@@ -72,7 +81,7 @@ describe("the gate's fixable-fault step", () => {
    * Asserted through the CHECK path rather than only through `applyFixes`, because the flag that
    * decides it is read in the CLI and a wiring mistake there would not touch the unit test.
    */
-  test.skipIf(!existsSync(CLI) && !process.env.CI)(
+  test.skipIf(!existsSync(CLI) && !inAGate)(
     "and the tree is untouched, so running it twice says the same thing",
     async () => {
       const first = await run(fixture("mechanical-fixes"), "--fix", "--dry-run");

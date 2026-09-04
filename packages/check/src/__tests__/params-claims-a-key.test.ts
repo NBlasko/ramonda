@@ -74,6 +74,12 @@ describe("a params() read that claims a key", () => {
     expect(names()).not.toContain("NamesNothing");
   });
 
+  test("asking WHETHER a key is there is not claiming that it is", () => {
+    // `params().hasOwnProperty("teamId")` was reported as a claim on a key called `hasOwnProperty`,
+    // which turns the careful read into the fault. Found reviewing this branch.
+    expect(names()).not.toContain("AsksIfPresent");
+  });
+
   test("beside the outlet, every claimed key is absent and the read still does not throw", () => {
     const issue = reported().find((each) => each.component === "Beside");
 
