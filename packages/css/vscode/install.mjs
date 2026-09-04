@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,12 @@ import { fileURLToPath } from "node:url";
  *
  * Marketplace publishing is not this script's job — until the extension is published, this is how it
  * gets installed, and `pnpm dlx @vscode/vsce package` is how a `.vsix` is made for anyone else.
+ *
+ * **Re-running it is the point, not a no-op.** An editor reads the manifest when the extensions
+ * FOLDER changes, not when a file inside a linked one does — so a manifest that gained a `main`, or a
+ * new contribution, is invisible until the link is replaced. Measured: an editor running since before
+ * the change offered no formatter and logged nothing, because as far as it knew the extension had
+ * never declared one.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -45,7 +51,9 @@ for (const [folder, what] of found) {
       console.error(`  ${what}: ${at} already exists and is not this folder — left alone.`);
       continue;
     }
-    rmSync(at);
+    // `unlink`, never `rm`: a link to a directory is a directory to `rmSync`, which either refuses
+    // (measured: `ERR_FS_EISDIR`) or, told to recurse, deletes the repository folder it points at.
+    unlinkSync(at);
   }
 
   symlinkSync(here, at, "dir");

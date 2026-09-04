@@ -67,6 +67,25 @@ Set it as the formatter for the languages you write blocks in:
 A file with no block goes straight through the same tool, so this is safe to set for the language
 rather than for a folder.
 
+## One setting the editor needs
+
+```json
+{ "typescript.tsserver.useSyntaxServer": "never" }
+```
+
+Measured from a real editor's own log, on a file holding a block:
+
+```
+[error] [vscode.typescript-language-features] provider FAILED
+[error] Error: <syntax> TypeScript Server Error (5.9.3)
+Debug Failure. False expression: Token end is child end
+```
+
+An editor runs **two** TypeScript servers — a `<syntax>` one for the things that need no types, and a
+`<semantic>` one for everything else — and **only the semantic one loads plugins**. So the syntax
+server reads the author's file, which is not TypeScript, and its classifier walks itself into an
+internal assertion. Nothing in a plugin can reach it; the setting is what stops the editor asking it.
+
 ## What it does NOT do
 
 Completion, hover, and the red squiggles are not here. They come from the language service plugin in

@@ -916,6 +916,31 @@ is its own file so it can be measured without an editor — everything else in `
 loudly on every save of every file would be worse than doing nothing, and the tool's own words go to
 an output channel rather than a modal.
 
+### T — the OTHER TypeScript server, which no plugin can reach
+
+Found in a real editor's log rather than reasoned about:
+
+```
+[error] [vscode.typescript-language-features] provider FAILED
+[error] Error: <syntax> TypeScript Server Error (5.9.3)
+Debug Failure. False expression: Token end is child end
+```
+
+An editor runs **two** servers, `<syntax>` and `<semantic>`, and **only the semantic one loads
+tsserver plugins**. So the syntax server reads the author's own file — which is not TypeScript — and
+its classifier walks into an internal assertion. There is nothing a plugin can do about it, because
+it is not there.
+
+`"typescript.tsserver.useSyntaxServer": "never"` is the answer, and it is in this repository's
+`.vscode/settings.json` now. It belongs in the extension's README too, because a project using the
+package needs it whether or not it has this repository.
+
+**And the reason nothing appeared to change for an hour:** an editor reads an extension's manifest
+when the extensions FOLDER changes, not when a file inside a linked one does. A manifest that gained
+a `main` was invisible until the link was replaced, with nothing logged — as far as the editor knew,
+the extension had never declared a formatter. `vscode/install.mjs` re-links, which is why re-running
+it is the fix; it also had a bug of its own, `rmSync` on a link to a directory, which throws.
+
 ### L — the runtime diagnostic. Deliberately last
 
 A `css` value reaching the runtime that no transform produced must be reported rather than silently
