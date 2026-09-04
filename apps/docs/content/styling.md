@@ -78,11 +78,15 @@ takes the hrefs, or you place them yourself if you write the shell by hand. See
 
 **No scoping, and no generated class names.** A `className` is the string you wrote, so the class
 in your source is the class in the served HTML — which is what makes a stylesheet, a browser
-inspector and a CSS module all work without the framework knowing about them.
+inspector and a CSS module all work without the framework knowing about them. A generated class is
+what [style blocks](/style-blocks) add, and they are a separate package you opt into rather than
+something the framework does to your markup.
 
 **No CSS-in-JS.** There is no way to write a style as JavaScript here, and that is a choice rather
 than something missing: a style built in JavaScript ships inside the bundle, is rebuilt on every
-render, and cannot be cached by the browser as a file of its own.
+render, and cannot be cached by the browser as a file of its own. [Style blocks](/style-blocks) are
+not the exception they look like — a block is real CSS, compiled away before the bundle, and what
+ships is a stylesheet the browser caches like any other.
 
 **No theme system.** A theme is a context and some custom properties — publish the values with
 [`createContext`](/composition/context), or set `--` properties high up and let CSS cascade them,
@@ -90,6 +94,7 @@ which needs nothing from the framework at all.
 
 ## Next
 
+- [Style blocks](/style-blocks) — real CSS beside the markup, compiled to a class before the build.
 - [JSX](/concepts/jsx) — the rest of the attribute surface, and how a name reaches the DOM.
 - [Performance](/performance) — why an object built in the markup costs more than it looks.
 - [Static builds](/ssr/static) — the document shell, and where your stylesheet links go.
