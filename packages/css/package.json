@@ -38,6 +38,10 @@
     "./properties": {
       "types": "./dist/properties.d.ts",
       "import": "./dist/properties.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
     }
   },
   "bin": {

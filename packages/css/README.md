@@ -10,9 +10,9 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 )>
 ```
 
-> **Partly built.** This package is private and its version is `0.0.0`. The parser, the transform,
-> the compiled value, the virtual file, the property types and the check command exist; **the
-> stylesheet does not**, so a block type-checks and compiles but nothing renders yet. Read
+> **Partly built.** This package is private and its version is `0.0.0`. **A block renders**: the
+> parser, the transform, the compiled value, the virtual file, the property types, the check command,
+> the Vite plugin and the stylesheet all exist. The editor plugin and the CSS checker do not. Read
 > `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
 > for what is done and what is next.
 
@@ -111,6 +111,24 @@ const canonical = normalise({
 const className = classNameFor(canonical);
 substitute(canonical, className); // "display:flex;"
 ```
+
+## Making it render
+
+```ts
+import { defineConfig } from "vite";
+import { ramondaCss } from "@ramonda/css/vite";
+
+export default defineConfig({ plugins: [ramondaCss()] });
+```
+
+That is all of it. **There is no stylesheet to import**, and that is a measurement rather than a
+convenience: one shared stylesheet shipped no CSS at all, because Rollup loaded it before the styled
+file had been transformed. So each file serves its own, appended by the plugin — which means the CSS
+follows the JavaScript chunk, and a route that is already code-split gets its own stylesheet for
+free.
+
+Two identical blocks are still one rule: the first file to claim a class owns it, and the second just
+names the class.
 
 ## Checking a project
 

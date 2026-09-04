@@ -6,14 +6,15 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0, track B, A1, A2, track C and G are done.** The contract is written and implemented; the framework
+**Phase 0, track B, A1, A2, track C, G, A3 and E are done — a block renders.** The contract is written and implemented; the framework
 takes a `css` prop and applies it; the parser and transform turn a file into valid TSX with a source
 map that lands on the author's own line and column; the virtual file gets that file type-checked
 by `tsc` with every diagnostic mapped home; and the property map is generated from MDN's data, so a
 property name and 123 properties' values are checked for real; and `ramonda-css` runs all of that
-over a whole project and exits non-zero. **Everything else is unstarted** — the next work is **D**,
-the CSS checker that owns every fault the types deliberately do not, or **A3 + E**, the Vite plugin
-and the stylesheet, which is what makes a block render in a browser.
+over a whole project and exits non-zero; and the Vite plugin plus the sheet turn a block into a
+class in a real stylesheet, proved by real builds. **Everything else is unstarted** — the next work
+is **D**, the CSS checker that owns every fault the types deliberately do not, or **H**, the language
+service plugin, without which the feature is technically safe and practically unusable.
 
 ---
 
@@ -326,7 +327,36 @@ The original description, kept because it is what was built:
 *Size: medium. Risk: low — `prototype-typecheck.mjs` already does the mapping, and
 `prototype-sourcemap.mjs` proves it survives esbuild underneath (5 of 5 positions).*
 
-### A3 — the Vite plugin
+### A3 — the Vite plugin. **DONE.**
+
+`@ramonda/css/vite`, and an app writes one line: `plugins: [ramondaCss()]`. **Nothing else — there is
+no stylesheet to import**, and that is a measurement rather than a convenience.
+
+Proved by three real Vite builds in `src/__tests__/viteBuild.test.ts`, not only by calling the hooks:
+the class in the emitted JavaScript is the class in the emitted CSS, a `.css` asset exists at all,
+and an unreadable block fails the build at the author's own line and column.
+
+**What the real builds found, and the first one is a design change.**
+
+1. **One stylesheet for the whole app shipped NO CSS.** The entry imported it, Rollup loaded that
+   module before the styled file had been transformed, the sheet was empty — a green build with an
+   unstyled page. **A bundler does not wait for the transform to finish.** So each file gets its own:
+   the plugin appends `import "<file>?ramonda-css.css"` to the file whose blocks produced the rules,
+   the ordering problem cannot arise, an app imports nothing, and **the CSS follows the JavaScript
+   chunk** — which is what track J needs and is now free. Dedupe survives it: the first file to claim
+   a class owns the rule, and a second file naming the same block emits nothing for it.
+2. **Vite's `loc.column` is 0-based**, and the type says `column: number` and nothing else. Vite
+   echoes whatever it is given, so a wrong base is a caret one character off and no error anywhere
+   to find it. Measured against a real parse error at a known position: `@` on 1-based column 20 came
+   back as `1:19`, caret under it.
+3. **A file that loses its LAST block must still be told to the sheet.** Returning early left its
+   rules in place for the life of the dev server, and left the class name claimed — so re-adding an
+   edited block collided with what it used to be. Found by a failing test.
+4. **Ownership moves, and nothing in the module graph says so.** When a file stops using a shared
+   block, another file gains the rule — and that file never changed, so only the plugin can invalidate
+   its stylesheet.
+
+The original requirements:
 
 - **`enforce: "pre"` is a requirement, not a preference.** Measured: without it the plugin runs after
   Vite's own esbuild step, which has already refused the file. The same ordering applies to the dev
@@ -351,7 +381,18 @@ design honest. **It may not import `@ramonda/check`** — the technique is share
 
 *Follow `.claude/skills/writing-a-static-rule/SKILL.md`, and plant the shape before writing the rule.*
 
-### E — sheet assembly. The place every global question belongs
+### E — sheet assembly. **DONE.**
+
+`src/compiler/sheet.ts`, exported as `Sheet` from `@ramonda/css/compiler`. All three assertions are
+implemented and tested, and one thing about the shape changed: **the sheet is asked per FILE**, for
+the ordering reason in A3 above, and dedupe is preserved by ownership rather than by a single output.
+
+`verify` is written and tested and **nothing calls it yet**. It is the round-trip assertion, and it
+belongs wherever the final stylesheet is available after post-processing — which for a Vite build is
+a `generateBundle` hook that does not exist yet. Written now because the reasoning was fresh; wiring
+it is the next thing on this track.
+
+The original description:
 
 The transform is deliberately local — no cross-file analysis — which is what makes it cacheable and
 incremental. **Assembly is where the whole picture exists**, so three things live here and nowhere
@@ -526,6 +567,9 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | format through a placeholder | whole file formatted, block restored |
 | the docs example gate | **skips silently** — "not standalone code", exit 0 |
 | a `tsx` fence containing the syntax | mis-highlighted everywhere; unknown languages fall back to plain |
+| ONE stylesheet for the whole app | ships **no CSS**: the bundler loads it before the transform has run |
+| one stylesheet per file | correct, and the CSS follows the chunk — splitting comes free |
+| Vite's `loc.column` | **0-based**; the type does not say, and Vite echoes what it is given |
 | a hostile hole value through `cssText` | injects — `position: fixed`, `width: 100vw`, real and applied |
 | the same through `setProperty` | no second declaration, on the client |
 | the same through a SERVER render and back | **injects** — the parse re-reads the style attribute. Refused at the value now |

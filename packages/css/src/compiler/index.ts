@@ -10,12 +10,16 @@
  * bundler runs; `virtualFile` produces the file `tsc` checks. They share `findBlocks` and
  * `readBlock` and nothing else, because a second reading of the syntax would be a second answer to
  * what a file means.
+ *
+ * `Sheet` is the third piece and the only one that sees more than one file at a time: the transform
+ * is deliberately local, so dedupe, the collision assertion and the round trip all live there.
  */
 export type { Block, BlockItem, Declaration, HolePart, NestedRule, TextPart, ValuePart } from "./ast";
 export { CssBlockError, positionOf } from "./errors";
 export { HASH_LENGTH, classNameFor, substitute, variableNameFor } from "./names";
 export { HOLE, normalise } from "./normalise";
 export type { ReadBlock, Span } from "./read";
+export { Sheet } from "./sheet";
 export { readBlock } from "./read";
 export type { BlockSite } from "./scan";
 export { findBlocks, mayHoldABlock } from "./scan";

@@ -14,6 +14,7 @@ const RUNTIME = ["block", "toStyleObject"];
 
 const COMPILER = [
   "CssBlockError",
+  "Sheet",
   "HASH_LENGTH",
   "HOLE",
   "classNameFor",
