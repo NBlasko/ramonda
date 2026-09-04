@@ -1,11 +1,14 @@
 # Building `@ramonda/css` — the plan
 
-**Read `DESIGN.md` first.** It carries the reasoning and every measurement; this file carries only
-the order of work, what blocks what, and what may run beside what. Where the two disagree, `DESIGN.md`
-is right and this file is stale.
+**Read `DESIGN.md` first, then `CONTRACT.md`.** `DESIGN.md` carries the reasoning and every
+measurement; `CONTRACT.md` carries the four decisions both halves are written against, and its code
+is in `src/`; this file carries only the order of work, what blocks what, and what may run beside
+what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
+file is the one that goes stale.
 
-Nothing here is started. The branch is `design/a-style-block-that-becomes-a-class`, and the folder
-holds a design plus five prototypes and no `package.json` — so no gate in this repository sees it yet.
+**Phase 0 is done.** `CONTRACT.md` is written and every decision in it is implemented and tested in
+`src/` — the package is real, private, and every gate in this repository sees it. Everything below
+Phase 0 is unstarted.
 
 ---
 
@@ -50,6 +53,27 @@ file the other tracks can code against without waiting for the parser to exist.
 
 **Done when** a `CONTRACT.md` exists that someone can implement either side against without reading
 the other side.
+
+**DONE.** `CONTRACT.md`, plus the code it describes:
+
+| | where |
+|---|---|
+| the compiled value, and `block()`'s return | `src/types.ts`, `src/value.ts` |
+| the names, and the hash | `src/compiler/names.ts` |
+| normalisation, and the block the parser has to produce | `src/compiler/normalise.ts`, `src/compiler/ast.ts` |
+| the rules, as a table of what may and may not merge | `src/__tests__/normalise.test.ts` |
+
+Three things were settled in the writing rather than carried over:
+
+- **Normalisation runs on the PARSED block, not on the text.** Nothing that reads characters can tell
+  the meaningless space before a declaration's colon from the combinator in `& :first-child`, so a
+  text normaliser has to keep both — and `color : red` would never share a class with `color:red`.
+  This also fixes what A1 owes the rest of the work: a `Block`, not a string.
+- **The names are circular, so a hole hashes as a placeholder.** The variable name comes from the
+  class, the class from the hash, the hash from the text. `U+0000` is the delimiter because CSS
+  preprocessing replaces it with `U+FFFD`, so no author can forge one.
+- **Arity is typed.** `block()` takes the property names as a tuple, so emitting two names and one
+  argument is a type error. The compiler writes both halves — this is it checking itself.
 
 ---
 
@@ -329,8 +353,6 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 
 - **The tooling decision.** A file using this cannot be read by biome or oxlint directly. Track K
   turns that into "our tooling" rather than "no tooling", but it stays a deliberate choice.
-- **Where the package lives and its exact name.** `@ramonda/css` is recommended, under the org, on
-  the `@ramonda/lens` precedent: no dependencies at all, never imports the framework.
 - **Nesting depth in v1** — `&`, pseudo-classes and `@media` are recommended; anything deeper waits.
 
 ## How to work here

@@ -549,6 +549,10 @@ const options = {
     "@ramonda/form/bguard": [`${repo}/packages/form/src/bguard.ts`],
     "@ramonda/form": [`${repo}/packages/form/src/index.ts`],
     "@ramonda/lens": [`${repo}/packages/lens/src/index.ts`],
+    // Two entries, and the order matters the same way the router's does — the longer specifier has
+    // to be tried first or `@ramonda/css` swallows it.
+    "@ramonda/css/compiler": [`${repo}/packages/css/src/compiler/index.ts`],
+    "@ramonda/css": [`${repo}/packages/css/src/index.ts`],
     "@ramonda/devtools": [`${repo}/packages/devtools/src/index.ts`],
     "@ramonda/testing-library": [`${repo}/packages/testing-library/src/index.ts`],
     // A real dependency of `@ramonda/form`, and the form examples build their schema with it. Left

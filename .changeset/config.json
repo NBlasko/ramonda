@@ -6,7 +6,7 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["playground", "playground-core", "@ramonda/playground-ssr", "@ramonda/docs"],
+  "ignore": ["playground", "playground-core", "@ramonda/playground-ssr", "@ramonda/docs", "@ramonda/css"],
   "fixed": [],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true
