@@ -282,3 +282,46 @@ describe("what a finding carries", () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * Two declarations run together, which is what a missing `;` makes of them.
+ *
+ * ## The fault this exists for
+ *
+ * Reported from a real editor: a semicolon deleted mid-file and **nothing said anything**. Measured,
+ * that is exactly right for most properties — `padding: 4px 0 border-left: 1px solid red` is one
+ * value to the parser, and `padding` is not among the 123 properties whose values are a closed
+ * union, so neither the type layer nor `unknown-value` has grounds to object. The browser drops the
+ * declaration, both of them, and the page renders without the style.
+ *
+ * A colon inside a value is the tell, and it is a good one: CSS values do not contain bare colons.
+ * The three places one legitimately appears — inside a string, inside `url( … )`, inside any other
+ * function — are exactly where this does not look.
+ */
+describe("a declaration with no semicolon after it", () => {
+  test("is reported on the name that got swallowed", () => {
+    const [only, ...rest] = check(`padding: 4px 0\n  border-left: 1px solid red;`);
+
+    expect(rest).toEqual([]);
+    expect(only.rule).toBe("run-on-declaration");
+    expect(only.message).toContain("border-left");
+    expect(only.message).toContain("padding");
+  });
+
+  test.each([
+    ["a url with a scheme", `background: url(https://example.com/a.png);`],
+    ["a quoted colon", `content: "a: b";`],
+    ["a colon in a function", `background: image-set(url(a.png) 1x);`],
+    ["a media query in a nested rule", `@media (min-width: 40rem) { color: red; }`],
+    ["an ordinary block", `display: flex;\n  gap: 8px;`],
+  ])("%s is not one", (_what, css) => {
+    expect(check(css).filter((finding) => finding.rule === "run-on-declaration")).toEqual([]);
+  });
+
+  /** The property before it may be one whose values ARE checked, and then both faults are true. */
+  test("it is reported whatever the property's grammar", () => {
+    const rules = check(`position: relative\n  color: red;`).map((finding) => finding.rule);
+
+    expect(rules).toContain("run-on-declaration");
+  });
+});

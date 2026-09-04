@@ -53,7 +53,8 @@ export type RuleId =
   | "unknown-value"
   | "repeated-declaration"
   | "hole-out-of-place"
-  | "uncolourable-block";
+  | "uncolourable-block"
+  | "run-on-declaration";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -144,11 +145,85 @@ function walk(items: readonly BlockItem[], findings: Finding[]): void {
     holeInHead(item.property, item.at, item.value.length === 0 ? "a declaration" : "a property name", findings);
     unknownProperty(item, findings);
     unknownValue(item, findings);
+    runOn(item, findings);
     repeated(item, seen, findings);
   }
 }
 
 /* ── the rules ─────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Two declarations run together, which is what a missing `;` makes of them.
+ *
+ * **Nothing else reports it, and that had to be measured.** `padding: 4px 0 border-left: 1px solid
+ * red` is one value to the parser, and `padding` is not among the 123 properties whose values are a
+ * closed union — so the type layer has no grounds and `unknown-value` has nothing to check against.
+ * The browser drops both declarations and the page renders without the style, silently, which is the
+ * whole reason this exists.
+ *
+ * **A colon inside a value is the tell.** CSS values do not contain bare colons; the three places one
+ * legitimately appears — inside a string, inside `url( … )`, inside any other function — are exactly
+ * where this does not look. A hole is skipped too: what is inside one is TypeScript, and a colon
+ * there is a type annotation or a conditional.
+ */
+function runOn(declaration: Declaration, findings: Finding[]): void {
+  for (const part of declaration.value) {
+    if (part.kind !== "text" || part.at === undefined) continue;
+
+    const at = bareColon(part.text);
+    if (at === -1) continue;
+
+    /** The name the colon belongs to, which is the declaration that was swallowed. */
+    let start = at;
+    while (start > 0 && isNameCharacter(part.text.charCodeAt(start - 1))) start--;
+    const name = part.text.slice(start, at);
+    if (name === "") continue;
+
+    findings.push({
+      rule: "run-on-declaration",
+      at: part.at + start,
+      length: name.length,
+      message:
+        `\`${name}\` is being read as part of \`${declaration.property}\`'s value — ` +
+        `the declaration before it has no \`;\`, so the browser drops both.`,
+    });
+    return;
+  }
+}
+
+/** The first colon that is not inside a string or a function, or -1. */
+function bareColon(text: string): number {
+  let depth = 0;
+  let quote = 0;
+
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+
+    if (quote !== 0) {
+      if (code === 92 /* \ */) index++;
+      else if (code === quote) quote = 0;
+      continue;
+    }
+
+    if (code === 34 /* " */ || code === 39 /* ' */) quote = code;
+    else if (code === 40 /* ( */) depth++;
+    else if (code === 41 /* ) */) depth = Math.max(0, depth - 1);
+    else if (code === 58 /* : */ && depth === 0) return index;
+  }
+
+  return -1;
+}
+
+/** A CSS property name's characters, which is what stands before the colon that gave it away. */
+function isNameCharacter(code: number): boolean {
+  return (
+    (code >= 97 && code <= 122) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 48 && code <= 57) ||
+    code === 45 ||
+    code === 95
+  );
+}
 
 /**
  * A dashed property name that is nearly one CSS has.

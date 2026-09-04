@@ -871,6 +871,29 @@ be wrong by a mile. So this rule is not in that path at all: it is computed from
 from the block's contents, it reaches only the plugin, and TypeScript's suggestion category is what
 draws it as a hint rather than a squiggle.
 
+### R — a missing semicolon, which nothing was reporting
+
+Reported from a real editor, and the report was right: a `;` deleted mid-file and **nothing said
+anything**. Measured, and it depended on the property:
+
+| what was written | what an editor said |
+|---|---|
+| `dsiplay: flex` | an ERROR, TypeScript's own *did you mean* |
+| `dis@play: flex` | an ERROR |
+| `display: fl@ex` | two warnings — `display` accepts neither `fl` nor `ex` |
+| `display: flex` with no `;`, `gap: 8px` under it | a warning — `display` does not accept `gap` |
+| **`padding: 4px 0` with no `;`** | **nothing at all** |
+
+`padding: 4px 0 border-left: 1px solid red` is ONE value to the parser, and `padding` is not among
+the 123 properties whose values are a closed union — so the type layer has no grounds and
+`unknown-value` has nothing to check against. The browser drops both declarations and the page
+renders without the style.
+
+**A colon inside a value is the tell**, and a good one: CSS values do not contain bare colons. The
+three places one legitimately appears — inside a string, inside `url( … )`, inside any other function
+— are exactly where the rule does not look, and a hole is skipped too, because what is inside one is
+TypeScript.
+
 ### L — the runtime diagnostic. Deliberately last
 
 A `css` value reaching the runtime that no transform produced must be reported rather than silently
@@ -910,6 +933,8 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | bail-out on an unused codebase | 1,290 files, 10.73 MB, **0.84 ms**, scan included |
 | the generated `style={{…}}` object | `RMD020` on every render |
 | the same as a string / prop | silent |
+| a `;` deleted after a CLOSED-grammar property | reported: the next name is a value it does not accept |
+| a `;` deleted after an OPEN one (`padding`) | **silent** — one value, and nothing to check it against |
 | a block in a `tsx` fence, no grammar | the theme's INVALID colour, to the end of the fence |
 | shiki's `codeToTokensBase` | MERGES adjacent same-colour tokens — `explanation[0]` lies about a run |
 | SSR values | travel in the markup; no channel, no registry |
