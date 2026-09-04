@@ -1,6 +1,6 @@
 import type ts from "typescript";
 import { type Span, readBlock } from "./compiler/read";
-import { type Finding, checkBlock } from "./compiler/rules";
+import { type Finding, checkBlock, checkSite } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
@@ -77,6 +77,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           version: string;
           file: VirtualFile | undefined;
           css: Finding[];
+          /** What an editor can act on and a build must not fail over. Drawn as suggestions. */
+          hints: Finding[];
           author: ts.SourceFile | undefined;
           /** Where the CSS is and where the holes are — read once per version, asked on every paint. */
           where: { blocks: Span[]; holes: Span[] };
@@ -127,6 +129,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           file,
           author,
           css: text === undefined ? [] : cssFindings(text),
+          hints: text === undefined ? [] : siteFindings(text),
           where: regions(text ?? ""),
         });
         return file;
@@ -158,6 +161,13 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         overlay(fileName, readSnapshot);
         const cached = cache.get(fileName);
         return cached === undefined ? [] : ours(cached.css, cached.author);
+      };
+
+      /** What is true of the site rather than of its CSS, drawn as a suggestion. See `checkSite`. */
+      const hintsFor = (fileName: string): ts.Diagnostic[] => {
+        overlay(fileName, readSnapshot);
+        const cached = cache.get(fileName);
+        return cached === undefined ? [] : ours(cached.hints, cached.author, 2 as ts.DiagnosticCategory);
       };
 
       /**
@@ -226,7 +236,11 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          * under the character, while it is being typed.
          */
         const ours = cssFor(fileName);
-        return [...ours, ...withoutRepeats(ours, mapped(file, service.getSemanticDiagnostics(fileName)))];
+        return [
+          ...ours,
+          ...hintsFor(fileName),
+          ...withoutRepeats(ours, mapped(file, service.getSemanticDiagnostics(fileName))),
+        ];
       };
 
       /**
@@ -413,14 +427,22 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
  * copy — so nothing is mapped. The category is a warning rather than an error, which is the honest
  * answer for all four: a page with `display: flexx` renders, and the declaration is dropped.
  */
-function ours(findings: readonly Finding[], file: ts.SourceFile | undefined): ts.Diagnostic[] {
+function ours(
+  findings: readonly Finding[],
+  file: ts.SourceFile | undefined,
+  /**
+   * A warning, which is the honest answer for the four that read the CSS: a page with
+   * `display: flexx` renders, and the declaration is simply dropped. `1` is `Error`, `0` is
+   * `Warning`, `2` is `Suggestion` — which is what the one about colours gets, because nothing is
+   * wrong with the code and a squiggle would be claiming otherwise.
+   */
+  category = 0 as ts.DiagnosticCategory,
+): ts.Diagnostic[] {
   return findings.map((finding) => ({
     file,
     start: finding.at,
     length: finding.length,
-    // A warning, which is the honest answer for all four: a page with `display: flexx` renders, and
-    // the declaration is simply dropped. `1` is `Error`, `0` is `Warning`.
-    category: 0 as ts.DiagnosticCategory,
+    category,
     // Zero, because these are not TypeScript's and claiming a code in its space would be a lie. The
     // rule's id is in the message, which is what a reader searches for.
     code: 0,
@@ -471,6 +493,11 @@ function cssFindings(text: string): Finding[] {
     out.push(...checkBlock(readBlock(text, site.open, "", { tolerant: true }).block));
   }
   return out;
+}
+
+/** What is true of the SITE rather than of the CSS in it — see `checkSite`. */
+function siteFindings(text: string): Finding[] {
+  return findBlocks(text).flatMap((site) => checkSite(text, site));
 }
 
 /**

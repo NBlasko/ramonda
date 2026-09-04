@@ -620,3 +620,54 @@ export default [a, after];
     expect(service.getApplicableRefactors(FILE, 5, {})).toEqual([]);
   });
 });
+
+/**
+ * The one thing an editor knows that a build has no business failing over.
+ *
+ * ## The fault this exists for
+ *
+ * An editor stops consulting syntax injections the moment it enters a tag's attribute list, so a
+ * bare `css=@( … )` is only coloured when it is the FIRST attribute on the tag name's own line.
+ * Written anywhere else it still compiles, is still checked, and looks like an error — and there is
+ * nothing on the screen to say why, because the thing that failed is a grammar nobody can see.
+ *
+ * It is a SUGGESTION, not a warning and certainly not a build failure. Nothing is wrong with the
+ * code: `ramonda-css` exits non-zero on any finding it reports, and stopping a build because an
+ * editor will not colour something would be the wrong weight by a mile.
+ */
+describe("a block an editor cannot colour", () => {
+  const suggestions = (marked: string) =>
+    editor(marked)
+      .service.getSemanticDiagnostics(FILE)
+      .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Suggestion);
+
+  test.each([
+    ["not the first attribute", `const a = <div className="lead" css=@( display: flex; )>y</div>;\n`],
+    ["on the line below the tag name", `const a = (\n  <div\n    css=@( display: flex; )\n  >y</div>\n);\n`],
+  ])("%s is pointed at the braced spelling", (_what, source) => {
+    const [only, ...rest] = suggestions(source);
+
+    expect(rest).toEqual([]);
+    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("css={@(");
+    // On the name, which is the part to change.
+    expect(source.slice(only.start ?? 0, (only.start ?? 0) + (only.length ?? 0))).toBe("css");
+  });
+
+  test.each([
+    ["the first attribute, on the tag name's line", `const a = <div css=@( display: flex; )>y</div>;\n`],
+    ["a braced attribute", `const a = <div className="lead" css={@( display: flex; )}>y</div>;\n`],
+    ["a value outside JSX", `const panel = @( display: flex; );\nexport default panel;\n`],
+  ])("%s says nothing", (_what, source) => {
+    expect(suggestions(source)).toEqual([]);
+  });
+
+  /** A suggestion is not a failure, and the rest of the file's diagnostics are unaffected by it. */
+  test("it does not become an error anywhere", () => {
+    const source = `const a = <div className="lead" css=@( display: flex; )>y</div>;\n`;
+    const errors = editor(source)
+      .service.getSemanticDiagnostics(FILE)
+      .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+
+    expect(errors).toEqual([]);
+  });
+});

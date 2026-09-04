@@ -821,6 +821,19 @@ on ordinary minification would be turned off within a day. esbuild's CSS minifie
 smaller, and every class and `var()` still named. And on a real `vite build` of `playground-core` the
 hook runs and passes, with the same class in both the stylesheet and the JavaScript.
 
+### Q — the editor says what only the editor knows
+
+A bare block that is not the first attribute on the tag name's own line still compiles and is still
+checked, and looks like an error — with nothing on the screen to say why, because what failed is a
+grammar nobody can see. `uncolourable-block` is the plugin telling them, on the attribute name,
+pointing at `css={@( … )}`.
+
+**A SUGGESTION, and the weight was the whole decision.** Every finding `checkBlock` produces makes
+`ramonda-css` exit non-zero, and stopping a build because an editor will not colour something would
+be wrong by a mile. So this rule is not in that path at all: it is computed from the SITE rather than
+from the block's contents, it reaches only the plugin, and TypeScript's suggestion category is what
+draws it as a hint rather than a squiggle.
+
 ### L — the runtime diagnostic. Deliberately last
 
 A `css` value reaching the runtime that no transform produced must be reported rather than silently

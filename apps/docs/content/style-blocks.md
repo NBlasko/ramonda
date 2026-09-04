@@ -74,6 +74,11 @@ editor stops consulting syntax injections the moment it enters a tag's attribute
 attribute is only coloured when it is the first one, on the tag name's own line. In expression
 position there is no such limit — any attribute, any line, and outside JSX as well.
 
+The editor plugin says so where it matters: a bare block an editor cannot colour is marked as a
+suggestion, on the attribute name, pointing at the braced spelling. It is a suggestion rather than a
+warning because nothing is wrong — the block compiles and is checked either way, and a build has no
+business failing over colours.
+
 ## Everything in it is checked
 
 The syntax is not TypeScript, so the package owns a parser and a virtual-file layer — the same way

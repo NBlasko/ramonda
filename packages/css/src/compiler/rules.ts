@@ -1,6 +1,7 @@
 import type { Block, BlockItem, Declaration, ValuePart } from "./ast";
 import { holeOutOfPlace } from "./errors";
 import { KEYWORDS, PROPERTIES } from "./keywords.generated";
+import type { BlockSite } from "./scan";
 
 /**
  * The CSS checker: the faults the type map deliberately cannot catch.
@@ -47,13 +48,74 @@ export interface Finding {
   readonly message: string;
 }
 
-export type RuleId = "unknown-property" | "unknown-value" | "repeated-declaration" | "hole-out-of-place";
+export type RuleId =
+  | "unknown-property"
+  | "unknown-value"
+  | "repeated-declaration"
+  | "hole-out-of-place"
+  | "uncolourable-block";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
 
 /** The same list as a set, for the "does this exist" question rather than the "what was meant" one. */
 const KNOWN = new Set(PROPERTIES);
+
+/**
+ * What an editor will not colour, which is the one thing here a BUILD has no business failing over.
+ *
+ * An editor stops consulting syntax injections the moment it enters a tag's attribute list, so a
+ * bare `css=@( … )` is coloured only as the FIRST attribute on the tag name's own line. Written
+ * anywhere else it compiles, is checked, and looks like an error — with nothing on the screen to say
+ * why, because what failed is a grammar nobody can see.
+ *
+ * So it is reported where it can be acted on and nowhere else: the editor plugin draws it as a
+ * SUGGESTION. `checkBlock`'s findings stop a build; this one must not, because nothing is wrong.
+ */
+export function checkSite(source: string, site: BlockSite): Finding[] {
+  if (!site.wrap || firstOnTheTagLine(source, site.start)) return [];
+
+  return [
+    {
+      rule: "uncolourable-block",
+      at: site.start,
+      length: site.name.length,
+      message:
+        `an editor colours a bare block only as the first attribute on the tag name's own line — ` +
+        `write it as \`${site.name}={@( … )}\`, which is the same value and is coloured anywhere.`,
+    },
+  ];
+}
+
+/**
+ * Whether the name at `start` follows the tag's own name with nothing but spaces between.
+ *
+ * A newline is enough to lose the colours, which is why this is not `isAttribute` with a flag: that
+ * one walks over attributes and line breaks to prove the site is in a tag at all, and here both of
+ * those are the answer NO.
+ */
+function firstOnTheTagLine(source: string, start: number): boolean {
+  let index = start - 1;
+  while (index >= 0 && (source.charCodeAt(index) === 32 || source.charCodeAt(index) === 9)) index--;
+
+  const end = index + 1;
+  while (index >= 0 && isTagNameCharacter(source.charCodeAt(index))) index--;
+
+  return index >= 0 && end > index + 1 && source.charCodeAt(index) === 60; /* < */
+}
+
+/** A tag name: an identifier, plus the `.` of a member expression and the `-` of a custom element. */
+function isTagNameCharacter(code: number): boolean {
+  return (
+    (code >= 97 && code <= 122) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 48 && code <= 57) ||
+    code === 95 ||
+    code === 36 ||
+    code === 45 ||
+    code === 46
+  );
+}
 
 export function checkBlock(block: Block): Finding[] {
   const findings: Finding[] = [];
