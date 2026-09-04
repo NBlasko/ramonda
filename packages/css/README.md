@@ -33,6 +33,29 @@ consulting syntax injections the moment it enters a tag's attribute list, so a b
 coloured when it is the first one, on the tag name's own line. In expression position there is no
 such limit.
 
+## Builds
+
+Vite is where dev and HMR live:
+
+```ts
+import { ramondaCss } from "@ramonda/css/vite";
+
+export const plugins = [ramondaCss()];
+```
+
+esbuild builds the same thing:
+
+```ts
+import { ramondaCss } from "@ramonda/css/esbuild";
+
+export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
+```
+
+Both compile the same blocks to the same classes, and both check what post-processing handed back
+against what the sheet promised. The esbuild one reads every source file it is asked about, because
+esbuild gives a plugin a path rather than the code — measured at 17 µs a file, which is what
+`filter` narrows.
+
 ## Formatters
 
 The syntax is not TypeScript, so no formatter can parse a file holding a block until it is taught.

@@ -242,7 +242,7 @@ None of them is optional, and the order matters because each one is useless with
    feature is technically safe and practically unusable.
    **And `ramonda-check` belongs in this piece, not in a fifth one** — it reads the author's source
    through the same virtual file, for the reason measured below.
-4. **Bundler adapters.** Vite first — that is where dev and HMR live — then esbuild.
+4. **Bundler adapters.** Vite first — that is where dev and HMR live — then esbuild. Both exist.
 
 ---
 

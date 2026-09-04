@@ -43,6 +43,10 @@
       "types": "./dist/vite.d.ts",
       "import": "./dist/vite.js"
     },
+    "./esbuild": {
+      "types": "./dist/esbuild.d.ts",
+      "import": "./dist/esbuild.js"
+    },
     "./plugin": {
       "types": "./dist/plugin.d.ts",
       "require": "./dist/plugin.cjs",

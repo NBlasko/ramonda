@@ -634,7 +634,44 @@ comments in place. That is also what makes the comparison with a CSS-in-a-backti
 misleading: a tagged template is already valid TypeScript, so the tool parses the file, sees a string
 and looks no further. Here there is no region to ignore, because there is no region at all.*
 
-### F — the esbuild adapter, and J — per-route splitting
+### F — the esbuild adapter — DONE
+
+`@ramonda/css/esbuild`, and nearly all of it is the same: one `Sheet`, one stylesheet module per
+source file, the class named after the hash. What changes is only how a plugin is told about a file
+and how a virtual module is spelled.
+
+**esbuild hands a plugin a PATH, not the code**, and that is the whole cost. Measured on 400 tiny
+modules, none holding a block:
+
+| | |
+|---|---|
+| esbuild alone | 11.4 ms |
+| a plugin that does nothing but be asked | +12%, 3.4 µs/file |
+| …and reads the file | **+60%, 17.3 µs/file** |
+| …and does everything this one does | +60%, 17.1 µs/file |
+
+**The read is the whole cost.** This package's own work on top of it is 0.3 µs/file — the cheap
+substring is as free here as everywhere else. Reading bytes without decoding them is not faster
+(+62%), so it is the syscall rather than the UTF-8, and minifying with source maps does not dilute it
+(+61%), because esbuild's minifier is that fast.
+
+**The obvious fix is worse than the cost**, and that was measured too. Handing the contents back so
+esbuild does not read again means CLAIMING the file: no other `onLoad` plugin is offered it, and the
+loader has to be named. Contents returned with no loader are parsed as plain JavaScript — *"The JSX
+syntax extension is not currently enabled"*, on every file. So it declines, and `filter` is the lever
+a project has.
+
+**Two things had to be got right that Vite never asks about.** A transformed file needs its loader
+named — and a value block can live in a `.ts` file, where there is no JSX at all, so it cannot simply
+be "the JSX one". And `onEnd` sees the output only if the build was asked in a way that keeps it:
+`write: false` hands back the text, `metafile: true` names the files on disk, and with neither there
+is nothing to check — the same answer the Vite plugin gives a build that emitted no stylesheet.
+
+**The declared shape has to fit through esbuild's, not merely resemble it.** A plugin whose `loader`
+is typed `string` is not assignable to esbuild's own `Plugin`, and a user passing it in gets a type
+error about a variance three levels down.
+
+### J — per-route splitting
 
 **J is high priority rather than someday**, by the user's call, and it is cheaper than it sounds:
 **the CSS follows the JavaScript chunk.** A block belongs to the module it was written in, the
@@ -866,6 +903,10 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | a template-literal length type | catches `10pxx`, prints an unreadable expanded union |
 | transform cost, the PROTOTYPE | +2.6% over esbuild — superseded, it built no AST and no map |
 | transform cost, the REAL one | **+9.7%** over esbuild; 58.8 µs/file, every component carrying four blocks |
+| an esbuild plugin that is merely ASKED about a file | +12%, 3.4 µs/file |
+| the same plugin READING the file | **+60%**, 17.3 µs/file — the read is the whole cost |
+| reading bytes instead of text | not faster (+62%): the syscall, not the UTF-8 |
+| esbuild contents returned with NO loader | parsed as plain JavaScript, JSX refused on every file |
 | bail-out on an unused codebase | 1,290 files, 10.73 MB, **0.84 ms**, scan included |
 | the generated `style={{…}}` object | `RMD020` on every render |
 | the same as a string / prop | silent |

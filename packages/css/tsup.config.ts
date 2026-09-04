@@ -36,6 +36,7 @@ export default defineConfig([
       "src/properties.ts",
       "src/cli.ts",
       "src/vite.ts",
+      "src/esbuild.ts",
       "src/plugin.ts",
       "src/prettier.ts",
     ],
