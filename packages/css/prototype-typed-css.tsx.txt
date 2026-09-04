@@ -1,0 +1,23 @@
+// What one `@( … )` block becomes inside the VIRTUAL file — an object literal, which is what makes
+// excess-property checking and TypeScript's own "did you mean" apply to CSS.
+//
+//     node_modules/.bin/tsc --noEmit --strict packages/css/prototype-typed-css.tsx.txt
+//
+// `.txt`, like the other fixture, so no repo gate tries to compile it as part of the tree.
+
+type Length = `${number}px` | `${number}rem` | `${number}%` | 0;
+interface CssProperties {
+  display: "flex" | "block" | "grid" | "none" | "inline-flex";
+  "flex-direction": "row" | "column" | "row-reverse" | "column-reverse";
+  padding: Length | `${Length} ${Length}`;
+  "border-left": string;
+  color: string;
+}
+declare function __block(declarations: Partial<CssProperties>): string;
+declare function nekaFunc(): boolean;
+
+__block({ display: "flexx" });
+__block({ dsiplay: "flex" });
+__block({ padding: nekaFunc() });
+__block({ padding: "10pxx" });
+__block({ padding: "10px 20px", "flex-direction": "column" });
