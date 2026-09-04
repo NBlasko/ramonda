@@ -18,9 +18,7 @@ const require = createRequire(import.meta.url);
 const store = (name) =>
   globSync(`node_modules/.pnpm/${name.replaceAll("/", "+")}@*/node_modules/${name}`, { cwd: process.cwd() })[0];
 const MagicString = require(`${process.cwd()}/${store("magic-string")}`).default;
-const { TraceMap, originalPositionFor } = require(
-  `${process.cwd()}/${store("@jridgewell/trace-mapping")}`,
-);
+const { TraceMap, originalPositionFor } = require(`${process.cwd()}/${store("@jridgewell/trace-mapping")}`);
 const { transformSync } = require(`${process.cwd()}/${store("esbuild")}`);
 
 const FILE = "Card.tsx";
