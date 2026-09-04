@@ -29,12 +29,12 @@ can. Nothing about the style is in the bundle, nothing is rebuilt per render, an
 the sheet as a file:
 
 ```css
-.r-8e271c6c { display: flex; flex-direction: column; padding: 24px;
-              background-color: #0f172a; border-left: var(--r0); }
+.r-8e271c6c1f3a4b02 { display: flex; flex-direction: column; padding: 24px;
+              background-color: #0f172a; border-left: var(--r-8e271c6c1f3a4b02-0); }
 ```
 
 ```tsx
-<div className="r-8e271c6c" style={{ "--r0": isOnline ? "4px solid #10b981" : "4px solid #64748b" }}>
+<div className="r-8e271c6c1f3a4b02" style={{ "--r-8e271c6c1f3a4b02-0": isOnline ? "4px solid #10b981" : "4px solid #64748b" }}>
 ```
 
 **Static structure, dynamic values, never dynamic rules.** That invariant is what buys the whole
@@ -261,7 +261,7 @@ The first draft of this section had the transform rewrite the call site into `cl
 splicing the expression into a template string. Three things are wrong with that, and they are worth
 keeping written down.
 
-**The compiler would be building strings.** `style={\`--r0:${expr}\`}` means the transform
+**The compiler would be building strings.** `style={\`--r-8e271c6c1f3a4b02-0:${expr}\`}` means the transform
 concatenates author code into attribute text, which drags in escaping — a `"` or a `;` out of a hole
 must not be able to end the declaration or the attribute — for a problem that need not exist.
 
@@ -284,13 +284,13 @@ const _s1 = block("r-94dc05ab");
 <h3 css={_s1}>
 
 // with holes — the descriptor is still hoisted; only the values are per-render
-const _s2 = block("r-8e271c6c", ["--r0"]);
+const _s2 = block("r-8e271c6c1f3a4b02", ["--r-8e271c6c1f3a4b02-0"]);
 …
 <div css={_s2(this.open ? "4px solid " + this.accent : "4px solid #64748b")}>
 ```
 
 The expression is an argument, copied across untouched. The custom property reaches the DOM through
-`setProperty("--r0", value)`, which takes a raw string — so **the escaping problem the string form
+`setProperty("--r-8e271c6c1f3a4b02-0", value)`, which takes a raw string — so **the escaping problem the string form
 created simply does not arise**.
 
 And a block with no holes is a module constant: it costs one allocation for the life of the program,
@@ -302,7 +302,7 @@ The value needs somewhere to land, and that is a real `css` prop maintained in t
 is also what makes the double-render question somebody's to answer rather than something to design
 around.
 
-**Measured: the object form is reported.** Rendering `style={{ "--r0": this.accent }}` in a
+**Measured: the object form is reported.** Rendering `style={{ "--r-8e271c6c1f3a4b02-0": this.accent }}` in a
 development build prints, on every render:
 
 ```
@@ -350,7 +350,7 @@ else has to.
 selector, or a whole declaration:
 
 ```
-border-left: {{…}};                ✓   becomes  border-left: var(--r0)
+border-left: {{…}};                ✓   becomes  border-left: var(--r-8e271c6c1f3a4b02-0)
 {{cond ? "display:flex" : ""}}     ✗   a declaration — nothing to put a variable in
 {{name}}: 24px;                    ✗   a property name
 &:{{state}} { … }                  ✗   a selector
@@ -360,7 +360,7 @@ the checker first.
 
 **2. ~~What an `undefined` hole does.~~ DECIDED by the server-rendering measurement below: the type
 refuses `undefined`.** It was a preference; the four hydration directions make it a requirement. Emit
-`var(--r0, initial)` as the floor anyway, for the value that arrives from outside the types.
+`var(--r-8e271c6c1f3a4b02-0, initial)` as the floor anyway, for the value that arrives from outside the types.
 
 **3. Merging with a written `style`.** *Recommended:* merge, generated first, author last.
 
@@ -380,12 +380,21 @@ the styles, which is every property this design has. Written down so it is not r
 convenience later: a feature that "just needs a rule at runtime" is a feature that belongs somewhere
 else.
 
-**8. The name, and where it lives.** Not `@ramonda/*`, by constraint 3. Living in this monorepo is
-fine — one gate, one release pipeline — but nothing in it may import from the framework.
-**Recommended: `stilo`**, free on npm as of 2026-09-04. Short, says *style* without saying *CSS in
-JS*, and carries no framework in it, which matters for a package whose whole pitch is that it works
-anywhere. Checked and free alongside it: `cssat`, `at-block`, `blockcss`, `styleblock`, `kalem`.
-Taken: `cssx`, `atcss`. **Still the user's call.**
+**8. ~~The name, and where it lives.~~ DECIDED: `@ramonda/css`, in this monorepo.** The earlier
+recommendation here was a name outside the org — `stilo` — on the reading that "completely isolated
+from the framework" meant *organisationally* separate. It does not. It means **technically**
+uncoupled, and the precedent for that already exists in the repository: `@ramonda/lens` is under the
+org, ships in other people's bundles, and imports nothing at all.
+
+So the constraint stands and only its enforcement moves: **this package may not import the framework,
+in any direction, at any depth, not even as a peer.** A wrapper putting a `css` prop on another JSX
+library gets the value and `toStyleObject`, and drags nothing else in. Being under the org buys one
+gate, one release pipeline and one place to look, and costs nothing that constraint 3 was protecting.
+
+Two entry points, and the split is load-bearing rather than tidy: `@ramonda/css` is the compiled
+value that every page loads, and `@ramonda/css/compiler` decides names and never reaches a browser.
+A runtime that could hash a block would be a runtime that could invent a rule, which decision 7
+forbids — the boundary makes that true by construction.
 
 **9. ~~Does the framework report the generated object?~~ MEASURED, and it did.** Answered above:
 `RMD020` fires on every render for the object form. **Decided: the `css` prop is exempt**, one line
@@ -403,7 +412,7 @@ where a design that reads correctly can still be wrong.
 server writes them into the markup:
 
 ```html
-<div class="r-8e271c6c" style="--r0: #10b981; --r1: 24px;"></div>
+<div class="r-8e271c6c1f3a4b02" style="--r-8e271c6c1f3a4b02-0: #10b981; --r-8e271c6c1f3a4b02-1: 24px;"></div>
 ```
 
 The client re-derives them from the same state during hydration. There is no payload to serialise
