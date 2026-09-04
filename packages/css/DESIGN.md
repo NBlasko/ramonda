@@ -729,27 +729,75 @@ no enforce           FAILS    ERROR: Expected "{" but found "@"
 esbuild step, which has already refused the file. The same ordering applies to the dev server and the
 build, so it is one rule in three places.
 
-### The one real risk, and it is not technical
+### The tooling cost, and what can be done about it
 
-**Every tool that parses a `.tsx` file has to be taught, and we can only teach some of them.**
+**Every tool that parses a `.tsx` file has to be taught.** `tsc`, the editor, the bundler and
+`ramonda-check` all can be, through the virtual file. The formatter and the linter cannot be taught
+directly — measured, biome answers *"Expected a JSX attribute value but instead found '@'"* and
+oxlint answers *"Unexpected token"*.
 
-| | can it be taught? |
-|---|---|
-| `tsc` | yes — the virtual file, proved |
-| the editor | yes — a language-service plugin serving the same virtual file |
-| the bundler | yes — it is our plugin |
-| `ramonda-check` | yes — the same virtual file |
-| **the formatter** | **no** — measured: biome cannot read the file and has no plugin surface |
-| **the linter** | **no** — measured: `oxlint: Unexpected token`; its "plugins" are built-in rule sets, not a parser extension point |
+**A suppression comment cannot rescue it, and the reason is the useful part.** `biome-ignore` and
+`oxlint-disable` are read BY the parser, so the parser has already failed before it reaches them —
+measured, with all three spellings in the file, biome still says *"Code formatting aborted due to
+parsing errors"*.
 
-So a file that uses this feature is, today, a file that cannot be formatted or linted. That is not a
-flaw in the design — it is the price of a syntax the ecosystem does not know, and it is the same
-price JSX paid before the ecosystem learned it. **It should be a decision somebody makes on purpose,
-not something discovered by the first person who runs the formatter.**
+**This is also why the comparison with CSS in a backtick is misleading.** Those work because a tagged
+template is *already* valid TypeScript: the tool parses the file, sees a string, and looks no
+further. Nothing had to be taught, and nothing had to be ignored. Here there is no region to ignore,
+because there is no parse.
 
-The fallback that costs nothing here is the object form — `css={{ display: "flex" }}` — which every
-tool already reads and which the type system checks natively. It was rejected for good reason: it is
-not CSS, and *cleaner code* was the point. Recorded so the trade is visible, not to reopen it.
+But both halves have an answer, and they are different answers.
+
+#### The linter: run it on the virtual file and map back
+
+The same trick as `tsc`, and `oxlint --format=json` reports offset, line and column, which is all a
+map needs. Measured, with two real faults placed BELOW a block so the mapping has to survive the
+offset shift:
+
+```
+Card.tsx:13:9  Variable 'neverUsed' is declared but never used.
+    const   neverUsed   =    41;
+Card.tsx:16:3  `debugger` statement is not allowed
+    debugger;
+```
+
+Real rules, real messages, the author's own lines.
+
+#### The formatter: a placeholder, not a map
+
+A position map is not enough here, because a formatter rewrites text rather than reporting positions
+in it. So the block is replaced by something that parses, the file is formatted normally, and the
+block is put back at whatever indentation the formatter chose:
+
+```tsx
+export const Card = (props: { id: string }) => {
+	const accent = "#10b981";
+	return (
+		<div css=@(
+			display: flex;
+			border-left: {{accent}};
+		)>
+			<span>{props.id}</span>
+		</div>
+	);
+};
+
+const neverUsed = 41;
+```
+
+Measured — the input had `const   neverUsed   =    41;` and a ragged block, and biome did the whole
+file including choosing tabs. **Copy the formatter's own indentation rather than counting columns**,
+or the block comes back with spaces inside a tabbed file.
+
+#### What it actually costs, after all that
+
+Not "no formatting and no linting". **One wrapper command**, which formats and lints through the
+layer that already has to exist for the type checker. What stays true is that it is *our* command:
+an editor's format-on-save has to be pointed at it, and the CSS inside a block is formatted by us
+rather than by biome.
+
+That is a smaller price than it first looked, and it is still a price — **a decision to take
+deliberately, not something for the first person who runs the formatter to discover.**
 
 ### The verdict
 
@@ -758,9 +806,9 @@ code rather than argued: that a syntax `tsc` cannot parse can still be type-chec
 transform is cheap, that the maps compose, and that the test runner is covered. The remaining work is
 large but ordinary.
 
-The two candidates for a blocker were the two nobody had looked at, and both came back clean. What
-remains is not a risk to the design but a cost to its users: **the formatter and the linter cannot
-read the file**, and that is a decision to take deliberately rather than a problem to solve.
+The two candidates for a blocker were the two nobody had looked at, and both came back clean. What remains is not a risk to the design but a cost to its users, and it shrank when it was
+examined: the formatter and the linter cannot read the file, but both work through a wrapper —
+proved above — which turns "no tooling" into "our tooling".
 
 ---
 
