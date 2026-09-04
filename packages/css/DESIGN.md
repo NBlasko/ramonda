@@ -365,7 +365,28 @@ message existing.
 
 ### Elsewhere, and in another framework
 
-Because the compiled form is a value, `@( … )` outside JSX is the same feature with no special case.
+Because the compiled form is a value, `@( … )` outside JSX is the same feature with no special case:
+
+```tsx
+const panel = @(
+  display: flex;
+  gap: 8px;
+);
+
+<div css={panel}>…</div>
+```
+
+**And the same reasoning gives a second spelling inside JSX**, `css={@( … )}`, which is a value in the
+braces JSX already has for one. It is not sugar: it exists because of a limit nothing in this package
+can lift. **An editor stops consulting syntax injections the moment it enters a tag's attribute
+list**, so a bare `css=@( … )` is only coloured when it is the first attribute on the tag name's own
+line — which is not how anyone writes a tag with several props. Inside braces there is no such limit,
+at any position and on any line.
+
+What the three spellings share is everything that matters: the same class, the same hash, the same
+holes. Only what is replaced differs — a bare attribute needs the braces the author did not write,
+and the other two must not have them, or a value becomes an object literal.
+
 The package exports one function that turns a compiled value into `{ className, style }`, which is
 what a wrapper on another JSX framework spreads. Ramonda applies it natively through the prop; nobody
 else has to.

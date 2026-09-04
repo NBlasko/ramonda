@@ -38,7 +38,7 @@ export function placehold(source: string): Placeheld | undefined {
   if (sites.length === 0) return undefined;
 
   const marker = markerFor(source);
-  const blocks: string[] = [];
+  const blocks: { text: string; wrap: boolean }[] = [];
   let text = "";
   let cursor = 0;
 
@@ -49,10 +49,18 @@ export function placehold(source: string): Placeheld | undefined {
     // and refusing there would be refusing whenever it matters most.
     const read = readBlock(source, site.open, "", { tolerant: true });
     const end = read.end + 1;
+    /**
+     * What the site owns, which is the transform's rule and has to be: a bare JSX attribute owns its
+     * name, because the braces are ours to add; the two expression spellings own only the block. A
+     * placeholder that swallowed the author's own `}` in `css={@( … )}` leaves an extra one behind —
+     * measured, biome then refuses the file for the very parse error this exists to avoid.
+     */
+    const from = site.wrap ? site.start : site.open - 1;
+    const stands = `/*${marker}${blocks.length}*/ 0`;
 
-    text += source.slice(cursor, site.start);
-    text += `${site.name}={/*${marker}${blocks.length}*/ 0}`;
-    blocks.push(source.slice(site.start, end));
+    text += source.slice(cursor, from);
+    text += site.wrap ? `${site.name}={${stands}}` : stands;
+    blocks.push({ text: source.slice(from, end), wrap: site.wrap });
     cursor = end;
   }
 
@@ -61,11 +69,12 @@ export function placehold(source: string): Placeheld | undefined {
   return { text, restore: (formatted) => restore(formatted, blocks, marker) };
 }
 
-function restore(formatted: string, blocks: readonly string[], marker: string): string {
+function restore(formatted: string, blocks: readonly { text: string; wrap: boolean }[], marker: string): string {
   let out = formatted;
 
   for (const [index, block] of blocks.entries()) {
-    const placeholder = new RegExp(`[\\w:$-]+=\\{/\\*${marker}${index}\\*/ 0\\}`);
+    const stands = `/\\*${marker}${index}\\*/ 0`;
+    const placeholder = new RegExp(block.wrap ? `[\\w:$-]+=\\{${stands}\\}` : stands);
     const found = placeholder.exec(out);
     if (found === null) continue;
 
@@ -79,7 +88,7 @@ function restore(formatted: string, blocks: readonly string[], marker: string): 
     const outer = /^[\t ]*/.exec(out.slice(lineStart, found.index))?.[0] ?? "";
     const inner = outer + (outer.includes("\t") ? "\t" : "  ");
 
-    out = out.slice(0, found.index) + relaid(block, outer, inner) + out.slice(found.index + found[0].length);
+    out = out.slice(0, found.index) + relaid(block.text, outer, inner) + out.slice(found.index + found[0].length);
   }
 
   return out;

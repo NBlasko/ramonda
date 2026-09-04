@@ -216,9 +216,20 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 
     const read = readBlock(source, site.open, "", { tolerant: options.tolerant });
 
-    copy(cursor, site.start);
-    copy(site.start, site.start + site.name.length);
-    write(`={${block}([`);
+    /**
+     * How much of the author's text stands, and it is what the transform decides too: a bare JSX
+     * attribute is rewritten from its NAME, because the braces are ours to add; the two expression
+     * spellings keep everything to the left of the block, because there the braces are the author's
+     * or would be wrong. See `BlockSite.wrap`.
+     */
+    if (site.wrap) {
+      copy(cursor, site.start);
+      copy(site.start, site.start + site.name.length);
+      write(`={${block}([`);
+    } else {
+      copy(cursor, site.open - 1);
+      write(`${block}([`);
+    }
     /** How far the author's text has been accounted for, in LINES. See `keepLine`. */
     let lined = site.open;
     /**
@@ -250,7 +261,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       write("{},");
     }
 
-    write("])}");
+    write(site.wrap ? "])}" : "])");
 
     // Whatever the block spanned below its last item — the closing `)` on a line of its own.
     keepLine(read.end + 1);

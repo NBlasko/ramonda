@@ -40,6 +40,19 @@
         "embeddedLanguages": {
           "meta.embedded.expression.tsx": "typescriptreact"
         }
+      },
+      {
+        "scopeName": "ramonda.css-value",
+        "path": "./grammar/ramonda-css-value.tmLanguage.json",
+        "injectTo": [
+          "source.ts",
+          "source.tsx",
+          "source.js",
+          "source.js.jsx"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.css": "css"
+        }
       }
     ]
   }

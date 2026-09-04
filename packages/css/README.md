@@ -19,6 +19,20 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 > `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
 > for what is done and what is next.
 
+## Three ways to write one
+
+```tsx
+<div css=@( display: flex; )>…</div>            a bare JSX attribute
+<div css={@( display: flex; )}>…</div>          a value, in the braces JSX already has
+const panel = @( display: flex; );              a value, outside JSX
+```
+
+Same class, same hash, same holes — only what is replaced differs. **Prefer one of the braced forms
+when the tag has other props**, and the reason is an editor limit rather than taste: an editor stops
+consulting syntax injections the moment it enters a tag's attribute list, so a bare attribute is only
+coloured when it is the first one, on the tag name's own line. In expression position there is no
+such limit.
+
 The syntax is not TypeScript, which is why this owns a parser and a virtual-file layer — the same way
 JSX is usable because somebody wrote the parser for it. Everything a block can say is type-checked:
 a property-name typo gets TypeScript's own *did you mean*, and a hole is checked against the type the

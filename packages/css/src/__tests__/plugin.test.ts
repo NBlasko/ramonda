@@ -522,6 +522,20 @@ export default [a, after];
     expect(service.getSignatureHelpItems(FILE, past, undefined)).toBeUndefined();
   });
 
+  /**
+   * A position the mapping reaches but TypeScript has nothing to say about — a blank line. Each of
+   * these has to hand back the service's own silence rather than invent an answer out of a span it
+   * never got.
+   */
+  test("a position with nothing to say answers nothing", () => {
+    const { service, source } = editor(CODE);
+    const blank = source.indexOf("\n") + 1;
+
+    expect(service.getDefinitionAndBoundSpan(FILE, blank)).toBeUndefined();
+    expect(service.getDocumentHighlights(FILE, blank, [FILE])).toBeUndefined();
+    expect(service.getSignatureHelpItems(FILE, blank, undefined)).toBeUndefined();
+  });
+
   test("a reference list, a bound span and the flat outline all land on the author's text", () => {
     const { service, source } = editor(CODE);
     const use = source.indexOf("before", source.indexOf("after"));

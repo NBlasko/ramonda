@@ -46,6 +46,7 @@ beforeAll(async () => {
       "tsx",
       "css",
       { ...load("ramonda-css"), name: "ramonda-css", injectTo: ["source.tsx"] },
+      { ...load("ramonda-css-value"), name: "ramonda-css-value", injectTo: ["source.tsx"] },
       // Into `source.css` as well: the hole sits inside a CSS declaration's value, and by then the
       // CSS grammar is the one tokenising.
       { ...load("ramonda-css-hole"), name: "ramonda-css-hole", injectTo: ["source.tsx", "source.css"] },
@@ -252,6 +253,58 @@ describe("a nested rule", () => {
 
   test("and the block still closes where it closes", () => {
     expect(scopeOf(CODE, "after")).toBe("variable.other.constant.tsx");
+  });
+});
+
+/**
+ * A block written as a VALUE, which is the answer to a limit rather than a second syntax.
+ *
+ * An editor stops consulting injections the moment it enters a tag's attribute list, so a bare
+ * `css=@( … )` is only coloured as the first attribute on the tag name's own line — which is not how
+ * anyone writes a tag with several props. Inside the braces JSX already has for an expression there
+ * is no such limit, and it is the same case as a block written outside JSX altogether.
+ */
+describe("a block in expression position", () => {
+  test.each([
+    ["outside JSX", `const panel = @(\n  display: flex;\n);\nconst after = 1;\n`],
+    ["braced, as the second attribute", `const a = <div id="x" css={@( display: flex; )}>y</div>;\nconst after = 1;\n`],
+    [
+      "braced, three lines into the tag",
+      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    css={@(\n      display: flex;\n    )}\n  >y</div>\n);\nconst after = 1;\n`,
+    ],
+    [
+      "braced, with spaces inside the braces",
+      `const a = <div css={ @( display: flex; ) }>y</div>;\nconst after = 1;\n`,
+    ],
+  ])("%s is CSS", (_what, code) => {
+    expect(scopeOf(code, "display")).toBe("support.type.property-name.css");
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("a hole in one is still the expression it holds", () => {
+    const code = `const panel = @( color: {{accent}}; );\n`;
+
+    expect(scopeOf(code, "{{")).toBe("punctuation.section.embedded.begin.ramonda");
+    expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
+  });
+
+  /**
+   * The lookbehind requires a `=`, and this is why. Permitting a bare `{` before the block would
+   * swallow a parenthesised decorator written on the same line as a class's opening brace —
+   * measured, `dec` stopped being a token at all.
+   */
+  test("a parenthesised decorator on the same line as a brace is left alone", () => {
+    const code = `class C { @(dec) m() {} }\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopeOf(code, "dec")).toBe("variable.other.readwrite.tsx");
+  });
+
+  test("and prose that mentions the syntax is still not a block", () => {
+    const code = `const a = <p>a \`css=@( … )\` block</p>;\nconst after = 1;\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
   });
 });
 

@@ -3,7 +3,7 @@ import { classNameFor, substitute, variableNameFor } from "./names";
 import { normalise } from "./normalise";
 import { readBlock } from "./read";
 import { refuse } from "./errors";
-import { findBlocks, mayHoldABlock } from "./scan";
+import { type BlockSite, findBlocks, mayHoldABlock } from "./scan";
 
 /**
  * An author's file in, valid TSX out, plus the rules it now owes a stylesheet.
@@ -124,7 +124,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       order.push(descriptor);
     }
 
-    write(magic, site.name, descriptor.id, read.holes, site.start, read.end);
+    write(magic, site, descriptor.id, read.holes, read.end);
   }
 
   const prologue =
@@ -143,29 +143,38 @@ export function transform(source: string, options: TransformOptions = {}): Trans
 }
 
 /**
- * The attribute rewritten, in as many pieces as there are gaps.
+ * The site rewritten, in as many pieces as there are gaps.
  *
  * A block with no holes is not a call: the descriptor IS the value, so the site reads `css={_s0}`
  * and the program allocates once however many elements carry the class. See CONTRACT.md.
+ *
+ * **What is replaced depends on how the block was written.** A bare JSX attribute needs braces the
+ * author did not write, so the NAME is replaced too and the site becomes `css={_s0}`. The two
+ * expression spellings — `css={@( … )}` and `const panel = @( … )` — need nothing but the value, so
+ * only the block itself is replaced and everything to its left is the author's own text. Wrapping
+ * one of those would turn a value into an object literal.
  */
 function write(
   magic: MagicString,
-  name: string,
+  site: BlockSite,
   id: string,
   holes: readonly { start: number; end: number }[],
-  start: number,
   end: number,
 ): void {
+  const start = site.wrap ? site.start : site.open - 1;
+  const head = site.wrap ? `${site.name}={${id}` : id;
+  const tail = site.wrap ? "}" : "";
+
   if (holes.length === 0) {
-    magic.overwrite(start, end + 1, `${name}={${id}}`);
+    magic.overwrite(start, end + 1, `${head}${tail}`);
     return;
   }
 
-  magic.overwrite(start, holes[0].start, `${name}={${id}(`);
+  magic.overwrite(start, holes[0].start, `${head}(`);
   for (let index = 0; index < holes.length - 1; index++) {
     magic.overwrite(holes[index].end, holes[index + 1].start, ", ");
   }
-  magic.overwrite(holes[holes.length - 1].end, end + 1, ")}");
+  magic.overwrite(holes[holes.length - 1].end, end + 1, `)${tail}`);
 }
 
 function declare(block: string, id: string, emitted: EmittedBlock): string {

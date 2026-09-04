@@ -230,6 +230,11 @@ export class LifecycleDemo extends Component {
  * are build errors with the same *did you mean* TypeScript gives any other typo.
  *
  * The nested `&:hover` is CSS's own nesting, resolved by the browser rather than by us.
+ *
+ * **Written as a value in braces**, which is what to reach for whenever a tag has other props: an
+ * editor stops consulting syntax injections once it enters a tag's attribute list, so a bare
+ * `css=@( … )` is only coloured as the FIRST attribute on the tag name's own line. In expression
+ * position there is no such limit, and nothing else about the block changes.
  */
 export class StyleBlock extends Component {
   @state weight = 4;
@@ -240,7 +245,7 @@ export class StyleBlock extends Component {
 
   render() {
     return (
-      <div css=@(
+      <div className="panel" css={@(
         display: flex;
         flex-direction: column;
         gap: 8px;
@@ -249,8 +254,8 @@ export class StyleBlock extends Component {
         padding-left: {{`${this.weight + 8}px`}};
         transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
         &:hover { border-left-color: #00b37e; }
-      )>
-        <p className="label">a `css=@( … )` block — one class, one property per hole</p>
+      )}>
+        <p className="label">one class, one custom property per hole</p>
         <button onclick={this.thicker}>border {this.weight}px — thicker</button>
       </div>
     );

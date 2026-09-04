@@ -23,14 +23,22 @@
  * about. Measured at ~450 MB/s, about a fifth of the whole transform.
  */
 
-/** One block's opening: where the attribute name starts, and where its `(` is. */
+/** One block's opening: where the name starts, where its `(` is, and how the value has to be written. */
 export interface BlockSite {
-  /** Offset of the first character of the attribute name — the start of the text to replace. */
+  /** Offset of the first character of the name — the start of the text to replace. */
   readonly start: number;
-  /** The attribute's name, as written: `css`, `sx`, whatever the host calls it. */
+  /** The name, as written: `css`, `sx`, or the constant an expression is being assigned to. */
   readonly name: string;
   /** Offset of the `(` that opens the block. */
   readonly open: number;
+  /**
+   * Whether the compiled value has to be wrapped in `{ }` where it is written back.
+   *
+   * A JSX attribute written without them needs them — `css=@( … )` becomes `css={_s0}`. The two
+   * expression spellings do not: in `css={@( … )}` the braces are the author's, and in
+   * `const panel = @( … )` they would turn a value into an object literal.
+   */
+  readonly wrap: boolean;
 }
 
 /** The cheap question, asked before anything is read. */
@@ -77,7 +85,7 @@ export function findBlocks(source: string): BlockSite[] {
     }
 
     if (code === 64 /* @ */ && source.charCodeAt(index + 1) === 40 /* ( */) {
-      const site = attributeBefore(source, index);
+      const site = siteBefore(source, index);
       if (site !== undefined) {
         found.push({ ...site, open: index + 1 });
         // The block's own text is read by the parser, which is the only thing that can tell where it
@@ -175,9 +183,25 @@ function endOfSubstitution(source: string, start: number): number {
  * the name — which is what separates one attribute from the tag or from the attribute before it.
  * Everything the walk cannot reach this way is left alone.
  */
-function attributeBefore(source: string, at: number): { start: number; name: string } | undefined {
+function siteBefore(source: string, at: number): { start: number; name: string; wrap: boolean } | undefined {
   let index = at - 1;
   while (index >= 0 && isSpace(source.charCodeAt(index))) index--;
+
+  /**
+   * `css={@( … )}` — a block written as an EXPRESSION, inside the braces JSX already has for one.
+   *
+   * It exists because of a limit nothing here can lift: an editor stops consulting syntax injections
+   * the moment it enters a tag's attribute list, so an unbraced block gets no colours unless it is
+   * the first attribute on the tag name's own line. Inside braces it is ordinary expression
+   * position, and every editor question works there — which also makes it the same case as a block
+   * written outside JSX altogether.
+   */
+  const braced = index >= 0 && source.charCodeAt(index) === 123; /* { */
+  if (braced) {
+    index--;
+    while (index >= 0 && isSpace(source.charCodeAt(index))) index--;
+  }
+
   if (index < 0 || source.charCodeAt(index) !== 61 /* = */) return undefined;
 
   index--;
@@ -188,11 +212,83 @@ function attributeBefore(source: string, at: number): { start: number; name: str
   const start = index + 1;
   if (start === end) return undefined;
 
-  // Before the name: whitespace, and nothing else. `a=@(` inside an expression is not an attribute,
-  // and neither is `x.css=@(`.
+  // Before the name: whitespace, and nothing else. `a=@(` inside an expression is not a site, and
+  // neither is `x.css=@(`.
   if (index < 0 || !isSpace(source.charCodeAt(index))) return undefined;
 
-  return { start, name: source.slice(start, end) };
+  return { start, name: source.slice(start, end), wrap: !braced && isAttribute(source, start) };
+}
+
+/**
+ * Whether the name at `start` is a JSX ATTRIBUTE rather than something being assigned to.
+ *
+ * `css=@( … )` and `const panel = @( … )` are the same three tokens to the walk above — whitespace,
+ * a name, `=` — and they must not compile to the same thing: an attribute takes braces around the
+ * value and an assignment must not have them. Nothing shorter than reading backwards can separate
+ * them, so this consumes attributes backwards until it reaches the `<` that opens a tag.
+ *
+ * **It answers NO when it cannot prove otherwise, and the direction is the point.** An attribute
+ * mistaken for an assignment emits `css=_s0`, which is a syntax error the build reports at once. The
+ * other way round emits an object literal, which is valid code that means the wrong thing.
+ */
+function isAttribute(source: string, start: number): boolean {
+  let index = start - 1;
+
+  for (;;) {
+    while (index >= 0 && isSpace(source.charCodeAt(index))) index--;
+    if (index < 0) return false;
+
+    const code = source.charCodeAt(index);
+
+    // The `=` of an attribute written before this one, whose value has just been stepped over.
+    if (code === 61 /* = */) {
+      index--;
+      continue;
+    }
+
+    // A value written before this one: `name={…}`, `{...spread}`, or `name="…"`. Stepping over it
+    // needs no `return`: an opener that is not there leaves the walk before the start of the file,
+    // which the top of the loop already answers.
+    if (code === 125 /* } */ || code === 34 /* " */ || code === 39 /* ' */) {
+      index = beforeOpening(source, index);
+      continue;
+    }
+
+    if (!isNameCharacter(code) && code !== 46 /* . */) return false;
+
+    /**
+     * A name: the tag's own, which ends the search, or an attribute written before this one —
+     * a bare `disabled`, or the name belonging to a value already stepped over.
+     */
+    while (index >= 0 && (isNameCharacter(source.charCodeAt(index)) || source.charCodeAt(index) === 46)) index--;
+    if (index >= 0 && source.charCodeAt(index) === 60 /* < */) return true;
+  }
+}
+
+/**
+ * The offset just before whatever opened the value ending at `at`, or -1 when nothing did.
+ *
+ * One function for both shapes, because both are the same question and the answer for "there is no
+ * opener" has to be the same: braces are counted, since an attribute's expression holds its own, and
+ * a quote closes itself.
+ */
+function beforeOpening(source: string, at: number): number {
+  const code = source.charCodeAt(at);
+
+  if (code === 123 /* { */ || code === 125 /* } */) {
+    let depth = 0;
+    for (let index = at; index >= 0; index--) {
+      const here = source.charCodeAt(index);
+      if (here === 125 /* } */) depth++;
+      else if (here === 123 /* { */ && --depth === 0) return index - 1;
+    }
+  } else {
+    for (let index = at - 1; index >= 0; index--) {
+      if (source.charCodeAt(index) === code && source.charCodeAt(index - 1) !== 92 /* \\ */) return index - 1;
+    }
+  }
+
+  return -1;
 }
 
 function isSpace(code: number): boolean {

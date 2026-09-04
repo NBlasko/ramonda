@@ -360,6 +360,40 @@ function check(source: string): Reported[] {
 }
 
 describe("through tsc, and back to the author's own file", () => {
+  /**
+   * The two spellings that are a value rather than an attribute, checked the same way.
+   *
+   * The virtual file has to keep the author's own text to the LEFT of the block in both — `const
+   * panel = ` and `css={` are theirs — or a diagnostic about the CSS would land in text nobody
+   * wrote, and the shape would not even parse.
+   */
+  test("a typo in a block written outside JSX is reported where it was written", () => {
+    const source = `const panel = @(\n  dsiplay: flex;\n);\nexport default panel;\n`;
+    const [only, ...rest] = check(source);
+
+    expect(rest).toEqual([]);
+    expect(only.code).toBe(2561);
+    expect(only.message).toContain("Did you mean to write 'display'?");
+    expect({ line: only.line, column: only.column }).toEqual({ line: 2, column: 3 });
+  });
+
+  test("and in one written inside the braces JSX already has", () => {
+    const source = `const a = (\n  <div\n    className="lead"\n    css={@(\n      dsiplay: flex;\n    )}\n  >x</div>\n);\n`;
+    const [only, ...rest] = check(source);
+
+    expect(rest).toEqual([]);
+    expect(only.code).toBe(2561);
+    expect({ line: only.line, column: only.column }).toEqual({ line: 5, column: 7 });
+  });
+
+  test("a hole in a value block is still checked in its own scope", () => {
+    const source = `class Card {\n  size = true;\n  panel = @(\n    padding: {{this.size}};\n  );\n}\n`;
+    const [only] = check(source);
+
+    expect(only.code).toBe(2322);
+    expect(only.message).toContain("boolean");
+  });
+
   test("a property-name typo is TypeScript's own did-you-mean, on the property", () => {
     const source = `const a = (\n  <div css=@(\n    dsiplay: flex;\n  )>x</div>\n);\n`;
     const [only, ...rest] = check(source);

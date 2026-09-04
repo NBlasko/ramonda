@@ -106,3 +106,72 @@ describe("what counts as the attribute", () => {
     expect(names(`<div css=@( color: red; )/>\n<p sx=@( color: blue; )/>`)).toEqual(["css", "sx"]);
   });
 });
+
+/**
+ * The two spellings that are not a JSX attribute.
+ *
+ * ## Why they exist
+ *
+ * `DESIGN.md` promised one of them from the start — "because the compiled form is a value, `@( … )`
+ * outside JSX is the same feature with no special case" — and the code did not do it: it wrote the
+ * attribute form everywhere, so `const panel = @( … )` compiled to `const panel={_s0}`, an object
+ * literal rather than the value.
+ *
+ * The other, `css={@( … )}`, came out of a limit nothing here can lift. An editor stops consulting
+ * syntax injections the moment it enters a tag's attribute list, so a bare block gets no colours
+ * unless it is the first attribute on the tag name's own line — which is not how anyone writes a tag
+ * with several props. Inside the braces JSX already has for an expression, every editor question
+ * works, at any position and on any line. Measured with a grammar that matches one word: it is asked
+ * about a braced attribute on the fourth line of a tag, and never about a bare one on the second.
+ *
+ * Both are the same case to everything downstream: replace the block with the value, and touch
+ * nothing to its left.
+ */
+describe("a block that is not an attribute", () => {
+  test.each([
+    ["a value, outside JSX", `const panel = @( display: flex; );\n`, "panel"],
+    ["a value, exported", `export const panel = @( display: flex; );\n`, "panel"],
+    ["a braced attribute", `const a = <div css={@( display: flex; )}>x</div>;\n`, "css"],
+    [
+      "a braced attribute, four lines into the tag",
+      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    css={@( display: flex; )}\n  >x</div>\n);\n`,
+      "css",
+    ],
+  ])("%s is found, and is not wrapped", (_what, source, name) => {
+    const [site, ...rest] = findBlocks(source);
+
+    expect(rest).toEqual([]);
+    expect(site.name).toBe(name);
+    expect(site.wrap).toBe(false);
+  });
+
+  /**
+   * The other side, and the one that has to keep working: an attribute is still an attribute however
+   * many attributes were written before it, and whatever shape their values had.
+   */
+  test.each([
+    ["the only attribute", `const a = <div css=@( display: flex; )>x</div>;\n`],
+    ["after a quoted one", `const a = <div className="lead" css=@( display: flex; )>x</div>;\n`],
+    ["after a braced one", `const a = <div onclick={f} css=@( display: flex; )>x</div>;\n`],
+    ["after a bare one", `const a = <input disabled css=@( display: flex; )>;\n`],
+    ["after a spread", `const a = <div {...rest} css=@( display: flex; )>x</div>;\n`],
+    ["on a namespaced tag", `const a = <Foo.Bar css=@( display: flex; )>x</Foo.Bar>;\n`],
+    ["on a line of its own", `const a = (\n  <div\n    id="x"\n    css=@( display: flex; )\n  >x</div>\n);\n`],
+  ])("%s is wrapped", (_what, source) => {
+    expect(findBlocks(source)[0]?.wrap).toBe(true);
+  });
+
+  /**
+   * Which way an unprovable case falls, and it is deliberate. An attribute mistaken for a value
+   * emits `css=_s0`, which is a syntax error the build reports at once; a value mistaken for an
+   * attribute emits an object literal, which is valid code that means the wrong thing.
+   */
+  test("a reassignment is a value, not an attribute", () => {
+    expect(findBlocks(`let panel;\npanel = @( display: flex; );\n`)[0]?.wrap).toBe(false);
+  });
+
+  /** A brace that opens nothing leaves the walk before the start of the file, which is not a tag. */
+  test("and so is one written after a stray closing brace", () => {
+    expect(findBlocks(`} panel = @( display: flex; );\n`)[0]?.wrap).toBe(false);
+  });
+});

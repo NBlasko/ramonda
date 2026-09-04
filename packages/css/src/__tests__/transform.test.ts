@@ -342,3 +342,40 @@ describe("what the block's own text may contain", () => {
     expect(() => emit("const a = <div css=@( color: {{`a${ b )>x</div>;\n")).toThrow(CssBlockError);
   });
 });
+
+/**
+ * The two spellings that are a VALUE rather than an attribute.
+ *
+ * `DESIGN.md` promised the first from the start — "because the compiled form is a value, `@( … )`
+ * outside JSX is the same feature with no special case" — and the code did not do it. Measured, it
+ * wrote the attribute form everywhere, so `const panel = @( … )` became `const panel={_s0}`: an
+ * object literal, valid code meaning the wrong thing, with the type error landing wherever the value
+ * was eventually used.
+ */
+describe("a block written as a value", () => {
+  test("outside JSX it becomes the value itself, and the name is left alone", () => {
+    const code = emit(`const panel = @( display: flex; );\nexport default panel;\n`)?.code;
+
+    expect(code).toContain("const panel = _s0;");
+    expect(code).not.toContain("{_s0}");
+  });
+
+  test("inside the braces JSX already has, only the block is replaced", () => {
+    const code = emit(`const a = <div id="x" css={@( display: flex; )}>y</div>;\n`)?.code;
+
+    expect(code).toContain(`<div id="x" css={_s0}>y</div>`);
+  });
+
+  test("a hole makes it a call, in both places", () => {
+    expect(emit(`const panel = @( color: {{c}}; );\n`)?.code).toContain("const panel = _s0(c);");
+    expect(emit(`const a = <div css={@( color: {{c}}; )}>y</div>;\n`)?.code).toContain("css={_s0(c)}");
+  });
+
+  /** The same CSS is the same class however the site was written — the value has one identity. */
+  test("the spelling does not change what is compiled", () => {
+    const attribute = emit(`const a = <div css=@( display: flex; )>y</div>;\n`);
+    const value = emit(`const panel = @( display: flex; );\n`);
+
+    expect(value?.blocks).toEqual(attribute?.blocks);
+  });
+});

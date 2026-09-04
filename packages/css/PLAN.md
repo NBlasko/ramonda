@@ -744,6 +744,36 @@ NAME**, not across the board — an entry in another file already holds the posi
 against the virtual text, so applying one would write scaffolding into the author's file. Refusing is
 the honest answer, and `ramonda-css format` is what formats these files anyway.
 
+### N — a block in expression position, which is two spellings and one case
+
+**A defect first.** `DESIGN.md` had promised from the start that "because the compiled form is a
+value, `@( … )` outside JSX is the same feature with no special case", and the code did not do it: the
+writer emitted the attribute form everywhere, so `const panel = @( display: flex; )` compiled to
+`const panel={_s0}` — an **object literal**, valid code meaning the wrong thing, with the type error
+landing wherever the value was eventually used.
+
+**And a second spelling that exists because of M's boundary**, not because two ways to write a thing
+are nice: `css={@( … )}`, a value in the braces JSX already has for one. Measured with the same
+one-word grammar that found the boundary — an injection is consulted inside a braced attribute at
+**every** position tried: second attribute, fourth line of a tag, even a value on its own line. So the
+limit that no bare attribute can be coloured past the first one has a way round it that costs the
+author two characters.
+
+Both are the same case downstream: **replace the block, touch nothing to its left.** A bare attribute
+is the odd one out — it is rewritten from its NAME, because the braces are ours to add.
+
+**Telling them apart is a backwards walk, and its direction is chosen.** `css=@( … )` and
+`const panel = @( … )` are the same three tokens to the scanner — whitespace, a name, `=` — so
+`isAttribute` consumes attributes backwards (bare, quoted, braced, spreads, namespaced tag names)
+until it reaches the `<` that opens a tag, and answers NO when it cannot prove otherwise. An attribute
+mistaken for a value emits `css=_s0`, a syntax error the build reports at once; a value mistaken for
+an attribute emits an object literal, which is the quiet kind of wrong.
+
+**The grammar's lookbehind requires the `=`, and that is measured too.** Permitting a bare `{` before
+the block colours more cases but swallows a parenthesised decorator written on the same line as a
+class's opening brace — `class C { @(dec) m() {} }` lost `dec` entirely. Requiring `=`, `={` or `= {`
+mirrors the compiler's own scanner and leaves every decorator alone.
+
 ### L — the runtime diagnostic. Deliberately last
 
 A `css` value reaching the runtime that no transform produced must be reported rather than silently

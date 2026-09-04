@@ -25,6 +25,25 @@ editor stops consulting injections the moment it enters a tag's attribute list. 
 grammar that does nothing but match one word, it colours a first attribute and is never asked about a
 second. The block itself still compiles and is still checked either way; only the colours are lost.
 
+**The way round it is to write the block as a value**, which is ordinary expression position and has
+no such limit — any attribute, any line:
+
+```tsx
+<div
+  id="x"
+  onclick={f}
+  css={@(
+    display: flex;
+  )}
+>…</div>
+```
+
+and outside JSX entirely:
+
+```tsx
+const panel = @( display: flex; );
+```
+
 ## What it does NOT do
 
 Completion, hover, and the red squiggles are not here. They come from the language service plugin in

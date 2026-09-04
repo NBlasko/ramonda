@@ -154,3 +154,37 @@ describe("the placeholder itself", () => {
     expect(inside).toMatch(/\d/);
   });
 });
+
+/**
+ * The two spellings that are a value, through the placeholder.
+ *
+ * The placeholder has to own exactly what the transform owns, and this is where getting it wrong is
+ * loudest: a placeholder that swallowed the author's own `}` in `css={@( … )}` left an extra one
+ * behind, and biome refused the file for the very parse error the placeholder exists to avoid —
+ * *"Code formatting aborted due to parsing errors"*, on a file that was correct.
+ */
+describe("a block written as a value", () => {
+  test("the braced form leaves the author's braces where they are", () => {
+    const held = placehold(`const a = <div id="x" css={@( display: flex; )}>y</div>;\n`);
+
+    expect(held?.text).toContain(`css={/*`);
+    expect(held?.text).toContain(`}>y</div>`);
+    expect(held?.text).not.toContain("}}");
+  });
+
+  test("and a block outside JSX keeps its own assignment", () => {
+    const held = placehold(`const panel = @( display: flex; );\n`);
+
+    expect(held?.text).toMatch(/^const panel = \/\*@ramonda-css:0\*\/ 0;\n$/);
+  });
+
+  test.each([
+    ["braced", `const a = <div id="x" css={@( display: flex; )}>y</div>;\n`],
+    ["outside JSX", `const panel = @(\n  display: flex;\n);\n`],
+    ["a bare attribute", `const a = <div css=@( display: flex; )>y</div>;\n`],
+  ])("%s comes back exactly as it went in", (_what, source) => {
+    const held = placehold(source);
+
+    expect(held?.restore(held.text)).toBe(source);
+  });
+});
