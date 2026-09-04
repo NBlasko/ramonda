@@ -671,18 +671,26 @@ is nothing to check — the same answer the Vite plugin gives a build that emitt
 is typed `string` is not assignable to esbuild's own `Plugin`, and a user passing it in gets a type
 error about a variance three levels down.
 
-### J — per-route splitting
+### J — per-route splitting — DONE, and nothing was written for it
 
-**J is high priority rather than someday**, by the user's call, and it is cheaper than it sounds:
-**the CSS follows the JavaScript chunk.** A block belongs to the module it was written in, the
-bundler already decides which modules land in which chunk, and `AsyncLoad`'s dynamic import is what
-creates one. A route that is already code-split gets its own stylesheet from a decision the bundler
-makes anyway. `ramonda-check --split` already reports the same `its own` / `shared` division — 266
-split points on `apps/docs` — which is not a dependency this package may take, but does mean the
-shape is understood.
+**The CSS follows the JavaScript chunk**, because each module imports its OWN stylesheet. That was
+A3's design decision and this is the measurement that it does what it promised. A block was put in
+`apps/playground-core`'s lazily-loaded module and the app built:
 
-Starting with one sheet is safe because **no syntax, type or compiled value changes when splitting
-lands.**
+```
+dist/assets/HeavyPanel-DFc0Nv7V.css    0.08 kB
+dist/assets/index-FR6XzZLB.css         1.13 kB
+```
+
+Two stylesheets, and **disjoint**: the lazy module's rule is in its own sheet and not in the entry's,
+and the entry's rule is not in the lazy one. Nothing in this package splits anything — the bundler
+already decides which modules land in which chunk, and the per-file stylesheet is what lets that
+decision carry the CSS with it.
+
+**It is a gate rather than a note**, `scripts/check-css-splitting.mjs`, because the failure mode is
+silent in the wrong direction: going back to ONE sheet would look like a simplification, the app
+would still work, and every route would carry every rule. The gate asks the two things that can only
+be true if the split happened — no class in two sheets, and no class in a sheet that no chunk names.
 
 ### M — a TextMate grammar, for every tool that only colours — DONE
 
@@ -980,6 +988,7 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | bail-out on an unused codebase | 1,290 files, 10.73 MB, **0.84 ms**, scan included |
 | the generated `style={{…}}` object | `RMD020` on every render |
 | the same as a string / prop | silent |
+| a block in a lazily-loaded module | its OWN stylesheet asset, disjoint from the entry's — splitting is free |
 | a `;` deleted after a CLOSED-grammar property | reported: the next name is a value it does not accept |
 | a `;` deleted after an OPEN one (`padding`) | **silent** — one value, and nothing to check it against |
 | a block in a `tsx` fence, no grammar | the theme's INVALID colour, to the end of the fence |
