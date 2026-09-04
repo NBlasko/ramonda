@@ -3768,10 +3768,6 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     // The package the project SITS IN, so it matches the prefix every id carries. A fixture with
     // no package.json of its own belongs to the package above it, and saying otherwise would give
     // the graph two names for one thing.
-    // Everything a reached node USES is reached too, and `closeOverHooks` has already said so — for
-    // this question and every other one, with the arrivals carried along. It used to be closed here,
-    // which widened the SHARED set for one rule and misled the next: see that function.
-
     const home = owner(projectRoot);
     /**
      * A root that names a component, not merely a call to `bootstrap`.
