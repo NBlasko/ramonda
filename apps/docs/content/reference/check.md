@@ -115,6 +115,7 @@ the run.
 | A route table whose views can never appear | the table is built but its outlet is unreachable |
 | A second provider for a context that allows one | two providers sit on one path, and the context was created with [`single: true`](/composition/context#when-two-of-them-conflict) — which says a second one is a conflict rather than a narrower scope |
 | A ring of mounts that nothing can skip | A mounts B mounts A, with no lazy boundary to break it |
+| A `params()` read claiming a key the routing does not supply | `params<{ teamId: string }>()`, a plain destructuring, or `params().teamId` under a route with no `:teamId` — see [reading the URL](/routing/params#params-is-judged-by-the-keys-it-names) |
 | A component named among children | `{Panel}` where `<Panel />` was meant — also [`RMD052`](/reference/diagnostics/rmd052) |
 
 ### The rules

@@ -108,6 +108,7 @@ const {
   unreachable,
   unreachableRoutes,
   paramsOffRoute,
+  keysOffRoute,
   secondProviders,
   renderCycles,
   classesAsChildren,
@@ -377,6 +378,7 @@ if (
   unreachableRoutes.length === 0 &&
   secondProviders.length === 0 &&
   paramsOffRoute.length === 0 &&
+  keysOffRoute.length === 0 &&
   renderCycles.length === 0 &&
   classesAsChildren.length === 0
 ) {
@@ -486,6 +488,35 @@ if (paramsOffRoute.length > 0) {
       `on that route and pass the value down as a prop. Use \`pathname\` if it is not part of a route,\n` +
       `and \`params<T>()\` with no argument when it is genuinely written against no ONE route.\n`,
   );
+}
+
+/**
+ * The other door, printed apart from the first because the fix is a different sentence.
+ *
+ * A pattern read that goes wrong THROWS at runtime; a claimed key that goes wrong hands back
+ * `undefined` where the type promised a string. So this says what the read will actually do, and
+ * names the honest spelling — an optional key — rather than only refusing.
+ */
+if (keysOffRoute.length > 0) {
+  console.error(`\n${TAG} ${keysOffRoute.length} params() read(s) claiming a key the routing does not supply:\n`);
+  for (const read of keysOffRoute) {
+    console.error(`  ${read.file}:${read.line}:${read.column}`);
+    if (read.path.length > 1) console.error(`    ${read.path.join(" > ")}`);
+    const claimed = read.keys.map((name) => `\`${name}\``).join(", ");
+    const absent = (read.missing ?? read.keys).map((name) => `\`${name}\``).join(", ");
+    console.error(
+      read.why === "no-outlet"
+        ? `    <${read.component}> reads \`${read.member}.params()\` for ${claimed}, and no arrangement in ` +
+            `this build puts it under a <RouteOutlet> — so the params are empty and ${claimed} ` +
+            `${read.keys.length === 1 ? "is" : "are"} \`undefined\`. This read does not throw, which is why ` +
+            `nothing has told you.`
+        : `    <${read.component}> reads \`${read.member}.params()\` for ${claimed}, but the route that ` +
+            `mounts it is "${read.route}", which supplies no ${absent}. The read gives \`undefined\` where ` +
+            `the type says \`string\`, without throwing. Name the pattern instead, or mark the key optional ` +
+            `if this component really is rendered by routes that disagree.`,
+    );
+    console.error("");
+  }
 }
 
 /**

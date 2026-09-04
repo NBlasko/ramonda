@@ -67,8 +67,8 @@ the claim is about the params, not the spelling. When two routes genuinely disag
 that is what `params<T>()` is for.
 
 **Does naming the route make the component less reusable?** It names a coupling that was already there:
-`params<{ id: string }>()` needed a route supplying `id` just as much, it simply failed silently instead
-of saying so. And a component that is genuinely reusable should not be reading the URL at all — have the
+`params<{ id: string }>()` needs a route supplying `id` just as much, and that is now said out loud too
+— see below. And a component that is genuinely reusable should not be reading the URL at all — have the
 page read the param and pass it down, `<UserAvatar userId={id} />`, for the same reason a value one child
 needs is a prop rather than a context. If a component reads `params()`, it *is* part of a route; the
 pattern only writes that down.
@@ -102,11 +102,52 @@ route's params are written.
 A component under two routes that both supply what it asked for is silent: `/users/:id` and
 `/people/:id` both give `:id`, and the claim is about the params, not the spelling. But **one
 arrangement that fails is enough** — a component rendered inside a routed page *and* beside the
-outlet is reported, because the second place has no matched route and the read throws there. `params()` with
-no argument is never judged, because it names no pattern and claims no route.
+outlet is reported, because the second place has no matched route and the read throws there.
 
 The types cannot answer either of these. `params("/users/:id")` is checked against the paths your
 **table** declares, never against the route the component is standing on.
+
+## `params()` is judged by the keys it names
+
+The argument-less door claims a route too, the moment it names a key. `params<{ teamId: string }>()`
+says `teamId` is always there; so does `const { teamId } = params()`, and so does `params().teamId`.
+Under a route that supplies no `:teamId`, all three read `undefined` where the type says `string` —
+and unlike the pattern door, **this one does not throw**. Nothing tells you at all:
+
+```
+[ramonda-check] 1 params() read(s) claiming a key the routing does not supply:
+
+  src/TeamHeader.tsx:14:19
+    App > RouteOutlet > TeamPage > TeamHeader
+    <TeamHeader> reads `nav.params()` for `userId`, but the route that mounts it is
+    "/teams/:teamId", which supplies no `userId`. The read gives `undefined` where the
+    type says `string`, without throwing. Name the pattern instead, or mark the key
+    optional if this component really is rendered by routes that disagree.
+```
+
+Say it may be absent and nothing is reported, because nothing was claimed:
+
+```tsx
+import { Component } from "@ramonda/core";
+import { createRoutes, createRouter } from "@ramonda/router";
+
+const routes = createRoutes({ "/players/:id": <Profile />, "/teams/:teamId": <Team /> });
+export const { Navigator } = createRouter(routes);
+
+// Rendered by both, and they disagree about their params — the case params<T>() is for.
+export class OwnerChip extends Component {
+  route = this.use(Navigator);
+
+  render() {
+    const p = this.route.params<{ id?: string; teamId?: string }>();
+    return <b>{p.id ?? p.teamId}</b>;
+  }
+}
+```
+
+A default does the same job — `const { teamId = "" } = params()` — and so does reading off a variable
+one line later, which stays unjudged on purpose. Two things are deliberately not answered: a type
+argument that is a **name** rather than a written-out shape, and a key built from an expression.
 
 **What it cannot see.** A route table whose keys are computed — `table[page.path] = …` in a loop —
 names its paths at runtime, so the checker knows the views are routed but not under what; it reports
