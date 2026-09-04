@@ -107,19 +107,73 @@ block". The error is `tsc`'s own, with `tsc`'s own message.
 build needs are **the same transform**. This is not two implementations of one idea; it is one
 implementation used twice. That is what makes the whole thing affordable.
 
-### The CSS text — a checker of our own
+### The CSS text — typed through the same virtual file
 
-`tsc` has nothing to say about `dsiplay: flx`, and never will. That half is checked by a CSS-aware
-checker, which is strictly more than a type system could offer here:
+**Measured, and the answer is better than expected: the block itself type-checks.** The trick is what
+the declarations become in the virtual file — an **object literal**, not a string:
 
-- a property that does not exist, and the near-miss it was meant to be
-- a value the property does not accept
-- **a hole in a position a custom property cannot occupy** — the rule that keeps the design honest
-- a declaration that can never apply — `display: flex` beside `display: block`
+```ts
+declare function __block(declarations: Partial<CssProperties>): string;
 
-Ramonda has 86 rules over a `ts.Program` and a package that knows what the DOM knows, so it has a
-head start here. **But this checker may not depend on any of it** (constraint 3). The shared piece is
-the technique, not the code.
+__block({ display: "flexx" });               // value typo
+__block({ dsiplay: "flex" });                // key typo
+__block({ padding: nekaFunc() });            // a hole returning the wrong type
+__block({ padding: "10px 20px" });           // correct — silent
+```
+
+`tsc --strict`, verbatim:
+
+```
+TS2820: Type '"flexx"' is not assignable to type '"flex" | "none" | "block" | …'. Did you mean '"flex"'?
+TS2561: Object literal may only specify known properties, but 'dsiplay' does not exist
+        in type 'Partial<CssProperties>'. Did you mean to write 'display'?
+TS2322: Type 'boolean' is not assignable to type 'Length | …'
+```
+
+Three things fall out of that one encoding, and they were three separate questions:
+
+- **a typo in the property name**, with TypeScript's own *did you mean* — because an object literal
+  gets excess-property checking, which an argument list does not;
+- **a typo in an enumerable value**, likewise;
+- **a hole checked against the property it belongs to.** `padding: {{nekaFunc()}}` is checked against
+  `CssProperties["padding"]`, so the function's return type has to be something padding accepts. That
+  was the hardest-sounding request and it costs nothing extra: the hole simply lands in the value
+  position of the object literal, and the mapping back to the author's line is already proved.
+
+**And IntelliSense is the same mechanism, not a second one.** Completion inside the block is ordinary
+TypeScript completion on an object literal, served by the language-service plugin from the virtual
+file. Property names, then the value union for the property just typed.
+
+#### The honest limit, and it is a dial rather than a switch
+
+A template literal type does catch `padding: 10pxx` — measured. But look at what it says when it
+does:
+
+```
+TS2322: Type '"10pxx"' is not assignable to type 'Length | "0 0" | `0 ${number}px` |
+  `0 ${number}rem` | `0 ${number}%` | `${number}px 0` | `${number}px ${number}px` |
+  `${number}px ${number}rem` | … 4 more … | undefined'
+```
+
+Unreadable, and it grows combinatorially with every shorthand position. So the split is:
+
+| kind of property | typed as | who catches a typo |
+|---|---|---|
+| enumerable (`display`, `position`, `flex-direction`, …) | a real union | **the types** — with *did you mean* |
+| lengths, colours, shorthands | `string \| number` | **our CSS checker**, where we write the message |
+
+The type system takes the half it is good at and stays readable; the checker takes the half where a
+grammar is needed and a human-written message is worth more than an expanded union.
+
+### That the emitted CSS survives the pipeline
+
+If the sheet is handed to a post-processor, whatever it does must not break the HTML that already
+names the classes — and a minifier is allowed to merge and rename rules.
+
+*Recommended:* a **round-trip assertion** at the end of the build. Every class the transform emitted
+must still be present in the final stylesheet, and every `var(--rN)` it promised must still be
+referenced. A rule that vanished or was renamed fails the build, instead of shipping markup pointing
+at a class that is not there.
 
 ---
 
@@ -158,6 +212,39 @@ None of them is optional, and the order matters because each one is useless with
 
 ---
 
+## Speed, and why the dev path is cheap
+
+The requirement is that a dev build stay as fast as one without this. The reason it can is a split
+that already exists in every TypeScript project:
+
+| path | what runs | does it type-check? |
+|---|---|---|
+| dev server, and the production build | scan → parse the block → emit class and variables | **no** |
+| the check command, and the editor | virtual file → `tsc` → map diagnostics back | yes, in its own process |
+
+That is exactly how types are handled today: esbuild strips them without checking them, and `tsc`
+runs beside it. **Type checking never sits on the hot path**, so the dev cost is the transform alone.
+
+Four things keep the transform cheap, in order of how much they matter:
+
+1. **The bail-out, and it is nearly free.** A file with no sigil is never parsed. Measured over this
+   repository — 1,268 source files, 10.61 MB — a substring scan finds them all in **1.33 ms**, about
+   1.0 µs per file at ~8 GB/s. A codebase that never uses the feature pays that and nothing else.
+2. **No cross-file analysis, ever.** A class name is the hash of its own normalised text, so a block
+   can be compiled knowing nothing about the rest of the app. That is what makes files independently
+   cacheable, transformable in parallel, and re-transformable one at a time.
+3. **Incremental by construction.** One file changes, one file is re-transformed, and its chunk of
+   the stylesheet is replaced. A style-only edit is a CSS hot update with no JavaScript reload.
+4. **Cached on content hash**, across restarts, because the transform is a pure function of the
+   file's text.
+
+**The cost that has to be measured rather than promised** is the parse of a file that *does* contain
+a block: finding `=@(` is not the same as knowing it is a JSX attribute rather than text inside a
+string or a comment. That needs lexical context, and how much is the open question. Nothing above
+depends on the answer; the bail-out is what protects the other 99% of files.
+
+---
+
 ## Open decisions
 
 **1. Where a hole may appear.** A custom property holds a *value*. It cannot hold a property name, a
@@ -188,13 +275,18 @@ its declarations, and the sheet sits in a named `@layer` beneath author styleshe
 object `{ className, style }`, because that is what makes constraint 3 true: any framework can spread
 it, and nothing about it is JSX-specific.
 
-**7. May anything happen at runtime?** *Recommended, and this is the opinion most worth arguing
-about:* only setting a custom property. Injecting a rule at runtime gives up server-render
-determinism, the cached sheet and the checker's view of the styles — every property this design has.
+**7. May anything happen at runtime?** **DECIDED — no.** Custom properties only, never an injected
+rule. Injecting would give up server-render determinism, the cached sheet and the checker's view of
+the styles, which is every property this design has. Written down so it is not reopened by
+convenience later: a feature that "just needs a rule at runtime" is a feature that belongs somewhere
+else.
 
 **8. The name, and where it lives.** Not `@ramonda/*`, by constraint 3. Living in this monorepo is
-still fine — one gate, one release pipeline — but the name must not tie it to the framework, and
-nothing in it may import from one. **Unanswered.**
+fine — one gate, one release pipeline — but nothing in it may import from the framework.
+**Recommended: `stilo`**, free on npm as of 2026-09-04. Short, says *style* without saying *CSS in
+JS*, and carries no framework in it, which matters for a package whose whole pitch is that it works
+anywhere. Checked and free alongside it: `cssat`, `at-block`, `blockcss`, `styleblock`, `kalem`.
+Taken: `cssx`, `atcss`. **Still the user's call.**
 
 **9. Does the framework report the generated `style={{ … }}`?** The transform emits an object in the
 markup, which is a shape Ramonda's diagnostics have opinions about. **Not measured.** Measure before
