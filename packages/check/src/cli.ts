@@ -350,9 +350,10 @@ if (wantsFix) {
    * warning with a mechanical answer was not a judgement anyone could reasonably defer. There are no
    * warnings now — measured, 87 rules and none of them `warn`, with `verdict.test.ts` holding that —
    * so a finding with a fix fails the plain run too, because fixes come only from rules and
-   * `failingRules` takes every rule that reported. As a gate over rule findings this is therefore
-   * redundant with the run before it; what it still exercises is the FIXER, on a real project, which
-   * nothing else in a gate does.
+   * `failingRules` takes every rule that reported. As a gate over rule findings it was therefore
+   * redundant with the run before it, and it left `pnpm check` on 2026-09-04 — measured at 25-30
+   * seconds for an answer the run before it had already given. What puts this path through its
+   * paces now is `fix-gate.test.ts`, against the same built CLI.
    *
    * It stops here rather than falling through to the report. One question, one answer: a step that
    * also printed every unrelated finding would be read as the whole check and is not.

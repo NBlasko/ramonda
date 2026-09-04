@@ -32,11 +32,23 @@ function run(...args: string[]): Promise<{ code: number; output: string }> {
  *
  * These run the built CLI as a process, because an exit code is not something the analyzer returns
  * and a gate step that silently stopped failing would be worse than no step at all. `dist/` has to
- * exist, and the suite runs after `build` in the gate — so a missing one is skipped rather than
- * failed, which is the honest answer for a check that could not be performed.
+ * exist, and `turbo.json` has `test` depend on `build` — so in a gate the CLI is there and these
+ * run. A bare `vitest` in this package with no build is the case the skip is for, and there a check
+ * that could not be performed is honestly reported as not performed.
+ *
+ * **But not in CI, and that is deliberate.** These three are now the only place the built CLI is put
+ * through `--fix`: the step that did it over `apps/docs` left `pnpm check` on 2026-09-04, measured
+ * redundant with the run before it and costing 25-30 seconds. So a missing CLI under `CI` is a
+ * failure rather than a skip — otherwise a change to `turbo.json`, or a build that emits another
+ * name, would take the fixer's whole coverage away while every job stayed green.
+ *
+ * Measured by deleting `dist/cli.js`: present, three pass; missing with no `CI`, three skip; missing
+ * under `CI`, **two** fail and name `Cannot find module …/dist/cli.js`. Two rather than three,
+ * because the idempotence test compares one run's output with the next and two identical failures
+ * are identical — so it is the two that read the output which carry this.
  */
 describe("the gate's fixable-fault step", () => {
-  test.skipIf(!existsSync(CLI))("fails when a fault has an answer nobody applied", async () => {
+  test.skipIf(!existsSync(CLI) && !process.env.CI)("fails when a fault has an answer nobody applied", async () => {
     const { code, output } = await run(fixture("mechanical-fixes"), "--fix", "--dry-run");
 
     expect(code).toBe(1);
@@ -46,7 +58,7 @@ describe("the gate's fixable-fault step", () => {
     expect(output).toContain("run `--fix` to apply them");
   });
 
-  test.skipIf(!existsSync(CLI))("passes when every remaining fault needs a person", async () => {
+  test.skipIf(!existsSync(CLI) && !process.env.CI)("passes when every remaining fault needs a person", async () => {
     // `foreign-child` reports plenty, and not one of its faults has a single mechanical answer.
     const { code, output } = await run(fixture("foreign-child"), "--fix", "--dry-run");
 
@@ -60,11 +72,14 @@ describe("the gate's fixable-fault step", () => {
    * Asserted through the CHECK path rather than only through `applyFixes`, because the flag that
    * decides it is read in the CLI and a wiring mistake there would not touch the unit test.
    */
-  test.skipIf(!existsSync(CLI))("and the tree is untouched, so running it twice says the same thing", async () => {
-    const first = await run(fixture("mechanical-fixes"), "--fix", "--dry-run");
-    const second = await run(fixture("mechanical-fixes"), "--fix", "--dry-run");
+  test.skipIf(!existsSync(CLI) && !process.env.CI)(
+    "and the tree is untouched, so running it twice says the same thing",
+    async () => {
+      const first = await run(fixture("mechanical-fixes"), "--fix", "--dry-run");
+      const second = await run(fixture("mechanical-fixes"), "--fix", "--dry-run");
 
-    expect(second.code).toBe(1);
-    expect(second.output).toBe(first.output);
-  });
+      expect(second.code).toBe(1);
+      expect(second.output).toBe(first.output);
+    },
+  );
 });
