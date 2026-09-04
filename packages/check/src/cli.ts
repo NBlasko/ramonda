@@ -342,14 +342,20 @@ if (wantsFix) {
   /**
    * `--fix --dry-run` is a CHECK, and answers with its exit code.
    *
-   * It is the shape `biome format --check` and every tool like it uses, and it is what makes this
-   * usable in a gate: a fault the checker knows the answer to, left in the tree, is one nobody has
-   * an excuse for. Most of them are warnings and a normal run exits 0 on those — which is right,
-   * because a warning is a judgement someone may reasonably defer. A warning with a MECHANICAL
-   * answer is not that.
+   * It is the shape `biome format --check` and every tool like it uses, and it answers one question:
+   * is there a fault in the tree that the checker already knows the edit for?
+   *
+   * **What it no longer buys, since every rule is an error.** This step used to be the only thing
+   * that failed on a mechanical fault: most rules warned, a normal run exited 0 on a warning, and a
+   * warning with a mechanical answer was not a judgement anyone could reasonably defer. There are no
+   * warnings now — measured, 87 rules and none of them `warn`, with `verdict.test.ts` holding that —
+   * so a finding with a fix fails the plain run too, because fixes come only from rules and
+   * `failingRules` takes every rule that reported. As a gate over rule findings this is therefore
+   * redundant with the run before it; what it still exercises is the FIXER, on a real project, which
+   * nothing else in a gate does.
    *
    * It stops here rather than falling through to the report. One question, one answer: a step that
-   * also printed every unrelated warning would be read as the whole check and is not.
+   * also printed every unrelated finding would be read as the whole check and is not.
    */
   if (dryRun) {
     if (fixed.applied > 0) {
