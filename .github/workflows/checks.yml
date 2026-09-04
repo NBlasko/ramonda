@@ -20,6 +20,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history, for the changesets step below only. `changeset status` asks git where HEAD
+          # diverged from `main`; a depth-1 checkout has no merge base to find, and the command exits
+          # with "Does `main` exist and it's synced with remote?" rather than an answer.
+          fetch-depth: 0
       - uses: ./.github/actions/setup
       # oxlint over the whole monorepo in one pass (config: .oxlintrc.json). Hard
       # gate: the tree is clean today (0 errors).
@@ -36,6 +41,24 @@ jobs:
       # first, since a check nobody has seen fail proves nothing.
       - name: Check workflows
         run: SELFTEST=1 node scripts/check-workflows.mjs && node scripts/check-workflows.mjs
+      # Every pending changeset is one the release can process AND one it can consume. This ran only
+      # in `pnpm check` until now, which is how two changesets for an ignored package reached `main`
+      # and left the release unable to ever take its publish branch.
+      #
+      # `main` as a local ref, because that is the question `changeset status` puts to git: on a pull
+      # request the checkout is detached and only `origin/main` exists, and on a push to `main` the
+      # branch is already there, so this creates it exactly when it is missing.
+      #
+      # NOT on the version pull request. Measured on that tree: `changeset status` exits 1 with "Some
+      # packages have been changed but no changesets were found", which is the right answer everywhere
+      # except there — a version PR is packages bumped with every changeset already consumed.
+      - name: Check changesets
+        if: github.head_ref != 'changeset-release/main'
+        run: |
+          git rev-parse --verify main >/dev/null 2>&1 || git branch main origin/main
+          SELFTEST=ignored node scripts/check-changesets.mjs
+          SELFTEST=floor node scripts/check-changesets.mjs
+          node scripts/check-changesets.mjs
 
   typecheck:
     name: Type-check
