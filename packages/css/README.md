@@ -33,6 +33,27 @@ consulting syntax injections the moment it enters a tag's attribute list, so a b
 coloured when it is the first one, on the tag name's own line. In expression position there is no
 such limit.
 
+## Formatters
+
+The syntax is not TypeScript, so no formatter can parse a file holding a block until it is taught.
+Measured: biome answers *"Code formatting aborted due to parsing errors"*, Prettier answers
+*"SyntaxError: ')' expected."* Both refuse rather than mangle, which is the safe half — and both are
+handled:
+
+- **This repository's own tools** go through `ramonda-css format` and `ramonda-css lint`, which
+  replace each block with something that parses, run biome or oxlint, and put the block back at the
+  indentation the tool chose.
+- **Prettier** gets a plugin. Add it to your Prettier config and formatting works everywhere,
+  including the format-on-save an editor does for you:
+
+  ```json
+  { "plugins": ["@ramonda/css/prettier"] }
+  ```
+
+  One thing it changes: a bare `css=@( … )` comes back as `css={@( … )}`. Prettier prints a quoted
+  attribute value itself and never offers a plugin the chance to print one, so the placeholder has to
+  be braced — and the two compile to the same class anyway.
+
 The syntax is not TypeScript, which is why this owns a parser and a virtual-file layer — the same way
 JSX is usable because somebody wrote the parser for it. Everything a block can say is type-checked:
 a property-name typo gets TypeScript's own *did you mean*, and a hole is checked against the type the

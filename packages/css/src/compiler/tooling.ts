@@ -26,19 +26,49 @@ import { findBlocks, mayHoldABlock } from "./scan";
 export interface Placeheld {
   /** The file with every block replaced by something that parses. Hand this to the formatter. */
   readonly text: string;
+  /**
+   * Each block's own `@( … )` text, in the order the placeholders were numbered — never the name in
+   * front of it, even where the placeholder took that too. A caller printing a placeholder back is
+   * printing it INSIDE whatever the placeholder occupies, so the name is already there.
+   */
+  readonly blocks: readonly string[];
   /** The formatter's output with the blocks put back, at the indentation it chose. */
   restore(formatted: string): string;
 }
 
+export interface PlaceholdOptions {
+  /**
+   * What stands in for a block, given its number. The default is a comment and a zero, which is what
+   * a formatter run over the whole file needs: it parses, it survives, and `restore` finds it again.
+   *
+   * A caller that puts the block back ITSELF wants something else. Prettier is the one that does —
+   * it has no hook that sees the printed text, so its plugin recognises the placeholder as a NODE
+   * and prints the block in its place, which needs a node rather than a comment on one.
+   */
+  stands?(index: number): string;
+  /**
+   * Whether a bare JSX attribute keeps the braces the placeholder needs.
+   *
+   * True by default, which is what a formatter run over the whole file wants: a commented zero in
+   * braces is a legal attribute value, and `restore` puts the author's own spelling back afterwards.
+   *
+   * A caller whose placeholder is a value in its own right can do better — a quoted string is a legal
+   * attribute value too, so nothing about the site changes and the block goes back exactly as it was
+   * written.
+   */
+  braces?: boolean;
+}
+
 /** `undefined` when the file holds no block, which is when a formatter needs no help. */
-export function placehold(source: string): Placeheld | undefined {
+export function placehold(source: string, options: PlaceholdOptions = {}): Placeheld | undefined {
   if (!mayHoldABlock(source)) return undefined;
 
   const sites = findBlocks(source);
   if (sites.length === 0) return undefined;
 
   const marker = markerFor(source);
-  const blocks: { text: string; wrap: boolean }[] = [];
+  const stands = options.stands ?? ((index: number) => `/*${marker}${index}*/ 0`);
+  const blocks: { text: string; block: string; wrap: boolean }[] = [];
   let text = "";
   let cursor = 0;
 
@@ -55,18 +85,23 @@ export function placehold(source: string): Placeheld | undefined {
      * placeholder that swallowed the author's own `}` in `css={@( … )}` leaves an extra one behind —
      * measured, biome then refuses the file for the very parse error this exists to avoid.
      */
-    const from = site.wrap ? site.start : site.open - 1;
-    const stands = `/*${marker}${blocks.length}*/ 0`;
+    const wrap = site.wrap && options.braces !== false;
+    const from = wrap ? site.start : site.open - 1;
+    const held = stands(blocks.length);
 
     text += source.slice(cursor, from);
-    text += site.wrap ? `${site.name}={${stands}}` : stands;
-    blocks.push({ text: source.slice(from, end), wrap: site.wrap });
+    text += wrap ? `${site.name}={${held}}` : held;
+    blocks.push({ text: source.slice(from, end), block: source.slice(site.open - 1, end), wrap });
     cursor = end;
   }
 
   text += source.slice(cursor);
 
-  return { text, restore: (formatted) => restore(formatted, blocks, marker) };
+  return {
+    text,
+    blocks: blocks.map((held) => held.block),
+    restore: (formatted) => restore(formatted, blocks, marker),
+  };
 }
 
 function restore(formatted: string, blocks: readonly { text: string; wrap: boolean }[], marker: string): string {

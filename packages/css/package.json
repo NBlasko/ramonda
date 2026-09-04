@@ -47,6 +47,10 @@
       "types": "./dist/plugin.d.ts",
       "require": "./dist/plugin.cjs",
       "default": "./dist/plugin.cjs"
+    },
+    "./prettier": {
+      "types": "./dist/prettier.d.ts",
+      "import": "./dist/prettier.js"
     }
   },
   "bin": {
@@ -75,16 +79,23 @@
     "magic-string": "^0.30.21"
   },
   "peerDependencies": {
-    "typescript": ">=5.0.0"
+    "typescript": ">=5.0.0",
+    "prettier": "^3"
   },
   "devDependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@types/node": "^26.4.1",
     "esbuild": "^0.28.2",
-    "@jridgewell/trace-mapping": "^0.3.31",
+    "prettier": "3",
+    "shiki": "^4.4.3",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vite": "7.3.6",
-    "vitest": "^4.1.11",
-    "shiki": "^4.4.3"
+    "vitest": "^4.1.11"
+  },
+  "peerDependenciesMeta": {
+    "prettier": {
+      "optional": true
+    }
   }
 }

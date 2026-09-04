@@ -774,6 +774,35 @@ the block colours more cases but swallows a parenthesised decorator written on t
 class's opening brace — `class C { @(dec) m() {} }` lost `dec` entirely. Requiring `=`, `={` or `= {`
 mirrors the compiler's own scanner and leaves every decorator alone.
 
+### O — Prettier, the third tool that cannot read the file
+
+Measured before anything was built: `prettier --parser typescript` answers *"SyntaxError: ')'
+expected."* and refuses. Refusing is the safe half — nothing is mangled — but it breaks the gesture
+every editor offers, and an editor whose default formatter is Prettier gives that answer on save.
+
+**A printer, not a preprocessor.** Replacing every block with something that parses is easy; putting
+them back is the problem, because **Prettier has no hook that sees the printed text.** A plugin gets
+an AST and returns a document, and the core turns that into a string. So the placeholder has to be a
+NODE, and `embed` — Prettier's own way of printing a node in another language — is what prints the
+block where the node was.
+
+**Three placeholder shapes were measured, and only the third works:**
+
+| shape | what happened |
+|---|---|
+| a comment and a zero, `/*m0*/ 0` | the comment is printed by the comment machinery, not by `embed` |
+| a plain string, `css="m0"` | Prettier prints a quoted attribute value ITSELF and never asks `embed` |
+| a template literal, ``css={`m0`}`` | asked, and it hugs its braces — only a few node types may |
+
+**The cost is one rewrite:** a bare `css=@( … )` comes back as `css={@( … )}`, because the
+placeholder has to be braced for Prettier to ask about it at all. The two compile to the same class,
+and the braced spelling is the one to reach for anyway.
+
+**And the layout is relative, never absolute.** `literalline` keeps the author's columns, which is
+wrong the moment the printer moves the block — measured, every format pushed it one step further in.
+The block's inside is not re-laid: that is `ramonda-css format`'s business, not a JavaScript
+printer's. The test that matters is that formatting twice changes nothing the second time.
+
 ### L — the runtime diagnostic. Deliberately last
 
 A `css` value reaching the runtime that no transform produced must be reported rather than silently
