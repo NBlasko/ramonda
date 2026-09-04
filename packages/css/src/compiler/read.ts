@@ -12,7 +12,29 @@ import { refuse } from "./errors";
  * **What comes out is a {@link Block}, not text.** Normalisation is defined on the parsed form —
  * see CONTRACT.md — because nothing that reads characters can tell the meaningless space before a
  * declaration's colon from the combinator in `& :first-child`.
+ *
+ * ## Two modes, because a build and an editor want opposite things
+ *
+ * A build must refuse a block it cannot read: there is no correct compilation, and guessing would
+ * ship a style that silently does not apply. An editor sees nothing BUT half-written blocks —
+ * measured on the keystroke states a person passes through, `disp` and `&:hover { col }` both refuse,
+ * and a refusal means no virtual file, which means no completions exactly when they are wanted.
+ *
+ * So `tolerant` is a second mode of one parser rather than a second parser. **Strict is the default**,
+ * so nothing gets the forgiving reading by forgetting to ask for it.
  */
+
+export interface ReadOptions {
+  /**
+   * Recover instead of refusing: a property with no colon is that property with no value, an
+   * unclosed block or hole ends where the text does, and a hole in a position a custom property
+   * cannot occupy is kept as ordinary text.
+   *
+   * For an editor only. The CSS checker is what tells the author about the fault; taking the whole
+   * file's completions away is not a way to say it.
+   */
+  readonly tolerant?: boolean;
+}
 export interface ReadBlock {
   readonly block: Block;
   /** Each carried expression's own bytes, in source coordinates and in source order. */
@@ -29,7 +51,8 @@ export interface Span {
 const PAREN = 41; /* ) */
 const BRACE = 125; /* } */
 
-export function readBlock(source: string, open: number, filename: string): ReadBlock {
+export function readBlock(source: string, open: number, filename: string, options: ReadOptions = {}): ReadBlock {
+  const tolerant = options.tolerant === true;
   const holes: Span[] = [];
   /** Where we are. Every function below moves it and none of them backtrack. */
   let at = open + 1;
@@ -97,7 +120,13 @@ export function readBlock(source: string, open: number, filename: string): ReadB
       index++;
     }
 
-    refuse("this hole is never closed — a `{{` needs a `}}`.", source, at, filename);
+    if (!tolerant) refuse("this hole is never closed — a `{{` needs a `}}`.", source, at, filename);
+
+    // Everything to the end of the text is the expression. Mid-typing, that is what it is.
+    const part: ValuePart = { kind: "hole", index: holes.length };
+    holes.push({ start, end: source.length });
+    at = source.length;
+    return part;
   }
 
   /* ---- deciding what an item is ---------------------------------------------------------------- */
@@ -215,14 +244,21 @@ export function readBlock(source: string, open: number, filename: string): ReadB
         continue;
       }
       if (code === 123 && source.charCodeAt(at + 1) === 123) {
-        refuse(
-          at === from
-            ? "a hole cannot be a whole declaration — a custom property holds a value, so write `property: {{…}}` and put the choice inside it."
-            : `a hole cannot stand in a ${what} — a custom property holds a value, and a ${what} is not one.`,
-          source,
-          at,
-          filename,
-        );
+        if (!tolerant) {
+          refuse(
+            at === from
+              ? "a hole cannot be a whole declaration — a custom property holds a value, so write `property: {{…}}` and put the choice inside it."
+              : `a hole cannot stand in a ${what} — a custom property holds a value, and a ${what} is not one.`,
+            source,
+            at,
+            filename,
+          );
+        }
+        // Kept as text, so the rest of the block still reads. The fault is the checker's to name.
+        const start = at;
+        pastHoleWithoutRecording();
+        text += source.slice(start, at);
+        continue;
       }
       // Handled to the end, for the reason written out in `looksLikeARule`.
       if (code === 40) {
@@ -310,7 +346,8 @@ export function readBlock(source: string, open: number, filename: string): ReadB
     for (;;) {
       skipTrivia();
       if (at >= source.length) {
-        refuse("this block is never closed — a `@(` needs a `)`.", source, open, filename);
+        if (!tolerant) refuse("this block is never closed — a `@(` needs a `)`.", source, open, filename);
+        return items;
       }
       if (source.charCodeAt(at) === closer) {
         at++;
@@ -328,18 +365,28 @@ export function readBlock(source: string, open: number, filename: string): ReadB
         const prelude = readHead(123 /* { */, "selector").trim();
         // `readHead` stopped on the `{` the lookahead found, so this cannot be anything else.
         at++;
-        items.push({ kind: "rule", at: from, prelude, items: readItems(BRACE) });
+        items.push({ kind: "rule", at: from, preludeEnd: at - 1, prelude, items: readItems(BRACE) });
         continue;
       }
 
       const property = readHead(58 /* : */, "property").trim();
       if (at >= source.length || source.charCodeAt(at) !== 58) {
-        refuse(
-          `\`${property.trim()}\` is not a declaration — a block holds \`property: value;\` and nested rules, nothing else.`,
-          source,
-          at - property.length,
-          filename,
-        );
+        if (!tolerant) {
+          refuse(
+            `\`${property.trim()}\` is not a declaration — a block holds \`property: value;\` and nested rules, nothing else.`,
+            source,
+            at - property.length,
+            filename,
+          );
+        }
+        /**
+         * A property being typed, which is the state an editor is in most. It becomes that property
+         * with no value — which is what puts the caret inside an object-literal KEY in the virtual
+         * file, and an object-literal key is where TypeScript offers the property names.
+         */
+        if (at < source.length && source.charCodeAt(at) === 59) at++;
+        items.push({ kind: "declaration", at: from, valueAt: at, end: at, property, value: [] });
+        continue;
       }
       at++;
       // Past the whitespace after the colon, so the value's position is the value and not the gap
@@ -348,8 +395,9 @@ export function readBlock(source: string, open: number, filename: string): ReadB
       while (at < source.length && isSpace(source.charCodeAt(at))) at++;
       const valueAt = at;
       const value = readValue(closer);
+      const end = at;
       if (at < source.length && source.charCodeAt(at) === 59) at++;
-      items.push({ kind: "declaration", at: from, valueAt, property, value });
+      items.push({ kind: "declaration", at: from, valueAt, end, property, value });
     }
   }
 

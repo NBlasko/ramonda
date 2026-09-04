@@ -34,6 +34,14 @@ export interface Declaration {
   readonly at?: number;
   readonly valueAt?: number;
   /**
+   * Where the declaration finished in the author's file.
+   *
+   * Earns three things at once: the length of the value's own text, the boundary an editor's caret
+   * has to be inside to belong to this declaration, and the point after which a caret belongs to
+   * nothing yet — which is where a virtual file for an editor puts an empty slot.
+   */
+  readonly end?: number;
+  /**
    * The property, as written. Case is folded for a normal property because CSS reads it that way,
    * and kept for a custom property (`--Accent`) because CSS does not.
    */
@@ -52,6 +60,8 @@ export interface NestedRule {
   readonly kind: "rule";
   /** Where the prelude starts in the author's file. See {@link Declaration.at}. */
   readonly at?: number;
+  /** Where the prelude ENDS — its `{`. See {@link Declaration.end}. */
+  readonly preludeEnd?: number;
   readonly prelude: string;
   readonly items: readonly BlockItem[];
 }

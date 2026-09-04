@@ -10,9 +10,10 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 )>
 ```
 
-> **Partly built.** This package is private and its version is `0.0.0`. **A block renders**: the
-> parser, the transform, the compiled value, the virtual file, the property types, the check command,
-> the Vite plugin and the stylesheet all exist. The editor plugin and the CSS checker do not. Read
+> **Partly built.** This package is private and its version is `0.0.0`. **A block renders, and it is
+> writable**: the parser, the transform, the compiled value, the virtual file, the property types,
+> the check command, the Vite plugin, the stylesheet and the editor plugin all exist. The CSS checker
+> does not, and neither does reading the syntax from `ramonda-check`. Read
 > `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
 > for what is done and what is next.
 
@@ -129,6 +130,23 @@ free.
 
 Two identical blocks are still one rule: the first file to claim a class owns it, and the second just
 names the class.
+
+## In an editor
+
+```json
+{ "compilerOptions": { "plugins": [{ "name": "@ramonda/css/plugin" }] } }
+```
+
+Completion inside a block **is** object-literal completion: the property names while a name is being
+typed, and the values a property accepts while a value is. Hover over a hole gives the expression's
+own type. And a correct block gets no red squiggle, even though the file does not parse as TypeScript
+— both kinds of diagnostic are read from the virtual file, because the real one would report the
+block itself as a syntax error.
+
+The parser has a second, forgiving mode for this. `disp` is not a valid declaration and the build
+refuses it — but `disp` is the state you are in while typing `display`, so an editor gets a reading
+rather than a refusal. All nine caret positions a person passes through are tests, including an empty
+block.
 
 ## Checking a project
 

@@ -6,15 +6,17 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0, track B, A1, A2, track C, G, A3 and E are done — a block renders.** The contract is written and implemented; the framework
+**Phase 0, track B, A1, A2, track C, G, A3, E and H are done — a block renders, and it is writable.** The contract is written and implemented; the framework
 takes a `css` prop and applies it; the parser and transform turn a file into valid TSX with a source
 map that lands on the author's own line and column; the virtual file gets that file type-checked
 by `tsc` with every diagnostic mapped home; and the property map is generated from MDN's data, so a
 property name and 123 properties' values are checked for real; and `ramonda-css` runs all of that
 over a whole project and exits non-zero; and the Vite plugin plus the sheet turn a block into a
-class in a real stylesheet, proved by real builds. **Everything else is unstarted** — the next work
-is **D**, the CSS checker that owns every fault the types deliberately do not, or **H**, the language
-service plugin, without which the feature is technically safe and practically unusable.
+class in a real stylesheet, proved by real builds; and the language service plugin gives an editor
+completion, hover and the right squiggles inside a block that is still being typed. **Everything else
+is unstarted** — the next work is **D**, the CSS checker that owns every fault the types deliberately
+do not, or **I** and **I2**, the two MANDATORY ones: `ramonda-check` and the docs example gate both
+read the author's source and both go quiet on a file they cannot parse.
 
 ---
 
@@ -441,7 +443,44 @@ The original description:
 `tsc` over the virtual file, diagnostics mapped home, a non-zero exit. **Without this, type safety is
 a claim about editors rather than about CI.**
 
-### H — the language-service plugin
+### H — the language-service plugin. **DONE.**
+
+`@ramonda/css/plugin`, added to a tsconfig's `plugins`. Tested against a real `ts.LanguageService`
+with the proxy in front of it — the arrangement `tsserver` builds — and every question asked at a
+position in the AUTHOR's file.
+
+**Four things this needed that the one-line description did not have, and each was measured.**
+
+1. **The parser had to learn to read a HALF-WRITTEN block.** Strict refuses `disp`, and `disp` is the
+   state you are in while typing `display`; `&:hover { col }` refuses too. A refusal means no virtual
+   file, which means no completions exactly when they are wanted. So `tolerant` is a second MODE of
+   one parser — strict stays the default, and the build still refuses, because a block it cannot read
+   has no correct compilation.
+2. **Completion needs the caret INSIDE the token.** Measured on a plain object literal: inside a
+   half-typed key gives the property names, inside a half-typed value gives the value union, and
+   immediately after a complete key gives one useless entry. So the author→virtual mapping lands
+   inside rather than at an edge.
+3. **A caret that has typed nothing belonged nowhere.** Three of the four "nothing typed yet"
+   positions got zero completions — an empty block, a blank line after a declaration, the position
+   after a semicolon — because no run of text claimed the caret. An empty object literal per block
+   gives it somewhere to be. All nine caret states are now tests.
+4. **A virtual SPAN needs one lookup, not two.** A span over a rewritten run ends exactly at that
+   run's edge, where the next virtual text is punctuation this file invented — so the end mapped
+   nowhere and a `dsiplay` diagnostic highlighted nothing. `spanOf` asks the run how much of the
+   author's text it stands for.
+
+**And the plugin is CommonJS, which is measured rather than conventional.** `tsserver` requires a
+plugin synchronously and then checks `typeof factory === "function"`. On Node 24 `require()` of an
+ESM module works — and returns the module NAMESPACE, an object — so an ESM-only plugin is **silently
+skipped**, logged at info level where nobody reads it. Hence `dist/plugin.cjs`, with the default
+export hoisted to be `module.exports` itself.
+
+Both diagnostic kinds come from the virtual file, and the syntactic one has to: the author's file does
+not parse as TypeScript, so the real service reports the block itself as a syntax error — a red
+squiggle on correct code, which is the loudest way for a tool to be wrong. There is a test that the
+real service does report it and the plugin does not.
+
+The original description:
 
 Serve the virtual file as the script snapshot, map back. Completion inside a block then *is*
 object-literal completion. Without this the feature is technically safe and practically unusable.
@@ -570,6 +609,10 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | ONE stylesheet for the whole app | ships **no CSS**: the bundler loads it before the transform has run |
 | one stylesheet per file | correct, and the CSS follows the chunk — splitting comes free |
 | Vite's `loc.column` | **0-based**; the type does not say, and Vite echoes what it is given |
+| an ESM language service plugin | **silently skipped** — `tsserver` checks `typeof factory === "function"` and `require(esm)` gives an object |
+| a caret right after a complete key | one useless entry; **inside** the key gives every property name |
+| a caret where nothing is typed yet | belongs to no run of text — needs an empty object literal to be inside |
+| the strict parser on a half-typed property | refuses, so an editor gets nothing exactly when it matters |
 | a hostile hole value through `cssText` | injects — `position: fixed`, `width: 100vw`, real and applied |
 | the same through `setProperty` | no second declaration, on the client |
 | the same through a SERVER render and back | **injects** — the parse re-reads the style attribute. Refused at the value now |

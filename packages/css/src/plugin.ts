@@ -1,0 +1,204 @@
+import type ts from "typescript";
+import { type VirtualFile, virtualFile } from "./compiler/virtual";
+
+/**
+ * The TypeScript language service plugin: what makes a block writable rather than merely correct.
+ *
+ * ```json
+ * { "compilerOptions": { "plugins": [{ "name": "@ramonda/css/plugin" }] } }
+ * ```
+ *
+ * Everything an editor asks — completion, hover, go-to-definition, the red squiggles — it asks the
+ * language service, about a file the compiler cannot parse. So the service is handed the virtual file
+ * instead, and every position crossing the boundary is mapped: a caret goes in, a span comes back.
+ *
+ * **Without this the feature is technically safe and practically unusable.** A type that is only
+ * enforced by a command is a type nobody meets until CI.
+ *
+ * ## It is CommonJS, and that is measured rather than conventional
+ *
+ * `tsserver` loads a plugin with a synchronous `require` and then checks
+ * `typeof pluginModuleFactory === "function"`. On Node 24 `require()` of an ESM module works — but it
+ * returns the module NAMESPACE, an object, not the default export. So an ESM-only plugin is **silently
+ * skipped**: "did not expose a proper factory function", logged at info level, where nobody reads it.
+ *
+ * Hence `dist/plugin.cjs`, built as CommonJS with `module.exports` set to the factory. This file is
+ * that factory's source; the build is what makes it loadable.
+ *
+ * ## Completion needs the caret INSIDE the token
+ *
+ * Measured on a plain object literal, which is what a block becomes: inside a half-typed key gives
+ * the property names, inside a half-typed value gives the value union, and immediately after a
+ * complete key gives one useless entry. That is why the mapping lands inside rather than at an edge —
+ * see `virtualOf`.
+ *
+ * ## And it reads a HALF-WRITTEN block
+ *
+ * The strict parser refuses `disp`, and `disp` is the state you are in while typing `display`. So the
+ * virtual file here is the tolerant one, and the nine caret positions a person passes through were
+ * measured one at a time — including an empty block, which needed an empty object literal to exist
+ * for the caret to be inside anything at all.
+ */
+
+/** What `tsserver` hands the factory. Structural, so `typescript` stays a peer and not an import. */
+export interface PluginCreateInfo {
+  languageService: ts.LanguageService;
+  languageServiceHost: ts.LanguageServiceHost;
+  config?: { properties?: string };
+}
+
+export interface PluginModule {
+  create(info: PluginCreateInfo): ts.LanguageService;
+}
+
+/** Only these are source. Everything else is somebody else's file. */
+const SOURCE = /\.[cm]?[jt]sx?$/;
+
+export function init(modules: { typescript: typeof ts }): PluginModule {
+  const tsModule = modules.typescript;
+
+  return {
+    create(info) {
+      const host = info.languageServiceHost;
+      const service = info.languageService;
+
+      /**
+       * File → its virtual copy, kept until the file's version changes.
+       *
+       * The version is the editor's own answer to "has this changed", so it is the right key: a
+       * keystroke bumps it, and everything else — a project reload, another file's edit — does not.
+       */
+      const cache = new Map<string, { version: string; file: VirtualFile | undefined }>();
+
+      const overlay = (fileName: string): VirtualFile | undefined => {
+        if (!SOURCE.test(fileName)) return undefined;
+
+        const version = host.getScriptVersion(fileName);
+        const cached = cache.get(fileName);
+        if (cached !== undefined && cached.version === version) return cached.file;
+
+        const snapshot = host.getScriptSnapshot(fileName);
+        const text = snapshot?.getText(0, snapshot.getLength());
+
+        /**
+         * No `try`, deliberately. The tolerant reading recovers from everything the strict one
+         * refuses — that is what it is for — so there is nothing here to catch. A `catch` would be
+         * pretending to handle a case that cannot arise, and would swallow a real bug in this
+         * package into an editor that quietly stops understanding the syntax.
+         */
+        const file =
+          text === undefined ? undefined : virtualFile(text, { properties: properties(info), tolerant: true });
+
+        cache.set(fileName, { version, file });
+        return file;
+      };
+
+      /**
+       * The host, serving the virtual text under the author's own file name.
+       *
+       * The name is deliberately unchanged: an import resolves from where the file really is, so
+       * nothing about module resolution moves, and every other plugin in the chain still sees one
+       * file where there is one file.
+       */
+      const proxyHost: ts.LanguageServiceHost = Object.create(host);
+      proxyHost.getScriptSnapshot = (fileName) => {
+        const file = overlay(fileName);
+        return file === undefined ? host.getScriptSnapshot(fileName) : tsModule.ScriptSnapshot.fromString(file.code);
+      };
+
+      const inner = tsModule.createLanguageService(proxyHost);
+
+      /**
+       * Everything the service can do, with the virtual text underneath and positions mapped at the
+       * boundary. What is not listed falls through to the real service, which is reading the author's
+       * own file — right for anything that does not carry a position, and honest for the rest: an
+       * answer about the file on disk beats no answer.
+       */
+      const proxy: ts.LanguageService = Object.create(service);
+
+      proxy.getCompletionsAtPosition = (fileName, position, options, settings) => {
+        const file = overlay(fileName);
+        if (file === undefined) return service.getCompletionsAtPosition(fileName, position, options, settings);
+
+        const at = file.virtualOf(position);
+        if (at === undefined) return undefined;
+
+        const got = inner.getCompletionsAtPosition(fileName, at, options, settings);
+        if (got === undefined) return undefined;
+
+        return {
+          ...got,
+          entries: got.entries.map((entry) => ({
+            ...entry,
+            replacementSpan: back(file, entry.replacementSpan),
+          })),
+        };
+      };
+
+      proxy.getQuickInfoAtPosition = (fileName, position) => {
+        const file = overlay(fileName);
+        if (file === undefined) return service.getQuickInfoAtPosition(fileName, position);
+
+        const at = file.virtualOf(position);
+        if (at === undefined) return undefined;
+
+        const got = inner.getQuickInfoAtPosition(fileName, at);
+        return got === undefined ? undefined : { ...got, textSpan: back(file, got.textSpan) ?? got.textSpan };
+      };
+
+      proxy.getSemanticDiagnostics = (fileName) => {
+        const file = overlay(fileName);
+        if (file === undefined) return service.getSemanticDiagnostics(fileName);
+
+        return mapped(file, inner.getSemanticDiagnostics(fileName));
+      };
+
+      /**
+       * Syntactic diagnostics come from the virtual file too, and they have to: the author's file does
+       * not parse as TypeScript at all, so the real service reports the block itself as a syntax
+       * error — a red squiggle on correct code, which is the loudest possible way to be wrong.
+       */
+      proxy.getSyntacticDiagnostics = (fileName) => {
+        const file = overlay(fileName);
+        if (file === undefined) return service.getSyntacticDiagnostics(fileName);
+
+        return mapped(file, inner.getSyntacticDiagnostics(fileName)) as ts.DiagnosticWithLocation[];
+      };
+
+      return proxy;
+    },
+  };
+}
+
+/** Where the block shape lives, so a project can point it at a fixture or at a wrapper's own. */
+function properties(info: PluginCreateInfo): string | undefined {
+  return info.config?.properties;
+}
+
+/** A span in virtual coordinates, in the author's — or nothing, when it names text they never wrote. */
+function back(file: VirtualFile, span: ts.TextSpan | undefined): ts.TextSpan | undefined {
+  return span === undefined ? undefined : file.spanOf(span.start, span.length);
+}
+
+/**
+ * Diagnostics whose positions are the author's, with the scaffolding's own dropped.
+ *
+ * A diagnostic about `__block` is about the file this wrote. The preamble is the exception the check
+ * command makes — a block shape that cannot be resolved means nothing is checked — and it is
+ * deliberately NOT made here: an editor shows a project-wide setup fault on every file it opens, and
+ * `ramonda-css` is the place that says it once.
+ */
+function mapped<T extends ts.Diagnostic>(file: VirtualFile, diagnostics: readonly T[]): T[] {
+  const out: T[] = [];
+  for (const diagnostic of diagnostics) {
+    /**
+     * `start` is optional on the type and always present here: both callers ask about ONE file, and
+     * a diagnostic about a file has a position in it. A project-wide one — an option the compiler
+     * rejects — comes from `getCompilerOptionsDiagnostics`, which this does not touch.
+     */
+    const span = back(file, { start: diagnostic.start ?? 0, length: diagnostic.length ?? 0 });
+    if (span === undefined) continue;
+    out.push({ ...diagnostic, start: span.start, length: span.length });
+  }
+  return out;
+}

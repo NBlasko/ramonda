@@ -18,7 +18,7 @@ export type { Block, BlockItem, Declaration, HolePart, NestedRule, TextPart, Val
 export { CssBlockError, positionOf } from "./errors";
 export { HASH_LENGTH, classNameFor, substitute, variableNameFor } from "./names";
 export { HOLE, normalise } from "./normalise";
-export type { ReadBlock, Span } from "./read";
+export type { ReadBlock, ReadOptions, Span } from "./read";
 export { Sheet } from "./sheet";
 export { readBlock } from "./read";
 export type { BlockSite } from "./scan";

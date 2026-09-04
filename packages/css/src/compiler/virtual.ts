@@ -59,6 +59,14 @@ import { findBlocks, mayHoldABlock } from "./scan";
 export interface VirtualFileOptions {
   /** Where the block shape is imported from. Track C fills that module in; the shape is stable. */
   readonly properties?: string;
+  /**
+   * Read a half-written block instead of refusing it — for an editor, which sees nothing else.
+   *
+   * Measured: `disp` and `&:hover { col }` both refuse in strict mode, and those are the two states
+   * a person is in most while typing a property name. A refusal means no virtual file, which means
+   * no completions exactly when they are wanted. See `ReadOptions.tolerant`.
+   */
+  readonly tolerant?: boolean;
 }
 
 export interface VirtualFile {
@@ -79,6 +87,25 @@ export interface VirtualFile {
    * A diagnostic whose start maps to `undefined` is about the file this wrote and must not be shown.
    */
   homeOf(offset: number): number | undefined;
+  /**
+   * The virtual offset for an author offset — the other direction, and the one an editor needs.
+   *
+   * A caret is in the author's file and every question about it has to be asked of the virtual one.
+   * Measured on a plain object literal, which is what a block becomes: **inside** a half-typed key
+   * gives the property names, **inside** a half-typed value gives the value union, and immediately
+   * after a complete key gives nothing useful. So this lands inside the token rather than at its
+   * edge, which is what makes completion work at all.
+   */
+  virtualOf(offset: number): number | undefined;
+  /**
+   * A virtual SPAN in the author's coordinates — start and length, not two lookups.
+   *
+   * Two lookups do not work and the failure is quiet: a span over a rewritten run ends exactly at
+   * that run's edge, where the next virtual text is punctuation this file invented, so the end maps
+   * nowhere and the caller is left clamping to an empty span. Measured — a `dsiplay` diagnostic
+   * highlighting nothing. The run knows how much of the author's text it stands for, so this asks it.
+   */
+  spanOf(start: number, length: number): { start: number; length: number } | undefined;
 }
 
 /** One run of virtual text, and where it came from. */
@@ -88,13 +115,23 @@ interface Segment {
   readonly to: number;
   /** The author offset this run starts at. */
   readonly source: number;
-  /** Copied byte for byte, so an offset inside maps by its distance from the start. */
-  readonly exact: boolean;
+  /**
+   * How much of the AUTHOR's text this run stands for.
+   *
+   * For a copied run it is the same as the virtual length. For a rewritten one it is not — a
+   * property name gains quotes, a value is folded — and the two are different questions. This is the
+   * one an author-offset lookup asks: a caret past the end of the text a segment stands for belongs
+   * to nothing yet, and treating it as belonging to the last segment before it is what made a caret
+   * on a blank line map into the previous declaration's value. Measured: 0 completions where 551
+   * were wanted.
+   */
+  readonly sourceLength: number;
 }
 
 /** `undefined` when the file holds no block — there is then nothing a virtual copy would add. */
 export function virtualFile(source: string, options: VirtualFileOptions = {}): VirtualFile | undefined {
   if (!mayHoldABlock(source)) return undefined;
+  const tolerant = options.tolerant === true;
 
   const sites = findBlocks(source);
   if (sites.length === 0) return undefined;
@@ -109,13 +146,18 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 
   /** The author's own bytes, so an offset inside maps offset for offset. */
   const copy = (start: number, end: number): void => {
-    segments.push({ from: code.length, to: code.length + (end - start), source: start, exact: true });
+    segments.push({ from: code.length, to: code.length + (end - start), source: start, sourceLength: end - start });
     code += source.slice(start, end);
   };
 
-  /** Their text, rewritten. Every offset inside maps to where it started. */
-  const derived = (text: string, at: number | undefined): void => {
-    if (at !== undefined) segments.push({ from: code.length, to: code.length + text.length, source: at, exact: false });
+  /**
+   * Their text, rewritten. Every offset inside maps to where it started, and `length` is how much of
+   * the author's own text it stands for — see {@link Segment.sourceLength}.
+   */
+  const derived = (text: string, at: number | undefined, length = text.length): void => {
+    if (at !== undefined) {
+      segments.push({ from: code.length, to: code.length + text.length, source: at, sourceLength: length });
+    }
     code += text;
   };
 
@@ -133,6 +175,9 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 
   const preamble = code.length;
 
+  /** Each block's interior, and where a caret inside it goes when no item claims it. */
+  const slots: { from: number; to: number; at: number }[] = [];
+
   let cursor = 0;
   for (const site of sites) {
     // A `name=@(` found INSIDE a block belongs to that block's text, not to the file. The transform
@@ -140,19 +185,45 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     // refusal belongs to the build.
     if (site.start < cursor) continue;
 
-    const read = readBlock(source, site.open, "");
+    const read = readBlock(source, site.open, "", { tolerant: options.tolerant });
 
     copy(cursor, site.start);
     copy(site.start, site.start + site.name.length);
     write(`={${block}([`);
     items(read.block.items, read.holes);
+
+    /**
+     * An empty object literal at the end of the block, **for an editor only**.
+     *
+     * Measured, and it is the state you are in first: with nothing typed yet, a caret in the block
+     * belonged to no segment at all and got zero completions — as did a caret on a blank line after
+     * a declaration, and one after a semicolon. Three of the four "nothing typed" positions.
+     *
+     * An empty literal is somewhere for that caret to be, and TypeScript offers every property name
+     * inside one. `slots` records the block's interior so the reverse lookup can send anything the
+     * items do not claim here.
+     */
+    if (tolerant) {
+      slots.push({ from: site.open, to: read.end, at: code.length + 1 });
+      write("{},");
+    }
+
     write("])}");
 
     cursor = read.end + 1;
   }
   copy(cursor, source.length);
 
-  return { code, preamble, homeOf: (offset) => homeOf(segments, offset) };
+  /** By author offset, for the reverse lookup. The forward list is already in virtual order. */
+  const bySource = [...segments].sort((a, b) => a.source - b.source);
+
+  return {
+    code,
+    preamble,
+    homeOf: (offset) => homeOf(segments, offset),
+    spanOf: (start, length) => spanOf(segments, start, length),
+    virtualOf: (offset) => virtualOf(bySource, offset) ?? slotFor(slots, offset),
+  };
 
   /**
    * One object literal PER DECLARATION, gathered in an array.
@@ -166,14 +237,14 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     for (const item of list) {
       write("{");
       if (item.kind === "rule") {
-        derived(quoted(item.prelude), item.at);
+        derived(quoted(item.prelude), item.at, (item.preludeEnd ?? item.at ?? 0) - (item.at ?? 0));
         write(":[");
         items(item.items, holes);
         write("]");
       } else {
-        derived(key(propertyName(item.property)), item.at);
+        derived(key(propertyName(item.property)), item.at, item.property.length);
         write(":");
-        value(item.value, item.valueAt, holes);
+        value(item.value, item.valueAt, item.end, holes);
       }
       write("},");
     }
@@ -191,21 +262,27 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * - **text and holes together** — a template literal, so `padding: {{n}}px` is checked against
    *   `` `${number}px` `` rather than collapsing to `string`.
    */
-  function value(parts: readonly ValuePart[], at: number | undefined, holes: readonly Span[]): void {
+  function value(
+    parts: readonly ValuePart[],
+    at: number | undefined,
+    end: number | undefined,
+    holes: readonly Span[],
+  ): void {
+    const length = at === undefined || end === undefined ? undefined : end - at;
     if (parts.length === 1 && parts[0].kind === "hole") {
       expression(holes[parts[0].index]);
       return;
     }
 
     if (!parts.some((part) => part.kind === "hole")) {
-      derived(quoted(collapse(parts.map((part) => (part.kind === "text" ? part.text : "")).join(""))), at);
+      derived(quoted(collapse(parts.map((part) => (part.kind === "text" ? part.text : "")).join(""))), at, length);
       return;
     }
 
     write("`");
     for (const part of parts) {
       if (part.kind === "text") {
-        derived(inTemplate(collapse(part.text)), at);
+        derived(inTemplate(collapse(part.text)), at, length);
         continue;
       }
       write("${");
@@ -228,6 +305,92 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   }
 }
 
+/**
+ * The virtual offset an author offset became.
+ *
+ * A copied run maps offset for offset. A REWRITTEN one — a quoted key, a folded value — has no such
+ * correspondence, so the caret is placed proportionally inside the emitted text and clamped to stay
+ * inside it. Measured on a plain object literal: what matters is being inside the token, not being at
+ * an exact character, because that is what decides whether TypeScript offers the keys.
+ */
+function virtualOf(bySource: readonly Segment[], offset: number): number | undefined {
+  let low = 0;
+  let high = bySource.length - 1;
+  let found: Segment | undefined;
+
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const segment = bySource[middle];
+    if (offset < segment.source) high = middle - 1;
+    else {
+      found = segment;
+      low = middle + 1;
+    }
+  }
+
+  // Past the text this segment stands for, so it belongs to nothing yet — a blank line, a caret
+  // after a semicolon. The caller sends those to the block's empty slot.
+  if (found === undefined || offset > found.source + found.sourceLength) return undefined;
+
+  const length = found.to - found.from;
+  const delta = offset - found.source;
+
+  // A copied run: the same characters, so the same distance.
+  if (length === found.sourceLength) return found.from + delta;
+
+  // A rewritten one: inside the emitted token, never at its far edge. Measured — `{display|:` offers
+  // nothing and `{displa|y` offers every property name, so being inside is what matters.
+  return found.from + Math.min(Math.max(delta, 1), Math.max(length - 1, 1));
+}
+
+/**
+ * The author's span for a virtual one.
+ *
+ * A copied run maps both ends. A rewritten one has no interior correspondence, so the whole of the
+ * author's text it stands for is the answer — which is the right highlight anyway: a *did you mean*
+ * about `dsiplay` underlines `dsiplay`, whatever quoting the virtual file needed.
+ */
+function spanOf(
+  segments: readonly Segment[],
+  start: number,
+  length: number,
+): { start: number; length: number } | undefined {
+  const segment = containing(segments, start);
+  if (segment === undefined) return undefined;
+
+  const from = segment.source + (start - segment.from);
+
+  if (segment.to - segment.from === segment.sourceLength) {
+    // Copied: both ends are real. A span running past this run is clamped to it rather than guessed
+    // at — a highlight that is too short is readable, one that covers invented text is not.
+    return { start: from, length: Math.min(length, segment.source + segment.sourceLength - from) };
+  }
+
+  return { start: segment.source, length: segment.sourceLength };
+}
+
+/** The run an offset falls in. */
+function containing(segments: readonly Segment[], offset: number): Segment | undefined {
+  let low = 0;
+  let high = segments.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const segment = segments[middle];
+    if (offset < segment.from) high = middle - 1;
+    else if (offset >= segment.to) low = middle + 1;
+    else return segment;
+  }
+  return undefined;
+}
+
+/** The empty slot of whichever block the offset is inside, for a caret that has typed nothing. */
+function slotFor(slots: readonly { from: number; to: number; at: number }[], offset: number): number | undefined {
+  for (const slot of slots) {
+    if (offset > slot.from && offset <= slot.to) return slot.at;
+  }
+  return undefined;
+}
+
 /** The last segment starting at or before `offset`, or nothing when the offset is scaffolding. */
 function homeOf(segments: readonly Segment[], offset: number): number | undefined {
   let low = 0;
@@ -237,7 +400,12 @@ function homeOf(segments: readonly Segment[], offset: number): number | undefine
     const segment = segments[middle];
     if (offset < segment.from) high = middle - 1;
     else if (offset >= segment.to) low = middle + 1;
-    else return segment.exact ? segment.source + (offset - segment.from) : segment.source;
+    // A copied run maps offset for offset; a rewritten one maps to where it started, which is the
+    // position a reader needs anyway — a *did you mean* about `dsiplay` belongs on `dsiplay`.
+    else
+      return segment.to - segment.from === segment.sourceLength
+        ? segment.source + (offset - segment.from)
+        : segment.source;
   }
   return undefined;
 }
