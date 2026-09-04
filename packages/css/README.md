@@ -14,8 +14,8 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 > writable, and nothing in this repository goes quiet on it**: the parser, the transform, the compiled
 > value, the virtual file, the property types, the check command, the Vite plugin, the stylesheet and
 > the editor plugin and the CSS checker all exist, and both tools that read source — `ramonda-check`
-> and the docs example gate — read it through the virtual file. The format and lint wrapper does not
-> exist yet, and neither does per-route splitting. Read
+> and the docs example gate — read it through the virtual file, and the formatter and the linter go
+> through wrappers over the project's own tools. Per-route splitting is not built yet. Read
 > `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
 > for what is done and what is next.
 
@@ -184,6 +184,22 @@ src/Card.tsx:10:9   repeated-declaration: `color` is already set to `red` in thi
 `display: flexx` is the one to notice. `display` takes combinations — `inline flow-root` — so no
 union could type it without rejecting valid CSS; a checker reads one word and says something about
 that word alone.
+
+## Formatting and linting
+
+The formatter and the linter cannot read the syntax either, and a suppression comment cannot help:
+`biome-ignore` is read BY the parser, which has already failed. So they get wrappers.
+
+```
+ramonda-css format src        # --check to report instead of writing
+ramonda-css lint src
+```
+
+Neither reimplements anything — the project's own biome and oxlint do the work, with their own
+configuration, because both read it from the working directory rather than from the file's path. The
+linter is given the same virtual file `tsc` gets and its diagnostics are mapped home; the formatter
+is given a copy with the blocks replaced by something that parses, and they go back at whatever
+indentation it chose.
 
 ## Licence
 

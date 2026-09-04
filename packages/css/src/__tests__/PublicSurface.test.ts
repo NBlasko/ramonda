@@ -23,6 +23,7 @@ const COMPILER = [
   "mayHoldABlock",
   "holeOutOfPlace",
   "normalise",
+  "placehold",
   "positionOf",
   "readBlock",
   "substitute",

@@ -16,6 +16,10 @@
  *
  * `checkBlock` is the fourth: the CSS faults the type map deliberately cannot catch, read off the
  * same `Block` and reporting nothing the types already say.
+ *
+ * `placehold` is the fifth, and the only one that is not about correctness: a formatter rewrites
+ * text rather than reporting positions in it, so it cannot be given the virtual file and needs a
+ * copy it can hand back.
  */
 export type { Block, BlockItem, Declaration, HolePart, NestedRule, TextPart, ValuePart } from "./ast";
 export { CssBlockError, holeOutOfPlace, positionOf } from "./errors";
@@ -28,6 +32,8 @@ export type { Finding, RuleId } from "./rules";
 export { checkBlock } from "./rules";
 export type { BlockSite } from "./scan";
 export { findBlocks, mayHoldABlock } from "./scan";
+export type { Placeheld } from "./tooling";
+export { placehold } from "./tooling";
 export type { EmittedBlock, SourceMap, TransformOptions, TransformResult } from "./transform";
 export { transform } from "./transform";
 export type { VirtualFile, VirtualFileOptions } from "./virtual";

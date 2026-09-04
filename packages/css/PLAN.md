@@ -6,7 +6,7 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0, track B, A1, A2, track C, D, G, A3, E, H, I and I2 are done.** The contract is written and implemented; the framework
+**Phase 0, track B, A1, A2, track C, D, G, A3, E, H, I, I2 and K are done.** The contract is written and implemented; the framework
 takes a `css` prop and applies it; the parser and transform turn a file into valid TSX with a source
 map that lands on the author's own line and column; the virtual file gets that file type-checked
 by `tsc` with every diagnostic mapped home; and the property map is generated from MDN's data, so a
@@ -17,8 +17,12 @@ completion, hover and the right squiggles inside a block that is still being typ
 that read the author's source — `ramonda-check` and the docs example gate — read it through the
 virtual file, each with the blindness reproduced first and a floor asserted after; and the CSS
 checker owns the faults the types deliberately cannot catch, with every boundary measured against
-them first. **Everything else is unstarted** — the next work is **K**, the format and lint wrapper,
-or **F** and **J**, esbuild and per-route splitting.
+them first; and the formatter and the linter read a file with a block through wrappers over the
+project's own tools. **Everything else is unstarted** — and the next thing is not a track: **put a
+block in `apps/playground-core` and point its scripts at the wrappers**, so `pnpm check` passes with
+one in the tree. Measured before K: `ramonda-css` and `vite build` already handle it, and biome,
+oxlint and `tsc` were the three that refused. After that, **F** and **J** — esbuild and per-route
+splitting, which A3 made nearly free.
 
 ---
 
@@ -587,17 +591,48 @@ somebody papers over the blindness with a `ramonda-check-ignore`. A package whos
 
 `@ramonda/check` **may** depend on `@ramonda/css`. The forbidden direction is the other one.
 
-### K — the format and lint wrapper
+### K — the format and lint wrapper. **DONE.**
 
-Two different answers, both proved in `prototype-tooling.mjs`:
+```
+ramonda-css format <paths…>   # --check to report instead of writing
+ramonda-css lint <paths…>
+```
 
-- **Lint**: run on the virtual file and map back. `oxlint --format=json` gives offset, line, column.
-- **Format**: a placeholder, not a map — a formatter rewrites text rather than reporting positions.
-  Replace the block with something that parses, format, put the block back. **Copy the formatter's
-  own indentation rather than counting columns**, or it returns with spaces inside a tabbed file.
+Neither is a reimplementation: the project's own biome and oxlint do the work, with their own
+configuration, and this only decides what text they are shown.
 
-*A suppression comment cannot substitute for this: `biome-ignore` is read BY the parser, which has
-already failed.*
+**Both find their configuration from the working directory, and that is what makes it possible.**
+Measured, because a wrapper that quietly lost a project's rules would be worse than none: `oxlint`
+given a file OUTSIDE the repository, run with the repository as its cwd, applied the same **93
+rules** and reported the same findings as for one inside it. `biome` takes text on stdin with
+`--stdin-file-path` and answers with the project's own `lineWidth` and indentation — so the formatter
+writes no temp file at all.
+
+**Two answers, because the tools want different things.** The linter gets the virtual file, the same
+one `tsc` gets, and its diagnostics are mapped home. A formatter cannot work that way — it rewrites
+text rather than reporting positions in it — so the block is replaced by something that parses, the
+file is formatted, and the block goes back at the indentation the formatter chose. Copied, never
+counted: a block re-laid with spaces inside a tabbed file is one the formatter disagrees with on the
+next run, an edit that never settles. There is a test in a tabbed project.
+
+**What the writing found, and one was the silence this package keeps meeting.**
+
+- **A decorator file linted CLEAN, silently.** `mayHoldABlock` says maybe — `@(` is also a decorator
+  — and a file that turned out to hold no block returned no findings at all instead of being linted
+  as it is. Found by a test that expected one finding and got none.
+- **A tool that fails answered with our call stack.** A formatter can refuse for reasons that have
+  nothing to do with a block, and the only useful sentence is its own. It is caught and printed now.
+- **A broken `biome.json` is not a way to make it fail**, which had to be measured: biome reads its
+  config where it can and formats with its defaults otherwise — same text back, exit 0. So that claim
+  is asked of a tool that really does refuse.
+- **The two `.bin` shims cannot be symlinked on their own.** Each resolves its own package relative
+  to itself. A fixture linking them alone got `Cannot find module`; a real project has the tree.
+
+*A suppression comment cannot substitute for any of it: `biome-ignore` is read BY the parser, which
+has already failed. Measured — biome answers "Code formatting aborted due to parsing errors" with the
+comments in place. That is also what makes the comparison with a CSS-in-a-backtick library
+misleading: a tagged template is already valid TypeScript, so the tool parses the file, sees a string
+and looks no further. Here there is no region to ignore, because there is no region at all.*
 
 ### F — the esbuild adapter, and J — per-route splitting
 
@@ -687,6 +722,9 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | the block's newlines put back AFTER it | every declaration lands on the block's opening line; they go between the items |
 | "is the grammar closed" as the value test | leaves `border-left: sollid` alone — a length can never BE a bare word |
 | a duplicate declaration with a different value | a deliberate fallback idiom; only the SAME value is reportable |
+| `biome` and `oxlint` on a file outside the project | the project's own config, read from the CWD — 93 rules either way |
+| a broken `biome.json` | ignored; it formats with its defaults and exits 0 |
+| a `node_modules/.bin` shim, symlinked alone | `Cannot find module` — each resolves its package relative to itself |
 | a hostile hole value through `cssText` | injects — `position: fixed`, `width: 100vw`, real and applied |
 | the same through `setProperty` | no second declaration, on the client |
 | the same through a SERVER render and back | **injects** — the parse re-reads the style attribute. Refused at the value now |

@@ -205,10 +205,16 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     write(`={${block}([`);
     /** How far the author's text has been accounted for, in LINES. See `keepLine`. */
     let lined = site.open;
-    const keepLine = (upTo: number | undefined): void => {
-      if (upTo === undefined || upTo < lined) return;
+    /**
+     * The newlines the author wrote above something, put back before it is emitted.
+     *
+     * The default handles a block built by hand, which has no positions: nothing here produces one,
+     * but the type allows it. `countNewlines` counts nothing for a span that runs backwards, so the
+     * mark only ever moves forward.
+     */
+    const keepLine = (upTo = lined): void => {
       write("\n".repeat(countNewlines(source, lined, upTo)));
-      lined = upTo;
+      lined = Math.max(lined, upTo);
     };
     items(read.block.items, read.holes, keepLine);
 

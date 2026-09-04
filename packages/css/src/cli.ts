@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-import { relative } from "node:path";
+import { globSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { checkProject } from "./check";
+import { formatFile, lintFile, toolIn } from "./tooling";
+import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
 
 /**
  * `ramonda-css [tsconfig.json]`
@@ -14,16 +17,32 @@ import { checkProject } from "./check";
  *
  * Meant to sit in a `build` script beside the bundler. A check nobody runs is a check that does not
  * exist, and until this runs somewhere that fails, the type safety is a claim about editors.
+ *
+ * ## `format` and `lint`, for the tools that cannot read the file either
+ *
+ * ```
+ * ramonda-css format <paths…>   # --check to report instead of writing
+ * ramonda-css lint <paths…>
+ * ```
+ *
+ * Neither is a reimplementation: the project's own biome and oxlint do the work, with their own
+ * configuration, and this only decides what text they are shown. A suppression comment cannot do
+ * the same job — it is read BY the parser, which has already failed.
  */
 
 const TAG = "[ramonda-css]";
 const argv = process.argv.slice(2);
-const tsconfig = argv.find((argument) => !argument.startsWith("-")) ?? "tsconfig.json";
-
-const report = checkProject(tsconfig);
 
 /** Relative to where the command was run, which is how a person reads their own tree. */
 const where = (file: string) => relative(process.cwd(), file) || file;
+
+if (argv[0] === "format" || argv[0] === "lint") {
+  runTool(argv[0], argv.slice(1));
+}
+
+const tsconfig = argv.find((argument) => !argument.startsWith("-")) ?? "tsconfig.json";
+
+const report = checkProject(tsconfig);
 
 if (report.findings.length === 0) {
   console.log(`${TAG} ${report.files} file(s) type-check, ${report.styled} of them carrying a style block`);
@@ -58,3 +77,75 @@ console.error(
     `  the block is checked through a virtual file, and every diagnostic is mapped back to it.\n`,
 );
 process.exit(1);
+
+/* ── format and lint ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The formatter or the linter, over the paths given, with a style block handled where one is found.
+ *
+ * Every path is expanded here rather than handed to the tool, because the two halves need different
+ * things from a file and only this knows which is which. A file with no block still goes through the
+ * same call: one command over a whole tree beats two the caller has to keep in step.
+ */
+function runTool(which: "format" | "lint", args: readonly string[]): never {
+  const check = args.includes("--check");
+  const paths = args.filter((argument) => !argument.startsWith("-"));
+  const cwd = process.cwd();
+
+  const name = which === "format" ? "biome" : "oxlint";
+  const binary = toolIn(cwd, name);
+  if (binary === undefined) {
+    console.error(`\n${TAG} \`${name}\` is not installed here, so there is nothing to run.\n`);
+    process.exit(1);
+  }
+
+  const files = paths.flatMap((path) =>
+    path.includes("*") ? globSync(path, { cwd }).map((found) => resolve(cwd, found)) : [resolve(cwd, path)],
+  );
+
+  if (which === "format") {
+    const format = biomeFormatter(binary, cwd);
+    const changed: string[] = [];
+    try {
+      for (const file of files) {
+        if (formatFile(file, format, { write: !check }).changed) changed.push(file);
+      }
+    } catch (error) {
+      // The tool's own words. A wrapper that answered with its call stack would have hidden the
+      // only useful sentence — a config it cannot read, a version that is not there.
+      if (!(error instanceof ToolFailed)) throw error;
+      console.error(`\n${TAG} \`${name}\` refused:\n\n${error.message}\n`);
+      process.exit(1);
+    }
+
+    if (changed.length === 0) {
+      console.log(`${TAG} ${files.length} file(s) formatted`);
+      process.exit(0);
+    }
+    if (!check) {
+      console.log(`${TAG} ${files.length} file(s), ${changed.length} rewritten`);
+      process.exit(0);
+    }
+
+    console.error(`\n${TAG} ${changed.length} file(s) are not formatted:\n`);
+    for (const file of changed) console.error(`  ${where(file)}`);
+    console.error("");
+    process.exit(1);
+  }
+
+  const lint = oxlintLinter(binary, cwd);
+  const found = files.flatMap((file) => lintFile(file, lint));
+
+  if (found.length === 0) {
+    console.log(`${TAG} ${files.length} file(s) lint clean`);
+    process.exit(0);
+  }
+
+  console.error(`\n${TAG} ${found.length} lint problem(s) in ${files.length} file(s):\n`);
+  for (const finding of found) {
+    console.error(`  ${where(finding.file)}:${finding.line}:${finding.column}`);
+    console.error(`    ${finding.code}: ${finding.message}`);
+    console.error("");
+  }
+  process.exit(1);
+}
