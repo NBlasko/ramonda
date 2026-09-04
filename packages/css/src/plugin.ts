@@ -76,14 +76,21 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         { version: string; file: VirtualFile | undefined; css: Finding[]; author: ts.SourceFile | undefined }
       >();
 
-      const overlay = (fileName: string): VirtualFile | undefined => {
+      /** The host's own reader, kept before it is replaced — or the overlay would ask itself. */
+      const readSnapshot = host.getScriptSnapshot.bind(host);
+
+      const overlay = (
+        fileName: string,
+        read: (name: string) => ts.IScriptSnapshot | undefined,
+      ): VirtualFile | undefined => {
         if (!SOURCE.test(fileName)) return undefined;
 
         const version = host.getScriptVersion(fileName);
         const cached = cache.get(fileName);
         if (cached !== undefined && cached.version === version) return cached.file;
 
-        const snapshot = host.getScriptSnapshot(fileName);
+        // The ORIGINAL reader, or this would ask itself for the text it is about to replace.
+        const snapshot = read(fileName);
         const text = snapshot?.getText(0, snapshot.getLength());
 
         /**
@@ -112,27 +119,33 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         return file;
       };
 
+      /**
+       * The host is patched IN PLACE, and a second language service is not built.
+       *
+       * That was the first design and it does not work: `Object.create(host)` over a `tsserver`
+       * project gives a host whose language service has no program at all — measured through a real
+       * `tsserver`, every completion came back `Cannot read properties of undefined (reading
+       * 'getSourceFile')`. A project is not a plain object, and what a service needs from one does
+       * not survive being shadowed.
+       *
+       * Patching the one method is what a plugin of this kind does, and it is better anyway:
+       * `tsserver`'s own service reads the virtual text, so there is ONE program rather than two, and
+       * everything the proxy does not override is already answering about the right file.
+       *
+       * The file NAME is unchanged, so an import resolves from where the file really is and nothing
+       * about module resolution moves.
+       */
+      host.getScriptSnapshot = (fileName) => {
+        const file = overlay(fileName, readSnapshot);
+        return file === undefined ? readSnapshot(fileName) : tsModule.ScriptSnapshot.fromString(file.code);
+      };
+
       /** The CSS rules' findings for a file, out of the same cache the overlay uses. */
       const cssFor = (fileName: string): ts.Diagnostic[] => {
-        overlay(fileName);
+        overlay(fileName, readSnapshot);
         const cached = cache.get(fileName);
         return cached === undefined ? [] : ours(cached.css, cached.author);
       };
-
-      /**
-       * The host, serving the virtual text under the author's own file name.
-       *
-       * The name is deliberately unchanged: an import resolves from where the file really is, so
-       * nothing about module resolution moves, and every other plugin in the chain still sees one
-       * file where there is one file.
-       */
-      const proxyHost: ts.LanguageServiceHost = Object.create(host);
-      proxyHost.getScriptSnapshot = (fileName) => {
-        const file = overlay(fileName);
-        return file === undefined ? host.getScriptSnapshot(fileName) : tsModule.ScriptSnapshot.fromString(file.code);
-      };
-
-      const inner = tsModule.createLanguageService(proxyHost);
 
       /**
        * Everything the service can do, with the virtual text underneath and positions mapped at the
@@ -143,13 +156,13 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
       const proxy: ts.LanguageService = Object.create(service);
 
       proxy.getCompletionsAtPosition = (fileName, position, options, settings) => {
-        const file = overlay(fileName);
+        const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getCompletionsAtPosition(fileName, position, options, settings);
 
         const at = file.virtualOf(position);
         if (at === undefined) return undefined;
 
-        const got = inner.getCompletionsAtPosition(fileName, at, options, settings);
+        const got = service.getCompletionsAtPosition(fileName, at, options, settings);
         if (got === undefined) return undefined;
 
         return {
@@ -162,18 +175,18 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
       };
 
       proxy.getQuickInfoAtPosition = (fileName, position) => {
-        const file = overlay(fileName);
+        const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getQuickInfoAtPosition(fileName, position);
 
         const at = file.virtualOf(position);
         if (at === undefined) return undefined;
 
-        const got = inner.getQuickInfoAtPosition(fileName, at);
+        const got = service.getQuickInfoAtPosition(fileName, at);
         return got === undefined ? undefined : { ...got, textSpan: back(file, got.textSpan) ?? got.textSpan };
       };
 
       proxy.getSemanticDiagnostics = (fileName) => {
-        const file = overlay(fileName);
+        const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getSemanticDiagnostics(fileName);
 
         /**
@@ -181,7 +194,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          * build refuses a hole written where a custom property cannot go, and here it is a squiggle
          * under the character, while it is being typed.
          */
-        return [...cssFor(fileName), ...mapped(file, inner.getSemanticDiagnostics(fileName))];
+        return [...cssFor(fileName), ...mapped(file, service.getSemanticDiagnostics(fileName))];
       };
 
       /**
@@ -190,10 +203,10 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        * error — a red squiggle on correct code, which is the loudest possible way to be wrong.
        */
       proxy.getSyntacticDiagnostics = (fileName) => {
-        const file = overlay(fileName);
+        const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getSyntacticDiagnostics(fileName);
 
-        return mapped(file, inner.getSyntacticDiagnostics(fileName)) as ts.DiagnosticWithLocation[];
+        return mapped(file, service.getSyntacticDiagnostics(fileName)) as ts.DiagnosticWithLocation[];
       };
 
       return proxy;

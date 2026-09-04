@@ -41,7 +41,16 @@ function editor(marked: string, config: { properties?: string } = { properties: 
 
   const files: Record<string, string> = { [FILE]: source, [JSX_FILE]: JSX_TYPES };
 
-  const host: ts.LanguageServiceHost = {
+  /**
+   * A host, built fresh each time it is asked for.
+   *
+   * Two are needed and they cannot be one: the plugin patches the host it is given IN PLACE, so a
+   * control sharing it would be measuring the plugin. Spreading the patched one does not help — the
+   * patched method comes with it — and taking the control BEFORE builds a program from the author's
+   * text that the version never invalidates, so every later answer comes from a stale one. Measured,
+   * as a thousand global-scope completions where the property names belong.
+   */
+  const makeHost = (): ts.LanguageServiceHost => ({
     getScriptFileNames: () => [FILE, JSX_FILE],
     getScriptVersion: () => "1",
     getScriptSnapshot: (name) => {
@@ -62,10 +71,15 @@ function editor(marked: string, config: { properties?: string } = { properties: 
     readDirectory: ts.sys.readDirectory,
     directoryExists: ts.sys.directoryExists,
     getDirectories: ts.sys.getDirectories,
-  };
+  });
+
+  const host = makeHost();
 
   const plain = ts.createLanguageService(host);
   const service = init({ typescript: ts }).create({ languageService: plain, languageServiceHost: host, config });
+
+  /** What a service with no plugin at all says — see `makeHost` for why it needs its own. */
+  const withoutThePlugin = () => ts.createLanguageService(makeHost()).getSyntacticDiagnostics(FILE);
 
   /**
    * The same questions asked of the virtual file with NOTHING mapped back — the control for every
@@ -81,7 +95,7 @@ function editor(marked: string, config: { properties?: string } = { properties: 
     return ts.createLanguageService(proxyHost).getSemanticDiagnostics(FILE);
   };
 
-  return { service, plain, caret, source, unmapped };
+  return { service, plain, withoutThePlugin, caret, source, unmapped };
 }
 
 const names = (marked: string) => {
@@ -152,9 +166,9 @@ describe("the red squiggles", () => {
    */
   test("a correct block gets none, even though the file does not parse as TypeScript", () => {
     const marked = `const a = <div css=@( display: flex; gap: 8px; )>x</div>;\nexport default a;\n`;
-    const { service, plain } = editor(marked);
+    const { service, withoutThePlugin } = editor(marked);
 
-    expect(plain.getSyntacticDiagnostics(FILE).length).toBeGreaterThan(0);
+    expect(withoutThePlugin().length).toBeGreaterThan(0);
     expect(service.getSyntacticDiagnostics(FILE)).toEqual([]);
     expect(service.getSemanticDiagnostics(FILE)).toEqual([]);
   });

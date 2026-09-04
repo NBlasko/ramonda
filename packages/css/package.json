@@ -58,6 +58,7 @@
   "sideEffects": false,
   "files": [
     "bin.mjs",
+    "plugin",
     "dist"
   ],
   "scripts": {

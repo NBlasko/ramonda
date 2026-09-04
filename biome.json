@@ -10,7 +10,8 @@
       "**",
       "!packages/create-ramonda/templates/**",
       "!packages/css/src/properties.generated.ts",
-      "!packages/css/src/compiler/keywords.generated.ts"
+      "!packages/css/src/compiler/keywords.generated.ts",
+      "!apps/playground-core/src/demos/panels.tsx"
     ]
   },
   "formatter": {

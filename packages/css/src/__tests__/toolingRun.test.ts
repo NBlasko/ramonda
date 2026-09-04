@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { formatFile, lintFile, readReport, toolIn } from "../tooling";
+import { filesUnder, formatFile, lintFile, readReport, toolIn } from "../tooling";
 
 /**
  * What the wrappers DECIDE, asked with a tool that does exactly what a test says.
@@ -210,6 +210,64 @@ describe("a file that only looked like it held a block", () => {
     const path = file("Dec.ts", `class C {\n  @(dec) m() {}\n}\n`);
 
     expect(lintFile(path, () => [{ message: "planted", labels: [{ span: { offset: 0 } }] }])).toHaveLength(1);
+  });
+});
+
+describe("which files a run is about", () => {
+  /**
+   * A directory is walked rather than handed on, because the two halves need different things from a
+   * file and only the wrapper knows which is which. Found by running it: `ramonda-css lint src` read
+   * `src` itself and threw, because a directory is not a file.
+   */
+  function tree(): string {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-run-"));
+    files.push(root);
+    mkdirSync(join(root, "src", "nested"), { recursive: true });
+    mkdirSync(join(root, "src", "node_modules", "thing"), { recursive: true });
+    mkdirSync(join(root, "src", ".hidden"), { recursive: true });
+
+    for (const [path, text] of [
+      ["src/a.ts", "export const a = 1;\n"],
+      ["src/b.tsx", "export const b = <div />;\n"],
+      ["src/nested/c.mjs", "export const c = 1;\n"],
+      ["src/styles.css", ".a { color: red }\n"],
+      ["src/data.json", "{}\n"],
+      ["src/node_modules/thing/d.ts", "export const d = 1;\n"],
+      ["src/.hidden/e.ts", "export const e = 1;\n"],
+    ] as const) {
+      writeFileSync(join(root, path), text);
+    }
+    return root;
+  }
+
+  const under = (root: string, ...paths: string[]) =>
+    filesUnder(paths, root)
+      .map((path) => path.slice(root.length + 1))
+      .sort();
+
+  test("every source file below a directory, and nothing else", () => {
+    // A stylesheet and a JSON file are not either tool's to read here, and neither is anything under
+    // `node_modules` or a dot directory — a run that formatted a dependency would be a bad day.
+    expect(under(tree(), "src")).toEqual(["src/a.ts", "src/b.tsx", "src/nested/c.mjs"]);
+  });
+
+  test("a file named directly is taken as it is", () => {
+    const root = tree();
+
+    expect(under(root, "src/a.ts")).toEqual(["src/a.ts"]);
+  });
+
+  test("and a file named directly is not filtered by extension", () => {
+    // Asking for one by name is a decision the caller already made.
+    const root = tree();
+
+    expect(under(root, "src/styles.css")).toEqual(["src/styles.css"]);
+  });
+
+  test("several paths at once, files and directories together", () => {
+    const root = tree();
+
+    expect(under(root, "src/nested", "src/a.ts")).toEqual(["src/a.ts", "src/nested/c.mjs"]);
   });
 });
 

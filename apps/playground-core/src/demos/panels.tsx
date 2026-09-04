@@ -218,3 +218,41 @@ export class LifecycleDemo extends Component {
     );
   }
 }
+
+/**
+ * A style block: real CSS beside the markup, compiled before the build.
+ *
+ * The three things it does that a `className` cannot are all here. **The static declarations become
+ * one class in the stylesheet** — however many of these are on the page, and however many pages —
+ * because the class name is the hash of the block. **Each `{{ … }}` becomes a CSS custom property on
+ * this element**, so a value that differs per instance costs a property rather than a rule. And the
+ * whole thing is checked: a property that does not exist, and a value the property does not take,
+ * are build errors with the same *did you mean* TypeScript gives any other typo.
+ *
+ * The nested `&:hover` is CSS's own nesting, resolved by the browser rather than by us.
+ */
+export class StyleBlock extends Component {
+  @state weight = 4;
+
+  thicker() {
+    this.weight = this.weight === 12 ? 2 : this.weight + 2;
+  }
+
+  render() {
+    return (
+      <div css=@(
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 4px 0;
+        border-left: {{`${this.weight}px`}} solid #ff0055;
+        padding-left: {{`${this.weight + 8}px`}};
+        transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
+        &:hover { border-left-color: #00b37e; }
+      )>
+        <p className="label">a `css=@( … )` block — one class, one property per hole</p>
+        <button onclick={this.thicker}>border {this.weight}px — thicker</button>
+      </div>
+    );
+  }
+}

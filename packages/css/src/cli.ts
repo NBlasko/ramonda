@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-import { globSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { relative } from "node:path";
 import { checkProject } from "./check";
-import { formatFile, lintFile, toolIn } from "./tooling";
+import { filesUnder, formatFile, lintFile, toolIn } from "./tooling";
 import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
 
 /**
@@ -99,9 +98,7 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     process.exit(1);
   }
 
-  const files = paths.flatMap((path) =>
-    path.includes("*") ? globSync(path, { cwd }).map((found) => resolve(cwd, found)) : [resolve(cwd, path)],
-  );
+  const files = filesUnder(paths.length === 0 ? ["."] : paths, cwd);
 
   if (which === "format") {
     const format = biomeFormatter(binary, cwd);

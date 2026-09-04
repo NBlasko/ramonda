@@ -1,11 +1,13 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
 import { ramonda } from "@ramonda/build/vite";
+import { ramondaCss } from "@ramonda/css/vite";
 
 export default defineConfig({
   // The same plugin a scaffolded app gets, which is the point of using it here: it carries the three
   // transform settings, one of which decides whether the decorators survive into the output.
-  plugins: [ramonda()],
+  // `ramondaCss` first: it must run before esbuild, which refuses the syntax at the parse step.
+  plugins: [ramondaCss(), ramonda()],
   server: {
     port: 3000,
   },

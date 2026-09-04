@@ -125,6 +125,9 @@ importers:
       '@ramonda/core':
         specifier: workspace:^
         version: link:../../packages/core
+      '@ramonda/css':
+        specifier: workspace:*
+        version: link:../../packages/css
       '@ramonda/form':
         specifier: workspace:^
         version: link:../../packages/form

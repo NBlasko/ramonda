@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { placehold } from "./compiler/tooling";
 import { positionOf } from "./compiler/errors";
 import { mayHoldABlock } from "./compiler/scan";
@@ -34,11 +34,57 @@ export interface ToolFinding {
   readonly message: string;
 }
 
-/** Where a tool lives in the project being worked on, or `undefined` when it is not installed. */
+/**
+ * Where a tool lives, or `undefined` when it is not installed.
+ *
+ * **Walked upwards, the way Node resolves a module.** Found by running this in the repository it was
+ * written in: a workspace hoists its tools to the ROOT's `node_modules/.bin`, so looking only beside
+ * the package being worked on found nothing at all — and a monorepo is the ordinary case, not the
+ * exotic one.
+ */
 export function toolIn(directory: string, name: string): string | undefined {
-  const at = join(directory, "node_modules", ".bin", name);
-  return existsSync(at) ? at : undefined;
+  let at = resolve(directory);
+
+  for (;;) {
+    const found = join(at, "node_modules", ".bin", name);
+    if (existsSync(found)) return found;
+
+    const up = dirname(at);
+    if (up === at) return undefined;
+    at = up;
+  }
 }
+
+/**
+ * Every source file under the paths given.
+ *
+ * A directory is walked rather than handed on, because the two halves need different things from a
+ * file and only this knows which is which. Found by running it: `ramonda-css lint src` read `src`
+ * itself and threw, because a directory is not a file.
+ */
+export function filesUnder(paths: readonly string[], cwd: string): string[] {
+  const out: string[] = [];
+
+  const walk = (at: string): void => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+      const path = join(at, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (SOURCE.test(entry.name)) out.push(path);
+    }
+  };
+
+  for (const path of paths) {
+    const at = resolve(cwd, path);
+    if (statSync(at).isDirectory()) walk(at);
+    else out.push(at);
+  }
+
+  return out;
+}
+
+/** What either tool is asked about. Anything else is not source and is not theirs to read. */
+const SOURCE = /\.[cm]?[jt]sx?$/;
 
 /**
  * Formats one file, blocks and all.
