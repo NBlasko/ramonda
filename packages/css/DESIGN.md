@@ -282,10 +282,10 @@ const _s1 = block("r-94dc05ab");
 // with holes — the descriptor is still hoisted; only the values are per-render
 const _s2 = block("r-8e271c6c", ["--r0"]);
 …
-<div css={[_s2, this.open ? "4px solid " + this.accent : "4px solid #64748b"]}>
+<div css={_s2(this.open ? "4px solid " + this.accent : "4px solid #64748b")}>
 ```
 
-The expression is copied across untouched. The custom property reaches the DOM through
+The expression is an argument, copied across untouched. The custom property reaches the DOM through
 `setProperty("--r0", value)`, which takes a raw string — so **the escaping problem the string form
 created simply does not arise**.
 
@@ -350,9 +350,9 @@ border-left: {{…}};                ✓   becomes  border-left: var(--r0)
 *Recommended:* value position only, refused at build time with the source position, and reported by
 the checker first.
 
-**2. What an `undefined` hole does.** An unset custom property makes the declaration invalid at
-computed-value time — silent, not an error. *Recommended:* emit `var(--r0, initial)`, and let the
-type refuse `undefined` before that ever matters.
+**2. ~~What an `undefined` hole does.~~ DECIDED by the server-rendering measurement below: the type
+refuses `undefined`.** It was a preference; the four hydration directions make it a requirement. Emit
+`var(--r0, initial)` as the floor anyway, for the value that arrives from outside the types.
 
 **3. Merging with a written `style`.** *Recommended:* merge, generated first, author last.
 
@@ -362,9 +362,9 @@ its declarations, and the sheet sits in a named `@layer` beneath author styleshe
 
 **5. Nesting, `&:hover`, `@media`.** Unusable without them. *Recommended:* those three in v1.
 
-**6. The compiled value's exact shape.** `[descriptor, …values]` is what the section above
-recommends, because it is the form the compiler can produce without concatenating anything. A call —
-`_s2(value)` — reads better and allocates the same. **Open, and it is the core API decision.**
+**6. ~~The compiled value's exact shape.~~ DECIDED: a call, `_s2(value)`.** It reads better and
+allocates the same as an array. The compiler still concatenates nothing — the expression is an
+argument, transplanted verbatim.
 
 **7. May anything happen at runtime?** **DECIDED — no.** Custom properties only, never an injected
 rule. Injecting would give up server-render determinism, the cached sheet and the checker's view of
@@ -383,6 +383,59 @@ Taken: `cssx`, `atcss`. **Still the user's call.**
 `RMD020` fires on every render for the object form. **Decided: the `css` prop is exempt**, one line
 beside the two exemptions already in `compareAttributes`. The escaping question that the string form
 raised is **gone**, not deferred — a value that never becomes attribute text has nothing to escape.
+
+---
+
+## Server rendering, and how the values cross
+
+Measured against the framework's own `renderToString` and `hydrateRoot`, because this is the half
+where a design that reads correctly can still be wrong.
+
+**Nothing needs a separate channel.** The values are derived from state during the render, and the
+server writes them into the markup:
+
+```html
+<div class="r-8e271c6c" style="--r0: #10b981; --r1: 24px;"></div>
+```
+
+The client re-derives them from the same state during hydration. There is no payload to serialise
+beside the HTML, no registry to ship, and nothing for the client to look up — which is the whole
+benefit of the values being *values* rather than rules. **Static generation is the easy case**: the
+class names and the custom properties are baked into each page, and the stylesheet is a file.
+
+**The sheet itself needs no injection.** It is a build artefact linked by the document shell —
+`renderDocument`'s `styles` option takes the hrefs today — so there is no flash and no runtime work.
+What is still open is code splitting: one sheet per entry is simple, per-route critical CSS is not,
+and nothing here decides it.
+
+### The one requirement that is easy to miss
+
+**The server build and the client build must hash identically.** A class name is the hash of the
+normalised block, so the two passes have to normalise the same way — which means **hashing happens
+before any post-processing**, and post-processing may not rename. That is the same constraint as the
+round-trip assertion above, arriving from the other direction.
+
+### What the framework does and does not catch — measured, four directions
+
+| server | client | reported | DOM afterwards |
+|---|---|---|---|
+| `#10b981` | `#10b981` | — | correct |
+| `#10b981` | `#ff0000` | **RMD007** | corrected to the client's value |
+| *(hole `undefined`, no attribute)* | `#ff0000` | **nothing** | client adds it |
+| `#10b981` | *(hole `undefined`)* | **RMD007** | **the server's value stays** |
+
+Row three is silent because an attribute the server omitted and the client adds is not a mismatch the
+framework reports — measured on an ordinary `title` too, so it is general behaviour and not something
+about `style`. Row four is not general: with `title`, both directions are silent and the DOM is
+repaired both ways; with a custom property the divergence is reported and the stale value **survives
+hydration**. Worth confirming against the runtime's own rules before treating it as a defect — a
+framework that does not know which `--` properties are its own has a reason not to remove one.
+
+**What this settles: a hole may never be `undefined`, and the type is what enforces it.** Decision 2
+was a preference before this measurement and is a requirement after it. Both failing rows are
+`undefined` rows, and each fails in its own unhelpful way — one ships a page missing a style with no
+diagnostic, the other reports a divergence it does not repair. A hole that cannot be `undefined` has
+neither problem, and that is a property of the signature rather than of anybody's care.
 
 ---
 
