@@ -181,6 +181,61 @@ describe("shapes a first sample did not have", () => {
  * the tag rather than running down the file, and if an editor engine ever stops behaving this way,
  * these are what say so.
  */
+/**
+ * A nested rule, which is the block's whole reason for having braces.
+ *
+ * ## The fault this exists for
+ *
+ * The CSS grammar bundled with editors does not understand CSS nesting. Measured on a plain `.css`
+ * file, `a { &:hover { color: red; } }` comes back with `&` as a PROPERTY, `hover {` as its VALUE,
+ * and `color` inside coloured as a value rather than a property — the opening brace swallowed into a
+ * value token while its closing brace is scoped as a bracket. Two halves of one construct in two
+ * different colours is exactly what a reader calls noise, and it is inside every block that hovers.
+ *
+ * So the block grammar handles nesting itself rather than inheriting the gap.
+ */
+describe("a nested rule", () => {
+  const CODE = `const a = <div css=@(\n  color: red;\n  &:hover { color: blue; }\n)>x</div>;\nconst after = 1;\n`;
+
+  test("the selector is a selector", () => {
+    expect(scopeOf(CODE, "&")).toBe("entity.other.attribute-name.parent-selector.css");
+    expect(scopeOf(CODE, "hover")).toBe("entity.other.attribute-name.pseudo-class.css");
+  });
+
+  test("its braces are braces", () => {
+    const tokens = scopesOf(CODE);
+
+    expect(tokens.find((token) => token.text === "{")?.scope).toBe(
+      "punctuation.section.property-list.begin.bracket.curly.css",
+    );
+    expect(tokens.find((token) => token.text === "}")?.scope).toBe(
+      "punctuation.section.property-list.end.bracket.curly.css",
+    );
+  });
+
+  /** The one a reader actually sees: the same property is the same colour in both places. */
+  test("a property inside is the same as a property outside", () => {
+    const inside = scopesOf(CODE).filter((token) => token.text === "color");
+
+    expect(inside).toHaveLength(2);
+    expect(inside[1].scope).toBe(inside[0].scope);
+  });
+
+  /** A hole inside a nested rule — the two constructs meet, and neither may eat the other. */
+  test("a hole inside one is still code", () => {
+    const code = `const a = <div css=@(\n  &:hover { color: {{accent}}; }\n)>x</div>;\nconst after = 1;\n`;
+
+    expect(scopeOf(code, "hover")).toBe("entity.other.attribute-name.pseudo-class.css");
+    expect(scopeOf(code, "{{")).toBe("punctuation.section.embedded.begin.ramonda");
+    expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("and the block still closes where it closes", () => {
+    expect(scopeOf(CODE, "after")).toBe("variable.other.constant.tsx");
+  });
+});
+
 describe("where an injection cannot reach", () => {
   const SECOND = `const a = <div id="x" css=@( color: red; )>y</div>;\nconst after = 1;\n`;
   const NEXT_LINE = `const a = (\n  <div\n    css=@( color: red; )\n  >y</div>\n);\nconst after = 1;\n`;

@@ -29,7 +29,49 @@
       "contentName": "meta.embedded.block.css",
       "patterns": [
         {
+          "include": "#innards"
+        }
+      ]
+    },
+    "innards": {
+      "patterns": [
+        {
+          "include": "#nested"
+        },
+        {
           "include": "source.css#rule-list-innards"
+        }
+      ]
+    },
+    "nested": {
+      "comment": "A nested rule. The editor's CSS grammar has no pattern for one — measured, `&:hover {` comes back as a property whose value is `hover {` — so the block handles nesting itself. The negative lookahead is the hole: `{{` opens an expression, never a rule list.",
+      "begin": "([^;{}]+?)(\\{)(?!\\{)",
+      "beginCaptures": {
+        "1": {
+          "patterns": [
+            {
+              "comment": "`&` is CSS nesting's own, and the editor's CSS grammar has no pattern for it either.",
+              "match": "&",
+              "name": "entity.other.attribute-name.parent-selector.css"
+            },
+            {
+              "include": "source.css#selector-innards"
+            }
+          ]
+        },
+        "2": {
+          "name": "punctuation.section.property-list.begin.bracket.curly.css"
+        }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.property-list.end.bracket.curly.css"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#innards"
         }
       ]
     }

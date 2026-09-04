@@ -701,6 +701,12 @@ file reads exactly as it would with nothing installed, which is what the tests a
 against a control, because what the tsx grammar makes of a syntax it was never told about is its own
 affair.
 
+**Nesting is the block's own, because the editors' CSS grammar does not have it.** Measured on a plain
+`.css` file, `a { &:hover { color: red; } }` comes back with `&` as a PROPERTY, `hover {` as its
+VALUE, and `color` inside coloured as a value rather than a property — one construct in two colours,
+inside every block that hovers. The block grammar carries a `nested` rule and its own `&`, and the
+negative lookahead in it is the hole: `{{` opens an expression, never a rule list.
+
 **GitHub and npm cannot be taught without upstreaming a grammar**, so a fence there stays plain,
 which is an acceptable end state.
 
