@@ -20,10 +20,12 @@ const COMPILER = [
   "findBlocks",
   "mayHoldABlock",
   "normalise",
+  "positionOf",
   "readBlock",
   "substitute",
   "transform",
   "variableNameFor",
+  "virtualFile",
 ];
 
 describe("public API surface", () => {

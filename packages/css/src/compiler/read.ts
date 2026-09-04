@@ -322,11 +322,13 @@ export function readBlock(source: string, open: number, filename: string): ReadB
         continue;
       }
 
+      const from = at;
+
       if (looksLikeARule(closer)) {
         const prelude = readHead(123 /* { */, "selector").trim();
         // `readHead` stopped on the `{` the lookahead found, so this cannot be anything else.
         at++;
-        items.push({ kind: "rule", prelude, items: readItems(BRACE) });
+        items.push({ kind: "rule", at: from, prelude, items: readItems(BRACE) });
         continue;
       }
 
@@ -340,14 +342,23 @@ export function readBlock(source: string, open: number, filename: string): ReadB
         );
       }
       at++;
+      // Past the whitespace after the colon, so the value's position is the value and not the gap
+      // before it. What `readValue` then collects has no leading whitespace, which normalisation was
+      // going to trim anyway.
+      while (at < source.length && isSpace(source.charCodeAt(at))) at++;
+      const valueAt = at;
       const value = readValue(closer);
       if (at < source.length && source.charCodeAt(at) === 59) at++;
-      items.push({ kind: "declaration", property, value });
+      items.push({ kind: "declaration", at: from, valueAt, property, value });
     }
   }
 
   const items = readItems(PAREN);
   return { block: { items }, holes, end: at - 1 };
+}
+
+function isSpace(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13 || code === 12;
 }
 
 /** Past a string or template in an EXPRESSION, following `${ … }` back into code. */

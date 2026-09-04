@@ -6,11 +6,12 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0, track B and A1 are done.** The contract is written and implemented; the framework takes a
-`css` prop and applies it; and the parser and transform turn a file into valid TSX with a source map
-that lands on the author's own line and column. **Everything else is unstarted** — the next work is
-A2 (the virtual file, which shares this parser) or track C (the property types, which needs only the
-contract).
+**Phase 0, track B, A1 and A2 are done.** The contract is written and implemented; the framework
+takes a `css` prop and applies it; the parser and transform turn a file into valid TSX with a source
+map that lands on the author's own line and column; and the virtual file gets that file type-checked
+by `tsc` with every diagnostic mapped home. **Everything else is unstarted** — the next work is track
+C (the property types, which the virtual file already imports and which is now the thing standing
+between this and real type safety), or G, the check command that runs A2 over a project.
 
 ---
 
@@ -228,10 +229,54 @@ Requirements, each of which came out of a measurement rather than a preference:
 *Size: large. Risk: medium, and it is the parser rather than the transform.
 Start from `prototype-transform-cost.mjs` and `prototype-sourcemap.mjs`.*
 
-### A2 — the virtual file, and mapping back
+### A2 — the virtual file, and mapping back. **DONE.**
 
-Turn a source file into valid TSX that `tsc` can check, keeping a record of where every carried
-expression landed, and map diagnostics home.
+`src/compiler/virtual.ts`, plus a new entry `@ramonda/css/properties` holding the shape a block is
+checked against — `CssBlockShape`, whose three template-literal index signatures let a nested rule,
+an at-rule and a custom property through while a key matching none of them is still an EXCESS
+property, which is the whole point. `CssProperties` inside it is a placeholder and is track C.
+
+Proved by a real `ts.Program` in `src/__tests__/virtual.test.ts`, not by argument: a property typo,
+a value typo, a hole typed by its property, a typo inside a nested rule, and a name that does not
+exist — each with the diagnostic mapped back to the author's own line and column, and a control that
+a correct block reports nothing at all.
+
+**Two things the measurements found, and the first changes the headline.**
+
+1. **A quoted key gets no *did you mean*.** The same typo against the same type:
+
+   ```
+   { dsiplay: "flex" }     TS2561 … Did you mean to write 'display'?
+   { "dsiplay": "flex" }   TS2353 … and '"dsiplay"' does not exist in type
+   ```
+
+   TypeScript's own suggestion — the headline of the type-safety claim — hangs on whether the emitted
+   key needed quotes. So a name that is a valid identifier is now written bare, and `display`,
+   `color`, `padding` and every other single-word property get the good message. **A dashed name
+   cannot be written bare, so `flex-direction` and `border-left` get the plain message.** The
+   alternative is camelCase keys, which would suggest `flexDirection` to somebody writing CSS and
+   would need a rewritten compiler message to be usable — rejected. **Naming the near miss for a
+   dashed property is track D's**, where the message is one we write.
+
+2. **Where a diagnostic lands depends on its kind.** TypeScript reports an object literal's
+   assignability errors at the property assignment, whose start is the key; an error about a name
+   inside an expression is reported on the name.
+
+   | written | reported | lands on |
+   |---|---|---|
+   | `dsiplay: flex` | `TS2561` | the property |
+   | `display: flexx` | `TS2820` | the property |
+   | `padding: {{this.size}}` | `TS2322` | the property |
+   | `color: {{missing}}` | `TS2304` | the **expression** |
+
+   Nothing to fix in either — but a caller printing a caret has to know that a value error points at
+   its declaration.
+
+Two spans were added to the parsed block to make any of this possible: where a property name starts
+and where its value does. They are provenance, normalisation never reads them, and a block built by
+hand has none.
+
+The original description, kept because it is what was built:
 
 **Two things go into the virtual file, and the second is what makes CSS type-safe at all:**
 
@@ -380,8 +425,10 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 |---|---|
 | the syntax vs `tsc` / esbuild | both refuse it at the PARSE step |
 | a hole type-checked in its real scope | a real `TS2339` at the author's line and column |
-| a property-name typo | `TS2561 … Did you mean to write 'display'?` |
-| a value typo | `TS2820 … Did you mean '"flex"'?` |
+| a property-name typo, key written bare | `TS2561 … Did you mean to write 'display'?` |
+| the same typo, key in quotes | `TS2353`, and **no suggestion at all** — so a dashed property gets no *did you mean* |
+| a value typo | `TS2820 … Did you mean '"flex"'?`, reported on the property |
+| where a diagnostic lands | on the property, except a name error, which lands on the expression |
 | a hole typed by its property | `TS2322` on `padding: {{nekaFunc()}}` |
 | a template-literal length type | catches `10pxx`, prints an unreadable expanded union |
 | transform cost, the PROTOTYPE | +2.6% over esbuild — superseded, it built no AST and no map |

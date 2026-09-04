@@ -75,8 +75,11 @@ function value(parts: readonly ValuePart[]): string {
 /**
  * Runs of whitespace to one space, and none at the ends — except inside a string, where every
  * character an author wrote is what they meant (`content: "a  b"`).
+ *
+ * Exported for the virtual file, which writes one declaration's value into a string literal and has
+ * to fold it the same way — not re-implement it. It is deliberately not on the package's surface.
  */
-function collapse(text: string): string {
+export function collapse(text: string): string {
   let out = "";
   let pending = false;
 

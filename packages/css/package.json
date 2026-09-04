@@ -34,6 +34,10 @@
     "./compiler": {
       "types": "./dist/compiler/index.d.ts",
       "import": "./dist/compiler/index.js"
+    },
+    "./properties": {
+      "types": "./dist/properties.d.ts",
+      "import": "./dist/properties.js"
     }
   },
   "main": "./dist/index.js",

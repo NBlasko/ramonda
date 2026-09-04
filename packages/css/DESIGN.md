@@ -131,6 +131,12 @@ __block({ padding: "10px 20px" });           // correct — silent
 TS2820: Type '"flexx"' is not assignable to type '"flex" | "none" | "block" | …'. Did you mean '"flex"'?
 TS2561: Object literal may only specify known properties, but 'dsiplay' does not exist
         in type 'Partial<CssProperties>'. Did you mean to write 'display'?
+
+**One condition on that second line, found when the virtual file was written: the key has to be
+UNQUOTED.** `{ "dsiplay": … }` gets `TS2353` and no suggestion at all. So the virtual file writes a
+property bare whenever it is a valid identifier — and a dashed name, `flex-direction` or
+`border-left`, cannot be, so those get the plain message and their near miss belongs to the CSS
+checker. See `PLAN.md`, A2.
 TS2322: Type 'boolean' is not assignable to type 'Length | …'
 ```
 

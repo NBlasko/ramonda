@@ -1,0 +1,272 @@
+import type { BlockItem, ValuePart } from "./ast";
+import { collapse } from "./normalise";
+import type { Span } from "./read";
+import { readBlock } from "./read";
+import { findBlocks, mayHoldABlock } from "./scan";
+
+/**
+ * The virtual file: the author's file as valid TSX, and the way back from a diagnostic to the
+ * character they typed.
+ *
+ * This is the whole of the claim the package rests on — **a syntax TypeScript cannot parse can still
+ * be fully type-checked**, as long as we own the step that turns it into TypeScript. It is the same
+ * three moves `vue-tsc` and `svelte-check` make: write a virtual file, hand it to `tsc`, map each
+ * diagnostic home.
+ *
+ * ## Two things go in, and the second is what makes CSS type-safe at all
+ *
+ * - **Each hole's expression, in its real lexical scope.** The expression stays inside the same JSX,
+ *   in the same method, on the same class — so `this`, the imports and the generics are all what the
+ *   author sees. Nothing is lifted out.
+ * - **Each block as an object literal.** An object literal is what gets excess-property checking, and
+ *   excess-property checking is what produces TypeScript's own *did you mean* on a CSS property name.
+ *   Any other shape — a call with strings, a tagged template — throws that away.
+ *
+ * ```
+ *   <div css=@( display: flex; border-left: 4px solid {{this.accent}}; )>
+ *
+ *   <div css={__block({ "display":"flex", "border-left":`4px solid ${this.accent}` })}>
+ * ```
+ *
+ * ## Two kinds of mapping, because only some of the text is the author's own
+ *
+ * The expressions and everything outside a block are **copied**, byte for byte, so a diagnostic
+ * inside one maps offset by offset. A property name, a value and a selector are **rewritten** —
+ * quoted, escaped, whitespace folded — so anything landing in one maps to where it STARTS. That is
+ * the position the reader needs anyway: a *did you mean* about `dsiplay` belongs on `dsiplay`.
+ *
+ * Anything that maps nowhere is scaffolding, and a caller drops it: `__block` itself, the punctuation
+ * between declarations, the preamble. Those diagnostics are about the file we wrote, not the one they
+ * did.
+ *
+ * ## Where a diagnostic lands, which depends on its kind
+ *
+ * Measured through a real `ts.Program`, and worth knowing before reading a position:
+ *
+ * | written | reported | lands on |
+ * |---|---|---|
+ * | `dsiplay: flex` | `TS2561`, *did you mean 'display'* | the property |
+ * | `display: flexx` | `TS2820`, *did you mean "flex"* | the property |
+ * | `padding: {{this.size}}` | `TS2322`, `boolean` not assignable | the property |
+ * | `color: {{missing}}` | `TS2304`, cannot find name | the **expression** |
+ *
+ * TypeScript reports an object literal's assignability errors at the property assignment, whose start
+ * is the key; an error about a name inside an expression is reported on the name. Both map home
+ * correctly and neither is a fault to fix — but a caller printing a caret has to know that a value
+ * error points at its declaration.
+ */
+
+export interface VirtualFileOptions {
+  /** Where the block shape is imported from. Track C fills that module in; the shape is stable. */
+  readonly properties?: string;
+}
+
+export interface VirtualFile {
+  /** Valid TSX. */
+  readonly code: string;
+  /**
+   * The author offset a virtual offset came from, or `undefined` when it is scaffolding.
+   *
+   * A diagnostic whose start maps to `undefined` is about the file this wrote and must not be shown.
+   */
+  homeOf(offset: number): number | undefined;
+}
+
+/** One run of virtual text, and where it came from. */
+interface Segment {
+  /** Virtual offsets, half-open. */
+  readonly from: number;
+  readonly to: number;
+  /** The author offset this run starts at. */
+  readonly source: number;
+  /** Copied byte for byte, so an offset inside maps by its distance from the start. */
+  readonly exact: boolean;
+}
+
+/** `undefined` when the file holds no block — there is then nothing a virtual copy would add. */
+export function virtualFile(source: string, options: VirtualFileOptions = {}): VirtualFile | undefined {
+  if (!mayHoldABlock(source)) return undefined;
+
+  const sites = findBlocks(source);
+  if (sites.length === 0) return undefined;
+
+  const segments: Segment[] = [];
+  let code = "";
+
+  /** Text this file invented. Nothing maps to it, so a diagnostic in it is dropped. */
+  const write = (text: string): void => {
+    code += text;
+  };
+
+  /** The author's own bytes, so an offset inside maps offset for offset. */
+  const copy = (start: number, end: number): void => {
+    segments.push({ from: code.length, to: code.length + (end - start), source: start, exact: true });
+    code += source.slice(start, end);
+  };
+
+  /** Their text, rewritten. Every offset inside maps to where it started. */
+  const derived = (text: string, at: number | undefined): void => {
+    if (at !== undefined) segments.push({ from: code.length, to: code.length + text.length, source: at, exact: false });
+    code += text;
+  };
+
+  const block = binding(source, "__block");
+  /**
+   * A `declare`, not an `import` statement: an import would turn a file that is a script into a
+   * module, which changes what the author's own code means. An import TYPE in a type position does
+   * not.
+   */
+  write(
+    `declare function ${block}(declarations: import(${JSON.stringify(
+      options.properties ?? "@ramonda/css/properties",
+    )}).CssBlockShape): never;\n`,
+  );
+
+  let cursor = 0;
+  for (const site of sites) {
+    // A `name=@(` found INSIDE a block belongs to that block's text, not to the file. The transform
+    // refuses one; here it is simply passed over, because this file exists to be type-checked and a
+    // refusal belongs to the build.
+    if (site.start < cursor) continue;
+
+    const read = readBlock(source, site.open, "");
+
+    copy(cursor, site.start);
+    copy(site.start, site.start + site.name.length);
+    write(`={${block}({`);
+    items(read.block.items, read.holes);
+    write("})}");
+
+    cursor = read.end + 1;
+  }
+  copy(cursor, source.length);
+
+  return { code, homeOf: (offset) => homeOf(segments, offset) };
+
+  function items(list: readonly BlockItem[], holes: readonly Span[]): void {
+    for (const item of list) {
+      if (item.kind === "rule") {
+        derived(quoted(item.prelude), item.at);
+        write(":{");
+        items(item.items, holes);
+        write("},");
+        continue;
+      }
+      derived(key(propertyName(item.property)), item.at);
+      write(":");
+      value(item.value, item.valueAt, holes);
+      write(",");
+    }
+  }
+
+  /**
+   * A declaration's value, in the form that carries the most type information.
+   *
+   * Three shapes, and the choice is what decides which diagnostic the author gets:
+   *
+   * - **the whole value is one hole** — the expression itself, so it is checked against the
+   *   property's own type and `padding: {{nekaFunc()}}` is a `TS2322` about `padding`;
+   * - **no holes at all** — a string literal, so a union-typed property gives `TS2820` with *did you
+   *   mean*, which a template literal would not;
+   * - **text and holes together** — a template literal, so `padding: {{n}}px` is checked against
+   *   `` `${number}px` `` rather than collapsing to `string`.
+   */
+  function value(parts: readonly ValuePart[], at: number | undefined, holes: readonly Span[]): void {
+    if (parts.length === 1 && parts[0].kind === "hole") {
+      expression(holes[parts[0].index]);
+      return;
+    }
+
+    if (!parts.some((part) => part.kind === "hole")) {
+      derived(quoted(collapse(parts.map((part) => (part.kind === "text" ? part.text : "")).join(""))), at);
+      return;
+    }
+
+    write("`");
+    for (const part of parts) {
+      if (part.kind === "text") {
+        derived(inTemplate(collapse(part.text)), at);
+        continue;
+      }
+      write("${");
+      expression(holes[part.index]);
+      write("}");
+    }
+    write("`");
+  }
+
+  /**
+   * One hole's expression, byte for byte where the author wrote it.
+   *
+   * Parenthesised, so a comma or a low-precedence operator inside cannot change what the surrounding
+   * syntax means — and the parens are written rather than copied, so nothing maps to them.
+   */
+  function expression(span: Span): void {
+    write("(");
+    copy(span.start, span.end);
+    write(")");
+  }
+}
+
+/** The last segment starting at or before `offset`, or nothing when the offset is scaffolding. */
+function homeOf(segments: readonly Segment[], offset: number): number | undefined {
+  let low = 0;
+  let high = segments.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const segment = segments[middle];
+    if (offset < segment.from) high = middle - 1;
+    else if (offset >= segment.to) low = middle + 1;
+    else return segment.exact ? segment.source + (offset - segment.from) : segment.source;
+  }
+  return undefined;
+}
+
+/**
+ * `COLOR` and `color` are one property to CSS, so they are one key here too.
+ *
+ * Without the fold, valid CSS would be reported as a property that does not exist — a *did you mean*
+ * about the author's own capitals. A custom property keeps its case, because CSS keeps it.
+ */
+function propertyName(property: string): string {
+  return property.startsWith("--") ? property : property.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
+function quoted(text: string): string {
+  return JSON.stringify(text);
+}
+
+/**
+ * A property name as an object key — **unquoted whenever it can be**, and that is not cosmetic.
+ *
+ * Measured, the same typo against the same type:
+ *
+ *     { dsiplay: "flex" }     TS2561 … Did you mean to write 'display'?
+ *     { "dsiplay": "flex" }   TS2353 … and '"dsiplay"' does not exist in type
+ *
+ * **A quoted key gets no suggestion.** TypeScript's own *did you mean* is the headline of the whole
+ * type-safety claim, and it turns out to hang on whether the emitted key needed quotes. So a name
+ * that is a valid identifier is written bare.
+ *
+ * A dashed name — `flex-direction`, `border-left` — cannot be, so those still get the plain message.
+ * That is a limit, not a workaround: the alternative is camelCase keys, which would suggest
+ * `flexDirection` to somebody writing CSS, and the fix would then have to be a rewritten compiler
+ * message. Naming the near miss for a dashed property belongs to the CSS checker, where the message
+ * is one we write.
+ */
+function key(property: string): string {
+  return IDENTIFIER.test(property) ? property : quoted(property);
+}
+
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+/** Text going inside a template literal: the two things that would end it, and the escape itself. */
+function inTemplate(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
+}
+
+function binding(source: string, base: string): string {
+  let name = base;
+  while (source.includes(name)) name = `_${name}`;
+  return name;
+}

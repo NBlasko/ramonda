@@ -10,8 +10,9 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 )>
 ```
 
-> **Partly built.** This package is private and its version is `0.0.0`. The parser, the transform
-> and the compiled value exist; the stylesheet, the type checking and the editor do not. Read
+> **Partly built.** This package is private and its version is `0.0.0`. The parser, the transform,
+> the compiled value and the virtual file exist; the property types, the stylesheet and the editor do
+> not. Read
 > `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
 > for what is done and what is next.
 
@@ -67,6 +68,26 @@ bytes stay where they were written, which is what makes the source map exact.
 
 A file that uses none of this pays one substring search: 1,290 files and 10.73 MB of this repository
 in 0.84 ms.
+
+## How it is type-checked
+
+The syntax is not TypeScript, so it is turned into TypeScript — a **virtual file** that `tsc` reads,
+with every diagnostic mapped back to the character the author typed. The same three moves the
+established file-format tools make.
+
+```ts
+import { readFileSync } from "node:fs";
+import { virtualFile } from "@ramonda/css/compiler";
+
+const file = virtualFile(readFileSync("Card.tsx", "utf8"));
+// file.code       valid TSX, each block an object literal
+// file.homeOf(n)  the author's offset, or undefined when it is scaffolding
+```
+
+Each block becomes an **object literal**, and that is the load-bearing choice: an object literal is
+what gets excess-property checking, and excess-property checking is what produces TypeScript's own
+*did you mean* for a CSS property name. Each hole's expression stays where it was written, so `this`,
+the imports and the generics are all the ones the author sees.
 
 ```ts
 import { classNameFor, normalise, substitute } from "@ramonda/css/compiler";

@@ -23,6 +23,17 @@ export type BlockItem = Declaration | NestedRule;
 export interface Declaration {
   readonly kind: "declaration";
   /**
+   * Where the property name starts in the author's file, and where its value does.
+   *
+   * Provenance, not content: normalisation never reads either, so two blocks written in different
+   * files still hash the same. They exist for the virtual file, which has to send a diagnostic about
+   * a key or a value back to the character the author typed.
+   *
+   * Optional because a block built by hand has no source to point at — the parser always sets them.
+   */
+  readonly at?: number;
+  readonly valueAt?: number;
+  /**
    * The property, as written. Case is folded for a normal property because CSS reads it that way,
    * and kept for a custom property (`--Accent`) because CSS does not.
    */
@@ -39,6 +50,8 @@ export interface Declaration {
  */
 export interface NestedRule {
   readonly kind: "rule";
+  /** Where the prelude starts in the author's file. See {@link Declaration.at}. */
+  readonly at?: number;
   readonly prelude: string;
   readonly items: readonly BlockItem[];
 }
