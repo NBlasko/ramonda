@@ -1,5 +1,102 @@
 # @ramonda/check
 
+## 0.15.0
+
+### Minor Changes
+
+- e8f06a8: An argument-less `params()` is judged by the keys it names
+
+  `params(pattern)` is checked twice — the router throws in `assertPattern`, and the graph says it
+  before anything renders. `params()` was checked nowhere, and the router's own message sends people to
+  it: "drop the argument and use `params<T>()` if it is rendered by routes that do not agree on their
+  params". So the door people are pointed at was the unguarded one.
+
+  Judging it is not a contradiction of that advice, because the pattern argument was never an assertion
+  about which route you are on. Measured: `ParamPath<C>` is any table path carrying a `:param`, and
+  `assertPattern` compares only the NAMES against what matched — a component under `/users/:id/edit`
+  and `/admin/users/:id` may name either and is right on both. The argument names keys. Both doors ask
+  the same question and only one of them was answered.
+
+  And this failure is the quieter of the two: `Router.tsx` calls `assertPattern` only
+  `if (pattern !== undefined)`, so nothing throws. The read hands back a params object without the key,
+  and a type that promised `string` delivers `undefined`.
+
+  Three spellings are a claim, because each names a key AT the call: `params<{ teamId: string }>()`, a
+  plain `const { teamId } = params()`, and `params().teamId`. Three are not: `?` on the member, a
+  default in the destructuring, and a read taken off a variable one line later — the last being the
+  escape the router's message points at, kept open on purpose. Two limits are named rather than hidden:
+  a type argument that is a name rather than a written-out shape, and a key built from an expression.
+
+  Three things about it are measured rather than assumed. **Any arrival that fails is enough**, which
+  is the pattern door's policy too: a component under `/players/:id` and `/teams/:teamId` claiming `id`
+  reads `undefined` on the second, and that arrangement is one the source really produces — two routes
+  that BOTH supply it stay silent. **Optional chaining guards the object, not the key**, so
+  `params()?.userId` still claims `userId`. And **under a nested outlet the inner route answers**,
+  because each outlet publishes only what it matched: a page under `/members/:memberId` claiming the
+  outer `teamId` is reading a key nothing publishes there.
+
+  Every silence the pattern door keeps is kept here — no root, an outlet spreading props nobody can
+  read, a declaration no root reaches, a route key that is not a literal — and a claim inside a hook is
+  judged against the route above the component that uses it.
+
+### Patch Changes
+
+- 1b16b31: A hook is an extension of the component that uses it, and the graph now says so once instead of twice
+
+  `this.use(X)` is a `uses` edge and never a mount, so the walk that follows mounts left every hook out
+  of all three of its answers: not reached, no arrival recorded, no path naming it. Two rules patched
+  that locally, each closing the reached set over `uses` for its own question — and the patch was worse
+  than the hole. `deadOnes` widened the SHARED set (a hook nothing uses is not dead), and
+  `readsOffTheRoute`, which runs after it, then read a hook as reached while the arrivals still knew
+  nothing about it. A hook reached with no arrival is exactly the state that rule reports as "no outlet
+  above".
+
+  **So correct code failed the build.** Measured: a hook reading `params("/teams/:teamId")`, used by a
+  component mounted at exactly `/teams/:teamId`, was reported. The router runs it happily, and every
+  rule is an error.
+
+  The closure happens once now, before any rule reads anything, and carries the arrivals with it: a
+  hook inherits the routes of every component that uses it, which is what the runtime does — the params
+  it reads are the ones published above its user. Any rule written after this reads hooks correctly
+  without having to know they exist. It is a fixpoint rather than one pass, because two hops down a
+  node can be closed before the arrival that condemns it has arrived.
+
+  The same read is now reported with the truth instead: `why: "wrong-route"`, the route above the user,
+  the missing name, and a path that says how the hook got there — `App > RouteOutlet > TeamPage >
+WrongInHook`.
+
+- c45ed7b: The bundle guard's string test measures something that is still true
+
+  The test that proves the guard parses rather than greps justified itself with a measurement about
+  `@Host`: core's DEV diagnostics used to put `@Host("div")` and `@Host("g")` into their suggestions,
+  so a grep for decorator syntax would call a perfectly good bundle broken. The decorator is gone and
+  those messages no longer exist, which left the test passing on a reason that had stopped being one.
+
+  Re-measured on `packages/core/dist/index.js`: five occurrences of `@Name(` survive into the shipped
+  bundle — `@StableProps("key")` inside a fix message, `@interval("1s")` inside a comment showing what
+  throws. The synthetic fixture now uses names the framework still has, and a grep over it still finds
+  two decorators the parser correctly ignores.
+
+- fe492e2: The dry-run step leaves the gate, and the tests that replace it stop skipping in silence
+
+  `--fix --dry-run` was in `pnpm check` because most rules used to be warnings: a normal run exited 0
+  on them, so this was the only thing that failed on a fault with a mechanical answer. Every rule is an
+  error now — 87 of them, none `warn`, with `verdict.test.ts` asserting it — which inverts the reason
+  while the text stood.
+
+  Re-derived, then measured. Fixes come only from rules (`editsByFile` walks `findings` for
+  `issue.edit`) and `failingRules` takes every rule that reported, so a finding carrying a fix already
+  fails the plain run: with `class=` planted for `className=` in `apps/docs/src/Demo.tsx`, both
+  invocations exit 1 — the first naming the rule, the second the edit. The step cost 25-30 seconds per
+  run for an answer already given, and is gone.
+
+  What it left behind is coverage of the fixer itself, and that now rests entirely on
+  `fix-gate.test.ts`, which drives the same built CLI. Those three tests skipped themselves when
+  `dist/cli.js` was absent, which is right for a bare `vitest` with no build and wrong for a gate: a
+  change to `turbo.json` could have taken the fixer's whole coverage away while every job stayed green.
+  Under `CI` a missing CLI is now a failure. Measured by deleting the file — present, three pass;
+  missing locally, three skip; missing under `CI`, two fail and name the module they cannot find.
+
 ## 0.14.0
 
 ### Minor Changes
@@ -189,7 +286,7 @@ makeContext }` is read exactly the same — the same lesson an aliased `@StableP
 
   A guard silences it, because a guard is what makes the write correct:
 
-      if (state.profile) focusOn(state).get("profile").get("name").set("Ada");
+        if (state.profile) focusOn(state).get("profile").get("name").set("Ada");
 
   The shapes that count are the ones a guard is actually written in: the `if`, `!== null`, `!= null`,
   `&&`, a ternary, the early return, `!!`, `Boolean(…)`, a `const` the value was read into, and a
