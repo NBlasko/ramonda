@@ -1,5 +1,466 @@
 # @ramonda/core
 
+## 0.24.0
+
+### Minor Changes
+
+- 2b7e7ea: `createContext(defaults, { stableProps })` — a context declares which keys are values
+
+  A key holding an object literal is a new object every time the provider's callback runs, and a new
+  object is a changed key — so every consumer of it wakes, however unchanged the contents are.
+  Measured in `ContextValueIdentity.test.tsx`, counting a consumer that reads only `conf` while a
+  DIFFERENT key of the same provider moves three times:
+
+  | the provider                                          | consumer renders |
+  | ----------------------------------------------------- | ---------------- |
+  | `() => ({ conf: { dense: true }, tick: this.tick })`  | **4**            |
+  | the same, with `stableProps: ["conf"]` on the context | **1**            |
+
+  The declaration already existed as `@StableProps`, and a context could not reach it. `createContext`
+  returns a class rather than a declaration site, so the only way to attach a decorator was to write a
+  subclass that did nothing else:
+
+  ```tsx
+  @StableProps("conf")
+  class ConfProvider extends ThemeProvider {}
+  ```
+
+  Now it is said where the context is made, which is where the answer lives — whether `conf` is a
+  value or an identity is the context's own knowledge, and it is true for every provider of it:
+
+  ```tsx
+  const [ConfProvider, ConfConsumer] = createContext(
+    { conf: { dense: false }, tick: 0 },
+    { stableProps: ["conf"] }
+  );
+  ```
+
+  **It is one mechanism, not two.** The option writes the same list the decorator writes, on the same
+  class, read by the same lookup. The subclass spelling still works and is still type-checked.
+
+  **It can do one thing the decorator cannot.** A context's keys are the default value's keys — a
+  Provider publishes nothing outside them, so no consumer could read a key outside them. That makes a
+  name that is not one of them a mistake this end can SEE. It is refused twice: by the types, against
+  `keyof` the default value, and at runtime for a caller who has none. A decorator on a class knows
+  only the type it was handed.
+
+  The comparison itself is unchanged, including what it will not do: **functions are never covered**,
+  because two closures with the same body are not equal by any comparison that is safe to make, so a
+  listed function key is left exactly as it came and `RMD022` still reports it. Contents that really
+  move still arrive — this is a comparison, not a freeze.
+
+  **`@ramonda/check` reads the new spelling**, and had to before the advice could recommend it — a
+  rule that cannot see a declaration reports the fix. `fresh-object-in-hook-props` and
+  `fresh-object-in-props` now ask one question that answers for both spellings, and
+  `fresh-object-in-hook-props`'s advice points at the option instead of at a subclass. The call is
+  identified through core rather than by the letters at the call site, so `import { createContext as
+makeContext }` is read exactly the same — the same lesson an aliased `@StableProps` taught this rule
+  once already, when it reported the very key a child had declared.
+
+- e22db98: `Timeout` and `Interval` say whether they are running, and a labelled player is no longer reported
+
+  **`pending` and `done`.** `pending` is true from `start` until the call fires or `stop` clears it;
+  `Timeout` also has `done`, whether the call has happened. Both are reactive, so a render that reads
+  one is re-rendered when it flips — which is why they are `@state` on the hook rather than a getter
+  over the private handle, since a getter would read correctly and never wake the render that read it.
+
+  The state was always there and always `protected`, so a component that wanted to show "Undo" while a
+  deadline ran kept its own flag beside the timer and wrote it in three places — `start`, `stop`, and
+  the body, and a fourth if the body restarted it. Every one of those is a chance for the flag and the
+  timer to disagree with nothing to say so.
+
+  Both false is the third answer a caller needs, without a third field: nothing started yet, or `stop`
+  cancelled it before it fired. `Interval` has no `done` — it does not finish, so there would be
+  nothing for it to mean. And neither flag costs a hydration byte: nothing arms on the server, so both
+  stay at their initializer and the serializer writes only what moved off one.
+
+  **A label silences `media-with-no-captions`.** The rule asked for one in its advice and did not
+  accept it in its code: "a song without words needs a label beside the player rather than a track:
+  the title, the performer, the length. What is being asked for is not a transcript of every sound, it
+  is that the page not be silent ABOUT the sound." Measured on
+  `<audio src="/song.mp3" controls aria-label="Chopin, Nocturne op. 9 no. 2, 4:33" />` — reported, with
+  advice telling the author to do what they had already done.
+
+  `aria-label` or `aria-labelledby` now silences it, on `<video>` as well. An EMPTY label does not:
+  that is a label written and nothing said, the same care the `muted` escape takes about
+  `muted={false}`. A label computed at runtime counts, because the direction this rule errs in is
+  silence rather than a false report about working markup.
+
+- 23d6f4a: A swapped `ref` is honoured at once, and building one in a render is reported
+
+  `<TextArea ref={cond ? a : b} />` did not hand the node over when `cond` flipped. The old ref kept
+  pointing at a live node and the new one stayed empty until something else happened to update that
+  field — measured, and found by reading the one unhit branch left in `base/TextArea.tsx`.
+
+  `helpers/arePropsBagsEqual.ts` ignored `ref`, for a reason that was true when it was written: a
+  component's ref was pointed at its host element at creation and never read again, while an inline
+  `ref={createRef()}` handed the child a new object every parent render — one wasted child render per
+  parent render, measured, with nothing to say so. **"Never read again" stopped being true.** `Select`
+  and `TextArea` take the element's ref for themselves, so each hands the CALLER's ref the node by hand
+  and re-checks it on every update. With `ref` out of the comparison there was no update to re-check
+  on: the component was never queued and `rawProps` was not even replaced. `Select` was saved only by
+  always having children to rebuild.
+
+  `ref` is compared like every other prop now. A stable `ref={this.field}` costs nothing — the value
+  is identical, so nothing is notified. And it fixes a second case nobody had noticed: `ref` used to be
+  subtracted from the key COUNT on both sides, so `<Child ref={r} />` becoming `<Child />` read as the
+  same shape and the ref was never released.
+
+  **The wasted render is no longer silent, which is what that exclusion was really for.** Two new
+  reports, one on each side of the line:
+
+  - `RMD061` at runtime, when a `createRef()` is reached from a render, a `@compute`, a `@memoized`
+    member or a hook's props callback. One message rather than `RMD021`'s four, because unlike a
+    random number the fault does not differ by phase: a ref belongs on a field in every one of them.
+  - `ref-built-where-it-cannot-be-kept` in `@ramonda/check`, which says the same thing before the line
+    runs — including in a branch nobody has rendered. It follows what a render REACHES, so a helper two
+    files away and a base class's method are covered, and it judges `createRef` by where the binding
+    came from rather than by its name.
+
+  The callback form is untouched and belongs on a field: `createRef<T>((node) => this.arrived(node))`
+  is how `Select` and `TextArea` learn their element has appeared. What must not move is the ref.
+
+### Patch Changes
+
+- dbc9721: **A diagnostic and the page it sends you to cannot drift apart any more.**
+
+  Nothing compared the words a diagnostic PRINTS against the words that document it. Only the code was
+  checked, so a section could go on describing a different fault entirely: `RMD041` drifted until the
+  message blamed a decorator that had been removed while the reference blamed a selector the framework
+  never had — two convincing, incompatible explanations of one code.
+
+  Three surfaces now have to say the same sentence, and it is the shipped `title` they are compared
+  against, because that is the one with a right answer: the words the reader just saw in the console.
+  The advice PROSE is deliberately not compared — a reference page is meant to explain at more length
+  than a console line, so a gate over the paragraphs would be either wrong or ignored.
+
+  - `DiagnosticsRegistry.test.ts` pins core's own `DIAGNOSTICS.md`, both its Codes table and each
+    single-code section heading. The `RMD033–RMD040` section covers eight codes and is exempt; the
+    exemption is a shape rather than a list, so a heading in neither shape is reported instead of
+    quietly escaping.
+  - `apps/docs/scripts/check-api-coverage.mjs` pins the site's `reference/diagnostics.md` headings,
+    reading the registry rather than a second list.
+
+  Measured before writing it: 6 of 52 table rows, 15 of 29 section headings and 9 of 52 site headings
+  described their code in different words. All of them now read as the code reports.
+
+  `RMD009`'s title says `Update loop: a component never stopped re-rendering` — a colon where it had an
+  em dash, so the sentence survives being written as a heading, and so it matches the production
+  counter's own wording in `Task.ts`.
+
+  Named limits: `lens`, `query` and `form` carry no `title` in their spec tables — their message is
+  written at the call site, so one code has several, and there is nothing single to compare a heading
+  against. Their headings are still guarded only by existing.
+
+- 47ba44a: A query's failure is always an `Error`
+
+  `query.error`, `mutation.error` and an `InfiniteQuery`'s were `unknown`, and honestly so: a fetcher
+  is app code and rejects with what it likes. Measured, a rejected string, number or plain object
+  reached `error` exactly as thrown.
+
+  The cost was paid at every call site. The obvious read is `(error as Error).message`, which is
+  `undefined` for three of those four shapes — so the page rendered an **empty** failure in the one
+  place a reader needs words. This repository taught that read in nine places, including the
+  `@catchError` example in `@ramonda/core`'s published types.
+
+  A rejection is now normalised where it is caught: an `Error` is passed through as itself, anything
+  else is wrapped in `new Error(String(thrown), { cause: thrown })`. So `error.message` always says
+  something, `error instanceof YourError` still holds for an error you threw, and what the fetcher
+  actually rejected with is on `cause`.
+
+  **The types follow the value rather than flattering it.** `error` is `Error | undefined` on `Query`,
+  `Mutation` and `InfiniteQuery`; `QueryResult`'s error arm is `Error`; `RetryPolicy`,
+  `RetryDelayPolicy` and a mutation's `onError` all receive an `Error`. Typing them without normalising
+  would have turned a visible cast into an invisible `undefined`.
+
+  **A retry predicate that inspected a thrown non-Error reads `cause` now** — the one thing in here
+  that can need a change. `retry: (n, error) => (error as HttpError).status >= 500` becomes
+  `error instanceof HttpError && error.status >= 500`, which is what the docs now show.
+
+  It also settles a disagreement between the two halves of a page: a failure restored from a server
+  render already arrived as `ServerQueryError`, a real `Error`, while the same failure fetched on the
+  client arrived as whatever was thrown. Identical app code behaved differently depending on whether
+  the page was server-rendered.
+
+- 1c9c9b8: Every example spells a handler the way the framework accepts it
+
+  A host element's event handler is `on` plus the DOM's own event name, lowercase — `onclick`,
+  `oninput`, `onsubmit`. The capitalised form is refused by the types, and the refusal names the
+  spelling to use.
+
+  The prose had not followed. Nine docstrings across four packages wrote the capital, and two of
+  them are strings a developer reads rather than comments: RMD020's fix text, printed whenever a
+  function is built inside `render()`, offered `onClick={this.submit}` as the shape to move to — and
+  a reader who copied it got a compile error from the framework that had just told them what to
+  write. `link-without-a-destination` named the same spelling in the line it prints beside an `<a>`
+  with no `href`.
+
+  Nothing could catch it. A comment is not typechecked, a fix string is not code, and the gate that
+  would have refused the spelling — the documentation's own typecheck — skips a one-line example.
+  `pnpm check:events` closes that: it reads the event names out of TypeScript's `lib.dom.d.ts`, the
+  same declaration the handler types are mapped over, so it cannot fall out of step with what the
+  types accept.
+
+  Two lines that assert RMD020 "names the handler" were passing on the fix text rather than on the
+  name, and had never checked what they claimed. They read the attribute now.
+
+- 5ea8179: Every message names its component, even when the class has no name
+
+  A class expression assigned to nothing has a `constructor` whose `name` is the empty string — a
+  factory that returns a class, an anonymous default export, a class built inline. Read bare and
+  interpolated, that prints a message with no subject.
+
+  Twenty-nine sites did exactly that, across `renderPhase`, `updateRules`, `timerGuard`,
+  `computeChurn`, `renderStability`, `lifecycleMenagement`, `common`, `hydrate`, `Task`, `Component`,
+  `Hook` and `decorators` — so `RMD004`, `RMD015`, `RMD006`, `RMD008`, `RMD009`, `RMD021`, `RMD030`,
+  `RMD055` and the hydration family could each arrive with nothing where the component should be. All
+  of them go through `displayName` now, which answers `"Unknown"` for an empty name and for an
+  instance with no `constructor` at all. `@ramonda/query`'s missing-provider error took the same fix at
+  the one place it is printed.
+
+  **The sweep that was supposed to have done this missed them, and that is why there is now a gate.**
+  The earlier pass fixed the sites carrying an explicit fallback by grepping for `??` and `||`; a site
+  with no fallback matches neither, so twenty-nine survived and one was found by accident three days
+  later while reading an unrelated function. `scripts/check-nameless-class.mjs` greps for the READ
+  instead, and fails on a new one. A read that is COMPARED rather than printed, or already answered by
+  `?? "…"` / `|| "…"`, is not a subject and needs no exception — which leaves the table at one entry.
+
+  Two of the messages are pinned by tests and the rest cannot be, for a reason worth knowing: a class
+  expression with a DECORATED member is named by the transpiler, so anything needing `@state` or
+  `@created` to fire never sees an empty name. The two that need no decorator are the two that THROW.
+
+- d5053c6: A diagnostic about a component whose class has no name now names something
+
+  A class expression assigned to nothing has a `constructor` whose `name` is the empty string, and
+  `displayName` answered that empty string. Its own note said `??` could not become `||` "without
+  changing "" into Unknown" — and never asked whether any caller wanted `""`. None did: every one
+  either interpolates it into a sentence or puts it in a dedup key.
+
+  Measured, on the one code in the family a nameless class can actually reach:
+
+      [RMD060] render() is async
+      < />'s `render()` is async — it returns a promise, not markup.
+
+  A subject that reads as a syntax error rather than a name. It says `<Unknown />` now.
+
+  **The other direction was worse, and it was a lie rather than a gap.** `renderPhase`,
+  `hydrationMismatch`, `jsxRules` and `lintChildren` each distinguish "no component at all" — `outside
+a render`, `root`, `A render`, `the root` — from a component, and `??` handed the nameless one the
+  word for NO component. So a report said the markup belonged to nobody about a component that was
+  right there, and every nameless component shared that group's dedup key: two of them with the same
+  duplicate key reported once between them.
+
+  Also corrected: the devtools panel labelled a nameless component's row and a nameless hook's row
+  with the empty string; `<tag>` in RMD039 was empty when a COMPONENT was the one given `class`; a
+  list's rows reported "Two rows rendered by ."; and `hydration/serialize.ts`'s fallback word was
+  ungrammatical in the case `??` did catch — `holds a object` is now `holds a class instance`.
+
+  Nine mechanisms, each proven by putting the `??` back and watching the suite fail. Three sites are
+  changed for uniformity and say so where they stand rather than looking finished: two cannot be
+  reached at all, and one is a shape I could not construct — the test written for it passed with the
+  operator changed back, so it was deleted rather than kept.
+
+  Found by unioning both coverage runs: three of core's four thinnest files by branch coverage had the
+  same unhit branch, and it was this one.
+
+- b4dbb73: `ramonda-check` reports a lens path that walks through a gap
+
+  Only the LAST hop of a `focusOn` path creates what it names. `focusOn(state).get("profile").set(p)`
+  writes a profile whether or not one was there; `focusOn(state).get("profile").get("name")` has to
+  walk through the profile to reach the name, and if `profile` is `null` there is nothing to walk. The
+  lens says so at runtime — `RML001`, which throws in development — and the new rule
+  `lens-path-through-a-gap` says it before the line runs.
+
+  The pair is the point. A path through a gap is written for the state as you picture it: a profile
+  that is loaded, an address that is filled in. The gap is the case you were not picturing — a fresh
+  account, a failed fetch, a first render — so the throw arrives on somebody else's machine while the
+  rule arrives on the line as you type it. TypeScript does not object either way, and that is not a
+  hole in the types: `keyof (Profile | null)` still offers `name`, so the chain type-checks because
+  the chain is legal. Whether the value is THERE is a question about the value.
+
+  Only a WRITE is reported. A read through a gap is what `value()` and `values()` are for — they
+  answer `undefined` and `[]` by design and raise nothing — so the chain has to end in `set`, `update`,
+  `merge`, `remove`, `and`, `push` or `insert` to be judged at all.
+
+  A guard silences it, because a guard is what makes the write correct:
+
+      if (state.profile) focusOn(state).get("profile").get("name").set("Ada");
+
+  The shapes that count are the ones a guard is actually written in: the `if`, `!== null`, `!= null`,
+  `&&`, a ternary, the early return, `!!`, `Boolean(…)`, a `const` the value was read into, and a
+  longer path through the same hop (`state.profile?.name` can only be truthy if the profile is there).
+  Two boundaries are held deliberately and asserted: a COMPARISON through an optional chain proves
+  nothing, because `undefined !== null` is true when the value is missing, and a `let` can be
+  reassigned between the read and the guard.
+
+  An inverted guard is the fault at its clearest rather than an excuse for it: after
+  `if (state.profile) return;`, in the `else` of a presence check, and inside `if (!state.profile)`,
+  the gap is PROVEN — and each of those is reported.
+
+  The walk carries on PAST a proven hop to whatever gap is deeper. Every one of those mechanisms was
+  shown to fail the suite when broken, which is how three false alarms and four silences were found in
+  the first place.
+
+  It reads DECLARATIONS, not types, because this package may not ask the compiler for one: the root
+  has to resolve to something with a written annotation, each hop's property has to be findable on an
+  interface or type literal, and "may be missing" is the annotation as written. An array index, a
+  computed key, a generic instantiation, an inferred root, or a `focusOn` that is not the lens's — each
+  stops the walk without a word. It fails the run, like every rule here.
+
+  `importedFromCore` became `importedFromPackage` underneath, which is what lets the rule tell the
+  lens's `focusOn` from an app's own function of that name, alias and re-export included.
+
+  Four dead branches are gone, and one of them was hiding a real message
+
+  `@onWindow` and `@onDocument` resolved their target with a `typeof` check, and `Listener`'s `on:
+"window"` did the same. An effect does not run on the server, so nothing could reach the empty side
+  of any of them — and `RMD041`, the diagnostic that reported it, was a section in the reference for a
+  fault the public API cannot produce. All of it is removed: the two resolvers answer the global, the
+  `Listener` hook's two words do too, and a resolver that CAN come up empty is still the hook's
+  `on: () => …`, whose `listen()` returns `false` and hands the caller something to act on.
+
+  `base/Context.ts` looked like a fifth case and was not. Two of its `holder` fallbacks are live, and
+  measuring said so: the RMD056 **throw** survives the production build while the name it prints is
+  DEV-only, so production reads "this component" — and a class expression assigned to nothing has a
+  `constructor.name` of `""`, which `??` does not catch. So `[RMD056]  mounts ThemeProvider twice`
+  went out with no subject and a double space where the subject had been. One helper now answers both
+  absences, every use is `||`, and two suites pin it: an unnamed class in the dev run, and the whole
+  message in the production one — where the context's `label` turns out to be stripped too, so the
+  report reads `Provider` rather than `ThemeProvider`.
+
+- 41cf5e9: Importing `@ramonda/core` in a process with no DOM no longer throws
+
+  `debug/logger.ts` called `window.addEventListener` at MODULE LOAD, inside `if (__DEV__)`, with no
+  check for a DOM. The development build is the `default` export condition and replaces `__DEV__` with
+  `true`, so this:
+
+      import "@ramonda/core";
+
+  threw `ReferenceError: window is not defined` in a bare Node process, before the caller's first line
+  ran. Measured against `dist/index.js` rather than argued from the source.
+
+  Nothing in the repository could see it. Our own SSR installs its DOM shim first, the suites run
+  under jsdom, and the `sideEffects` gate asks a BUNDLER what survives importing each entry — a
+  bundler never evaluates the module. What a user does that we did not: a script, a CLI, a codegen
+  step, a test runner in the node environment, or an app that imports the framework before installing
+  its shim.
+
+  The same check now guards `ramondaLog`'s event dispatch, which is reachable with no DOM for the same
+  reason: a decorator reports at class DEFINITION time, so a Node process that merely imports a
+  component module raises diagnostics without rendering anything. The console line and the log vault
+  are unaffected, so a panel that connects later still gets everything.
+
+  Found from the other side, which is worth recording: `debug/timerGuard.ts` guards the same thing at
+  the same moment and always did. Its guard is unhit in every suite and reads exactly like the dead
+  ones deleted from `Listener` and `@onWindow` — it is the one place that had it right.
+
+  `scripts/check-bare-import.mjs` now imports every published package's development AND production
+  entry in its own Node process, and fails if either throws. `@ramonda/devtools` is listed as
+  browser-only with its reason, and is required to keep failing, so the exception cannot rot into
+  silence.
+
+- b5571db: Two pages said TypeScript refuses a function as a JSX tag. It refuses two thirds of it.
+
+  `JSX.ElementType` is deliberately not declared, so the compiler's default rule applies: a tag has to
+  return one `JSX.Element`. Measured on all three shapes against core's own types:
+
+  | the function returns           | the compiler      |
+  | ------------------------------ | ----------------- |
+  | several nodes — `[<p/>, <p/>]` | refused, `TS2786` |
+  | anything that is not a node    | refused, `TS2786` |
+  | exactly ONE node — `<p/>`      | **accepted**      |
+
+  The accepted one is how a function component gets written out of habit, so the shape most likely to
+  appear was the one nothing typed caught. `RMD011` catches it at runtime and its own page said the
+  compiler had already refused it — which is the sentence that would stop somebody looking.
+
+  Corrected in `reference/diagnostics.md`, in `why/classes.md`, and beside the decision itself in
+  `global.ts`, where the note said the default rule "rejects a function returning an array of vnodes"
+  and left the single-node case unsaid.
+
+- 95b0656: The third `false` a `Listener` promises now has a test
+
+  `listen()` documents three ways it returns `false`: on the server, once the owner is gone, and when
+  the target resolves to nothing. The first two had tests. The third had none, and it is the one a
+  caller most easily meets — `on` is a function, and a function reaching for a ref before the node
+  exists, or for an element a branch has not rendered, answers `null`.
+
+  The test pins both halves of that promise: the return value is `false`, and the refusal is SILENT,
+  because a missing target is a state rather than a fault. It fails if the guard returns `true` instead,
+  and it fails if the refusal throws.
+
+  Found by measuring rather than guessing: `base/Listener.ts` had the weakest branch coverage in the
+  package at 50%, and this was the only unhit branch of the three that can actually be reached.
+
+  A `Portal` target that arrives late is tested too, and the page says what it takes
+
+  The class doc promises that "a `target` absent at mount and supplied later is placed then, not lost",
+  and nothing measured it — the guard that makes it true was the only unhit branch on that path.
+
+  It holds, and the test says what it depends on: the target has to be read from a SIGNAL. `reconcile`
+  runs again on `@watchProp(props.children)`, and `children` only gets a new identity when the props
+  factory re-runs, which it does when a signal it read has moved. A factory that reads none is built
+  once — so `target: document.getElementById("x")!` with nothing reactive around it places nothing and
+  then never tries again.
+
+  The class doc called that "the uncommon case, worth knowing". The portal page, whose own example uses
+  exactly that lookup, did not mention it. It does now, with the shape that recovers.
+
+  The Firefox and Safari stack shape is parsed by something now
+
+  `sourceLocation` reads where a class is defined out of the first construction's stack, so devtools can
+  open your editor on it. Its parser handles two engine shapes and says so in its own note — V8's
+  `at new Foo (file:line:col)` and Firefox/Safari's `Foo@file:line:col`. The tests run on V8, so only the
+  first was ever exercised. The second is not an edge case; it is half the browsers somebody opens
+  devtools in.
+
+  Six more shapes come with it, each one a promise the file already makes: a V8 frame through the same
+  entry point, a frame that names the class but carries no position (skipped rather than reported as
+  `line: NaN` at a file an editor cannot open), a stack that names nothing, no stack at all, an
+  anonymous class, and `definitionOf` asked about something that is not a class.
+
+- 821ac09: `Listener`'s `on` says why it needs `as const`, with both ways out measured
+
+  `this.use(Listener, () => ({ on: "document", … }))` does not compile — an object literal widens
+  `"document"` to `string` — so the call site writes `as const`. Two ways round it were tried on
+  TypeScript 5.9.3 and written down beside the prop, because "worth a fresh look" is how a question
+  gets re-derived every year:
+
+  - **`NoInfer<Q>` on the props factory**, the textbook fix for a parameter inferred from two places,
+    **crashes the compiler**: `Debug Failure. No error for 3 or fewer overload signatures`, thrown
+    from `resolveCall`. Not that it fails to help — tsc does not finish.
+  - **A `const` type parameter** works, and the example compiles with no `as const`. It also keeps
+    every inferred array as a READONLY tuple, and hook props take arrays: six call sites in core's own
+    tests stop compiling, `children: [<Wrap />, <u />]` among them.
+
+  And it is one prop rather than a pattern — `on` is the only hook prop in the framework typed as a
+  string-literal union, so the `as const` is a single line in a single API.
+
+  Comments only; no behaviour and no types changed.
+
+- 76819c8: Three places still argued that a wrapper costs an element. It has not for a while.
+
+  When a component became a range of nodes rather than one element, wrapping stopped adding anything
+  to the page — a component renders exactly what its `render()` returns, so one handing back
+  `this.props.children` contributes no node of its own. The documentation did not follow.
+
+  `composition/inheritance.md` answered _"what do I wrap these in?"_ with **"None — nothing wraps
+  anything"**, which was the old constraint's selling point and is no longer a distinction. It now
+  says both are available, neither adds an element, and the choice is about what you are REUSING:
+  extend when you are building on a component's own markup and behaviour, because `super.render()` is
+  what a wrapper cannot do; wrap when you are adding something around children you do not own,
+  because a wrapper takes anything and a subclass is tied to one parent.
+
+  `why/classes.md` said reuse "does not mean nesting, and nesting costs nothing" — which argues
+  against nesting and then says it is free, in one sentence.
+
+  And a test in core still said Ramonda's units of reuse are "the class and the Hook, neither of
+  which nests". A class nests perfectly well now; what it does not do is leave an element behind.
+  That test's subject — composition inside a `<tr>`, where only `<td>` is legal — is where the claim
+  is settled rather than asserted, so it is worth stating correctly.
+
+  Comments and documentation only.
+
 ## 0.23.1
 
 ### Patch Changes
