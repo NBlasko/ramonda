@@ -12,7 +12,7 @@ This file is the *why*. `PLAN.md` is the *when*.
 
 The style is written beside the markup, in CSS:
 
-```tsx
+```
 <div css=@(
   display: flex;
   flex-direction: column;
@@ -623,7 +623,7 @@ and it is worse than that: TypeScript error-recovers, so the run looks completel
 
 The same component, twice, differing only in where the block sits in the attribute list:
 
-```tsx
+```
 <div onclick={this.go} role="button" tabindex={5} css=@( display: flex; )>   // block last
 <div css=@( display: flex; ) onclick={this.go} role="button" tabindex={5}>   // block first
 ```
@@ -771,7 +771,7 @@ A position map is not enough here, because a formatter rewrites text rather than
 in it. So the block is replaced by something that parses, the file is formatted normally, and the
 block is put back at whatever indentation the formatter chose:
 
-```tsx
+```
 export const Card = (props: { id: string }) => {
 	const accent = "#10b981";
 	return (
@@ -800,6 +800,53 @@ rather than by biome.
 
 That is a smaller price than it first looked, and it is still a price — **a decision to take
 deliberately, not something for the first person who runs the formatter to discover.**
+
+### A third kind of tool, and it fails differently
+
+The parsers either work or stop. There is a third category — **the highlighters** — and it neither
+works nor stops. It renders the code in the wrong colours.
+
+A `.tsx` code fence containing `@( … )` is highlighted by whatever reads the fence: this repository's
+own documentation site, an editor's markdown preview, npm's README rendering, and GitHub's diff view,
+where it is visible in any pull request that touches this file.
+
+**A highlighter never breaks a build.** It is a cosmetic failure — but for a framework whose
+documentation is its shop window, cosmetic is not nothing.
+
+**What is available today, and it costs nothing:** do not label the fence `tsx`. The code is not
+TypeScript, and saying so is honest rather than a workaround. Both this repository's site and GitHub
+fall back to plain text for a language they do not know — `build-content.mjs` does it deliberately,
+with the comment *"A fence language Shiki does not know would throw; fall back to plain text."* Plain
+is better than wrong. **The fences in this document were relabelled for exactly that reason; they had
+been claiming `tsx` for code that is not.**
+
+**What a real answer needs is a TextMate grammar** — which is the same grammar the editor needs, so
+it is not extra work but the same work seen from another side. Whether the documentation site can
+then load it is an implementation question and **not one to take on trust: one attempt at a Shiki
+grammar injection here changed nothing about the output.** It is recorded as untried rather than as
+impossible.
+
+**GitHub and npm cannot be taught at all** without upstreaming a grammar, so a fence there stays
+plain. That is the honest end state, and it is acceptable: plain text in a diff is a small price.
+
+### The docs gate does not fail either — it goes quiet, and that is the third time
+
+Planted into a real documentation page and run:
+
+```
+[examples] 428 code blocks in 115 files type-check and are clean to `ramonda-check`,
+           23 not standalone code and skipped, 20 marked as not one program.
+           skipped apps/docs/content/styling.md:100
+Exit: 0
+```
+
+`check-examples.mjs` cannot tell *"this is pseudo-code"* from *"this is a real example in a syntax I
+cannot parse"*, so it files the block under **not standalone code and skipped** and passes. Every
+documented example of this feature would be unverified, in a repository that has already shipped
+three wrong examples exactly this way.
+
+**So the docs example gate is a sixth consumer of the transform**, alongside the build, `tsc`, the
+editor, `ramonda-check` and the test runner. The same virtual file answers it.
 
 ### The verdict
 

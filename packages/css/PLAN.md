@@ -16,7 +16,7 @@ declarations become a class in a stylesheet and each hole becomes a CSS custom p
 the element. The syntax is not TypeScript, so the package owns a parser and a virtual-file layer —
 the same way JSX is usable because somebody wrote the parser for it.
 
-```tsx
+```
 <div css=@(
   display: flex;
   border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
@@ -65,12 +65,13 @@ the other side.
               A2 virtual     A3 Vite       D  CSS checker    │
                  file         plugin           rules        │
                     │            │                          │
-        ┌───────────┼────┐       ├── E  sheet assembly       │
-        │           │    │       ├── F  esbuild             │
-   G check      H  LS   I  ramonda-check      └── J splitting│
-   command      plugin     (MANDATORY)                       │
-        │                                                    │
-   K  format/lint wrapper                    L  runtime diagnostic ── LAST
+     ┌──────────┬───┴────┐      ├── E  sheet assembly       │
+     │          │        │      ├── F  esbuild              │
+   G check   H  LS   I  ramonda-check        └── J splitting │
+   command   plugin   I2 docs example gate                   │
+     │                   (both MANDATORY)                    │
+   K  format/lint wrapper        M  TextMate grammar          │
+                                 L  runtime diagnostic ── LAST
 ```
 
 **Primary path — the spine, and it is one person's work at a time:**
@@ -213,6 +214,17 @@ a claim about editors rather than about CI.**
 Serve the virtual file as the script snapshot, map back. Completion inside a block then *is*
 object-literal completion. Without this the feature is technically safe and practically unusable.
 
+### I2 — the docs example gate reads through the virtual file too
+
+`scripts/check-examples.mjs` type-checks every code block in the documentation and the READMEs.
+**Measured, planted into a real page: it does not fail — it files the block under "not standalone
+code and skipped" and exits 0.** It cannot tell pseudo-code from a syntax it cannot parse, so every
+documented example of this feature would be unverified, in a repository that has already shipped
+three wrong examples exactly that way.
+
+Same fix, same layer. **This makes the docs gate the sixth consumer of the transform** — after the
+build, `tsc`, the editor, `ramonda-check` and the test runner.
+
 ### I — `ramonda-check` reads through the virtual file. MANDATORY
 
 **Not optional, and it was missing from the first version of this list.** `ramonda-check` builds a
@@ -259,6 +271,21 @@ shape is understood.
 Starting with one sheet is safe because **no syntax, type or compiled value changes when splitting
 lands.**
 
+### M — a TextMate grammar, for every tool that only colours
+
+A third category of tool neither works nor stops: **highlighters render the wrong colours.** A `.tsx`
+fence containing `@( … )` is read by the documentation site, editors' markdown previews, npm's README
+rendering and GitHub's diff view.
+
+**Available today at no cost: do not label the fence `tsx`** — the code is not TypeScript, and both
+this repository's site and GitHub fall back to plain text for a language they do not know. Plain
+beats wrong.
+
+**The real answer is a TextMate grammar, which is the same grammar the editor plugin needs** — one
+piece of work seen from two sides. Whether the site can load it is untried: one Shiki injection
+attempt here changed nothing about the output. **GitHub and npm cannot be taught without upstreaming
+a grammar**, so a fence there stays plain, which is an acceptable end state.
+
 ### L — the runtime diagnostic. Deliberately last
 
 A `css` value reaching the runtime that no transform produced must be reported rather than silently
@@ -295,6 +322,8 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | `biome-ignore` / `oxlint-disable` | useless — read BY the parser, which already failed |
 | lint through the virtual file | real diagnostics, author's lines |
 | format through a placeholder | whole file formatted, block restored |
+| the docs example gate | **skips silently** — "not standalone code", exit 0 |
+| a `tsx` fence containing the syntax | mis-highlighted everywhere; unknown languages fall back to plain |
 
 ## Still open
 
