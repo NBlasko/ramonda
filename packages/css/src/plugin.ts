@@ -181,7 +181,17 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         const at = file.virtualOf(position);
         if (at === undefined) return undefined;
 
-        const got = service.getQuickInfoAtPosition(fileName, at);
+        /**
+         * Asked again at the DECLARATION when the caret's own position has nothing to say.
+         *
+         * A value and a selector both become string literals, and TypeScript answers nothing about a
+         * position inside one — measured, hover over `column;` and over `&:hover` came back empty.
+         * The declaration is what a reader was asking about anyway: hovering a value shows the
+         * property it belongs to, its grammar and its initial value.
+         */
+        const got =
+          service.getQuickInfoAtPosition(fileName, at) ?? quickInfoAt(service, fileName, file.declarationOf(position));
+
         return got === undefined ? undefined : { ...got, textSpan: back(file, got.textSpan) ?? got.textSpan };
       };
 
@@ -194,7 +204,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          * build refuses a hole written where a custom property cannot go, and here it is a squiggle
          * under the character, while it is being typed.
          */
-        return [...cssFor(fileName), ...mapped(file, service.getSemanticDiagnostics(fileName))];
+        const ours = cssFor(fileName);
+        return [...ours, ...withoutRepeats(ours, mapped(file, service.getSemanticDiagnostics(fileName)))];
       };
 
       /**
@@ -234,6 +245,32 @@ function ours(findings: readonly Finding[], file: ts.SourceFile | undefined): ts
     code: 0,
     messageText: `[${finding.rule}] ${finding.message}`,
   }));
+}
+
+/**
+ * The compiler's diagnostics, minus the ones a rule of ours already said better.
+ *
+ * `TS2353` is *"does not exist in type"*, which is exactly what `unknown-property` says — and the
+ * rule says it with the near miss the compiler cannot offer, because a QUOTED object key gets none.
+ * `ramonda-css` has dropped the duplicate since it was written; measured through a real `tsserver`,
+ * the editor was still showing both, so one fault read as two.
+ *
+ * Matched on POSITION, the way the command does it: the same fault at the same character is the same
+ * fault, and a `TS2353` about a nested rule's key is at a position no property rule names.
+ */
+function withoutRepeats(ours: readonly ts.Diagnostic[], theirs: readonly ts.Diagnostic[]): ts.Diagnostic[] {
+  const said = new Set(
+    ours
+      .filter((diagnostic) => String(diagnostic.messageText).startsWith("[unknown-property]"))
+      .map((diagnostic) => diagnostic.start),
+  );
+
+  return theirs.filter((diagnostic) => !(diagnostic.code === 2353 && said.has(diagnostic.start)));
+}
+
+/** Quick info at a position, or nothing when there is no position to ask about. */
+function quickInfoAt(service: ts.LanguageService, fileName: string, at: number | undefined) {
+  return at === undefined ? undefined : service.getQuickInfoAtPosition(fileName, at);
 }
 
 /** Where the block shape lives, so a project can point it at a fixture or at a wrapper's own. */

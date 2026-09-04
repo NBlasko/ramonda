@@ -229,6 +229,20 @@ describe("the CSS rules, as squiggles", () => {
     expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("hole-out-of-place");
   });
 
+  /**
+   * One fault, one squiggle. `TS2353` says the same thing the rule does and without the suggestion,
+   * because a quoted object key gets none — measured through a real `tsserver`, the editor was
+   * showing both while `ramonda-css` had been dropping the duplicate since it was written.
+   */
+  test("the compiler's word is dropped where a rule of ours said it better", () => {
+    const marked = `const a = (\n  <div css=@(\n    flex-dirction: row;\n  )>x</div>\n);\n`;
+    const { service } = editor(marked);
+
+    const found = service.getSemanticDiagnostics(FILE);
+    expect(found).toHaveLength(1);
+    expect(ts.flattenDiagnosticMessageText(found[0].messageText, " ")).toContain("flex-direction");
+  });
+
   test("a property typo the types cannot suggest gets the rule's suggestion", () => {
     const marked = `const a = (\n  <div css=@(\n    flex-dirction: row;\n  )>x</div>\n);\n`;
     const { service, source } = editor(marked);
@@ -271,6 +285,31 @@ describe("hover", () => {
     const info = service.getQuickInfoAtPosition(FILE, caret);
     expect(info).toBeDefined();
     expect(ts.displayPartsToString(info?.displayParts ?? [])).toContain("string");
+  });
+
+  /**
+   * A value is a string literal in the virtual file, and TypeScript answers nothing about a position
+   * inside one — measured through a real `tsserver`, this came back empty. The question is asked
+   * again at the declaration, which is what a reader wanted: the property, its grammar, its initial
+   * value, and a link to the page that documents it.
+   */
+  test("over a value, it is the property that value belongs to", () => {
+    const marked = `const a = <div css=@( flex-direction: col${CARET}umn; )>x</div>;\n`;
+    const { service, caret } = editor(marked);
+
+    const info = service.getQuickInfoAtPosition(FILE, caret);
+    expect(ts.displayPartsToString(info?.displayParts ?? [])).toContain("flex-direction");
+    // The documentation the generated map carries — the grammar, out of MDN's own data.
+    expect(ts.displayPartsToString(info?.documentation ?? [])).toContain("row-reverse");
+  });
+
+  test("over a property name, it is that property with what it accepts", () => {
+    const marked = `const a = <div css=@( flex-dir${CARET}ection: column; )>x</div>;\n`;
+    const { service, caret } = editor(marked);
+
+    const info = service.getQuickInfoAtPosition(FILE, caret);
+    expect(ts.displayPartsToString(info?.displayParts ?? [])).toContain("flex-direction");
+    expect(ts.displayPartsToString(info?.documentation ?? [])).toContain("Inherited");
   });
 
   test("and a file with no block falls through", () => {

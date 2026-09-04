@@ -191,6 +191,29 @@ function scan(name) {
  * costs nothing that matters: a key not starting with `-` still has to be a real property, so
  * `dsiplay` is still an excess property with a suggestion beside it.
  */
+/**
+ * What a person wants when they hover a property, out of the same data the types come from.
+ *
+ * TypeScript shows a property's JSDoc in quick info by itself, so this costs the plugin nothing: the
+ * type map carries it, and every editor that reads a `.d.ts` gets it. Four facts and a link, because
+ * mdn-data carries no prose and inventing some would be worse than pointing at the page that has it.
+ *
+ * The grammar is the useful line — `row | row-reverse | column | column-reverse` says more in one
+ * line than a paragraph would, and for a property with an OPEN grammar it is the only thing that
+ * says what is allowed at all, since the type there is `string | number`.
+ */
+function documentation(name) {
+  const property = properties[name];
+  const initial = Array.isArray(property.initial) ? property.initial.join(", ") : property.initial;
+
+  const lines = [`\`${name}\` — \`${String(property.syntax).replace(/\*\//g, "*\\/")}\``];
+  if (initial !== undefined) lines.push(`Initial: \`${initial}\`. Inherited: ${property.inherited ? "yes" : "no"}.`);
+  if (property.status !== "standard") lines.push(`Status: ${property.status}.`);
+  if (property.mdn_url !== undefined) lines.push(`@see ${property.mdn_url}`);
+
+  return [`  /**`, ...lines.map((line) => `   * ${line}`), `   */`].join("\n");
+}
+
 const named = Object.keys(properties)
   .filter((name) => !name.startsWith("-"))
   .sort();
@@ -204,7 +227,7 @@ for (const name of named) {
   const keywords = keywordsOf(properties[name].syntax);
   const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
   const type = keywords === undefined ? "CssValue" : `Keyword<${keywords.map((k) => JSON.stringify(k)).join(" | ")}>`;
-  rows.push(`  ${key}: ${type};`);
+  rows.push(`${documentation(name)}\n  ${key}: ${type};`);
 
   if (keywords !== undefined) {
     // The types already report a bad value here, with a suggestion. The checker must not say it

@@ -206,6 +206,58 @@ describe("line for line", () => {
   });
 });
 
+describe("the declaration a caret is in", () => {
+  /**
+   * A value and a selector both become string literals, and TypeScript answers nothing about a
+   * position inside one — measured through a real `tsserver`, hover over `column;` came back empty.
+   * So a question that lands nowhere is asked again at the declaration, which is what a reader was
+   * asking about anyway.
+   */
+  const source = `const a = <div css=@(\n  flex-direction: column;\n  &:hover { color: red; }\n)>x</div>;\n`;
+  const file = build(source);
+  if (file === undefined) throw new Error("the virtual file found no block");
+
+  const at = (needle: string) => file.declarationOf(source.indexOf(needle));
+
+  /**
+   * INSIDE the key, not at its start — the same rule `virtualOf` follows, and for the same measured
+   * reason: TypeScript answers about a position within a token, and a caret at the very edge of one
+   * gets nothing useful. A bare key and a quoted key therefore land differently by one character,
+   * which is why this asks about containment rather than counting.
+   */
+  const keyAt = (offset: number | undefined) => {
+    const line = file.code.slice(0, offset).split("\n").pop() ?? "";
+    const rest = file.code.slice(offset);
+    return `${/[\w"&:.-]*$/.exec(line)?.[0] ?? ""}${/^[\w"&:.\- ]*/.exec(rest)?.[0] ?? ""}`;
+  };
+
+  test("a caret in a value finds the property it belongs to", () => {
+    expect(keyAt(at("column;"))).toContain("flex-direction");
+  });
+
+  test("a caret on the property itself finds the same thing", () => {
+    expect(at("flex-direction")).toBe(at("column;"));
+  });
+
+  test("a caret in a nested rule's selector finds that rule", () => {
+    expect(keyAt(at("&:hover"))).toContain("&:hover");
+  });
+
+  /**
+   * Innermost first: a declaration inside a nested rule is inside that rule's extent too, and the
+   * narrower answer is the one a reader meant.
+   */
+  test("a caret inside a nested rule's declaration finds the declaration, not the rule", () => {
+    const found = keyAt(at("red;"));
+    expect(found).toContain("color");
+    expect(found).not.toContain("&:hover");
+  });
+
+  test("and a caret outside every block finds nothing", () => {
+    expect(file.declarationOf(source.indexOf("const a"))).toBeUndefined();
+  });
+});
+
 describe("the way home", () => {
   const source = `const accent = 1;\nconst a = <div css=@( display: flex; color: {{accent}}; )>x</div>;\n`;
   const file = build(source);

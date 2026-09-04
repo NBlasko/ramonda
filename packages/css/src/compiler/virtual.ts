@@ -101,6 +101,15 @@ export interface VirtualFile {
    */
   homeOf(offset: number): number | undefined;
   /**
+   * Where the DECLARATION holding an author offset begins, in virtual coordinates.
+   *
+   * A caret inside a value or a selector maps into a string literal, and TypeScript has nothing to
+   * say about a position inside one — measured, hover over `column;` and over `&:hover` both came
+   * back empty. The declaration is what a reader was asking about anyway, so a question that lands
+   * nowhere is asked again here.
+   */
+  declarationOf(offset: number): number | undefined;
+  /**
    * The virtual offset for an author offset — the other direction, and the one an editor needs.
    *
    * A caret is in the author's file and every question about it has to be asked of the virtual one.
@@ -190,6 +199,13 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 
   /** Each block's interior, and where a caret inside it goes when no item claims it. */
   const slots: { from: number; to: number; at: number }[] = [];
+  /**
+   * Each declaration's extent in the author's file, and where its KEY is in the virtual one.
+   *
+   * For a caret that lands somewhere TypeScript will not answer about — inside a value's string
+   * literal, inside a selector — so the question can be asked of the declaration instead.
+   */
+  const heads: { from: number; to: number; at: number }[] = [];
 
   let cursor = 0;
   for (const site of sites) {
@@ -252,6 +268,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     homeOf: (offset) => homeOf(segments, offset),
     spanOf: (start, length) => spanOf(segments, start, length),
     virtualOf: (offset) => virtualOf(bySource, offset) ?? slotFor(slots, offset),
+    declarationOf: (offset) => declarationOf(heads, offset),
   };
 
   /**
@@ -268,11 +285,15 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       keepLine(item.at);
       write("{");
       if (item.kind === "rule") {
+        if (item.at !== undefined) {
+          heads.push({ from: item.at, to: item.preludeEnd ?? item.at, at: code.length + 1 });
+        }
         derived(quoted(item.prelude), item.at, (item.preludeEnd ?? item.at ?? 0) - (item.at ?? 0));
         write(":[");
         items(item.items, holes, keepLine);
         write("]");
       } else {
+        if (item.at !== undefined) heads.push({ from: item.at, to: item.end ?? item.at, at: code.length + 1 });
         derived(key(propertyName(item.property)), item.at, item.property.length);
         write(":");
         value(item.value, item.valueAt, item.end, holes);
@@ -422,6 +443,23 @@ function containing(segments: readonly Segment[], offset: number): Segment | und
     else return segment;
   }
   return undefined;
+}
+
+/**
+ * The key of whichever declaration the offset falls in.
+ *
+ * Innermost first — a declaration inside a nested rule is inside that rule's extent too, and the
+ * narrower answer is the one a reader meant.
+ */
+function declarationOf(heads: readonly { from: number; to: number; at: number }[], offset: number): number | undefined {
+  let best: { from: number; to: number; at: number } | undefined;
+
+  for (const head of heads) {
+    if (offset < head.from || offset > head.to) continue;
+    if (best === undefined || head.to - head.from < best.to - best.from) best = head;
+  }
+
+  return best?.at;
 }
 
 /** The empty slot of whichever block the offset is inside, for a caret that has typed nothing. */
