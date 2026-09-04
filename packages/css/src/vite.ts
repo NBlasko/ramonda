@@ -67,7 +67,11 @@ export interface CssPluginLike {
   resolveId(this: unknown, id: string): string | null;
   load(this: unknown, id: string): string | null;
   transform(this: unknown, code: string, id: string): { code: string; map: SourceMap } | null;
+  generateBundle(this: unknown, options: unknown, bundle: Bundle): void;
 }
+
+/** What a bundler hands back at the end of a build. Only what this reads is declared. */
+export type Bundle = Record<string, { type?: string; fileName?: string; source?: unknown }>;
 
 /** The bits of Vite's plugin context this reaches for, all optional. */
 interface PluginContext {
@@ -183,6 +187,32 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       const code2 = own === "" ? result.code : `${result.code}\nimport ${JSON.stringify(file + SUFFIX)};\n`;
 
       return { code: code2, map: result.map };
+    },
+
+    /**
+     * What came back from post-processing, checked against what the sheet promised.
+     *
+     * The failure this catches is invisible by construction: the class name is written into the
+     * emitted JavaScript, so a minifier that renames or drops a rule ships a page pointing at a class
+     * that is not in the stylesheet. Nothing throws, the page renders unstyled, and there is nothing
+     * to blame it on. Merging is allowed and keeps the name — `.a,.r-… { … }` — so the question is
+     * only whether the name survived, which is what a rename or a drop destroys and nothing else does.
+     *
+     * **Every CSS asset at once, and none is not a failure.** A rule may land in any chunk, so the
+     * check is against the concatenation. And a build that emitted no stylesheet at all is not
+     * evidence of anything — an SSR build is the ordinary case, where the client build is what writes
+     * the CSS — so there is nothing to check rather than everything to report.
+     */
+    generateBundle(_options, bundle) {
+      const sheets = Object.values(bundle).filter(
+        (output) => output.type === "asset" && typeof output.source === "string" && output.fileName?.endsWith(".css"),
+      );
+      if (sheets.length === 0) return;
+
+      sheet.verify(
+        sheets.map((output) => output.source as string).join("\n"),
+        sheets.map((output) => output.fileName).join(", "),
+      );
     },
   };
 }

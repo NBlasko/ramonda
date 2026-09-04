@@ -292,3 +292,77 @@ describe("what an app has to write", () => {
     expect(transform.call({}, STYLED, "/src/Card.tsx")?.code).toContain("?ramonda-css.css");
   });
 });
+
+/**
+ * What came back from post-processing, checked against what the sheet promised.
+ *
+ * ## The fault this exists for
+ *
+ * `Sheet.verify` was written, tested, and **nothing called it** — a safety net that looks like it is
+ * there and is not, which is worse than none. This is the hook that runs it.
+ *
+ * What it guards is invisible by construction: the class name is written into the emitted
+ * JavaScript, so a minifier that renames or drops a rule ships a page pointing at a class that is not
+ * in the stylesheet. Nothing throws. The page renders, unstyled, with nothing to blame.
+ */
+describe("the assembled stylesheet", () => {
+  const SOURCE = `const a = <div css=@( color: {{c}}; )>x</div>;\n`;
+
+  /** The plugin after one file has been through it, and the CSS it produced. */
+  const built = () => {
+    const plugin = ramondaCss();
+    plugin.transform.call({}, SOURCE, "/src/Card.tsx");
+    return { plugin, css: plugin.load.call({}, "/src/Card.tsx?ramonda-css.css") ?? "" };
+  };
+
+  const bundleOf = (css: string) => ({
+    "assets/index.css": { type: "asset", fileName: "assets/index.css", source: css },
+  });
+
+  test("passes when the CSS that came back still names everything", () => {
+    const { plugin, css } = built();
+
+    expect(() => plugin.generateBundle?.call({}, {}, bundleOf(css))).not.toThrow();
+  });
+
+  /**
+   * The one that matters, and it is measured against a REAL minifier rather than a hand-written
+   * imitation of one: a check that cried wolf on ordinary minification would be turned off within a
+   * day, which is the same as not having it.
+   */
+  test("and when a real minifier has been over it", async () => {
+    const { plugin, css } = built();
+    const esbuild = await import("esbuild");
+    const minified = (await esbuild.transform(css, { loader: "css", minify: true })).code;
+
+    expect(minified.length).toBeLessThan(css.length);
+    expect(() => plugin.generateBundle?.call({}, {}, bundleOf(minified))).not.toThrow();
+  });
+
+  test("refuses when a class was renamed", () => {
+    const { plugin, css } = built();
+    const renamed = css.replace(/\.r-[0-9a-f]+/g, ".a1");
+
+    expect(() => plugin.generateBundle?.call({}, {}, bundleOf(renamed))).toThrow(/renamed or removed/);
+  });
+
+  test("refuses when a custom property the markup carries was dropped", () => {
+    const { plugin, css } = built();
+    const dropped = css.replace(/var\([^)]+\)/g, "red");
+
+    expect(() => plugin.generateBundle?.call({}, {}, bundleOf(dropped))).toThrow(/var\(/);
+  });
+
+  /**
+   * A build that emits no CSS asset at all is not evidence of anything. An SSR build is the ordinary
+   * case — the client build is where the stylesheet is written — and reporting every rule missing
+   * there would be a false alarm on every server build in the repository.
+   */
+  test("says nothing when the build emitted no stylesheet to check", () => {
+    const { plugin } = built();
+
+    expect(() =>
+      plugin.generateBundle?.call({}, {}, { "index.js": { type: "chunk", fileName: "index.js" } }),
+    ).not.toThrow();
+  });
+});

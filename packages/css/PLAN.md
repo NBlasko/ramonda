@@ -803,6 +803,24 @@ wrong the moment the printer moves the block — measured, every format pushed i
 The block's inside is not re-laid: that is `ramonda-css format`'s business, not a JavaScript
 printer's. The test that matters is that formatting twice changes nothing the second time.
 
+### P — the check that was written and never called
+
+`Sheet.verify` existed, was tested, and **nothing in the pipeline called it**. A safety net that looks
+like it is there and is not is worse than none, and this one guards a failure that is invisible by
+construction: the class name is written into the emitted JavaScript, so a minifier that renames or
+drops a rule ships a page pointing at a class the stylesheet does not have. Nothing throws. The page
+renders, unstyled, with nothing to blame.
+
+It runs in `generateBundle` now, over the concatenation of every CSS asset — a rule may land in any
+chunk. **A build with no CSS asset is not a failure**: an SSR build is the ordinary case, where the
+client build is what writes the stylesheet, so there is nothing to check rather than everything to
+report.
+
+**Measured against a real minifier rather than an imitation of one**, because a check that cried wolf
+on ordinary minification would be turned off within a day. esbuild's CSS minifier over a real sheet:
+smaller, and every class and `var()` still named. And on a real `vite build` of `playground-core` the
+hook runs and passes, with the same class in both the stylesheet and the JavaScript.
+
 ### L — the runtime diagnostic. Deliberately last
 
 A `css` value reaching the runtime that no transform produced must be reported rather than silently
