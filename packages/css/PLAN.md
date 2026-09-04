@@ -728,6 +728,14 @@ question anyone asks. Measured, the whole position surface was wrong at once: fo
 sliced nothing, an outline listing `__block` beside the author's own names, go-to-definition landing
 on the empty string, a document highlight covering half the file.
 
+**And mapping them was not enough — inside a block they had to be DROPPED.** Reported from a real
+editor: `display` came out white and `flex-direction` blue, in the same block, and the two have
+identical TextMate scopes. The difference was the semantic layer. `display` is a bare key in the
+virtual file and gets a token; `flex-direction` has to be quoted and gets none — so a CSS property
+was painted as a TypeScript property, at random, and a value was painted or not depending on its
+spelling. **Inside a block the grammar is the authority**, and the exception is the hole, which
+really is TypeScript: `this.weight` inside one reads the way it reads anywhere else.
+
 Now mapped: semantic classifications, outlining, both outlines, definition / type definition /
 implementation, references, the bound span, document highlights, signature help. **Mapped by FILE
 NAME**, not across the board — an entry in another file already holds the position it should.

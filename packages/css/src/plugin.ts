@@ -1,5 +1,5 @@
 import type ts from "typescript";
-import { readBlock } from "./compiler/read";
+import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
@@ -73,7 +73,14 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        */
       const cache = new Map<
         string,
-        { version: string; file: VirtualFile | undefined; css: Finding[]; author: ts.SourceFile | undefined }
+        {
+          version: string;
+          file: VirtualFile | undefined;
+          css: Finding[];
+          author: ts.SourceFile | undefined;
+          /** Where the CSS is and where the holes are — read once per version, asked on every paint. */
+          where: { blocks: Span[]; holes: Span[] };
+        }
       >();
 
       /** The host's own reader, kept before it is replaced — or the overlay would ask itself. */
@@ -115,7 +122,13 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
             ? undefined
             : tsModule.createSourceFile(fileName, text, tsModule.ScriptTarget.Latest, true, tsModule.ScriptKind.TSX);
 
-        cache.set(fileName, { version, file, author, css: text === undefined ? [] : cssFindings(text) });
+        cache.set(fileName, {
+          version,
+          file,
+          author,
+          css: text === undefined ? [] : cssFindings(text),
+          where: regions(text ?? ""),
+        });
         return file;
       };
 
@@ -238,7 +251,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         if (file === undefined) return service.getEncodedSemanticClassifications(fileName, span, format);
 
         const got = service.getEncodedSemanticClassifications(fileName, { start: 0, length: file.code.length }, format);
-        return { ...got, spans: home(file, got.spans, span) };
+        return { ...got, spans: home(file, got.spans, span, cache.get(fileName)?.where ?? { blocks: [], holes: [] }) };
       };
 
       /** Folding, and the outline that feeds the breadcrumbs — both are spans and both were wrong. */
@@ -460,6 +473,30 @@ function cssFindings(text: string): Finding[] {
   return out;
 }
 
+/**
+ * Where a block runs in the author's file, and where its holes run inside it.
+ *
+ * Both are needed to answer one question — is this position the grammar's or TypeScript's? — and
+ * the hole is why the block's own range is not enough: a hole IS TypeScript, and `this.weight`
+ * inside one has to read the way it reads anywhere else.
+ */
+function regions(text: string): { blocks: Span[]; holes: Span[] } {
+  const blocks: Span[] = [];
+  const holes: Span[] = [];
+  for (const site of findBlocks(text)) {
+    const read = readBlock(text, site.open, "", { tolerant: true });
+    blocks.push({ start: site.open, end: read.end });
+    holes.push(...read.holes);
+  }
+  return { blocks, holes };
+}
+
+/** True when the position belongs to the CSS itself — inside a block, outside every hole. */
+function isCss({ blocks, holes }: { blocks: readonly Span[]; holes: readonly Span[] }, at: number): boolean {
+  const inBlock = blocks.some((span) => span.start <= at && at < span.end);
+  return inBlock && !holes.some((span) => span.start <= at && at < span.end);
+}
+
 /** A span in virtual coordinates, in the author's — or nothing, when it names text they never wrote. */
 function back(file: VirtualFile, span: ts.TextSpan | undefined): ts.TextSpan | undefined {
   return span === undefined ? undefined : file.spanOf(span.start, span.length);
@@ -527,12 +564,24 @@ function elsewhere<T extends { fileName: string; textSpan: ts.TextSpan; contextS
  * colour on `__block` would be a colour on a character the author never wrote. What survives is cut
  * to the range the editor asked about, which is usually the part of the file it can see.
  */
-function home(file: VirtualFile, spans: readonly number[], asked: ts.TextSpan): number[] {
+function home(
+  file: VirtualFile,
+  spans: readonly number[],
+  asked: ts.TextSpan,
+  where: { blocks: readonly Span[]; holes: readonly Span[] },
+): number[] {
   const out: number[] = [];
   for (let i = 0; i + 2 < spans.length; i += 3) {
     const span = file.spanOf(spans[i], spans[i + 1]);
     if (span === undefined) continue;
     if (span.start + span.length <= asked.start || span.start >= asked.start + asked.length) continue;
+    /**
+     * Inside a block the grammar is the authority, and TypeScript's opinion is not redundant but
+     * wrong. Measured in a real editor: `display` came out white and `flex-direction` blue in the
+     * same block, because one is a bare key in the virtual file and gets a token while the other has
+     * to be quoted and gets none. A CSS property painted as a TypeScript property, at random.
+     */
+    if (isCss(where, span.start)) continue;
     out.push(span.start, span.length, spans[i + 2]);
   }
   return out;

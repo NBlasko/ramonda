@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHighlighter, type LanguageRegistration } from "shiki";
+import { findBlocks } from "../compiler/scan";
 import { beforeAll, describe, expect, test } from "vitest";
 
 /**
@@ -149,6 +150,24 @@ describe("shapes a first sample did not have", () => {
 
     expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  /**
+   * Two things have to agree on what a block IS, and the compiler is the one that decides: its
+   * scanner requires whitespace before the name, so `` `css=@( `` in prose is not a block to it. The
+   * grammar says the same now, which is a second line of defence for the case above — the selector
+   * keeps it out of JSX text, and this keeps it out of anywhere else the same shape can be written.
+   */
+  test("the compiler and the grammar agree on what is not a block", () => {
+    const prose = `const a = <p>a \`css=@( … )\` block</p>;\n`;
+
+    expect(findBlocks(prose)).toHaveLength(0);
+    expect(scopesOf(prose).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+
+    // And on what is: the same shape, written where a block really goes.
+    const real = `const a = <div css=@( color: red; )>y</div>;\n`;
+    expect(findBlocks(real)).toHaveLength(1);
+    expect(scopeOf(real, "@(")).toBe("punctuation.section.embedded.begin.ramonda");
   });
 
   /**

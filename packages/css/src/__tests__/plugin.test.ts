@@ -408,6 +408,29 @@ export default [before, a, after];
     expect(spansOf(service, source)).toContainEqual({ text: "before", at: source.indexOf("before") });
   });
 
+  /**
+   * Inside a block the GRAMMAR is the authority, and TypeScript's opinion is not just redundant, it
+   * is wrong. Measured in a real editor: `display` came out white and `flex-direction` blue, in the
+   * same block, and the two have identical TextMate scopes. The difference was the semantic layer —
+   * `display` is a bare key in the virtual file and gets a token, `flex-direction` has to be quoted
+   * and gets none — so a CSS property was painted as a TypeScript property, at random.
+   *
+   * A hole is the exception, and it has to be: it really is TypeScript, and `this.weight` inside one
+   * should read as `this.weight` reads anywhere else.
+   */
+  test("no semantic token paints the CSS, and a hole still gets one", () => {
+    const marked = `const accent = "red";\nconst a = <div css=@( display: flex; color: {{accent}}; )>x</div>;\nexport default [a, accent];\n`;
+    const { service, source } = editor(marked);
+    const covers = (what: string) => {
+      const at = source.indexOf(what, source.indexOf("css=@("));
+      return spansOf(service, source).some((span) => span.at <= at && at < span.at + span.text.length);
+    };
+
+    expect(covers("display")).toBe(false);
+    expect(covers("flex")).toBe(false);
+    expect(covers("accent")).toBe(true);
+  });
+
   /** The sweeping version: a semantic token is an identifier, so every span has to slice out one. */
   test("every span slices an identifier out of the author's own text", () => {
     const { service, source } = editor(CODE);
