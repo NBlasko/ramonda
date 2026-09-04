@@ -26,6 +26,11 @@ A fifth was written and then removed rather than kept: that no two nodes share a
 taken out of the export, nine fixtures produce zero duplicates between them — so the assertion could
 not fail. The dedupe is defensive for a shape none of them reach, and its own comment names it.
 
-The one code change is a deletion: a comment left behind in `buildGraph`, which turns out never to
+One dead name goes too, the last live one item 82 named: `core-import.ts` explained the
+namespace-access mechanism with `@core.Host`, a decorator the framework no longer has. The mechanism
+is the same for `@core.StableProps`, which it has — and the measurement that produced the comment is
+kept, marked as having been taken on the decorator since removed.
+
+The other code change is a deletion: a comment left behind in `buildGraph`, which turns out never to
 read `reached` at all — so the closure that used to sit there was mutating shared state its own
 function had no use for.

@@ -81,9 +81,10 @@ export function coreExportName(
    *
    * The whole point of this function is that identity is the name the MODULE gave a binding, and a
    * namespace access is the one spelling where that name is written down verbatim at the call site.
-   * Reading only an identifier meant `@core.Host` was invisible to `duplicate-decorators` and
+   * Reading only an identifier meant `@core.StableProps` was invisible to `duplicate-decorators` and
    * `@core.state` to `decorator-that-adds-nothing` — measured on a plant, both silent on the
-   * identical fault their aliased form was reported for.
+   * identical fault their aliased form was reported for. (The measurement was taken on `@core.Host`,
+   * which the framework no longer has; the spelling is what mattered, not the decorator.)
    *
    * Fixed HERE rather than in each caller, because it had already been patched inline in
    * `lifecycle-env` an hour earlier and a third caller would have needed it next.
