@@ -1,0 +1,31 @@
+{
+  "scopeName": "ramonda.css-hole",
+  "injectionSelector": "L:meta.embedded.block.css",
+  "patterns": [
+    {
+      "include": "#hole"
+    }
+  ],
+  "repository": {
+    "hole": {
+      "begin": "(\\{\\{)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        }
+      },
+      "end": "(\\}\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.end.ramonda"
+        }
+      },
+      "contentName": "meta.embedded.expression.tsx",
+      "patterns": [
+        {
+          "include": "source.tsx"
+        }
+      ]
+    }
+  }
+}

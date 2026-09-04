@@ -1,0 +1,46 @@
+{
+  "name": "ramonda-css-vscode",
+  "displayName": "Ramonda CSS blocks",
+  "description": "Syntax colours for `css=@( … )` style blocks. The rest — completion, hover, diagnostics — comes from @ramonda/css/plugin, which a project adds to its tsconfig.",
+  "version": "0.0.0",
+  "private": true,
+  "publisher": "ramonda",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "grammars": [
+      {
+        "scopeName": "ramonda.css-block",
+        "path": "./grammar/ramonda-css.tmLanguage.json",
+        "injectTo": [
+          "source.ts",
+          "source.tsx",
+          "source.js",
+          "source.js.jsx"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.css": "css"
+        }
+      },
+      {
+        "scopeName": "ramonda.css-hole",
+        "path": "./grammar/ramonda-css-hole.tmLanguage.json",
+        "injectTo": [
+          "source.ts",
+          "source.tsx",
+          "source.js",
+          "source.js.jsx",
+          "source.css"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.expression.tsx": "typescriptreact"
+        }
+      }
+    ]
+  }
+}

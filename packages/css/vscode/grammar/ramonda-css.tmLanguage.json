@@ -1,0 +1,37 @@
+{
+  "scopeName": "ramonda.css-block",
+  "injectionSelector": "L:meta.tag.tsx, L:meta.tag.js, L:meta.tag.ts, L:meta.tag.jsx",
+  "patterns": [
+    {
+      "include": "#block"
+    }
+  ],
+  "repository": {
+    "block": {
+      "begin": "([\\w:$-]+)\\s*(=)\\s*(@\\()",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.other.attribute-name"
+        },
+        "2": {
+          "name": "keyword.operator.assignment"
+        },
+        "3": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        }
+      },
+      "end": "(\\))(?=\\s*[>/])",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.end.ramonda"
+        }
+      },
+      "contentName": "meta.embedded.block.css",
+      "patterns": [
+        {
+          "include": "source.css#rule-list-innards"
+        }
+      ]
+    }
+  }
+}

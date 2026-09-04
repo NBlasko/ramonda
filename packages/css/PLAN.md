@@ -647,20 +647,41 @@ shape is understood.
 Starting with one sheet is safe because **no syntax, type or compiled value changes when splitting
 lands.**
 
-### M — a TextMate grammar, for every tool that only colours
+### M — a TextMate grammar, for every tool that only colours — DONE
 
-A third category of tool neither works nor stops: **highlighters render the wrong colours.** A `.tsx`
-fence containing `@( … )` is read by the documentation site, editors' markdown previews, npm's README
-rendering and GitHub's diff view.
+A third category of tool neither works nor stops: **highlighters render the wrong colours.** Measured
+on the tsx grammar alone, every token of a block came back with the theme's INVALID colour — and so
+did every line BELOW it, to the end of the file. A block on line 243 made `const after = 1;` on line
+259 look broken.
 
-**Available today at no cost: do not label the fence `tsx`** — the code is not TypeScript, and both
-this repository's site and GitHub fall back to plain text for a language they do not know. Plain
-beats wrong.
+**Two injections, in `packages/css/vscode/grammar/`.** One is aimed at a JSX tag and scopes
+`name=@( … )` as embedded CSS; the other is aimed at the CSS a block scopes, and gives `{{ … }}` back
+to TypeScript. **The hole has to be a SEPARATE injection**, because `{{` in ordinary JSX is
+`style={{…}}` — a pattern in the tag-level grammar would colour every inline style object as CSS.
 
-**The real answer is a TextMate grammar, which is the same grammar the editor plugin needs** — one
-piece of work seen from two sides. Whether the site can load it is untried: one Shiki injection
-attempt here changed nothing about the output. **GitHub and npm cannot be taught without upstreaming
-a grammar**, so a fence there stays plain, which is an acceptable end state.
+**A grammar does not have to be judged by screenshot.** It is a function from text to scopes, and
+shiki carries the same engine an editor does, so every claim is a test —
+`src/__tests__/grammar.test.ts` asserts the scope of the opening, the property, the value, the hole,
+the close, and that everything below a block is ordinary TSX again.
+
+**The trap that cost three wrong readings:** `codeToTokensBase` merges adjacent tokens that share a
+colour, and reading `explanation[0]` of a merged run reports one scope for all of them. The grammar
+was working while I read it as broken, twice. Every explanation has to be walked.
+
+**The site loads it** — the earlier note that one injection attempt "changed nothing" was wrong, and
+the wiring is now in `apps/docs/scripts/highlighter.mjs` with the SAME two files the editor gets.
+`apps/docs/src/__tests__/highlight.test.ts` holds the claim a reader can check: a declaration is the
+same colour inside a block as it is in a `css` fence. Verified by unwiring it — three of its claims
+fail. A hole is not among them: it comes out the theme's plain text colour either way, so its scope
+is asserted in this package instead, where scopes are visible.
+
+**The extension is `packages/css/vscode/`**, linked into an editor by `node vscode/install.mjs`
+rather than copied, so the grammars the tests read are the grammars the editor loads. Its manifest is
+gated too — a `scopeName` is written twice, once in the grammar and once in the contribution, and a
+typo in either installs cleanly, activates cleanly and colours nothing.
+
+**GitHub and npm cannot be taught without upstreaming a grammar**, so a fence there stays plain,
+which is an acceptable end state.
 
 ### L — the runtime diagnostic. Deliberately last
 
@@ -697,6 +718,8 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | bail-out on an unused codebase | 1,290 files, 10.73 MB, **0.84 ms**, scan included |
 | the generated `style={{…}}` object | `RMD020` on every render |
 | the same as a string / prop | silent |
+| a block in a `tsx` fence, no grammar | the theme's INVALID colour, to the end of the fence |
+| shiki's `codeToTokensBase` | MERGES adjacent same-colour tokens — `explanation[0]` lies about a run |
 | SSR values | travel in the markup; no channel, no registry |
 | hydration, four directions | two fail, and both are the `undefined` rows |
 | N instances | **one rule at any N**; 30–73 B per instance |

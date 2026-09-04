@@ -327,6 +327,9 @@ importers:
       esbuild:
         specifier: '>=0.28.1'
         version: 0.28.2
+      shiki:
+        specifier: ^4.4.3
+        version: 4.4.3
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@microsoft/api-extractor@7.59.0(@types/node@26.4.1))(postcss@8.5.26)(typescript@5.9.3)
