@@ -9,6 +9,22 @@ Syntax colours for `css=@( … )` style blocks, in `.ts`, `.tsx`, `.js` and `.js
 Without it, an editor colours a block with whatever its TypeScript grammar makes of `@( … )`, which
 is an error — and the mistake runs to the end of the file, so code far below a block looks broken too.
 
+## Where it works
+
+A block is coloured when it is the **first attribute, on the tag name's own line**:
+
+```tsx
+<div css=@(
+  display: flex;
+)>…</div>
+```
+
+Written any other way — after another attribute, or on the line below the tag name — it is left as the
+editor's TypeScript grammar makes of it, which is an error. That is not this grammar's choice: an
+editor stops consulting injections the moment it enters a tag's attribute list. Measured with a
+grammar that does nothing but match one word, it colours a first attribute and is never asked about a
+second. The block itself still compiles and is still checked either way; only the colours are lost.
+
 ## What it does NOT do
 
 Completion, hover, and the red squiggles are not here. They come from the language service plugin in

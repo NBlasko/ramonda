@@ -1,6 +1,6 @@
 {
   "scopeName": "ramonda.css-block",
-  "injectionSelector": "L:meta.tag.tsx, L:meta.tag.js, L:meta.tag.ts, L:meta.tag.jsx",
+  "injectionSelector": "L:meta.tag.tsx -meta.jsx.children -string -comment, L:meta.tag.jsx -meta.jsx.children -string -comment, L:meta.tag.ts -meta.jsx.children -string -comment, L:meta.tag.js -meta.jsx.children -string -comment",
   "patterns": [
     {
       "include": "#block"
@@ -20,7 +20,7 @@
           "name": "punctuation.section.embedded.begin.ramonda"
         }
       },
-      "end": "(\\))(?=\\s*[>/])",
+      "end": "(\\))",
       "endCaptures": {
         "1": {
           "name": "punctuation.section.embedded.end.ramonda"

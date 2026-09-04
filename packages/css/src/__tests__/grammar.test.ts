@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHighlighter } from "shiki";
+import { createHighlighter, type LanguageRegistration } from "shiki";
 import { beforeAll, describe, expect, test } from "vitest";
 
 /**
@@ -35,6 +35,9 @@ type Scoped = { text: string; scope: string };
 
 let scopesOf: (code: string) => Scoped[];
 
+/** The same reading with NO injection at all — the control for every claim about what is untouched. */
+let plainScopesOf: (code: string) => Scoped[];
+
 beforeAll(async () => {
   const highlighter = await createHighlighter({
     themes: ["github-dark"],
@@ -48,13 +51,18 @@ beforeAll(async () => {
     ],
   });
 
-  scopesOf = (code) =>
-    highlighter
+  const plain = await createHighlighter({ themes: ["github-dark"], langs: ["tsx"] });
+
+  const reading = (from: typeof highlighter) => (code: string) =>
+    from
       .codeToTokensBase(code, { lang: "tsx", theme: "github-dark", includeExplanation: true })
       .flat()
       .flatMap((token) => token.explanation ?? [])
       .filter((part) => part.content.trim() !== "")
       .map((part) => ({ text: part.content, scope: part.scopes.at(-1)?.scopeName ?? "" }));
+
+  scopesOf = reading(highlighter);
+  plainScopesOf = reading(plain);
 });
 
 /** The scope one piece of text got, or nothing when the grammar never produced it as a token. */
@@ -127,6 +135,92 @@ const after = 1;
       { text: "1", scope: "constant.numeric.decimal.tsx" },
       { text: ";", scope: "punctuation.terminator.statement.tsx" },
     ]);
+  });
+});
+
+describe("shapes a first sample did not have", () => {
+  /**
+   * The one that shipped broken. A `<p>` explaining the syntax puts `css=@( … )` in JSX TEXT, the
+   * injection fired there, and the block it opened never closed — so the rest of the file was CSS.
+   * Measured in `apps/playground-core`: everything from the prose to the end of the file.
+   */
+  test("prose in JSX children that mentions a block is not a block", () => {
+    const code = `const a = <p>a \`css=@( … )\` block</p>;\nconst after = 1;\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  /**
+   * The block does not have to be the last attribute, and the first `end` pattern assumed it was: it
+   * required the closing paren to be followed by `>` or `/`, so a block with an attribute after it
+   * never closed. A bare `)` is right because a paren inside the block is always inside something —
+   * `calc(…)`, `url(…)`, a hole's own call — and a child construct is consumed before an end is tried.
+   */
+  test.each([
+    ["an attribute after the block", `const a = <div css=@( color: red; ) id="x">y</div>;\nconst after = 1;\n`],
+    ["calc() in a value", `const a = <div css=@( width: calc(100% - 8px); )>y</div>;\nconst after = 1;\n`],
+    ["url() in a value", `const a = <div css=@( background: url(a.png); )>y</div>;\nconst after = 1;\n`],
+    ["a call inside a hole", `const a = <div css=@( color: {{pick(1)}}; )>y</div>;\nconst after = 1;\n`],
+    ["a self-closing tag", `const a = <img css=@( color: red; ) />;\nconst after = 1;\n`],
+  ])("%s", (_what, code) => {
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+});
+
+/**
+ * The limit, measured rather than assumed — and it is the ENGINE's, not this grammar's.
+ *
+ * An injection is only consulted while the tsx grammar is still in the tag itself. The moment it
+ * enters `meta.tag.attributes.tsx` — which a second attribute does, and so does a newline after the
+ * tag name — no injection fires at all. Proved with a grammar that does nothing but match one word:
+ * it colours a first attribute and is never asked about a second.
+ *
+ * So a block is coloured when it is the FIRST attribute, on the tag name's own line. The tests below
+ * pin what really happens outside that, which is worth having both ways: the damage is contained to
+ * the tag rather than running down the file, and if an editor engine ever stops behaving this way,
+ * these are what say so.
+ */
+describe("where an injection cannot reach", () => {
+  const SECOND = `const a = <div id="x" css=@( color: red; )>y</div>;\nconst after = 1;\n`;
+  const NEXT_LINE = `const a = (\n  <div\n    css=@( color: red; )\n  >y</div>\n);\nconst after = 1;\n`;
+
+  /**
+   * Asserted as SAMENESS rather than as an outcome. What the tsx grammar makes of a block it was
+   * never told about is its own affair — measured, an attribute list it cannot parse runs past the
+   * tag — and the only claim this package can honestly make is that it changed nothing there.
+   */
+  test.each([
+    ["a block that is not the first attribute", SECOND],
+    ["a block on the line below the tag name", NEXT_LINE],
+  ])("%s reads exactly as it would with no grammar installed", (_what, code) => {
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopesOf(code)).toEqual(plainScopesOf(code));
+  });
+
+  /** The proof it is not this grammar: a one-word injection is ignored in the same place. */
+  test("no injection at all is consulted inside a tag's attribute list", async () => {
+    const { createHighlighter } = await import("shiki");
+    const probe: LanguageRegistration = {
+      name: "probe",
+      scopeName: "probe.injection",
+      injectionSelector: "L:source.tsx",
+      injectTo: ["source.tsx"],
+      patterns: [{ match: "\\bZZZ\\b", name: "keyword.probe" }],
+      repository: {},
+    };
+    const highlighter = await createHighlighter({ themes: ["github-dark"], langs: ["tsx", probe] });
+
+    const scopeOfZZZ = (code: string) =>
+      highlighter
+        .codeToTokensBase(code, { lang: "tsx", theme: "github-dark", includeExplanation: true })
+        .flat()
+        .flatMap((token) => token.explanation ?? [])
+        .find((part) => part.content.trim() === "ZZZ")
+        ?.scopes.at(-1)?.scopeName;
+
+    expect(scopeOfZZZ(`const a = <div ZZZ="1">x</div>;\n`)).toBe("keyword.probe");
+    expect(scopeOfZZZ(`const a = <div id="x" ZZZ="1">x</div>;\n`)).toBe("entity.other.attribute-name.tsx");
   });
 });
 

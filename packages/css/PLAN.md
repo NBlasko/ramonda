@@ -680,8 +680,55 @@ rather than copied, so the grammars the tests read are the grammars the editor l
 gated too — a `scopeName` is written twice, once in the grammar and once in the contribution, and a
 typo in either installs cleanly, activates cleanly and colours nothing.
 
+**Three faults the first sample did not have, all found on the REAL file:**
+
+- **prose that mentions the syntax opened a block.** `<p>a `css=@( … )` block</p>` matched in JSX
+  TEXT, and the block it opened never closed — the rest of the file was CSS. The injection selector
+  excludes `meta.jsx.children`, strings and comments now.
+- **a block is not always the last attribute.** The first `end` required the closing paren to be
+  followed by `>` or `/`, so `css=@( … ) id="x"` never closed. A bare `)` is right, and safe: a paren
+  inside a block is always inside something — `calc(…)`, `url(…)`, a hole's own call — and a child
+  construct is consumed before an end is tried.
+- **the language service was painting the file too, and nobody had mapped it.** Not a grammar fault
+  at all — see below.
+
+**The boundary, and it is the ENGINE's:** an injection is only consulted while the tsx grammar is
+still in the tag itself. The moment it enters `meta.tag.attributes.tsx` — which a second attribute
+does, and so does a newline after the tag name — NO injection fires. Proved with a grammar that does
+nothing but match one word: it colours a first attribute and is never asked about a second. So a
+block is coloured when it is the **first attribute, on the tag name's own line**. Outside that, the
+file reads exactly as it would with nothing installed, which is what the tests assert — sameness
+against a control, because what the tsx grammar makes of a syntax it was never told about is its own
+affair.
+
 **GitHub and npm cannot be taught without upstreaming a grammar**, so a fence there stays plain,
 which is an acceptable end state.
+
+### M2 — the OTHER half of the colours: the language service paints too
+
+An editor paints twice — a TextMate grammar first, then semantic tokens from the language service on
+top — and the plugin serves the VIRTUAL file to that service. Every span it reported was an offset
+into text nobody wrote, and the preamble alone is hundreds of characters. Measured on a four-line
+file, the spans sliced out `\nconst `, ` = <div css=` and `before, a, af`.
+
+**It is worst ABOVE a block**, which is what made it look like a grammar bug: the shift is the same
+for the whole file, so code with nothing to do with a block is painted just as wrongly. And it is
+invisible to every test the plugin had, because a diagnostic is mapped and a colour is not.
+
+**The belief that caused it is worth keeping**, because it was written down as a comment and it was
+wrong: *what is not overridden falls through to the real service, which is reading the author's own
+file.* It is not — the host is patched IN PLACE, so the service reads the virtual text for every
+question anyone asks. Measured, the whole position surface was wrong at once: folding spans that
+sliced nothing, an outline listing `__block` beside the author's own names, go-to-definition landing
+on the empty string, a document highlight covering half the file.
+
+Now mapped: semantic classifications, outlining, both outlines, definition / type definition /
+implementation, references, the bound span, document highlights, signature help. **Mapped by FILE
+NAME**, not across the board — an entry in another file already holds the position it should.
+
+**And the edits are refused rather than mapped:** formatting, code fixes and refactors are computed
+against the virtual text, so applying one would write scaffolding into the author's file. Refusing is
+the honest answer, and `ramonda-css format` is what formats these files anyway.
 
 ### L — the runtime diagnostic. Deliberately last
 

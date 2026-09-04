@@ -149,9 +149,17 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
 
       /**
        * Everything the service can do, with the virtual text underneath and positions mapped at the
-       * boundary. What is not listed falls through to the real service, which is reading the author's
-       * own file — right for anything that does not carry a position, and honest for the rest: an
-       * answer about the file on disk beats no answer.
+       * boundary.
+       *
+       * The earlier version of this comment claimed a fall-through answers about the author's own
+       * file. It does not, and the belief cost the whole position surface: the host is patched IN
+       * PLACE, so the service reads the virtual text for every question anyone asks. An unmapped
+       * answer is an offset into text nobody wrote — and since the shift is the same for the whole
+       * file, it is just as wrong ABOVE a block as inside one.
+       *
+       * So every answer carrying a position is mapped, and the ones that carry an EDIT are refused:
+       * an edit computed against the virtual text would write scaffolding into the author's file.
+       * What falls through now is only what carries no position at all.
        */
       const proxy: ts.LanguageService = Object.create(service);
 
@@ -207,6 +215,166 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         const ours = cssFor(fileName);
         return [...ours, ...withoutRepeats(ours, mapped(file, service.getSemanticDiagnostics(fileName)))];
       };
+
+      /**
+       * The colours an editor paints OVER the grammar's, and the reason they were wrong everywhere.
+       *
+       * An editor paints twice: a TextMate grammar first, then semantic tokens from the language
+       * service on top. Those tokens are spans, the service is reading the virtual file, and the
+       * preamble alone is hundreds of characters — so applied to the author's text at face value,
+       * every colour in the file lands on the wrong characters. Measured on a four-line file, the
+       * spans sliced out `\nconst `, ` = <div css=` and `before, a, af`.
+       *
+       * It is invisible to every other test here, because a diagnostic is mapped and a colour is
+       * not, and it is worst ABOVE a block: the shift is the same for the whole file, so code with
+       * nothing to do with a block is painted just as wrongly.
+       *
+       * The whole virtual file is asked about rather than the author's range, because a range cannot
+       * be converted — one author range is several virtual ones, with scaffolding in between. The
+       * answer is mapped back and then cut to what was asked for.
+       */
+      proxy.getEncodedSemanticClassifications = (fileName, span, format) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getEncodedSemanticClassifications(fileName, span, format);
+
+        const got = service.getEncodedSemanticClassifications(fileName, { start: 0, length: file.code.length }, format);
+        return { ...got, spans: home(file, got.spans, span) };
+      };
+
+      /** Folding, and the outline that feeds the breadcrumbs — both are spans and both were wrong. */
+      proxy.getOutliningSpans = (fileName) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getOutliningSpans(fileName);
+
+        const out: ts.OutliningSpan[] = [];
+        for (const span of service.getOutliningSpans(fileName)) {
+          const textSpan = back(file, span.textSpan);
+          const hintSpan = back(file, span.hintSpan);
+          if (textSpan === undefined || hintSpan === undefined) continue;
+          out.push({ ...span, textSpan, hintSpan });
+        }
+        return out;
+      };
+
+      proxy.getNavigationTree = (fileName) => {
+        const file = overlay(fileName, readSnapshot);
+        return file === undefined
+          ? service.getNavigationTree(fileName)
+          : tree(file, service.getNavigationTree(fileName));
+      };
+
+      proxy.getNavigationBarItems = (fileName) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getNavigationBarItems(fileName);
+        return bar(file, service.getNavigationBarItems(fileName));
+      };
+
+      /**
+       * Going somewhere, and seeing where a name is used.
+       *
+       * Every one of these answers about a SET of files, and only the one this plugin overlays is
+       * virtual — an entry in another file already has the position it should. So the mapping is by
+       * file name rather than across the board, which is the difference between a reference list
+       * that works and one that quietly relocates half of itself.
+       */
+      const goingTo =
+        <T extends { fileName: string; textSpan: ts.TextSpan; contextSpan?: ts.TextSpan }>(
+          run: (fileName: string, at: number) => readonly T[] | undefined,
+        ) =>
+        (fileName: string, position: number): T[] | undefined => {
+          const file = overlay(fileName, readSnapshot);
+          if (file === undefined) return run(fileName, position)?.slice();
+
+          const at = file.virtualOf(position);
+          if (at === undefined) return undefined;
+          const got = run(fileName, at);
+          return got === undefined ? undefined : elsewhere(file, fileName, got);
+        };
+
+      proxy.getDefinitionAtPosition = goingTo((name, at) => service.getDefinitionAtPosition(name, at));
+      proxy.getTypeDefinitionAtPosition = goingTo((name, at) => service.getTypeDefinitionAtPosition(name, at));
+      proxy.getImplementationAtPosition = goingTo((name, at) => service.getImplementationAtPosition(name, at));
+      proxy.getReferencesAtPosition = goingTo((name, at) => service.getReferencesAtPosition(name, at));
+
+      proxy.getDefinitionAndBoundSpan = (fileName, position) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getDefinitionAndBoundSpan(fileName, position);
+
+        const at = file.virtualOf(position);
+        if (at === undefined) return undefined;
+        const got = service.getDefinitionAndBoundSpan(fileName, at);
+        if (got === undefined) return undefined;
+
+        const textSpan = back(file, got.textSpan);
+        if (textSpan === undefined) return undefined;
+        return {
+          textSpan,
+          definitions: got.definitions === undefined ? undefined : elsewhere(file, fileName, got.definitions),
+        };
+      };
+
+      proxy.getDocumentHighlights = (fileName, position, filesToSearch) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getDocumentHighlights(fileName, position, filesToSearch);
+
+        const at = file.virtualOf(position);
+        if (at === undefined) return undefined;
+        const got = service.getDocumentHighlights(fileName, at, filesToSearch);
+        if (got === undefined) return undefined;
+
+        return got.map((one) =>
+          one.fileName !== fileName
+            ? one
+            : {
+                ...one,
+                highlightSpans: one.highlightSpans.flatMap((span) => {
+                  const textSpan = back(file, span.textSpan);
+                  return textSpan === undefined ? [] : [{ ...span, textSpan }];
+                }),
+              },
+        );
+      };
+
+      proxy.getSignatureHelpItems = (fileName, position, options) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getSignatureHelpItems(fileName, position, options);
+
+        const at = file.virtualOf(position);
+        if (at === undefined) return undefined;
+        const got = service.getSignatureHelpItems(fileName, at, options);
+        if (got === undefined) return undefined;
+
+        const applicableSpan = back(file, got.applicableSpan);
+        return applicableSpan === undefined ? undefined : { ...got, applicableSpan };
+      };
+
+      /**
+       * What an editor CHANGES, and the one place refusing beats answering.
+       *
+       * An edit is computed against the virtual text: its range is an offset nobody wrote, and its
+       * new text can be the scaffolding itself. Applied to the author's file it does not misplace a
+       * colour, it corrupts the source. Formatting these files is `ramonda-css format`'s job, and
+       * biome refuses them for the same reason — the syntax is not TypeScript.
+       */
+      /** True when this file is one we overlay, and so one whose offsets are not the author's. */
+      const overlaid = (fileName: string) => overlay(fileName, readSnapshot) !== undefined;
+
+      proxy.getFormattingEditsForDocument = (fileName, options) =>
+        overlaid(fileName) ? [] : service.getFormattingEditsForDocument(fileName, options);
+
+      proxy.getFormattingEditsForRange = (fileName, start, end, options) =>
+        overlaid(fileName) ? [] : service.getFormattingEditsForRange(fileName, start, end, options);
+
+      proxy.getFormattingEditsAfterKeystroke = (fileName, position, key, options) =>
+        overlaid(fileName) ? [] : service.getFormattingEditsAfterKeystroke(fileName, position, key, options);
+
+      proxy.getCodeFixesAtPosition = (fileName, start, end, codes, options, preferences) =>
+        overlaid(fileName) ? [] : service.getCodeFixesAtPosition(fileName, start, end, codes, options, preferences);
+
+      proxy.getApplicableRefactors = (fileName, position, preferences, reason, kind, interactive) =>
+        overlaid(fileName)
+          ? []
+          : service.getApplicableRefactors(fileName, position, preferences, reason, kind, interactive);
 
       /**
        * Syntactic diagnostics come from the virtual file too, and they have to: the author's file does
@@ -295,6 +463,79 @@ function cssFindings(text: string): Finding[] {
 /** A span in virtual coordinates, in the author's — or nothing, when it names text they never wrote. */
 function back(file: VirtualFile, span: ts.TextSpan | undefined): ts.TextSpan | undefined {
   return span === undefined ? undefined : file.spanOf(span.start, span.length);
+}
+
+/**
+ * An outline item and its children, moved home, with this package's own scaffolding left out.
+ *
+ * The scaffolding is not a detail here: the virtual file declares `__block`, and an outline listing
+ * it beside the author's own names is a lie about what the file contains. An item whose span maps
+ * nowhere is exactly that item, so dropping the unmappable is the whole filter.
+ */
+function tree(file: VirtualFile, item: ts.NavigationTree): ts.NavigationTree {
+  return {
+    ...item,
+    spans: spansHome(file, item.spans),
+    nameSpan: item.nameSpan === undefined ? undefined : back(file, item.nameSpan),
+    childItems: item.childItems?.flatMap((child) => {
+      const moved = tree(file, child);
+      return moved.spans.length === 0 ? [] : [moved];
+    }),
+  };
+}
+
+/** The flat outline, the same way. */
+function bar(file: VirtualFile, items: readonly ts.NavigationBarItem[]): ts.NavigationBarItem[] {
+  return items.flatMap((item) => {
+    const spans = spansHome(file, item.spans);
+    return spans.length === 0 ? [] : [{ ...item, spans, childItems: bar(file, item.childItems ?? []) }];
+  });
+}
+
+/** Spans that survive the move; the ones that do not were never the author's. */
+function spansHome(file: VirtualFile, spans: readonly ts.TextSpan[]): ts.TextSpan[] {
+  return spans.flatMap((span) => {
+    const moved = back(file, span);
+    return moved === undefined ? [] : [moved];
+  });
+}
+
+/**
+ * Entries that may live in any file, with only the overlaid one's positions moved.
+ *
+ * An entry in another file already holds the position it should — mapping it would relocate a
+ * reference that was never virtual.
+ */
+function elsewhere<T extends { fileName: string; textSpan: ts.TextSpan; contextSpan?: ts.TextSpan }>(
+  file: VirtualFile,
+  fileName: string,
+  entries: readonly T[],
+): T[] {
+  return entries.flatMap((entry) => {
+    if (entry.fileName !== fileName) return [entry];
+
+    const textSpan = back(file, entry.textSpan);
+    if (textSpan === undefined) return [];
+    return [{ ...entry, textSpan, contextSpan: back(file, entry.contextSpan) }];
+  });
+}
+
+/**
+ * Encoded classification triples — `[start, length, kind]` — moved back to the author's file.
+ *
+ * A triple that maps nowhere is the scaffolding's own and is dropped rather than guessed at: a
+ * colour on `__block` would be a colour on a character the author never wrote. What survives is cut
+ * to the range the editor asked about, which is usually the part of the file it can see.
+ */
+function home(file: VirtualFile, spans: readonly number[], asked: ts.TextSpan): number[] {
+  const out: number[] = [];
+  for (let i = 0; i + 2 < spans.length; i += 3) {
+    const span = file.spanOf(spans[i], spans[i + 1]);
+    if (span === undefined) continue;
+    if (span.start + span.length <= asked.start || span.start >= asked.start + asked.length) continue;
+    out.push(span.start, span.length, spans[i + 2]);
+  }
+  return out;
 }
 
 /**

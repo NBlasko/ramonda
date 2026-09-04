@@ -366,3 +366,220 @@ describe("what the plugin does not touch", () => {
     );
   });
 });
+
+/**
+ * The colours the LANGUAGE SERVICE paints, which are not the grammar's.
+ *
+ * ## The fault this exists for
+ *
+ * An editor paints twice: a TextMate grammar first, then semantic tokens from the language service
+ * over the top. The plugin serves the VIRTUAL file to the service, so every span the service reports
+ * is an offset into text the author never wrote — and the preamble alone makes that hundreds of
+ * characters. Applied to the author's file at face value, every semantic colour in the file lands on
+ * the wrong characters, ABOVE the block as well as below, because the shift is the same everywhere.
+ *
+ * It cannot be seen in a diagnostic, because a diagnostic is mapped. It is only visible as colour,
+ * which is why it survived the whole of track K: the plugin was measured by what it reported.
+ */
+describe("semantic colours", () => {
+  const CODE = `const before = 1;
+const a = <div css=@( display: flex; )>x</div>;
+const after = 2;
+export default [before, a, after];
+`;
+
+  const spansOf = (service: ts.LanguageService, source: string) => {
+    const { spans } = service.getEncodedSemanticClassifications(
+      FILE,
+      { start: 0, length: source.length },
+      ts.SemanticClassificationFormat.TwentyTwenty,
+    );
+
+    const out: { text: string; at: number }[] = [];
+    for (let i = 0; i < spans.length; i += 3)
+      out.push({ at: spans[i], text: source.slice(spans[i], spans[i] + spans[i + 1]) });
+    return out;
+  };
+
+  test("a span lands on the identifier it is meant to colour", () => {
+    const { service, source } = editor(CODE);
+
+    // `before` is declared ABOVE the block, so nothing about it is the block's business.
+    expect(spansOf(service, source)).toContainEqual({ text: "before", at: source.indexOf("before") });
+  });
+
+  /** The sweeping version: a semantic token is an identifier, so every span has to slice out one. */
+  test("every span slices an identifier out of the author's own text", () => {
+    const { service, source } = editor(CODE);
+    const notIdentifiers = spansOf(service, source).filter((span) => !/^[A-Za-z_$][\w$]*$/.test(span.text));
+
+    expect(notIdentifiers).toEqual([]);
+  });
+});
+
+/**
+ * Everything else an editor asks about a POSITION.
+ *
+ * ## The fault this exists for
+ *
+ * The plugin used to map four methods and let the rest fall through, on the belief that a
+ * fall-through answers about the author's own file. It does not: the host is patched in place, so
+ * the service reads the virtual text for every question, and an unmapped answer is an offset into
+ * text nobody wrote. Measured on a four-line file, all of it was wrong at once — folding spans that
+ * sliced nothing, an outline listing `__block` beside the author's own names, go-to-definition
+ * landing on the empty string, and a document highlight covering half the file.
+ *
+ * None of it is visible in a diagnostic, which is why it survived a plugin measured by what it
+ * reported.
+ */
+describe("every other answer that carries a position", () => {
+  const CODE = `const before = 1;
+const a = <div css=@( display: flex; )>x</div>;
+const after = before;
+export default [a, after];
+`;
+
+  /** What a span really covers in the AUTHOR's file — the only thing an editor can draw. */
+  const text = (source: string, span: ts.TextSpan) => source.slice(span.start, span.start + span.length);
+
+  test("folding covers real text", () => {
+    const { service, source } = editor(CODE);
+    const spans = service.getOutliningSpans(FILE);
+
+    expect(spans.length).toBeGreaterThan(0);
+    for (const span of spans) expect(text(source, span.textSpan).trim()).not.toBe("");
+  });
+
+  test("the outline names what the author wrote, and nothing this package wrote", () => {
+    const { service, source } = editor(CODE);
+    const items = service.getNavigationTree(FILE).childItems ?? [];
+
+    expect(items.map((item) => item.text)).not.toContain("__block");
+    for (const item of items) expect(text(source, item.spans[0]).trim()).not.toBe("");
+  });
+
+  test("go-to-definition lands on the declaration", () => {
+    const { service, source } = editor(CODE);
+    const use = source.indexOf("before", source.indexOf("after"));
+
+    const found = service.getDefinitionAtPosition(FILE, use) ?? [];
+    expect(found.map((one) => text(source, one.textSpan))).toEqual(["before"]);
+  });
+
+  test("highlighting a name highlights the name, not half the file", () => {
+    const { service, source } = editor(CODE);
+    const use = source.indexOf("before", source.indexOf("after"));
+
+    const spans = service.getDocumentHighlights(FILE, use, [FILE])?.[0]?.highlightSpans ?? [];
+    expect(spans.map((span) => text(source, span.textSpan))).toEqual(["before", "before"]);
+  });
+
+  /**
+   * The dangerous half, and the one place refusing beats answering: an edit is computed against the
+   * virtual text, so applying one to the author's file writes scaffolding into it at an offset that
+   * is wrong anyway. `ramonda-css format` is what formats these files.
+   */
+  test("an edit is refused rather than applied to the wrong text", () => {
+    const { service } = editor(CODE);
+
+    expect(service.getFormattingEditsForDocument(FILE, {})).toEqual([]);
+    expect(service.getCodeFixesAtPosition(FILE, 0, 5, [2304], {}, {})).toEqual([]);
+  });
+  /** A caret the block swallowed — inside the scaffolding — answers nothing rather than guessing. */
+  test("a position with no home answers nothing", () => {
+    const { service, source } = editor(CODE);
+    const past = source.length + 50;
+
+    expect(service.getDefinitionAtPosition(FILE, past)).toBeUndefined();
+    expect(service.getTypeDefinitionAtPosition(FILE, past)).toBeUndefined();
+    expect(service.getImplementationAtPosition(FILE, past)).toBeUndefined();
+    expect(service.getReferencesAtPosition(FILE, past)).toBeUndefined();
+    expect(service.getDefinitionAndBoundSpan(FILE, past)).toBeUndefined();
+    expect(service.getDocumentHighlights(FILE, past, [FILE])).toBeUndefined();
+    expect(service.getSignatureHelpItems(FILE, past, undefined)).toBeUndefined();
+  });
+
+  test("a reference list, a bound span and the flat outline all land on the author's text", () => {
+    const { service, source } = editor(CODE);
+    const use = source.indexOf("before", source.indexOf("after"));
+
+    expect((service.getReferencesAtPosition(FILE, use) ?? []).map((one) => text(source, one.textSpan))).toEqual([
+      "before",
+      "before",
+    ]);
+
+    const bound = service.getDefinitionAndBoundSpan(FILE, use);
+    expect(text(source, bound?.textSpan ?? { start: 0, length: 0 })).toBe("before");
+    expect((bound?.definitions ?? []).map((one) => text(source, one.textSpan))).toEqual(["before"]);
+
+    for (const item of service.getNavigationBarItems(FILE)) {
+      expect(item.text).not.toBe("__block");
+      expect(text(source, item.spans[0]).trim()).not.toBe("");
+    }
+  });
+
+  test("a type and an implementation are found where they are written", () => {
+    const marked = `interface Shape { n: number }\nconst s: Shape = { n: 1 };\nconst a = <div css=@( display: flex; )>x</div>;\nexport default [s, a];\n`;
+    const { service, source } = editor(marked);
+    const use = source.indexOf("s", source.indexOf("export default"));
+
+    expect((service.getTypeDefinitionAtPosition(FILE, use) ?? []).map((one) => text(source, one.textSpan))).toEqual([
+      "Shape",
+    ]);
+    expect(service.getImplementationAtPosition(FILE, use)).toBeDefined();
+  });
+
+  test("signature help points at the call being written", () => {
+    const marked = `function f(n: number) { return n; }\nconst a = <div css=@( display: flex; )>x</div>;\nconst b = f(1);\nexport default [a, b];\n`;
+    const { service, source } = editor(marked);
+    const inside = source.indexOf("f(1)") + 2;
+
+    const help = service.getSignatureHelpItems(FILE, inside, undefined);
+    expect(text(source, help?.applicableSpan ?? { start: 0, length: 0 })).toBe("1");
+  });
+
+  /**
+   * A file with no block is not ours, and every one of these has to behave as if the plugin were not
+   * installed — asserted as sameness, because "it answered something" is what a broken proxy does too.
+   */
+  test("a file with no block is answered by the real service, for every one of them", () => {
+    const plainCode = `function f(n: number) { return n; }\nconst before = 1;\nconst after = before;\nexport default [f(1), after];\n`;
+    const { service, plain, source } = editor(plainCode);
+    const use = source.indexOf("before", source.indexOf("after"));
+
+    expect(service.getOutliningSpans(FILE)).toEqual(plain.getOutliningSpans(FILE));
+    expect(service.getNavigationTree(FILE)).toEqual(plain.getNavigationTree(FILE));
+    expect(service.getNavigationBarItems(FILE)).toEqual(plain.getNavigationBarItems(FILE));
+    expect(service.getDefinitionAtPosition(FILE, use)).toEqual(plain.getDefinitionAtPosition(FILE, use));
+    expect(service.getTypeDefinitionAtPosition(FILE, use)).toEqual(plain.getTypeDefinitionAtPosition(FILE, use));
+    expect(service.getImplementationAtPosition(FILE, use)).toEqual(plain.getImplementationAtPosition(FILE, use));
+    expect(service.getReferencesAtPosition(FILE, use)).toEqual(plain.getReferencesAtPosition(FILE, use));
+    expect(service.getDefinitionAndBoundSpan(FILE, use)).toEqual(plain.getDefinitionAndBoundSpan(FILE, use));
+    expect(service.getDocumentHighlights(FILE, use, [FILE])).toEqual(plain.getDocumentHighlights(FILE, use, [FILE]));
+    expect(service.getSignatureHelpItems(FILE, source.indexOf("f(1)") + 2, undefined)).toEqual(
+      plain.getSignatureHelpItems(FILE, source.indexOf("f(1)") + 2, undefined),
+    );
+    expect(service.getFormattingEditsForDocument(FILE, {})).toEqual(plain.getFormattingEditsForDocument(FILE, {}));
+    expect(service.getFormattingEditsForRange(FILE, 0, 5, {})).toEqual(
+      plain.getFormattingEditsForRange(FILE, 0, 5, {}),
+    );
+    expect(service.getFormattingEditsAfterKeystroke(FILE, 5, ";", {})).toEqual(
+      plain.getFormattingEditsAfterKeystroke(FILE, 5, ";", {}),
+    );
+    expect(service.getCodeFixesAtPosition(FILE, 0, 5, [2304], {}, {})).toEqual(
+      plain.getCodeFixesAtPosition(FILE, 0, 5, [2304], {}, {}),
+    );
+    expect(service.getApplicableRefactors(FILE, 5, {})).toEqual(plain.getApplicableRefactors(FILE, 5, {}));
+    expect(service.getEncodedSemanticClassifications(FILE, { start: 0, length: source.length })).toEqual(
+      plain.getEncodedSemanticClassifications(FILE, { start: 0, length: source.length }),
+    );
+  });
+
+  test("and the rest of the edits are refused for a file that holds one", () => {
+    const { service } = editor(CODE);
+
+    expect(service.getFormattingEditsForRange(FILE, 0, 5, {})).toEqual([]);
+    expect(service.getFormattingEditsAfterKeystroke(FILE, 5, ";", {})).toEqual([]);
+    expect(service.getApplicableRefactors(FILE, 5, {})).toEqual([]);
+  });
+});
