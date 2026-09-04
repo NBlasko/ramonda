@@ -6,9 +6,10 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0 is done.** `CONTRACT.md` is written and every decision in it is implemented and tested in
-`src/` — the package is real, private, and every gate in this repository sees it. Everything below
-Phase 0 is unstarted.
+**Phase 0 and track B are done.** `CONTRACT.md` is written and every decision in it is implemented
+and tested in `src/`; the package is real, private, and every gate in this repository sees it. The
+framework takes a `css` prop and applies it, with the SSR and hydration directions measured rather
+than assumed. **Everything else is unstarted** — the next work is track C, or A1, the parser.
 
 ---
 
@@ -108,9 +109,32 @@ Three things were settled in the writing rather than carried over:
 
 ## Tracks that can start on day one, beside the spine
 
-### Track B — the framework side. Needs the contract, not the compiler
+### Track B — the framework side. **DONE.**
 
-Nothing here imports the parser. It can be written, tested and merged while A does not exist.
+Nothing here imported the parser, and none of it existed — which was the point of doing it beside
+Phase 0. `packages/core`: `types/cssBlock.ts` declares the shape, `core/cssBlock.ts` applies it,
+three touches in `core/Attribute.ts` and one line in `debug/renderStability.ts`. Tests in
+`__tests__/CssBlock.test.tsx` and `__tests__/hydration/CssBlockSsr.test.tsx`.
+
+**What it found, and neither was predicted:**
+
+1. **A hostile hole value injects declarations through a SERVER render.** `setProperty` writes one
+   declaration whatever it is handed, which closes it on the client — but a server render is
+   serialized to HTML and the browser parses the style attribute back, and the parse applies the CSS
+   grammar to whatever the serializer wrote. Measured through `renderToString` + `innerHTML`:
+   `position: fixed; width: 100vw; z-index: 9999`, real and applied. **The value is now refused if it
+   carries a `;`**, in both consumers — `applyCssBlock` and `toStyleObject`. This is a rule in
+   `CONTRACT.md`, not an implementation detail.
+2. **A hole that differs across the hydration boundary is silent, and the client's value wins.** That
+   supersedes the design's measured row: written as an object style the same divergence was reported
+   as `RMD007`, because the value was part of an attribute the comparator reads. It is the better of
+   the two failing directions — the one that was reported was the one that was not repaired.
+
+`scripts/check-css-contract.mjs` is new and is in `pnpm check`: neither package may import the other,
+so the shape is declared twice and this reads both with the TypeScript AST and fails when they
+disagree. Proved by planting a renamed field.
+
+The original list, kept because it is what was built:
 
 1. **Declare the `css` prop** on `RamondaArgs` and `SVGArgs` in
    `packages/core/src/types/commonTypes.ts`. **It must be explicit**: those types carry
@@ -348,6 +372,10 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | format through a placeholder | whole file formatted, block restored |
 | the docs example gate | **skips silently** — "not standalone code", exit 0 |
 | a `tsx` fence containing the syntax | mis-highlighted everywhere; unknown languages fall back to plain |
+| a hostile hole value through `cssText` | injects — `position: fixed`, `width: 100vw`, real and applied |
+| the same through `setProperty` | no second declaration, on the client |
+| the same through a SERVER render and back | **injects** — the parse re-reads the style attribute. Refused at the value now |
+| a hole differing across hydration | **silent**, and the client's value wins — supersedes the object-style reading |
 
 ## Still open
 

@@ -1,6 +1,16 @@
 import type { Context, DefaultProps, RenderableProps } from "./commonTypes";
 import type { COMPONENT_TYPE, TEXT_TYPE } from "../helpers/constants";
-import { IS_SVG, KEY_SYM, SLOT_SYM, IS_LIST, CHILD_RECORD, ORIGIN_SYM, STYLE_SYM, REF_SYM } from "../helpers/constants";
+import {
+  IS_SVG,
+  KEY_SYM,
+  SLOT_SYM,
+  IS_LIST,
+  CHILD_RECORD,
+  ORIGIN_SYM,
+  STYLE_SYM,
+  REF_SYM,
+  CSS_SYM,
+} from "../helpers/constants";
 
 import type { COMPONENT_RUNTIME, ComponentRuntime, INTERNAL_HOOKS, GLOBAL_RUNTIME, Runtime } from "../core/runtime";
 import type { RenderEnv } from "../core/renderEnv";
@@ -24,6 +34,7 @@ interface EnhancedElement {
   [CHILD_RECORD]?: RecordEntry[];
   [ORIGIN_SYM]?: number;
   [STYLE_SYM]?: string;
+  [CSS_SYM]?: readonly string[];
   [REF_SYM]?: { current: unknown; setCurrent(current: unknown): void };
 }
 

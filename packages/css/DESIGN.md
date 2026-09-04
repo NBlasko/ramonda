@@ -448,6 +448,20 @@ repaired both ways; with a custom property the divergence is reported and the st
 hydration**. Worth confirming against the runtime's own rules before treating it as a defect — a
 framework that does not know which `--` properties are its own has a reason not to remove one.
 
+**Measured again once the framework side existed, and the second row changed.** The table above was
+taken on the OBJECT form — `style={{ "--r0": … }}` — where the value is part of an attribute the
+comparator reads. A compiled block is not: the class is compared like any other class and the values
+are applied with `setProperty` after the attribute pass, so nothing compares them. A differing hole
+is now **silent, and the client's value wins**. That is the better half of the two failing rows —
+the one that was reported was the one that was not repaired.
+
+**And a hostile value injects through a server render, which nothing here predicted.** `setProperty`
+writes one declaration whatever it is handed, so the client is safe; but a server render is
+serialized to HTML and the browser PARSES the style attribute back, and the parse applies the CSS
+grammar to whatever the serializer wrote. Through `renderToString` and `innerHTML`,
+`red; position: fixed; width: 100vw` came back as real, applied declarations. **A value carrying a
+`;` is refused** — see `CONTRACT.md`, *the one rule a consumer of a value must implement*.
+
 **What this settles: a hole may never be `undefined`, and the type is what enforces it.** Decision 2
 was a preference before this measurement and is a requirement after it. Both failing rows are
 `undefined` rows, and each fails in its own unhelpful way — one ships a page missing a style with no

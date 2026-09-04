@@ -43,8 +43,9 @@ and the stylesheet gains
 Three properties of this shape are load-bearing:
 
 - **The expression is an argument.** The compiler concatenates nothing and builds no string, so
-  nothing has to be escaped. A value containing a quote, a semicolon or a closing brace is applied
-  with `setProperty`, which takes text verbatim.
+  nothing has to be escaped at compile time — a value carrying a quote or a closing brace is carried
+  as a value and applied with `setProperty`, which takes text verbatim. What a value may not carry
+  is a semicolon; see *the one rule a consumer must implement* below.
 - **The expression's own bytes never move.** The transform rewrites the CSS *between* the
   expressions and leaves each expression where the author wrote it, which is what keeps the source
   map landing on the author's line.
@@ -66,11 +67,18 @@ type StyleBlock<P extends readonly string[]> = StyleValue & ((...values: HoleVal
 ```
 
 - **`css` accepts a `StyleValue`, or nothing.** `css={cond ? _s0 : undefined}` removes the class
-  along with the variables, and a class that differs between server and client is already reported.
+  along with the variables — measured through a real hydration, both directions, and the DOM ends up
+  right either way.
 - **A hole may never be `undefined`**, and the type is what enforces it. This was a preference until
   the four hydration directions were measured; both failing directions are the `undefined`
   directions, and one of them leaves a stale value in the DOM with a diagnostic that does not repair
   it. See `DESIGN.md`.
+- **A hole whose value differs between server and client is silent, and the client's wins.** Measured
+  once the framework side existed, and it supersedes the earlier reading: written as an object style
+  the same divergence was reported as `RMD007`, because the value was then part of an attribute the
+  comparator reads. A compiled block is not — the class is compared like any other class, and the
+  values are applied after the attribute pass. Silent and repaired is the better half of the two
+  directions the design measured; the one that was reported was the one that was NOT repaired.
 - **A hole may be a number** because plenty of properties take one. It is the per-property types
   (track C) that refuse `padding: 24`, not this.
 - **The arity is checked.** `block()` takes the property names as a tuple, so a call with the wrong
@@ -80,8 +88,38 @@ type StyleBlock<P extends readonly string[]> = StyleValue & ((...values: HoleVal
   adapter surface a wrapper on another JSX library needs; Ramonda applies it natively instead.
 - **There is no brand.** A runtime diagnostic (track L) can tell a compiled value from a hand-written
   object by its shape, and a hand-written object that matches the shape exactly is a working value.
+- **A value containing a `;` is refused, and the declaration is dropped.** See below — this is a
+  requirement on every consumer of a value, not an implementation detail of one.
 
 Applying it, on the framework side, is: add `className`, then `setProperty(name, value)` per hole.
+
+### The one rule a consumer of a value must implement
+
+**A hole's value is whatever the author's expression evaluated to, and an expression can read a
+record.** "The author wrote it" is not a defence, so a hostile value has to be assumed.
+
+`setProperty` closes it on the client: it writes ONE declaration whatever it is handed. Measured,
+the same value both ways —
+
+```
+style.cssText = `--r-0: ${value}`   ->  position: fixed, width: 100vw — real, applied
+style.setProperty("--r-0", value)   ->  position: "", width: "" — nothing else exists
+```
+
+**It does not close it on the server, and that took a measurement to find.** A server render is
+serialized to HTML and the browser PARSES the style attribute back, and a parse applies the CSS
+grammar to whatever text the serializer produced. Run through `renderToString` and back through
+`innerHTML`, the same value came out as `position: fixed; width: 100vw; z-index: 9999` — real,
+applied declarations, on a page the client guarantee never touched.
+
+So **the value is checked rather than left to the DOM**, which only refuses it on one of the two
+paths. A semicolon is what separates declarations, and CSS says a custom property's value may not
+contain one at the top level; refusing every semicolon rather than only the top-level ones costs a
+value like `content: "a;b"` and buys a rule that needs no CSS parser to apply. The declaration is
+dropped rather than sanitised — a missing border beats an overlay somebody's record asked for.
+
+Implemented in both consumers that exist: `toStyleObject` here, and `applyCssBlock` in the framework.
+Saying it out loud to the author is the runtime diagnostic, which is deliberately last.
 
 ## 3. The names
 

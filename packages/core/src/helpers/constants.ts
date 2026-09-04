@@ -52,6 +52,14 @@ export const SLOT_SYM = Symbol("slot");
 export const REF_SYM = Symbol("ref");
 /** The style string last written to an element, for the attribute diff to compare against. */
 export const STYLE_SYM = Symbol("style");
+/**
+ * The custom property names a compiled `css` block last wrote on an element.
+ *
+ * `css` is not a DOM attribute, so a block that disappears is invisible to both attribute loops —
+ * the same position `ref` is in. This is what the element remembers so those properties can be
+ * taken off again. See core/cssBlock.ts.
+ */
+export const CSS_SYM = Symbol("css");
 
 /** The component whose render() built this vnode / this DOM node. See core/origin.ts. */
 export const ORIGIN_SYM = Symbol("origin");

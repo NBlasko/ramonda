@@ -45,8 +45,8 @@ describe("a block with holes", () => {
   });
 
   test("never concatenates: the expression's own value arrives untouched", () => {
-    // This is why nothing has to be escaped. A value that would be dangerous as attribute text —
-    // a quote, a semicolon, a closing brace — is carried as a value and set with `setProperty`.
+    // This is why nothing has to be escaped at COMPILE time — the value is an argument, and the
+    // compiler builds no string. What a renderer may do with it is `toStyleObject`'s problem, below.
     const hostile = '"; } body { display: none } .x {';
     expect(bordered(hostile, 0).values[0]).toBe(hostile);
   });
@@ -90,6 +90,22 @@ describe("the value as any other JSX library would spread it", () => {
     const padded = block("r-bbbbbbbbbbbbbbbb", ["--r-bbbbbbbbbbbbbbbb-0"]);
 
     expect(toStyleObject(padded(24)).style).toEqual({ "--r-bbbbbbbbbbbbbbbb-0": "24" });
+  });
+
+  /**
+   * A value that would become a SECOND declaration is dropped.
+   *
+   * `setProperty` cannot create one whatever it is handed, but this object never reaches it: a
+   * renderer spreads it, and a server-rendered page is serialized to HTML and parsed back — where
+   * the grammar applies to whatever the serializer wrote. Measured through that round trip in the
+   * framework's own suite, the value below came back as real, applied declarations.
+   */
+  test("a value carrying a semicolon is refused rather than passed on", () => {
+    const bordered = block("r-cccccccccccccccc", ["--r-cccccccccccccccc-0", "--r-cccccccccccccccc-1"]);
+
+    const { style } = toStyleObject(bordered("red; position: fixed; width: 100vw", "8px"));
+
+    expect(style).toEqual({ "--r-cccccccccccccccc-1": "8px" });
   });
 
   test("the framework is not needed to read one", async () => {

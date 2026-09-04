@@ -406,6 +406,16 @@ function compareAttributes(
     if (walk.budget <= 0) return;
     // `children` is walked as a tree, not compared as an attribute.
     if (depth === 0 && key === "children") continue;
+    /**
+     * A compiled `css` block is a fresh object on every render because a per-element value IS one —
+     * the class is fixed and the holes carry this render's values. So this check sees exactly what
+     * it exists to report and would be right about every element carrying a block.
+     *
+     * Exempt for the reason `children` is: the value is GENERATED, and a fresh identity for it means
+     * nothing to anybody. Nothing downstream reads it as a prop; it is applied to the element and
+     * dropped. See core/cssBlock.ts.
+     */
+    if (depth === 0 && key === "css") continue;
     // A prop the receiving component declared a VALUE — see the note at the call site.
     if (depth === 0 && declared !== undefined && declared.includes(key)) continue;
 

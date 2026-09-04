@@ -46,9 +46,33 @@ export function toStyleObject(value: StyleValue): { className: string; style: Re
   const style: Record<string, string> = {};
   for (let index = 0; index < value.properties.length; index++) {
     const raw = value.values[index];
+    if (raw === undefined) continue;
     // A custom property holds text. A number reaching here is a property that takes one — the
     // per-property types are what refuse the ones that do not.
-    if (raw !== undefined) style[value.properties[index]] = typeof raw === "string" ? raw : String(raw);
+    const text = typeof raw === "string" ? raw : String(raw);
+    if (holdsOneDeclaration(text)) style[value.properties[index]] = text;
   }
   return { className: value.className, style };
+}
+
+/**
+ * Whether a hole's value is one custom property value and cannot become a second declaration.
+ *
+ * A hole's value is whatever the author's expression evaluated to, and an expression can read a
+ * record — so "the author wrote it" is not a defence. `setProperty` refuses to create a second
+ * declaration whatever it is handed, but this object does not reach `setProperty`: a renderer
+ * spreads it, and a server-rendered page is serialized to HTML and PARSED back, where the grammar
+ * applies to whatever text the serializer produced.
+ *
+ * Measured through exactly that round trip in the framework's own suite: the same value came back as
+ * `position: fixed; width: 100vw; z-index: 9999`, real and applied. A semicolon is what separates
+ * declarations, and CSS says a custom property's value may not contain one at the top level.
+ * Refusing every semicolon rather than only the top-level ones costs a value like `content: "a;b"`
+ * and buys a rule that needs no CSS parser to apply.
+ *
+ * The declaration is dropped rather than sanitised, so the element is left unstyled in that one
+ * respect: a missing border beats an overlay somebody's record asked for.
+ */
+function holdsOneDeclaration(value: string): boolean {
+  return !value.includes(";");
 }
