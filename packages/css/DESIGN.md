@@ -1,8 +1,10 @@
 # A style block that becomes a class before the browser sees it
 
 **Status: a design, not a package.** No `package.json` on purpose — a manifest with no code is a
-package claiming to exist. This folder holds the plan and two prototypes that make its two central
-claims runnable instead of merely stated.
+package claiming to exist. This folder holds the design, seven runnable prototypes, and
+**[`PLAN.md`](./PLAN.md) — the order of work, what blocks what, and what may run in parallel.**
+
+This file is the *why*. `PLAN.md` is the *when*.
 
 ---
 
