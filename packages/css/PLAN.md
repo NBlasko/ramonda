@@ -6,12 +6,13 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0, track B, A1 and A2 are done.** The contract is written and implemented; the framework
+**Phase 0, track B, A1, A2 and track C are done.** The contract is written and implemented; the framework
 takes a `css` prop and applies it; the parser and transform turn a file into valid TSX with a source
-map that lands on the author's own line and column; and the virtual file gets that file type-checked
-by `tsc` with every diagnostic mapped home. **Everything else is unstarted** — the next work is track
-C (the property types, which the virtual file already imports and which is now the thing standing
-between this and real type safety), or G, the check command that runs A2 over a project.
+map that lands on the author's own line and column; the virtual file gets that file type-checked
+by `tsc` with every diagnostic mapped home; and the property map is generated from MDN's data, so a
+property name and 123 properties' values are checked for real. **Everything else is unstarted** —
+the next work is **G**, the check command that runs all of it over a project, or **D**, the CSS
+checker that owns every fault the types deliberately do not.
 
 ---
 
@@ -157,7 +158,44 @@ The original list, kept because it is what was built:
 
 *Size: small. Risk: low. The one thing to get right is that the prop must never be `undefined`.*
 
-### Track C — the property types. Needs the contract, not the compiler
+### Track C — the property types. **DONE.**
+
+`scripts/build-css-properties.mjs` writes `packages/css/src/properties.generated.ts` from MDN's own
+CSS data — `mdn-data`, **CC0-1.0**, public domain with no condition attached. `pnpm check` runs it
+with `--check`, so the map cannot drift from the data it came from.
+
+**551 non-prefixed properties, 123 of them a closed keyword set.** The other 428 are
+`string | number` and their typos are track D's.
+
+**`display` is one of the 428, and DESIGN.md said it was an example of the other kind.** Its grammar
+allows `inline flow-root`, so a union of its single keywords would reject valid CSS. That is the line
+this holds and it is not negotiable: **rejecting valid CSS is the one failure a type map may not
+have**, so a union goes only where the grammar is genuinely closed — measured, not felt. `position`,
+`flex-direction`, `text-align`, `float`, `object-fit`, `mix-blend-mode`, `visibility`, `user-select`
+and 115 others are; `display`, `align-items`, `overflow`, `cursor` and `white-space` are not, because
+each genuinely takes combinations.
+
+**Three things every union also has to allow**, each a false error before it was added and each
+measured: the CSS-wide keywords (`inherit`, `initial`, `unset`, `revert`, `revert-layer`), `var(…)`
+with or without a fallback, and `!important`. They are folded into one named alias, `Keyword<…>`, and
+the NAME is what keeps the message readable — TypeScript prints the alias instead of expanding the
+union:
+
+```
+TS2820: Type '"statik"' is not assignable to type
+  'Keyword<"fixed" | "absolute" | "static" | "relative" | "sticky"> | undefined'. Did you mean '"static"'?
+```
+
+**Vendor prefixes are an index signature, not a list.** A hundred prefixed names are in MDN's data
+and more are not, so `` `-${string}` `` accepts all of them — and the same signature is what lets an
+author declare `--brand`. It costs nothing that matters: a key NOT starting with `-` still has to be
+a real property, so `dsiplay` is still an excess property with a suggestion beside it.
+
+**What it costs to check.** Measured against the same program without blocks: 200 files each carrying
+one block is **+22%** (347 ms against 284 ms, most of which is `lib.d.ts` either way); 50 files is
++3%. The suggestion survives 551 keys, which a five-property fixture could never have shown.
+
+The original description, kept because it is what was built:
 
 Generate the `CssProperties` map. **The shape is decided and the reasoning is measured** — see
 *The honest limit, and it is a dial rather than a switch* in `DESIGN.md`:
@@ -429,6 +467,10 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | the same typo, key in quotes | `TS2353`, and **no suggestion at all** — so a dashed property gets no *did you mean* |
 | a value typo | `TS2820 … Did you mean '"flex"'?`, reported on the property |
 | where a diagnostic lands | on the property, except a name error, which lands on the expression |
+| how many properties have a closed grammar | **123 of 551**; `display`, `align-items`, `overflow` and `cursor` do NOT |
+| a union without `inherit`, `var()` and `!important` | reports valid CSS — all three are required |
+| a named alias in a union | TypeScript prints the NAME, so the message stays one line |
+| checking 200 files that each carry a block | **+22%** over the same program without them |
 | a hole typed by its property | `TS2322` on `padding: {{nekaFunc()}}` |
 | a template-literal length type | catches `10pxx`, prints an unreadable expanded union |
 | transform cost, the PROTOTYPE | +2.6% over esbuild — superseded, it built no AST and no map |

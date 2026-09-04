@@ -9,7 +9,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check-types": "turbo run check-types",
-    "check": "node scripts/preflight-node.mjs && pnpm install --frozen-lockfile && node scripts/check-workflows.mjs && node scripts/check-changesets.mjs && node scripts/check-event-spelling.mjs && pnpm --filter @ramonda/check build && node packages/check/dist/cli.js apps/docs/tsconfig.json && node packages/check/dist/cli.js apps/docs/tsconfig.json --fix --dry-run && pnpm lint && pnpm format:check && turbo run check-types test build && node scripts/check-examples.mjs && node scripts/build-package-readmes.mjs --check && node scripts/check-side-effects.mjs && node scripts/check-bare-import.mjs && node scripts/check-nameless-class.mjs && node scripts/check-manifest-text.mjs && node scripts/check-tsconfigs.mjs && node scripts/check-decorator-duplication.mjs && node scripts/check-css-contract.mjs && pnpm check:scaffold",
+    "check": "node scripts/preflight-node.mjs && pnpm install --frozen-lockfile && node scripts/check-workflows.mjs && node scripts/check-changesets.mjs && node scripts/check-event-spelling.mjs && pnpm --filter @ramonda/check build && node packages/check/dist/cli.js apps/docs/tsconfig.json && node packages/check/dist/cli.js apps/docs/tsconfig.json --fix --dry-run && pnpm lint && pnpm format:check && turbo run check-types test build && node scripts/check-examples.mjs && node scripts/build-package-readmes.mjs --check && node scripts/check-side-effects.mjs && node scripts/check-bare-import.mjs && node scripts/check-nameless-class.mjs && node scripts/check-manifest-text.mjs && node scripts/check-tsconfigs.mjs && node scripts/check-decorator-duplication.mjs && node scripts/check-css-contract.mjs && node scripts/build-css-properties.mjs --check && pnpm check:scaffold",
     "check:workflows": "node scripts/check-workflows.mjs",
     "check:changesets": "node scripts/check-changesets.mjs",
     "check:events": "node scripts/check-event-spelling.mjs",
@@ -30,6 +30,7 @@
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.1",
     "@vitest/coverage-v8": "^4.1.11",
+    "mdn-data": "^2.27.1",
     "oxlint": "^1.81.0",
     "turbo": "^2.10.12",
     "typescript": "5.9.3"

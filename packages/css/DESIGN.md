@@ -119,7 +119,7 @@ the declarations become in the virtual file — an **object literal**, not a str
 ```ts
 declare function __block(declarations: Partial<CssProperties>): string;
 
-__block({ display: "flexx" });               // value typo
+__block({ position: "statik" });             // value typo
 __block({ dsiplay: "flex" });                // key typo
 __block({ padding: nekaFunc() });            // a hole returning the wrong type
 __block({ padding: "10px 20px" });           // correct — silent
@@ -128,23 +128,28 @@ __block({ padding: "10px 20px" });           // correct — silent
 `tsc --strict`, verbatim:
 
 ```
-TS2820: Type '"flexx"' is not assignable to type '"flex" | "none" | "block" | …'. Did you mean '"flex"'?
+TS2820: Type '"statik"' is not assignable to type
+        'Keyword<"fixed" | "absolute" | "static" | "relative" | "sticky"> | undefined'. Did you mean '"static"'?
 TS2561: Object literal may only specify known properties, but 'dsiplay' does not exist
-        in type 'Partial<CssProperties>'. Did you mean to write 'display'?
-
-**One condition on that second line, found when the virtual file was written: the key has to be
-UNQUOTED.** `{ "dsiplay": … }` gets `TS2353` and no suggestion at all. So the virtual file writes a
-property bare whenever it is a valid identifier — and a dashed name, `flex-direction` or
-`border-left`, cannot be, so those get the plain message and their near miss belongs to the CSS
-checker. See `PLAN.md`, A2.
-TS2322: Type 'boolean' is not assignable to type 'Length | …'
+        in type 'CssBlockShape'. Did you mean to write 'display'?
+TS2322: Type 'boolean' is not assignable to type 'CssValue | undefined'
 ```
+
+**Two conditions on that, both found by measurement and neither obvious.**
+
+**The key has to be UNQUOTED.** `{ "dsiplay": … }` gets `TS2353` and no suggestion at all. So the
+virtual file writes a property bare whenever it is a valid identifier — and a dashed name,
+`flex-direction` or `border-left`, cannot be, so those get the plain message and their near miss
+belongs to the CSS checker.
+
+**The value typo only works where the grammar is a closed keyword set**, which is why the example
+above is `position` and not `display`. See the table below.
 
 Three things fall out of that one encoding, and they were three separate questions:
 
 - **a typo in the property name**, with TypeScript's own *did you mean* — because an object literal
   gets excess-property checking, which an argument list does not;
-- **a typo in an enumerable value**, likewise;
+- **a typo in a value**, likewise, for the 123 properties whose grammar is a closed keyword set;
 - **a hole checked against the property it belongs to.** `padding: {{nekaFunc()}}` is checked against
   `CssProperties["padding"]`, so the function's return type has to be something padding accepts. That
   was the hardest-sounding request and it costs nothing extra: the hole simply lands in the value
@@ -169,11 +174,28 @@ Unreadable, and it grows combinatorially with every shorthand position. So the s
 
 | kind of property | typed as | who catches a typo |
 |---|---|---|
-| enumerable (`display`, `position`, `flex-direction`, …) | a real union | **the types** — with *did you mean* |
-| lengths, colours, shorthands | `string \| number` | **our CSS checker**, where we write the message |
+| a closed keyword set (`position`, `flex-direction`, `text-align`, …) | a real union | **the types** — with *did you mean* |
+| everything else | `string \| number` | **our CSS checker**, where we write the message |
 
 The type system takes the half it is good at and stays readable; the checker takes the half where a
 grammar is needed and a human-written message is worth more than an expanded union.
+
+**Measured when the map was generated, and it moves `display` across the line.** Of 551 non-prefixed
+properties in MDN's data, **123 have a grammar that is a closed `|` list of keywords** and 428 do
+not. `display` is one of the 428: its grammar allows `inline flow-root`, so a union of its single
+keywords would reject valid CSS. It was the example in this table and it should not have been —
+**rejecting valid CSS is the one failure a type map may not have**, so the line is drawn at whether
+the grammar is genuinely closed, not at whether the property feels enumerable.
+
+Three things every union also has to allow, each a false error before it was added: the CSS-wide
+keywords (`inherit`, `initial`, `unset`, `revert`, `revert-layer`), `var(…)`, and `!important`. They
+are folded into one named alias, `Keyword<…>` — and the NAME earns its place, because TypeScript
+prints the alias in a diagnostic instead of expanding the union:
+
+```
+TS2820: Type '"statik"' is not assignable to type
+  'Keyword<"fixed" | "absolute" | "static" | "relative" | "sticky"> | undefined'. Did you mean '"static"'?
+```
 
 ### That the emitted CSS survives the pipeline
 
