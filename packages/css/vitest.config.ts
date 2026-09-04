@@ -4,8 +4,20 @@ import { hookTimeout, testTimeout } from "../../vitest.timeout.mjs";
 
 export default defineConfig({
   test: {
-    // 100% today, and a floor a point under it so ordinary work does not fight it.
-    coverage: withFloor(99),
+    coverage: {
+      ...withFloor(99),
+      exclude: [
+        ...withFloor(99).exclude,
+        /**
+         * The command's shell: argument parsing, printing and `process.exit`. Every decision it makes
+         * is in `check.ts` and is tested there, and what is left cannot be reached in-process at all.
+         *
+         * Not left uncovered instead: `__tests__/cli.test.ts` runs the real bin as a subprocess and
+         * asserts what a build actually depends on — the exit code and what comes out.
+         */
+        "src/cli.ts",
+      ],
+    },
     testTimeout,
     hookTimeout,
     globals: true,

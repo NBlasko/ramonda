@@ -6,13 +6,14 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0, track B, A1, A2 and track C are done.** The contract is written and implemented; the framework
+**Phase 0, track B, A1, A2, track C and G are done.** The contract is written and implemented; the framework
 takes a `css` prop and applies it; the parser and transform turn a file into valid TSX with a source
 map that lands on the author's own line and column; the virtual file gets that file type-checked
 by `tsc` with every diagnostic mapped home; and the property map is generated from MDN's data, so a
-property name and 123 properties' values are checked for real. **Everything else is unstarted** —
-the next work is **G**, the check command that runs all of it over a project, or **D**, the CSS
-checker that owns every fault the types deliberately do not.
+property name and 123 properties' values are checked for real; and `ramonda-css` runs all of that
+over a whole project and exits non-zero. **Everything else is unstarted** — the next work is **D**,
+the CSS checker that owns every fault the types deliberately do not, or **A3 + E**, the Vite plugin
+and the stylesheet, which is what makes a block render in a browser.
 
 ---
 
@@ -364,7 +365,37 @@ else:
 
 Plus `@layer`, so a hand-written stylesheet predictably wins.
 
-### G — the check command
+### G — the check command. **DONE.**
+
+`ramonda-css [tsconfig.json]`. `src/check.ts` is the testable half — a real tsconfig, the virtual
+files overlaid on the ones on disk, one `ts.Program`, every diagnostic mapped home — and `src/cli.ts`
+is the shell that prints and exits. `bin.mjs` is committed for the reason `@ramonda/check`'s is: a
+bin that IS a build output cannot be linked before it is built.
+
+**It reports everything, not only the blocks.** A project using this syntax cannot run plain `tsc`,
+so this IS its `tsc`; a report that dropped ordinary type errors would look like a passing check on a
+program nothing checked.
+
+**Three things came out of writing it, and two changed the virtual file.**
+
+1. **TypeScript reports one failure per object literal and stops.** Measured: a block with a name
+   typo, a value typo and a wrong hole reported ONE of them, and the author would meet the next on
+   the next run — worse, which one it reported depended on the kind, not the order. So the virtual
+   file now writes **one literal per declaration, gathered in an array**, and a nested rule holds an
+   array of its own. Every fault in a block arrives at once, each with its own position and its own
+   suggestion. It costs: the type check goes from **+22% to +37%** over the same program without
+   blocks, at 200 files each carrying one. Worth it — 118 ms in CI against three round trips for a
+   person.
+2. **A block shape that does not resolve would have passed silently.** If `@ramonda/css/properties`
+   cannot be found — not installed, `paths` unset, the export renamed — every block is `any`, nothing
+   is checked, and the diagnostic saying so lands in the preamble, which is scaffolding, which is
+   dropped. So the preamble is the one scaffolding a caller may not drop: a diagnostic inside it is
+   reported once, whatever the project's size. Found by chasing an uncovered line.
+3. **A refusal stops everything.** A compiler does not type-check a program it could not parse, and
+   carrying on would mean serving `tsc` either the unreadable file — a cascade of parse errors nobody
+   wrote — or a stub, which turns one real fault into a screen of "has no exported member".
+
+The original description:
 
 `tsc` over the virtual file, diagnostics mapped home, a non-zero exit. **Without this, type safety is
 a claim about editors rather than about CI.**
@@ -470,7 +501,10 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | how many properties have a closed grammar | **123 of 551**; `display`, `align-items`, `overflow` and `cursor` do NOT |
 | a union without `inherit`, `var()` and `!important` | reports valid CSS — all three are required |
 | a named alias in a union | TypeScript prints the NAME, so the message stays one line |
-| checking 200 files that each carry a block | **+22%** over the same program without them |
+| checking 200 files that each carry a block | **+37%** over the same program without them |
+| one object literal per block | TypeScript reports ONE failure and stops — so a block reports one fault per run |
+| one literal per declaration, in an array | every fault at once; +15 points of check time |
+| a block shape that does not resolve | everything becomes `any` and the diagnostic is scaffolding — reported now, or it passes silently |
 | a hole typed by its property | `TS2322` on `padding: {{nekaFunc()}}` |
 | a template-literal length type | catches `10pxx`, prints an unreadable expanded union |
 | transform cost, the PROTOTYPE | +2.6% over esbuild — superseded, it built no AST and no map |

@@ -36,20 +36,26 @@ export type { CssGlobal, CssProperties, CssValue, Keyword } from "./properties.g
 import type { CssProperties, CssValue } from "./properties.generated";
 
 /**
- * One block, as the virtual file writes it.
+ * One declaration, as the virtual file writes it.
  *
  * Four kinds of key, and each index signature is written as a template literal so that a key
  * matching none of them is still an EXCESS property — which is the whole point. A plain
  * `[key: string]` would accept `dsiplay` and there would be nothing left to check.
  *
  * - a property, from {@link CssProperties};
- * - a nested rule, `&:hover` or `& .title`;
- * - an at-rule, `@media (min-width: 40rem)`;
+ * - a nested rule, `&:hover` or `& .title`, holding declarations of its own;
+ * - an at-rule, `@media (min-width: 40rem)`, the same;
  * - anything starting with `-`: a custom property the author declares (`--brand`), and every
  *   vendor-prefixed name (`-webkit-line-clamp`). A hundred prefixed names are in MDN's data and more
  *   are not; one signature accepts all of them, and costs nothing that matters, because a key NOT
  *   starting with `-` still has to be a real property.
+ *
+ * **A nested rule holds an ARRAY, and a block is an array, and that is not a detail.** TypeScript
+ * reports one failure per object literal and stops — so a block written as a single literal with
+ * three faults in it reports one of them, and the author fixes it, re-runs, and meets the next.
+ * Measured, exactly that. One literal per declaration, gathered in an array, gets every fault
+ * reported at once, each with its own position and its own suggestion.
  */
 export type CssBlockShape = Partial<CssProperties> & {
-  [nested: `&${string}`]: CssBlockShape;
-} & { [at: `@${string}`]: CssBlockShape } & { [dashed: `-${string}`]: CssValue };
+  [nested: `&${string}`]: CssBlockShape[];
+} & { [at: `@${string}`]: CssBlockShape[] } & { [dashed: `-${string}`]: CssValue };

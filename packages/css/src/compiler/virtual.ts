@@ -65,6 +65,15 @@ export interface VirtualFile {
   /** Valid TSX. */
   readonly code: string;
   /**
+   * Where the generated prologue ends.
+   *
+   * A diagnostic before this is about the declaration this wrote — the helper, and the type it is
+   * declared against. It maps nowhere, like all scaffolding, but it is the one scaffolding a caller
+   * must NOT drop: if the shape cannot be resolved, everything becomes `any`, nothing is checked,
+   * and a silent pass is the worst answer a checker can give.
+   */
+  readonly preamble: number;
+  /**
    * The author offset a virtual offset came from, or `undefined` when it is scaffolding.
    *
    * A diagnostic whose start maps to `undefined` is about the file this wrote and must not be shown.
@@ -119,8 +128,10 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   write(
     `declare function ${block}(declarations: import(${JSON.stringify(
       options.properties ?? "@ramonda/css/properties",
-    )}).CssBlockShape): never;\n`,
+    )}).CssBlockShape[]): never;\n`,
   );
+
+  const preamble = code.length;
 
   let cursor = 0;
   for (const site of sites) {
@@ -133,29 +144,38 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 
     copy(cursor, site.start);
     copy(site.start, site.start + site.name.length);
-    write(`={${block}({`);
+    write(`={${block}([`);
     items(read.block.items, read.holes);
-    write("})}");
+    write("])}");
 
     cursor = read.end + 1;
   }
   copy(cursor, source.length);
 
-  return { code, homeOf: (offset) => homeOf(segments, offset) };
+  return { code, preamble, homeOf: (offset) => homeOf(segments, offset) };
 
+  /**
+   * One object literal PER DECLARATION, gathered in an array.
+   *
+   * Measured: TypeScript reports one failure per object literal and stops, so a block written as a
+   * single literal with three faults in it reports one — and the author fixes it, re-runs, and meets
+   * the next. An array of one-declaration literals reports all three at once, each with its own
+   * position and its own suggestion, nested rules included.
+   */
   function items(list: readonly BlockItem[], holes: readonly Span[]): void {
     for (const item of list) {
+      write("{");
       if (item.kind === "rule") {
         derived(quoted(item.prelude), item.at);
-        write(":{");
+        write(":[");
         items(item.items, holes);
-        write("},");
-        continue;
+        write("]");
+      } else {
+        derived(key(propertyName(item.property)), item.at);
+        write(":");
+        value(item.value, item.valueAt, holes);
       }
-      derived(key(propertyName(item.property)), item.at);
-      write(":");
-      value(item.value, item.valueAt, holes);
-      write(",");
+      write("},");
     }
   }
 

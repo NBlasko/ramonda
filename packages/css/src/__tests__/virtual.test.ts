@@ -44,8 +44,8 @@ export interface CssProperties {
 }
 
 export type CssBlockShape = Partial<CssProperties> & {
-  [nested: \`&\${string}\`]: CssBlockShape;
-} & { [at: \`@\${string}\`]: CssBlockShape } & { [custom: \`--\${string}\`]: string | number };
+  [nested: \`&\${string}\`]: CssBlockShape[];
+} & { [at: \`@\${string}\`]: CssBlockShape[] } & { [custom: \`--\${string}\`]: string | number };
 `;
 
 const build = (source: string) => virtualFile(source, { properties: "./properties" });
@@ -58,9 +58,14 @@ function body(source: string): string {
 }
 
 describe("what a block becomes", () => {
-  test("an object literal, which is what gets excess-property checking", () => {
-    expect(body(`const a = <div css=@( display: flex; )>x</div>;\n`)).toBe(
-      `const a = <div css={__block({display:"flex",})}>x</div>;\n`,
+  /**
+   * One literal PER DECLARATION, in an array. Measured: TypeScript reports one failure per object
+   * literal and stops, so a block written as a single literal with three faults reports one of them
+   * and the author meets the next on the next run. An array reports all three at once.
+   */
+  test("an array of one-declaration object literals", () => {
+    expect(body(`const a = <div css=@( display: flex; gap: 8px; )>x</div>;\n`)).toBe(
+      `const a = <div css={__block([{display:"flex"},{gap:"8px"},])}>x</div>;\n`,
     );
   });
 
@@ -78,15 +83,17 @@ describe("what a block becomes", () => {
   });
 
   test("a value that is entirely one hole is the expression itself, so its own type is checked", () => {
-    expect(body(`const a = <div css=@( padding: {{size}}; )>x</div>;\n`)).toContain(`padding:(size),`);
+    expect(body(`const a = <div css=@( padding: {{size}}; )>x</div>;\n`)).toContain(`{padding:(size)}`);
   });
 
   test("text and a hole together become a template literal, which keeps the pattern", () => {
-    expect(body(`const a = <div css=@( padding: {{n}}px; )>x</div>;\n`)).toContain("padding:`${(n)}px`");
+    expect(body(`const a = <div css=@( padding: {{n}}px; )>x</div>;\n`)).toContain("{padding:`${(n)}px`}");
   });
 
-  test("a nested rule is a nested object, so a typo inside it is still an excess property", () => {
-    expect(body(`const a = <div css=@( &:hover { color: red; } )>x</div>;\n`)).toContain(`"&:hover":{color:"red",},`);
+  test("a nested rule holds an array of its own, so its declarations are checked one by one too", () => {
+    expect(body(`const a = <div css=@( &:hover { color: red; } )>x</div>;\n`)).toContain(
+      `{"&:hover":[{color:"red"},]},`,
+    );
   });
 
   test("a property's case is folded, because CSS reads it that way", () => {
@@ -98,7 +105,7 @@ describe("what a block becomes", () => {
   });
 
   test("the expression is parenthesised, so a comma inside cannot change the call", () => {
-    expect(body(`const a = <div css=@( color: {{(a, b)}}; )>x</div>;\n`)).toContain(`color:((a, b)),`);
+    expect(body(`const a = <div css=@( color: {{(a, b)}}; )>x</div>;\n`)).toContain(`{color:((a, b))}`);
   });
 
   test("a backtick in the CSS cannot end the template literal it lands in", () => {
@@ -109,7 +116,7 @@ describe("what a block becomes", () => {
     const file = build(`const a = <div css=@( display: flex; )>x</div>;\n`);
 
     expect(file?.code.split("\n")[0]).toBe(
-      `declare function __block(declarations: import("./properties").CssBlockShape): never;`,
+      `declare function __block(declarations: import("./properties").CssBlockShape[]): never;`,
     );
   });
 
@@ -135,7 +142,7 @@ describe("what a block becomes", () => {
   test("a block found inside another block is passed over rather than read twice", () => {
     const file = build(`const a = <div css=@( color: {{ <b css=@( color: red; )/> }}; )>x</div>;\n`);
 
-    expect(file?.code.match(/__block\(\{/g)).toHaveLength(1);
+    expect(file?.code.match(/__block\(\[/g)).toHaveLength(1);
   });
 });
 

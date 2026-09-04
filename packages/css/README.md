@@ -11,8 +11,8 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 ```
 
 > **Partly built.** This package is private and its version is `0.0.0`. The parser, the transform,
-> the compiled value, the virtual file and the property types exist; the stylesheet, the check
-> command and the editor do not. Read
+> the compiled value, the virtual file, the property types and the check command exist; **the
+> stylesheet does not**, so a block type-checks and compiles but nothing renders yet. Read
 > `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
 > for what is done and what is next.
 
@@ -111,6 +111,27 @@ const canonical = normalise({
 const className = classNameFor(canonical);
 substitute(canonical, className); // "display:flex;"
 ```
+
+## Checking a project
+
+```
+ramonda-css [tsconfig.json]
+```
+
+Every block becomes a virtual file, the project is handed to `tsc` once, and every diagnostic comes
+back to the character the author typed:
+
+```
+[ramonda-css] 4 problem(s) in 2 file(s):
+
+  src/Card.tsx:6:9
+    TS2561: Object literal may only specify known properties, but 'dsiplay' does not exist
+            in type 'CssBlockShape'. Did you mean to write 'display'?
+```
+
+**It reports ordinary type errors too, and that is deliberate**: a project using this syntax cannot
+run plain `tsc`, so this is its `tsc`. Meant to sit in a `build` script — until it runs somewhere
+that fails, the type safety is a claim about editors rather than about CI.
 
 ## Licence
 
