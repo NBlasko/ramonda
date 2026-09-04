@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHighlighter, type LanguageRegistration } from "shiki";
@@ -404,6 +404,37 @@ describe("the VS Code extension", () => {
       expect(grammar.injectTo).toContain("source.tsx");
     });
   }
+
+  /**
+   * The formatter half, and the reason it is in the extension at all: measured, the Biome extension
+   * does nothing with a file holding a block — it is excluded from `biome.json` — and with the
+   * exclusion lifted biome answers *"Code formatting aborted due to parsing errors"*.
+   *
+   * A `main` that does not resolve is an extension that activates and then throws, which VS Code
+   * reports as "cannot activate" with no clue which file it meant.
+   */
+  test("the formatter it declares is a file that exists", () => {
+    expect(manifest.main).toBeDefined();
+    expect(existsSync(join(EXTENSION, manifest.main))).toBe(true);
+
+    // Every language it says it wakes up for is one it registers a provider for, and the other way.
+    const woken = (manifest.activationEvents as string[]).map((event) => event.replace("onLanguage:", ""));
+    const registered = readFileSync(join(EXTENSION, manifest.main), "utf8");
+    for (const language of woken) expect(registered).toContain(`"${language}"`);
+  });
+
+  /**
+   * The project's own command, never a copy this extension carries: what runs on save has to be what
+   * `pnpm format` runs, or a file formatted on save is one two commands disagree about.
+   */
+  test("it looks for the project's own `ramonda-css`, and answers nothing when there is none", async () => {
+    const { commandFor } = await import(join(EXTENSION, "locate.js"));
+
+    expect(commandFor(resolve(GRAMMAR, "..", "..", "src", "index.ts"))).toContain(
+      join("node_modules", ".bin", "ramonda-css"),
+    );
+    expect(commandFor("/")).toBeUndefined();
+  });
 
   /** Both directions: a grammar file nobody contributes is dead, and a contribution with no file is worse. */
   test("the manifest contributes exactly the grammars that exist", () => {

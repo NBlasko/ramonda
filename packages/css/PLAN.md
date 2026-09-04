@@ -894,6 +894,28 @@ three places one legitimately appears — inside a string, inside `url( … )`, 
 — are exactly where the rule does not look, and a hole is skipped too, because what is inside one is
 TypeScript.
 
+### S — format on save, which is the fourth tool that cannot read the file
+
+Reported: the Biome extension was installed and did nothing. Measured, twice over — a file holding a
+block is EXCLUDED from `biome.json`, so the extension never looks at it; and with the exclusion
+lifted, biome answers *"Code formatting aborted due to parsing errors"*. Prettier refuses the same
+way, which is what its plugin exists for.
+
+**`ramonda-css format --stdin-file-path <path>`**, spelled the way biome spells its own, because that
+is what the wrapper reaches for underneath. An editor asks a formatter about the BUFFER, not the
+file: a provider pointed at a path would format what was last saved and hand back edits computed
+against text the author has since changed, which is how a formatter deletes work.
+
+**The extension shells out to the PROJECT's own command.** Not a copy of the compiler: what runs on
+save has to be what `pnpm format` runs, with the same biome and the same config, or a file formatted
+on save is one two commands disagree about. `locate.js` is the walk up to `node_modules/.bin`, and it
+is its own file so it can be measured without an editor — everything else in `formatter.js` needs
+`vscode` to be loadable.
+
+**A file outside a project that installed the package gets no edits and no complaint.** Refusing
+loudly on every save of every file would be worse than doing nothing, and the tool's own words go to
+an output channel rather than a modal.
+
 ### L — the runtime diagnostic. Deliberately last
 
 A `css` value reaching the runtime that no transform produced must be reported rather than silently

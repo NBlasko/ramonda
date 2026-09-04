@@ -98,13 +98,23 @@ export function formatFile(
   options: { write: boolean },
 ): { changed: boolean; text: string } {
   const source = readFileSync(file, "utf8");
-  const held = placehold(source);
-
-  const text = held === undefined ? format(source, file) : held.restore(format(held.text, file));
+  const text = formatText(source, file, format);
   const changed = text !== source;
 
   if (changed && options.write) writeFileSync(file, text);
   return { changed, text };
+}
+
+/**
+ * The same thing for text that is not on disk yet, which is what an editor has.
+ *
+ * An editor asks a formatter about the buffer, not the file — a provider that read the file would
+ * format what was last saved and hand the author edits computed against text they have since
+ * changed. Everything else is shared with `formatFile`, so the two cannot drift.
+ */
+export function formatText(source: string, file: string, format: (text: string, path: string) => string): string {
+  const held = placehold(source);
+  return held === undefined ? format(source, file) : held.restore(format(held.text, file));
 }
 
 /** One diagnostic as a linter reports it — the shape `oxlint --format=json` produces. */

@@ -99,3 +99,61 @@ describe("the bin", () => {
     expect(output).not.toContain("Card.tsx:3:5  a hole");
   });
 });
+
+/**
+ * The buffer an editor has, formatted without touching the file.
+ *
+ * ## The fault this exists for
+ *
+ * An editor asks a formatter about the BUFFER, not the file. A provider that pointed the command at
+ * a path would format what was last saved and hand the author edits computed against text they have
+ * since changed — which is how a formatter deletes work.
+ *
+ * It is also the only way an editor can format one of these files at all. Measured: the Biome
+ * extension does nothing, because a file holding a block is excluded from `biome.json` — and with
+ * the exclusion lifted biome answers *"Code formatting aborted due to parsing errors"*, because the
+ * syntax is not TypeScript and `biome-ignore` is read by the parser that already failed.
+ */
+describe("--stdin-file-path", () => {
+  /**
+   * Run from the PACKAGE rather than from a throwaway project: the wrapper reaches for the biome the
+   * project has, by walking up from the working directory, and a temp folder under `/tmp` has none —
+   * measured, `biome is not installed here`.
+   */
+  const through = (source: string, args: readonly string[] = ["format", "--stdin-file-path=src/Card.tsx"]) => {
+    try {
+      return {
+        output: execFileSync(process.execPath, [BIN, ...args], { cwd: PACKAGE, input: source, encoding: "utf8" }),
+        status: 0,
+      };
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? -1 };
+    }
+  };
+
+  test("formats the text it was given and writes nothing else", () => {
+    const source = `const a = <div   css={@(\n  display: flex;\n)}>x</div>;\nexport default a;\n`;
+    const { output, status } = through(source);
+
+    expect(status).toBe(0);
+    // biome's own work on the JavaScript around the block.
+    expect(output).toContain(`<div css={@(`);
+    // And the block came back whole, at the indentation it went in with.
+    expect(output).toContain(`  display: flex;\n)}`);
+  });
+
+  test("a file with no block goes straight through the tool", () => {
+    const { output } = through(`const a   =   1;\nexport default a;\n`);
+
+    expect(output).toBe(`const a = 1;\nexport default a;\n`);
+  });
+
+  /** `lint` reports positions in a file, so a buffer with no name on disk is not a question it can take. */
+  test("is refused for lint, with a reason", () => {
+    const { output, status } = through(`const a = 1;\n`, ["lint", "--stdin-file-path=src/Card.tsx"]);
+
+    expect(status).toBe(1);
+    expect(output).toContain("is for `format`");
+  });
+});

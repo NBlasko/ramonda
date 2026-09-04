@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { relative } from "node:path";
+import { readFileSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { checkProject } from "./check";
-import { filesUnder, formatFile, lintFile, toolIn } from "./tooling";
+import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
 import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
 
 /**
@@ -88,6 +89,7 @@ process.exit(1);
  */
 function runTool(which: "format" | "lint", args: readonly string[]): never {
   const check = args.includes("--check");
+  const stdin = args.find((argument) => argument.startsWith("--stdin-file-path"));
   const paths = args.filter((argument) => !argument.startsWith("-"));
   const cwd = process.cwd();
 
@@ -96,6 +98,32 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
   if (binary === undefined) {
     console.error(`\n${TAG} \`${name}\` is not installed here, so there is nothing to run.\n`);
     process.exit(1);
+  }
+
+  /**
+   * One buffer in, the formatted text out, and nothing written — what an EDITOR needs.
+   *
+   * An editor asks a formatter about the buffer rather than the file: a provider that pointed this
+   * at a path would format what was last saved and hand back edits computed against text the author
+   * has since changed. The flag is spelled the way biome spells its own, because that is what the
+   * caller is really reaching for and this is a wrapper over it.
+   */
+  if (stdin !== undefined) {
+    if (which !== "format") {
+      console.error(`\n${TAG} \`--stdin-file-path\` is for \`format\`; \`lint\` reports positions in a file.\n`);
+      process.exit(1);
+    }
+
+    const named = stdin.includes("=") ? stdin.slice(stdin.indexOf("=") + 1) : (paths[0] ?? "stdin.tsx");
+    const source = readFileSync(0, "utf8");
+    try {
+      process.stdout.write(formatText(source, resolve(cwd, named), biomeFormatter(binary, cwd)));
+    } catch (error) {
+      if (!(error instanceof ToolFailed)) throw error;
+      console.error(`\n${TAG} \`${name}\` refused:\n\n${error.message}\n`);
+      process.exit(1);
+    }
+    process.exit(0);
   }
 
   const files = filesUnder(paths.length === 0 ? ["."] : paths, cwd);

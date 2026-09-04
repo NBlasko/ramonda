@@ -44,6 +44,29 @@ and outside JSX entirely:
 const panel = @( display: flex; );
 ```
 
+## Formatting on save
+
+The extension also formats these files, which no formatter can do on its own. Measured: the Biome
+extension does nothing with one, because a file holding a block is excluded from `biome.json` — and
+with the exclusion lifted, biome answers *"Code formatting aborted due to parsing errors"*. Prettier
+refuses the same way.
+
+What runs is the **project's own** `ramonda-css`, found by walking up to `node_modules/.bin`, with the
+project's own biome and its own config — so a file formatted on save is what `pnpm format` would have
+produced. Nothing is bundled here that could drift from it.
+
+Set it as the formatter for the languages you write blocks in:
+
+```json
+{
+  "[typescriptreact]": { "editor.defaultFormatter": "ramonda.ramonda-css-vscode" },
+  "editor.formatOnSave": true
+}
+```
+
+A file with no block goes straight through the same tool, so this is safe to set for the language
+rather than for a folder.
+
 ## What it does NOT do
 
 Completion, hover, and the red squiggles are not here. They come from the language service plugin in
