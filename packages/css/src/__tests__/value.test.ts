@@ -108,6 +108,14 @@ describe("the value as any other JSX library would spread it", () => {
     expect(style).toEqual({ "--r-cccccccccccccccc-1": "8px" });
   });
 
+  test("a descriptor read without a call has no values, so it contributes no declarations", () => {
+    const bordered = block("r-dddddddddddddddd", ["--r-dddddddddddddddd-0"]);
+
+    // `css={_s0}` on a block that HAS holes. The style is missing rather than written as the text
+    // `"undefined"`, which is a value CSS would keep and nothing could see through.
+    expect(toStyleObject(bordered).style).toEqual({});
+  });
+
   test("the framework is not needed to read one", async () => {
     // The package may not import the framework, at any depth. The entry is loaded here on its own
     // and this file runs in vitest's `node` environment, so a reach for `document` would throw.

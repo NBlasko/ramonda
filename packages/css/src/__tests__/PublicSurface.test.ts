@@ -12,7 +12,19 @@ import * as api from "../index";
  */
 const RUNTIME = ["block", "toStyleObject"];
 
-const COMPILER = ["HASH_LENGTH", "HOLE", "classNameFor", "normalise", "substitute", "variableNameFor"];
+const COMPILER = [
+  "CssBlockError",
+  "HASH_LENGTH",
+  "HOLE",
+  "classNameFor",
+  "findBlocks",
+  "mayHoldABlock",
+  "normalise",
+  "readBlock",
+  "substitute",
+  "transform",
+  "variableNameFor",
+];
 
 describe("public API surface", () => {
   test("the runtime entry exports exactly what it means to", () => {

@@ -6,10 +6,11 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0 and track B are done.** `CONTRACT.md` is written and every decision in it is implemented
-and tested in `src/`; the package is real, private, and every gate in this repository sees it. The
-framework takes a `css` prop and applies it, with the SSR and hydration directions measured rather
-than assumed. **Everything else is unstarted** — the next work is track C, or A1, the parser.
+**Phase 0, track B and A1 are done.** The contract is written and implemented; the framework takes a
+`css` prop and applies it; and the parser and transform turn a file into valid TSX with a source map
+that lands on the author's own line and column. **Everything else is unstarted** — the next work is
+A2 (the virtual file, which shares this parser) or track C (the property types, which needs only the
+contract).
 
 ---
 
@@ -175,9 +176,37 @@ become tests.*
 
 ## The spine, in order
 
-### A1 — the parser and the transform
+### A1 — the parser and the transform. **DONE.**
 
-The single most important piece, and everything except B and C waits on it.
+`src/compiler/`: `scan.ts` finds the blocks, `read.ts` parses one into a `Block` and records where each
+expression's bytes are, `transform.ts` emits, and `errors.ts` refuses with a position. Exported from
+`@ramonda/css/compiler` at two levels — `transform` for a bundler plugin, and `findBlocks`/`readBlock`
+for the virtual-file layer, which produces a different file from the same reading.
+
+**What it measured, and one number in the table below was wrong:**
+
+- **The bail-out is free**, as promised: 1,290 files and 10.73 MB of this repository in **0.84 ms**,
+  scan included. Eight files say maybe — the ones that document the syntax — and none holds a block.
+- **The whole transform is +9.7% on top of esbuild**, 58.8 µs/file, on a corpus where every component
+  carries four blocks. The prototype's **+2.6%** was measured on a transform that built no AST, did
+  not normalise, did not hash and produced no source map; it is replaced below rather than kept.
+- **The map's resolution is not the obvious setting.** Generating it is about half the transform's
+  cost. All three settings get every LINE right, including inside an expression spanning four of
+  them. `hires: false` is 26% cheaper and collapses every COLUMN to the start of its line — for the
+  whole file, not only near a block, because this map sits above the bundler's. `hires: "boundary"`
+  costs what `true` costs and carries half the mappings, and is what is used. There is a test.
+
+**Two things the writing found that the requirements list did not have:**
+
+- **A closing paren has to be handled to the end, not fallen through.** `url(a.png)` decrements the
+  depth to zero and the next test then reads the `)` as the block's own closer — measured,
+  `background: url(a.png) no-repeat` came out as `background:url(a.png;`, and
+  `@media (min-width: 40rem) { … }` stopped being a rule at all.
+- **A shebang is not JavaScript and is not a comment.** Nothing in the language skips one, so `@(`
+  written in a shebang line would be read as a block on a line the engine never parses. The scan
+  skips it, and so does the place the hoisted prologue goes.
+
+The original requirements, kept because they are what was built:
 
 **Input** a source file, **output** the transformed code, a source map, and the blocks it found.
 
@@ -355,8 +384,9 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | a value typo | `TS2820 … Did you mean '"flex"'?` |
 | a hole typed by its property | `TS2322` on `padding: {{nekaFunc()}}` |
 | a template-literal length type | catches `10pxx`, prints an unreadable expanded union |
-| transform cost | **+2.6%** over esbuild; 15–22 µs/file, linear |
-| bail-out on an unused codebase | 1,268 files, 10.61 MB, **1.33 ms** |
+| transform cost, the PROTOTYPE | +2.6% over esbuild — superseded, it built no AST and no map |
+| transform cost, the REAL one | **+9.7%** over esbuild; 58.8 µs/file, every component carrying four blocks |
+| bail-out on an unused codebase | 1,290 files, 10.73 MB, **0.84 ms**, scan included |
 | the generated `style={{…}}` object | `RMD020` on every render |
 | the same as a string / prop | silent |
 | SSR values | travel in the markup; no channel, no registry |
@@ -366,6 +396,7 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | `@(expr)` in decorator position | **already valid TypeScript** |
 | `ramonda-check` on the raw source | error-recovers; 3 rules become 1, silently |
 | source maps through both transforms | **5 of 5** positions land on the author's line |
+| the map's `hires` setting | all three get every line right; only `false` loses columns, everywhere |
 | the test runner | reached, and `enforce: "pre"` is required |
 | `biome-ignore` / `oxlint-disable` | useless — read BY the parser, which already failed |
 | lint through the virtual file | real diagnostics, author's lines |
