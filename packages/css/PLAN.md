@@ -6,17 +6,19 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0, track B, A1, A2, track C, G, A3, E and H are done — a block renders, and it is writable.** The contract is written and implemented; the framework
+**Phase 0, track B, A1, A2, track C, G, A3, E, H, I and I2 are done — and nothing in the repository
+goes quiet on the syntax any more.** The contract is written and implemented; the framework
 takes a `css` prop and applies it; the parser and transform turn a file into valid TSX with a source
 map that lands on the author's own line and column; the virtual file gets that file type-checked
 by `tsc` with every diagnostic mapped home; and the property map is generated from MDN's data, so a
 property name and 123 properties' values are checked for real; and `ramonda-css` runs all of that
 over a whole project and exits non-zero; and the Vite plugin plus the sheet turn a block into a
 class in a real stylesheet, proved by real builds; and the language service plugin gives an editor
-completion, hover and the right squiggles inside a block that is still being typed. **Everything else
+completion, hover and the right squiggles inside a block that is still being typed; and both tools
+that read the author's source — `ramonda-check` and the docs example gate — read it through the
+virtual file, each with the blindness reproduced first and a floor asserted after. **Everything else
 is unstarted** — the next work is **D**, the CSS checker that owns every fault the types deliberately
-do not, or **I** and **I2**, the two MANDATORY ones: `ramonda-check` and the docs example gate both
-read the author's source and both go quiet on a file they cannot parse.
+do not, or **K**, the format and lint wrapper.
 
 ---
 
@@ -485,18 +487,45 @@ The original description:
 Serve the virtual file as the script snapshot, map back. Completion inside a block then *is*
 object-literal completion. Without this the feature is technically safe and practically unusable.
 
-### I2 — the docs example gate reads through the virtual file too
+### I2 — the docs example gate reads through the virtual file too. **DONE.**
 
-`scripts/check-examples.mjs` type-checks every code block in the documentation and the READMEs.
-**Measured, planted into a real page: it does not fail — it files the block under "not standalone
-code and skipped" and exits 0.** It cannot tell pseudo-code from a syntax it cannot parse, so every
-documented example of this feature would be unverified, in a repository that has already shipped
-three wrong examples exactly that way.
+`shape()` turns a block holding `@( … )` into its virtual reading before it tries any wrapper, and
+`SELFTEST=block` plants a wrong example so the floor is asserted rather than assumed — proved to fail
+by removing the fix. It runs in `pnpm check` and in CI, beside the ordinary run.
 
-Same fix, same layer. **This makes the docs gate the sixth consumer of the transform** — after the
-build, `tsc`, the editor, `ramonda-check` and the test runner.
+**Reproduced first with the real script**, on a wrong example planted into a real README: skipped in
+silence, exit 0. The reading here is STRICT, not tolerant — a documented example of a syntax is
+exactly the place a malformed block must be caught.
 
-### I — `ramonda-check` reads through the virtual file. MANDATORY
+**And it needed the virtual file to preserve LINES**, which it did not. The gate reports by line and
+has no source map to consult; a multi-line block collapsed to one line, so everything below it moved
+up, and the preamble added one more. Measured: a nine-line file became seven. The first fix put the
+newlines after the block and was measured wrong too — every declaration then sat on the block's
+opening line, so a typo on 187 was reported on 185. They go BETWEEN the items, and now every line is
+the author's own line, inside a block as well as outside.
+
+**This makes the docs gate the sixth consumer of the transform** — after the build, `tsc`, the
+editor, `ramonda-check` and the test runner.
+
+### I — `ramonda-check` reads through the virtual file. **DONE.**
+
+A compiler host in `analyze.ts` serves the virtual reading of any file holding a block, under the
+file's own name — so module resolution does not move. The reading is TOLERANT: a checker reports what
+it can see, and a half-written block in somebody's buffer is not a reason to stop analysing the file
+it is in. Whether the block is well formed is `ramonda-css`'s answer, and that is the one that fails
+a build.
+
+**Reproduced with this package's own CLI before the fix**, exactly as predicted — three findings
+became one, exit code unchanged. The test writes its project to a temp directory rather than adding a
+fixture: a `.tsx` holding `@( … )` cannot be read by this repository's formatter or linter, and there
+is no reason to make that the repository's problem.
+
+`@ramonda/css` is a devDependency of `@ramonda/check`, bundled the way `@ramonda/dom-facts` is — so
+the checker still publishes with **no runtime dependency at all**, which is the property that lets it
+run first in a build. Verified: `magic-string` is tree-shaken out, because the virtual file needs no
+emitter.
+
+The original description:
 
 **Not optional, and it was missing from the first version of this list.** `ramonda-check` builds a
 `ts.Program` from the project's tsconfig, so it reads the author's source.
@@ -613,6 +642,8 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | a caret right after a complete key | one useless entry; **inside** the key gives every property name |
 | a caret where nothing is typed yet | belongs to no run of text — needs an empty object literal to be inside |
 | the strict parser on a half-typed property | refuses, so an editor gets nothing exactly when it matters |
+| a multi-line block in the virtual file | collapses to ONE line — everything below it moves up, and a line-reporting consumer is wrong |
+| the block's newlines put back AFTER it | every declaration lands on the block's opening line; they go between the items |
 | a hostile hole value through `cssText` | injects — `position: fixed`, `width: 100vw`, real and applied |
 | the same through `setProperty` | no second declaration, on the client |
 | the same through a SERVER render and back | **injects** — the parse re-reads the style attribute. Refused at the value now |

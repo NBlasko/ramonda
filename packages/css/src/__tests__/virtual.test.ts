@@ -50,11 +50,16 @@ export type CssBlockShape = Partial<CssProperties> & {
 
 const build = (source: string) => virtualFile(source, { properties: "./properties" });
 
-/** The virtual code with the one-line preamble dropped, which is what the shape assertions are about. */
+/**
+ * The virtual code with the preamble dropped, which is what the shape assertions are about.
+ *
+ * Sliced by `preamble` rather than at the first newline: the preamble deliberately ends WITHOUT one,
+ * so the virtual file has the same number of lines as the author's.
+ */
 function body(source: string): string {
   const file = build(source);
   if (file === undefined) throw new Error("the virtual file found no block");
-  return file.code.slice(file.code.indexOf("\n") + 1);
+  return file.code.slice(file.preamble);
 }
 
 describe("what a block becomes", () => {
@@ -115,7 +120,7 @@ describe("what a block becomes", () => {
   test("the preamble is a declaration, not an import, so a script does not become a module", () => {
     const file = build(`const a = <div css=@( display: flex; )>x</div>;\n`);
 
-    expect(file?.code.split("\n")[0]).toBe(
+    expect(file?.code.slice(0, file.preamble)).toBe(
       `declare function __block(declarations: import("./properties").CssBlockShape[]): never;`,
     );
   });
@@ -143,6 +148,61 @@ describe("what a block becomes", () => {
     const file = build(`const a = <div css=@( color: {{ <b css=@( color: red; )/> }}; )>x</div>;\n`);
 
     expect(file?.code.match(/__block\(\[/g)).toHaveLength(1);
+  });
+});
+
+describe("line for line", () => {
+  /**
+   * A multi-line block becomes ONE line — the whitespace between declarations is text this file never
+   * emits — so without the newlines put back, everything below the block moves up. Measured: a
+   * nine-line file became seven, plus one for the preamble, so a consumer counting lines was three
+   * out.
+   *
+   * That consumer is real. `scripts/check-examples.mjs` reports a documented example's fault by line
+   * and has no source map to consult.
+   */
+  test("the virtual file has as many lines as the author's", () => {
+    const source = `const before = 1;\nconst a = (\n  <div css=@(\n    display: flex;\n    gap: 8px;\n  )>x</div>\n);\nconst after = 2;\n`;
+    const file = build(source);
+
+    expect(file?.code.split("\n")).toHaveLength(source.split("\n").length);
+  });
+
+  test("and every line that is not part of a block is the same line", () => {
+    const source = `const before = 1;\nconst a = (\n  <div css=@(\n    display: flex;\n  )>x</div>\n);\nconst after = 2;\n`;
+    const author = source.split("\n");
+    const virtual = (build(source)?.code ?? "").split("\n");
+
+    // Line 1 carries the preamble, which is why it ends without a newline of its own.
+    expect(virtual[0].endsWith(author[0])).toBe(true);
+    // Lines 3 to 5 ARE the block — its closing `)` is on 5, so that line is rewritten too. Every
+    // line below it is untouched, and that is the property a line-counting consumer needs.
+    for (const line of [6, 7]) expect(virtual[line - 1]).toBe(author[line - 1]);
+  });
+
+  /**
+   * Inside a block too, and this was measured wrong first: putting every newline AFTER the block
+   * collapsed all its declarations onto the block's opening line, so a typo on line 187 was reported
+   * on 185. The newlines go between the items.
+   */
+  test("a declaration is on the line the author put it on", () => {
+    const source = `const a = (\n  <div css=@(\n    display: flex;\n    gap: 8px;\n    &:hover {\n      color: red;\n    }\n  )>x</div>\n);\n`;
+    const author = source.split("\n");
+    const virtual = (build(source)?.code ?? "").split("\n");
+
+    // Each name is looked up on the line the AUTHOR put it on, so the test never counts.
+    for (const name of ["display", "gap", "&:hover", "color"]) {
+      const line = author.findIndex((text) => text.includes(name));
+      expect(virtual[line]).toContain(name);
+    }
+  });
+
+  test("two blocks in one file each put their own newlines back", () => {
+    const source = `const a = (\n  <div css=@(\n    display: flex;\n  )>x</div>\n);\nconst b = (\n  <p css=@(\n    color: red;\n  )>y</p>\n);\nconst after = 3;\n`;
+    const virtual = (build(source)?.code ?? "").split("\n");
+
+    expect(virtual).toHaveLength(source.split("\n").length);
+    expect(virtual[10]).toBe("const after = 3;");
   });
 });
 

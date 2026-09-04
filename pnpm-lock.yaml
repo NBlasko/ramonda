@@ -14,6 +14,9 @@ importers:
       '@ramonda/check':
         specifier: workspace:^
         version: link:packages/check
+      '@ramonda/css':
+        specifier: workspace:^
+        version: link:packages/css
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.5.11
@@ -217,6 +220,9 @@ importers:
 
   packages/check:
     devDependencies:
+      '@ramonda/css':
+        specifier: workspace:*
+        version: link:../css
       '@ramonda/dom-facts':
         specifier: workspace:*
         version: link:../dom-facts

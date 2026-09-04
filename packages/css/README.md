@@ -10,10 +10,12 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 )>
 ```
 
-> **Partly built.** This package is private and its version is `0.0.0`. **A block renders, and it is
-> writable**: the parser, the transform, the compiled value, the virtual file, the property types,
-> the check command, the Vite plugin, the stylesheet and the editor plugin all exist. The CSS checker
-> does not, and neither does reading the syntax from `ramonda-check`. Read
+> **Partly built.** This package is private and its version is `0.0.0`. **A block renders, is
+> writable, and nothing in this repository goes quiet on it**: the parser, the transform, the compiled
+> value, the virtual file, the property types, the check command, the Vite plugin, the stylesheet and
+> the editor plugin all exist, and both tools that read source — `ramonda-check` and the docs example
+> gate — read it through the virtual file. The CSS checker does not exist yet, and neither does the
+> format and lint wrapper. Read
 > `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
 > for what is done and what is next.
 

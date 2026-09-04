@@ -39,6 +39,19 @@ import { findBlocks, mayHoldABlock } from "./scan";
  * between declarations, the preamble. Those diagnostics are about the file we wrote, not the one they
  * did.
  *
+ * ## Line for line, which is not free and is worth it
+ *
+ * A multi-line block becomes ONE line — the whitespace between declarations is text this file never
+ * emits — so every line after it moved up. Measured: a nine-line file became seven, and the preamble
+ * added one at the top, so a consumer counting lines was three out.
+ *
+ * That consumer exists: `scripts/check-examples.mjs` reports a documented example's fault by LINE and
+ * has no source map to consult. So the preamble ends without a newline, and each item is preceded by
+ * the newlines the author wrote before it — **every line is the same line, inside a block as well as
+ * outside**. Putting them all after the block instead was the first attempt and it was measured
+ * wrong: every declaration collapsed onto the block's opening line, so a typo on line 186 was
+ * reported on 185.
+ *
  * ## Where a diagnostic lands, which depends on its kind
  *
  * Measured through a real `ts.Program`, and worth knowing before reading a position:
@@ -170,7 +183,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   write(
     `declare function ${block}(declarations: import(${JSON.stringify(
       options.properties ?? "@ramonda/css/properties",
-    )}).CssBlockShape[]): never;\n`,
+    )}).CssBlockShape[]): never;`,
   );
 
   const preamble = code.length;
@@ -190,7 +203,14 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     copy(cursor, site.start);
     copy(site.start, site.start + site.name.length);
     write(`={${block}([`);
-    items(read.block.items, read.holes);
+    /** How far the author's text has been accounted for, in LINES. See `keepLine`. */
+    let lined = site.open;
+    const keepLine = (upTo: number | undefined): void => {
+      if (upTo === undefined || upTo < lined) return;
+      write("\n".repeat(countNewlines(source, lined, upTo)));
+      lined = upTo;
+    };
+    items(read.block.items, read.holes, keepLine);
 
     /**
      * An empty object literal at the end of the block, **for an editor only**.
@@ -209,6 +229,9 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     }
 
     write("])}");
+
+    // Whatever the block spanned below its last item — the closing `)` on a line of its own.
+    keepLine(read.end + 1);
 
     cursor = read.end + 1;
   }
@@ -233,18 +256,21 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * the next. An array of one-declaration literals reports all three at once, each with its own
    * position and its own suggestion, nested rules included.
    */
-  function items(list: readonly BlockItem[], holes: readonly Span[]): void {
+  function items(list: readonly BlockItem[], holes: readonly Span[], keepLine: (upTo?: number) => void): void {
     for (const item of list) {
+      // The newlines the author wrote above this declaration, so it lands on its own line.
+      keepLine(item.at);
       write("{");
       if (item.kind === "rule") {
         derived(quoted(item.prelude), item.at, (item.preludeEnd ?? item.at ?? 0) - (item.at ?? 0));
         write(":[");
-        items(item.items, holes);
+        items(item.items, holes, keepLine);
         write("]");
       } else {
         derived(key(propertyName(item.property)), item.at, item.property.length);
         write(":");
         value(item.value, item.valueAt, item.end, holes);
+        keepLine(item.end);
       }
       write("},");
     }
@@ -303,6 +329,15 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     copy(span.start, span.end);
     write(")");
   }
+}
+
+/** How many newlines the author wrote between two offsets. */
+function countNewlines(source: string, from: number, to: number): number {
+  let lines = 0;
+  for (let index = from; index < to; index++) {
+    if (source.charCodeAt(index) === 10) lines++;
+  }
+  return lines;
 }
 
 /**

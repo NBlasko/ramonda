@@ -200,7 +200,9 @@ jobs:
       # which is exactly what a fresh checkout gives — so running it earlier, or in a
       # job of its own, would report the missing build rather than the examples.
       - name: Type-check the documentation examples
-        run: node scripts/check-examples.mjs
+        run: |
+          SELFTEST=block node scripts/check-examples.mjs
+          node scripts/check-examples.mjs
 
       # Here for the same reason, and it needs the build even more directly: it asks a bundler what
       # survives importing each package's EMITTED entry. `@ramonda/devtools` once declared

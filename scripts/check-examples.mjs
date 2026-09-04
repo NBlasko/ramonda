@@ -25,6 +25,7 @@
  *   node scripts/check-examples.mjs query     # only paths containing "query"
  */
 import { analyzeProgram } from "@ramonda/check";
+import { mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -309,6 +310,23 @@ function ramondaGlobals(except = new Set()) {
 }
 
 /**
+ * A documented example with a style block whose property does not exist. See `SELFTEST=block`.
+ *
+ * `packages/_preamble.d.ts` is what gives it `Component`, the same as any README block.
+ */
+const PLANTED = `export class Planted extends Component {
+  render() {
+    return (
+      <div css=@(
+        display: flex;
+        dsiplay: flex;
+      )>x</div>
+    );
+  }
+}
+`;
+
+/**
  * The smallest wrapper that makes a block parse.
  *
  * Plenty of examples are deliberately not whole files — a run of class members with no class around
@@ -319,8 +337,28 @@ function ramondaGlobals(except = new Set()) {
  *
  * `export {}` makes the file a module, which is what a fragment with a top-level `await` needs and
  * what stops a `const` in one block colliding with the same name in another.
+ *
+ * ## A `@( … )` style block is read first, and that is not a convenience
+ *
+ * The syntax is not TypeScript, so no wrapper makes it parse and every attempt returns `null` — the
+ * block is filed under "not standalone code and skipped" and the run exits 0. **Measured by planting
+ * a wrong example into a real README: `dsiplay: flex` was skipped in silence**, in a repository that
+ * has already shipped three wrong examples exactly that way.
+ *
+ * So a block holding one is turned into its virtual reading before anything tries to wrap it, and
+ * the reading is line for line — which is what lets an error still name the author's own line, since
+ * this reports by line and has no source map to consult.
  */
 function shape(code) {
+  /**
+   * The virtual reading, when there is one. Strict: a documented example of a syntax IS the place a
+   * malformed block must be caught, and the tolerant reading would quietly accept `disp`.
+   */
+  if (mayHoldABlock(code)) {
+    const virtual = virtualFile(code, { properties: "@ramonda/css/properties" });
+    if (virtual !== undefined) code = virtual.code;
+  }
+
   // The filler `render` is only added when the fragment has none of its own. Plenty of blocks ARE a
   // `render` — `render() { return <p/>; }` is how the JSX page opens — and adding a second one made
   // every such block report a duplicate implementation.
@@ -485,8 +523,24 @@ const units = [];
 
 const unparseable = [];
 
+/**
+ * `SELFTEST=block` plants a documented example whose style block is wrong.
+ *
+ * The fault this guards is the one measured before the virtual reading existed: the block never
+ * parses, so every wrapper `shape` tries returns `null`, the block is filed under "not standalone
+ * code and skipped", and **the run exits 0**. Silence, in a repository that has already shipped three
+ * wrong examples exactly that way.
+ *
+ * So the floor is asserted rather than assumed: with this set, a run that does NOT report the planted
+ * block is a run that has gone blind again.
+ */
+const selftest = process.env.SELFTEST === "block";
+if (selftest) {
+  files.push("SELFTEST");
+}
+
 for (const file of files) {
-  const blocks = blocksIn(file);
+  const blocks = file === "SELFTEST" ? [{ code: PLANTED, line: 1, expectReport: undefined }] : blocksIn(file);
   if (blocks.length === 0) continue;
   const ambient = preamblesFor(file);
 
@@ -551,6 +605,7 @@ const options = {
     "@ramonda/lens": [`${repo}/packages/lens/src/index.ts`],
     // Two entries, and the order matters the same way the router's does — the longer specifier has
     // to be tried first or `@ramonda/css` swallows it.
+    "@ramonda/css/properties": [`${repo}/packages/css/src/properties.ts`],
     "@ramonda/css/compiler": [`${repo}/packages/css/src/compiler/index.ts`],
     "@ramonda/css": [`${repo}/packages/css/src/index.ts`],
     "@ramonda/devtools": [`${repo}/packages/devtools/src/index.ts`],
@@ -688,6 +743,16 @@ for (const group of groups.values()) {
 rmSync(work, { recursive: true, force: true });
 
 /* ── report ────────────────────────────────────────────────────────────────────────────────── */
+
+if (selftest) {
+  const caught = [...byUnit].some(([unit]) => unit.file === "SELFTEST");
+  console[caught ? "log" : "error"](
+    caught
+      ? "[examples] SELFTEST block: the planted style block was reported, as it must be"
+      : "[examples] SELFTEST block: the planted style block was NOT reported — the gate is blind to the syntax again",
+  );
+  process.exit(caught ? 0 : 1);
+}
 
 const total = [...byUnit.values()].reduce((n, list) => n + list.length, 0);
 
