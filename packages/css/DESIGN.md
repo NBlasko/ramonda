@@ -210,6 +210,8 @@ None of them is optional, and the order matters because each one is useless with
 3. **The editor.** A TypeScript language-service plugin over the same virtual file, so completion,
    go-to-definition, rename and the red squiggle all agree with the check command. Without this the
    feature is technically safe and practically unusable.
+   **And `ramonda-check` belongs in this piece, not in a fifth one** — it reads the author's source
+   through the same virtual file, for the reason measured below.
 4. **Bundler adapters.** Vite first — that is where dev and HMR live — then esbuild.
 
 ---
@@ -605,6 +607,59 @@ not guessed at.
 *Recommended:* ship one sheet, and treat splitting as **high priority rather than someday**. No
 syntax, type or compiled value changes when it lands, which is what makes starting with one sheet
 safe rather than a decision to regret.
+
+---
+
+## The framework's own tools read the author's source — and that is the conflict
+
+The four pieces of work above are about the compiler, the check command, the editor and the bundler.
+There is a fifth thing that reads a `.tsx` file in this repository and it was not on the list:
+**`ramonda-check` itself**, which builds a `ts.Program` from the project's tsconfig.
+
+The obvious guess is that a file with `@( … )` in it fails to parse and the run stops. **Measured,
+and it is worse than that: TypeScript error-recovers, so the run looks completely normal.**
+
+The same component, twice, differing only in where the block sits in the attribute list:
+
+```tsx
+<div onclick={this.go} role="button" tabindex={5} css=@( display: flex; )>   // block last
+<div css=@( display: flex; ) onclick={this.go} role="button" tabindex={5}>   // block first
+```
+
+```
+block LAST  :  half-built-keyboard-path  positive-tabindex  unnamed-image
+block FIRST :  unnamed-image
+```
+
+**Two accessibility faults disappear, and nothing says so.** The parser recovers by discarding
+everything from the unparseable attribute to the end of the tag, so what the checker sees depends on
+where the author happened to put the block. The exit code is 1 either way and the output reads
+normally in both.
+
+A tool that stops is a problem you fix in an afternoon. A tool that quietly checks less is one that
+ships.
+
+**The fix is the layer that already exists.** The checker has to read the same virtual file the type
+checker does — one transform, now used three times: by the build, by `tsc`, and by the rules. That is
+an allowed dependency: `@ramonda/check` may depend on this package. The direction that is forbidden
+is the other one.
+
+**Measured honestly, the damage so far is to the RULES and not to the graph.** The same project
+graphed with and without a block gives 2 nodes and 1 edge either way, with the `renders/tag` edge to
+the child intact — children survive the recovery, later attributes do not.
+
+### The certificate lands on the same requirement
+
+`--certify` makes three claims, and two of them are exposed here:
+
+- **`complete`** — *every component it names, it can follow*. It holds only when there are no holes,
+  and a reference the parser threw away is exactly a hole.
+- **`plain`** — *nothing needed an exemption written beside it*. It fails the moment somebody papers
+  over the blindness with a `// ramonda-check-ignore`.
+
+So the rule to write down before anyone builds a package with this: **a package whose source uses
+`@( … )` cannot honestly certify until the checker reads through the transform.** The certificate is
+not decoration here — it is the thing that would notice, and it should not be taught to look away.
 
 ---
 
