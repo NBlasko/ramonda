@@ -189,6 +189,69 @@ export interface UnreachableRouteIssue {
  * outlet that spreads props this cannot read silences it wholesale, because such an outlet may be
  * handing over any table in the program.
  */
+/**
+ * A key named at a `params()` read with no pattern, that the routing does not supply.
+ *
+ * The other door. `params(pattern)` is checked by the runtime and by `ParamsOffRouteIssue`; the
+ * argument-less one is not checked at all, and the router's own message sends people to it — "drop
+ * the argument and use `params<T>()` if it is rendered by routes that do not agree on their params".
+ *
+ * What makes a report fair here is that the pattern argument was never an assertion about which
+ * route you are on. Measured: `ParamPath<C>` is any table path carrying a `:param`, and
+ * `assertPattern` checks only that the NAMES exist in what matched — so a component under
+ * `/users/:id/edit` and `/admin/users/:id` may name either and is right on both. The argument names
+ * keys; it does not claim a route. Both doors therefore deserve the same verdict, and the
+ * inconsistency was ours.
+ *
+ * **And the failure is quieter than the other one.** `Router.tsx` runs `assertPattern` only
+ * `if (pattern !== undefined)`, so this read does not throw: it hands back a params object without
+ * the key, and a type that promised `string` delivers `undefined`. Nothing says a word.
+ */
+/**
+ * What `Object.prototype` gives every object, so a read of one names no param.
+ *
+ * Module scope rather than inside the walk: a `const` below its own use site is in the temporal dead
+ * zone when the walk reaches it, and this one was — `ReferenceError: Cannot access 'OBJECT_MEMBERS'
+ * before initialization`, from reviewing this branch.
+ */
+const OBJECT_MEMBERS = new Set([
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+  "toString",
+  "valueOf",
+  "constructor",
+]);
+
+export interface UnsuppliedKeyIssue {
+  /** The component or hook that reads. */
+  component: string;
+  /** The member holding the navigator — `nav` in `this.nav.params()`. */
+  member: string;
+  /**
+   * How the keys were named, because the fix differs.
+   *
+   * `type` — `params<{ teamId: string }>()`; `destructured` — `const { teamId } = params()`;
+   * `property` — `params().teamId`. All three name a key AT the call, which is what makes them a
+   * claim rather than a question.
+   */
+  how: "type" | "destructured" | "property";
+  /** The keys claimed as always present. An optional member or a default is not one of them. */
+  keys: string[];
+  /** Same split as the pattern door, and it reads the same way to whoever fixes it. */
+  why: "no-outlet" | "wrong-route";
+  /** For `wrong-route`: the route that really mounts it. */
+  route?: string;
+  /** For `wrong-route`: the claimed keys that route does not supply. */
+  missing?: string[];
+  /** How the walk got here from a root — carried for the same reason the pattern door carries it. */
+  path: string[];
+  file: string;
+  line: number;
+  column: number;
+}
+
 export interface ParamsOffRouteIssue {
   /** The component that reads, which is what has to move or stop reading. */
   component: string;
@@ -312,6 +375,8 @@ export interface AnalyzeResult {
   secondProviders: SecondProviderIssue[];
   /** `params(pattern)` read where no route matched — see `ParamsOffRouteIssue`. */
   paramsOffRoute: ParamsOffRouteIssue[];
+  /** A key named at an argument-less `params()` that no route supplies — see `UnsuppliedKeyIssue`. */
+  keysOffRoute: UnsuppliedKeyIssue[];
   /** Rings of mounts nothing on them can skip — see `RenderCycleIssue`. */
   renderCycles: RenderCycleIssue[];
   /** Component classes written among children, where an element was meant — see `ClassAsChildIssue`. */
@@ -642,6 +707,10 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
    * known until every root has been descended.
    */
   const paramReads: (Omit<ParamsOffRouteIssue, "why" | "route" | "missing" | "path"> & {
+    owner: ComponentNode;
+  })[] = [];
+  /** The same, for the argument-less door — collected and judged in exactly the same two steps. */
+  const keyedReads: (Omit<UnsuppliedKeyIssue, "why" | "route" | "missing" | "path"> & {
     owner: ComponentNode;
   })[] = [];
   const classesAsChildren: ClassAsChildIssue[] = [];
@@ -1133,10 +1202,12 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   /** How the walk first reached each node, for a report that has to name a mount rather than a read. */
   const pathTo = new Map<ComponentNode, string[]>();
   const issues = walk(reached, routesAbove, pathTo);
+  closeOverHooks(reached, routesAbove, pathTo);
   const unreachable = deadOnes(reached);
   const unreachableRoutes = strandedRoutes(reached);
   const renderCycles = endlessRings();
   const paramsOffRoute = readsOffTheRoute(reached, routesAbove, pathTo);
+  const keysOffRoute = keysOffTheRoute(reached, routesAbove, pathTo);
 
   return {
     issues,
@@ -1147,6 +1218,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     unreachableRoutes,
     secondProviders,
     paramsOffRoute,
+    keysOffRoute,
     renderCycles,
     classesAsChildren,
     counts: {
@@ -1552,10 +1624,23 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     if (!ts.isPropertyAccessExpression(access) || access.name.text !== "params") return;
 
     const pattern = literalStringOf(node.arguments[0]);
-    if (pattern === undefined) return;
-
     const member = navigatorMemberOf(access.expression, cls);
     if (member === undefined) return;
+
+    if (pattern === undefined) {
+      const claimed = keysClaimedAt(node);
+      if (claimed !== undefined) {
+        keyedReads.push({
+          owner: self,
+          component: self.name,
+          member,
+          how: claimed.how,
+          keys: claimed.keys,
+          ...positionOf(node),
+        });
+      }
+      return;
+    }
 
     paramReads.push({
       owner: self,
@@ -1564,6 +1649,69 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
       pattern,
       ...positionOf(node),
     });
+  }
+
+  /**
+   * The keys an argument-less `params()` claims are always there, read off the syntax.
+   *
+   * Three spellings, and each one names a key AT the call: a type argument, a destructuring of the
+   * result, a property taken from it. Nothing here asks the compiler for a type — a type LITERAL's
+   * members are text, which is all this needs, and a named interface is not followed (see below).
+   *
+   * **What counts as a claim, and what does not.** `{ teamId?: string }` and `const { teamId = "" }`
+   * are questions: their author has written down that the key may be absent, which is the honest way
+   * to read params under routes that disagree. A rest element names nothing. And a read taken off a
+   * VARIABLE later — `const p = params(); p.teamId` — is not judged at all: that is the escape the
+   * router's own message points at, and it stays open on purpose.
+   *
+   * **Two limits, named rather than hidden.** A type argument that is a NAME (`params<TeamParams>()`)
+   * says nothing here; resolving it to a declaration and reading its members is possible and is left
+   * for the day somebody wants it. And a key built from an expression (`params()[key]`) is unknowable
+   * by definition.
+   */
+  function keysClaimedAt(node: ts.CallExpression): { how: UnsuppliedKeyIssue["how"]; keys: string[] } | undefined {
+    /**
+     * A type argument DECIDES, including when it decides nothing.
+     *
+     * Measured on the first version, which fell through to the spellings below when the argument
+     * held no required key: `params<{ userId?: string }>().userId` and `params<TeamParams>().userId`
+     * were both reported as `property` reads. The first overrode the author's own `?` and the second
+     * overrode the limit two paragraphs up. Whoever writes a type argument has said what the keys
+     * are, and the property they then read is that type's business, not a second claim.
+     */
+    const argument = node.typeArguments?.[0];
+    if (argument !== undefined) {
+      if (!ts.isTypeLiteralNode(argument)) return undefined;
+      const keys = argument.members
+        .filter((member): member is ts.PropertySignature => ts.isPropertySignature(member))
+        .filter((member) => member.questionToken === undefined)
+        .map((member) => (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name) ? member.name.text : ""))
+        .filter((name) => name !== "");
+      return keys.length > 0 ? { how: "type", keys } : undefined;
+    }
+
+    const parent = node.parent;
+    if (parent !== undefined && ts.isVariableDeclaration(parent) && ts.isObjectBindingPattern(parent.name)) {
+      const keys = parent.name.elements
+        .filter((element) => element.dotDotDotToken === undefined && element.initializer === undefined)
+        .map((element) => {
+          const named = element.propertyName ?? element.name;
+          return ts.isIdentifier(named) || ts.isStringLiteral(named) ? named.text : "";
+        })
+        .filter((name) => name !== "");
+      if (keys.length > 0) return { how: "destructured", keys };
+    }
+
+    if (parent !== undefined && ts.isPropertyAccessExpression(parent) && parent.expression === node) {
+      // A member every object has is not a claim about a param. `params().hasOwnProperty("teamId")`
+      // is the ordinary way to ask whether a key is there AT ALL, and reporting it as a claim on a
+      // key called `hasOwnProperty` turns a careful read into a fault — measured, on a fixture that
+      // keeps the case.
+      if (OBJECT_MEMBERS.has(parent.name.text)) return undefined;
+      return { how: "property", keys: [parent.name.text] };
+    }
+
+    return undefined;
   }
 
   /**
@@ -2653,6 +2801,112 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     return found;
   }
 
+  /**
+   * The same question for the argument-less door — see `UnsuppliedKeyIssue` for why it is fair.
+   *
+   * Every silence the pattern door keeps is kept here, for the same reasons and by the same tests:
+   * no root is a library, an outlet spreading props nobody can read makes routing unknowable
+   * everywhere, a node the walk never reached belongs to the dead-declaration finding, and a route
+   * key that is not a literal says nothing about names.
+   *
+   * `wanted` is the CLAIMED keys rather than a pattern's `:names`, and that is the only difference.
+   */
+  function keysOffTheRoute(
+    reached: Set<ComponentNode>,
+    routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
+    pathTo: Map<ComponentNode, string[]>,
+  ): UnsuppliedKeyIssue[] {
+    if (roots.size === 0 || anOutletSpreadsUnread) return [];
+
+    const found: UnsuppliedKeyIssue[] = [];
+    for (const read of keyedReads) {
+      if (!reached.has(read.owner)) continue;
+      const { owner: _owner, ...rest } = read;
+      const issue = { ...rest, path: pathTo.get(read.owner) ?? [read.component] };
+
+      const routes = routesAbove.get(read.owner);
+      // No outlet above on some arrangement: there are no params there at all, so every claimed key
+      // is absent. Unlike the pattern door this does not throw — it hands back an object without
+      // them, which is the whole reason a reader needs telling.
+      if (routes === undefined || routes.has(undefined)) {
+        found.push({ ...issue, why: "no-outlet" });
+        continue;
+      }
+
+      for (const route of routes) {
+        if (route === null || route === undefined) continue;
+        const supplied = new Set(paramNamesOf(route));
+        const missing = read.keys.filter((name) => !supplied.has(name));
+        if (missing.length === 0) continue;
+        found.push({ ...issue, why: "wrong-route", route, missing });
+        break;
+      }
+    }
+    return found;
+  }
+
+  /**
+   * A hook is an extension of the component that uses it, and this is where that becomes true for
+   * every question at once.
+   *
+   * The walk follows what MOUNTS, and a hook mounts nothing: `this.use(Counter)` is a `uses` edge.
+   * So the walk leaves a hook out of all three answers — it is not `reached`, no arrival is recorded
+   * for it, and no path names it. Two rules used to patch that locally, each closing `reached` over
+   * `uses` for its own question, and the patch was worse than the hole: `deadOnes` widened the
+   * SHARED set for its own purposes and `readsOffTheRoute`, which runs after it, then read a hook as
+   * reached while `routesAbove` still knew nothing about it. Measured — a hook reading
+   * `params("/teams/:teamId")`, used by a component mounted at exactly `/teams/:teamId`, was reported
+   * `why: "no-outlet"`. Correct code, failing the build, because every rule is an error.
+   *
+   * So the closure happens ONCE, here, and carries the arrivals with it. A hook inherits the routes
+   * of every component that uses it, which is what the runtime does: the params it reads are the ones
+   * published above its user. Any rule written after this reads hooks correctly without knowing they
+   * exist.
+   *
+   * A FIXPOINT rather than one pass, because arrivals grow. Two hops down — a page using a wrapper
+   * hook that uses the reader — a node can be closed before the arrival that condemns it has arrived:
+   * queued once, the reader keeps whichever routes its wrapper held at that moment. So a node is
+   * queued again whenever its arrivals grew, which terminates because they only ever grow and there
+   * are finitely many routes, a ring of hooks using each other included.
+   */
+  function closeOverHooks(
+    reached: Set<ComponentNode>,
+    routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
+    pathTo: Map<ComponentNode, string[]>,
+  ): void {
+    const queue = [...reached];
+    while (queue.length > 0) {
+      const user = queue.pop();
+      if (!user) continue;
+      const arrivals = routesAbove.get(user);
+      for (const used of user.uses) {
+        let grew = false;
+        if (arrivals !== undefined) {
+          const held = routesAbove.get(used);
+          if (held === undefined) {
+            routesAbove.set(used, new Set(arrivals));
+            grew = arrivals.size > 0;
+          } else {
+            for (const arrival of arrivals) {
+              if (held.has(arrival)) continue;
+              held.add(arrival);
+              grew = true;
+            }
+          }
+        }
+        // The path a hook is named by is the path of the FIRST user that reached it, plus the hook —
+        // the same "how the walk first got here" the walk itself records for a component.
+        if (!pathTo.has(used) && arrivals !== undefined) {
+          const above = pathTo.get(user);
+          if (above !== undefined) pathTo.set(used, [...above, used.name]);
+        }
+        const known = reached.has(used);
+        reached.add(used);
+        if (!known || grew) queue.push(used);
+      }
+    }
+  }
+
   function deadOnes(reached: Set<ComponentNode>): UnreachableIssue[] {
     // No root, no verdict: in a library everything is unreachable by definition.
     if (roots.size === 0) return [];
@@ -2664,24 +2918,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
      * Measured before the filter: the playground reported `Provider` from
      * `@ramonda/core/src/base/Context.ts` as dead.
      */
-    /**
-     * Everything a reached node USES is reached too.
-     *
-     * The walk follows what MOUNTS, and a hook mounts nothing — `this.use(Counter)` is a `uses`
-     * edge and never a mount, which is right for the provider check and wrong for this one.
-     * Measured without it: `AppHook`, `CounterHook` and `HistoryHook` were all reported as dead
-     * while a component used each of them one line away.
-     */
-    const queue = [...reached];
-    while (queue.length > 0) {
-      const node = queue.pop();
-      if (!node) continue;
-      for (const used of node.uses) {
-        if (reached.has(used)) continue;
-        reached.add(used);
-        queue.push(used);
-      }
-    }
+    // Everything a reached node USES is reached too, and `closeOverHooks` has already said so — for
+    // this question and every other one, with the arrivals carried along. It used to be closed here,
+    // which widened the SHARED set for one rule and misled the next: see that function.
 
     const home = owner(projectRoot);
     const ours = home ? `${home.name}/` : undefined;
@@ -3529,24 +3768,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     // The package the project SITS IN, so it matches the prefix every id carries. A fixture with
     // no package.json of its own belongs to the package above it, and saying otherwise would give
     // the graph two names for one thing.
-    /**
-     * Everything a reached node USES is reached too.
-     *
-     * The walk follows what MOUNTS, and a hook mounts nothing — `this.use(Counter)` is a `uses`
-     * edge and never a mount, which is right for the provider check and wrong for this one.
-     * Measured without it: `AppHook`, `CounterHook` and `HistoryHook` were all reported as dead
-     * while a component used each of them one line away.
-     */
-    const queue = [...reached];
-    while (queue.length > 0) {
-      const node = queue.pop();
-      if (!node) continue;
-      for (const used of node.uses) {
-        if (reached.has(used)) continue;
-        reached.add(used);
-        queue.push(used);
-      }
-    }
+    // Everything a reached node USES is reached too, and `closeOverHooks` has already said so — for
+    // this question and every other one, with the arrivals carried along. It used to be closed here,
+    // which widened the SHARED set for one rule and misled the next: see that function.
 
     const home = owner(projectRoot);
     /**

@@ -108,6 +108,7 @@ const {
   unreachable,
   unreachableRoutes,
   paramsOffRoute,
+  keysOffRoute,
   secondProviders,
   renderCycles,
   classesAsChildren,
@@ -342,14 +343,21 @@ if (wantsFix) {
   /**
    * `--fix --dry-run` is a CHECK, and answers with its exit code.
    *
-   * It is the shape `biome format --check` and every tool like it uses, and it is what makes this
-   * usable in a gate: a fault the checker knows the answer to, left in the tree, is one nobody has
-   * an excuse for. Most of them are warnings and a normal run exits 0 on those — which is right,
-   * because a warning is a judgement someone may reasonably defer. A warning with a MECHANICAL
-   * answer is not that.
+   * It is the shape `biome format --check` and every tool like it uses, and it answers one question:
+   * is there a fault in the tree that the checker already knows the edit for?
+   *
+   * **What it no longer buys, since every rule is an error.** This step used to be the only thing
+   * that failed on a mechanical fault: most rules warned, a normal run exited 0 on a warning, and a
+   * warning with a mechanical answer was not a judgement anyone could reasonably defer. There are no
+   * warnings now — measured, 87 rules and none of them `warn`, with `verdict.test.ts` holding that —
+   * so a finding with a fix fails the plain run too, because fixes come only from rules and
+   * `failingRules` takes every rule that reported. As a gate over rule findings it was therefore
+   * redundant with the run before it, and it left `pnpm check` on 2026-09-04 — measured at 25-30
+   * seconds for an answer the run before it had already given. What puts this path through its
+   * paces now is `fix-gate.test.ts`, against the same built CLI.
    *
    * It stops here rather than falling through to the report. One question, one answer: a step that
-   * also printed every unrelated warning would be read as the whole check and is not.
+   * also printed every unrelated finding would be read as the whole check and is not.
    */
   if (dryRun) {
     if (fixed.applied > 0) {
@@ -370,6 +378,7 @@ if (
   unreachableRoutes.length === 0 &&
   secondProviders.length === 0 &&
   paramsOffRoute.length === 0 &&
+  keysOffRoute.length === 0 &&
   renderCycles.length === 0 &&
   classesAsChildren.length === 0
 ) {
@@ -479,6 +488,35 @@ if (paramsOffRoute.length > 0) {
       `on that route and pass the value down as a prop. Use \`pathname\` if it is not part of a route,\n` +
       `and \`params<T>()\` with no argument when it is genuinely written against no ONE route.\n`,
   );
+}
+
+/**
+ * The other door, printed apart from the first because the fix is a different sentence.
+ *
+ * A pattern read that goes wrong THROWS at runtime; a claimed key that goes wrong hands back
+ * `undefined` where the type promised a string. So this says what the read will actually do, and
+ * names the honest spelling — an optional key — rather than only refusing.
+ */
+if (keysOffRoute.length > 0) {
+  console.error(`\n${TAG} ${keysOffRoute.length} params() read(s) claiming a key the routing does not supply:\n`);
+  for (const read of keysOffRoute) {
+    console.error(`  ${read.file}:${read.line}:${read.column}`);
+    if (read.path.length > 1) console.error(`    ${read.path.join(" > ")}`);
+    const claimed = read.keys.map((name) => `\`${name}\``).join(", ");
+    const absent = (read.missing ?? read.keys).map((name) => `\`${name}\``).join(", ");
+    console.error(
+      read.why === "no-outlet"
+        ? `    <${read.component}> reads \`${read.member}.params()\` for ${claimed}, and no arrangement in ` +
+            `this build puts it under a <RouteOutlet> — so the params are empty and ${claimed} ` +
+            `${read.keys.length === 1 ? "is" : "are"} \`undefined\`. This read does not throw, which is why ` +
+            `nothing has told you.`
+        : `    <${read.component}> reads \`${read.member}.params()\` for ${claimed}, but the route that ` +
+            `mounts it is "${read.route}", which supplies no ${absent}. The read gives \`undefined\` where ` +
+            `the type says \`string\`, without throwing. Name the pattern instead, or mark the key optional ` +
+            `if this component really is rendered by routes that disagree.`,
+    );
+    console.error("");
+  }
 }
 
 /**
