@@ -1,238 +1,237 @@
-# `css` — a style block that becomes a class before the browser sees it
+# A style block that becomes a class before the browser sees it
 
-**Status: a design, not a package.** There is no `package.json` here on purpose — a manifest with no
-code is a package claiming to exist. This directory holds the plan; the name `@ramonda/css` is
-reserved by the folder and nothing else.
+**Status: a design, not a package.** No `package.json` on purpose — a manifest with no code is a
+package claiming to exist. This folder holds the plan and two prototypes that make its two central
+claims runnable instead of merely stated.
 
 ---
 
-## The thing being built
+## What is being built
 
-An author writes the style beside the markup, and ships a stylesheet.
+The style is written beside the markup, in CSS:
 
 ```tsx
-<div css={css`
+<div css=@(
   display: flex;
   flex-direction: column;
   padding: 24px;
   background-color: #0f172a;
-  border-left: ${isOnline ? "4px solid #10b981" : "4px solid #64748b"};
-`}>
-  <h3 css={css`margin: 0; color: #ffffff;`}>Nikola</h3>
+  border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
+)>
+  <h3 css=@( margin: 0; color: #ffffff; )>Nikola</h3>
 </div>
 ```
 
 The build emits a class for everything that cannot change, and a custom property for everything that
-can:
+can. Nothing about the style is in the bundle, nothing is rebuilt per render, and the browser caches
+the sheet as a file:
 
 ```css
 .r-8e271c6c { display: flex; flex-direction: column; padding: 24px;
               background-color: #0f172a; border-left: var(--r0); }
-.r-94dc05ab { margin: 0; color: #ffffff; }
 ```
 
 ```tsx
 <div className="r-8e271c6c" style={{ "--r0": isOnline ? "4px solid #10b981" : "4px solid #64748b" }}>
-  <h3 className="r-94dc05ab">Nikola</h3>
-</div>
 ```
 
-Nothing about the style is in the bundle, nothing is rebuilt per render, and the browser caches the
-sheet as a file. **That split — static structure, dynamic values, never dynamic rules — is the whole
-design.** Everything below follows from it.
+**Static structure, dynamic values, never dynamic rules.** That invariant is what buys the whole
+list: zero runtime, a cacheable sheet, server rendering with no injection, and styles a checker can
+read. Everything below follows from it.
 
 ---
 
-## The syntax, and why it is not `@( … )`
+## The three constraints, and they are not negotiable
 
-The shape this started from was `css=@( … )` with `{{expr}}` holes. The idea underneath it is right.
-The delimiters are the one part worth replacing, and the reason is the same thing that was asked for:
-type safety.
+**1. It works the way JSX works.** `<div>` is not valid JavaScript either. JSX is usable because
+somebody wrote the parser, the type support and the tooling for it. This is the same undertaking, at
+a much smaller scale, and it is the reason the feature can look like CSS instead of like a string.
 
-**JSX is type-safe because TypeScript's own parser implements JSX.** That is the entire mechanism. A
-grammar the compiler does not know is not a grammar it can check.
+**2. It is opt-in, and the fallback is ordinary JSX.** This is the difference from the frameworks
+that solved it with their own file format: there, the format is the price of admission. Here a file
+that does not use it is untouched, valid TSX, checked by the ordinary compiler. **Consequence for the
+implementation:** the transform must be a cheap no-op — a substring scan for the sigil, before any
+parsing — so a codebase that never uses it pays nothing and cannot be broken by it.
 
-Measured, both refuse it at the parse step — before any type exists to be checked:
+**3. It does not know Ramonda exists.** No import from the framework, no dependency, nothing in the
+output that names it. What it emits is `className` and `style`, which are DOM-level. Somebody using
+another JSX framework needs a wrapper for the prop and nothing else.
 
-```
-esbuild   ✘ [ERROR] Expected "{" but found "@"      a.tsx:3:11
-tsc       error TS1145: '{' or JSX element expected.
-          error TS1005: ')' expected.            (+ 5 more, cascading)
-```
+---
 
-What that costs is not one error message. Everything in this repository that reads source reads it
-through the TypeScript parser or esbuild's:
+## Why the syntax cannot be a string, and what that forces
 
-| | what happens to a file with `@( … )` in it |
+There is no syntax that is **both** valid TypeScript **and** raw CSS. Inside TypeScript, CSS text is
+either a string literal or a parse error. That is not a limitation of any particular delimiter — it
+is what "valid TypeScript" means.
+
+So the choice is real and it only has two sides:
+
+| | |
 |---|---|
-| `tsc` | does not parse — no types, anywhere in the file |
-| esbuild / the Vite and esbuild adapters | does not parse — no build |
-| **`ramonda-check`'s 86 rules** | `analyze.ts` builds a `ts.Program`. A file that does not parse has no AST, so **every rule goes blind on it** |
-| `biome format` · `oxlint` | no |
-| `check-examples.mjs` | the documentation gate type-checks every block in the docs and the READMEs. Blocks using this syntax become unverifiable |
-| every editor | no highlighting, no completion, no go-to-definition, no rename |
+| **objects** (`{ display: "flex" }`) | typed by `tsc` for free, and it is not CSS |
+| **CSS text** (`display: flex;`) | reads like the language it is, and nothing standard checks it |
 
-The framework would be introducing a syntax its own checker cannot see — in a release whose headline
-is that every rule fails the run.
-
-### The replacement, measured
-
-A tagged template is valid TypeScript, so all of the above keeps working, and the transform still
-sees a literal with its holes in it.
-
-```ts
-declare function css(
-  strings: TemplateStringsArray,
-  ...values: (string | number)[]
-): string & { readonly __cssBlock: true };
-```
-
-Planted with two deliberate faults, `tsc --strict` reports exactly those two and nothing else:
-
-```
-b.tsx(29,25): error TS2322: Type 'string' is not assignable to type 'string & { __cssBlock: true }'.
-b.tsx(30,26): error TS2322: Type '{ display: string; }' is not assignable to …
-```
-
-So `css={"display: flex"}` and `css={{ display: "flex" }}` are both refused, and the good form
-compiles. **The brand is what does it** — without it the prop is a `string` and any string passes.
-Note that `RamondaArgs` carries `[val: Lowercase<string>]: any`, so a `css` prop that is not declared
-explicitly is silently `any`. It has to be declared.
-
-The cost is honest and small: ``css={css`…`}`` says `css` twice.
-
-### What was given up, and it is not nothing
-
-`{{isOnline ? … }}` reads better inside CSS than `${isOnline ? … }`. That is a real loss and the only
-one. `${…}` is the interpolation every TypeScript reader already knows, and it is the one the
-compiler will hand the transform for free.
+Choosing CSS text means **we build the checking**. That is the cost, and it is also where the
+feature stops being a nicer spelling of something that exists.
 
 ---
 
-## The transform
+## How type safety actually arrives
 
-A prototype over the TypeScript AST — 30 lines, run against the file above — already produces the
-output at the top of this document. It is not the hard part.
+Two checkers, each doing the half it is good at.
 
-1. Find `css` tagged templates. `ts.isTaggedTemplateExpression`, tag resolved to this package's export
-   rather than to the name — a local `const css = …` must not be picked up.
-2. Split into static chunks and holes. `template.head` + each `templateSpans[i].literal`, with
-   `span.expression` the hole.
-3. Replace hole *i* with `var(--rN)`, normalise whitespace, hash the result. **The class name is the
-   hash of the normalised block**, so two identical blocks anywhere in the app share one class and the
-   name does not depend on the file, the order of the build, or how many blocks came before.
-4. Emit the rule into the sheet; rewrite the attribute to `className` plus a `style` object of the
-   holes.
+### The interpolated expressions — `tsc`, through a virtual file
 
----
+`{{isOnline ? … }}` is TypeScript and has to be checked as TypeScript, in its real lexical scope,
+with the surrounding file's imports and generics intact. The way to get that from a compiler that
+cannot parse the file is the same three moves the file-format frameworks make:
 
-## What "type safe" can mean here, and what it cannot
+1. transform the author's file into a **virtual file** that is valid TSX, recording where every
+   carried-over expression landed;
+2. hand the virtual file to `tsc`;
+3. map each diagnostic back through that record.
 
-Worth being exact, because the answer is better than it first looks.
+**`prototype-typecheck.mjs` does exactly this, and it works.** Run against `example.tsx`, which puts
+a genuine type error inside a hole:
 
-**TypeScript can check the prop and the holes.** That the attribute got a `css` block and not a
-string; that the interpolated expression is a `string | number` and not an object or `undefined`.
-Both measured above.
+```
+packages/css/example.tsx(13,27): error TS2339: Property 'toUpperCase' does not exist on type 'number'.
+      border-left: {{accent.toUpperCase()}};
+```
 
-**TypeScript cannot check the CSS text.** `dsiplay: flx;` is a valid template literal in every
-design considered here, `@( … )` included. No delimiter changes that.
+Line 13, column 27, in the file the author wrote — not in a generated file, not "somewhere in this
+block". The error is `tsc`'s own, with `tsc`'s own message.
 
-**But this repository already owns the machine that can.** `ramonda-check` runs 86 rules over a
-`ts.Program`, and the block is a literal in that program — its text is available statically, in full,
-at the exact source position. `@ramonda/dom-facts` is already the package that knows what the DOM
-knows. A rule family over the extracted block is the natural place for:
+**The load-bearing observation:** the transform that produces the virtual file and the transform the
+build needs are **the same transform**. This is not two implementations of one idea; it is one
+implementation used twice. That is what makes the whole thing affordable.
+
+### The CSS text — a checker of our own
+
+`tsc` has nothing to say about `dsiplay: flx`, and never will. That half is checked by a CSS-aware
+checker, which is strictly more than a type system could offer here:
 
 - a property that does not exist, and the near-miss it was meant to be
-- a value the property does not take
-- **a hole in a position a custom property cannot occupy** — see the next section; this one is not
-  cosmetic, it is the rule that keeps the feature honest
-- a declaration that will never apply — `display: flex` beside `display: block`
+- a value the property does not accept
+- **a hole in a position a custom property cannot occupy** — the rule that keeps the design honest
+- a declaration that can never apply — `display: flex` beside `display: block`
 
-**This is the part other frameworks do not have**, and it is not the interpolation syntax. Styles
-written next to markup is a solved, crowded problem. A checker that reads those styles and refuses
-the wrong ones — in the same run, at the same severity, with the same escape hatch — is not.
+Ramonda has 86 rules over a `ts.Program` and a package that knows what the DOM knows, so it has a
+head start here. **But this checker may not depend on any of it** (constraint 3). The shared piece is
+the technique, not the code.
+
+---
+
+## The syntax
+
+`@( … )` with `{{ … }}` holes. Kept, because we own the parser and there is no reason to pay a worse
+spelling to please a parser we are replacing anyway.
+
+**One collision found, and it is worth knowing before writing the parser.** `@(expr)` is *already*
+valid TypeScript in **decorator position** — measured, this compiles:
+
+```ts
+class C { @(dec) m() {} }
+```
+
+In a JSX attribute value position it is unambiguous (`"`, `{` or nothing are the only things allowed
+there), and in expression position it is a syntax error today (`TS1109`), so nothing existing changes
+meaning. **But this is a decorator-heavy framework**, so the parser must never look for a style block
+in front of a class, a method or a field. That is a one-line rule and a permanent test, not a design
+problem — as long as it is written down before rather than discovered after.
+
+---
+
+## The four pieces of work
+
+None of them is optional, and the order matters because each one is useless without the one before.
+
+1. **The parser and the transform.** Source in, virtual TSX plus the extracted CSS plus a source map
+   out. Pure, no bundler, no framework. Both prototypes here are the sketch of it.
+2. **A check command**, so a build can fail. This is what `vue-tsc` and `svelte-check` are, and
+   without it type safety is a claim about editors rather than about CI.
+3. **The editor.** A TypeScript language-service plugin over the same virtual file, so completion,
+   go-to-definition, rename and the red squiggle all agree with the check command. Without this the
+   feature is technically safe and practically unusable.
+4. **Bundler adapters.** Vite first — that is where dev and HMR live — then esbuild.
 
 ---
 
 ## Open decisions
 
-Each needs an answer before code. A recommendation is given for every one; none is settled.
-
 **1. Where a hole may appear.** A custom property holds a *value*. It cannot hold a property name, a
 selector, or a whole declaration:
 
 ```
-border-left: ${…};              ✓  becomes  border-left: var(--r0)
-${cond ? "display:flex" : ""}   ✗  a declaration — there is nothing to put a variable in
-${name}: 24px;                  ✗  a property name
-&:${state} { … }                ✗  a selector
+border-left: {{…}};                ✓   becomes  border-left: var(--r0)
+{{cond ? "display:flex" : ""}}     ✗   a declaration — nothing to put a variable in
+{{name}}: 24px;                    ✗   a property name
+&:{{state}} { … }                  ✗   a selector
 ```
-*Recommended:* value position only in v1, and the transform refuses the rest with the source position
-— an error at build time, plus a rule so the checker says it first.
+*Recommended:* value position only, refused at build time with the source position, and reported by
+the checker first.
 
 **2. What an `undefined` hole does.** An unset custom property makes the declaration invalid at
-computed-value time, which is a silent nothing rather than an error. *Recommended:* emit
-`var(--r0, initial)` so it falls back explicitly, and let the type refuse `undefined` in the first
-place — that is what the `string | number` signature above is doing.
+computed-value time — silent, not an error. *Recommended:* emit `var(--r0, initial)`, and let the
+type refuse `undefined` before that ever matters.
 
-**3. Merging with an author-written `style`.** `<div css={…} style={…}>` — the generated properties
-and the written ones must both survive. *Recommended:* merge, generated first, author last, and a
-rule if the author writes `--rN` themselves.
+**3. Merging with a written `style`.** *Recommended:* merge, generated first, author last.
 
 **4. Ordering and specificity.** Two classes setting the same property are decided by their order in
-the sheet, and that order comes from module graph order. *Recommended:* one block emits exactly one
-class holding all its declarations — so the ordering question only arises *between* elements, where it
-is rare — and put the sheet in a named `@layer` beneath author stylesheets, so a hand-written rule
-predictably wins.
+the sheet, which comes from module graph order. *Recommended:* one block emits one class holding all
+its declarations, and the sheet sits in a named `@layer` beneath author stylesheets.
 
-**5. Nesting, `&:hover`, `@media`.** The feature is not usable without them. *Recommended:* `&`,
-pseudo-classes and `@media` in v1; anything deeper waits for a use.
+**5. Nesting, `&:hover`, `@media`.** Unusable without them. *Recommended:* those three in v1.
 
-**6. Where the emitted CSS goes.** Both adapters already exist in `@ramonda/build`. Under Vite, a
-virtual module plus an injected import, which is what makes HMR work. Under esbuild, a plugin
-collecting into one output file. *Recommended:* same path in dev and production — a dev-only `<style>`
-injection is how dev and prod come to disagree.
+**6. What the standalone form returns.** Outside JSX — `const panel = @( … )`. *Recommended:* an
+object `{ className, style }`, because that is what makes constraint 3 true: any framework can spread
+it, and nothing about it is JSX-specific.
 
-**7. SSR.** Build-time extraction means the class is already in the server-rendered HTML and the sheet
-is a `<link>`; `renderDocument`'s `styles` option takes the hrefs today. No injection, no flash, no
-runtime. *Recommended:* nothing new — but confirm against `@ramonda/server` before believing it.
+**7. May anything happen at runtime?** *Recommended, and this is the opinion most worth arguing
+about:* only setting a custom property. Injecting a rule at runtime gives up server-render
+determinism, the cached sheet and the checker's view of the styles — every property this design has.
 
-**8. The runtime half.** The idea was to call this syntax elsewhere later. *Recommended, and this is
-an opinion worth arguing about:* the only thing that may ever happen at runtime is **setting a custom
-property**. Injecting a rule at runtime gives up SSR determinism, the cached sheet, and the checker's
-view of the styles — every property this design has. Outside JSX, ``const panel = css`…``` returning a
-class name is free and needs no runtime at all.
+**8. The name, and where it lives.** Not `@ramonda/*`, by constraint 3. Living in this monorepo is
+still fine — one gate, one release pipeline — but the name must not tie it to the framework, and
+nothing in it may import from one. **Unanswered.**
 
-**9. The name.** `css` over `sx`: it says what it is, and it is what the tag is called.
-
-**10. A generated object in the markup.** The transform emits `style={{ "--r0": … }}` — an object
-built in the markup on every render, which is a shape the framework's own diagnostics have opinions
-about. **Not measured yet.** Find out whether `RMD020` or `fresh-object-in-props` reports generated
-output before writing a transform that emits it.
+**9. Does the framework report the generated `style={{ … }}`?** The transform emits an object in the
+markup, which is a shape Ramonda's diagnostics have opinions about. **Not measured.** Measure before
+writing a transform that emits it.
 
 ---
 
 ## What this contradicts today
 
-`apps/docs/content/styling.md` currently says, under *What the framework does not do*: **no scoping,
-no generated class names, no CSS-in-JS.** Its stated reasons are that a style built in JavaScript
-ships in the bundle, is rebuilt on every render, and cannot be cached as a file of its own.
+`apps/docs/content/styling.md` says, under *What the framework does not do*: **no scoping, no
+generated class names, no CSS-in-JS.** Its three stated reasons are that such a style ships in the
+bundle, is rebuilt every render, and cannot be cached as a file.
 
-**All three reasons are satisfied by build-time extraction rather than contradicted by it** — which is
-the strongest argument that this design is the right one, and also a page that has to be rewritten
-rather than quietly amended when it lands.
+**Build-time extraction satisfies all three rather than contradicting them.** That is the strongest
+argument the design is right — and a page to rewrite rather than quietly amend when it lands.
 
 ---
 
-## Phases
+## The prototypes
 
-1. **This document, agreed.** Especially decisions 1, 8 and 10.
-2. **The extractor alone**, as a pure function: source text in, `{ class, css, holes }` out. Testable
-   with no bundler, and the prototype already exists.
-3. **The types** — the `css` tag, the branded block, the `css` prop declared explicitly on
-   `RamondaArgs` so the `Lowercase<string>` index signature does not swallow it.
-4. **The Vite adapter**, because that is where dev, HMR and the docs app are.
-5. **The checker rules**, over the extracted block.
-6. **esbuild**, SSR verification, and the `styling.md` rewrite.
+```
+node packages/css/prototype-typecheck.mjs packages/css/example.tsx.txt
+```
+
+Proves the claim everything else depends on: a `tsc` diagnostic from inside a `{{ … }}` hole,
+reported at the right line and column of the author's own file.
+
+**The `.txt` on the end of the fixture is itself a measurement.** Named `example.tsx`, it turned this
+repository's own gates red:
+
+```
+oxlint    packages/css/example.tsx:11:12: error: Unexpected token
+biome     format check failed
+```
+
+Neither tool can read the syntax, so neither can be pointed at a file containing it. That is piece 3
+of the work above, arriving early and uninvited — and a reminder that "the editor" means every tool
+that opens the file, not just the one with the squiggles.
 
 Nothing here is started.
