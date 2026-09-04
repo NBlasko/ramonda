@@ -324,8 +324,12 @@ generated, its contents are decided at build time, and a fresh identity for it m
 
 **What that costs, and it is the honest half:** the framework now owns a prop whose meaning comes
 from a compiler. If the two disagree — a `css` value reaching the runtime that no transform
-produced — the runtime has to say so rather than silently doing nothing. That is a diagnostic to
-write, not a risk to accept.
+produced — the runtime has to say so rather than silently doing nothing.
+
+**That diagnostic is deliberately LAST.** Diagnostics are this framework's signature and the reason
+to expect a good one here, which is exactly why it should be written against a feature that has
+stopped moving. Everything above can change what the right message is; nothing above depends on the
+message existing.
 
 ### Elsewhere, and in another framework
 
@@ -436,6 +440,111 @@ was a preference before this measurement and is a requirement after it. Both fai
 `undefined` rows, and each fails in its own unhelpful way — one ships a page missing a style with no
 diagnostic, the other reports a divergence it does not repair. A hole that cannot be `undefined` has
 neither problem, and that is a property of the signature rather than of anybody's care.
+
+---
+
+## Sharing, collisions, and what N instances cost
+
+Three separate questions that look like one.
+
+### Two identical blocks are one class, and that is the point
+
+The class name is the hash of the normalised block, so the same declarations written twice — in two
+files, two packages, by two people who never spoke — produce **one rule**. Deduplication is global
+and needs no registry, because nothing has to be coordinated: agreeing on the same answer is what a
+hash is for.
+
+### Do instances fight over the variable? Between siblings, no
+
+A custom property set inline belongs to that element and its subtree. Measured — three siblings
+sharing one class, each with its own value:
+
+```
+SIBLINGS:         red | blue | green
+NESTED-SETS-OWN:  blue          (a child that sets its own wins over its parent's)
+```
+
+So a component mapped a thousand times is a thousand elements with the same class and their own
+values, and no interference. **That is the ordinary case and it is safe.**
+
+### The case that is NOT safe: nested selectors and positional names
+
+`var()` resolves against the element the declaration applies to, and custom properties inherit. So a
+block with a nested rule reads its variable on the DESCENDANT:
+
+```
+parent block:   & span { color: {{accent}} }        sets --r0 on the parent
+span's block:   border-left: {{width}}              sets --r0 on the span
+```
+
+The parent's rule resolves `--r0` on the span — and gets the span's value. Wrong, silently, and only
+when the two happen to nest.
+
+**This cannot be measured in the repository's harness**, and the honest note is worth more than the
+number: jsdom returns `""` for an inherited custom property. That is the harness, not the fact — a
+control on ordinary `color` inherits correctly in the same test. The hazard is read from the
+specification, not from a run.
+
+**The fix is to scope the name to the block**, which the hash already provides:
+
+```
+--r0                →   --r-8e271c6c-0
+```
+
+Two blocks then cannot name the same variable, and inheritance stops being something to reason about.
+*Recommended*, and the reason to write it down is that the positional form works in every simple test
+and fails only where nesting meets reuse — which is exactly the shape of a bug that ships.
+
+### What N instances cost — measured, and the stylesheet does not grow
+
+One block, 10,000 instances, values varying per instance because identical repetition is gzip's best
+case and would flatter every row:
+
+| | raw | gzipped | per instance |
+|---|---|---|---|
+| **the stylesheet** | **0.10 KB** | — | **one rule, whatever N is** |
+| static block, no holes | 293 KB | 0.8 KB | 30 B |
+| a hole, positional `--r0` | 615 KB | 44.3 KB | 63 B |
+| a hole, block-scoped name | 713 KB | 46.7 KB | 73 B |
+
+**Scoping costs 5.3% gzipped**, which is a small price for removing a class of silent bug.
+
+The number worth reading twice is the first row. **Class count grows with the blocks in your source,
+never with instances.** A component mapped ten thousand times is one rule and ten thousand class
+attributes. What does cost is having a *hole* at all — 44 KB gzipped for ten thousand varying values —
+and that is inherent to a value that differs per instance, not to this design.
+
+### The hash has to be longer than it looks
+
+The prototypes use 8 hex characters, and that is not enough. Two DIFFERENT blocks landing on the same
+name is a birthday problem:
+
+| blocks | 8 hex (32b) | 12 hex (48b) | 16 hex (64b) |
+|---|---|---|---|
+| 2,000 | 4.7e-4 | 7.1e-9 | 1.1e-13 |
+| 10,000 | **1.16%** | 1.8e-7 | 2.7e-12 |
+| 50,000 | **25.25%** | 4.4e-6 | 6.8e-11 |
+
+A one-in-a-hundred chance of two unrelated components silently sharing a rule is not a risk to
+accept. *Recommended:* **12 hex characters**, and — because a collision must be impossible rather
+than unlikely — **assert it where the sheet is assembled**.
+
+**That is also the answer to a tension in this design.** The transform is deliberately local: no
+cross-file analysis, which is what makes it cacheable and incremental. Global questions do not belong
+there. They belong in the assembly step that concatenates the chunks into a sheet, which sees every
+block by definition — the same place as the round-trip assertion.
+
+### One sheet, or one per route
+
+The question left open above, in plain terms. Every block's CSS has to end up in a file the page
+links, and there are two ways to arrange that:
+
+- **One sheet for the whole app.** Simple, cached once, and a visitor pays for pages they never open.
+- **One per route.** Each page carries only what it uses, and the build has to know which blocks a
+  route reaches — cross-file knowledge, so again the assembly step and never the transform.
+
+*Recommended:* one sheet to begin with. Splitting is a change to assembly only, and no syntax, no
+type and no compiled value depends on which one is chosen — which is the reason it can wait.
 
 ---
 
