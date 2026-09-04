@@ -22,6 +22,18 @@ export class CssBlockError extends Error {
   }
 }
 
+/**
+ * What a hole in the wrong place says, wherever it is found.
+ *
+ * One sentence, one place: the build refuses these and the CSS checker reports them, and a fault that
+ * read differently depending on which tool found it would be two faults to a reader.
+ */
+export function holeOutOfPlace(what: "a declaration" | "a property name" | "a selector"): string {
+  return what === "a declaration"
+    ? "a hole cannot be a whole declaration — a custom property holds a value, so write `property: {{…}}` and put the choice inside it."
+    : `a hole cannot stand in ${what} — a custom property holds a value, and ${what} is not one.`;
+}
+
 /** The 1-based line and column of an offset, counted the way an editor does. */
 export function positionOf(source: string, offset: number): { line: number; column: number } {
   let line = 1;

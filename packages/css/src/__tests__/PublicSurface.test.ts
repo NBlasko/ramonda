@@ -15,11 +15,13 @@ const RUNTIME = ["block", "toStyleObject"];
 const COMPILER = [
   "CssBlockError",
   "Sheet",
+  "checkBlock",
   "HASH_LENGTH",
   "HOLE",
   "classNameFor",
   "findBlocks",
   "mayHoldABlock",
+  "holeOutOfPlace",
   "normalise",
   "positionOf",
   "readBlock",

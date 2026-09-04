@@ -198,6 +198,57 @@ describe("the red squiggles", () => {
   });
 });
 
+describe("the CSS rules, as squiggles", () => {
+  /**
+   * Where the hole rule earns its place. The build refuses a hole written where a custom property
+   * cannot go — there is no correct compilation — so the only place it can be SAID rather than
+   * enforced is here, under the character, while it is being typed.
+   */
+  test("a hole where a custom property cannot go is a warning under the `{{`", () => {
+    const marked = `const a = (\n  <div css=@(\n    {{name}}: 24px;\n  )>x</div>\n);\n`;
+    const { service, source } = editor(marked);
+
+    const [only] = service.getSemanticDiagnostics(FILE);
+    expect(only.start).toBe(source.indexOf("{{"));
+    expect(only.length).toBe(2);
+    expect(only.category).toBe(ts.DiagnosticCategory.Warning);
+    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("hole-out-of-place");
+  });
+
+  test("a property typo the types cannot suggest gets the rule's suggestion", () => {
+    const marked = `const a = (\n  <div css=@(\n    flex-dirction: row;\n  )>x</div>\n);\n`;
+    const { service, source } = editor(marked);
+
+    const ours = service
+      .getSemanticDiagnostics(FILE)
+      .filter((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, " ").startsWith("["));
+
+    expect(ours).toHaveLength(1);
+    expect(ours[0].start).toBe(source.indexOf("flex-dirction"));
+    expect(ts.flattenDiagnosticMessageText(ours[0].messageText, " ")).toContain("flex-direction");
+  });
+
+  /**
+   * The diagnostic hangs on a source file built from the AUTHOR's text, not the virtual copy. An
+   * editor resolves a position against that file, and the two differ inside a block — so the wrong
+   * one would put the squiggle wherever they happen to diverge.
+   */
+  test("the file a diagnostic names holds the author's own text", () => {
+    const marked = `const a = (\n  <div css=@(\n    display: flexx;\n  )>x</div>\n);\n`;
+    const { service, source } = editor(marked);
+
+    const [only] = service.getSemanticDiagnostics(FILE);
+    expect(only.file?.text).toBe(source);
+    expect(source.slice(only.start ?? 0, (only.start ?? 0) + (only.length ?? 0))).toBe("flexx");
+  });
+
+  test("and a correct block still gets none", () => {
+    const { service } = editor(`const a = <div css=@( display: flex; gap: 8px; )>x</div>;\n`);
+
+    expect(service.getSemanticDiagnostics(FILE)).toEqual([]);
+  });
+});
+
 describe("hover", () => {
   test("over a hole's expression, it is the expression's own type", () => {
     const marked = `const accent: string = "#10b981";\nconst a = <div css=@( color: {{acc${CARET}ent}}; )>x</div>;\n`;

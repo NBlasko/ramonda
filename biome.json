@@ -6,7 +6,12 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!packages/create-ramonda/templates/**", "!packages/css/src/properties.generated.ts"]
+    "includes": [
+      "**",
+      "!packages/create-ramonda/templates/**",
+      "!packages/css/src/properties.generated.ts",
+      "!packages/css/src/compiler/keywords.generated.ts"
+    ]
   },
   "formatter": {
     "enabled": true,

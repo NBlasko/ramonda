@@ -1,4 +1,7 @@
 import type ts from "typescript";
+import { readBlock } from "./compiler/read";
+import { type Finding, checkBlock } from "./compiler/rules";
+import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
 /**
@@ -68,7 +71,10 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        * The version is the editor's own answer to "has this changed", so it is the right key: a
        * keystroke bumps it, and everything else — a project reload, another file's edit — does not.
        */
-      const cache = new Map<string, { version: string; file: VirtualFile | undefined }>();
+      const cache = new Map<
+        string,
+        { version: string; file: VirtualFile | undefined; css: Finding[]; author: ts.SourceFile | undefined }
+      >();
 
       const overlay = (fileName: string): VirtualFile | undefined => {
         if (!SOURCE.test(fileName)) return undefined;
@@ -89,8 +95,28 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         const file =
           text === undefined ? undefined : virtualFile(text, { properties: properties(info), tolerant: true });
 
-        cache.set(fileName, { version, file });
+        /**
+         * The author's own text as a source file, for the CSS rules' diagnostics to hang on.
+         *
+         * The inner service's source file holds the VIRTUAL text, and a diagnostic's `file` is what
+         * an editor resolves a position against — so attaching an author offset to the virtual text
+         * would put a squiggle wherever the two happen to differ. One per version, beside the copy
+         * it is the counterpart to.
+         */
+        const author =
+          text === undefined
+            ? undefined
+            : tsModule.createSourceFile(fileName, text, tsModule.ScriptTarget.Latest, true, tsModule.ScriptKind.TSX);
+
+        cache.set(fileName, { version, file, author, css: text === undefined ? [] : cssFindings(text) });
         return file;
+      };
+
+      /** The CSS rules' findings for a file, out of the same cache the overlay uses. */
+      const cssFor = (fileName: string): ts.Diagnostic[] => {
+        overlay(fileName);
+        const cached = cache.get(fileName);
+        return cached === undefined ? [] : ours(cached.css, cached.author);
       };
 
       /**
@@ -150,7 +176,12 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         const file = overlay(fileName);
         if (file === undefined) return service.getSemanticDiagnostics(fileName);
 
-        return mapped(file, inner.getSemanticDiagnostics(fileName));
+        /**
+         * The CSS rules beside the type errors, and this is where the hole rule earns its place: the
+         * build refuses a hole written where a custom property cannot go, and here it is a squiggle
+         * under the character, while it is being typed.
+         */
+        return [...cssFor(fileName), ...mapped(file, inner.getSemanticDiagnostics(fileName))];
       };
 
       /**
@@ -170,9 +201,45 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
   };
 }
 
+/**
+ * The CSS rules' findings, as diagnostics an editor can draw.
+ *
+ * Their positions are already the author's — the rules read the author's own text, not the virtual
+ * copy — so nothing is mapped. The category is a warning rather than an error, which is the honest
+ * answer for all four: a page with `display: flexx` renders, and the declaration is dropped.
+ */
+function ours(findings: readonly Finding[], file: ts.SourceFile | undefined): ts.Diagnostic[] {
+  return findings.map((finding) => ({
+    file,
+    start: finding.at,
+    length: finding.length,
+    // A warning, which is the honest answer for all four: a page with `display: flexx` renders, and
+    // the declaration is simply dropped. `1` is `Error`, `0` is `Warning`.
+    category: 0 as ts.DiagnosticCategory,
+    // Zero, because these are not TypeScript's and claiming a code in its space would be a lie. The
+    // rule's id is in the message, which is what a reader searches for.
+    code: 0,
+    messageText: `[${finding.rule}] ${finding.message}`,
+  }));
+}
+
 /** Where the block shape lives, so a project can point it at a fixture or at a wrapper's own. */
 function properties(info: PluginCreateInfo): string | undefined {
   return info.config?.properties;
+}
+
+/**
+ * What the CSS rules say about a file, read from the author's own text.
+ *
+ * TOLERANT, because an editor is the only place the hole rule can fire at all: the build refuses
+ * such a block outright, so by the time a build has spoken there is nothing left to squiggle.
+ */
+function cssFindings(text: string): Finding[] {
+  const out: Finding[] = [];
+  for (const site of findBlocks(text)) {
+    out.push(...checkBlock(readBlock(text, site.open, "", { tolerant: true }).block));
+  }
+  return out;
 }
 
 /** A span in virtual coordinates, in the author's — or nothing, when it names text they never wrote. */

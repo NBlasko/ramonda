@@ -70,6 +70,8 @@ export type ValuePart = TextPart | HolePart;
 
 export interface TextPart {
   readonly kind: "text";
+  /** Where this run of text starts in the author's file. See {@link Declaration.at}. */
+  readonly at?: number;
   readonly text: string;
 }
 

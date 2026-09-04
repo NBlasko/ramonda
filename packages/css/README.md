@@ -13,9 +13,9 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 > **Partly built.** This package is private and its version is `0.0.0`. **A block renders, is
 > writable, and nothing in this repository goes quiet on it**: the parser, the transform, the compiled
 > value, the virtual file, the property types, the check command, the Vite plugin, the stylesheet and
-> the editor plugin all exist, and both tools that read source — `ramonda-check` and the docs example
-> gate — read it through the virtual file. The CSS checker does not exist yet, and neither does the
-> format and lint wrapper. Read
+> the editor plugin and the CSS checker all exist, and both tools that read source — `ramonda-check`
+> and the docs example gate — read it through the virtual file. The format and lint wrapper does not
+> exist yet, and neither does per-route splitting. Read
 > `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
 > for what is done and what is next.
 
@@ -170,6 +170,20 @@ back to the character the author typed:
 **It reports ordinary type errors too, and that is deliberate**: a project using this syntax cannot
 run plain `tsc`, so this is its `tsc`. Meant to sit in a `build` script — until it runs somewhere
 that fails, the type safety is a claim about editors rather than about CI.
+
+Beside them are four rules for the faults a type cannot reach, each with its boundary measured
+against the compiler first so no fault is reported twice:
+
+```
+src/Card.tsx:6:18   unknown-value: `display` does not accept `flexx`. Did you mean `flex`?
+src/Card.tsx:7:9    unknown-property: `flex-dirction` is not a CSS property. Did you mean `flex-direction`?
+src/Card.tsx:8:26   unknown-value: `border-left` does not accept `sollid`. Did you mean `solid`?
+src/Card.tsx:10:9   repeated-declaration: `color` is already set to `red` in this block.
+```
+
+`display: flexx` is the one to notice. `display` takes combinations — `inline flow-root` — so no
+union could type it without rejecting valid CSS; a checker reads one word and says something about
+that word alone.
 
 ## Licence
 

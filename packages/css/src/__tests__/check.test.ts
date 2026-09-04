@@ -188,6 +188,59 @@ describe("a project that is not", () => {
   });
 });
 
+describe("the CSS rules, beside the type errors", () => {
+  /**
+   * Two kinds of finding in one list on purpose: an author reads a FILE, not a tool, and a property
+   * typo beside a type error is one list of things to fix.
+   */
+  test("a fault only the rules can see is reported", () => {
+    const report = check({
+      "Card.tsx": `const a = (\n  <div css=@(\n    display: flexx;\n  )>x</div>\n);\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].code).toBe("unknown-value");
+    expect(report.findings[0].line).toBe(3);
+    expect(report.findings[0].message).toContain("Did you mean `flex`?");
+  });
+
+  test("both kinds arrive in the order a person reads the file", () => {
+    const report = check({
+      "Card.tsx": `const n: number = "no";\nconst a = (\n  <div css=@(\n    display: flexx;\n  )>x</div>\n);\nexport default [n, a];\n`,
+    });
+
+    expect(report.findings.map((finding) => [finding.line, finding.code])).toEqual([
+      [1, 2322],
+      [4, "unknown-value"],
+    ]);
+  });
+
+  /**
+   * `TS2353` is *"does not exist in type"*, which is exactly what `unknown-property` says — and the
+   * rule says it with the near miss the compiler cannot offer, because a quoted object key gets no
+   * suggestion. Measured before this: `flex-dirction` came back twice, once usefully.
+   */
+  test("and the compiler's word is dropped where a rule of ours said it better", () => {
+    const report = check({
+      "Card.tsx": `const a = (\n  <div css=@(\n    flex-dirction: row;\n  )>x</div>\n);\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].code).toBe("unknown-property");
+    expect(report.findings[0].message).toContain("flex-direction");
+  });
+
+  test("a TS2353 about something no rule named is still reported", () => {
+    // A nested rule's key that matches none of the shape's index signatures — nothing to do with a
+    // property name, so nothing of ours claims it.
+    const report = check({
+      "Card.tsx": `const a = (\n  <div css=@(\n    nope { color: red; }\n  )>x</div>\n);\nexport default a;\n`,
+    });
+
+    expect(report.findings.some((finding) => finding.code === 2353)).toBe(true);
+  });
+});
+
 describe("a block that cannot be read at all", () => {
   /**
    * A refusal is a syntax error, and a compiler does not type-check a program it could not parse.

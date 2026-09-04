@@ -13,14 +13,19 @@
  *
  * `Sheet` is the third piece and the only one that sees more than one file at a time: the transform
  * is deliberately local, so dedupe, the collision assertion and the round trip all live there.
+ *
+ * `checkBlock` is the fourth: the CSS faults the type map deliberately cannot catch, read off the
+ * same `Block` and reporting nothing the types already say.
  */
 export type { Block, BlockItem, Declaration, HolePart, NestedRule, TextPart, ValuePart } from "./ast";
-export { CssBlockError, positionOf } from "./errors";
+export { CssBlockError, holeOutOfPlace, positionOf } from "./errors";
 export { HASH_LENGTH, classNameFor, substitute, variableNameFor } from "./names";
 export { HOLE, normalise } from "./normalise";
 export type { ReadBlock, ReadOptions, Span } from "./read";
 export { Sheet } from "./sheet";
 export { readBlock } from "./read";
+export type { Finding, RuleId } from "./rules";
+export { checkBlock } from "./rules";
 export type { BlockSite } from "./scan";
 export { findBlocks, mayHoldABlock } from "./scan";
 export type { EmittedBlock, SourceMap, TransformOptions, TransformResult } from "./transform";

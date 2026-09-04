@@ -1,5 +1,5 @@
 import type { Block, BlockItem, ValuePart } from "./ast";
-import { refuse } from "./errors";
+import { holeOutOfPlace, refuse } from "./errors";
 
 /**
  * Reading one block: the CSS between `@(` and its `)`, and the expressions carried inside it.
@@ -221,7 +221,7 @@ export function readBlock(source: string, open: number, filename: string, option
    * cannot be a property name, a selector, or a declaration. Refused here with the hole's own
    * position rather than the block's, because that is the character the author has to move.
    */
-  function readHead(stopAt: number, what: "selector" | "property"): string {
+  function readHead(stopAt: number, what: "a selector" | "a property name"): string {
     const from = at;
     let text = "";
     let depth = 0;
@@ -244,16 +244,7 @@ export function readBlock(source: string, open: number, filename: string, option
         continue;
       }
       if (code === 123 && source.charCodeAt(at + 1) === 123) {
-        if (!tolerant) {
-          refuse(
-            at === from
-              ? "a hole cannot be a whole declaration — a custom property holds a value, so write `property: {{…}}` and put the choice inside it."
-              : `a hole cannot stand in a ${what} — a custom property holds a value, and a ${what} is not one.`,
-            source,
-            at,
-            filename,
-          );
-        }
+        if (!tolerant) refuse(holeOutOfPlace(at === from ? "a declaration" : what), source, at, filename);
         // Kept as text, so the rest of the block still reads. The fault is the checker's to name.
         const start = at;
         pastHoleWithoutRecording();
@@ -288,12 +279,15 @@ export function readBlock(source: string, open: number, filename: string, option
     const parts: ValuePart[] = [];
     let text = "";
     let depth = 0;
+    /** Where the run being built started, so the CSS checker can point at a word inside it. */
+    let textAt = at;
 
     const flush = () => {
       if (text !== "") {
-        parts.push({ kind: "text", text });
+        parts.push({ kind: "text", at: textAt, text });
         text = "";
       }
+      textAt = at;
     };
 
     while (at < source.length) {
@@ -362,14 +356,14 @@ export function readBlock(source: string, open: number, filename: string, option
       const from = at;
 
       if (looksLikeARule(closer)) {
-        const prelude = readHead(123 /* { */, "selector").trim();
+        const prelude = readHead(123 /* { */, "a selector").trim();
         // `readHead` stopped on the `{` the lookahead found, so this cannot be anything else.
         at++;
         items.push({ kind: "rule", at: from, preludeEnd: at - 1, prelude, items: readItems(BRACE) });
         continue;
       }
 
-      const property = readHead(58 /* : */, "property").trim();
+      const property = readHead(58 /* : */, "a property name").trim();
       if (at >= source.length || source.charCodeAt(at) !== 58) {
         if (!tolerant) {
           refuse(

@@ -48,7 +48,9 @@ if (report.refused) {
 console.error(`\n${TAG} ${report.findings.length} problem(s) in ${report.files} file(s):\n`);
 for (const finding of report.findings) {
   console.error(`  ${where(finding.file)}:${finding.line}:${finding.column}`);
-  console.error(`    TS${finding.code}: ${finding.message}`);
+  // A number is TypeScript's; a name is one of our own CSS rules. Prefixing both the same way would
+  // claim the compiler said something it did not.
+  console.error(`    ${typeof finding.code === "number" ? `TS${finding.code}` : finding.code}: ${finding.message}`);
   console.error("");
 }
 console.error(

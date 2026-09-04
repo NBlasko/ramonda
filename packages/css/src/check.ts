@@ -2,7 +2,9 @@ import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
 import { positionOf } from "./compiler/errors";
-import { mayHoldABlock } from "./compiler/scan";
+import { readBlock } from "./compiler/read";
+import { checkBlock } from "./compiler/rules";
+import { findBlocks, mayHoldABlock } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
 /**
@@ -46,8 +48,13 @@ export interface Finding {
   /** 1-based, the way an editor counts. */
   readonly line: number;
   readonly column: number;
-  /** The TypeScript code, or `0` for a block this could not read. */
-  readonly code: number;
+  /**
+   * The TypeScript code, `0` for a block this could not read, or the CSS rule's own id.
+   *
+   * Two kinds of finding in one list on purpose: an author reads a file, not a tool, and a property
+   * typo beside a type error is one list of things to fix.
+   */
+  readonly code: number | string;
   readonly message: string;
 }
 
@@ -69,6 +76,8 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   /** The overlay and the text it was built from, together — one lookup, and no half-set state. */
   const overlays = new Map<string, { virtual: VirtualFile; source: string }>();
   const refusals: Finding[] = [];
+  /** What the CSS rules found — the faults the types deliberately cannot catch. */
+  const css: Finding[] = [];
 
   for (const fileName of parsed.fileNames) {
     const text = ts.sys.readFile(fileName);
@@ -78,7 +87,10 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
       const virtual = virtualFile(text, { properties: options.properties });
       // `mayHoldABlock` is allowed to say maybe: a decorator is `@(` too, and this is a
       // decorator-heavy framework. A file that turns out to hold no block needs no overlay.
-      if (virtual !== undefined) overlays.set(fileName, { virtual, source: text });
+      if (virtual !== undefined) {
+        overlays.set(fileName, { virtual, source: text });
+        css.push(...cssFindings(fileName, text));
+      }
     } catch (error) {
       // A refusal is ours and is reported. Anything else is a bug in this package and must not be
       // dressed up as one of the author's faults.
@@ -105,9 +117,53 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   return {
     files: parsed.fileNames.length,
     styled: overlays.size,
-    findings: [...setup.values(), ...findings],
+    findings: [...setup.values(), ...inOrder(css, findings)],
     refused: false,
   };
+}
+
+/**
+ * The two kinds of finding as one list, in the order a person reads a file — and with the compiler's
+ * word dropped where a rule of ours said the same thing better.
+ *
+ * `TS2353` is *"does not exist in type"*, which is exactly what `unknown-property` says — and the
+ * rule says it with the near miss the compiler cannot offer, because a QUOTED object key gets no
+ * suggestion. Measured before this existed: `flex-dirction` was reported twice, once usefully.
+ *
+ * Matched on POSITION rather than on text: the same fault at the same character is the same fault,
+ * and a `TS2353` about a nested rule's key is at a position no property rule names, so it survives.
+ */
+function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] {
+  const said = new Set(css.filter((finding) => finding.code === "unknown-property").map((finding) => at(finding)));
+
+  return [...css, ...types.filter((finding) => !(finding.code === 2353 && said.has(at(finding))))].sort(
+    (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column,
+  );
+}
+
+const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.column}`;
+
+/**
+ * What the CSS rules say about one file's blocks.
+ *
+ * A second parse of the same file, and it is worth it: the rules read a `Block`, the virtual file
+ * emits TSX from one, and threading the parse through both would tie the two together for a saving
+ * that is a fraction of the type check either way.
+ *
+ * STRICT, like everything else the build path does. A block the parser refuses has already been
+ * reported as a refusal and the run has stopped.
+ */
+function cssFindings(fileName: string, source: string): Finding[] {
+  const out: Finding[] = [];
+
+  for (const site of findBlocks(source)) {
+    const read = readBlock(source, site.open, fileName);
+    for (const finding of checkBlock(read.block)) {
+      out.push({ file: fileName, ...positionOf(source, finding.at), code: finding.rule, message: finding.message });
+    }
+  }
+
+  return out;
 }
 
 /**

@@ -6,8 +6,7 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
-**Phase 0, track B, A1, A2, track C, G, A3, E, H, I and I2 are done — and nothing in the repository
-goes quiet on the syntax any more.** The contract is written and implemented; the framework
+**Phase 0, track B, A1, A2, track C, D, G, A3, E, H, I and I2 are done.** The contract is written and implemented; the framework
 takes a `css` prop and applies it; the parser and transform turn a file into valid TSX with a source
 map that lands on the author's own line and column; the virtual file gets that file type-checked
 by `tsc` with every diagnostic mapped home; and the property map is generated from MDN's data, so a
@@ -16,9 +15,10 @@ over a whole project and exits non-zero; and the Vite plugin plus the sheet turn
 class in a real stylesheet, proved by real builds; and the language service plugin gives an editor
 completion, hover and the right squiggles inside a block that is still being typed; and both tools
 that read the author's source — `ramonda-check` and the docs example gate — read it through the
-virtual file, each with the blindness reproduced first and a floor asserted after. **Everything else
-is unstarted** — the next work is **D**, the CSS checker that owns every fault the types deliberately
-do not, or **K**, the format and lint wrapper.
+virtual file, each with the blindness reproduced first and a floor asserted after; and the CSS
+checker owns the faults the types deliberately cannot catch, with every boundary measured against
+them first. **Everything else is unstarted** — the next work is **K**, the format and lint wrapper,
+or **F** and **J**, esbuild and per-route splitting.
 
 ---
 
@@ -375,15 +375,56 @@ The original requirements:
 
 ## What unblocks after the spine
 
-### D — the CSS checker rules. Starts as soon as A1 produces a block
+### D — the CSS checker rules. **DONE.**
 
-Independent of everything downstream, so it can run beside A2 and A3.
+`src/compiler/rules.ts`, four rules, run from `ramonda-css` and from the editor plugin. It imports
+nothing from `@ramonda/check`: a rule here reads a parsed `Block`, not a `ts.Program`, so there is no
+value to follow and no declaration to resolve.
 
-Unknown property with its near-miss; a value the property does not take; a declaration that can never
-apply; **a hole in a position a custom property cannot occupy**, which is the rule that keeps the
-design honest. **It may not import `@ramonda/check`** — the technique is shared, the code is not.
+**Every boundary was measured against the real type check before a rule was written**, so nothing
+here repeats a diagnostic somebody already gets:
 
-*Follow `.claude/skills/writing-a-static-rule/SKILL.md`, and plant the shape before writing the rule.*
+| written | the types | the rules |
+|---|---|---|
+| `dsiplay: flex` | `TS2561`, **with** *did you mean* | — |
+| `flex-dirction: row` | `TS2353`, **no suggestion** | `unknown-property` |
+| `position: statik` | `TS2820`, with *did you mean* | — |
+| `display: flexx` | **silent** | `unknown-value` |
+| `border-left: 4px sollid red` | **silent** | `unknown-value` |
+| `color: red; color: red` | **silent** | `repeated-declaration` |
+| a hole in a property name or selector | the build refuses | `hole-out-of-place` |
+
+**Two narrowings, and each is the whole rule.**
+
+`repeated-declaration` fires only when the VALUE matches too. Two declarations of one property with
+different values is a deliberate idiom — `width: 100px; width: fit-content;` is a fallback for an
+engine that will drop the second — and reporting a technique is how a checker earns being switched
+off.
+
+`unknown-value` reads only BARE WORDS, and only for properties whose grammar admits no arbitrary
+identifier. That classification was got wrong first: "is the grammar closed" left `border-left`
+alone, because `<length>` and the colour functions do not resolve to keywords — yet neither can ever
+BE a bare word, so `sollid` was provably wrong and was being missed. The question that matters is
+whether an arbitrary identifier is admitted, which is what makes `animation-name: slidein` and
+`font-family: Helvetica` untouchable.
+
+**One sweep writes both generated files now.** The checker needs the bare words each property
+accepts AND needs to know which properties the types already cover — the same classification asked
+twice, and two scripts computing it would be a place to drift. `build-css-keywords.mjs` is gone;
+`build-css-properties.mjs` writes both and `--check` compares both. **551 properties, 123 typed as a
+union, 276 value-checkable by the rules.**
+
+**`PROPERTIES` is not the keys of `KEYWORDS`, and the difference is load-bearing** — asked in review.
+The first is all 551 names, because the near-miss search is about the NAME; the second is the 276
+whose values may be judged. `flex-direction` is absent from the second and must be in the first, or
+`flex-dirction` could never be suggested, which is the rule's headline case. There is a test.
+
+**And one report per fault.** `ramonda-css` drops a `TS2353` at a position `unknown-property` also
+names: same fault, and the rule says it with the suggestion the compiler cannot offer. Measured
+before it existed — `flex-dirction` came back twice, once usefully.
+
+Run over a block of twenty ordinary declarations — shorthands, functions, a font stack, an animation
+name, a nested rule, an at-rule, a custom property, a vendor prefix: **zero findings**.
 
 ### E — sheet assembly. **DONE.**
 
@@ -644,6 +685,8 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | the strict parser on a half-typed property | refuses, so an editor gets nothing exactly when it matters |
 | a multi-line block in the virtual file | collapses to ONE line — everything below it moves up, and a line-reporting consumer is wrong |
 | the block's newlines put back AFTER it | every declaration lands on the block's opening line; they go between the items |
+| "is the grammar closed" as the value test | leaves `border-left: sollid` alone — a length can never BE a bare word |
+| a duplicate declaration with a different value | a deliberate fallback idiom; only the SAME value is reportable |
 | a hostile hole value through `cssText` | injects — `position: fixed`, `width: 100vw`, real and applied |
 | the same through `setProperty` | no second declaration, on the client |
 | the same through a SERVER render and back | **injects** — the parse re-reads the style attribute. Refused at the value now |
