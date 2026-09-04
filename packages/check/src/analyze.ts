@@ -1133,6 +1133,7 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
   /** How the walk first reached each node, for a report that has to name a mount rather than a read. */
   const pathTo = new Map<ComponentNode, string[]>();
   const issues = walk(reached, routesAbove, pathTo);
+  closeOverHooks(reached, routesAbove, pathTo);
   const unreachable = deadOnes(reached);
   const unreachableRoutes = strandedRoutes(reached);
   const renderCycles = endlessRings();
@@ -2653,6 +2654,68 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     return found;
   }
 
+  /**
+   * A hook is an extension of the component that uses it, and this is where that becomes true for
+   * every question at once.
+   *
+   * The walk follows what MOUNTS, and a hook mounts nothing: `this.use(Counter)` is a `uses` edge.
+   * So the walk leaves a hook out of all three answers — it is not `reached`, no arrival is recorded
+   * for it, and no path names it. Two rules used to patch that locally, each closing `reached` over
+   * `uses` for its own question, and the patch was worse than the hole: `deadOnes` widened the
+   * SHARED set for its own purposes and `readsOffTheRoute`, which runs after it, then read a hook as
+   * reached while `routesAbove` still knew nothing about it. Measured — a hook reading
+   * `params("/teams/:teamId")`, used by a component mounted at exactly `/teams/:teamId`, was reported
+   * `why: "no-outlet"`. Correct code, failing the build, because every rule is an error.
+   *
+   * So the closure happens ONCE, here, and carries the arrivals with it. A hook inherits the routes
+   * of every component that uses it, which is what the runtime does: the params it reads are the ones
+   * published above its user. Any rule written after this reads hooks correctly without knowing they
+   * exist.
+   *
+   * A FIXPOINT rather than one pass, because arrivals grow. Two hops down — a page using a wrapper
+   * hook that uses the reader — a node can be closed before the arrival that condemns it has arrived:
+   * queued once, the reader keeps whichever routes its wrapper held at that moment. So a node is
+   * queued again whenever its arrivals grew, which terminates because they only ever grow and there
+   * are finitely many routes, a ring of hooks using each other included.
+   */
+  function closeOverHooks(
+    reached: Set<ComponentNode>,
+    routesAbove: Map<ComponentNode, Set<string | null | undefined>>,
+    pathTo: Map<ComponentNode, string[]>,
+  ): void {
+    const queue = [...reached];
+    while (queue.length > 0) {
+      const user = queue.pop();
+      if (!user) continue;
+      const arrivals = routesAbove.get(user);
+      for (const used of user.uses) {
+        let grew = false;
+        if (arrivals !== undefined) {
+          const held = routesAbove.get(used);
+          if (held === undefined) {
+            routesAbove.set(used, new Set(arrivals));
+            grew = arrivals.size > 0;
+          } else {
+            for (const arrival of arrivals) {
+              if (held.has(arrival)) continue;
+              held.add(arrival);
+              grew = true;
+            }
+          }
+        }
+        // The path a hook is named by is the path of the FIRST user that reached it, plus the hook —
+        // the same "how the walk first got here" the walk itself records for a component.
+        if (!pathTo.has(used) && arrivals !== undefined) {
+          const above = pathTo.get(user);
+          if (above !== undefined) pathTo.set(used, [...above, used.name]);
+        }
+        const known = reached.has(used);
+        reached.add(used);
+        if (!known || grew) queue.push(used);
+      }
+    }
+  }
+
   function deadOnes(reached: Set<ComponentNode>): UnreachableIssue[] {
     // No root, no verdict: in a library everything is unreachable by definition.
     if (roots.size === 0) return [];
@@ -2664,24 +2727,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
      * Measured before the filter: the playground reported `Provider` from
      * `@ramonda/core/src/base/Context.ts` as dead.
      */
-    /**
-     * Everything a reached node USES is reached too.
-     *
-     * The walk follows what MOUNTS, and a hook mounts nothing — `this.use(Counter)` is a `uses`
-     * edge and never a mount, which is right for the provider check and wrong for this one.
-     * Measured without it: `AppHook`, `CounterHook` and `HistoryHook` were all reported as dead
-     * while a component used each of them one line away.
-     */
-    const queue = [...reached];
-    while (queue.length > 0) {
-      const node = queue.pop();
-      if (!node) continue;
-      for (const used of node.uses) {
-        if (reached.has(used)) continue;
-        reached.add(used);
-        queue.push(used);
-      }
-    }
+    // Everything a reached node USES is reached too, and `closeOverHooks` has already said so — for
+    // this question and every other one, with the arrivals carried along. It used to be closed here,
+    // which widened the SHARED set for one rule and misled the next: see that function.
 
     const home = owner(projectRoot);
     const ours = home ? `${home.name}/` : undefined;
@@ -3529,24 +3577,9 @@ export function analyzeProgram(program: ts.Program, notes: string[] = []): Analy
     // The package the project SITS IN, so it matches the prefix every id carries. A fixture with
     // no package.json of its own belongs to the package above it, and saying otherwise would give
     // the graph two names for one thing.
-    /**
-     * Everything a reached node USES is reached too.
-     *
-     * The walk follows what MOUNTS, and a hook mounts nothing — `this.use(Counter)` is a `uses`
-     * edge and never a mount, which is right for the provider check and wrong for this one.
-     * Measured without it: `AppHook`, `CounterHook` and `HistoryHook` were all reported as dead
-     * while a component used each of them one line away.
-     */
-    const queue = [...reached];
-    while (queue.length > 0) {
-      const node = queue.pop();
-      if (!node) continue;
-      for (const used of node.uses) {
-        if (reached.has(used)) continue;
-        reached.add(used);
-        queue.push(used);
-      }
-    }
+    // Everything a reached node USES is reached too, and `closeOverHooks` has already said so — for
+    // this question and every other one, with the arrivals carried along. It used to be closed here,
+    // which widened the SHARED set for one rule and misled the next: see that function.
 
     const home = owner(projectRoot);
     /**
