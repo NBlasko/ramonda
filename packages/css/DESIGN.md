@@ -663,6 +663,79 @@ not decoration here — it is the thing that would notice, and it should not be 
 
 ---
 
+## Where this stands: what is answered, and what is not
+
+Written as an audit rather than a summary, because the useful question is not "does it look right"
+but "which parts are still opinion".
+
+### Answered, and proved by something that runs
+
+| | evidence |
+|---|---|
+| a hole is type-checked in its real scope | a real `TS2339` at the author's line and column |
+| a property-name typo | `TS2561 … Did you mean to write 'display'?` |
+| a value typo | `TS2820 … Did you mean '"flex"'?` |
+| a hole typed by its property | `TS2322` on `padding: {{nekaFunc()}}` |
+| dev speed | +2.6% over esbuild; 15–22 µs per file, linear |
+| values crossing to the client | in the markup; no channel, no registry |
+| instances do not multiply rules | one rule at any N; 0.10 KB either way |
+| a longer hash is free | 8, 12 and 16 hex all gzip to 46.7 KB |
+| the generated object is reported | `RMD020`, every render |
+| the checker goes quietly blind | three rules become one, silently |
+
+### Answered by a decision, with the mechanism verified but not yet built
+
+The `RMD020` exemption — the place exists and already skips two other keys, but the line is not
+written. Scoped variable names — the cost is measured, the failure they prevent is read from the
+specification, because jsdom cannot resolve an inherited custom property. The assembly-time collision
+assertion, the round-trip assertion after post-processing, and the checker reading the virtual file:
+all three are ordinary work in places that already exist, and none is proved.
+
+### Not examined at all, and both should be before anyone estimates this
+
+**Source maps have to compose.** Our transform sits under esbuild's, and a stack trace in a browser
+must name the author's `.tsx`. Chained maps are standard and fiddly, and nothing here has looked at
+them.
+
+**The test runner is another consumer of the transform.** A component under test is compiled by the
+test runner, not by the dev server. Vitest transforms through Vite, so a Vite plugin covers it — but
+that is a sentence of reasoning, not a run, and "the tests do not compile" is the kind of thing that
+is discovered late.
+
+### The one real risk, and it is not technical
+
+**Every tool that parses a `.tsx` file has to be taught, and we can only teach some of them.**
+
+| | can it be taught? |
+|---|---|
+| `tsc` | yes — the virtual file, proved |
+| the editor | yes — a language-service plugin serving the same virtual file |
+| the bundler | yes — it is our plugin |
+| `ramonda-check` | yes — the same virtual file |
+| **the formatter** | **no** — measured: biome cannot read the file and has no plugin surface |
+| **the linter** | **no** — measured: `oxlint: Unexpected token`; its "plugins" are built-in rule sets, not a parser extension point |
+
+So a file that uses this feature is, today, a file that cannot be formatted or linted. That is not a
+flaw in the design — it is the price of a syntax the ecosystem does not know, and it is the same
+price JSX paid before the ecosystem learned it. **It should be a decision somebody makes on purpose,
+not something discovered by the first person who runs the formatter.**
+
+The fallback that costs nothing here is the object form — `css={{ display: "flex" }}` — which every
+tool already reads and which the type system checks natively. It was rejected for good reason: it is
+not CSS, and *cleaner code* was the point. Recorded so the trade is visible, not to reopen it.
+
+### The verdict
+
+**No blocker.** Every problem found has an answer, and the load-bearing ones — that a syntax `tsc`
+cannot parse can still be type-checked, and that the transform is cheap — are proved by running code
+rather than argued. The remaining work is large but ordinary.
+
+The two things that would change that assessment are the two nobody has looked at: source maps that
+do not compose, and a test pipeline the transform cannot reach. Neither is likely. Both are cheap to
+check early, and expensive to find late.
+
+---
+
 ## What this contradicts today
 
 `apps/docs/content/styling.md` says, under *What the framework does not do*: **no scoping, no
