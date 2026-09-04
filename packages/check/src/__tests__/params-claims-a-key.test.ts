@@ -94,6 +94,36 @@ describe("a params() read that claims a key", () => {
     expect(issue?.path).toEqual(["App", "RouteOutlet", "TeamPage", "TeamHook"]);
   });
 
+  test("two routes, one without the key: reported, which is the answer to any-or-every", () => {
+    // The pattern door reports when ANY reaching route fails, and so does this. A component under
+    // `/players/:id` and `/teams/:teamId` claiming `id` reads `undefined` on the second, and that
+    // arrangement is one the source really produces. The escape is to say the key MAY be absent.
+    const issue = reported().find((each) => each.component === "SharedClaim");
+
+    expect(issue).toMatchObject({ why: "wrong-route", route: "/teams/:teamId", missing: ["id"] });
+  });
+
+  test("two routes that both supply it: silent", () => {
+    expect(names()).not.toContain("AgreedClaim");
+  });
+
+  test("optional chaining guards the object, not the key", () => {
+    // `params()?.userId` says the params object may be absent. It says nothing about `userId` being
+    // absent FROM it, so the claim stands — measured rather than assumed.
+    const issue = reported().find((each) => each.component === "OptionalChain");
+
+    expect(issue).toMatchObject({ how: "property", why: "wrong-route", missing: ["userId"] });
+  });
+
+  test("under a nested outlet, the inner route is the one that answers", () => {
+    // The walk REPLACES the route above rather than adding to it, mirroring the runtime: each outlet
+    // publishes only what it matched. So a page under `/members/:memberId` claiming the outer
+    // `teamId` is reading a key nothing publishes there.
+    const issue = reported().find((each) => each.component === "MemberPage");
+
+    expect(issue).toMatchObject({ why: "wrong-route", route: "/members/:memberId", missing: ["teamId"] });
+  });
+
   test("the pattern door is unchanged by any of this", () => {
     expect(run().paramsOffRoute).toEqual([]);
   });

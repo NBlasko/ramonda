@@ -25,6 +25,14 @@ default in the destructuring, and a read taken off a variable one line later —
 escape the router's message points at, kept open on purpose. Two limits are named rather than hidden:
 a type argument that is a name rather than a written-out shape, and a key built from an expression.
 
+Three things about it are measured rather than assumed. **Any arrival that fails is enough**, which
+is the pattern door's policy too: a component under `/players/:id` and `/teams/:teamId` claiming `id`
+reads `undefined` on the second, and that arrangement is one the source really produces — two routes
+that BOTH supply it stay silent. **Optional chaining guards the object, not the key**, so
+`params()?.userId` still claims `userId`. And **under a nested outlet the inner route answers**,
+because each outlet publishes only what it matched: a page under `/members/:memberId` claiming the
+outer `teamId` is reading a key nothing publishes there.
+
 Every silence the pattern door keeps is kept here — no root, an outlet spreading props nobody can
 read, a declaration no root reaches, a route key that is not a literal — and a claim inside a hook is
 judged against the route above the component that uses it.

@@ -98,6 +98,68 @@ class NamesNothing extends Component {
   }
 }
 
+/**
+ * REPORTED: rendered by two routes and only one of them supplies `id`.
+ *
+ * This is the whole A-or-B question. The pattern door reports when ANY reaching route fails, and so
+ * does this — a component that claims a key on a route without it reads `undefined` there, and that
+ * arrangement is one the source really produces. The escape for routes that disagree is to say the
+ * key may be absent, not to be exempt from being asked.
+ */
+class SharedClaim extends Component {
+  nav = this.use(Navigator);
+  render() {
+    return <span>{this.nav.params<{ id: string }>().id}</span>;
+  }
+}
+
+/** Not reported: two routes, and BOTH supply what it claims. */
+class AgreedClaim extends Component {
+  nav = this.use(Navigator);
+  render() {
+    return <span>{this.nav.params<{ id: string }>().id}</span>;
+  }
+}
+
+/** PROBE: optional chaining guards the OBJECT, not the key — and it claims `userId`, which its route lacks. */
+class OptionalChain extends Component {
+  nav = this.use(Navigator);
+  render() {
+    return <span>{this.nav.params()?.userId}</span>;
+  }
+}
+
+/** A page that mounts an inner outlet, whose params REPLACE the outer ones at the runtime. */
+class MemberPage extends Component {
+  nav = this.use(Navigator);
+  render() {
+    // PROBE: claims the OUTER route's param, under an inner outlet.
+    return <i>{this.nav.params<{ teamId: string }>().teamId}</i>;
+  }
+}
+
+const inner = createRoutes({
+  "/members/:memberId": <MemberPage />,
+});
+
+class PlayersPage extends Component {
+  render() {
+    return (
+      <div>
+        <SharedClaim />
+        <AgreedClaim />
+      </div>
+    );
+  }
+}
+
+/** The second arrival for both: `/people/:id` supplies `id`, and `/teams/:teamId` does not. */
+class TeamsAside extends Component {
+  render() {
+    return <SharedClaim />;
+  }
+}
+
 /** REPORTED as `no-outlet`: beside the outlet, and it still claims a key. */
 class Beside extends Component {
   nav = this.use(Navigator);
@@ -128,6 +190,9 @@ class TeamPage extends Component {
         <ThroughAVariable />
         <NamedType />
         <AsksIfPresent />
+        <OptionalChain />
+        <TeamsAside />
+        <RouteOutlet routes={inner} />
         <NamesNothing />
         {this.hooked.who}
       </div>
@@ -137,6 +202,8 @@ class TeamPage extends Component {
 
 const routes = createRoutes({
   "/teams/:teamId": <TeamPage />,
+  "/players/:id": <PlayersPage />,
+  "/people/:id": <AgreedClaim />,
 });
 
 class App extends Component {
