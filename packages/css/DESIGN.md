@@ -691,16 +691,43 @@ specification, because jsdom cannot resolve an inherited custom property. The as
 assertion, the round-trip assertion after post-processing, and the checker reading the virtual file:
 all three are ordinary work in places that already exist, and none is proved.
 
-### Not examined at all, and both should be before anyone estimates this
+### The two that were unexamined — both measured now, both fine
 
-**Source maps have to compose.** Our transform sits under esbuild's, and a stack trace in a browser
-must name the author's `.tsx`. Chained maps are standard and fiddly, and nothing here has looked at
-them.
+**Source maps compose.** Two maps sit between the browser and the author: ours, and esbuild's.
+Walking both, for five positions in the emitted JavaScript:
 
-**The test runner is another consumer of the transform.** A component under test is compiled by the
-test runner, not by the dev server. Vitest transforms through Vite, so a Vite plugin covers it — but
-that is a sentence of reasoning, not a run, and "the tests do not compile" is the kind of thing that
-is discovered late.
+```
+the class declaration          OK  -> Card.tsx:3:7
+the field above the block      OK  -> Card.tsx:4:11
+the hole's expression          OK  -> Card.tsx:13:23
+a method BELOW the block       OK  -> Card.tsx:20:2
+code below that                OK  -> Card.tsx:21:23
+
+5 of 5 positions land on the author's own line.
+```
+
+The interesting rows are the last two. A transform that deletes the CSS and inserts a call moves
+everything below a block, and a map that is right *at* the block and drifts *below* it would pass a
+careless test. It does not drift.
+
+**And it produced a rule for the implementation, found by getting it wrong first.** Replacing the
+whole block in one span costs the mapping: every expression then points at the block's opening line
+instead of its own — measured, the hole reported line 8 instead of line 13. **Replace only the CSS
+*between* the expressions and never the expressions themselves**, and each one keeps the bytes the
+author put there. It costs nothing but writing the gaps out one at a time.
+
+**The transform reaches the test runner.** A component under test is compiled by the runner, not the
+dev server, and Vitest transforms through Vite — so a Vite plugin covers it. Run rather than reasoned,
+with a fixture that cannot parse without the plugin:
+
+```
+enforce: "pre"       PASSES   1 passed
+no enforce           FAILS    ERROR: Expected "{" but found "@"
+```
+
+**`enforce: "pre"` is a requirement, not a preference.** Without it the plugin runs after Vite's own
+esbuild step, which has already refused the file. The same ordering applies to the dev server and the
+build, so it is one rule in three places.
 
 ### The one real risk, and it is not technical
 
@@ -726,13 +753,14 @@ not CSS, and *cleaner code* was the point. Recorded so the trade is visible, not
 
 ### The verdict
 
-**No blocker.** Every problem found has an answer, and the load-bearing ones — that a syntax `tsc`
-cannot parse can still be type-checked, and that the transform is cheap — are proved by running code
-rather than argued. The remaining work is large but ordinary.
+**No blocker.** Every problem found has an answer, and the load-bearing ones are proved by running
+code rather than argued: that a syntax `tsc` cannot parse can still be type-checked, that the
+transform is cheap, that the maps compose, and that the test runner is covered. The remaining work is
+large but ordinary.
 
-The two things that would change that assessment are the two nobody has looked at: source maps that
-do not compose, and a test pipeline the transform cannot reach. Neither is likely. Both are cheap to
-check early, and expensive to find late.
+The two candidates for a blocker were the two nobody had looked at, and both came back clean. What
+remains is not a risk to the design but a cost to its users: **the formatter and the linter cannot
+read the file**, and that is a decision to take deliberately rather than a problem to solve.
 
 ---
 
