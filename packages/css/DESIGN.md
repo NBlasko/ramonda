@@ -467,33 +467,51 @@ NESTED-SETS-OWN:  blue          (a child that sets its own wins over its parent'
 So a component mapped a thousand times is a thousand elements with the same class and their own
 values, and no interference. **That is the ordinary case and it is safe.**
 
-### The case that is NOT safe: nested selectors and positional names
+### The case that is NOT safe, in full
 
-`var()` resolves against the element the declaration applies to, and custom properties inherit. So a
-block with a nested rule reads its variable on the DESCENDANT:
+Two components. A card styles its own title through a nested rule; the title has a block of its own.
+Both are ordinary, and neither author knows about the other:
 
 ```
-parent block:   & span { color: {{accent}} }        sets --r0 on the parent
-span's block:   border-left: {{width}}              sets --r0 on the span
+Card's block:    & .title { color: {{this.accent}} }
+Title's block:   padding: {{this.pad}}
 ```
 
-The parent's rule resolves `--r0` on the span — and gets the span's value. Wrong, silently, and only
-when the two happen to nest.
+With positional names, both call their first hole `--r0`:
 
-**This cannot be measured in the repository's harness**, and the honest note is worth more than the
+```css
+.r-card .title { color: var(--r0) }
+.r-title       { padding: var(--r0) }
+```
+
+```html
+<div class="r-card" style="--r0: red">
+  <span class="r-title" style="--r0: 8px">…</span>
+</div>
+```
+
+Now read the first rule. It applies **to the span**, and `var(--r0)` is resolved on the element the
+declaration applies to — so it finds the span's `--r0`, which is `8px`. The card's title comes out as
+`color: 8px`, which is not a colour, so the declaration is dropped and **the colour silently
+disappears**.
+
+Nothing is wrong with either component. The bug exists only in the pairing, appears only when one is
+nested in the other, and no test of either alone would find it.
+
+**The fix is to scope the name to the block**, which the hash already identifies:
+
+```css
+.r-card .title { color: var(--r-card-0) }
+.r-title       { padding: var(--r-title-0) }
+```
+
+Two blocks then cannot name the same variable, and inheritance stops being something anyone has to
+reason about.
+
+**This cannot be measured in the repository's harness**, and the honest note is worth more than a
 number: jsdom returns `""` for an inherited custom property. That is the harness, not the fact — a
-control on ordinary `color` inherits correctly in the same test. The hazard is read from the
-specification, not from a run.
-
-**The fix is to scope the name to the block**, which the hash already provides:
-
-```
---r0                →   --r-8e271c6c-0
-```
-
-Two blocks then cannot name the same variable, and inheritance stops being something to reason about.
-*Recommended*, and the reason to write it down is that the positional form works in every simple test
-and fails only where nesting meets reuse — which is exactly the shape of a bug that ships.
+control on ordinary `color` inherits correctly in the same test. The failure above is read from the
+specification.
 
 ### What N instances cost — measured, and the stylesheet does not grow
 
@@ -514,37 +532,79 @@ never with instances.** A component mapped ten thousand times is one rule and te
 attributes. What does cost is having a *hole* at all — 44 KB gzipped for ten thousand varying values —
 and that is inherent to a value that differs per instance, not to this design.
 
-### The hash has to be longer than it looks
+### The hash length, and what it does and does not guarantee
 
-The prototypes use 8 hex characters, and that is not enough. Two DIFFERENT blocks landing on the same
-name is a birthday problem:
+Two DIFFERENT blocks landing on the same name is a birthday problem, and the prototypes' 8 hex
+characters are not enough:
 
 | blocks | 8 hex (32b) | 12 hex (48b) | 16 hex (64b) |
 |---|---|---|---|
 | 2,000 | 4.7e-4 | 7.1e-9 | 1.1e-13 |
 | 10,000 | **1.16%** | 1.8e-7 | 2.7e-12 |
 | 50,000 | **25.25%** | 4.4e-6 | 6.8e-11 |
+| 200,000 | **99.05%** | 1.80% | 1.1e-9 |
 
-A one-in-a-hundred chance of two unrelated components silently sharing a rule is not a risk to
-accept. *Recommended:* **12 hex characters**, and — because a collision must be impossible rather
-than unlikely — **assert it where the sheet is assembled**.
+**A longer hash guarantees nothing, and it is right to say so.** Probability is not a promise: 12 hex
+makes a collision unlikely, not impossible. So the two jobs have to be kept apart.
 
-**That is also the answer to a tension in this design.** The transform is deliberately local: no
-cross-file analysis, which is what makes it cacheable and incremental. Global questions do not belong
-there. They belong in the assembly step that concatenates the chunks into a sheet, which sees every
-block by definition — the same place as the round-trip assertion.
+**The guarantee is the assertion, not the length.** Where the sheet is assembled, every block is
+visible at once, so "no two distinct blocks share a class" is a fact the build can check rather than
+hope for. That check is what makes a collision impossible to ship.
 
-### One sheet, or one per route
+**The length decides only whether that check ever fires** — and firing is expensive, because the
+class name is already written into the emitted JavaScript by then. Resolving it means the assembly
+step reaching back to rewrite one string literal in one file, which is possible but gives up the
+locality that makes the transform cacheable.
 
-The question left open above, in plain terms. Every block's CSS has to end up in a file the page
-links, and there are two ways to arrange that:
+So the length should be chosen to make the check a tripwire that never trips. **Measured, that is
+free:**
+
+| hex | class name | raw | gzipped |
+|---|---|---|---|
+| 8 | `r-xxxxxxxx` | 712.9 KB | **46.7 KB** |
+| 12 | `r-xxxxxxxxxxxx` | 791.0 KB | **46.7 KB** |
+| 16 | `r-xxxxxxxxxxxxxxxx` | 869.1 KB | **46.7 KB** |
+
+10,000 instances, values varying. Raw grows by 22%, and **gzipped there is no difference at all** —
+the name is the part that repeats, so it compresses to nothing. Over the wire, a longer hash costs
+zero.
+
+*Recommended:* **16 hex characters**, where 200,000 blocks gives 1.1e-9 — below the rate at which
+memory silently corrupts a byte — **plus the assembly-time assertion**, which is the thing that
+actually guarantees it.
+
+### One sheet, then one per route — and the second is cheaper than it looks
+
+Every block's CSS has to end up in a file the page links.
 
 - **One sheet for the whole app.** Simple, cached once, and a visitor pays for pages they never open.
-- **One per route.** Each page carries only what it uses, and the build has to know which blocks a
-  route reaches — cross-file knowledge, so again the assembly step and never the transform.
+- **One per route.** Each page carries only what it uses.
 
-*Recommended:* one sheet to begin with. Splitting is a change to assembly only, and no syntax, no
-type and no compiled value depends on which one is chosen — which is the reason it can wait.
+The second sounds like new analysis and mostly is not. **The CSS follows the JavaScript chunk.** Each
+block belongs to the module it was written in, the bundler already decides which modules land in
+which chunk, and a lazy boundary — `AsyncLoad`'s dynamic import — is what creates a chunk in the
+first place. So a route that is already code-split gets its own stylesheet by inheriting a decision
+the bundler has made anyway. Nothing here needs to know what a route is.
+
+**And the report already exists**, which is worth knowing before anyone estimates this. `ramonda-check
+<tsconfig> --split` computes exactly this shape, today, on a real app:
+
+```
+before anything      15 declaration(s) in 7 file(s)
+loaded on demand     266 split point(s)
+shared between them  50 declaration(s)
+
+split point                                   reach  already  shared  its own
+Page  src/generated/pages/accessibility.ts       57        6      50        1
+```
+
+`its own` versus `shared` is the same division the stylesheet needs. It cannot be a dependency —
+`@ramonda/css` may not import the framework's checker — but it means the split is understood here,
+not guessed at.
+
+*Recommended:* ship one sheet, and treat splitting as **high priority rather than someday**. No
+syntax, type or compiled value changes when it lands, which is what makes starting with one sheet
+safe rather than a decision to regret.
 
 ---
 

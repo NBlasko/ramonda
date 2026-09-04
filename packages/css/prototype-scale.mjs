@@ -10,6 +10,10 @@
  *      blocks; `--r8e271c6c0` cannot collide with anything. The difference is paid once per
  *      instance, in the HTML, which is the one place per-instance cost is real.
  *
+ * The third row of the second question is the surprise: names REPEAT, so gzip removes the
+ * difference entirely. A longer hash costs nothing over the wire, which is why the recommendation
+ * is 16 hex characters rather than the shortest name that seems to work.
+ *
  *     node packages/css/prototype-scale.mjs [instances]
  */
 import { gzipSync } from "node:zlib";
