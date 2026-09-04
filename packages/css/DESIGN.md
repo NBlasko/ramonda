@@ -212,36 +212,81 @@ None of them is optional, and the order matters because each one is useless with
 
 ---
 
-## Speed, and why the dev path is cheap
+## Speed, on a project that uses it everywhere
 
-The requirement is that a dev build stay as fast as one without this. The reason it can is a split
-that already exists in every TypeScript project:
+The number that matters is not what a codebase pays when it uses none of this — it is what an app
+built *with* it pays, in every file. Measured on generated files shaped like components that carry
+blocks throughout, against esbuild transforming the same files, because that is the cost a dev
+server already pays and the only honest thing to compare with:
 
-| path | what runs | does it type-check? |
+| | 1,000 files · 4,000 blocks · 1.53 MB | 3,000 files · 18,000 blocks · 6.4 MB |
 |---|---|---|
-| dev server, and the production build | scan → parse the block → emit class and variables | **no** |
-| the check command, and the editor | virtual file → `tsc` → map diagnostics back | yes, in its own process |
+| scan only, lexically aware | 3.4 ms | 14.8 ms |
+| **scan + parse + hash + emit** | **15.5 ms** | **66.6 ms** |
+| esbuild, the same files | 588.9 ms | 1,838.5 ms |
+| **on top of esbuild** | **+2.6%** | **+3.6%** |
 
-That is exactly how types are handled today: esbuild strips them without checking them, and `tsc`
-runs beside it. **Type checking never sits on the hot path**, so the dev cost is the transform alone.
+**15–22 µs per file**, and it scales linearly. In dev the figure that actually governs the experience
+is smaller still: an edit re-transforms **one** file, so a keystroke-to-update costs tens of
+microseconds of transform, and a style-only edit replaces that file's chunk of the stylesheet without
+touching JavaScript at all.
 
-Four things keep the transform cheap, in order of how much they matter:
+Four properties keep it there, and each is a design constraint rather than an optimisation:
 
-1. **The bail-out, and it is nearly free.** A file with no sigil is never parsed. Measured over this
-   repository — 1,268 source files, 10.61 MB — a substring scan finds them all in **1.33 ms**, about
-   1.0 µs per file at ~8 GB/s. A codebase that never uses the feature pays that and nothing else.
+1. **The scan is one lexically-aware pass**, tracking strings, templates and comments — because
+   finding `=@(` is not the same as knowing it is an attribute rather than text. Measured at ~450 MB/s,
+   it is a fifth of the total.
 2. **No cross-file analysis, ever.** A class name is the hash of its own normalised text, so a block
-   can be compiled knowing nothing about the rest of the app. That is what makes files independently
+   compiles knowing nothing about the rest of the app. That is what makes files independently
    cacheable, transformable in parallel, and re-transformable one at a time.
-3. **Incremental by construction.** One file changes, one file is re-transformed, and its chunk of
-   the stylesheet is replaced. A style-only edit is a CSS hot update with no JavaScript reload.
-4. **Cached on content hash**, across restarts, because the transform is a pure function of the
-   file's text.
+3. **The dev path does not type-check**, exactly as esbuild strips types without checking them and
+   `tsc` runs beside it. Type checking lives in the check command and the editor, never on the hot
+   path.
+4. **Cached on content hash**, across restarts, because the transform is a pure function of the text.
 
-**The cost that has to be measured rather than promised** is the parse of a file that *does* contain
-a block: finding `=@(` is not the same as knowing it is a JSX attribute rather than text inside a
-string or a comment. That needs lexical context, and how much is the open question. Nothing above
-depends on the answer; the bail-out is what protects the other 99% of files.
+For a codebase that uses none of it, the bail-out is what applies instead: over this repository —
+1,268 files, 10.61 MB — the scan finds every block in **1.33 ms**, about 1.0 µs per file.
+
+---
+
+## The generated `style` is a STRING, and that is not a detail
+
+The obvious output for the dynamic half is an object:
+
+```tsx
+<div className="r-8e271c6c" style={{ "--r0": this.accent }}>
+```
+
+**Measured, and the framework reports it.** A development build renders every component twice and
+compares, so an object literal built in the markup is exactly what it is looking for:
+
+```
+[RMD020] render() produced a different value the second time
+<Panel /> builds a new object or array for `[0] > div.style` on every render, with the same contents.
+```
+
+Every element with a dynamic style would print that, in every dev build — the framework shouting
+about code the framework generated. The static checker is silent here (measured too, and
+`fresh-object-in-props` says so in its own advice: a host element hands nothing to a component), but
+the runtime is not, and the runtime is what a developer sees all day.
+
+**The fix is to emit a string instead**, which is what a `style` attribute is anyway:
+
+```tsx
+<div className="r-8e271c6c" style={`--r0:${this.accent}`}>
+```
+
+Measured: **silent**, the attribute renders as `--r0: #10b981;`, and `getComputedStyle(…)
+.getPropertyValue("--r0")` reads back `#10b981`. A fresh string compares equal by value, so there is
+nothing for a stability check to report.
+
+It is also the more portable answer, which is constraint 3 arriving for free: a style *string* is
+DOM-level and needs no agreement with any framework about how it compares props.
+
+**What it costs, and it has to be designed rather than discovered:** the value now goes into an
+attribute, so it must be escaped — a `"` or a `;` from a hole must not be able to end the declaration
+or the attribute. That is a rule the checker should enforce statically wherever it can see the value,
+and the runtime helper must handle where it cannot.
 
 ---
 
@@ -288,9 +333,10 @@ JS*, and carries no framework in it, which matters for a package whose whole pit
 anywhere. Checked and free alongside it: `cssat`, `at-block`, `blockcss`, `styleblock`, `kalem`.
 Taken: `cssx`, `atcss`. **Still the user's call.**
 
-**9. Does the framework report the generated `style={{ … }}`?** The transform emits an object in the
-markup, which is a shape Ramonda's diagnostics have opinions about. **Not measured.** Measure before
-writing a transform that emits it.
+**9. ~~Does the framework report the generated `style={{ … }}`?~~ MEASURED, and it did.** Answered
+above: the object form trips `RMD020` on every render, the string form is silent and reads back
+correctly. **Decided: emit a string.** What is still open is the escaping rule that follows from it —
+where the checker can enforce it statically, and what the fallback is where it cannot.
 
 ---
 
