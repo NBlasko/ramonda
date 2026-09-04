@@ -9,11 +9,15 @@
  *
  *   - **the scan**, a single pass that tracks whether it is inside a string, a template or a
  *     comment, because finding `=@(` is not the same as knowing it is a JSX attribute;
- *   - **the whole transform**, which adds parsing each block, hashing it, and building the two
- *     replacements.
+ *   - **the whole transform**, which adds parsing each block, hashing it, hoisting a descriptor and
+ *     writing the value at the call site.
  *
  * The baseline is esbuild transforming the same files, since that is the cost a dev server
  * already pays and the only honest thing to compare against.
+ *
+ * A prototype, and it takes one shortcut worth naming: the hoisted descriptors are prepended to the
+ * file, so they land above the imports. A real transform puts them below. It changes nothing about
+ * the cost being measured.
  *
  *     node packages/css/prototype-transform-cost.mjs [fileCount] [blocksPerFile]
  */
@@ -113,6 +117,9 @@ function transform(source) {
   let out = "";
   let cursor = 0;
   let css = "";
+  // Descriptors are hoisted to module scope: a block with no holes then costs one allocation for
+  // the life of the program rather than one per render.
+  const hoisted = [];
 
   for (const start of starts) {
     // `start` is the `=`; the attribute name sits just before it and is replaced along with it.
@@ -152,13 +159,16 @@ function transform(source) {
     const className = `r-${createHash("sha256").update(normalised).digest("hex").slice(0, 8)}`;
     css += `.${className}{${normalised}}\n`;
 
-    // A STRING, not an object — see DESIGN.md. An object here is reported by RMD020.
-    const style = holes.map((expression, index) => `--r${index}:\${${expression}}`).join(";");
-    out += holes.length === 0 ? `className="${className}"` : `className="${className}" style={\`${style}\`}`;
+    // A VALUE, never a built string — see DESIGN.md. The expressions are transplanted verbatim
+    // into value positions, so the compiler concatenates nothing and escapes nothing.
+    const id = `_s${hoisted.length}`;
+    const names = holes.map((_, index) => `"--r${index}"`).join(",");
+    hoisted.push(`const ${id} = block("${className}"${holes.length === 0 ? "" : `,[${names}]`});`);
+    out += holes.length === 0 ? `css={${id}}` : `css={[${id},${holes.join(",")}]}`;
     cursor = scan + 1;
   }
   out += source.slice(cursor);
-  return { code: out, css };
+  return { code: `${hoisted.join("\n")}\n${out}`, css };
 }
 
 // ---- measure ----------------------------------------------------------------------------------

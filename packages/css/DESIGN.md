@@ -53,9 +53,11 @@ that does not use it is untouched, valid TSX, checked by the ordinary compiler. 
 implementation:** the transform must be a cheap no-op — a substring scan for the sigil, before any
 parsing — so a codebase that never uses it pays nothing and cannot be broken by it.
 
-**3. It does not know Ramonda exists.** No import from the framework, no dependency, nothing in the
-output that names it. What it emits is `className` and `style`, which are DOM-level. Somebody using
-another JSX framework needs a wrapper for the prop and nothing else.
+**3. It does not know Ramonda exists — technically, not organisationally.** No import from the
+framework, no dependency, nothing in the emitted value that names it. It still lives under the
+`@ramonda` org, and there is a precedent for exactly that: **`@ramonda/lens` has no dependencies at
+all** — not even a peer on core — and its source never imports the framework. Somebody on another
+JSX framework needs a small wrapper for the prop and nothing else.
 
 ---
 
@@ -249,44 +251,88 @@ For a codebase that uses none of it, the bail-out is what applies instead: over 
 
 ---
 
-## The generated `style` is a STRING, and that is not a detail
+## What a block compiles TO, and why it is not a rewrite
 
-The obvious output for the dynamic half is an object:
+The first draft of this section had the transform rewrite the call site into `className` and `style`,
+splicing the expression into a template string. Three things are wrong with that, and they are worth
+keeping written down.
+
+**The compiler would be building strings.** `style={\`--r0:${expr}\`}` means the transform
+concatenates author code into attribute text, which drags in escaping — a `"` or a `;` out of a hole
+must not be able to end the declaration or the attribute — for a problem that need not exist.
+
+**It assumes the block is a JSX attribute.** It is not, necessarily. `@( … )` is an expression, and
+where it is written is not the transform's business: it may be assigned to a variable, returned from
+a method, held in a field, or passed to something. A transform that only knows how to rewrite a
+`<div>` has decided the feature is narrower than the syntax.
+
+**It solved the double-render report in the wrong place.** See below.
+
+### The shape instead: a value, and the compiler never builds a string
+
+A block compiles to a **value**, and the expressions are transplanted verbatim into value positions.
+Nothing is concatenated, so nothing has to be escaped.
 
 ```tsx
-<div className="r-8e271c6c" style={{ "--r0": this.accent }}>
+// static only — hoisted to module scope, built once for the life of the program
+const _s1 = block("r-94dc05ab");
+…
+<h3 css={_s1}>
+
+// with holes — the descriptor is still hoisted; only the values are per-render
+const _s2 = block("r-8e271c6c", ["--r0"]);
+…
+<div css={[_s2, this.open ? "4px solid " + this.accent : "4px solid #64748b"]}>
 ```
 
-**Measured, and the framework reports it.** A development build renders every component twice and
-compares, so an object literal built in the markup is exactly what it is looking for:
+The expression is copied across untouched. The custom property reaches the DOM through
+`setProperty("--r0", value)`, which takes a raw string — so **the escaping problem the string form
+created simply does not arise**.
+
+And a block with no holes is a module constant: it costs one allocation for the life of the program,
+not one per render. That is the common case.
+
+### The prop is Ramonda's, and so is the exemption
+
+The value needs somewhere to land, and that is a real `css` prop maintained in the framework — which
+is also what makes the double-render question somebody's to answer rather than something to design
+around.
+
+**Measured: the object form is reported.** Rendering `style={{ "--r0": this.accent }}` in a
+development build prints, on every render:
 
 ```
 [RMD020] render() produced a different value the second time
 <Panel /> builds a new object or array for `[0] > div.style` on every render, with the same contents.
 ```
 
-Every element with a dynamic style would print that, in every dev build — the framework shouting
-about code the framework generated. The static checker is silent here (measured too, and
-`fresh-object-in-props` says so in its own advice: a host element hands nothing to a component), but
-the runtime is not, and the runtime is what a developer sees all day.
+The static checker is silent on it — proved by planting two known faults first, so the silence meant
+something, and `fresh-object-in-props` says so in its own advice: a host element hands nothing to a
+component. The runtime is not silent, and the runtime is what a developer sees all day.
 
-**The fix is to emit a string instead**, which is what a `style` attribute is anyway:
+**The exemption is one line, in a place that already does this.** `compareAttributes` in
+`core/src/debug/renderStability.ts` already skips keys at depth 0:
 
-```tsx
-<div className="r-8e271c6c" style={`--r0:${this.accent}`}>
+```ts
+if (depth === 0 && key === "children") continue;
+if (depth === 0 && declared !== undefined && declared.includes(key)) continue;
 ```
 
-Measured: **silent**, the attribute renders as `--r0: #10b981;`, and `getComputedStyle(…)
-.getPropertyValue("--r0")` reads back `#10b981`. A fresh string compares equal by value, so there is
-nothing for a stability check to report.
+`css` joins that list. It is the same shape as the two exemptions beside it, in code that is already
+tested, rather than a new mechanism — and it is correct rather than convenient: the value is
+generated, its contents are decided at build time, and a fresh identity for it means nothing.
 
-It is also the more portable answer, which is constraint 3 arriving for free: a style *string* is
-DOM-level and needs no agreement with any framework about how it compares props.
+**What that costs, and it is the honest half:** the framework now owns a prop whose meaning comes
+from a compiler. If the two disagree — a `css` value reaching the runtime that no transform
+produced — the runtime has to say so rather than silently doing nothing. That is a diagnostic to
+write, not a risk to accept.
 
-**What it costs, and it has to be designed rather than discovered:** the value now goes into an
-attribute, so it must be escaped — a `"` or a `;` from a hole must not be able to end the declaration
-or the attribute. That is a rule the checker should enforce statically wherever it can see the value,
-and the runtime helper must handle where it cannot.
+### Elsewhere, and in another framework
+
+Because the compiled form is a value, `@( … )` outside JSX is the same feature with no special case.
+The package exports one function that turns a compiled value into `{ className, style }`, which is
+what a wrapper on another JSX framework spreads. Ramonda applies it natively through the prop; nobody
+else has to.
 
 ---
 
@@ -316,9 +362,9 @@ its declarations, and the sheet sits in a named `@layer` beneath author styleshe
 
 **5. Nesting, `&:hover`, `@media`.** Unusable without them. *Recommended:* those three in v1.
 
-**6. What the standalone form returns.** Outside JSX — `const panel = @( … )`. *Recommended:* an
-object `{ className, style }`, because that is what makes constraint 3 true: any framework can spread
-it, and nothing about it is JSX-specific.
+**6. The compiled value's exact shape.** `[descriptor, …values]` is what the section above
+recommends, because it is the form the compiler can produce without concatenating anything. A call —
+`_s2(value)` — reads better and allocates the same. **Open, and it is the core API decision.**
 
 **7. May anything happen at runtime?** **DECIDED — no.** Custom properties only, never an injected
 rule. Injecting would give up server-render determinism, the cached sheet and the checker's view of
@@ -333,10 +379,10 @@ JS*, and carries no framework in it, which matters for a package whose whole pit
 anywhere. Checked and free alongside it: `cssat`, `at-block`, `blockcss`, `styleblock`, `kalem`.
 Taken: `cssx`, `atcss`. **Still the user's call.**
 
-**9. ~~Does the framework report the generated `style={{ … }}`?~~ MEASURED, and it did.** Answered
-above: the object form trips `RMD020` on every render, the string form is silent and reads back
-correctly. **Decided: emit a string.** What is still open is the escaping rule that follows from it —
-where the checker can enforce it statically, and what the fallback is where it cannot.
+**9. ~~Does the framework report the generated object?~~ MEASURED, and it did.** Answered above:
+`RMD020` fires on every render for the object form. **Decided: the `css` prop is exempt**, one line
+beside the two exemptions already in `compareAttributes`. The escaping question that the string form
+raised is **gone**, not deferred — a value that never becomes attribute text has nothing to escape.
 
 ---
 
