@@ -1,4 +1,6 @@
 import type ts from "typescript";
+import type { BlockItem } from "./compiler/ast";
+import { PROPERTIES, PROPERTY_NAMED, UNION_TYPED, VALUE_WORDS } from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
@@ -81,8 +83,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           /** What an editor can act on and a build must not fail over. Drawn as suggestions. */
           hints: Finding[];
           author: ts.SourceFile | undefined;
-          /** Where the CSS is and where the holes are — read once per version, asked on every paint. */
-          where: { blocks: Span[]; holes: Span[] };
+          /** Where the CSS, the holes and the values are — read once per version, asked on every paint. */
+          where: Regions;
         }
       >();
 
@@ -195,6 +197,46 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         if (at === undefined) return undefined;
 
         const got = service.getCompletionsAtPosition(fileName, at, options, settings);
+
+        /**
+         * Nothing from TypeScript, in a value it has no union for — see {@link valueWords}.
+         *
+         * Only when it offered nothing at all: a closed grammar answers for itself and answers
+         * better, and a property that admits a free identifier has no list here either.
+         */
+        {
+          /**
+           * A caret standing in a VALUE, decided from what we know rather than from what TypeScript
+           * happened to answer.
+           *
+           * Measured, and it is why this is not "only when TypeScript said nothing": for an open
+           * grammar it answered with the 551 PROPERTY names, which is the key position's list and
+           * useless in a value. What decides is the property: a union is TypeScript's, everything
+           * else is ours.
+           */
+          const where = cache.get(fileName)?.where ?? EMPTY_REGIONS;
+          const value = where.values.find((one) => one.start < position && position <= one.end);
+          /**
+           * A caret at a hole's closing `}}` is still in the hole — you are typing at the end of the
+           * expression. `isCss` reads the bound the other way, which is right for a classification:
+           * the `}}` itself is ours to paint. Measured, without this the last character of every
+           * expression offered CSS words instead of the file's own bindings.
+           */
+          const inHole = where.holes.some((one) => one.start <= position && position <= one.end);
+          const words =
+            value === undefined || inHole || !isCss(where, position) ? undefined : valueWords(value.property);
+          if (words !== undefined) {
+            return {
+              isGlobalCompletion: false,
+              isMemberCompletion: false,
+              isNewIdentifierLocation: true,
+              // `string` rather than a keyword: these are CSS values, and it is the icon a real CSS
+              // language service gives them.
+              entries: words.map((name) => ({ name, kind: "string" as ts.ScriptElementKind, sortText: "0" })),
+            };
+          }
+        }
+
         if (got === undefined) return undefined;
 
         /**
@@ -213,7 +255,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          */
         // `overlay` above has just filled the cache for this version, and `where` is the regions it
         // recorded — the same ones the classifications use.
-        const css = isCss(cache.get(fileName)?.where ?? { blocks: [], holes: [] }, position);
+        const where = cache.get(fileName)?.where ?? EMPTY_REGIONS;
+        const css = isCss(where, position);
 
         return {
           ...got,
@@ -286,7 +329,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         if (file === undefined) return service.getEncodedSemanticClassifications(fileName, span, format);
 
         const got = service.getEncodedSemanticClassifications(fileName, { start: 0, length: file.code.length }, format);
-        return { ...got, spans: home(file, got.spans, span, cache.get(fileName)?.where ?? { blocks: [], holes: [] }) };
+        return { ...got, spans: home(file, got.spans, span, cache.get(fileName)?.where ?? EMPTY_REGIONS) };
       };
 
       /** Folding, and the outline that feeds the breadcrumbs — both are spans and both were wrong. */
@@ -531,9 +574,10 @@ function siteFindings(text: string): Finding[] {
  * the hole is why the block's own range is not enough: a hole IS TypeScript, and `this.weight`
  * inside one has to read the way it reads anywhere else.
  */
-function regions(text: string): { blocks: Span[]; holes: Span[] } {
+function regions(text: string): Regions {
   const blocks: Span[] = [];
   const holes: Span[] = [];
+  const values: ValueSpan[] = [];
   // A resolved reference is not a hole, so it is not a region TypeScript owns — an editor must not
   // colour `{{slide}}` as an expression in a place the build writes a name into.
   const references = namedSites(text);
@@ -541,13 +585,89 @@ function regions(text: string): { blocks: Span[]; holes: Span[] } {
     const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     blocks.push({ start: site.open, end: read.end });
     holes.push(...read.holes);
+    collect(read.block.items, values);
   }
-  return { blocks, holes };
+  return { blocks, holes, values };
+}
+
+/** Every declaration's VALUE, with the property it belongs to — see `valueWords`. */
+function collect(items: readonly BlockItem[], out: ValueSpan[]): void {
+  for (const item of items) {
+    if (item.kind === "rule") {
+      collect(item.items, out);
+      continue;
+    }
+    if (item.at === undefined || item.end === undefined) continue;
+    /**
+     * From the end of the property NAME rather than from `valueAt`, which skips to the first
+     * character the author has typed. With nothing typed yet there is nothing to skip to — measured,
+     * `overflow: ` put `valueAt` one PAST the caret, so the state you are in first was the one state
+     * this could not answer.
+     */
+    out.push({ start: item.at + item.property.length, end: item.end, property: item.property });
+  }
+}
+
+/**
+ * The words a property accepts, for a caret standing in its value.
+ *
+ * **123 properties have a closed grammar and a real union, and TypeScript offers those itself** —
+ * better than this could, with `!important` and `var()` beside each. The other 428 are
+ * `string | number`, and measured, a caret there got NOTHING from us: typing `transform: n` offered
+ * zero entries, so the editor fell back to its own word list and suggested `nav`, `noframes`,
+ * `noscript` — HTML tag names, in a CSS value.
+ *
+ * The list is the one the CHECKER already reads. `KEYWORDS` holds the bare words each property's
+ * grammar reaches, for exactly the properties the types do not cover, and `PROPERTY_NAMED` holds the
+ * ones whose value is a property name. So the table that reports `display: flexx` is the table that
+ * suggests `flex` — one answer asked twice, which is the arrangement this package keeps having to
+ * repair when it is two.
+ *
+ * A property that admits a free identifier — `animation-name`, `font-family` — has no entry and gets
+ * nothing, which is right: that name is the author's own and nothing can suggest it.
+ */
+function valueWords(property: string): readonly string[] | undefined {
+  // A real union is TypeScript's to offer, and it offers `!important` and `var()` beside each word.
+  if (UNION_TYPED.includes(property)) return undefined;
+
+  const own = VALUE_WORDS[property];
+  // A property whose value is a property NAME — `transition-property`, `will-change` — takes any of
+  // them, which is what a real CSS language service offers there too.
+  const named = PROPERTY_NAMED[property] === undefined ? [] : PROPERTIES;
+  if (own === undefined && named.length === 0) return undefined;
+
+  // Every property takes these, whatever else it takes.
+  return [
+    ...(own === undefined ? [] : own.split(" ").filter(Boolean)),
+    ...named,
+    "inherit",
+    "initial",
+    "unset",
+    "revert",
+    "revert-layer",
+  ];
 }
 
 /** A quoted key as CSS spells it — see the note in `getCompletionsAtPosition`. */
 function unquoted(name: string): string {
   return name.length > 1 && name.startsWith('"') && name.endsWith('"') ? name.slice(1, -1) : name;
+}
+
+/** Nothing at all, for a file whose regions are not cached. */
+const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [] };
+
+/** A declaration's value, and the property it sets. */
+interface ValueSpan {
+  readonly start: number;
+  readonly end: number;
+  readonly property: string;
+}
+
+/** What one file's text is made of, as far as this plugin has to care. */
+interface Regions {
+  readonly blocks: readonly Span[];
+  readonly holes: readonly Span[];
+  readonly values: readonly ValueSpan[];
 }
 
 /** True when the position belongs to the CSS itself — inside a block, outside every hole. */

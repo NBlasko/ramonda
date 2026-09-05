@@ -135,12 +135,16 @@ describe("completion, at every caret a person passes through", () => {
     expect(offered).not.toContain("display");
   });
 
-  test("and a value whose grammar is open offers no union, because there is not one", () => {
-    // `display` takes combinations — `inline flow-root` — so it is `string | number` and its typos
-    // are the CSS checker's. Said here so the limit is visible from the editor's side too.
+  /**
+   * An open grammar has no union, so TypeScript offers nothing — and this package offers the words
+   * itself. See *completion in a value* below for what that is and why it is a second table.
+   */
+  test("and a value whose grammar is open is answered by us, not by a union", () => {
     const offered = names(`const a = <div css=@@( display: fl${CARET} )>x</div>;\n`);
 
-    expect(offered).not.toContain("flex");
+    expect(offered).toContain("flex");
+    // TypeScript's own union list carries these; ours does not, which is how the two are told apart.
+    expect(offered).not.toContain("flex !important");
   });
 
   test("ordinary code in the same file is untouched", () => {
@@ -724,5 +728,121 @@ describe("completion inside a named block", () => {
     const offered = names(`const slide = @@keyframes(\n  from { op${CARET} }\n);\n`);
 
     expect(offered).toContain("opacity");
+  });
+});
+
+/**
+ * Completion in a VALUE, for the properties TypeScript cannot help with.
+ *
+ * 123 properties have a closed grammar and get a real union, so TypeScript offers their values and
+ * offers them better — with `!important` and `var()` beside them. **The other 428 are
+ * `string | number`, and measured, we offered NOTHING there**: typing `transform: n` gave zero
+ * entries, so the editor fell back to its own word list and suggested `nav`, `noframes`, `noscript`
+ * — HTML tag names, in a CSS value.
+ *
+ * The list to offer already exists and is the one the CHECKER reads: `KEYWORDS` holds the bare words
+ * each property's grammar reaches, for exactly the properties whose values the types do not cover.
+ * So the same table that reports `display: flexx` is what suggests `flex` — one answer, asked twice,
+ * which is the arrangement this package keeps having to repair when it is two.
+ */
+describe("completion in a value", () => {
+  test("an open grammar offers the words its own property accepts", () => {
+    const offered = names(`const a = <div css=@@( transform: n${CARET} )>x</div>;\n`);
+
+    expect(offered).toContain("none");
+  });
+
+  test("and a longer list is offered whole, not filtered by us", () => {
+    const offered = names(`const a = <div css=@@( overflow: ${CARET} )>x</div>;\n`);
+
+    expect(offered).toEqual(expect.arrayContaining(["auto", "clip", "hidden", "scroll", "visible"]));
+  });
+
+  test("the CSS-wide keywords are there too, because every property takes them", () => {
+    const offered = names(`const a = <div css=@@( transform: ${CARET} )>x</div>;\n`);
+
+    expect(offered).toEqual(expect.arrayContaining(["inherit", "initial", "unset", "revert", "revert-layer"]));
+  });
+
+  test("a property whose value is a property NAME offers those", () => {
+    const offered = names(`const a = <div css=@@( transition: b${CARET} )>x</div>;\n`);
+
+    expect(offered).toContain("background");
+  });
+
+  /** A closed grammar is the types' to answer, and theirs is better — `var()` and `!important` too. */
+  test("a closed grammar is left to TypeScript", () => {
+    const offered = names(`const a = <div css=@@( position: st${CARET} )>x</div>;\n`);
+
+    expect(offered).toContain("static");
+    expect(offered).toContain("static !important");
+  });
+
+  /**
+   * A grammar that admits a free identifier still reaches keywords, and those are worth offering —
+   * which is the difference between SUGGESTING and reporting. `KEYWORDS` holds only closed grammars
+   * because an unknown word there cannot be called wrong; `VALUE_WORDS` holds every property that
+   * reaches a word at all, because `cursor: pointer` is the answer either way.
+   *
+   * What nothing can suggest is the author's own name — and nothing does: `sl` for a keyframes name
+   * gets `none` and the CSS-wide keywords, not a guess.
+   */
+  test("a grammar with a free identifier still offers the words it does have", () => {
+    expect(names(`const a = <div css=@@( animation-name: n${CARET} )>x</div>;\n`)).toContain("none");
+    expect(names(`const a = <div css=@@( font-family: s${CARET} )>x</div>;\n`)).toEqual(
+      expect.arrayContaining(["serif", "sans-serif", "monospace"]),
+    );
+    expect(names(`const a = <div css=@@( cursor: p${CARET} )>x</div>;\n`)).toContain("pointer");
+  });
+
+  test("a hole is TypeScript, and keeps being TypeScript", () => {
+    const offered = names(`const accent = "red";\nconst a = <div css=@@( color: {{acc${CARET}}}; )>x</div>;\n`);
+
+    expect(offered).toContain("accent");
+    expect(offered).not.toContain("inherit");
+  });
+
+  test("a property NAME still offers property names", () => {
+    const offered = names(`const a = <div css=@@( disp${CARET} )>x</div>;\n`);
+
+    expect(offered).toContain("display");
+  });
+
+  test("a value inside a nested rule is a value too", () => {
+    const offered = names(`const a = <div css=@@( &:hover { transform: n${CARET} } )>x</div>;\n`);
+
+    expect(offered).toContain("none");
+  });
+});
+
+/**
+ * The shapes a person actually typed, from a real editor.
+ *
+ * Reported with a screenshot: `align-items: c` offered `canvas`, `cap`, `caption`, `cc:ie`, `code`,
+ * `col` — Emmet's HTML abbreviations, which is what fills the gap when a language service offers
+ * nothing at all. These are the same carets, asserted.
+ */
+describe("what a person typed", () => {
+  test.each([
+    ["align-items: c", "center"],
+    ["cursor: p", "pointer"],
+    ["transform: n", "none"],
+    ["display: fl", "flex"],
+    ["overflow: h", "hidden"],
+    ["text-transform: u", "uppercase"],
+    ["justify-content: sp", "space-between"],
+    ["border-left: so", "solid"],
+    ["font-weight: b", "bold"],
+    ["white-space: now", "nowrap"],
+  ])("`%s` offers `%s`", (typed, wanted) => {
+    expect(names(`const a = <div css=@@( ${typed}${CARET} )>x</div>;\n`)).toContain(wanted);
+  });
+
+  test("and no HTML abbreviation reaches a CSS value", () => {
+    const offered = names(`const a = <div css=@@( align-items: c${CARET} )>x</div>;\n`);
+
+    for (const junk of ["canvas", "caption", "cite", "code", "col", "cc:ie"]) {
+      expect(offered, `${junk} is markup, not a CSS value`).not.toContain(junk);
+    }
   });
 });

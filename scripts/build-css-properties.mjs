@@ -325,6 +325,21 @@ const named = Object.keys(properties)
 
 const rows = [];
 const keywordRows = [];
+/**
+ * Every bare word a property's grammar reaches, for COMPLETION — a different question from checking.
+ *
+ * `KEYWORDS` exists to report a wrong word, so it holds only properties whose grammar is CLOSED: a
+ * property that also admits a free identifier can never have a word called wrong. Suggesting is not
+ * reporting. `cursor` admits a `<url>` and so has no `KEYWORDS` row, and `cursor: pointer` is still
+ * the answer an author wants offered — measured, they got `nav`, `noframes`, `noscript` instead,
+ * because we offered nothing and the editor fell back to words from the document.
+ *
+ * So this holds the words for EVERY property that reaches one, free or not. One sweep, two tables,
+ * and neither is the other's approximation.
+ */
+const valueRows = [];
+/** The properties whose values TypeScript already offers, from a real union. Left to it. */
+const unionTyped = [];
 let unions = 0;
 let checkable = 0;
 
@@ -336,12 +351,18 @@ for (const name of named) {
 
   if (keywords !== undefined) {
     // The types already report a bad value here, with a suggestion. The checker must not say it
-    // twice — measured, `position: statik` came back from both.
+    // twice — measured, `position: statik` came back from both. Completion is the same: TypeScript
+    // offers a union's members itself, and offers them better — with `!important` and `var()` too.
     unions++;
+    unionTyped.push(JSON.stringify(name));
     continue;
   }
 
   const scanned = scan(name);
+  // For COMPLETION, and unlike the row below, a free identifier is no reason to say nothing: the
+  // words a grammar reaches are worth offering even when an unknown one cannot be called wrong.
+  if (scanned.words.length > 0)
+    valueRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(scanned.words.join(" "))},`);
   /**
    * A grammar that admits a FREE identifier is the honest exclusion: a custom name, a font family,
    * an animation's own name. Nothing here can tell one of those from a typo.
@@ -671,12 +692,37 @@ ${descriptorRows.join("\n")}
 export const SHORTHANDS: Readonly<Record<string, readonly string[]>> = {
 ${shorthandRows.join("\n")}
 };
+
+/**
+ * Property -> every bare word its grammar reaches, space separated, for COMPLETION.
+ *
+ * **A different question from \`KEYWORDS\`, and that difference is the whole reason this exists.**
+ * That table is for REPORTING a wrong word, so it holds only properties whose grammar is closed — a
+ * property admitting a free identifier can never have a word called wrong. Suggesting is not
+ * reporting: \`cursor\` admits a \`<url>\` and has no \`KEYWORDS\` row, and \`cursor: pointer\` is still
+ * exactly what an author wants offered.
+ *
+ * Measured before this existed: a value position offered NOTHING, so the editor fell back to words
+ * from the document and suggested \`nav\`, \`noframes\`, \`noscript\` — HTML tag names, in CSS.
+ */
+export const VALUE_WORDS: Readonly<Record<string, string>> = {
+${valueRows.join("\n")}
+};
+
+/**
+ * The properties whose values TypeScript already offers, from a real union.
+ *
+ * Left to it, and it answers better: its list carries \`!important\` and \`var(…)\` beside each word,
+ * which no table here does.
+ */
+export const UNION_TYPED: readonly string[] = ${JSON.stringify(unionTyped.map((one) => JSON.parse(one)))};
 `;
 
 const said =
   `${named.length} properties, ${unions} typed as a union, ${checkable} value-checkable by the rules, ` +
   `${propertyNamedRows.length} whose value is a property name, ${allUnits.length} units, ` +
-  `${NOT_IN_A_RULE.length} at-rules that may not sit in a block, ${shorthandRows.length} shorthands`;
+  `${NOT_IN_A_RULE.length} at-rules that may not sit in a block, ${shorthandRows.length} shorthands, ` +
+  `${valueRows.length} with values to suggest`;
 
 if (!check) {
   writeFileSync(TYPES, types);
