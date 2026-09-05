@@ -386,3 +386,78 @@ describe("on an SVG element", () => {
     expect(circle.style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("red");
   });
 });
+
+/**
+ * A value whose `className` holds SEVERAL classes, which is what composition will produce.
+ *
+ * The next design for `@ramonda/css` is atomic: one class per declaration, merged at the call site,
+ * so a compiled value carries a list of classes rather than one. **Measured here before that is
+ * built, because the answer decides how much of it reaches this package: nothing.** The value's
+ * shape is unchanged — a class string, property names, values — and the only difference is that the
+ * string has spaces in it, which is what a class attribute is for.
+ *
+ * The order inside it decides nothing, and this file's own `classNameWithBlock` already says so: a
+ * class attribute's order is not a cascade, the stylesheet's order is. So these assert what must
+ * hold — every class arrives, the author's own survives, and the properties still land — and not
+ * which order they arrive in.
+ */
+describe("a value carrying several classes", () => {
+  const composed: CssBlockValue = {
+    className: "r-1111111111111111 r-2222222222222222 r-3333333333333333",
+    properties: ["--r-2222222222222222"],
+    values: ["#10b981"],
+  };
+
+  test("every class reaches the element, and the author's own with them", async () => {
+    class Panel extends Component {
+      render() {
+        return (
+          <div>
+            <div className="lead" css={composed}>
+              x
+            </div>
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Panel>(<Panel />);
+    await app.settle();
+
+    const element = styled(app.container);
+    expect([...element.classList].sort()).toEqual([
+      "lead",
+      "r-1111111111111111",
+      "r-2222222222222222",
+      "r-3333333333333333",
+    ]);
+    expect(element.style.getPropertyValue("--r-2222222222222222")).toBe("#10b981");
+  });
+
+  test("and swapping it for a different set leaves none of the first behind", async () => {
+    const other: CssBlockValue = { className: "r-4444444444444444", properties: [], values: [] };
+
+    class Panel extends Component {
+      @state first = true;
+      render() {
+        return (
+          <div>
+            <div className="lead" css={this.first ? composed : other}>
+              x
+            </div>
+          </div>
+        );
+      }
+    }
+
+    const app = await getDOM<Panel>(<Panel />);
+    await app.settle();
+
+    app.instance.first = false;
+    await app.settle();
+
+    const element = styled(app.container);
+    expect([...element.classList].sort()).toEqual(["lead", "r-4444444444444444"]);
+    expect(element.style.getPropertyValue("--r-2222222222222222")).toBe("");
+  });
+});

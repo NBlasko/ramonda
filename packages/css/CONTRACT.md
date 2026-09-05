@@ -52,6 +52,81 @@ Three properties of this shape are load-bearing:
 - **The expression is not part of the block's identity.** Two blocks with identical CSS and
   different expressions are one class and one rule; each element carries its own value.
 
+## 1b. What a block compiles to under COMPOSITION — frozen 2026-09-05, built as AC0–AC8
+
+The shape above is one class for a whole block, and it cannot express composition: measured, the
+order of classes in a `class` attribute decides nothing, so two whole-block classes cannot say which
+one wins. The next build is atomic — one rule per DECLARATION — and this is the part both halves
+have to agree on.
+
+**The cross-package contract does not change, and that was measured rather than hoped.** A merge
+produces exactly the `StyleValue` in §2: a class string, property names, values. The only difference
+is that the string holds several classes separated by spaces, which is what a class attribute is for
+— and the framework already handles that, asserted end to end in `CssBlock.test.tsx`. **Nothing in
+`@ramonda/core` changes.** Everything below lives inside `@ramonda/css`.
+
+### The map
+
+A block compiles to a map from **what a declaration sets** to **the class that sets it**:
+
+```ts
+/** A declaration with no holes is its class; one with holes is its class and its values in order. */
+type StyleEntry = string | readonly [className: string, ...values: StyleVarValue[]];
+
+/** What one `@@( … )` becomes. Keys are canonical — see below. */
+type StyleMap = { readonly [key: string]: StyleEntry };
+```
+
+```
+                                       source
+const panel = @@(
+  display: flex;
+  color: {{accent}};
+  &:hover { color: #0e9f6e; }
+);
+
+                                       emitted
+const panel = { "display": "r-1111…", "color": ["r-2222…", accent], "&:hover|color": "r-3333…" };
+```
+
+and the stylesheet gains one rule per entry — `.r-1111…{display:flex}`,
+`.r-2222…{color:var(--r-2222…-0)}`, `.r-3333…:hover{color:#0e9f6e}`.
+
+### The key, and it is canonical rather than as-written
+
+`[at-rules, sorted] [selector, composed in order] property`, joined by `|`. Two rules, each for a
+reason:
+
+- **At-rules are SORTED**, because they commute — measured in Chromium,
+  `@media X { @supports Y { … } }` and `@supports Y { @media X { … } }` are the same rule. Without
+  sorting, two authors writing the same CSS in a different nesting order would get different keys, so
+  a modifier would silently fail to override a base.
+- **Selector parts are COMPOSED IN ORDER**, because they do not commute: `&:hover` inside `& .title`
+  is `& .title:hover`, and the reverse is a different selector.
+
+### The variable name for a hole
+
+`--<the declaration's own class>-<n>`, `n` counting holes within that declaration. The same rule as
+§3 one level down: scoped to what it belongs to, never positional across a block.
+
+### The merge, which is where composition happens
+
+Later wins per key, and **a later shorthand clears its own longhands** — CSS's own cascade, from a
+table generated out of mdn-data. That second half is not a nicety: a shorthand and its longhand are
+different properties, so without it both classes land and the SHEET breaks the tie, possibly against
+the call site. Measured, it agrees with CSS in both directions for `padding`, `border-left` and `gap`.
+
+**The merge is associative** — 50,309 random groupings, zero disagreements — which is what makes a
+nested `@@if` mean the same as a flattened one.
+
+### The sheet's emission order, which is now a rule rather than an accident
+
+Shorthands before their longhands, and unconditional rules before conditional ones. Measured: a
+`@media` rule beats a base rule for the same property **only if it is emitted after it**, and a
+longhand emitted before a shorthand loses to it.
+
+---
+
 ## 2. What `block()` returns, and what the `css` prop accepts
 
 ```ts

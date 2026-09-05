@@ -1175,11 +1175,19 @@ at-rules after both.
 
 ### The tracks, in order
 
-**AC0 — the contract, and nothing else may start first.** What a compiled block IS changes from
-`{className, properties, values}` to a map. It is declared twice, in `@ramonda/css` and in
-`@ramonda/core`, and `check-css-contract.mjs` watches both — including `holdsOneDeclaration`, which
-is unchanged. Freeze the map's shape, the pair form for a hole, and the key spelling for a nested
-selector and a conditional at-rule. Everything below depends on this and nothing else does.
+**AC0 — the contract. DONE 2026-09-05, and it turned out to be half the job it looked like.**
+
+The plan assumed the cross-package contract changes. **It does not, and that was measured rather than
+hoped:** a merge produces exactly today's `StyleValue` — a class string, property names, values — and
+the only difference is that the string holds several classes. `classNameWithBlock` already joins that
+with the author's own, and its own comment already said why order there is meaningless. Asserted end
+to end in core's `CssBlock.test.tsx`: every class arrives, the author's survives, the properties land,
+and swapping the value leaves none of the first behind. **Nothing in `@ramonda/core` changes**, so
+`check-css-contract.mjs` keeps passing untouched and the whole build is contained in one package.
+
+Frozen in `CONTRACT.md` §1b: the map, the entry (a class, or a class and its values), the canonical
+KEY — at-rules sorted because they commute (measured in Chromium), selector parts composed in order
+because they do not — the variable name, the merge rule, and the sheet's emission order.
 
 **AC1 — the shorthand table.** `SHORTHANDS: Record<string, readonly string[]>` out of the same sweep as
 `PROPERTIES`, `KEYWORDS` and `UNITS`. Pure addition, no behaviour change, independent of P0 — it can
@@ -1246,6 +1254,27 @@ Measured, 14 conditions through `tsc`:
 | `{ a: 1 }`, `string[]` | reported: *this is always truthy, so the group can never be off* |
 | `() => void` | reported: *a function is always truthy — call it, or test a value* |
 | `Promise<number>` | reported: *a promise is always truthy — await it, or test a value* |
+
+**Nothing the block already had is lost, and that was the question worth asking.** Measured: a typo
+inside `@@if` reports with the SAME code and the SAME *did you mean* as the identical typo outside it
+— `TS2561` for a bare property, `TS2820` for a value in a closed union, `TS2353` for a dashed one —
+and so does one inside `&:hover` inside `@@if`, inside `@@if` inside `&:hover`, and inside `@@if`
+inside `@@if`. Three faults in one group come back as three, which is the property this package fought
+for with one literal per declaration.
+
+**One encoding fails that, and it is the obvious one.** Writing the group as
+`__when(condition, [ … ])` — the condition as an ARGUMENT wrapping the declarations — means a wrong
+condition **hides every fault in the body**: measured, the condition was reported and the two typos
+under it were not, because the failed inference degrades the whole call. So **the condition is its own
+array element**, `__cond(expr)` beside the declarations rather than around them:
+
+```ts
+__block([{ display: "flex" }, __cond(this.disabled), { opacity: "0.5" }, { colr: "red" }]);
+```
+
+Measured that way, a bad condition and both typos come back together, each at its own position. The
+group's nesting is not needed in the virtual file at all — that file exists only to be type-checked,
+and a declaration inside a group is checked exactly like one outside it.
 
 **A spread of something that is not a block** is refused the same way, with a branded map type a
 hand-written object cannot forge:
@@ -1338,6 +1367,8 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | the shorthand-aware merge, 50,309 random groupings | **associative** — nesting and flattening never disagree |
 | an always-truthy `@@if` condition, as a TYPE | reportable — and `any`/`unknown`/`T \| undefined` stay silent |
 | a spread of a non-block, as a TYPE | reportable; a lookup with a union key passes |
+| a typo inside `@@if`, and in every nesting of it | same code, same *did you mean*, as outside — nothing lost |
+| the condition as an ARGUMENT wrapping the group | **hides every fault in the body** — so it is its own array element |
 | `var(var(--x))` | resolves to nothing — a `var()` name must be literal, so a reference cannot be a hole |
 | one rule per OWNER, through a real build | a sibling lazy route named a class **no stylesheet contained** |
 | every file serving what it names | 3.5x the CSS bytes, **1.1x gzipped**, on a corpus that duplicates every rule 3x |
