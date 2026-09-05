@@ -1062,6 +1062,179 @@ is not at hand.
 
 ---
 
+## The next build — composition, and why it is a rewrite of three files rather than a feature
+
+**The gap, in the user's own framing:** with MUI's `sx` a developer toggles whole GROUPS of keys and
+merges one block into another; StyleX does the same and resolves it at build time. This has neither.
+A block is one hash and one class, and holes carry values, so `disabled` cannot turn off a group.
+
+**Why a second class cannot answer it, measured in Chromium:** the order of classes in the `class`
+attribute decides *nothing*. `class="base active"` and `class="active base"` both take whichever rule
+is later **in the stylesheet**, and with layers the layer decides. So two whole-block classes cannot
+express "this one wins" from the call site — which is exactly why StyleX is atomic. One class per
+declaration means the merge picks WHICH classes land, so there is never a tie to break.
+
+### What the author writes — decided with the user, 2026-09-05
+
+Composition goes INSIDE the block, because that is what a person reads. **Later wins**, which is the
+rule a CSS reader already has — no array index to map onto precedence, and the override sits under
+the thing it overrides.
+
+```tsx
+const variants = {
+  primary:   @@( background: #10b981; color: #fff; &:hover { background: #0e9f6e; } ),
+  secondary: @@( background: transparent; color: #10b981; ),
+};
+
+<button css=@@(
+  ...button;                                 // merge another block's map, across files
+  ...variants[this.variant];                 // exhaustive — TypeScript checks the key
+
+  @@if (this.disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;                     // beats `cursor: pointer` above, because it is BELOW
+  }
+
+  width: {{this.full ? "100%" : "auto"}};    // a VALUE choice is still a hole
+)>
+```
+
+The array form — `css={[a, b && c]}` — keeps working and becomes the rare one.
+
+**`@@if`, and no `@else`.** The user refused any spelling CSS might one day claim. Measured, written
+inside a nested rule: `#if`, `>if`, `~if`, `+if` are **already parsed as selectors**; `:if` is the
+likeliest future collision, since CSS keeps adding pseudo-classes; `?`, `!`, `$` and `@if` are free
+*today* and that is all. **`@@anything` is structurally impossible in CSS** — an at-keyword is `@`
+followed by an ident-token and an ident cannot begin with `@` — so it is a grammar guarantee rather
+than a bet, and `@@` is already this language's own marker. `@else` is dropped because CSS drafts it
+(Conditional Rules 5) for environment conditions; a spread of a lookup object replaces it and gives
+exhaustiveness `@else` never had.
+
+### The compiled shape, which is the whole design
+
+A block compiles to a MAP from what a declaration SETS to the class that sets it. Static entries are
+a class name; a hole's entry is a pair, because the value travels with it:
+
+```js
+const _s0 = { display: "r-a1", cursor: "r-b2", "&:hover|filter": "r-c3" };
+const _s1 = { background: "r-d4", color: "r-e5" };
+const _s3 = { opacity: "r-f6", cursor: "r-g7" };
+const _s4 = { width: ["r-h8", this.full ? "100%" : "auto"] };
+
+<button className={_m(_s0, variants[this.variant], this.disabled && _s3, _s4)} />
+```
+
+**Reachability does not matter, and that is the point.** Every `@@( … )` is a literal in the source,
+so the compiler sees all of them whether or not a branch ever runs. A block behind `variants[name]`,
+in an object, in a ternary, in a `map` — the transform never has to resolve which one is chosen.
+
+**Nesting works, and it is not a coincidence — it is measured.** `@@if` inside `@@if`, `&:hover`
+inside `@@if`, `@@if` inside `&:hover`: the parser already reads all four combinations as ordinary
+nested rules (measured, one site). A nested condition is a CONJUNCTION, so it compiles either way —
+as a nested merge or flattened into `a && b && map` — and the two agree because **the merge is
+associative**: 50,309 random groupings of random maps drawn from a pool of shorthands and their
+longhands, **zero disagreements** between `_m(a, _m(b, c))` and `_m(a, b, c)`. That is the property
+the shorthand-clearing rule could have broken, and it does not. Nesting is therefore free to allow.
+
+Three more properties fall out for free and are worth knowing before the work starts:
+
+- **`&:hover` inside `@@if` and `@@if` inside `&:hover` mean the same thing**, because the key is
+  `selector|property` and both flatten to it.
+- **`@media` is another key**, so it composes through the merge; which one wins is then the SHEET's
+  emission order — see below.
+- **Two blocks writing the same hole shape share a class and a variable name.** The merge keeps the
+  later entry whole, pair and all, so the right value is the one that is set. No collision.
+
+### Shorthands, which is the one hard problem — and it is NOT solved by expanding values
+
+A shorthand and its longhand are DIFFERENT properties, so a merge keeps both and the sheet breaks the
+tie — silently, and possibly against the call site. Measured: `.a{padding:8px}` with
+`.b{padding-left:40px}` gives 40px whichever order the classes are written in, and 8px if the longhand
+is emitted first.
+
+**Expansion was the obvious answer and the corpus killed it.** mdn-data names 78 shorthands and says
+what each expands to, but only **10 split by a mechanical rule** (`padding`, `margin`, `inset` by the
+1-to-4 box rule, plus seven logical pairs); the other 68 need per-property grammar. Measured on every
+declaration written in a block in this repository: **50 of 108 are shorthands, and only 7 of those
+split mechanically** — `border-left` (18x), `gap` (9x), `transition`, `border-radius`, `background`
+dominate. Expanding values would buy almost nothing for most of the work.
+
+**The answer is a shorthand-aware MERGE, and it needs no value parsing at all.** The table is
+generated from mdn-data by the sweep that already writes the property map, and the merge implements
+CSS's own cascade in one line: *a later shorthand clears its own longhands.*
+
+| merged | kept | what CSS says |
+|---|---|---|
+| `padding` then `padding-left` | both — sheet emits the longhand later | 40px ✓ |
+| `padding-left` then `padding` | the shorthand clears it | 8px ✓ |
+| `border-left` then `border-left-color` | both | ✓ |
+| `border-left-color` then `border-left` | the shorthand clears it | ✓ |
+
+So the sheet gains one ordering rule: **longhands are emitted after shorthands**, and conditional
+at-rules after both.
+
+### The tracks, in order
+
+**AC0 — the contract, and nothing else may start first.** What a compiled block IS changes from
+`{className, properties, values}` to a map. It is declared twice, in `@ramonda/css` and in
+`@ramonda/core`, and `check-css-contract.mjs` watches both — including `holdsOneDeclaration`, which
+is unchanged. Freeze the map's shape, the pair form for a hole, and the key spelling for a nested
+selector and a conditional at-rule. Everything below depends on this and nothing else does.
+
+**AC1 — the shorthand table.** `SHORTHANDS: Record<string, readonly string[]>` out of the same sweep as
+`PROPERTIES`, `KEYWORDS` and `UNITS`. Pure addition, no behaviour change, independent of P0 — it can
+be written first and is the cheapest way to start.
+
+**AC2 — the sheet emits declarations.** `Sheet.add` takes atomic rules; the collision assertion and the
+round trip are unchanged in kind. New: the emission order above. Per-file serving is unchanged, and
+so is "a file serves every rule it names" — atomic makes that CHEAPER, since a duplicate is ~30 bytes
+rather than a whole rule.
+
+**AC3 — the transform emits maps.** One hash per declaration, keyed by `selector|property|value` with a
+placeholder for a hole (the same `U+0000` trick that already breaks the circular naming). A block with
+no holes stays a module constant.
+
+**AC4 — the runtime merge.** `_m(…)` in `@ramonda/css`, and `applyCssBlock` takes what it produces.
+Measured: 0.64 µs per element for four maps and 24 declarations — 0.5 ms for a page of 800 elements,
+3.2 ms for 5000. Free.
+
+**AC5 — `...expr;` inside a block.** The parser already reads it as a declaration whose property is
+`"...base"` with no value (measured). What it needs is meaning in the transform, a type for the
+operand in the virtual file, and a rule for a spread of something that is not a block.
+
+**AC6 — `@@if (…) { }`.** The parser already reads it as a nested rule with that prelude, and the
+scanner does NOT mistake it for a second block site (measured: one site, not two). Needs: the
+condition type-checked in the author's scope, exemption from `at-rule-out-of-place`, and a decision
+between `@@if (expr)` and `@@if {{expr}}` — the second is consistent with this language's one standing
+rule, that TypeScript only ever appears inside `{{ }}`.
+
+**AC7 — the rules the new shape makes possible.** A shorthand meeting one of its own longhands in a
+merge the author wrote INLINE is visible to the checker, which is a thing that could never be reported
+before; across files it is a runtime diagnostic. Plus a non-boolean condition, and a spread of a
+non-block.
+
+**AC8 — the page.** `style-blocks.md` gains composition; every example in it is already gated.
+
+### What does NOT change, and it is most of the package
+
+The scanner, the tolerant parser, the virtual file's mapping, the tooling wrappers, the CLI, the
+language-service plugin, the TextMate grammars (beyond colouring two new spellings), the property
+types, and every rule that is about one declaration. **Atomic is a rewrite of the sheet, the
+transform's emission and the runtime — three files — plus the two authoring forms.**
+
+### The cost, measured rather than argued
+
+| | rules | CSS | markup | together gz |
+|---|---|---|---|---|
+| 40 components, 800 elements, whole blocks | 140 | 26.8 KB (2.4 gz) | 21.1 KB (1.7 gz) | **3.5 KB** |
+| the same, atomic | 38 | 1.5 KB (0.7 gz) | 157.7 KB (2.6 gz) | **3.1 KB** |
+
+**Bytes do not decide it.** Atomic moves weight out of the CSS and into the markup — 7x the raw
+markup, which gzip very nearly erases. What atomic really costs is style recalculation: measured in
+Chromium, an element carrying 13 atomic classes against one carrying a single class,
+**2.5x–2.8x per recalc** — 7.3 ms for 2000 elements against 2.6 ms. Under a frame either way, and it
+is the number to watch if a page ever feels slow.
+
 ## Do not re-measure these
 
 Every row was run, not reasoned. Re-deriving them is the main way to waste a week.
@@ -1108,6 +1281,16 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | `@property` with no `inherits` | **dropped entirely** — not in `cssRules`, and the name takes any junk |
 | `@property` with `syntax: "*"` and no `initial-value` | registers fine, so required-ness there would report valid CSS |
 | a generated `@property` animated by a generated `@keyframes` | **interpolates** — exactly 90° at half time, which only a registered property does |
+| the order of classes in the `class` attribute | decides **nothing** — the sheet's order does, and with layers the layer does |
+| `@media` against a base rule for one property | the media rule wins **only if emitted after** it |
+| a shorthand and its longhand on one element | different properties, both land, the SHEET breaks the tie |
+| shorthands that split by a mechanical rule | **10 of 78**, and on this repo's own blocks 7 uses of 50 |
+| the runtime merge, 4 maps and 24 declarations | 0.64 µs per element — 0.5 ms for 800 of them |
+| 13 atomic classes per element vs one whole class | **2.5–2.8x** the style recalculation; 7.3 ms for 2000 elements |
+| atomic vs whole blocks, 800 elements | CSS 1.5 KB vs 26.8 KB, markup 157.7 KB vs 21.1 KB — **3.1 vs 3.5 KB gzipped together** |
+| `@@if` inside a block body | the scanner does not read it as a second site; the parser gives a nested rule |
+| `@@if` nested in `@@if`, and either way round with `&:hover` | all four already parse, as ordinary nested rules |
+| the shorthand-aware merge, 50,309 random groupings | **associative** — nesting and flattening never disagree |
 | `var(var(--x))` | resolves to nothing — a `var()` name must be literal, so a reference cannot be a hole |
 | one rule per OWNER, through a real build | a sibling lazy route named a class **no stylesheet contained** |
 | every file serving what it names | 3.5x the CSS bytes, **1.1x gzipped**, on a corpus that duplicates every rule 3x |
