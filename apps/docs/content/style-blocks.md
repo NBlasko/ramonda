@@ -326,6 +326,45 @@ what the extension runs — an editor asks a formatter about the text on screen,
 pointed at a path would format what was last saved and hand back edits computed against text you have
 since changed.
 
+## In another JSX library
+
+The compiled value is a value, and this framework's `css` prop is only one way to apply it. One
+exported function turns it into what any library already understands:
+
+```tsx
+import { toStyleObject } from "@ramonda/css";
+
+const panel = @@(
+  display: flex;
+  gap: 8px;
+);
+
+const row = <div {...toStyleObject(panel)}>a row</div>;
+```
+
+`toStyleObject` returns `{ className, style }` — the generated class, and one entry per hole. There
+is no wrapper component to write and nothing to copy: it is a dozen lines, exported from the package,
+and it is the whole adapter surface.
+
+Since a block is an ordinary expression it can also be written where it is used:
+
+```tsx
+import { toStyleObject } from "@ramonda/css";
+
+const row = <div {...toStyleObject(@@( display: flex; ))}>a row</div>;
+```
+
+**It does two things a spread cannot do for itself**, and both are the reason it exists rather than
+`{ className: value.className, style: … }` written by hand. A hole whose value is missing is left
+out, rather than written as the text `undefined`, which is a value CSS keeps. And a value holding a
+`;` is refused, because a spread ends up in a `style` attribute and a server-rendered page is parsed
+back from HTML — measured, such a value came out of that round trip as real, applied declarations.
+
+**What you give up by spreading**, and it is why this framework has a prop instead: `className` and
+`style` become ordinary props, so the block's class merges with whatever else writes `className` by
+whoever wrote it last, and its custom properties collide with an author's own `style`. The `css` prop
+is one writer of one attribute, which is a race nobody has to think about.
+
 ## What it does not do
 
 **It is not CSS-in-JS.** Nothing about a block is JavaScript: it is compiled away before the bundle,
