@@ -33,14 +33,30 @@ describe("the class name", () => {
    * one class per DECLARATION now, so an element carries three or four and a complicated one carries
    * twenty-eight — and eighteen characters each is a wall of noise in the markup.
    *
-   * A wider alphabet costs nothing: the same 64 bits are 16 hex characters, 13 in base36, 11 in
-   * base62. Reducing the bits would have been the other way to shorten it, and it is the one that
-   * trades the guarantee away.
+   * A wider alphabet is free — the same bits are 16 hex characters, 13 in base36, 11 in base62 — and
+   * the BITS are what the risk is spent on. 48 of them, because **a collision is a failed build and
+   * not a wrong page**: the sheet sees every rule in a build at once and stops with both files named.
+   * Measured on the real playground, the whole app has 56 atomic rules; at 10,000 the chance is
+   * 1.8e-7, one build in five and a half million. 40 bits is where that stops being safe.
    */
-  test("carries 64 bits, in as few characters as an alphabet allows", () => {
+  test("is as wide as agreed, and carries what that width holds", () => {
     expect(classNameFor("display:flex;")).toHaveLength("r-".length + HASH_LENGTH);
-    expect(HASH_BITS).toBe(64);
-    expect(HASH_LENGTH).toBe(Math.ceil(HASH_BITS / Math.log2(62)));
+    expect(HASH_LENGTH).toBe(9);
+    expect(HASH_BITS).toBeCloseTo(Math.log2(62 ** HASH_LENGTH), 1);
+  });
+
+  /**
+   * **Reduced into the width, not truncated to it**, and the difference is visible.
+   *
+   * Taking 48 bits and writing them in nine base62 characters wastes the first one — 2^48 is 2% of
+   * 62^9, so almost every name began with a `0`. Measured on the real playground, every class on the
+   * page started with one, which is a character that carries nothing and reads as noise.
+   */
+  test("every character carries something, including the first", () => {
+    const first = new Set<string>();
+    for (let index = 0; index < 5_000; index++) first.add(classNameFor(`color:c${index};`)[2]);
+
+    expect(first.size).toBeGreaterThan(50);
   });
 
   test("and the whole alphabet is reachable, or it is not the width it claims", () => {

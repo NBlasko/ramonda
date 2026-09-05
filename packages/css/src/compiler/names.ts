@@ -18,9 +18,19 @@ import { HOLE } from "./normalise";
  * assertion made where the sheet is assembled, which sees every block at once and can check that no
  * two distinct ones share a name.
  *
- * The length only decides whether that assertion ever fires — and firing is expensive, because the
- * name is already written into the emitted JavaScript by then. So it is set to make the assertion a
- * tripwire that never trips: **64 bits**, which at 100,000 rules gives 2.7e-10.
+ * The length only decides whether that assertion ever fires — and **firing is a failed build, not a
+ * wrong page**, which is what lets this be short. The sheet sees every rule in a build at once, so a
+ * collision is a loud stop with both files named; nothing silently ships.
+ *
+ * So the WIDTH is chosen and the bits follow from it: **nine base62 characters**, which is 53.6 bits.
+ * Measured on the real playground the whole app has 56 atomic rules; at 10,000 the chance is 3.7e-9,
+ * one build in two hundred and seventy million. Eight characters would be 47.6 bits and 4.2e-7,
+ * still fine; seven would be 41.6 bits and 2.7e-5, which is where it stops being safe.
+ *
+ * **Choosing the width rather than the bits is not a detail.** Taking 48 bits and writing them in
+ * nine characters wastes the first one — 2^48 is 2% of 62^9, so almost every name began with a `0`,
+ * which is a character that carries nothing and reads as noise. The number is reduced into the width
+ * instead, so all nine characters are used and all of them mean something.
  *
  * ## Why base62 rather than hex, and why the width rather than the bits
  *
@@ -29,19 +39,24 @@ import { HOLE } from "./normalise";
  * DECLARATION now, so an element carries three or four of these and a complicated one carries
  * twenty-eight, and eighteen characters each is a wall of noise in the markup.
  *
- * A wider alphabet is the answer that costs nothing: the same 64 bits need 16 hex characters, 13 in
- * base36, and **11 in base62**. So the class is `r-` plus 11 rather than `r-` plus 16 — 13 characters
- * against 18, with the same tripwire. Reducing the BITS would have been the other way to shorten it,
- * and it is the one that trades the guarantee away.
+ * A wider alphabet is free: 53.6 bits are nine base62 characters, eleven in base36, fourteen in hex.
+ * So the class is `r-` plus nine — eleven characters against the eighteen this started at, and the
+ * tripwire is still one nobody will ever see.
+ *
+ * The `r-` is two of those eleven and is kept: it is what says a class was generated, and it is what
+ * keeps a generated name from ever being an author's own.
  *
  * Case matters and is safe: a class attribute is matched case-sensitively in standards mode, and a
  * custom property name is case-sensitive in CSS itself — which is also why `normalise` keeps the case
  * of one the author writes.
  */
-export const HASH_BITS = 64;
+export const HASH_LENGTH = 9;
 
-/** How many base62 characters those bits need. `Math.ceil(64 / Math.log2(62))`. */
-export const HASH_LENGTH = 11;
+/** What that width carries: `Math.log2(62 ** 9)`, to one decimal. */
+export const HASH_BITS = 53.6;
+
+/** The space the hash is reduced into, so every one of the nine characters is used. */
+const SPACE = 62n ** BigInt(HASH_LENGTH);
 
 /** Digits, lower case, upper case — every character a CSS ident may hold after the first. */
 const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -56,8 +71,9 @@ const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
  */
 export function classNameFor(normalised: string): string {
   const digest = createHash("sha256").update(normalised, "utf8").digest();
-  // The first 64 bits, as one number, so the encoding below is a base change and not a re-hash.
-  let left = digest.readBigUInt64BE(0);
+  // Reduced into the width rather than truncated to it: a truncation to 48 bits left the first of
+  // the nine characters almost always `0`, because 2^48 is 2% of 62^9.
+  let left = digest.readBigUInt64BE(0) % SPACE;
 
   let name = "";
   for (let index = 0; index < HASH_LENGTH; index++) {

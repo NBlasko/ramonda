@@ -163,7 +163,7 @@ describe("the stylesheet, one module per file", () => {
     const one = transform.call({}, STYLED, "/src/One.tsx")?.code ?? "";
     const two = transform.call({}, STYLED, "/src/Two.tsx")?.code ?? "";
 
-    const className = one.match(/r-[0-9a-zA-Z]{11}/)?.[0];
+    const className = one.match(/r-[0-9a-zA-Z]{9}/)?.[0];
     expect(className).toBeDefined();
     expect(two).toContain(className as string);
   });
@@ -361,7 +361,7 @@ describe("the assembled stylesheet", () => {
 
   test("refuses when a class was renamed", () => {
     const { plugin, css } = built();
-    const renamed = css.replace(/\.r-[0-9a-f]+/g, ".a1");
+    const renamed = css.replace(/\.r-[0-9a-zA-Z]+/g, ".a1");
 
     expect(() => plugin.generateBundle?.call({}, {}, bundleOf(renamed))).toThrow(/renamed or removed/);
   });
