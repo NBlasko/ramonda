@@ -33,6 +33,16 @@
  */
 export type { CssGlobal, CssProperties, CssValue, Keyword } from "./properties.generated";
 
+/**
+ * What a NAMED site's body is typed by — `@@font-face( … )`, `@@property( … )`.
+ *
+ * Descriptors, not properties: `src` and `syntax` are a separate vocabulary that happens to share
+ * the syntax of a declaration, and one typed against the properties would report every correct line.
+ * A descriptor with no initial value is required, and is written so — which is how a `@font-face`
+ * that would load nothing becomes a type error rather than a rule of ours.
+ */
+export type { CssFontFaceDescriptors, CssPropertyDescriptors } from "./properties.generated";
+
 import type { CssProperties, CssValue } from "./properties.generated";
 
 /**
@@ -59,3 +69,16 @@ import type { CssProperties, CssValue } from "./properties.generated";
 export type CssBlockShape = Partial<CssProperties> & {
   [nested: `&${string}`]: CssBlockShape[];
 } & { [at: `@${string}`]: CssBlockShape[] } & { [dashed: `-${string}`]: CssValue };
+
+/**
+ * The body of `@@keyframes( … )`: frames, each holding declarations of its own.
+ *
+ * The key is any string because a frame is not a selector — `from`, `to`, `50%`, `0%, 100%` — and
+ * there is no type that admits those and refuses a typo. Which words are frames is a question the
+ * checker answers, where the message can say what a frame may be; the type's job here is the
+ * declarations INSIDE, which are ordinary properties and are checked as ordinary properties.
+ *
+ * They hold {@link CssBlockShape} rather than the properties alone so that a custom property set in
+ * a frame — `--angle: 45deg`, which is the whole point of animating a registered one — is allowed.
+ */
+export type CssKeyframesShape = { [frame: string]: CssBlockShape[] };

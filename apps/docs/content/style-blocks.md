@@ -98,6 +98,10 @@ The last one is refused rather than mangled: there is nothing to put a variable 
 carrying a `;` is refused outright — on the server as well, where it would otherwise become real
 declarations in the markup.
 
+There is exactly one exception to the second line, and it is [below](#naming-something-the-whole-stylesheet-uses):
+a name that came from `@@property( … )` may stand where a property name goes, because the compiler
+generated that name and nothing else can write it.
+
 ### The unit goes inside the hole
 
 ```
@@ -156,10 +160,11 @@ const card = @@(
 );
 ```
 
-## What belongs in a stylesheet instead
+## Naming something the whole stylesheet uses
 
-A block is **one element's rule**. An at-rule that names something for the whole stylesheet is not
-that, and written inside a block it compiles, nests inside the class rule, and does nothing:
+A block is **one element's rule**. An at-rule that names something for everything is not that, and
+written inside a block it compiles, nests inside the class rule, and does nothing at all —
+`@keyframes slide { … }` becomes `.r-…{@keyframes slide{…}}`, which no browser resolves:
 
 ```
 @media (min-width: 40rem) { … }     ✓  a condition on this element's rule
@@ -170,18 +175,80 @@ that, and written inside a block it compiles, nests inside the class rule, and d
 @property --brand { … }             ✗  reported
 ```
 
-So an animation is written in two places, which is where CSS puts it anyway:
-
-```css
-/* app.css */
-@keyframes slide { from { opacity: 0 } to { opacity: 1 } }
-```
+Those three get a block of their own instead, with the at-rule written into the opening:
 
 ```tsx
+const slide = @@keyframes(
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+);
+
 const card = @@(
-  animation: slide 1s ease-in-out;
+  animation: {{slide}} 240ms ease-out;
 );
 ```
+
+**The rule goes to the stylesheet and the site becomes its name.** The name is a hash, like a class,
+so the same animation written in two files is one `@keyframes` — and `slide` is an ordinary
+binding, which is what makes the reference checkable: a typo is an unresolved identifier and
+TypeScript reports it with its own *did you mean*. Written in a stylesheet instead, the name would be
+a string on both sides and `animation: slidein` would be one typo away from silence.
+
+A reference is resolved **when the file compiles**, not on the element: `{{slide}}` becomes the name
+itself, so it costs no custom property. It has to be — `var()` takes a literal name, and a reference
+that stayed a hole would compile to `var(var(--…))`, which resolves to nothing.
+
+### A font, and a property you can animate
+
+```tsx
+const brand = @@font-face(
+  font-family: "Brand";
+  src: url("/brand.woff2") format("woff2");
+  font-display: swap;
+);
+
+const angle = @@property(
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+);
+
+const turn = @@keyframes(
+  from { {{angle}}: 0deg; }
+  to { {{angle}}: 180deg; }
+);
+
+const dial = @@(
+  transform: rotate(var({{angle}}));
+  animation: {{turn}} 1.2s linear infinite;
+);
+```
+
+`@@font-face` names nothing — the `font-family` inside it is the handle, and that is the string other
+rules match on, so its block is written for its own sake. The other two name something, and
+`@@property` names a **custom** property, so what it compiles to is `--r-…` with the dashes: that is
+the one name a hole may stand in, which is how the frames above set it.
+
+Registering it is what makes it animate at all. Measured in Chromium: an unregistered custom property
+flips from one frame to the next, and the block above passes exactly 90° at half time — an angle CSS
+could only reach by interpolating.
+
+### What is checked, and by whom
+
+Each of the three has its own vocabulary, and the check follows it:
+
+| written | what happens |
+|---|---|
+| `opacty: 1` in a frame | reported — a frame holds ordinary properties |
+| `form { … }` | reported — a frame is `from`, `to` or a percentage |
+| `opacity: 0` outside any frame | reported — it belongs to no time, so the browser drops it |
+| `@@font-face` with no `src` | reported — the descriptor is required, and the face would load nothing |
+| `font-familly: "Brand"` | reported, with the descriptor you meant |
+| `@@property` with no `inherits` | reported — measured, the browser drops the whole rule without it |
+| `&:hover { … }` in either | reported — a descriptor list has no element to select against |
+
+A hole may not go in one of these blocks otherwise: a hole is a custom property **on an element**, and
+these name something the whole stylesheet uses, so there is no element for the value to come from.
 
 ## Theming
 

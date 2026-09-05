@@ -336,3 +336,50 @@ describe("the CSS inside a block", () => {
     expect(laid(once)).toBe(once);
   });
 });
+
+/**
+ * A named site — `@@keyframes( … )` and its two siblings — through the same machinery.
+ *
+ * The opening is longer than `@@(` and that is the whole of what could go wrong here: everything
+ * downstream is told where the block's TEXT starts, and an opening measured as a fixed width lands
+ * in the middle of the at-rule's name. Measured before this was written: it did.
+ */
+describe("a named site", () => {
+  const NAMED = `const slide = @@keyframes(\n  from { opacity: 0; }\n  to { opacity: 1; }\n);\n`;
+
+  test("the block handed to the formatter starts at the opening, name and all", () => {
+    const held = placehold(NAMED);
+
+    expect(held?.blocks).toHaveLength(1);
+    expect(held?.blocks[0].startsWith("@@keyframes(")).toBe(true);
+    expect(held?.blocks[0]).toContain("from { opacity: 0; }");
+  });
+
+  /**
+   * Restoring LAYS OUT — that is the whole job — so a frame written on one line comes back opened
+   * up, exactly as a nested rule does. What has to hold is that the second pass changes nothing:
+   * a formatter that keeps moving text on every save is one nobody leaves switched on.
+   */
+  test("and what it stands in for comes back laid out, and stays put on the next pass", () => {
+    const once = placehold(NAMED)!;
+    const formatted = once.restore(once.text);
+
+    expect(formatted).toContain("@@keyframes(");
+    expect(formatted).toContain("opacity: 0;");
+
+    const twice = placehold(formatted)!;
+    expect(twice.restore(twice.text)).toBe(formatted);
+  });
+
+  test("a named site and an ordinary one in the same file each keep their own opening", () => {
+    const both = `const slide = @@keyframes( from { opacity: 0; } );\nconst panel = @@( display: flex; );\n`;
+    const held = placehold(both);
+
+    expect(held?.blocks[0].startsWith("@@keyframes(")).toBe(true);
+    expect(held?.blocks[1].startsWith("@@(")).toBe(true);
+
+    const formatted = held!.restore(held!.text);
+    expect(formatted).toContain("const slide = @@keyframes(");
+    expect(formatted).toContain("const panel = @@(");
+  });
+});

@@ -745,3 +745,80 @@ describe("an at-rule that belongs in a stylesheet", () => {
     expect(found.filter((finding) => finding.rule === "at-rule-out-of-place")).toHaveLength(1);
   });
 });
+
+/**
+ * A named site's body, where the vocabulary is not the properties.
+ *
+ * The types own most of this and the split is deliberate: a descriptor that does not exist, or one
+ * that is missing, is a type error with TypeScript's own suggestion, so nothing here repeats it.
+ * What is left are the two faults a type cannot see, because both are about SHAPE:
+ *
+ * | written | the types |
+ * |---|---|
+ * | `form { opacity: 0 }` in `@@keyframes` | **silent** — any string is a frame to an index signature |
+ * | `opacity: 0` loose in `@@keyframes` | **silent** — same signature accepts it |
+ * | `&:hover { … }` in `@@font-face` | `TS2353`, but about a descriptor, not about nesting |
+ */
+function checkNamed(at: string, css: string): Finding[] {
+  const source = `const x = @@${at}(\n${css}\n);`;
+  const [site] = findBlocks(source);
+  const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+  return checkBlock(read.block, site.at).sort((a, b) => a.at - b.at);
+}
+
+describe("inside `@@keyframes`", () => {
+  test("`from`, `to` and percentages are frames", () => {
+    expect(checkNamed("keyframes", "from { opacity: 0; }\nto { opacity: 1; }")).toEqual([]);
+    expect(checkNamed("keyframes", "0% { opacity: 0; }\n50.5% { opacity: 0.5; }\n100% { opacity: 1; }")).toEqual([]);
+  });
+
+  test("and a comma-separated list of them is one frame", () => {
+    expect(checkNamed("keyframes", "0%, 100% { opacity: 0; }\nfrom, 50% { opacity: 1; }")).toEqual([]);
+  });
+
+  test("a word that is not a frame is reported, with the near miss when there is one", () => {
+    const found = checkNamed("keyframes", "form { opacity: 0; }");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("unknown-frame");
+    expect(found[0].message).toContain("`from`");
+  });
+
+  test("a percentage missing its sign is reported too", () => {
+    expect(checkNamed("keyframes", "50 { opacity: 0; }")[0]?.rule).toBe("unknown-frame");
+  });
+
+  test("a declaration outside any frame is reported, because the browser drops it", () => {
+    const found = checkNamed("keyframes", "opacity: 0;\nfrom { opacity: 1; }");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("declaration-out-of-place");
+  });
+
+  test("but the declarations inside a frame are checked like any others", () => {
+    const found = checkNamed("keyframes", "from { border-left: 4px sollid red; }");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("unknown-value");
+  });
+});
+
+describe("inside `@@font-face` and `@@property`", () => {
+  test("a descriptor is not reported as a property, however close to one it reads", () => {
+    expect(checkNamed("font-face", 'font-family: "Brand";\nsrc: url("/b.woff2");\nascent-override: 90%;')).toEqual([]);
+    expect(checkNamed("property", 'syntax: "<angle>";\ninherits: false;\ninitial-value: 45deg;')).toEqual([]);
+  });
+
+  test("a nested rule is reported, because a descriptor list is not a rule", () => {
+    const found = checkNamed("font-face", 'src: url("/b.woff2");\n&:hover { color: red; }');
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("rule-out-of-place");
+  });
+
+  test("and a unit typo is still caught, since a unit is a unit wherever it is written", () => {
+    expect(checkNamed("property", 'syntax: "<angle>";\ninherits: false;\ninitial-value: 45degg;')[0]?.rule).toBe(
+      "unknown-unit",
+    );
+  });
+});

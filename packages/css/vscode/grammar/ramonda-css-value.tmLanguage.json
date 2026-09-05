@@ -9,10 +9,16 @@
   ],
   "repository": {
     "value": {
-      "comment": "No lookbehind, and that is the point of the spelling: `@@(` is a syntax error everywhere in TypeScript — measured after `=`, on a class member, on a parameter, as a call argument and as an object value — so nothing else can be mistaken for it. `@(` needed one, because a parenthesised decorator is real TypeScript in two of those positions.",
-      "begin": "(@@\\()",
+      "comment": "No lookbehind, and that is the point of the spelling: `@@(` is a syntax error everywhere in TypeScript — measured after `=`, on a class member, on a parameter, as a call argument and as an object value — so nothing else can be mistaken for it. `@(` needed one, because a parenthesised decorator is real TypeScript in two of those positions. The optional word between is a NAMED site — `@@keyframes(`, `@@font-face(`, `@@property(` — whose opening is not a fixed width; it is coloured as the at-rule it becomes.",
+      "begin": "(@@)([a-z][a-z-]*)?(\\()",
       "beginCaptures": {
         "1": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        },
+        "2": {
+          "name": "keyword.control.at-rule.ramonda"
+        },
+        "3": {
           "name": "punctuation.section.embedded.begin.ramonda"
         }
       },

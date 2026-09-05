@@ -34,6 +34,17 @@ export interface ReadOptions {
    * file's completions away is not a way to say it.
    */
   readonly tolerant?: boolean;
+  /**
+   * What a hole's expression stands for, when it stands for something known at BUILD time.
+   *
+   * The expression, trimmed, in — the text to write in its place, or `undefined` for a hole that is
+   * a hole. A resolved one is not recorded as a hole at all: it becomes ordinary text, so it is part
+   * of the block's hash, needs no custom property, and may stand where a hole may not — in a
+   * property NAME, which is how a registered custom property is set.
+   *
+   * See {@link namedSites}, which is the only thing that supplies one.
+   */
+  readonly resolve?: (expression: string) => string | undefined;
 }
 export interface ReadBlock {
   readonly block: Block;
@@ -101,6 +112,7 @@ export function closingHole(source: string, at: number): number {
 
 export function readBlock(source: string, open: number, filename: string, options: ReadOptions = {}): ReadBlock {
   const tolerant = options.tolerant === true;
+  const resolve = options.resolve;
   const holes: Span[] = [];
   /** Where we are. Every function below moves it and none of them backtrack. */
   let at = open + 1;
@@ -137,10 +149,22 @@ export function readBlock(source: string, open: number, filename: string, option
       refuse("this hole is never closed — a `{{` needs a `}}`.", source, at, filename);
     }
 
+    const end = close === -1 ? source.length : close;
+
+    /**
+     * A reference to a named site is not a hole — see {@link namedSites}. It is text this compiler
+     * decided itself, so it goes into the block as text: part of the hash, and no custom property.
+     */
+    const written = close === -1 ? undefined : resolve?.(source.slice(start, end).trim());
+    if (written !== undefined) {
+      at = close + 2;
+      return { kind: "text", text: written, at: start - 2 };
+    }
+
     // Unclosed and tolerant: everything to the end of the text is the expression. Mid-typing, that
     // is what it is.
     const part: ValuePart = { kind: "hole", index: holes.length };
-    holes.push({ start, end: close === -1 ? source.length : close });
+    holes.push({ start, end });
     at = close === -1 ? source.length : close + 2;
     return part;
   }
@@ -260,6 +284,20 @@ export function readBlock(source: string, open: number, filename: string, option
         continue;
       }
       if (code === 123 && source.charCodeAt(at + 1) === 123) {
+        /**
+         * The one hole that MAY stand in a property name: a reference to a registered property,
+         * which is a name this compiler generated and the author has no other way to write.
+         * `{{angle}}: 45deg` is how a `@@property( … )` is set, and without it registering one is
+         * only half a feature — nothing else can name it.
+         */
+        const close = closingHole(source, at);
+        const written = close === -1 ? undefined : resolve?.(source.slice(at + 2, close).trim());
+        if (written !== undefined) {
+          text += written;
+          at = close + 2;
+          continue;
+        }
+
         if (!tolerant) refuse(holeOutOfPlace(at === from ? "a declaration" : what), source, at, filename);
         // Kept as text, so the rest of the block still reads. The fault is the checker's to name.
         const start = at;

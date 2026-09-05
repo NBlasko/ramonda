@@ -691,7 +691,7 @@ for (const group of groups.values()) {
         // A block the parser refuses is already reported as a refusal, above.
         continue;
       }
-      const found = [...checkText(unit.code, site.open, read.end), ...checkBlock(read.block)];
+      const found = [...checkText(unit.code, site.open, read.end), ...checkBlock(read.block, site.at)];
       if (found.length === 0) continue;
       const list = byUnit.get(unit) ?? [];
       for (const finding of found) {

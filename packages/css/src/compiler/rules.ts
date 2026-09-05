@@ -1,6 +1,6 @@
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { holeOutOfPlace } from "./errors";
-import { KEYWORDS, NOT_IN_A_RULE, PROPERTIES, PROPERTY_NAMED, UNITS } from "./keywords.generated";
+import { DESCRIPTORS, KEYWORDS, NOT_IN_A_RULE, PROPERTIES, PROPERTY_NAMED, UNITS } from "./keywords.generated";
 import { closingHole } from "./read";
 import type { BlockSite } from "./scan";
 
@@ -59,7 +59,10 @@ export type RuleId =
   | "line-comment"
   | "unknown-unit"
   | "glued-hole"
-  | "at-rule-out-of-place";
+  | "at-rule-out-of-place"
+  | "unknown-frame"
+  | "declaration-out-of-place"
+  | "rule-out-of-place";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -179,23 +182,51 @@ export function checkText(source: string, open: number, end: number): Finding[] 
   return findings;
 }
 
-export function checkBlock(block: Block): Finding[] {
+/**
+ * A block's faults, and `at` is the at-rule it IS — `keyframes`, `font-face`, `property` — if any.
+ *
+ * A named site holds a different vocabulary, and passing the name is what keeps this from reporting
+ * correct CSS: `src` is not a property, `from` is not a selector, and a body typed against the
+ * properties would be wrong on every line. Most of a named body belongs to the TYPES, which know
+ * each at-rule's own descriptors and say *did you mean* about them. What is left here is the two
+ * faults a type cannot see, because both are about shape rather than about a name.
+ */
+export function checkBlock(block: Block, at?: string): Finding[] {
   const findings: Finding[] = [];
-  walk(block.items, findings);
+  walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   return findings.sort((a, b) => a.at - b.at);
 }
 
-function walk(items: readonly BlockItem[], findings: Finding[]): void {
+/**
+ * `body` is the at-rule whose body these items ARE, and it changes what an item may be:
+ *
+ * - `keyframes` — frames, each holding ordinary declarations. A declaration outside a frame is
+ *   dropped by the browser, so it is reported here.
+ * - anything else named — descriptors, which are declarations and nothing else. A nested rule is
+ *   reported, and the property rules stand down: the descriptor vocabulary is the types'.
+ */
+function walk(items: readonly BlockItem[], findings: Finding[], body?: string): void {
   /** What each property was last declared as, for `repeated-declaration`. Per rule, not per block. */
   const seen = new Map<string, string>();
 
   for (const item of items) {
     if (item.kind === "rule") {
-      atRuleOutOfPlace(item, findings);
-      holeInHead(item.prelude, item.at, "a selector", findings);
+      if (body !== undefined && body !== "keyframes") {
+        ruleOutOfPlace(item, body, findings);
+        continue;
+      }
+      if (body === "keyframes") unknownFrame(item, findings);
+      else atRuleOutOfPlace(item, findings);
+      holeInHead(item.prelude, item.at, body === "keyframes" ? "a frame" : "a selector", findings);
       // A nested rule has its own scope: `color` beside it and `color` inside it are two
-      // declarations on two different elements, and neither repeats the other.
+      // declarations on two different elements, and neither repeats the other. A frame's contents
+      // are ordinary declarations, which is why the name does not travel into it.
       walk(item.items, findings);
+      continue;
+    }
+
+    if (body === "keyframes") {
+      declarationOutOfPlace(item, findings);
       continue;
     }
 
@@ -205,7 +236,10 @@ function walk(items: readonly BlockItem[], findings: Finding[]): void {
      * colon after it puts the whole declaration there.
      */
     holeInHead(item.property, item.at, item.value.length === 0 ? "a declaration" : "a property name", findings);
-    unknownProperty(item, findings);
+    // Against the right vocabulary: the properties in an ordinary block, that at-rule's descriptors
+    // in a named one. The types report WHETHER a name exists either way; this is the suggestion,
+    // which a quoted key never gets from them.
+    unknownProperty(item, findings, body);
     /**
      * The run-on FIRST, and it silences the value check for the same declaration.
      *
@@ -217,7 +251,7 @@ function walk(items: readonly BlockItem[], findings: Finding[]): void {
      */
     const before = findings.length;
     runOn(item, findings);
-    if (findings.length === before) unknownValue(item, findings);
+    if (findings.length === before && body === undefined) unknownValue(item, findings);
     unknownUnit(item, findings);
     gluedHole(item, findings);
     repeated(item, seen, findings);
@@ -309,22 +343,33 @@ function isNameCharacter(code: number): boolean {
  * A name with no near miss is not reported either: the types already said it does not exist, and
  * repeating that with nothing added is noise.
  */
-function unknownProperty(item: Declaration, findings: Finding[]): void {
+function unknownProperty(item: Declaration, findings: Finding[], body?: string): void {
   const name = item.property;
   if (item.at === undefined) return;
   // A custom property is the author's, and a vendor-prefixed name is a browser's — neither is in
   // CSS's own list and neither is a typo of anything in it.
   if (name.startsWith("-") || !name.includes("-")) return;
-  if (KNOWN.has(name)) return;
 
-  const meant = nearest(name, PROPERTIES);
+  /**
+   * Inside a named block the vocabulary is that at-rule's descriptors, and only those: `src` is not
+   * a property and `font-family` in a `@font-face` is not the property of the same name. An at-rule
+   * with no table gets no report at all, which is the safe direction — the types still have it.
+   */
+  const among = body === undefined ? PROPERTIES : DESCRIPTORS[body];
+  if (among === undefined || among.includes(name)) return;
+  if (body === undefined && KNOWN.has(name)) return;
+
+  const meant = nearest(name, among);
   if (meant === undefined) return;
 
   findings.push({
     rule: "unknown-property",
     at: item.at,
     length: name.length,
-    message: `\`${name}\` is not a CSS property. Did you mean \`${meant}\`?`,
+    message:
+      body === undefined
+        ? `\`${name}\` is not a CSS property. Did you mean \`${meant}\`?`
+        : `\`${name}\` is not a \`@${body}\` descriptor. Did you mean \`${meant}\`?`,
   });
 }
 
@@ -434,6 +479,74 @@ function atRuleOutOfPlace(rule: NestedRule, findings: Finding[]): void {
       `\`${name}\` is not part of an element's rule — it names something the whole stylesheet uses, ` +
       `and inside a block it compiles to a rule no browser resolves. Put it in a stylesheet; a block ` +
       `holds what applies to this element.`,
+  });
+}
+
+/**
+ * A word in a `@keyframes` body that is not a frame.
+ *
+ * **The types cannot ask this and it was measured before it was written.** A frame is any string to
+ * an index signature — that is what lets `50%` and `0%, 100%` through — so `form { opacity: 0 }`
+ * type-checks, compiles, ships, and animates nothing: the browser drops a frame it cannot read and
+ * the animation runs with one keyframe fewer, or with none.
+ *
+ * A frame is `from`, `to`, or a percentage, and a comma-separated list of those is one frame with
+ * several times. A bare number is called out on its own, because a missing `%` reads as correct to
+ * everyone who writes it.
+ */
+function unknownFrame(rule: NestedRule, findings: Finding[]): void {
+  for (const part of rule.prelude.split(",")) {
+    const frame = part.trim().toLowerCase();
+    if (frame === "" || frame === "from" || frame === "to") continue;
+    if (/^\d+(\.\d+)?%$/.test(frame)) continue;
+
+    const meant = /^\d+(\.\d+)?$/.test(frame) ? `${frame}%` : nearest(frame, ["from", "to"]);
+    findings.push({
+      rule: "unknown-frame",
+      at: rule.at ?? 0,
+      length: rule.prelude.trimEnd().length,
+      message:
+        `\`${part.trim()}\` is not a keyframe. ` +
+        (meant === undefined
+          ? "A frame is `from`, `to`, or a percentage, and a browser drops one it cannot read."
+          : `Did you mean \`${meant}\`?`),
+    });
+    return;
+  }
+}
+
+/**
+ * A declaration written straight into a `@keyframes` body, outside any frame.
+ *
+ * The same index signature accepts it, and the browser does not: a declaration at that level belongs
+ * to no time, so it is dropped and the animation is missing whatever it said.
+ */
+function declarationOutOfPlace(item: Declaration, findings: Finding[]): void {
+  findings.push({
+    rule: "declaration-out-of-place",
+    at: item.at ?? 0,
+    length: item.property.length,
+    message:
+      `\`${item.property}\` is not inside a frame. A \`@keyframes\` block holds frames — \`from\`, \`to\`, ` +
+      `a percentage — and a declaration outside one belongs to no time, so the browser drops it.`,
+  });
+}
+
+/**
+ * A nested rule inside a body that holds descriptors.
+ *
+ * `@font-face` and `@property` are a flat list of descriptors: there is no element to select against
+ * and nothing for a nested rule to mean. The types report the KEY as one no descriptor has, which is
+ * true but reads as a spelling question; this says what is actually wrong with it.
+ */
+function ruleOutOfPlace(rule: NestedRule, atRule: string, findings: Finding[]): void {
+  findings.push({
+    rule: "rule-out-of-place",
+    at: rule.at ?? 0,
+    length: rule.prelude.trimEnd().length,
+    message:
+      `\`${rule.prelude.trim()}\` cannot go here. A \`@${atRule}\` block is a flat list of descriptors — ` +
+      `there is no element to select against, so a nested rule has nothing to apply to.`,
   });
 }
 
@@ -586,7 +699,7 @@ function repeated(item: Declaration, seen: Map<string, string>, findings: Findin
 function holeInHead(
   text: string,
   at: number | undefined,
-  what: "a declaration" | "a property name" | "a selector",
+  what: "a declaration" | "a property name" | "a selector" | "a frame",
   findings: Finding[],
 ): void {
   const found = text.indexOf("{{");

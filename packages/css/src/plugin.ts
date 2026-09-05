@@ -3,6 +3,7 @@ import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
+import { namedSites } from "./compiler/references";
 
 /**
  * The TypeScript language service plugin: what makes a block writable rather than merely correct.
@@ -489,10 +490,11 @@ function properties(info: PluginCreateInfo): string | undefined {
  */
 function cssFindings(text: string): Finding[] {
   const out: Finding[] = [];
+  const references = namedSites(text);
   for (const site of findBlocks(text)) {
-    const read = readBlock(text, site.open, "", { tolerant: true });
+    const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     // The text and the parse, because one of them has no name for a `//` — see `checkText`.
-    out.push(...checkText(text, site.open, read.end), ...checkBlock(read.block));
+    out.push(...checkText(text, site.open, read.end), ...checkBlock(read.block, site.at));
   }
   return out;
 }
@@ -512,8 +514,11 @@ function siteFindings(text: string): Finding[] {
 function regions(text: string): { blocks: Span[]; holes: Span[] } {
   const blocks: Span[] = [];
   const holes: Span[] = [];
+  // A resolved reference is not a hole, so it is not a region TypeScript owns — an editor must not
+  // colour `{{slide}}` as an expression in a place the build writes a name into.
+  const references = namedSites(text);
   for (const site of findBlocks(text)) {
-    const read = readBlock(text, site.open, "", { tolerant: true });
+    const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     blocks.push({ start: site.open, end: read.end });
     holes.push(...read.holes);
   }

@@ -347,3 +347,119 @@ describe("the configuration itself", () => {
     expect(report.findings[0].message).toContain("--target");
   });
 });
+
+/**
+ * A named site — `@@keyframes( … )`, `@@font-face( … )`, `@@property( … )` — through a real program.
+ *
+ * These are the blocks that are not a list of properties, and the whole reason they get their own
+ * surfaces: `src` is not a property, `from` is not a selector, and typing either against the
+ * property map would report correct CSS on every line. What is asserted here is that each body is
+ * checked against its OWN vocabulary, and that a descriptor a rule cannot be written for — one that
+ * is simply missing — is caught by the type instead.
+ */
+describe("a named site", () => {
+  test("frames hold ordinary properties, and a typo in one is reported at its own line", () => {
+    const report = check({
+      "Slide.tsx": `export const slide = @@keyframes(\n  from { opacity: 0; }\n  to { opacty: 1; }\n);\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].line).toBe(3);
+    expect(report.findings[0].message).toContain("opacity");
+  });
+
+  test("and a right one reports nothing", () => {
+    const report = check({
+      "Slide.tsx": `export const slide = @@keyframes(\n  from { opacity: 0; transform: translateY(4px); }\n  to { opacity: 1; }\n);\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("a font face is checked against its descriptors, not against the properties", () => {
+    const report = check({
+      "Face.tsx": `export const brand = @@font-face(\n  font-family: "Brand";\n  src: url("/brand.woff2") format("woff2");\n  font-display: swap;\n);\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  /** The one a rule could not ask: nothing is wrong on any line, and the whole rule loads nothing. */
+  test("a font face with no `src` is reported, because the descriptor is required", () => {
+    const report = check({
+      "Face.tsx": `export const brand = @@font-face(\n  font-family: "Brand";\n);\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toContain("src");
+  });
+
+  test("a descriptor typo is reported like a property typo", () => {
+    const report = check({
+      "Face.tsx": `export const brand = @@font-face(\n  font-familly: "Brand";\n  src: url("/brand.woff2");\n);\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].line).toBe(2);
+    expect(report.findings[0].message).toContain("font-family");
+  });
+
+  /** Measured in Chromium: without `inherits` the rule does not appear in `cssRules` at all. */
+  test("a registered property with no `inherits` is reported, because the browser drops the rule", () => {
+    const report = check({
+      "Angle.tsx": `export const angle = @@property(\n  syntax: "<angle>";\n  initial-value: 45deg;\n);\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toContain("inherits");
+  });
+
+  test("and a complete one reports nothing", () => {
+    const report = check({
+      "Angle.tsx": `export const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 45deg;\n);\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("a property whose syntax is `*` needs no initial value", () => {
+    const report = check({
+      "Any.tsx": `export const any = @@property(\n  syntax: "*";\n  inherits: false;\n);\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+});
+
+/**
+ * A reference to a named site, through the type checker.
+ *
+ * The transform writes these in at build time, and the check has to read the file the same way or it
+ * reports a fault the build does not have — `{{angle}}: 45deg` is a hole in a property name, which
+ * is refused everywhere except here.
+ */
+describe("a reference to a named site", () => {
+  test("reading one in a value is not a fault", () => {
+    const report = check({
+      "Card.tsx": `const slide = @@keyframes(\n  from { opacity: 0; }\n);\nconst card = @@( animation: {{slide}} 3s; );\nexport { card };\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("and setting a registered property by name is not either", () => {
+    const report = check({
+      "Card.tsx": `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\nconst card = @@( {{angle}}: 45deg; );\nexport { card };\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("while a hole in a name that stands for nothing is still reported", () => {
+    const report = check({
+      "Card.tsx": `const card = @@( {{whatever}}: 45deg; );\nexport { card };\n`,
+    });
+
+    expect(report.findings.length).toBeGreaterThan(0);
+  });
+});

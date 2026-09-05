@@ -18,12 +18,13 @@ describe("the cheap question, asked first", () => {
   });
 
   /**
-   * The cheap pass used to say maybe for every decorator, which is what a second `@` bought.
+   * What the second `@` bought is a grammar that cannot collide — not, as a note here once claimed,
+   * a build that skips many more files.
    *
-   * Measured on this repository while the opening was `@(`: the substring matched **41** files and
-   * two of them held a block. The other thirty-nine were decorators, each paying a full lexical walk
-   * for nothing — on every file of every build. `@@(` is not valid TypeScript anywhere, so the cheap
-   * question is now nearly the right one, and the second pass is what settles a string or a comment.
+   * Measured on this repository at the commit before this parser landed, the substring `@(` matched
+   * **2 of 1,093** tracked source files, and both were regular expressions. No decorator matched,
+   * because an ordinary one reads `@name(`. Only the parenthesised form below does, and it is the
+   * form that is genuinely ambiguous: it is valid TypeScript in both positions asserted here.
    */
   test("a decorator does not even reach the second pass", () => {
     expect(mayHoldABlock("class C { @(dec) m() {} }")).toBe(false);

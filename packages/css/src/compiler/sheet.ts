@@ -2,6 +2,39 @@ import { CssBlockError } from "./errors";
 import type { EmittedBlock } from "./transform";
 
 /**
+ * The at-rules that take no name, so the hash has nowhere to go.
+ *
+ * `@keyframes r-…` names an animation something else refers to; `@font-face` names nothing — the
+ * `font-family` inside it is what other rules match on. So a nameless rule is written bare, and its
+ * identity is entirely its content, which is also what makes deduping it correct: two identical
+ * `@font-face` blocks ARE one rule, and two different ones were never going to collide.
+ */
+const NAMELESS = new Set(["font-face"]);
+
+/**
+ * One rule, written out.
+ *
+ * A block from a named site is its own at-rule rather than a rule on a class, and the hash moves
+ * from the selector into the at-rule's name — the one place an author's own CSS can refer to it.
+ */
+function write(className: string, block: EmittedBlock): string {
+  if (block.at === undefined) return `.${className} { ${block.css} }\n`;
+  if (NAMELESS.has(block.at)) return `@${block.at} { ${block.css} }\n`;
+  return `@${block.at} ${className} { ${block.css} }\n`;
+}
+
+/**
+ * What post-processing has to hand back for this rule to have survived.
+ *
+ * A class rule is found by its selector, a named one by the name the emitted JavaScript holds, and a
+ * nameless one by the only thing it has — its at-rule, which a minifier may not invent or drop.
+ */
+function nameIn(className: string, block: EmittedBlock): string {
+  if (block.at === undefined) return `.${className}`;
+  return NAMELESS.has(block.at) ? `@${block.at}` : className;
+}
+
+/**
  * The stylesheet, assembled from every block the transform found.
  *
  * The transform is deliberately local: it reads one file and knows nothing about any other, which is
@@ -133,7 +166,7 @@ export class Sheet {
   cssFor(file: string): string {
     let out = "";
     for (const [className, rule] of this.rules) {
-      if (rule.owner === file) out += `.${className} { ${rule.block.css} }\n`;
+      if (rule.owner === file) out += write(className, rule.block);
     }
     return out === "" ? "" : `@layer ramonda {\n${out}}\n`;
   }
@@ -153,7 +186,7 @@ export class Sheet {
     if (this.rules.size === 0) return "";
 
     let out = "@layer ramonda {\n";
-    for (const [className, rule] of this.rules) out += `.${className} { ${rule.block.css} }\n`;
+    for (const [className, rule] of this.rules) out += write(className, rule.block);
     return `${out}}\n`;
   }
 
@@ -172,8 +205,9 @@ export class Sheet {
     const missing: string[] = [];
 
     for (const [className, rule] of this.rules) {
-      if (!processed.includes(`.${className}`)) {
-        missing.push(`the class \`${className}\``);
+      const wanted = nameIn(className, rule.block);
+      if (!processed.includes(wanted)) {
+        missing.push(rule.block.at === undefined ? `the class \`${className}\`` : `the rule \`${wanted}\``);
         continue;
       }
       for (const property of rule.block.properties) {

@@ -6,6 +6,7 @@ import { readBlock } from "./compiler/read";
 import { checkBlock, checkText } from "./compiler/rules";
 import { findBlocks, mayHoldABlock } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
+import { namedSites } from "./compiler/references";
 
 /**
  * Type-checking a whole project whose source TypeScript cannot parse.
@@ -155,11 +156,14 @@ const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.colu
  */
 function cssFindings(fileName: string, source: string): Finding[] {
   const out: Finding[] = [];
+  // The same map the transform uses, so a reference to a named site reads here as it compiles: as
+  // the name it stands for, and not as a hole. See `namedSites`.
+  const references = namedSites(source);
 
   for (const site of findBlocks(source)) {
-    const read = readBlock(source, site.open, fileName);
+    const read = readBlock(source, site.open, fileName, { resolve: (name) => references.get(name) });
     // The text and the parse, because one of them has no name for a `//` — see `checkText`.
-    for (const finding of [...checkText(source, site.open, read.end), ...checkBlock(read.block)]) {
+    for (const finding of [...checkText(source, site.open, read.end), ...checkBlock(read.block, site.at)]) {
       out.push({ file: fileName, ...positionOf(source, finding.at), code: finding.rule, message: finding.message });
     }
   }

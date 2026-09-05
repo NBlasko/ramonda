@@ -178,3 +178,55 @@ describe("the layer", () => {
     expect(new Sheet().css()).toBe("");
   });
 });
+
+/**
+ * A named site — `@@keyframes( … )`, `@@font-face( … )`, `@@property( … )` — is a rule with a name
+ * instead of a rule on a class, and the name is still the hash. Everything the sheet does for a
+ * class block it must do for these: dedupe them, refuse a collision, drop them on a save, and ask
+ * post-processing for them back. The only difference is one line of syntax, and it is the line the
+ * author never writes.
+ */
+describe("a named rule", () => {
+  const SLIDE = { ...block("r-4444444444444444", "from{opacity:0;}to{opacity:1;}"), at: "keyframes" };
+  const FACE = { ...block("r-5555555555555555", "src:url(a.woff2);"), at: "font-face" };
+
+  test("is written as its at-rule, not as a class", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [SLIDE]);
+
+    expect(sheet.css()).toBe(`@layer ramonda {\n@keyframes r-4444444444444444 { from{opacity:0;}to{opacity:1;} }\n}\n`);
+  });
+
+  test("and one whose at-rule takes no name carries none", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [FACE]);
+
+    expect(sheet.css()).toContain("@font-face { src:url(a.woff2); }");
+    expect(sheet.css()).not.toContain("r-5555555555555555");
+  });
+
+  test("travels with the file that owns it, like any other rule", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [SLIDE]);
+    sheet.add("b.tsx", [SLIDE]);
+
+    expect(sheet.cssFor("a.tsx")).toContain("@keyframes r-4444444444444444");
+    expect(sheet.cssFor("b.tsx")).toBe("");
+  });
+
+  test("is asked for by name after post-processing, since it has no class to look for", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [SLIDE]);
+
+    expect(() => sheet.verify("@keyframes r-4444444444444444{from{opacity:0}to{opacity:1}}")).not.toThrow();
+    expect(() => sheet.verify("@keyframes r-9999999999999999{}")).toThrow(CssBlockError);
+  });
+
+  test("and a nameless one is asked for by its at-rule", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [FACE]);
+
+    expect(() => sheet.verify("@font-face{src:url(a.woff2)}")).not.toThrow();
+    expect(() => sheet.verify(".r-1 { color: red }")).toThrow(CssBlockError);
+  });
+});

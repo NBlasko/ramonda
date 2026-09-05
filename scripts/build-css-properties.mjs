@@ -377,6 +377,109 @@ for (const name of named) {
 }
 
 const atRules = JSON.parse(readFileSync(join(root, "node_modules/mdn-data/css/at-rules.json"), "utf8"));
+
+/**
+ * The at-rules a style block can BE, rather than hold, and the interface each one's body is typed by.
+ *
+ * A block written `@@font-face( … )` is not a list of properties — `src` and `font-display` are
+ * DESCRIPTORS, which are a different vocabulary that happens to use the same syntax. Typing one
+ * against `CssProperties` would report every line of correct CSS, so each gets its own surface, out
+ * of the same data and the same sweep as the properties.
+ *
+ * `@keyframes` is absent because it has no descriptors: its body is ordinary rules of ordinary
+ * properties, which the existing surface already types.
+ */
+const DESCRIBED = { "@font-face": "CssFontFaceDescriptors", "@property": "CssPropertyDescriptors" };
+
+/**
+ * A descriptor `mdn-data` marks required that is not always required, with the case that proves it.
+ *
+ * Required-ness is worth having — a `@font-face` with no `src` downloads nothing, and the type map
+ * can say so before the page does — but it is the one claim that reports VALID CSS when it is
+ * wrong, so an exception is written down rather than inferred.
+ *
+ * `initial-value` is required for every `syntax` except `*`, where the property is unregistered in
+ * all but name and no initial value is meaningful. `mdn-data` has no field for that condition.
+ *
+ * Each entry is asserted below to be marked required in the data, so a descriptor that stops being
+ * required — or is renamed — cannot leave a stale exemption behind.
+ */
+const NOT_REALLY_REQUIRED = { "@property": ["initial-value"] };
+
+/**
+ * A descriptor the data does NOT mark required, which a browser nevertheless throws the rule away
+ * without — measured, not read.
+ *
+ * `mdn-data` gives `inherits` an initial value of `auto`, which reads as optional. In Chromium,
+ * `@property --a { syntax: "<angle>"; initial-value: 45deg; }` does not appear in `cssRules` at all
+ * and `--a` accepts any junk afterwards: the whole rule is dropped. The specification agrees — it is
+ * required — so the type map says so, and the measurement is why this list can outvote the data.
+ *
+ * Each entry is asserted below to exist as a descriptor, so a rename cannot leave it dangling.
+ */
+const ALSO_REQUIRED = { "@property": ["inherits"] };
+
+/** A descriptor is required when the data says it has no initial value to fall back to. */
+const isRequired = (descriptor) => String(descriptor.initial).includes("required");
+
+const descriptorInterfaces = [];
+const descriptorRows = [];
+for (const [atRule, interfaceName] of Object.entries(DESCRIBED)) {
+  const descriptors = atRules[atRule]?.descriptors;
+  if (descriptors === undefined) {
+    console.error(`\n${TAG} \`${atRule}\` has no descriptors in mdn-data. Check the spelling.\n`);
+    process.exit(1);
+  }
+
+  for (const name of NOT_REALLY_REQUIRED[atRule] ?? []) {
+    if (descriptors[name] !== undefined && isRequired(descriptors[name])) continue;
+    console.error(
+      `\n${TAG} \`${name}\` is exempted from being required in \`${atRule}\`, but mdn-data no longer\n` +
+        `  marks it required. Read the exemption's reason and drop it if the data caught up.\n`,
+    );
+    process.exit(1);
+  }
+
+  for (const name of ALSO_REQUIRED[atRule] ?? []) {
+    if (descriptors[name] !== undefined) continue;
+    console.error(`\n${TAG} \`${name}\` is required in \`${atRule}\`, but mdn-data has no such descriptor.\n`);
+    process.exit(1);
+  }
+
+  const exempt = new Set(NOT_REALLY_REQUIRED[atRule] ?? []);
+  const demanded = new Set(ALSO_REQUIRED[atRule] ?? []);
+  const rows = Object.keys(descriptors)
+    .sort()
+    .map((name) => {
+      const descriptor = descriptors[name];
+      const keywords = keywordsOf(descriptor.syntax);
+      const type =
+        keywords === undefined ? "CssValue" : `Keyword<${keywords.map((k) => JSON.stringify(k)).join(" | ")}>`;
+      const required = (isRequired(descriptor) || demanded.has(name)) && !exempt.has(name);
+      const initial = Array.isArray(descriptor.initial) ? descriptor.initial.join(", ") : descriptor.initial;
+      const lines = [`\`${name}\` — \`${String(descriptor.syntax).replace(/\*\//g, "*\\/")}\``];
+      if (initial !== undefined) lines.push(`Initial: \`${initial}\`.`);
+      const documented = [`  /**`, ...lines.map((line) => `   * ${line}`), `   */`].join("\n");
+      return `${documented}\n  ${JSON.stringify(name)}${required ? "" : "?"}: ${type};`;
+    });
+
+  /**
+   * The same names again, at runtime, and the reason is the one measured for properties: a QUOTED
+   * key gets no *did you mean* from TypeScript. Every dashed descriptor is quoted, so `font-familly`
+   * comes back as `TS2353` with nothing to act on unless the checker can suggest.
+   */
+  descriptorRows.push(`  ${JSON.stringify(atRule.slice(1))}: ${JSON.stringify(Object.keys(descriptors).sort())},`);
+
+  descriptorInterfaces.push(
+    `/**\n` +
+      ` * What \`${atRule}\` takes — its own vocabulary, not the properties.\n` +
+      ` *\n` +
+      ` * A descriptor with no initial value is REQUIRED, and is written without \`?\` so leaving it out\n` +
+      ` * is a type error rather than a rule of ours: a \`@font-face\` with no \`src\` loads nothing.\n` +
+      ` */\n` +
+      `export interface ${interfaceName} {\n${rows.join("\n")}\n}`,
+  );
+}
 const unknownAtRule = NOT_IN_A_RULE.find((name) => atRules[name] === undefined);
 if (unknownAtRule !== undefined) {
   console.error(`\n${TAG} \`${unknownAtRule}\` is not an at-rule mdn-data knows. Check the spelling.\n`);
@@ -409,6 +512,8 @@ export type Keyword<K extends string> = K | CssGlobal | \`var(\${string})\` | \`
 export interface CssProperties {
 ${rows.join("\n")}
 }
+
+${descriptorInterfaces.join("\n\n")}
 `;
 
 const keywords = `// Generated by scripts/build-css-properties.mjs from mdn-data (CC0-1.0). Do not edit.
@@ -469,6 +574,18 @@ export const UNITS: readonly string[] = ${JSON.stringify(allUnits)};
  * \`@starting-style\` are recent — and an allow-list would have reported both when they arrived.
  */
 export const NOT_IN_A_RULE: readonly string[] = ${JSON.stringify(NOT_IN_A_RULE)};
+
+/**
+ * At-rule -> the descriptors it takes, for the near-miss search inside a named block.
+ *
+ * The TYPES own whether a descriptor exists — each at-rule has its own interface — but they cannot
+ * SUGGEST for a dashed name, because a dashed key is a quoted key and a quoted key gets no
+ * *did you mean*. That is the same hole \`unknown-property\` fills for properties, and this is what
+ * fills it here. The key is the at-rule without its \`@\`, which is how a block names itself.
+ */
+export const DESCRIPTORS: Readonly<Record<string, readonly string[]>> = {
+${descriptorRows.join("\n")}
+};
 `;
 
 const said =

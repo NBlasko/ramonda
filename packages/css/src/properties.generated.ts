@@ -3366,3 +3366,101 @@ export interface CssProperties {
    */
   zoom: CssValue;
 }
+
+/**
+ * What `@font-face` takes — its own vocabulary, not the properties.
+ *
+ * A descriptor with no initial value is REQUIRED, and is written without `?` so leaving it out
+ * is a type error rather than a rule of ours: a `@font-face` with no `src` loads nothing.
+ */
+export interface CssFontFaceDescriptors {
+  /**
+   * `ascent-override` — `normal | <percentage>`
+   * Initial: `normal`.
+   */
+  "ascent-override"?: CssValue;
+  /**
+   * `descent-override` — `normal | <percentage>`
+   * Initial: `normal`.
+   */
+  "descent-override"?: CssValue;
+  /**
+   * `font-display` — `auto | block | swap | fallback | optional`
+   * Initial: `auto`.
+   */
+  "font-display"?: Keyword<"auto" | "block" | "swap" | "fallback" | "optional">;
+  /**
+   * `font-family` — `<family-name>`
+   * Initial: `n/a (required)`.
+   */
+  "font-family": CssValue;
+  /**
+   * `font-feature-settings` — `normal | <feature-tag-value>#`
+   * Initial: `normal`.
+   */
+  "font-feature-settings"?: CssValue;
+  /**
+   * `font-stretch` — `<font-stretch-absolute>{1,2}`
+   * Initial: `normal`.
+   */
+  "font-stretch"?: CssValue;
+  /**
+   * `font-style` — `normal | italic | oblique <angle>{0,2}`
+   * Initial: `normal`.
+   */
+  "font-style"?: CssValue;
+  /**
+   * `font-variation-settings` — `normal | [ <string> <number> ]#`
+   * Initial: `normal`.
+   */
+  "font-variation-settings"?: CssValue;
+  /**
+   * `font-weight` — `<font-weight-absolute>{1,2}`
+   * Initial: `normal`.
+   */
+  "font-weight"?: CssValue;
+  /**
+   * `line-gap-override` — `normal | <percentage>`
+   * Initial: `normal`.
+   */
+  "line-gap-override"?: CssValue;
+  /**
+   * `size-adjust` — `<percentage>`
+   * Initial: `100%`.
+   */
+  "size-adjust"?: CssValue;
+  /**
+   * `src` — `[ <url> [ format( <string># ) ]? | local( <family-name> ) ]#`
+   * Initial: `n/a (required)`.
+   */
+  "src": CssValue;
+  /**
+   * `unicode-range` — `<unicode-range-token>#`
+   * Initial: `U+0-10FFFF`.
+   */
+  "unicode-range"?: CssValue;
+}
+
+/**
+ * What `@property` takes — its own vocabulary, not the properties.
+ *
+ * A descriptor with no initial value is REQUIRED, and is written without `?` so leaving it out
+ * is a type error rather than a rule of ours: a `@font-face` with no `src` loads nothing.
+ */
+export interface CssPropertyDescriptors {
+  /**
+   * `inherits` — `true | false`
+   * Initial: `auto`.
+   */
+  "inherits": Keyword<"true" | "false">;
+  /**
+   * `initial-value` — `<declaration-value>?`
+   * Initial: `n/a (required)`.
+   */
+  "initial-value"?: CssValue;
+  /**
+   * `syntax` — `<string>`
+   * Initial: `n/a (required)`.
+   */
+  "syntax": CssValue;
+}

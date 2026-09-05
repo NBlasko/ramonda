@@ -3,6 +3,7 @@ import { collapse } from "./normalise";
 import type { Span } from "./read";
 import { readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
+import { namedSites } from "./references";
 
 /**
  * The virtual file: the author's file as valid TSX, and the way back from a diagnostic to the
@@ -184,16 +185,35 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   };
 
   const block = binding(source, "__block");
+  const from = JSON.stringify(options.properties ?? "@ramonda/css/properties");
   /**
    * A `declare`, not an `import` statement: an import would turn a file that is a script into a
    * module, which changes what the author's own code means. An import TYPE in a type position does
    * not.
    */
-  write(
-    `declare function ${block}(declarations: import(${JSON.stringify(
-      options.properties ?? "@ramonda/css/properties",
-    )}).CssBlockShape[]): never;`,
-  );
+  write(`declare function ${block}(declarations: import(${from}).CssBlockShape[]): never;`);
+
+  /**
+   * One more declaration per KIND of named site the file holds, and only the kinds it holds.
+   *
+   * A named site is a different vocabulary — frames, or descriptors — so it cannot go through the
+   * same function, and a file with no named site should not pay for the types of one.
+   *
+   * **Its body is a single object literal, where an ordinary block is an array of them.** That is
+   * the one place the reporting trade is worth losing: TypeScript reports one fault per literal, so
+   * an array reports every fault at once — but only a whole literal can be MISSING something, and a
+   * `@font-face` without `src` is the fault worth catching most. These bodies are three or four
+   * lines, so the cost is bounded and the check is not available any other way.
+   */
+  const surfaces = new Map<string, string>();
+  for (const site of sites) {
+    if (site.at === undefined || surfaces.has(site.at)) continue;
+    const shape = SURFACES[site.at];
+    if (shape === undefined) continue;
+    const name = binding(source, `__${site.at.replace(/-/g, "_")}`);
+    surfaces.set(site.at, name);
+    write(`declare function ${name}(body: import(${from}).${shape}): never;`);
+  }
 
   const preamble = code.length;
 
@@ -207,6 +227,9 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    */
   const heads: { from: number; to: number; at: number }[] = [];
 
+  /** What a reference stands for, so the check reads the file the way the build compiles it. */
+  const references = namedSites(source);
+
   let cursor = 0;
   for (const site of sites) {
     // A `name=@@(` found INSIDE a block belongs to that block's text, not to the file. The transform
@@ -214,7 +237,10 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     // refusal belongs to the build.
     if (site.start < cursor) continue;
 
-    const read = readBlock(source, site.open, "", { tolerant: options.tolerant });
+    const read = readBlock(source, site.open, "", {
+      tolerant: options.tolerant,
+      resolve: (name) => references.get(name),
+    });
 
     /**
      * How much of the author's text stands, and it is what the transform decides too: a bare JSX
@@ -222,7 +248,22 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
      * spellings keep everything to the left of the block, because there the braces are the author's
      * or would be wrong. See `BlockSite.wrap`.
      */
-    if (site.wrap) {
+    /** A named site's own function and its single literal; `undefined` for an ordinary block. */
+    const surface = site.at === undefined ? undefined : surfaces.get(site.at);
+
+    if (surface !== undefined) {
+      copy(cursor, site.start);
+      write(`${surface}(`);
+      /**
+       * The literal's own brace stands for the block's OPENING, and it has to stand for something.
+       *
+       * A required descriptor that is missing is reported on the whole literal, not on any line
+       * inside it — so if the brace maps nowhere the diagnostic has no home and is dropped, which is
+       * what happened: a `@font-face` with no `src` passed in silence. It maps to `@@font-face(`,
+       * which is where an author would look for a fault about the block as a whole.
+       */
+      derived("{", site.start, site.open + 1 - site.start);
+    } else if (site.wrap) {
       copy(cursor, site.start);
       copy(site.start, site.start + site.name.length);
       write(`={${block}([`);
@@ -243,7 +284,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       write("\n".repeat(countNewlines(source, lined, upTo)));
       lined = Math.max(lined, upTo);
     };
-    items(read.block.items, read.holes, keepLine);
+    items(read.block.items, read.holes, keepLine, surface !== undefined);
 
     /**
      * An empty object literal at the end of the block, **for an editor only**.
@@ -258,10 +299,12 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
      */
     if (tolerant) {
       slots.push({ from: site.open, to: read.end, at: code.length + 1 });
-      write("{},");
+      // A named site is already one literal, so the caret has somewhere to be without adding another
+      // — and adding one would be a second `{}` inside an object, which is not a place at all.
+      if (surface === undefined) write("{},");
     }
 
-    write(site.wrap ? "])}" : "])");
+    write(surface !== undefined ? "})" : site.wrap ? "])}" : "])");
 
     // Whatever the block spanned below its last item — the closing `)` on a line of its own.
     keepLine(read.end + 1);
@@ -290,11 +333,16 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * the next. An array of one-declaration literals reports all three at once, each with its own
    * position and its own suggestion, nested rules included.
    */
-  function items(list: readonly BlockItem[], holes: readonly Span[], keepLine: (upTo?: number) => void): void {
+  function items(
+    list: readonly BlockItem[],
+    holes: readonly Span[],
+    keepLine: (upTo?: number) => void,
+    single = false,
+  ): void {
     for (const item of list) {
       // The newlines the author wrote above this declaration, so it lands on its own line.
       keepLine(item.at);
-      write("{");
+      if (!single) write("{");
       if (item.kind === "rule") {
         if (item.at !== undefined) {
           heads.push({ from: item.at, to: item.preludeEnd ?? item.at, at: code.length + 1 });
@@ -310,7 +358,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         value(item.value, item.valueAt, item.end, holes);
         keepLine(item.end);
       }
-      write("},");
+      write(single ? "," : "},");
     }
   }
 
@@ -368,6 +416,20 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     write(")");
   }
 }
+
+/**
+ * Which type a named site's body is checked against.
+ *
+ * Written here rather than derived, because there is nothing to derive it from: `@keyframes` holds
+ * frames, and the other two hold descriptors that only their own at-rule accepts. A site whose name
+ * is not in this table gets no surface and no check — the transform refuses it separately, and the
+ * order between the two is not something this can rely on.
+ */
+const SURFACES: Readonly<Record<string, string>> = {
+  keyframes: "CssKeyframesShape",
+  "font-face": "CssFontFaceDescriptors",
+  property: "CssPropertyDescriptors",
+};
 
 /** How many newlines the author wrote between two offsets. */
 function countNewlines(source: string, from: number, to: number): number {

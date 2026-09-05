@@ -1,5 +1,6 @@
 import MagicString from "magic-string";
 import { classNameFor, substitute, variableNameFor } from "./names";
+import { namedSites } from "./references";
 import { normalise } from "./normalise";
 import { readBlock } from "./read";
 import { refuse } from "./errors";
@@ -43,9 +44,26 @@ export interface TransformOptions {
 }
 
 /** One rule the stylesheet now owes. Assembly (dedupe, `@layer`, the collision assertion) is track E. */
+/**
+ * The at-rules a named site may declare.
+ *
+ * Each names something the whole stylesheet uses, which is exactly why it cannot live inside a block
+ * — measured, `@keyframes` written in one compiles to a rule no browser resolves. Written here it
+ * goes to the sheet under a generated name, and the site becomes that name as a value a block reads.
+ */
+const NAMED = new Set(["keyframes", "font-face", "property"]);
+
 export interface EmittedBlock {
   /** `r-` plus 16 hex — see CONTRACT.md. */
   readonly className: string;
+  /**
+   * The at-rule this is, when it is one — `keyframes`, `font-face`, `property`.
+   *
+   * `undefined` for an ordinary block, which is one element's rule and becomes `.r-… { … }`. A named
+   * one becomes `@keyframes r-… { … }` and is referenced by NAME rather than applied to an element,
+   * which is why it carries no properties.
+   */
+  readonly at?: string;
   /** The rule's body, custom properties substituted, nested rules still nested. */
   readonly css: string;
   /** The custom property names this rule reads, in hole order. */
@@ -85,6 +103,14 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   const sites = findBlocks(source);
   if (sites.length === 0) return undefined;
 
+  /**
+   * What each named site in this file is called, so a reference to one is written in rather than set
+   * on an element — see {@link namedSites} for why that is not an optimisation but the only thing
+   * that works.
+   */
+  const references = namedSites(source);
+  const resolve = (expression: string): string | undefined => references.get(expression);
+
   const magic = new MagicString(source);
   const block = binding(source, "_block");
   const prefix = identifierPrefix(source);
@@ -92,6 +118,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   /** Class name -> the descriptor that stands for it, so a block written twice is emitted once. */
   const descriptors = new Map<string, { id: string; emitted: EmittedBlock }>();
   const order: { id: string; emitted: EmittedBlock }[] = [];
+  /** The named sites, which produce a rule and a name rather than a value the runtime builds. */
+  const named = new Map<string, EmittedBlock>();
+  const emittedNamed: EmittedBlock[] = [];
   /** The end of the block read last, so a `name=@@(` found INSIDE one is not read as another. */
   let consumed = 0;
 
@@ -105,14 +134,58 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       );
     }
 
-    const read = readBlock(source, site.open, filename);
+    if (site.at !== undefined && !NAMED.has(site.at)) {
+      refuse(
+        `\`@@${site.at}( … )\` is not something this compiles — the named forms are ` +
+          `${[...NAMED].map((one) => `\`@@${one}( … )\``).join(", ")}.`,
+        source,
+        site.start,
+        filename,
+      );
+    }
+
+    const read = readBlock(source, site.open, filename, { resolve });
     consumed = read.end + 1;
+
+    /**
+     * A hole is a custom property ON AN ELEMENT, and a named site has no element — an animation is
+     * applied to whatever names it, and a font face to nothing at all. Compiling one would read a
+     * value from wherever the rule happened to land, which is not a thing anybody meant.
+     */
+    if (site.at !== undefined && read.holes.length > 0) {
+      refuse(
+        `a hole cannot go in \`@@${site.at}( … )\` — a hole is a custom property on an ELEMENT, and ` +
+          `this names something the whole stylesheet uses.`,
+        source,
+        read.holes[0].start,
+        filename,
+      );
+    }
 
     // Normalised ONCE. It was called twice — for the name and again for the rule — and normalisation
     // walks the whole block, so that was a second full pass per block for a string already in hand.
     const canonical = normalise(read.block);
-    const className = classNameFor(canonical);
+    /**
+     * A `@property` registers a CUSTOM property, and a custom property is spelled with two dashes.
+     * `@property r-… { … }` is not a rule any browser keeps, so the dashes are part of the name —
+     * in the stylesheet, and in the string the site compiles to.
+     */
+    const className = site.at === "property" ? `--${classNameFor(canonical)}` : classNameFor(canonical);
     const properties = read.holes.map((_hole, index) => variableNameFor(className, index));
+
+    /**
+     * A named site is a NAME, not a value to build, so it needs no runtime and no descriptor: the
+     * site becomes a string literal and the rule goes to the sheet under the same hashed name.
+     */
+    if (site.at !== undefined) {
+      const emitted: EmittedBlock = { className, css: substitute(canonical, className), properties, at: site.at };
+      if (!named.has(className)) {
+        named.set(className, emitted);
+        emittedNamed.push(emitted);
+      }
+      magic.overwrite(site.start, read.end + 1, JSON.stringify(className));
+      continue;
+    }
 
     let descriptor = descriptors.get(className);
     if (descriptor === undefined) {
@@ -127,9 +200,13 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     write(magic, site, descriptor.id, read.holes, read.end);
   }
 
+  // A file of nothing but named sites needs no runtime at all: a name is a string, not a value to
+  // build, so the import would be one nobody uses.
   const prologue =
-    `import { block as ${block} } from "${options.runtime ?? "@ramonda/css"}";\n` +
-    `${order.map((each) => declare(block, each.id, each.emitted)).join("\n")}\n\n`;
+    order.length === 0
+      ? ""
+      : `import { block as ${block} } from "${options.runtime ?? "@ramonda/css"}";\n` +
+        `${order.map((each) => declare(block, each.id, each.emitted)).join("\n")}\n\n`;
 
   const top = afterDirectives(source);
   if (top === 0) magic.prepend(prologue);
@@ -138,7 +215,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   return {
     code: magic.toString(),
     map: magic.generateMap({ source: filename, includeContent: true, hires: "boundary" }) as unknown as SourceMap,
-    blocks: order.map((each) => each.emitted),
+    blocks: [...emittedNamed, ...order.map((each) => each.emitted)],
   };
 }
 

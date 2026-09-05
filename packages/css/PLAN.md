@@ -1101,7 +1101,12 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | hash length | 8/12/16 hex all gzip to **46.7 KB** — length is free |
 | `@(expr)` in decorator position | **already valid TypeScript**, on a member AND on a parameter |
 | `@@(` in all five positions | a syntax error everywhere — nothing to disambiguate against |
-| the substring `@(` on this repository | matches **41** files, **2** hold a block; `@@(` matches the 2 |
+| the substring `@(` on this repository | **2 of 1,093** files, both regexes — a named decorator is `@name(` |
+| `@keyframes`, `@font-face`, `@property` inside `@layer` | all three take effect — animation runs, face parses, `--angle` registers |
+| `@property` with no `inherits` | **dropped entirely** — not in `cssRules`, and the name takes any junk |
+| `@property` with `syntax: "*"` and no `initial-value` | registers fine, so required-ness there would report valid CSS |
+| a generated `@property` animated by a generated `@keyframes` | **interpolates** — exactly 90° at half time, which only a registered property does |
+| `var(var(--x))` | resolves to nothing — a `var()` name must be literal, so a reference cannot be a hole |
 | `ramonda-check` on the raw source | error-recovers; 3 rules become 1, silently |
 | source maps through both transforms | **5 of 5** positions land on the author's line |
 | the map's `hires` setting | all three get every line right; only `false` loses columns, everywhere |

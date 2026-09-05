@@ -226,9 +226,12 @@ after `name =` — which is what kept a block out of every ordinary expression p
 an object value, an array item, a branch of a ternary. **`@@(` is a syntax error everywhere**,
 measured in all five positions, so the rule disappeared and a block goes where any other value goes.
 
-The other half is the cheap pass, which runs on every file of every build. Measured on this
-repository: the substring `@(` matches **41** files and **2** hold a block — the other thirty-nine
-are decorators, each paying a full lexical walk for nothing. `@@(` matches the two.
+The other half is the cheap pass, which runs on every file of every build — and it is the smaller
+half. Measured on this repository at the commit before this parser landed, the substring `@(`
+matched **2 of 1,093** tracked source files, and both were regular expressions, not decorators: an
+ordinary decorator reads `@name(`, which does not contain `@(`. Only the parenthesised form `@(dec)`
+does, and there were none. The second `@` buys a grammar that cannot collide with the language; it
+does not buy a build that skips meaningfully more files.
 
 **What one `@` cost, and it is the honest half:** the walk now has to know a regular expression when
 it sees one. `/=@(x)/` used to be ruled out for free, because the `=` inside it is preceded by `/`

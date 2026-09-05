@@ -28,10 +28,13 @@ export class CssBlockError extends Error {
  * One sentence, one place: the build refuses these and the CSS checker reports them, and a fault that
  * read differently depending on which tool found it would be two faults to a reader.
  */
-export function holeOutOfPlace(what: "a declaration" | "a property name" | "a selector"): string {
+export function holeOutOfPlace(what: "a declaration" | "a property name" | "a selector" | "a frame"): string {
   return what === "a declaration"
-    ? "a hole cannot be a whole declaration — a custom property holds a value, so write `property: {{…}}` and put the choice inside it."
-    : `a hole cannot stand in ${what} — a custom property holds a value, and ${what} is not one.`;
+    ? "a hole cannot be a whole declaration — a custom property holds a value, so write `property: {{…}}` and put the choice inside it. The one name a hole may stand in is a `@@property( … )` declared in this file."
+    : `a hole cannot stand in ${what} — a custom property holds a value, and ${what} is not one.` +
+        (what === "a property name"
+          ? " The one exception is a `@@property( … )` declared in this file, whose name only this compiler knows."
+          : "");
 }
 
 /** The 1-based line and column of an offset, counted the way an editor does. */

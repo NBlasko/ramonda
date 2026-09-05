@@ -403,3 +403,16 @@ export const UNITS: readonly string[] = ["%","cap","ch","cm","cqb","cqh","cqi","
  * `@starting-style` are recent — and an allow-list would have reported both when they arrived.
  */
 export const NOT_IN_A_RULE: readonly string[] = ["@charset","@counter-style","@document","@font-face","@font-feature-values","@font-palette-values","@import","@keyframes","@namespace","@page","@position-try","@property","@view-transition"];
+
+/**
+ * At-rule -> the descriptors it takes, for the near-miss search inside a named block.
+ *
+ * The TYPES own whether a descriptor exists — each at-rule has its own interface — but they cannot
+ * SUGGEST for a dashed name, because a dashed key is a quoted key and a quoted key gets no
+ * *did you mean*. That is the same hole `unknown-property` fills for properties, and this is what
+ * fills it here. The key is the at-rule without its `@`, which is how a block names itself.
+ */
+export const DESCRIPTORS: Readonly<Record<string, readonly string[]>> = {
+  "font-face": ["ascent-override","descent-override","font-display","font-family","font-feature-settings","font-stretch","font-style","font-variation-settings","font-weight","line-gap-override","size-adjust","src","unicode-range"],
+  "property": ["inherits","initial-value","syntax"],
+};

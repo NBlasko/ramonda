@@ -390,3 +390,148 @@ describe("a block written as a value", () => {
     expect(value?.blocks).toEqual(attribute?.blocks);
   });
 });
+
+/**
+ * A named site — `@@keyframes( … )` — which is not one element's rule.
+ *
+ * ## What it is for
+ *
+ * `@keyframes` names something the whole stylesheet uses, so it cannot live inside a block: measured,
+ * written there it compiles to `.r-…{@keyframes slide{…}}`, which no browser resolves. Writing it in
+ * a stylesheet instead leaves the NAME an unchecked string on both sides — `animation: slidein` is
+ * one typo away from silence.
+ *
+ * A named site closes that: the rule goes to the stylesheet under a generated name, and the site
+ * becomes the name as a VALUE. A block reads it through a hole, so a typo is an unresolved
+ * identifier and TypeScript reports it with its own *did you mean* — no new checking, and the name
+ * stops being a string.
+ *
+ * Measured in a browser first, because the whole design rests on it: `--n: slide; animation: var(--n)
+ * 3s` computes to `animation-name: slide`, identical to writing the name literally.
+ */
+describe("a keyframes site", () => {
+  test("becomes a name, and the rule goes to the sheet", () => {
+    const out = emit(`const slide = @@keyframes(\n  from { opacity: 0; }\n  to { opacity: 1; }\n);\n`);
+
+    expect(out?.code).toMatch(/const slide = "r-[0-9a-f]{16}";/);
+    expect(out?.blocks[0].at).toBe("keyframes");
+    expect(out?.blocks[0].css).toContain("from{opacity:0;}");
+  });
+
+  test("the same keyframes written twice is one rule", () => {
+    const a = emit(`const one = @@keyframes( from { opacity: 0; } );\n`);
+    const b = emit(`const two = @@keyframes( from { opacity: 0; } );\n`);
+
+    expect(a?.blocks[0].className).toBe(b?.blocks[0].className);
+  });
+
+  test("and it needs no runtime import, because a name is not a value to build", () => {
+    const out = emit(`const slide = @@keyframes( from { opacity: 0; } );\n`);
+
+    expect(out?.code).not.toContain("@ramonda/css");
+  });
+
+  /**
+   * A hole is a custom property ON AN ELEMENT, and a keyframes rule has no element — so a hole in one
+   * is refused rather than compiled into something that reads from whatever the animation happens to
+   * be applied to.
+   */
+  test("a hole in one is refused", () => {
+    expect(() => emit(`const slide = @@keyframes( from { opacity: {{n}}; } );\n`)).toThrow(/hole/);
+  });
+
+  test("an at-rule this package does not know is refused", () => {
+    expect(() => emit(`const x = @@nonsense( color: red; );\n`)).toThrow(/nonsense/);
+  });
+});
+
+/**
+ * A reference to a named site, resolved where it is known: at BUILD time.
+ *
+ * A hole is a custom property on an element, and for a value the runtime computes that is exactly
+ * right. A named site is not that — it is a constant this compiler produced itself, three lines up
+ * — and treating a reference to one as a runtime hole is wrong in two ways, one slow and one fatal:
+ *
+ * - `animation: {{slide}} 3s` becomes `animation: var(--r-…-0) 3s` and a value set per element, for
+ *   a string that was decided at build time;
+ * - `var({{angle}})` becomes `var(var(--r-…-0))`, and **`var()` takes a literal name**, not another
+ *   `var()`. Measured in Chromium: nothing resolves, and the declaration is dropped.
+ *
+ * So a hole whose expression is exactly the binding of a named site in the same file is not a hole
+ * at all. It is that name, written in.
+ */
+describe("a reference to a named site", () => {
+  test("is written in, and costs no custom property", () => {
+    const out = emit(
+      `const slide = @@keyframes( from { opacity: 0; } );\nconst card = @@( animation: {{slide}} 3s; );\n`,
+    );
+
+    const [frames, card] = out?.blocks ?? [];
+    expect(card.css).toBe(`animation:${frames.className} 3s;`);
+    expect(card.properties).toEqual([]);
+    expect(out?.code).not.toContain("var(--");
+  });
+
+  test("a registered property is named as a custom property, because that is what it names", () => {
+    const out = emit(`const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n`);
+
+    expect(out?.code).toMatch(/const angle = "--r-[0-9a-f]{16}";/);
+    expect(out?.blocks[0].className).toMatch(/^--r-/);
+  });
+
+  test("and one can be READ by a block, which is what `var()` needs a literal for", () => {
+    const out = emit(
+      `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
+        `const card = @@( transform: rotate(var({{angle}})); );\n`,
+    );
+
+    const [property, card] = out?.blocks ?? [];
+    expect(card.css).toBe(`transform:rotate(var(${property.className}));`);
+    expect(card.properties).toEqual([]);
+  });
+
+  test("and SET by one, which is the only way a registered property is worth registering", () => {
+    const out = emit(
+      `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
+        `const card = @@( {{angle}}: 45deg; );\n`,
+    );
+
+    const [property, card] = out?.blocks ?? [];
+    expect(card.css).toBe(`${property.className}:45deg;`);
+  });
+
+  test("two blocks referring to the same name are still one rule each", () => {
+    const out = emit(
+      `const slide = @@keyframes( from { opacity: 0; } );\n` +
+        `const a = @@( animation: {{slide}} 3s; );\n` +
+        `const b = @@( animation: {{slide}} 3s; );\n`,
+    );
+
+    expect(out?.blocks).toHaveLength(2);
+  });
+
+  test("but blocks referring to DIFFERENT names are different rules", () => {
+    const out = emit(
+      `const one = @@keyframes( from { opacity: 0; } );\n` +
+        `const two = @@keyframes( to { opacity: 1; } );\n` +
+        `const a = @@( animation: {{one}} 3s; );\n` +
+        `const b = @@( animation: {{two}} 3s; );\n`,
+    );
+
+    const [, , a, b] = out?.blocks ?? [];
+    expect(a.className).not.toBe(b.className);
+  });
+
+  /** Anything else in a hole is a runtime value, and nothing about this changes that. */
+  test("an expression that is not one of them is still a hole", () => {
+    const out = emit(`const card = @@( animation: {{name}} 3s; );\n`);
+
+    expect(out?.blocks[0].properties).toHaveLength(1);
+    expect(out?.blocks[0].css).toContain("var(--");
+  });
+
+  /** A hole in a property name stays a refusal for everything that is not a registered property. */
+  test("a hole that resolves to nothing cannot stand in a property name", () => {
+    expect(() => emit(`const card = @@( {{whatever}}: 45deg; );\n`)).toThrow(/@@property/);
+  });
+});

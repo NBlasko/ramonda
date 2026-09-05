@@ -91,7 +91,7 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
 
     text += source.slice(cursor, from);
     text += wrap ? `${site.name}={${held}}` : held;
-    blocks.push({ text: source.slice(from, end), block: source.slice(site.open - 2, end), wrap });
+    blocks.push({ text: source.slice(from, end), block: source.slice(site.opening, end), wrap });
     cursor = end;
   }
 

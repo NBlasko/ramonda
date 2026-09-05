@@ -4,7 +4,7 @@
  * ## Two passes, and the first one has to be free
  *
  * A codebase that uses none of this must pay nothing, so the first question is a substring search
- * for `@@(` and the answer is usually no. Measured on this repository before any of it existed:
+ * for `@@` and the answer is usually no. Measured on this repository before any of it existed:
  * 1,268 files and 10.61 MB in **1.33 ms**. Only a file that survives that gets read properly.
  *
  * ## Why the opening is `@@(` and not `@(`
@@ -19,9 +19,15 @@
  * on a class member, on a parameter, as a call argument, as an object value. So the rule disappears
  * and a block goes where any other value goes.
  *
- * It also makes the cheap pass sharper, which is the half that runs on every file of every build:
- * measured on this repository, the substring `@(` matches **41** files and only **2** hold a block —
- * the other 39 are decorators, each paying a full lexical walk for nothing. `@@(` matches the 2.
+ * It also sharpens the cheap pass, the half that runs on every file of every build — but that is
+ * the smaller half, and an earlier note here overstated it. Measured on this repository at the
+ * commit before this parser landed, the substring `@(` matched **2 of 1,093** tracked source files,
+ * and both were regular expressions rather than decorators: an ordinary decorator reads `@name(`,
+ * which does not contain `@(` at all. Only the parenthesised form does — `@(dec)` — and there were
+ * none. So the second `@` buys a grammar that cannot collide, not a build that skips more files.
+ *
+ * The substring is `@@` rather than `@@(` because a named site — `@@keyframes( … )` — does not
+ * contain the second. Nothing else in TypeScript contains either.
  *
  * ## Why the second pass is still lexical
  *
@@ -39,6 +45,18 @@ export interface BlockSite {
   /** Offset of the `(` that opens the block. */
   readonly open: number;
   /**
+   * Offset of the first `@` — where the OPENING starts, name and all.
+   *
+   * Recorded rather than derived, because its width is not fixed: `@@(` is three characters and
+   * `@@keyframes(` is twelve. A caller that measured back from `open` by a constant landed in the
+   * middle of the at-rule's name, and the formatter handed a truncated block to be re-laid-out —
+   * measured, and it is why this exists.
+   *
+   * The same as {@link start} for an expression site, and different for a JSX attribute, where the
+   * site starts at the attribute's name.
+   */
+  readonly opening: number;
+  /**
    * Whether the compiled value has to be wrapped in `{ }` where it is written back.
    *
    * A JSX attribute written without them needs them — `css=@@( … )` becomes `css={_s0}`. The two
@@ -46,11 +64,19 @@ export interface BlockSite {
    * `const panel = @@( … )` they would turn a value into an object literal.
    */
   readonly wrap: boolean;
+  /**
+   * The at-rule this site declares, when it declares one — `keyframes`, `font-face`, `property`.
+   *
+   * `undefined` for an ordinary style block, which is one element's rule and names nothing. A named
+   * site produces a rule for the whole stylesheet and a value the blocks reference, so almost
+   * everything downstream asks this before it asks anything else.
+   */
+  readonly at?: string;
 }
 
 /** The cheap question, asked before anything is read. */
 export function mayHoldABlock(source: string): boolean {
-  return source.includes("@@(");
+  return source.includes("@@");
 }
 
 export function findBlocks(source: string): BlockSite[] {
@@ -110,16 +136,27 @@ export function findBlocks(source: string): BlockSite[] {
       continue;
     }
 
-    if (code === 64 /* @ */ && source.charCodeAt(index + 1) === 64 && source.charCodeAt(index + 2) === 40 /* ( */) {
-      const site = siteBefore(source, index);
-      if (site !== undefined) {
-        found.push({ ...site, open: index + 2 });
-        // The block's own text is read by the parser, which is the only thing that can tell where it
-        // ends — a `)` inside a string or an expression does not close it. Resuming right after the
-        // `(` is safe because a nested block is not a thing: the walk finds the same opening again
-        // only if the parser left it, and the parser consumes the whole block.
-        index += 3;
-        continue;
+    if (code === 64 /* @ */ && source.charCodeAt(index + 1) === 64) {
+      /**
+       * `@@(` is a style block, and `@@keyframes(` and its two siblings name something the whole
+       * stylesheet uses. One opening with an optional name rather than three spellings, because the
+       * walk that has to be free should look for one thing.
+       */
+      let after = index + 2;
+      while (after < length && isNameCharacter(source.charCodeAt(after))) after++;
+
+      if (source.charCodeAt(after) === 40 /* ( */) {
+        const site = siteBefore(source, index);
+        if (site !== undefined) {
+          const named = source.slice(index + 2, after);
+          found.push({ ...site, open: after, opening: index, at: named === "" ? undefined : named.toLowerCase() });
+          // The block's own text is read by the parser, which is the only thing that can tell where
+          // it ends — a `)` inside a string or an expression does not close it. Resuming right after
+          // the `(` is safe because a nested block is not a thing: the walk finds the same opening
+          // again only if the parser left it, and the parser consumes the whole block.
+          index = after + 1;
+          continue;
+        }
       }
     }
 

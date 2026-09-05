@@ -444,3 +444,33 @@ describe("the VS Code extension", () => {
     expect(contributed.map((grammar) => basename(grammar.path)).sort()).toEqual(readdirSync(GRAMMAR).sort());
   });
 });
+
+/**
+ * A named site, where the opening carries a word.
+ *
+ * The at-rule's name sits between the two `@` and the `(`, so a grammar written for a three-character
+ * opening does not begin at all — and a block that does not begin is a block whose CSS is tokenised
+ * as TypeScript, which is the failure this whole file exists to catch.
+ */
+describe("a named site", () => {
+  test.each([
+    ["keyframes", `const slide = @@keyframes(\n  from { opacity: 0; }\n);\nconst after = 1;\n`],
+    ["font-face", `const brand = @@font-face(\n  font-display: swap;\n);\nconst after = 1;\n`],
+    ["property", `const angle = @@property(\n  inherits: false;\n);\nconst after = 1;\n`],
+  ])("%s opens a block, and the file below it is untouched", (_what, code) => {
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(true);
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("the at-rule's name is coloured as one", () => {
+    const code = `const slide = @@keyframes(\n  from { opacity: 0; }\n);\n`;
+
+    expect(scopeOf(code, "keyframes")).toBe("keyword.control.at-rule.ramonda");
+  });
+
+  test("and the declarations inside are CSS", () => {
+    expect(scopeOf(`const brand = @@font-face(\n  font-display: swap;\n);\n`, "font-display")).toBe(
+      "support.type.property-name.css",
+    );
+  });
+});
