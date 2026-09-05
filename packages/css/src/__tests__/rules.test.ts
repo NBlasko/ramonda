@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { KEYWORDS, PROPERTIES } from "../compiler/keywords.generated";
+import { KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
 import { type Finding, checkBlock, checkText } from "../compiler/rules";
 import { findBlocks } from "../compiler/scan";
@@ -850,5 +850,125 @@ describe("a percentage frame", () => {
 
   test("and one out of range says so, rather than offering a spelling", () => {
     expect(checkNamed("keyframes", "150% { opacity: 0; }")[0]?.message).toContain("0% and 100%");
+  });
+});
+
+/**
+ * The shorthand table, which composition needs and nothing before it did.
+ *
+ * A shorthand and its longhand are DIFFERENT properties, so a merge of two blocks keeps both and the
+ * STYLESHEET breaks the tie — measured in Chromium, `.a{padding:8px}` with `.b{padding-left:40px}`
+ * gives 40px whichever order the classes are written in, and 8px if the longhand is emitted first.
+ * Against the call site, silently, either way.
+ *
+ * The merge answers it the way CSS's own cascade does — **a later shorthand clears its own
+ * longhands** — and this table is what it needs. Generated from mdn-data by the sweep that already
+ * writes the property map, because one classification asked twice is a place to drift.
+ *
+ * **Transitively closed**, and that is not a nicety: 11 of the entries mdn-data gives point at
+ * another SHORTHAND — `border` sets `border-width`, which is itself a shorthand for four — so a
+ * table taken as written would let `border` fail to clear `border-left-color`, which is exactly the
+ * kind of override composition exists for.
+ */
+describe("the shorthand table", () => {
+  test("a shorthand names the longhands it sets", () => {
+    expect(SHORTHANDS.padding).toEqual(
+      expect.arrayContaining(["padding-top", "padding-right", "padding-bottom", "padding-left"]),
+    );
+    expect(SHORTHANDS.gap).toEqual(expect.arrayContaining(["row-gap", "column-gap"]));
+  });
+
+  test("and a longhand names nothing, because it sets only itself", () => {
+    expect(SHORTHANDS["padding-left"]).toBeUndefined();
+    expect(SHORTHANDS.display).toBeUndefined();
+    expect(SHORTHANDS.color).toBeUndefined();
+  });
+
+  /**
+   * A shorthand can be shadowed by a BIGGER one, and the first version of this table missed it.
+   *
+   * `border` sets everything `border-left` sets, so a later `border` has to clear it — but mdn-data
+   * writes `border`'s list as `border-width border-style border-color`, and `border-left` is in
+   * none of them. Measured with the real table: `border-left` then `border` left BOTH classes on
+   * the element, so the border-left rule survived a declaration that replaces it.
+   *
+   * So what a shorthand clears is every property whose leaves are a SUBSET of its own — which is
+   * what "sets everything that one sets" means, and it is computable from the same data.
+   */
+  test("a bigger shorthand clears a smaller one, not only the leaves", () => {
+    expect(SHORTHANDS.border).toContain("border-left");
+    expect(SHORTHANDS.border).toContain("border-width");
+    expect(SHORTHANDS.background).toContain("background-color");
+    // and not the other way round: the smaller one does not clear the bigger
+    expect(SHORTHANDS["border-left"]).not.toContain("border");
+  });
+
+  test("a shorthand of shorthands reaches the leaves", () => {
+    // `border` -> `border-width` -> `border-left-width`. A table taken as mdn-data writes it stops
+    // at the middle one, and `border` would not clear what `border-left` set.
+    expect(SHORTHANDS.border).toContain("border-left-width");
+    expect(SHORTHANDS.border).toContain("border-left-color");
+    expect(SHORTHANDS.border).toContain("border-top-style");
+  });
+
+  test("every name in it is a property CSS has", () => {
+    const known = new Set(PROPERTIES);
+    for (const [shorthand, longhands] of Object.entries(SHORTHANDS)) {
+      expect(known.has(shorthand), `${shorthand} is not a CSS property`).toBe(true);
+      for (const one of longhands) expect(known.has(one), `${shorthand} names ${one}`).toBe(true);
+    }
+  });
+
+  test("and nothing sets itself, which would make the merge clear what it just wrote", () => {
+    for (const [shorthand, longhands] of Object.entries(SHORTHANDS)) {
+      expect(longhands, shorthand).not.toContain(shorthand);
+    }
+  });
+
+  /**
+   * **The merge built on this table is associative**, which is what makes a nested `@@if` mean the
+   * same as a flattened one — and it is the property the clearing rule could have broken, since
+   * clearing removes keys rather than replacing them.
+   *
+   * Measured on the real table with a pool drawn from ONE family, so shorthands and their longhands
+   * collide constantly: 50,301 groupings, zero disagreements between `_m(a, _m(b, c))` and
+   * `_m(a, b, c)`. Asserted here on the cases that actually shadow each other, so a change to the
+   * table that broke it would fail rather than wait for the sweep to be re-run by hand.
+   */
+  test("clearing is associative, which is what lets a group nest", () => {
+    /** A merged map, which is also what one of its own arguments may be — that is the point. */
+    const merge = (...maps: ReadonlyMap<string, string>[]): Map<string, string> => {
+      const out = new Map<string, string>();
+      for (const map of maps) {
+        for (const [key, value] of map) {
+          for (const one of SHORTHANDS[key] ?? []) out.delete(one);
+          out.set(key, value);
+        }
+      }
+      return out;
+    };
+    const of = (entries: Record<string, string>) => new Map(Object.entries(entries));
+    const show = (map: ReadonlyMap<string, string>) => [...map].map(([k, v]) => `${k}=${v}`).join(",");
+
+    const shapes: Record<string, string>[][] = [
+      [{ "border-left-color": "1" }, { "border-left": "2" }, { border: "3" }],
+      [{ border: "1" }, { "border-left": "2" }, { "border-left-color": "3" }],
+      [{ "padding-left": "1" }, { padding: "2" }, { "padding-left": "3" }],
+      [{ gap: "1" }, { "row-gap": "2" }, { gap: "3" }],
+      [{ "background-color": "1" }, { background: "2" }, { "background-color": "3" }],
+    ];
+
+    for (const [a, b, c] of shapes) {
+      const flat = show(merge(of(a), of(b), of(c)));
+      expect(show(merge(of(a), merge(of(b), of(c)))), JSON.stringify([a, b, c])).toBe(flat);
+      expect(show(merge(merge(of(a), of(b)), of(c))), JSON.stringify([a, b, c])).toBe(flat);
+    }
+  });
+
+  /** The measurement that made this table the answer rather than expanding values. */
+  test("it covers the shorthands actually written in this repository", () => {
+    for (const one of ["padding", "margin", "gap", "border-left", "transition", "border-radius", "background"]) {
+      expect(SHORTHANDS[one], one).toBeDefined();
+    }
   });
 });

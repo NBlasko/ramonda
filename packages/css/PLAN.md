@@ -1189,9 +1189,25 @@ Frozen in `CONTRACT.md` §1b: the map, the entry (a class, or a class and its va
 KEY — at-rules sorted because they commute (measured in Chromium), selector parts composed in order
 because they do not — the variable name, the merge rule, and the sheet's emission order.
 
-**AC1 — the shorthand table.** `SHORTHANDS: Record<string, readonly string[]>` out of the same sweep as
-`PROPERTIES`, `KEYWORDS` and `UNITS`. Pure addition, no behaviour change, independent of P0 — it can
-be written first and is the cheapest way to start.
+**AC1 — the shorthand table. DONE 2026-09-05.** `SHORTHANDS` out of the same sweep as `PROPERTIES`,
+`KEYWORDS` and `UNITS`: 78 entries, pure addition, no behaviour change.
+
+**It is NOT the list mdn-data writes, and finding that out took two rounds of measuring.** That list
+misses a shorthand two ways, each of which leaves a rule alive that a later declaration replaces:
+
+1. **It stops at sub-shorthands.** `border` sets `border-width`, which is itself a shorthand for four
+   — so a table taken as written lets `border` fail to clear `border-left-width`.
+2. **It names no shorthand at all**, so `border` would not clear `border-left` either. Measured with
+   the real table: `border-left` then `border` left BOTH classes on the element.
+
+So the entry for a property is **every other property whose leaves are a SUBSET of its own**, which
+is what "sets everything that one sets" means and is computable from the same data. A longhand's leaf
+set is itself alone, so nothing is a subset of it and it clears nothing — which is right.
+
+Verified against CSS's own answer in eight directions, and **associativity re-measured on the real
+table** — 50,301 groupings from a pool drawn from one family, so shorthands and longhands collide
+constantly: zero disagreements. That mattered, because clearing REMOVES keys rather than replacing
+them, and the earlier measurement had used a four-entry synthetic table. Both are tests now.
 
 **AC2 — the sheet emits declarations.** `Sheet.add` takes atomic rules; the collision assertion and the
 round trip are unchanged in kind. New: the emission order above. Per-file serving is unchanged, and

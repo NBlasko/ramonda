@@ -376,6 +376,74 @@ for (const name of named) {
   propertyNamedRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify([...words].sort().join(" "))},`);
 }
 
+/**
+ * Shorthand -> every longhand it sets, transitively.
+ *
+ * **Composition needs this and nothing before it did.** A shorthand and its longhand are DIFFERENT
+ * properties, so merging two blocks keeps both classes and the STYLESHEET breaks the tie — measured
+ * in Chromium, `.a{padding:8px}` with `.b{padding-left:40px}` gives 40px whichever order the classes
+ * are written in, and 8px if the longhand is emitted first. Against the call site, silently.
+ *
+ * The merge answers it as CSS's own cascade does — a later shorthand clears its own longhands — and
+ * this is the table it reads. **No value parsing anywhere**, which is why it is the answer: measured,
+ * only 10 of the 78 shorthands split by a mechanical rule, and on this repository's own blocks 50 of
+ * 108 declarations are shorthands with 7 of those splitting. Expanding VALUES would buy almost
+ * nothing; clearing longhands buys all of it.
+ *
+ * `mdn-data` marks a shorthand by giving it an `initial` that is an ARRAY — the longhands it sets —
+ * and the table is NOT that list. Two things it misses, both measured against the real table:
+ *
+ * - **it stops at sub-shorthands.** `border` sets `border-width`, which is itself a shorthand for
+ *   four, so the list has to be closed transitively to reach the leaves.
+ * - **it names no shorthand at all**, so `border` would not clear `border-left` — measured, both
+ *   classes stayed on the element and a rule that `border` replaces survived it.
+ *
+ * So what a property CLEARS is every other property whose leaves are a SUBSET of its own, which is
+ * what "sets everything that one sets" means and is computable from the same data. A longhand's
+ * leaf set is itself alone, so nothing is a subset of it and it clears nothing — which is right.
+ *
+ * Computed once here rather than by a recursive merge on every render.
+ */
+function longhandsOf(name, properties, seen = new Set()) {
+  const direct = properties[name]?.initial;
+  if (!Array.isArray(direct)) return [];
+
+  const out = [];
+  for (const one of direct) {
+    if (seen.has(one)) continue;
+    seen.add(one);
+    const deeper = longhandsOf(one, properties, seen);
+    // A sub-shorthand is replaced by what it sets: the merge clears leaves, and a name that is
+    // itself a shorthand would be a key nothing ever writes.
+    if (deeper.length === 0) out.push(one);
+    else out.push(...deeper);
+  }
+  return out;
+}
+
+/** Every property's leaves — itself, for a longhand. */
+const leavesOf = new Map();
+for (const name of named) {
+  const leaves = longhandsOf(name, properties);
+  leavesOf.set(name, new Set(leaves.length === 0 ? [name] : leaves));
+}
+
+const shorthandRows = [];
+for (const name of named) {
+  const mine = leavesOf.get(name);
+  if (mine.size < 2) continue;
+
+  const cleared = named
+    .filter((other) => other !== name && [...leavesOf.get(other)].every((leaf) => mine.has(leaf)))
+    .sort();
+
+  if (cleared.includes(name)) {
+    console.error(`\n${TAG} \`${name}\` sets itself, which would make the merge clear what it just wrote.\n`);
+    process.exit(1);
+  }
+  shorthandRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(cleared)},`);
+}
+
 const atRules = JSON.parse(readFileSync(join(root, "node_modules/mdn-data/css/at-rules.json"), "utf8"));
 
 /**
@@ -586,12 +654,29 @@ export const NOT_IN_A_RULE: readonly string[] = ${JSON.stringify(NOT_IN_A_RULE)}
 export const DESCRIPTORS: Readonly<Record<string, readonly string[]>> = {
 ${descriptorRows.join("\n")}
 };
+
+/**
+ * Shorthand -> every longhand it sets, transitively, for the merge that composes two blocks.
+ *
+ * A shorthand and its longhand are different properties, so a merge keeps both and the STYLESHEET
+ * breaks the tie — measured, and possibly against the call site. The merge does what CSS's own
+ * cascade does instead: **a later shorthand clears its own longhands.** No value is parsed anywhere;
+ * only 10 of these 78 split by a mechanical rule, so expanding values would buy almost nothing.
+ *
+ * **Not the list mdn-data writes.** That one stops at sub-shorthands and names no shorthand at all,
+ * so \`border\` would clear neither \`border-left-width\` nor \`border-left\` — measured, both classes
+ * survived a declaration that replaces them. This is every property whose leaves are a SUBSET of
+ * this one's, which is what "sets everything that one sets" means.
+ */
+export const SHORTHANDS: Readonly<Record<string, readonly string[]>> = {
+${shorthandRows.join("\n")}
+};
 `;
 
 const said =
   `${named.length} properties, ${unions} typed as a union, ${checkable} value-checkable by the rules, ` +
   `${propertyNamedRows.length} whose value is a property name, ${allUnits.length} units, ` +
-  `${NOT_IN_A_RULE.length} at-rules that may not sit in a block`;
+  `${NOT_IN_A_RULE.length} at-rules that may not sit in a block, ${shorthandRows.length} shorthands`;
 
 if (!check) {
   writeFileSync(TYPES, types);
