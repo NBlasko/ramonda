@@ -1,6 +1,6 @@
 import type { Block, BlockItem, Declaration, ValuePart } from "./ast";
 import { holeOutOfPlace } from "./errors";
-import { KEYWORDS, PROPERTIES, PROPERTY_NAMED } from "./keywords.generated";
+import { KEYWORDS, PROPERTIES, PROPERTY_NAMED, UNITS } from "./keywords.generated";
 import { closingHole } from "./read";
 import type { BlockSite } from "./scan";
 
@@ -56,7 +56,8 @@ export type RuleId =
   | "hole-out-of-place"
   | "uncolourable-block"
   | "run-on-declaration"
-  | "line-comment";
+  | "line-comment"
+  | "unknown-unit";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -214,6 +215,7 @@ function walk(items: readonly BlockItem[], findings: Finding[]): void {
     const before = findings.length;
     runOn(item, findings);
     if (findings.length === before) unknownValue(item, findings);
+    unknownUnit(item, findings);
     repeated(item, seen, findings);
   }
 }
@@ -396,6 +398,43 @@ function propertyNames(item: Declaration, accepted: string, findings: Finding[])
         (keywords.size === 0 ? "." : ` or one of ${[...keywords].sort().join(", ")}.`) +
         (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
     });
+  }
+}
+
+/** Every unit CSS has, for the question below. */
+const KNOWN_UNITS = new Set(UNITS);
+
+/**
+ * A number whose unit is NEARLY one — `150oms`, `10pxx`.
+ *
+ * **A near miss, deliberately, and not a membership test.** The obvious rule is "the unit must be one
+ * CSS has", and it is the one failure a checker does not survive: `mdn-data`'s unit list is
+ * incomplete — measured, thirty units, missing `%`, the line-height units, every container-query unit
+ * and every viewport variant. Even with those written back in, a unit invented after this was written
+ * would earn a false report on correct CSS.
+ *
+ * So the known set is the floor rather than the ceiling: a unit close to a known one is a typo, and a
+ * unit close to nothing is somebody using CSS this package has not heard of. `10zzzz` says nothing.
+ */
+function unknownUnit(item: Declaration, findings: Finding[]): void {
+  for (const part of item.value) {
+    if (part.kind !== "text" || part.at === undefined) continue;
+
+    for (const found of part.text.matchAll(/(?<![\w.#-])\d*\.?\d+([a-zA-Z%]+)/g)) {
+      const unit = found[1].toLowerCase();
+      if (KNOWN_UNITS.has(unit)) continue;
+
+      const meant = nearest(unit, UNITS as string[]);
+      if (meant === undefined) continue;
+
+      const at = part.at + found.index + found[0].length - found[1].length;
+      findings.push({
+        rule: "unknown-unit",
+        at,
+        length: found[1].length,
+        message: `\`${found[1]}\` is not a CSS unit. Did you mean \`${meant}\`?`,
+      });
+    }
   }
 }
 

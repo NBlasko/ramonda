@@ -994,6 +994,21 @@ word; and a CSS-wide keyword is accepted everywhere. The first two needed a fix 
 belongs to the word when a letter or another `-` follows it, which is CSS's own identifier rule, and
 `-8px` stays a number.
 
+### X — a unit that is nearly one
+
+Reported after the words: `150oms`, `10pxx`. The type layer was tried and rejected for this long ago
+— a template-literal length type catches `10pxx` and prints an unreadable expanded union.
+
+**A near miss, not a membership test, and that is the whole design.** The obvious rule is "the unit
+must be one CSS has", and it is the one failure a checker does not survive. Measured: `mdn-data`'s
+`units.json` holds **thirty** and is missing `%`, the line-height units, every container-query unit
+and every viewport variant — so a rule built from it would report `height: 100dvh` and
+`padding: 1cqw`, which are correct CSS.
+
+The known set is mdn-data's thirty plus a supplement written down family by family, sixty-three in
+all. Even then the rule only speaks when the unit is within `nearest()`'s bound of a known one, so a
+unit invented after this was written stays silent: `10zzzz` says nothing, `150oms` says `ms`.
+
 ### L — the runtime diagnostic. Deliberately last — DONE
 
 **The user's reasoning for putting it last was right:** diagnostics are this framework's signature,

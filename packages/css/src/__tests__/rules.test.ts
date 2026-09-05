@@ -134,12 +134,13 @@ describe("a bare word a property does not accept", () => {
   });
 
   /**
-   * A unit typo is deliberately NOT reported. `10pxx` is not a bare identifier — it starts with a
-   * digit — and a rule that read numbers would need a value grammar, which is the thing this
-   * carefully does not have. Said out loud so nobody adds it by pattern later.
+   * A unit typo is not the WORD reader's business, and that boundary still holds: `10pxx` starts
+   * with a digit, so nothing here reads it as a bare identifier. It is reported by `unknown-unit`
+   * instead — see the section on it — which needs no value grammar because it asks a different
+   * question: not "is this valid" but "is this one edit from something valid".
    */
-  test("a unit typo is left alone, because judging it needs a grammar this does not have", () => {
-    expect(rules("  padding: 10pxx;")).toEqual([]);
+  test("a unit typo is not a bare word, and is left to the rule that reads numbers", () => {
+    expect(rules("  padding: 10pxx;")).toEqual(["unknown-unit"]);
   });
 });
 
@@ -573,5 +574,59 @@ describe("a value that has to be a property name", () => {
   /** `animation` stays out, and the test says so rather than leaving it to be discovered. */
   test("animation is not checked this way, because a keyframes name is the author's own", () => {
     expect(check(`animation: slidein 1s ease-in-out;`)).toEqual([]);
+  });
+});
+
+/**
+ * A unit that is nearly one — `150oms`, `10pxx`.
+ *
+ * ## Why this is a NEAR MISS and not a membership test
+ *
+ * The obvious rule is "the unit must be one CSS has", and it is the one failure a checker does not
+ * survive: **`mdn-data`'s unit list is incomplete.** Measured — thirty units, and it is missing `lh`,
+ * `rlh`, every container-query unit, every viewport variant (`svh`, `dvh`, `lvh`, …) and `%`. A rule
+ * built straight from it would report `height: 100dvh` and `padding: 1cqw`, which are correct CSS.
+ *
+ * So the known set is mdn-data's thirty plus a written-down supplement, and even then the rule only
+ * speaks when the unit is a near miss of a known one — the same bound `nearest()` uses everywhere
+ * else. An unknown-but-plausible unit stays silent, and a unit invented after this was written never
+ * earns a false report.
+ */
+describe("a unit that is nearly one", () => {
+  test.each([
+    ["a time", `transition-duration: 150oms;`, "ms"],
+    ["a length", `padding: 10pxx;`, "px"],
+    ["a font-relative one", `font-size: 1remm;`, "rem"],
+    ["a viewport one", `width: 100vww;`, "vw"],
+  ])("%s is reported with the one that was meant", (_what, css, meant) => {
+    const found = check(css).filter((finding) => finding.rule === "unknown-unit");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain(meant);
+  });
+
+  test.each([
+    ["px", `padding: 10px;`],
+    ["a percentage", `width: 50%;`],
+    ["no unit at all", `opacity: 0.5;`],
+    ["zero", `padding: 4px 0;`],
+    ["ms", `transition-duration: 150ms;`],
+    ["a container query unit", `padding: 1cqw;`],
+    ["a dynamic viewport unit", `height: 100dvh;`],
+    ["a small viewport unit", `height: 100svh;`],
+    ["a line-height unit", `margin: 1lh;`],
+    ["fr", `grid-template-columns: 1fr 2fr;`],
+    ["a hex colour", `color: #10b981;`],
+    ["a number inside a function", `width: calc(100% - 8px);`],
+    ["a unit beside a hole", `border-left: {{w}}px solid red;`],
+    ["an angle", `rotate: 45deg;`],
+    ["a resolution", `image-resolution: 300dpi;`],
+  ])("%s is silent", (_what, css) => {
+    expect(check(css).filter((finding) => finding.rule === "unknown-unit")).toEqual([]);
+  });
+
+  /** Nothing close is nothing said: a unit this package has never heard of is not a typo of one. */
+  test("a unit that is not near anything is left alone", () => {
+    expect(check(`width: 10zzzz;`).filter((finding) => finding.rule === "unknown-unit")).toEqual([]);
   });
 });

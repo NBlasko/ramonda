@@ -386,3 +386,12 @@ export const PROPERTY_NAMED: Readonly<Record<string, string>> = {
   "transition-property": "all none",
   "will-change": "auto contents scroll-position",
 };
+
+/**
+ * Every unit CSS has, lower-cased — `mdn-data`'s own, plus the families it does not list.
+ *
+ * The supplement is not a nicety: measured, `units.json` holds thirty and is missing `%`, the
+ * line-height units, every container-query unit and every viewport variant. A rule built from the
+ * thirty alone would report `height: 100dvh` as a fault.
+ */
+export const UNITS: readonly string[] = ["%","cap","ch","cm","cqb","cqh","cqi","cqmax","cqmin","cqw","deg","dpcm","dpi","dppx","dvb","dvh","dvi","dvmax","dvmin","dvw","em","ex","fr","grad","hz","ic","in","khz","lh","lvb","lvh","lvi","lvmax","lvmin","lvw","mm","ms","pc","pt","px","q","rad","rcap","rch","rem","rex","ric","rlh","s","svb","svh","svi","svmax","svmin","svw","turn","vb","vh","vi","vmax","vmin","vw","x"];
