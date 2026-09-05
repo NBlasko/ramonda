@@ -51,6 +51,54 @@ export interface Span {
 const PAREN = 41; /* ) */
 const BRACE = 125; /* } */
 
+/**
+ * Where the hole opening at `at` closes — the offset of its `}}` — or -1 when it never does.
+ *
+ * **It cannot be `indexOf("}}")`**, and that is the whole reason this is a function. The inside of a
+ * hole is JavaScript, so `{{ pick({ on: "}}" }) }}` ends at the LAST `}}` and not the first, and
+ * `{{ {a: {b: 1}}.a.b }}` has one in the middle of an object literal. Braces, parens, brackets,
+ * strings, templates and comments are all counted.
+ *
+ * Exported because three scanners ask the same question — the parser, the formatter's layout, and
+ * the rule that looks for a `//` — and two of them used to ask it with `indexOf`, which is how a
+ * hole holding an object literal came back cut in half.
+ */
+export function closingHole(source: string, at: number): number {
+  let index = at + 2;
+  let depth = 0;
+
+  while (index < source.length) {
+    const code = source.charCodeAt(index);
+
+    if (code === 34 /* " */ || code === 39 /* ' */ || code === 96 /* ` */) {
+      index = pastExpressionString(source, index);
+      continue;
+    }
+    if (code === 47 /* / */) {
+      const next = source.charCodeAt(index + 1);
+      if (next === 47) {
+        const line = source.indexOf("\n", index);
+        index = line === -1 ? source.length : line + 1;
+        continue;
+      }
+      if (next === 42) {
+        const close = source.indexOf("*/", index + 2);
+        index = close === -1 ? source.length : close + 2;
+        continue;
+      }
+    }
+    if (code === 123 /* { */ || code === 40 /* ( */ || code === 91 /* [ */) depth++;
+    else if (code === 41 /* ) */ || code === 93 /* ] */) depth--;
+    else if (code === BRACE) {
+      if (depth === 0 && source.charCodeAt(index + 1) === BRACE) return index;
+      depth--;
+    }
+    index++;
+  }
+
+  return -1;
+}
+
 export function readBlock(source: string, open: number, filename: string, options: ReadOptions = {}): ReadBlock {
   const tolerant = options.tolerant === true;
   const holes: Span[] = [];
@@ -83,49 +131,17 @@ export function readBlock(source: string, open: number, filename: string, option
    */
   function pastHole(): ValuePart {
     const start = at + 2;
-    let index = start;
-    let depth = 0;
+    const close = closingHole(source, at);
 
-    while (index < source.length) {
-      const code = source.charCodeAt(index);
-
-      if (code === 34 /* " */ || code === 39 /* ' */ || code === 96 /* ` */) {
-        index = pastExpressionString(source, index);
-        continue;
-      }
-      if (code === 47 /* / */) {
-        const next = source.charCodeAt(index + 1);
-        if (next === 47) {
-          const line = source.indexOf("\n", index);
-          index = line === -1 ? source.length : line + 1;
-          continue;
-        }
-        if (next === 42) {
-          const close = source.indexOf("*/", index + 2);
-          index = close === -1 ? source.length : close + 2;
-          continue;
-        }
-      }
-      if (code === 123 /* { */ || code === 40 /* ( */ || code === 91 /* [ */) depth++;
-      else if (code === 41 /* ) */ || code === 93 /* ] */) depth--;
-      else if (code === BRACE) {
-        if (depth === 0 && source.charCodeAt(index + 1) === BRACE) {
-          const part: ValuePart = { kind: "hole", index: holes.length };
-          holes.push({ start, end: index });
-          at = index + 2;
-          return part;
-        }
-        depth--;
-      }
-      index++;
+    if (close === -1 && !tolerant) {
+      refuse("this hole is never closed — a `{{` needs a `}}`.", source, at, filename);
     }
 
-    if (!tolerant) refuse("this hole is never closed — a `{{` needs a `}}`.", source, at, filename);
-
-    // Everything to the end of the text is the expression. Mid-typing, that is what it is.
+    // Unclosed and tolerant: everything to the end of the text is the expression. Mid-typing, that
+    // is what it is.
     const part: ValuePart = { kind: "hole", index: holes.length };
-    holes.push({ start, end: source.length });
-    at = source.length;
+    holes.push({ start, end: close === -1 ? source.length : close });
+    at = close === -1 ? source.length : close + 2;
     return part;
   }
 
@@ -379,6 +395,21 @@ export function readBlock(source: string, open: number, filename: string, option
          * file, and an object-literal key is where TypeScript offers the property names.
          */
         if (at < source.length && source.charCodeAt(at) === 59) at++;
+        /**
+         * **A recovery has to move.**
+         *
+         * `readHead` stops WITHOUT consuming anything when the first thing it meets is a `}`, a `)`
+         * or a `;` — a stray brace, or the block's own paren reached from inside a nested rule that
+         * was never closed. Pushing a declaration made of nothing and going round again from the
+         * same character is an infinite loop, and tolerant is the mode an EDITOR runs on every
+         * keystroke: measured, the reading of `&:hover { color: red;` never returned, which does not
+         * report a wrong squiggle — it takes the language server with it.
+         *
+         * There is no declaration at a character that starts nothing, so none is recorded either.
+         */ else if (at === from) {
+          at++;
+          continue;
+        }
         items.push({ kind: "declaration", at: from, valueAt: at, end: at, property, value: [] });
         continue;
       }

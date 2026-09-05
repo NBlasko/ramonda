@@ -191,3 +191,34 @@ describe("a block that is not an attribute", () => {
     expect(findBlocks(`} panel = @@( display: flex; );\n`)[0]?.wrap).toBe(false);
   });
 });
+
+/**
+ * A regular expression, which the walk has to know from a division.
+ *
+ * The `@@(` spelling took away the rule that used to settle this for free: with `name =` required in
+ * front of a block, `/=@(x)/` was ruled out because the `=` inside it is preceded by `/` rather than
+ * by a name. A block is an ordinary value now, so a regex body is just text that can contain
+ * anything — including this syntax.
+ *
+ * Both directions are asserted, because getting it wrong in either is silent: a division read as a
+ * regex swallows real code, and a regex read as division compiles its body as CSS.
+ */
+describe("a slash", () => {
+  const BLOCK = "@@( display: flex; )";
+
+  test.each([
+    ["division by a number", `const a = x / 2;`],
+    ["division by a call", `const a = f() / 2;`],
+    ["division by an index", `const a = arr[0] / 2;`],
+    ["a regex", `const re = /ab+c/;`],
+    ["a regex with a slash in a character class", `const re = /[/]/;`],
+    ["a regex with an escaped slash", `const re = /a\\/b/;`],
+    ["a template holding a division", "const s = `a${1 / 2}`;"],
+  ])("%s does not hide the block after it", (_what, before) => {
+    expect(findBlocks(`${before}\nconst p = ${BLOCK};\n`)).toHaveLength(1);
+  });
+
+  test("and a regex holding the syntax is not a block", () => {
+    expect(findBlocks(`const re = /=@@\\(x\\)/;\n`)).toEqual([]);
+  });
+});

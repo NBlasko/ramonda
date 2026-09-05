@@ -108,3 +108,36 @@ describe("a virtual file for an editor", () => {
     expect(() => virtualFile(`const a = <div css=@@( disp )>x</div>;\n`)).toThrow(CssBlockError);
   });
 });
+
+/**
+ * A tolerant reading that never returns, which is the worst bug this package can have.
+ *
+ * ## The fault this exists for
+ *
+ * Tolerant is the mode an EDITOR runs, on every keystroke — so a reading that loops does not report
+ * a wrong squiggle, it takes the language server with it and the file stops answering at all.
+ *
+ * Measured, and both are states you are in while typing: `&:hover { color: red;` with the block's
+ * own `)` below it, and a stray `}` at the top of a block. `readHead` stops WITHOUT consuming
+ * anything when it meets a `}`, a `)` or a `;` first, so the recovery pushed a declaration made of
+ * nothing and went round again from the same character. Forever.
+ *
+ * The rule this pins is one sentence: **a recovery has to move.**
+ */
+describe("a reading that has to end", () => {
+  test.each([
+    ["a nested rule that was never closed", `&:hover { color: red;`],
+    ["a stray closing brace", `color: red; }`],
+    ["a stray brace and nothing else", `}`],
+    ["a colon with no property", `: red;`],
+    ["semicolons and nothing else", `;;;`],
+    ["a brace that opens and never closes", `&:hover {`],
+    ["everything at once", `} : ; &:hover { ) color: red;`],
+  ])("%s is read and returns", (_what, css) => {
+    const source = `<div css=@@(\n  ${css}\n)>x</div>`;
+    const [site] = findBlocks(source);
+
+    // The claim is that this line is reached at all. A loop here does not fail a test, it hangs it.
+    expect(() => readBlock(source, site.open, "Card.tsx", { tolerant: true })).not.toThrow();
+  });
+});

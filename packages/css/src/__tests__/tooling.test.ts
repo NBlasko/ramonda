@@ -289,6 +289,8 @@ describe("the CSS inside a block", () => {
   test.each([
     ["a string", `  grid-template-areas: "a   a" "b   b";`],
     ["a hole", `  color: {{ a  ?  "red"  :  "blue" }};`],
+    ["a hole holding an object", `  color: {{ {a: {b: 1}}.a.b }};`],
+    ["a hole holding a `}}` in a string", `  color: {{ x["}}"] }};`],
     ["a comment", `  /* two  spaces */`],
   ])("%s keeps its own spacing", (_what, written) => {
     expect(laid(`const a = <div css={@@(\n${written}\n)}>x</div>;\n`)).toBe(

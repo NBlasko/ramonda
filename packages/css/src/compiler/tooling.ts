@@ -1,4 +1,4 @@
-import { readBlock } from "./read";
+import { closingHole, readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
 
 /**
@@ -236,7 +236,8 @@ function layout(body: string, indent: string, step: string): string[] {
     }
 
     if (code === 123 /* { */ && body.charCodeAt(index + 1) === 123) {
-      const stop = endOfHole(body, index);
+      const close = closingHole(body, index);
+      const stop = close === -1 ? body.length : close + 2;
       line += body.slice(index, stop);
       index = stop - 1;
       continue;
@@ -312,12 +313,6 @@ function endOfString(text: string, at: number): number {
     else if (text.charCodeAt(index) === quote) return index + 1;
   }
   return text.length;
-}
-
-/** Past the `}}` closing the hole starting at `at`, or the end of the text. */
-function endOfHole(text: string, at: number): number {
-  const close = text.indexOf("}}", at + 2);
-  return close === -1 ? text.length : close + 2;
 }
 
 /**

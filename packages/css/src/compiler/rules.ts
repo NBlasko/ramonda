@@ -1,6 +1,7 @@
 import type { Block, BlockItem, Declaration, ValuePart } from "./ast";
 import { holeOutOfPlace } from "./errors";
 import { KEYWORDS, PROPERTIES, PROPERTY_NAMED } from "./keywords.generated";
+import { closingHole } from "./read";
 import type { BlockSite } from "./scan";
 
 /**
@@ -150,7 +151,9 @@ export function checkText(source: string, open: number, end: number): Finding[] 
       continue;
     }
     if (code === 123 /* { */ && source.charCodeAt(index + 1) === 123) {
-      const close = source.indexOf("}}", index + 2);
+      // Not `indexOf("}}")`: a hole holds JavaScript, so an object literal inside one has its own —
+      // see `closingHole`, which three scanners share for exactly this reason.
+      const close = closingHole(source, index);
       index = close === -1 ? end : close + 1;
       continue;
     }
