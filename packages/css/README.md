@@ -191,8 +191,12 @@ file had been transformed. So each file serves its own, appended by the plugin â
 follows the JavaScript chunk, and a route that is already code-split gets its own stylesheet for
 free.
 
-Two identical blocks are still one rule: the first file to claim a class owns it, and the second just
-names the class.
+Two identical blocks agree on one CLASS, so the markup is identical and the browser applies one rule.
+Each file still serves that rule in its own stylesheet â€” a chunk has to stand on its own wherever the
+bundler puts it, and a route whose class lives only in another route's sheet renders unstyled. Where
+the duplicate is identical, Vite dedupes the asset by content and it costs nothing; where it cannot,
+measured on a corpus built to duplicate every rule three times, the sheet is 3.5x the bytes and
+**1.1x gzipped**.
 
 ## In an editor
 

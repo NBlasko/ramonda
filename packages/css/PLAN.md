@@ -352,8 +352,10 @@ and an unreadable block fails the build at the author's own line and column.
    unstyled page. **A bundler does not wait for the transform to finish.** So each file gets its own:
    the plugin appends `import "<file>?ramonda-css.css"` to the file whose blocks produced the rules,
    the ordering problem cannot arise, an app imports nothing, and **the CSS follows the JavaScript
-   chunk** — which is what track J needs and is now free. Dedupe survives it: the first file to claim
-   a class owns the rule, and a second file naming the same block emits nothing for it.
+   chunk** — which is what track J needs and is now free. **Dedupe is the CLASS, not one copy of the
+   rule**, and that was a correction: an owner-per-rule shipped one lazily-loaded route naming a class
+   no stylesheet in the build contained. Each file serves every rule it names; measured, that is 3.5x
+   the bytes and 1.1x gzipped on a corpus built to duplicate every rule three times.
 2. **Vite's `loc.column` is 0-based**, and the type says `column: number` and nothing else. Vite
    echoes whatever it is given, so a wrong base is a caret one character off and no error anywhere
    to find it. Measured against a real parse error at a known position: `@` on 1-based column 20 came
@@ -1107,6 +1109,9 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | `@property` with `syntax: "*"` and no `initial-value` | registers fine, so required-ness there would report valid CSS |
 | a generated `@property` animated by a generated `@keyframes` | **interpolates** — exactly 90° at half time, which only a registered property does |
 | `var(var(--x))` | resolves to nothing — a `var()` name must be literal, so a reference cannot be a hole |
+| one rule per OWNER, through a real build | a sibling lazy route named a class **no stylesheet contained** |
+| every file serving what it names | 3.5x the CSS bytes, **1.1x gzipped**, on a corpus that duplicates every rule 3x |
+| two identical per-file sheets | Vite dedupes the ASSET by content — both routes point at one file, for nothing |
 | `ramonda-check` on the raw source | error-recovers; 3 rules become 1, silently |
 | source maps through both transforms | **5 of 5** positions land on the author's line |
 | the map's `hires` setting | all three get every line right; only `false` loses columns, everywhere |

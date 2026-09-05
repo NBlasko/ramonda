@@ -31,8 +31,13 @@ built per render, and the browser caches the stylesheet as a file like any other
 ## What a block becomes
 
 **The static declarations become one class**, named after the hash of the block — so however many
-elements carry it, and however many pages, there is one rule. Two files writing the same CSS get the
-same class and the stylesheet holds it once.
+elements carry it, and however many pages, they all match one rule. Two files writing the same CSS
+agree on the same class, because a hash is what lets two people who never spoke arrive at one answer.
+
+Each file carries that rule in its own stylesheet, which is what lets a code-split route stand on its
+own: a class whose rule lives only in another route's sheet renders unstyled the moment that route
+loads alone. Where the two sheets are identical the bundler dedupes them by content and it costs
+nothing; where it cannot, the measured price is 3.5x the CSS bytes and **1.1x gzipped**.
 
 **Each `{{ … }}` becomes one CSS custom property on the element.** A value that differs per instance
 costs a property rather than a rule:

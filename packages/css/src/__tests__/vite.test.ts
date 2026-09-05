@@ -132,16 +132,21 @@ describe("the stylesheet, one module per file", () => {
   });
 
   /**
-   * Dedupe, which per-file serving had to keep. The first file to claim a class owns the rule; the
-   * second names the class and emits nothing, so there is one rule wherever it was written.
+   * Dedupe is the CLASS, and each file still serves the rule it names.
+   *
+   * The first design gave the rule an owner and let the second file emit nothing. Measured through a
+   * real build: two lazily-loaded routes writing the same block produced one chunk with the rule and
+   * one whose JavaScript named a class no stylesheet contained — unstyled, in production, silently.
+   * What the duplicate costs is nothing whenever it is identical: Vite dedupes an asset by content,
+   * and both routes came out pointing at one file.
    */
-  test("a block written in two files is emitted by one of them", () => {
+  test("a block written in two files is served by both of them", () => {
     const { transform, load } = hooks();
     transform.call({}, STYLED, "/src/One.tsx");
     transform.call({}, STYLED, "/src/Two.tsx");
 
     expect(load.call({}, cssOf("/src/One.tsx"))).toContain("display:flex;");
-    expect(load.call({}, cssOf("/src/Two.tsx"))).toBe("");
+    expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("display:flex;");
   });
 
   test("and the second file still gets the class, which is the point of deduping", () => {
@@ -169,11 +174,17 @@ describe("a save, which is what a dev server does all day", () => {
   });
 
   /**
-   * Ownership moves, and nothing in the module graph connects the edit to the file that gains the
-   * rule. So the plugin has to say so — otherwise the block keeps working in the browser only until
-   * the next full reload, and stops working in the build.
+   * One file's edit cannot change what another file serves, and that is the point.
+   *
+   * It used to. A rule had an owner, ownership moved when the owner dropped the block, and a whole
+   * mechanism existed to tell the file that gained it. **Measured through a real dev server, that
+   * mechanism could not work:** the file that gained the rule had been transformed while it owned
+   * nothing, so no stylesheet import was appended to it — and reloading a module nobody imports
+   * delivers nothing. Editing one file took the styling off another, until a restart.
+   *
+   * A file serving every rule it names removes the question rather than answering it.
    */
-  test("a rule whose owner stopped using it moves, and the new owner is invalidated", () => {
+  test("a file that drops a shared block takes nothing away from anyone else", () => {
     const reloaded: string[] = [];
     const context = {
       server: {
@@ -185,14 +196,14 @@ describe("a save, which is what a dev server does all day", () => {
 
     transform.call(context, STYLED, "/src/One.tsx");
     transform.call(context, STYLED, "/src/Two.tsx");
-    expect(load.call({}, cssOf("/src/Two.tsx"))).toBe("");
+    expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("display:flex;");
 
     reloaded.length = 0;
-    // One.tsx drops the block. Two.tsx never changed and its CSS is now different.
     transform.call(context, `const a = <div>x</div>;\n`, "/src/One.tsx");
 
     expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("display:flex;");
-    expect(reloaded).toContain(cssOf("/src/Two.tsx"));
+    // Nothing to tell anyone: Two's CSS is what it always was.
+    expect(reloaded).toEqual([]);
   });
 
   test("a file whose own CSS did not move tells nobody anything", () => {
@@ -213,7 +224,7 @@ describe("a save, which is what a dev server does all day", () => {
     expect(reloaded).toEqual([]);
   });
 
-  test("a file that keeps some blocks and drops one still hands that rule on", () => {
+  test("a file that keeps some blocks and drops one leaves the other file alone", () => {
     const reloaded: string[] = [];
     const context = {
       server: {
@@ -229,7 +240,7 @@ describe("a save, which is what a dev server does all day", () => {
       "/src/One.tsx",
     );
     transform.call(context, `const c = <div css=@@( color: red; )>z</div>;\n`, "/src/Two.tsx");
-    expect(load.call({}, cssOf("/src/Two.tsx"))).toBe("");
+    expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("color:red;");
 
     reloaded.length = 0;
     // One.tsx keeps `display:flex` and drops `color:red`, so it still has blocks — a different path
@@ -237,7 +248,7 @@ describe("a save, which is what a dev server does all day", () => {
     transform.call(context, `const a = <div css=@@( display: flex; )>x</div>;\n`, "/src/One.tsx");
 
     expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("color:red;");
-    expect(reloaded).toContain(cssOf("/src/Two.tsx"));
+    expect(reloaded).toEqual([]);
   });
 
   test("and a build with no server does not reach for one", () => {

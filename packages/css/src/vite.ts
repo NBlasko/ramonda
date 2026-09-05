@@ -38,8 +38,10 @@ import { type SourceMap, transform } from "./compiler/transform";
  * imports nothing, and **the CSS follows the JavaScript chunk**, which is what per-route splitting
  * needs and is now a decision the bundler has already made.
  *
- * Dedupe survives it: the first file to claim a class owns the rule, and a second file naming the
- * same block emits nothing for it.
+ * What is deduped is the CLASS: identical blocks agree on one name and the browser applies one rule.
+ * Each file serves that rule itself, because a chunk has to stand on its own — an owner-per-rule was
+ * tried, and measured through a real build it left one lazily-loaded route naming a class no
+ * stylesheet contained. See `Sheet`.
  *
  * ## Structural types, on purpose
  *
@@ -72,14 +74,6 @@ export interface CssPluginLike {
 
 /** What a bundler hands back at the end of a build. Only what this reads is declared. */
 export type Bundle = Record<string, { type?: string; fileName?: string; source?: unknown }>;
-
-/** The bits of Vite's plugin context this reaches for, all optional. */
-interface PluginContext {
-  server?: {
-    moduleGraph: { getModuleById(id: string): unknown };
-    reloadModule(module: never): void;
-  };
-}
 
 /**
  * The query that turns a source file's id into its stylesheet's.
@@ -163,20 +157,21 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       if (result === undefined) {
         if (!styled.has(file)) return null;
         styled.delete(file);
-        for (const changed of sheet.add(file, [])) reload(this as PluginContext, changed + SUFFIX);
+        sheet.add(file, []);
         return null;
       }
 
       styled.add(file);
 
       /**
-       * Every file whose CSS moved, which is not only this one: a file that stops using a block hands
-       * ownership of that rule to whoever else still names it, and a dev server has no way to know
-       * that unless it is told.
+       * Only this file's CSS can have moved.
+       *
+       * A file serves every rule it names, so one file's edit cannot change what another file
+       * serves — and its own stylesheet is reloaded along with the JavaScript Vite has just read.
+       * This used to tell other files too, because ownership moved rules between them; that
+       * mechanism could not work and is gone with the ownership that needed it.
        */
-      for (const changed of sheet.add(file, result.blocks)) {
-        if (changed !== file) reload(this as PluginContext, changed + SUFFIX);
-      }
+      sheet.add(file, result.blocks);
 
       /**
        * The import that carries this file's rules, appended rather than prepended: the CSS is applied
@@ -215,18 +210,4 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       );
     },
   };
-}
-
-/**
- * Tells the dev server one file's stylesheet moved.
- *
- * The file whose JavaScript Vite just read needs no telling — its stylesheet is reloaded along with
- * it. This is for the OTHER files, the ones that gained or lost a rule because somebody else's file
- * changed, and which nothing in the graph connects to the edit.
- */
-function reload(context: PluginContext, id: string): void {
-  const server = context.server;
-  if (server === undefined) return;
-  const module = server.moduleGraph.getModuleById(id);
-  if (module !== undefined && module !== null) server.reloadModule(module as never);
 }

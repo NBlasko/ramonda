@@ -88,7 +88,7 @@ function project(card: string, entry: string, assets: Record<string, string> = {
       // itself — the same option a wrapper for another JSX library uses.
       `  plugins: [ramondaCss({ runtime: ${JSON.stringify(join(PACKAGE, "dist", "index.js"))} })],\n` +
       `  esbuild: { jsx: "automatic", jsxImportSource: ${JSON.stringify(join(root, "src", "jsx"))} },\n` +
-      `  build: { outDir: "out", rollupOptions: { input: "src/main.ts" } },\n` +
+      `  build: { outDir: "out", manifest: true, rollupOptions: { input: "src/main.ts" } },\n` +
       `};\n`,
   );
 
@@ -205,5 +205,56 @@ describe("a named block that refers to a file beside it", () => {
     // it. What must NOT survive is the author's own relative path, which resolves to nothing.
     expect(css).not.toContain("./brand.woff2");
     expect(css).toContain('format("woff2")');
+  });
+});
+
+/**
+ * The same block in two lazily-loaded routes, which is what splitting is FOR.
+ *
+ * Dedupe used to mean OWNERSHIP: the first file to claim a class emitted the rule and everyone else
+ * merely named it. That is correct while every sheet loads together, and wrong the moment they do
+ * not — measured, and this is the shape that measured it. Two sibling routes wrote the same block:
+ * one chunk got the rule, the other got a `.js` naming a class **no stylesheet in the build had**.
+ * A visitor landing on the second route saw the element render unstyled, with nothing to blame and
+ * no error anywhere.
+ *
+ * So a file emits every rule it NAMES. The cost is a rule written twice when two files in one chunk
+ * share a block; the alternative is a page that is sometimes right.
+ */
+describe("a block written in two routes that never load together", () => {
+  test("each route carries the rule it names", () => {
+    const root = project(
+      `export const panel = @@( color: red; display: flex; );\n`,
+      `if (location.hash === "#one") import("./One").then((m) => console.log(m.panel));\n` +
+        `else import("./Two").then((m) => console.log(m.panel));\n`,
+    );
+    const same = `export const panel = @@( color: red; display: flex; );\n`;
+    writeFileSync(join(root, "src", "One.tsx"), same);
+    writeFileSync(join(root, "src", "Two.tsx"), same);
+
+    const result = build(root);
+    expect(result.ok).toBe(true);
+
+    /**
+     * The MANIFEST, not the file names — that is what a page loads.
+     *
+     * Vite dedupes an asset by content, so both routes here end up pointing at one stylesheet file
+     * with one copy of the rule: the duplication this design accepts costs nothing whenever the
+     * duplicate is identical, which is the only case it creates. Asking for a stylesheet named after
+     * the route would call that correct build a failure.
+     */
+    const manifest = JSON.parse(readFileSync(join(root, "out", ".vite", "manifest.json"), "utf8")) as Record<
+      string,
+      { file: string; css?: string[] }
+    >;
+
+    for (const route of ["One", "Two"]) {
+      const entry = manifest[`src/${route}.tsx`];
+      const named = readFileSync(join(root, "out", entry.file), "utf8").match(/r-[0-9a-f]{16}/)?.[0];
+      const loaded = (entry.css ?? []).map((each) => readFileSync(join(root, "out", each), "utf8")).join("");
+
+      expect(named).toBeDefined();
+      expect(loaded, `${route} names ${named} and loads no stylesheet holding it`).toContain(named);
+    }
   });
 });

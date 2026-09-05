@@ -65,50 +65,57 @@ function nameIn(className: string, block: EmittedBlock): string {
  * rules. The ordering problem disappears, an app imports nothing, and the CSS follows the JavaScript
  * chunk — which is what per-route splitting needs and is now free.
  *
- * **Dedupe survives that**, and {@link cssFor} is how: the first file to claim a class OWNS the rule,
- * and a later file naming the same block gets nothing for it. One rule, wherever it is written.
+ * ## Dedupe is a shared CLASS, not a single copy of the rule — and that was a correction
+ *
+ * The first design gave each rule an OWNER: the first file to claim a class emitted it, and every
+ * later file merely named it. One rule in the whole build, which is correct exactly as long as every
+ * stylesheet loads together.
+ *
+ * **Measured, and it does not.** Two lazily-loaded routes writing the same block came out of a real
+ * build as one chunk carrying the rule and another carrying a `.js` that names a class **no
+ * stylesheet in the build contains**. A visitor landing on the second route saw the element render
+ * unstyled, with no error anywhere — the failure this whole file exists to prevent, arriving by the
+ * one door nobody was watching. In a dev server it had a second shape: a file that dropped a shared
+ * block took the rule away from a file that never changed, because ownership had passed to a module
+ * with no import to reload.
+ *
+ * So **a file serves every rule it NAMES**. What is deduped is the class: identical blocks agree on
+ * one name, the markup is identical, and the browser applies one rule. What is duplicated is the
+ * rule TEXT, once per file that writes the block — which the bundler then places in whichever chunks
+ * need it, because that is a decision it already makes for every other module.
  */
 export class Sheet {
   /** File → the classes it currently contributes, in source order. */
   private readonly byFile = new Map<string, string[]>();
   /**
-   * Class → the rule, every file that asks for it, and the one whose CSS module carries it.
+   * Class → the rule and every file that names it.
    *
-   * Insertion order is the sheet's order. `owner` is what makes dedupe work while each file serves
-   * its own CSS: exactly one file emits the rule, and everyone else just names the class.
+   * Insertion order is the sheet's order. There is no owner: every one of those files serves the
+   * rule, because a file's stylesheet has to stand on its own wherever its chunk lands.
    */
-  private readonly rules = new Map<string, { block: EmittedBlock; files: Set<string>; owner: string }>();
+  private readonly rules = new Map<string, { block: EmittedBlock; files: Set<string> }>();
 
   /**
-   * What one file contributes, replacing whatever it contributed before, and **which files' CSS
-   * changed as a result**.
+   * What one file contributes, replacing whatever it contributed before.
    *
    * Replacing rather than adding is the whole reason this is keyed by file: on a save, the blocks the
    * author deleted have to go, and only this knows which those were.
    *
-   * The return value is the other half. A file that stops using a block hands ownership of that rule
-   * to whoever else still names it, so the CSS of a file nobody touched can change — and a dev server
-   * has no way to know that unless it is told.
+   * **Nothing else's CSS moves.** A file serves what it names, so one file's edit cannot change what
+   * another file serves — which is why this returns nothing, and why the dev server needs no
+   * cross-file invalidation. It used to: ownership meant a file that dropped a shared block took the
+   * rule away from a file nobody had touched, and telling that file was a whole mechanism. Measured
+   * to be broken anyway, since a file owning nothing at the moment it was transformed had no
+   * stylesheet import to reload.
    */
-  add(file: string, blocks: readonly EmittedBlock[]): Set<string> {
-    /** Whose CSS is now different. The file being added is in it whenever anything about it moved. */
-    const changed = new Set<string>();
-    const ownerBefore = new Map<string, string>();
-    for (const [className, rule] of this.rules) ownerBefore.set(className, rule.owner);
-
+  add(file: string, blocks: readonly EmittedBlock[]): void {
     for (const className of this.byFile.get(file) ?? []) {
       const rule = this.rules.get(className);
       if (rule === undefined) continue;
       rule.files.delete(file);
       // Nothing asks for it any more, so the NAME is free again. Keeping the rule would make editing
       // a block collide with the name it used to have, until the server restarted.
-      if (rule.files.size === 0) {
-        this.rules.delete(className);
-        continue;
-      }
-      // Somebody else still names it. Ownership passes to whichever of them claimed it first, which
-      // is the order the set preserves.
-      if (rule.owner === file) rule.owner = [...rule.files][0];
+      if (rule.files.size === 0) this.rules.delete(className);
     }
 
     const claimed: string[] = [];
@@ -116,7 +123,7 @@ export class Sheet {
       const existing = this.rules.get(block.className);
 
       if (existing === undefined) {
-        this.rules.set(block.className, { block, files: new Set([file]), owner: file });
+        this.rules.set(block.className, { block, files: new Set([file]) });
         claimed.push(block.className);
         continue;
       }
@@ -145,28 +152,19 @@ export class Sheet {
     }
 
     this.byFile.set(file, claimed);
-
-    for (const [className, rule] of this.rules) {
-      if (ownerBefore.get(className) !== rule.owner) changed.add(rule.owner);
-    }
-    for (const [className, owner] of ownerBefore) {
-      // A rule that is gone: whoever used to serve it is serving less now.
-      if (!this.rules.has(className)) changed.add(owner);
-    }
-    return changed;
   }
 
   /**
-   * The CSS one file is responsible for: the rules it OWNS, and nothing it merely names.
+   * The CSS one file needs: every rule it names, in the sheet's own order.
    *
-   * This is where dedupe and per-file serving meet. A block written in two files is claimed by both
-   * and owned by one, so it is emitted once — and the file that owns it is the one whose chunk the
-   * rule lands in, which is what makes splitting a decision the bundler already made.
+   * **Every** rule, including one another file also writes — see the note at the top. A stylesheet
+   * that leaves out a class its own JavaScript names is a stylesheet that is only correct when some
+   * other chunk happens to have loaded, and a bundler makes no such promise.
    */
   cssFor(file: string): string {
     let out = "";
     for (const [className, rule] of this.rules) {
-      if (rule.owner === file) out += write(className, rule.block);
+      if (rule.files.has(file)) out += write(className, rule.block);
     }
     return out === "" ? "" : `@layer ramonda {\n${out}}\n`;
   }

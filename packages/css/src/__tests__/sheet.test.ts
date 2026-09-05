@@ -205,13 +205,13 @@ describe("a named rule", () => {
     expect(sheet.css()).not.toContain("r-5555555555555555");
   });
 
-  test("travels with the file that owns it, like any other rule", () => {
+  test("is served by every file that names it, like any other rule", () => {
     const sheet = new Sheet();
     sheet.add("a.tsx", [SLIDE]);
     sheet.add("b.tsx", [SLIDE]);
 
     expect(sheet.cssFor("a.tsx")).toContain("@keyframes r-4444444444444444");
-    expect(sheet.cssFor("b.tsx")).toBe("");
+    expect(sheet.cssFor("b.tsx")).toContain("@keyframes r-4444444444444444");
   });
 
   test("is asked for by name after post-processing, since it has no class to look for", () => {
