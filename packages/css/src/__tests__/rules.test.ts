@@ -479,3 +479,61 @@ describe("a line comment", () => {
     expect(check(css).filter((finding) => finding.rule === "line-comment")).toEqual([]);
   });
 });
+
+/**
+ * A property whose value is a PROPERTY NAME, which nothing was checking.
+ *
+ * ## The fault this exists for
+ *
+ * Measured — every one of these reported nothing: `transition-property: bordr-left-width`,
+ * `will-change: bordr-left-width`. Both grammars admit a free identifier, and the honest exclusion
+ * for a free identifier is to skip the property entirely, because nothing can tell a name somebody
+ * invented from a name somebody mistyped.
+ *
+ * **Except here the identifier is not free at all.** It is a property name, and that is a closed set
+ * this package already generates — 551 of them.
+ *
+ * ## Why it is a list rather than something derived
+ *
+ * `mdn-data` does not say so. Measured: `transition-property` is `none | <single-transition-property>#`
+ * and `<single-transition-property>` is `all | <custom-ident>` — a free identifier, with nothing in
+ * the grammar to mark it as a property name. The prose in the specification says it; the machine
+ * readable form does not. So the two properties are named, with this note, rather than inferred.
+ *
+ * The `transition` SHORTHAND is deliberately not among them: its value mixes a property, two times
+ * and an easing function in one list, and telling which word is which needs a model of the grammar
+ * rather than a set of names.
+ */
+describe("a value that has to be a property name", () => {
+  test.each([
+    ["transition-property", `transition-property: bordr-left-width;`, "border-left-width"],
+    ["will-change", `will-change: trnasform;`, "transform"],
+  ])("%s suggests the name that was meant", (property, css, meant) => {
+    const [only, ...rest] = check(css);
+
+    expect(rest).toEqual([]);
+    expect(only.rule).toBe("unknown-value");
+    expect(only.message).toContain(property);
+    expect(only.message).toContain(meant);
+  });
+
+  test.each([
+    ["a real property", `transition-property: border-left-width;`],
+    ["two of them", `transition-property: opacity, transform;`],
+    ["a keyword the grammar lists", `transition-property: all;`],
+    ["another", `transition-property: none;`],
+    ["will-change's own keywords", `will-change: scroll-position, contents;`],
+    ["auto", `will-change: auto;`],
+    ["a vendor-prefixed property", `transition-property: -webkit-transform;`],
+    ["a custom property, which is animatable", `transition-property: --brand-colour;`],
+    ["a CSS-wide keyword", `transition-property: inherit;`],
+    ["a hole", `transition-property: {{what}};`],
+  ])("%s is fine", (_what, css) => {
+    expect(check(css)).toEqual([]);
+  });
+
+  /** The shorthand is left alone, and the test says so rather than leaving it to be discovered. */
+  test("the transition shorthand is not checked this way", () => {
+    expect(check(`transition: bordr-left-width 150ms ease-in-out;`)).toEqual([]);
+  });
+});

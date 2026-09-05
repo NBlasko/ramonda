@@ -967,6 +967,33 @@ the discipline every scanner here uses.
 `/* … */` is the one CSS has, and it is stripped from the emitted rule, which is right: a note
 explaining a decision to the next person does not need to reach a browser.
 
+### W — a value that has to be a property NAME
+
+Reported, and measured: `transition-property: bordr-left-width` and `will-change: trnasform` said
+nothing. Both grammars admit a free identifier, and the honest exclusion for a free identifier is to
+check nothing — a name somebody invented cannot be told from a name somebody mistyped.
+
+**Except here the identifier is not free.** It is a property name, and that is a closed set this
+package already generates.
+
+**`mdn-data` does not say so, and that is why it is a LIST.** Measured: `transition-property` is
+`none | <single-transition-property>#` and `<single-transition-property>` is `all | <custom-ident>` —
+nothing in the machine-readable grammar marks the identifier as a property name. The prose in the
+specification says it; the JSON does not. So two properties are named in the generator with that
+note, rather than inferred from something that does not exist.
+
+**The `transition` SHORTHAND is deliberately not among them.** Its value mixes a property, two times
+and an easing function in one list, and telling which word is which needs a model of the grammar
+rather than a set of names — which is the open question about porting one from elsewhere.
+
+**Three things that are not typos**, each a test: a vendor-prefixed property is not in the generated
+list, which holds only unprefixed names; a custom property is animatable and is the author's own
+word; and a CSS-wide keyword is accepted everywhere. The first two needed a fix one level down —
+`words()` did not let a `-` start a word, so `-webkit-transform` was read as `webkit-transform` and
+`--brand` as `brand`, and both were reported as typos of something they are not. A leading `-`
+belongs to the word when a letter or another `-` follows it, which is CSS's own identifier rule, and
+`-8px` stays a number.
+
 ### L — the runtime diagnostic. Deliberately last — DONE
 
 **The user's reasoning for putting it last was right:** diagnostics are this framework's signature,

@@ -368,3 +368,20 @@ export const KEYWORDS: Readonly<Record<string, string>> = {
   "z-index": "auto",
   "zoom": "normal reset",
 };
+
+/**
+ * The properties whose remaining identifier is a PROPERTY NAME, and the keywords they also take.
+ *
+ * A list rather than something derived, and `mdn-data` is the reason: `transition-property` is
+ * `none | <single-transition-property>#`, and `<single-transition-property>` is
+ * `all | <custom-ident>` — a free identifier, with nothing in the machine-readable grammar marking
+ * it as a property name. The prose in the specification says it; the JSON does not.
+ *
+ * The `transition` SHORTHAND is deliberately absent: its value mixes a property, two times and an
+ * easing function in one list, and telling which word is which needs a model of the grammar rather
+ * than a set of names.
+ */
+export const PROPERTY_NAMED: Readonly<Record<string, string>> = {
+  "transition-property": "all none",
+  "will-change": "auto contents scroll-position",
+};

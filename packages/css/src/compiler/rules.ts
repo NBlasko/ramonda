@@ -1,6 +1,6 @@
 import type { Block, BlockItem, Declaration, ValuePart } from "./ast";
 import { holeOutOfPlace } from "./errors";
-import { KEYWORDS, PROPERTIES } from "./keywords.generated";
+import { KEYWORDS, PROPERTIES, PROPERTY_NAMED } from "./keywords.generated";
 import type { BlockSite } from "./scan";
 
 /**
@@ -332,6 +332,9 @@ function unknownProperty(item: Declaration, findings: Finding[]): void {
  * name the author invented and nothing here can judge it.
  */
 function unknownValue(item: Declaration, findings: Finding[]): void {
+  const names = PROPERTY_NAMED[item.property];
+  if (names !== undefined) return propertyNames(item, names, findings);
+
   const accepted = KEYWORDS[item.property];
   if (accepted === undefined) return;
 
@@ -351,6 +354,36 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
         meant === undefined
           ? `\`${item.property}\` does not accept \`${word.text}\`.`
           : `\`${item.property}\` does not accept \`${word.text}\`. Did you mean \`${meant}\`?`,
+    });
+  }
+}
+
+/**
+ * A value that has to be a PROPERTY NAME — `transition-property`, `will-change`.
+ *
+ * Their grammars admit a free identifier, which is normally the honest reason to check nothing: a
+ * name somebody invented cannot be told from a name somebody mistyped. Here it can, because the
+ * identifier is a property name and that is a closed set this package already generates.
+ *
+ * **Three things are not typos and must not be reported.** A vendor-prefixed property is not in the
+ * generated list, which holds only unprefixed names. A custom property is animatable and is the
+ * author's own word. And a CSS-wide keyword is accepted everywhere.
+ */
+function propertyNames(item: Declaration, accepted: string, findings: Finding[]): void {
+  const keywords = new Set(accepted === "" ? [] : accepted.split(" "));
+
+  for (const word of words(item.value)) {
+    if (word.text.startsWith("-")) continue;
+    if (keywords.has(word.text) || GLOBAL.has(word.text) || KNOWN.has(word.text)) continue;
+
+    const meant = nearest(word.text, PROPERTIES as string[]);
+    findings.push({
+      rule: "unknown-value",
+      at: word.at ?? item.valueAt ?? item.at ?? 0,
+      length: word.text.length,
+      message:
+        `\`${item.property}\` takes a property name, and \`${word.text}\` is not one.` +
+        (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
     });
   }
 }
@@ -467,9 +500,17 @@ function words(parts: readonly ValuePart[]): Word[] {
         while (index < text.length && !isSpace(text.charCodeAt(index)) && text.charCodeAt(index) !== 44) index++;
         continue;
       }
-      if (!isWordStart(code)) continue;
+      /**
+       * A leading `-` belongs to the word when a letter or another `-` follows it, which is CSS's own
+       * identifier rule: `-webkit-transform` and `--brand` are one word each, and `-8px` is a number.
+       * Without it, a vendor-prefixed property read as `webkit-transform` and a custom property as
+       * `brand` — both reported as typos of something they are not.
+       */
+      const dashed = code === 45 && (isWordStart(text.charCodeAt(index + 1)) || text.charCodeAt(index + 1) === 45);
+      if (!dashed && !isWordStart(code)) continue;
 
       const start = index;
+      if (dashed) index += text.charCodeAt(index + 1) === 45 ? 2 : 1;
       while (index < text.length && isWordCharacter(text.charCodeAt(index))) index++;
 
       // A function: the name is not a keyword and its arguments are its own grammar.
