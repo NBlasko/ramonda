@@ -3,7 +3,7 @@ import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
 import { positionOf } from "./compiler/errors";
 import { readBlock } from "./compiler/read";
-import { checkBlock } from "./compiler/rules";
+import { checkBlock, checkText } from "./compiler/rules";
 import { findBlocks, mayHoldABlock } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
@@ -158,7 +158,8 @@ function cssFindings(fileName: string, source: string): Finding[] {
 
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName);
-    for (const finding of checkBlock(read.block)) {
+    // The text and the parse, because one of them has no name for a `//` — see `checkText`.
+    for (const finding of [...checkText(source, site.open, read.end), ...checkBlock(read.block)]) {
       out.push({ file: fileName, ...positionOf(source, finding.at), code: finding.rule, message: finding.message });
     }
   }

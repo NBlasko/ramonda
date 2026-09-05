@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { KEYWORDS, PROPERTIES } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
-import { type Finding, checkBlock } from "../compiler/rules";
+import { type Finding, checkBlock, checkText } from "../compiler/rules";
 import { findBlocks } from "../compiler/scan";
 
 /**
@@ -35,7 +35,9 @@ function check(css: string): Finding[] {
   const source = `<div css=@@(\n${css}\n)>x</div>`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
-  return checkBlock(read.block);
+  // Both halves, the way the real callers ask: the parse for what a declaration says, the text for
+  // what the parser has no name for.
+  return [...checkText(source, site.open, read.end), ...checkBlock(read.block)].sort((a, b) => a.at - b.at);
 }
 
 const rules = (css: string) => check(css).map((finding) => finding.rule);
@@ -428,5 +430,52 @@ describe("a missing semicolon reports once", () => {
 
     expect(rest).toEqual([]);
     expect(only.rule).toBe("unknown-value");
+  });
+});
+
+/**
+ * `//` in a block, which CSS does not have and a person arriving from TypeScript will write.
+ *
+ * ## The fault this exists for
+ *
+ * It is not silent — it is worse. Measured end to end: `// why` is written into the stylesheet
+ * verbatim, `.r-x{// why\n  color:red;gap:8px;}`, and a real CSS compiler then refuses the WHOLE
+ * file with `SyntaxError: Unexpected token Semicolon`, naming nothing about the block, the file or
+ * the line. A build that fails somewhere else entirely, for a comment.
+ *
+ * `/* … *\/` is the one CSS has, and it is stripped from the emitted rule, which is right.
+ *
+ * ## What is not one
+ *
+ * A `//` inside a string or a function is text: `url(https://example.com/a.png)` is the case that
+ * matters, and `url(//cdn/a.png)` is the same thing without a scheme. Neither is a comment, and a
+ * rule that reported them would be reporting correct CSS.
+ */
+describe("a line comment", () => {
+  test("is reported, with what to write instead", () => {
+    const [only, ...rest] = check(`// why\n  color: red;`);
+
+    expect(rest).toEqual([]);
+    expect(only.rule).toBe("line-comment");
+    expect(only.message).toContain("/*");
+  });
+
+  test.each([
+    ["after a declaration", `color: red; // the brand`],
+    ["inside a nested rule", `&:hover {\n    // why\n    color: red;\n  }`],
+  ])("%s is reported too", (_what, css) => {
+    expect(check(css).map((finding) => finding.rule)).toContain("line-comment");
+  });
+
+  test.each([
+    ["a block comment", `/* why */\n  color: red;`],
+    ["a url with a scheme", `background: url(https://example.com/a.png);`],
+    ["a url with no scheme", `background: url(//cdn.example.com/a.png);`],
+    ["a quoted one", `content: "// not a comment";`],
+    ["a single slash", `font: 12px/1.5 system-ui;`],
+    ["a ratio", `aspect-ratio: 16 / 9;`],
+    ["one inside a hole", `color: {{cond ? "red" : "blue"}}; /* fine */`],
+  ])("%s is not one", (_what, css) => {
+    expect(check(css).filter((finding) => finding.rule === "line-comment")).toEqual([]);
   });
 });

@@ -98,6 +98,42 @@ The last one is refused rather than mangled: there is nothing to put a variable 
 carrying a `;` is refused outright — on the server as well, where it would otherwise become real
 declarations in the markup.
 
+## Comments
+
+A block is CSS, so its comment is CSS's:
+
+```tsx
+const card = @@(
+  /* the dot is the level, and it is set from the theme */
+  display: grid;
+  gap: 8px;      /* matches the list beside it */
+);
+```
+
+They are **stripped from the emitted rule**, which is right — a note explaining a decision to the
+next person does not need to reach a browser.
+
+**`//` is not a comment here, and it does not fail quietly.** CSS has no line comment, so the
+characters are written into the stylesheet as they stand:
+
+```
+.r-3f96…{// why
+  color:red;gap:8px;}
+```
+
+and the CSS compiler then refuses the **whole file** — measured, `SyntaxError: Unexpected token
+Semicolon` — naming nothing about the block, the file or the line it came from. A build that fails
+somewhere else entirely, for a comment. So it is reported before it gets there, as
+`line-comment`, on the `//` itself.
+
+**Inside a hole, a comment is TypeScript's**, because that is what a hole holds:
+
+```tsx
+const card = @@(
+  color: {{/* the brand, not the accent */ "#ff0055"}};
+);
+```
+
 ## Theming
 
 **A theme is custom properties, and a block reads them.** Nothing here is a theme system, and that is

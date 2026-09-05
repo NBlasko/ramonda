@@ -1,6 +1,6 @@
 import type ts from "typescript";
 import { type Span, readBlock } from "./compiler/read";
-import { type Finding, checkBlock, checkSite } from "./compiler/rules";
+import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
@@ -490,7 +490,9 @@ function properties(info: PluginCreateInfo): string | undefined {
 function cssFindings(text: string): Finding[] {
   const out: Finding[] = [];
   for (const site of findBlocks(text)) {
-    out.push(...checkBlock(readBlock(text, site.open, "", { tolerant: true }).block));
+    const read = readBlock(text, site.open, "", { tolerant: true });
+    // The text and the parse, because one of them has no name for a `//` — see `checkText`.
+    out.push(...checkText(text, site.open, read.end), ...checkBlock(read.block));
   }
   return out;
 }

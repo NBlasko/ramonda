@@ -950,6 +950,23 @@ a `main` was invisible until the link was replaced, with nothing logged — as f
 the extension had never declared a formatter. `vscode/install.mjs` re-links, which is why re-running
 it is the fix; it also had a bug of its own, `rmSync` on a link to a directory, which throws.
 
+### V — `//`, which does not fail quietly
+
+CSS has no line comment, and a person arriving from TypeScript writes one. It is not silent, it is
+worse: measured end to end, `// why` is written into the stylesheet verbatim —
+`.r-x{// why\n  color:red;gap:8px;}` — and a real CSS compiler then refuses the WHOLE file with
+`SyntaxError: Unexpected token Semicolon`, naming nothing about the block, the file or the line. A
+build that fails somewhere else entirely, for a comment.
+
+**It needs the TEXT, not the parse**, which is why `checkText` exists beside `checkBlock`: the parser
+has no idea what a line comment is, so it reads the characters as part of a property name and hands
+them on. A `//` inside a string or a function is text rather than a comment — `url(https://…)` is the
+case that matters, and `url(//cdn/…)` is the same without a scheme — so both are stepped over whole,
+the discipline every scanner here uses.
+
+`/* … */` is the one CSS has, and it is stripped from the emitted rule, which is right: a note
+explaining a decision to the next person does not need to reach a browser.
+
 ### L — the runtime diagnostic. Deliberately last — DONE
 
 **The user's reasoning for putting it last was right:** diagnostics are this framework's signature,

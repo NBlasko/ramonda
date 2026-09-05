@@ -54,7 +54,8 @@ export type RuleId =
   | "repeated-declaration"
   | "hole-out-of-place"
   | "uncolourable-block"
-  | "run-on-declaration";
+  | "run-on-declaration"
+  | "line-comment";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -116,6 +117,60 @@ function isTagNameCharacter(code: number): boolean {
     code === 45 ||
     code === 46
   );
+}
+
+/**
+ * What is true of the block's TEXT rather than of its parse.
+ *
+ * `//` is the whole of it, and it needs the text because the parser has no idea what a line comment
+ * is — it reads the characters as part of a property name and hands them on. Measured end to end:
+ * `// why` is written into the stylesheet verbatim, `.r-x{// why\n  color:red;}`, and a real CSS
+ * compiler then refuses the WHOLE file with `SyntaxError: Unexpected token Semicolon`, naming
+ * nothing about the block, the file or the line. A build that fails somewhere else entirely, for a
+ * comment.
+ *
+ * A `//` inside a string or a function is text, not a comment — `url(https://example.com/a.png)` is
+ * the case that matters, and `url(//cdn/a.png)` is the same without a scheme. Both are stepped over
+ * whole, the same discipline every scanner in this package uses.
+ */
+export function checkText(source: string, open: number, end: number): Finding[] {
+  const findings: Finding[] = [];
+  let parens = 0;
+
+  for (let index = open + 1; index < end; index++) {
+    const code = source.charCodeAt(index);
+
+    if (code === 34 /* " */ || code === 39 /* ' */) {
+      index = endOfString(source, index);
+      continue;
+    }
+    if (code === 47 /* / */ && source.charCodeAt(index + 1) === 42 /* * */) {
+      const close = source.indexOf("*/", index + 2);
+      index = close === -1 ? end : close + 1;
+      continue;
+    }
+    if (code === 123 /* { */ && source.charCodeAt(index + 1) === 123) {
+      const close = source.indexOf("}}", index + 2);
+      index = close === -1 ? end : close + 1;
+      continue;
+    }
+    if (code === 40 /* ( */) parens++;
+    else if (code === 41 /* ) */) parens = Math.max(0, parens - 1);
+    else if (parens === 0 && code === 47 && source.charCodeAt(index + 1) === 47) {
+      findings.push({
+        rule: "line-comment",
+        at: index,
+        length: 2,
+        message:
+          "CSS has no `//` comment — this and the rest of the line are written into the stylesheet, " +
+          "and the build refuses the file. Write `/* … */`.",
+      });
+      // One per block: the rest of the line is already claimed, and a file full of them is one habit.
+      return findings;
+    }
+  }
+
+  return findings;
 }
 
 export function checkBlock(block: Block): Finding[] {
