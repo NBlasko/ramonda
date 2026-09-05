@@ -16,7 +16,7 @@ One hoisted descriptor at module scope, one call at the site.
 
 ```
                                        source
-<div css=@(
+<div css=@@(
   display: flex;
   border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
 )>

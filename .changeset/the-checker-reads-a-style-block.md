@@ -2,7 +2,7 @@
 "@ramonda/check": minor
 ---
 
-The analyzer reads a project whose source contains `@( … )` style blocks
+The analyzer reads a project whose source contains `@@( … )` style blocks
 
 A style block is written in real CSS beside the markup and compiled before the build. Its syntax is
 not TypeScript, and this reads the author's source — so the compiler's parser gave up at the block

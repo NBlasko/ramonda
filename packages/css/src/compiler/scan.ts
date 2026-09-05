@@ -4,23 +4,30 @@
  * ## Two passes, and the first one has to be free
  *
  * A codebase that uses none of this must pay nothing, so the first question is a substring search
- * for `@(` and the answer is usually no. Measured on this repository before any of it existed: 1,268
- * files and 10.61 MB in **1.33 ms**. Only a file that survives that gets read properly.
+ * for `@@(` and the answer is usually no. Measured on this repository before any of it existed:
+ * 1,268 files and 10.61 MB in **1.33 ms**. Only a file that survives that gets read properly.
  *
- * ## Why the second pass is lexical, and not a regular expression
+ * ## Why the opening is `@@(` and not `@(`
  *
- * Finding `@(` is not the same as knowing it is a JSX attribute. Three things say otherwise and each
- * of them is ordinary code:
+ * `@(expr)` is *already* valid TypeScript in two places, and both were measured: on a class member,
+ * `class C { @(dec) m() {} }`, and on a parameter, `constructor(@(inject()) private x: number)`. In a
+ * decorator-heavy framework that is not a footnote — it forced the opening to be recognised only
+ * after `name =`, which in turn kept a block out of every ordinary expression position: an argument,
+ * an object value, an array item, a ternary.
  *
- * - **a decorator.** `@(dec) m() {}` is already valid TypeScript, and this is a decorator-heavy
- *   framework — so this is a permanent test rather than a note.
- * - **a string, a template or a comment.** A file that documents the syntax contains it.
- * - **a regular expression.** `/=@(x)/` contains the characters in the right order.
+ * **`@@(` is a syntax error everywhere in TypeScript**, measured in all five positions — after `=`,
+ * on a class member, on a parameter, as a call argument, as an object value. So the rule disappears
+ * and a block goes where any other value goes.
  *
- * All three are settled by the same rule, which is what an attribute actually looks like:
- * **whitespace, a name, `=`, then `@(`.** A decorator has no `=name` before it; a regex's `=` is
- * preceded by `/`; and strings, templates and comments are skipped by the walk rather than reasoned
- * about. Measured at ~450 MB/s, about a fifth of the whole transform.
+ * It also makes the cheap pass sharper, which is the half that runs on every file of every build:
+ * measured on this repository, the substring `@(` matches **41** files and only **2** hold a block —
+ * the other 39 are decorators, each paying a full lexical walk for nothing. `@@(` matches the 2.
+ *
+ * ## Why the second pass is still lexical
+ *
+ * A string, a template or a comment can contain anything, including this syntax — a file that
+ * documents it does. Those are skipped by the walk rather than reasoned about, which is also what
+ * makes it fast: measured at ~450 MB/s, about a fifth of the whole transform.
  */
 
 /** One block's opening: where the name starts, where its `(` is, and how the value has to be written. */
@@ -34,24 +41,26 @@ export interface BlockSite {
   /**
    * Whether the compiled value has to be wrapped in `{ }` where it is written back.
    *
-   * A JSX attribute written without them needs them — `css=@( … )` becomes `css={_s0}`. The two
-   * expression spellings do not: in `css={@( … )}` the braces are the author's, and in
-   * `const panel = @( … )` they would turn a value into an object literal.
+   * A JSX attribute written without them needs them — `css=@@( … )` becomes `css={_s0}`. The two
+   * expression spellings do not: in `css={@@( … )}` the braces are the author's, and in
+   * `const panel = @@( … )` they would turn a value into an object literal.
    */
   readonly wrap: boolean;
 }
 
 /** The cheap question, asked before anything is read. */
 export function mayHoldABlock(source: string): boolean {
-  return source.includes("@(");
+  return source.includes("@@(");
 }
 
 export function findBlocks(source: string): BlockSite[] {
   const found: BlockSite[] = [];
   const length = source.length;
   // A shebang is not JavaScript and is not a comment either — nothing in the language skips it, so
-  // `@(` written in one would be read as a block on a line the engine never parses.
+  // `@@(` written in one would be read as a block on a line the engine never parses.
   let index = source.startsWith("#!") ? nextLine(source, 0) : 0;
+  /** The last character that was not whitespace, so a `/` can be told from a `/`. */
+  let previous = 0;
 
   while (index < length) {
     const code = source.charCodeAt(index);
@@ -62,6 +71,7 @@ export function findBlocks(source: string): BlockSite[] {
         const end = source.indexOf("\n", index);
         if (end === -1) break;
         index = end + 1;
+        previous = 10;
         continue;
       }
       if (next === 42) {
@@ -70,7 +80,23 @@ export function findBlocks(source: string): BlockSite[] {
         index = end + 2;
         continue;
       }
+      /**
+       * A regular expression, whose body can contain anything — including this syntax.
+       *
+       * It used to be settled for free: the opening had to be preceded by `name =`, and a `=` inside
+       * `/=@@(x)/` is preceded by `/`. A block is an ordinary value now, so nothing about its
+       * surroundings rules it out and the walk has to know a regex when it sees one.
+       *
+       * Which is the same question every JavaScript lexer answers the same way: a `/` is a division
+       * when something that can END an expression is behind it, and a regex otherwise.
+       */
+      if (startsARegex(previous)) {
+        index = endOfRegex(source, index);
+        previous = 47;
+        continue;
+      }
       index++;
+      previous = 47;
       continue;
     }
 
@@ -84,23 +110,57 @@ export function findBlocks(source: string): BlockSite[] {
       continue;
     }
 
-    if (code === 64 /* @ */ && source.charCodeAt(index + 1) === 40 /* ( */) {
+    if (code === 64 /* @ */ && source.charCodeAt(index + 1) === 64 && source.charCodeAt(index + 2) === 40 /* ( */) {
       const site = siteBefore(source, index);
       if (site !== undefined) {
-        found.push({ ...site, open: index + 1 });
+        found.push({ ...site, open: index + 2 });
         // The block's own text is read by the parser, which is the only thing that can tell where it
         // ends — a `)` inside a string or an expression does not close it. Resuming right after the
         // `(` is safe because a nested block is not a thing: the walk finds the same opening again
         // only if the parser left it, and the parser consumes the whole block.
-        index += 2;
+        index += 3;
         continue;
       }
     }
 
+    if (!isSpace(code)) previous = code;
     index++;
   }
 
   return found;
+}
+
+/**
+ * Whether a `/` here opens a regular expression rather than dividing.
+ *
+ * The classic lexer question, answered the classic way: a `/` divides only when something that can
+ * END an expression is behind it — a name, a number, a closing bracket. Everything else is a regex.
+ * Erring towards "regex" is the safe direction here: the cost is skipping text that was a division,
+ * and a division cannot contain a block anyway.
+ */
+function startsARegex(previous: number): boolean {
+  if (previous === 0) return true;
+  const ends =
+    isNameCharacter(previous) ||
+    previous === 41 /* ) */ ||
+    previous === 93 /* ] */ ||
+    previous === 34 ||
+    previous === 39;
+  return !ends;
+}
+
+/** Past the closing `/` of a regex, character classes included, or the end of the source. */
+function endOfRegex(source: string, start: number): number {
+  let inClass = false;
+  for (let index = start + 1; index < source.length; index++) {
+    const code = source.charCodeAt(index);
+    if (code === 92 /* \\ */) index++;
+    else if (code === 91 /* [ */) inClass = true;
+    else if (code === 93 /* ] */) inClass = false;
+    else if (code === 47 /* / */ && !inClass) return index + 1;
+    else if (code === 10) return index;
+  }
+  return source.length;
 }
 
 /** The start of the line after the one `from` is on, or the end of the source. */
@@ -188,13 +248,12 @@ function siteBefore(source: string, at: number): { start: number; name: string; 
   while (index >= 0 && isSpace(source.charCodeAt(index))) index--;
 
   /**
-   * `css={@( … )}` — a block written as an EXPRESSION, inside the braces JSX already has for one.
+   * `css={@@( … )}` — a block written as an EXPRESSION, inside the braces JSX already has for one.
    *
    * It exists because of a limit nothing here can lift: an editor stops consulting syntax injections
    * the moment it enters a tag's attribute list, so an unbraced block gets no colours unless it is
    * the first attribute on the tag name's own line. Inside braces it is ordinary expression
-   * position, and every editor question works there — which also makes it the same case as a block
-   * written outside JSX altogether.
+   * position, and every editor question works there.
    */
   const braced = index >= 0 && source.charCodeAt(index) === 123; /* { */
   if (braced) {
@@ -202,7 +261,15 @@ function siteBefore(source: string, at: number): { start: number; name: string; 
     while (index >= 0 && isSpace(source.charCodeAt(index))) index--;
   }
 
-  if (index < 0 || source.charCodeAt(index) !== 61 /* = */) return undefined;
+  /**
+   * A block is an ordinary value, so it goes where any other value goes — an argument, an item, a
+   * branch of a ternary. There is nothing to require in front of it, because `@@(` means nothing
+   * else in TypeScript.
+   *
+   * What is read here is only what the WRITER needs: the name of a bare JSX attribute, so the value
+   * can be given the braces the author did not write. Everything else is replaced where it stands.
+   */
+  if (index < 0 || source.charCodeAt(index) !== 61 /* = */) return { start: at, name: "", wrap: false };
 
   index--;
   while (index >= 0 && isSpace(source.charCodeAt(index))) index--;
@@ -210,19 +277,26 @@ function siteBefore(source: string, at: number): { start: number; name: string; 
   const end = index + 1;
   while (index >= 0 && isNameCharacter(source.charCodeAt(index))) index--;
   const start = index + 1;
-  if (start === end) return undefined;
 
-  // Before the name: whitespace, and nothing else. `a=@(` inside an expression is not a site, and
-  // neither is `x.css=@(`.
-  if (index < 0 || !isSpace(source.charCodeAt(index))) return undefined;
+  // `x.css=@@(` is a member assignment, not an attribute, and `=@@(` with no name is `a >= @@(`.
+  if (start === end || (index >= 0 && !isSpace(source.charCodeAt(index)))) {
+    return { start: at, name: "", wrap: false };
+  }
 
-  return { start, name: source.slice(start, end), wrap: !braced && isAttribute(source, start) };
+  /**
+   * `start` is what the writer replaces FROM, and the two forms differ: a bare JSX attribute is
+   * rewritten from its name, because the braces are ours to add, and everything else from the block
+   * itself, because to its left is the author's own text.
+   */
+  const name = source.slice(start, end);
+  const wrap = !braced && isAttribute(source, start);
+  return { start: wrap ? start : at, name, wrap };
 }
 
 /**
  * Whether the name at `start` is a JSX ATTRIBUTE rather than something being assigned to.
  *
- * `css=@( … )` and `const panel = @( … )` are the same three tokens to the walk above — whitespace,
+ * `css=@@( … )` and `const panel = @@( … )` are the same three tokens to the walk above — whitespace,
  * a name, `=` — and they must not compile to the same thing: an attribute takes braces around the
  * value and an assignment must not have them. Nothing shorter than reading backwards can separate
  * them, so this consumes attributes backwards until it reaches the `<` that opens a tag.

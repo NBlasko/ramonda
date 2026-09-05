@@ -32,7 +32,7 @@ import { findBlocks } from "../compiler/scan";
 
 /** The findings for one block's text, which is how a person reads a rule's claim. */
 function check(css: string): Finding[] {
-  const source = `<div css=@(\n${css}\n)>x</div>`;
+  const source = `<div css=@@(\n${css}\n)>x</div>`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
   return checkBlock(read.block);
@@ -223,7 +223,7 @@ describe("the two generated lists, which are not the same list", () => {
 
 describe("more than one fault in a block", () => {
   test("comes back in the order a person reads the block", () => {
-    const source = `<div css=@(\n  display: flexx;\n  flex-dirction: row;\n  overflow: hiddn;\n)>x</div>`;
+    const source = `<div css=@@(\n  display: flexx;\n  flex-dirction: row;\n  overflow: hiddn;\n)>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -254,7 +254,7 @@ describe("more than one fault in a block", () => {
 
 describe("what a finding carries", () => {
   test("the position of the fault itself, not of the block", () => {
-    const source = `<div css=@(\n  display: flex;\n  flex-dirction: row;\n)>x</div>`;
+    const source = `<div css=@@(\n  display: flex;\n  flex-dirction: row;\n)>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -263,7 +263,7 @@ describe("what a finding carries", () => {
   });
 
   test("and a value fault points at the word, not at the declaration", () => {
-    const source = `<div css=@(\n  border-left: 4px sollid red;\n)>x</div>`;
+    const source = `<div css=@@(\n  border-left: 4px sollid red;\n)>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 

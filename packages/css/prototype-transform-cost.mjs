@@ -8,7 +8,7 @@
  * Two costs are measured against the same generated files:
  *
  *   - **the scan**, a single pass that tracks whether it is inside a string, a template or a
- *     comment, because finding `=@(` is not the same as knowing it is a JSX attribute;
+ *     comment, because finding `=@@(` is not the same as knowing it is a JSX attribute;
  *   - **the whole transform**, which adds parsing each block, hashing it, hoisting a descriptor and
  *     writing the value at the call site.
  *
@@ -42,7 +42,7 @@ function makeFile(n) {
   out += `  @state open = false;\n  @state accent = "#10b981";\n`;
   out += `  @compute get label() { return this.props.id.toUpperCase(); }\n\n  render() {\n    return (\n      <section>\n`;
   for (let b = 0; b < BLOCKS; b++) {
-    out += `      <div css=@(
+    out += `      <div css=@@(
         display: flex;
         flex-direction: column;
         padding: ${8 + b}px 16px;
@@ -62,7 +62,7 @@ const bytes = sources.reduce((total, source) => total + source.length, 0);
 
 // ---- the scan: one pass, lexically aware ------------------------------------------------------
 
-/** Positions of every `=@(` that is really in code, not inside a string, template or comment. */
+/** Positions of every `=@@(` that is really in code, not inside a string, template or comment. */
 function findBlocks(source) {
   const found = [];
   let i = 0;

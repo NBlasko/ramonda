@@ -8,7 +8,7 @@
  * Reasoning says yes: Vitest transforms through Vite, so a Vite plugin covers it. This runs it.
  *
  * The fixture is written to a temp directory rather than kept in the repository, because a `.tsx`
- * file containing `@( … )` cannot be read by the formatter or the linter — measured in DESIGN.md,
+ * file containing `@@( … )` cannot be read by the formatter or the linter — measured in DESIGN.md,
  * and there is no reason to make that this repository's problem.
  *
  *     node packages/css/prototype-testrunner.mjs
@@ -33,12 +33,12 @@ writeFileSync(
 
 const config = (enforce) => `import { defineConfig } from "vitest/config";
 
-/** Stands in for the real transform: it rewrites \`css=@( … )\` into ordinary attributes. */
+/** Stands in for the real transform: it rewrites \`css=@@( … )\` into ordinary attributes. */
 const cssBlocks = () => ({
   name: "css-blocks",
   ${enforce ? 'enforce: "pre" as const,' : "// enforce deliberately omitted"}
   transform(code: string, id: string) {
-    if (!id.endsWith(".tsx") || !code.includes("=@(")) return null;
+    if (!id.endsWith(".tsx") || !code.includes("=@@(")) return null;
     return {
       code: code.replace(/css=@\\(([\\s\\S]*?)\\)>/g, (_m, body: string) => {
         const holes = [...body.matchAll(/\\{\\{([\\s\\S]*?)\\}\\}/g)].map((m) => m[1]);
@@ -73,7 +73,7 @@ class Card extends Component {
   accent = "#10b981";
   render() {
     return (
-      <div css=@(
+      <div css=@@(
         display: flex;
         border-left: {{this.accent}};
       )>

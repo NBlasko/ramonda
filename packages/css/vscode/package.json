@@ -1,7 +1,7 @@
 {
   "name": "ramonda-css-vscode",
   "displayName": "Ramonda CSS blocks",
-  "description": "Syntax colours for `css=@( … )` style blocks, and format-on-save through the project's own `ramonda-css`.",
+  "description": "Syntax colours for `css=@@( … )` style blocks, and format-on-save through the project's own `ramonda-css`.",
   "version": "0.0.0",
   "private": true,
   "publisher": "ramonda",

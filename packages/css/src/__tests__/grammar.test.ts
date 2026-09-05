@@ -71,11 +71,11 @@ beforeAll(async () => {
 const scopeOf = (code: string, text: string) => scopesOf(code).find((token) => token.text === text)?.scope;
 
 describe("a block on one line", () => {
-  const CODE = `const a = <div css=@( display: flex; )>x</div>;\n`;
+  const CODE = `const a = <div css=@@( display: flex; )>x</div>;\n`;
 
   test.each([
     ["the attribute name", "css", "entity.other.attribute-name"],
-    ["the block's opening", "@(", "punctuation.section.embedded.begin.ramonda"],
+    ["the block's opening", "@@(", "punctuation.section.embedded.begin.ramonda"],
     ["a property name", "display", "support.type.property-name.css"],
     ["a value", "flex", "support.constant.property-value.css"],
     ["the semicolon", ";", "punctuation.terminator.rule.css"],
@@ -99,7 +99,7 @@ describe("a block on one line", () => {
 
 describe("a block across several lines", () => {
   const CODE = `const a = (
-  <div css=@(
+  <div css=@@(
     display: flex;
     color: {{accent}};
     &:hover { color: red; }
@@ -142,12 +142,12 @@ const after = 1;
 
 describe("shapes a first sample did not have", () => {
   /**
-   * The one that shipped broken. A `<p>` explaining the syntax puts `css=@( … )` in JSX TEXT, the
+   * The one that shipped broken. A `<p>` explaining the syntax puts `css=@@( … )` in JSX TEXT, the
    * injection fired there, and the block it opened never closed — so the rest of the file was CSS.
    * Measured in `apps/playground-core`: everything from the prose to the end of the file.
    */
   test("prose in JSX children that mentions a block is not a block", () => {
-    const code = `const a = <p>a \`css=@( … )\` block</p>;\nconst after = 1;\n`;
+    const code = `const a = <p>a \`css=@@( … )\` block</p>;\nconst after = 1;\n`;
 
     expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
@@ -155,20 +155,20 @@ describe("shapes a first sample did not have", () => {
 
   /**
    * Two things have to agree on what a block IS, and the compiler is the one that decides: its
-   * scanner requires whitespace before the name, so `` `css=@( `` in prose is not a block to it. The
+   * scanner requires whitespace before the name, so `` `css=@@( `` in prose is not a block to it. The
    * grammar says the same now, which is a second line of defence for the case above — the selector
    * keeps it out of JSX text, and this keeps it out of anywhere else the same shape can be written.
    */
   test("the compiler and the grammar agree on what is not a block", () => {
-    const prose = `const a = <p>a \`css=@( … )\` block</p>;\n`;
+    const prose = `const a = <p>a \`css=@@( … )\` block</p>;\n`;
 
     expect(findBlocks(prose)).toHaveLength(0);
     expect(scopesOf(prose).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
 
     // And on what is: the same shape, written where a block really goes.
-    const real = `const a = <div css=@( color: red; )>y</div>;\n`;
+    const real = `const a = <div css=@@( color: red; )>y</div>;\n`;
     expect(findBlocks(real)).toHaveLength(1);
-    expect(scopeOf(real, "@(")).toBe("punctuation.section.embedded.begin.ramonda");
+    expect(scopeOf(real, "@@(")).toBe("punctuation.section.embedded.begin.ramonda");
   });
 
   /**
@@ -178,11 +178,11 @@ describe("shapes a first sample did not have", () => {
    * `calc(…)`, `url(…)`, a hole's own call — and a child construct is consumed before an end is tried.
    */
   test.each([
-    ["an attribute after the block", `const a = <div css=@( color: red; ) id="x">y</div>;\nconst after = 1;\n`],
-    ["calc() in a value", `const a = <div css=@( width: calc(100% - 8px); )>y</div>;\nconst after = 1;\n`],
-    ["url() in a value", `const a = <div css=@( background: url(a.png); )>y</div>;\nconst after = 1;\n`],
-    ["a call inside a hole", `const a = <div css=@( color: {{pick(1)}}; )>y</div>;\nconst after = 1;\n`],
-    ["a self-closing tag", `const a = <img css=@( color: red; ) />;\nconst after = 1;\n`],
+    ["an attribute after the block", `const a = <div css=@@( color: red; ) id="x">y</div>;\nconst after = 1;\n`],
+    ["calc() in a value", `const a = <div css=@@( width: calc(100% - 8px); )>y</div>;\nconst after = 1;\n`],
+    ["url() in a value", `const a = <div css=@@( background: url(a.png); )>y</div>;\nconst after = 1;\n`],
+    ["a call inside a hole", `const a = <div css=@@( color: {{pick(1)}}; )>y</div>;\nconst after = 1;\n`],
+    ["a self-closing tag", `const a = <img css=@@( color: red; ) />;\nconst after = 1;\n`],
   ])("%s", (_what, code) => {
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
   });
@@ -215,7 +215,7 @@ describe("shapes a first sample did not have", () => {
  * So the block grammar handles nesting itself rather than inheriting the gap.
  */
 describe("a nested rule", () => {
-  const CODE = `const a = <div css=@(\n  color: red;\n  &:hover { color: blue; }\n)>x</div>;\nconst after = 1;\n`;
+  const CODE = `const a = <div css=@@(\n  color: red;\n  &:hover { color: blue; }\n)>x</div>;\nconst after = 1;\n`;
 
   test("the selector is a selector", () => {
     expect(scopeOf(CODE, "&")).toBe("entity.other.attribute-name.parent-selector.css");
@@ -243,7 +243,7 @@ describe("a nested rule", () => {
 
   /** A hole inside a nested rule — the two constructs meet, and neither may eat the other. */
   test("a hole inside one is still code", () => {
-    const code = `const a = <div css=@(\n  &:hover { color: {{accent}}; }\n)>x</div>;\nconst after = 1;\n`;
+    const code = `const a = <div css=@@(\n  &:hover { color: {{accent}}; }\n)>x</div>;\nconst after = 1;\n`;
 
     expect(scopeOf(code, "hover")).toBe("entity.other.attribute-name.pseudo-class.css");
     expect(scopeOf(code, "{{")).toBe("punctuation.section.embedded.begin.ramonda");
@@ -260,21 +260,24 @@ describe("a nested rule", () => {
  * A block written as a VALUE, which is the answer to a limit rather than a second syntax.
  *
  * An editor stops consulting injections the moment it enters a tag's attribute list, so a bare
- * `css=@( … )` is only coloured as the first attribute on the tag name's own line — which is not how
+ * `css=@@( … )` is only coloured as the first attribute on the tag name's own line — which is not how
  * anyone writes a tag with several props. Inside the braces JSX already has for an expression there
  * is no such limit, and it is the same case as a block written outside JSX altogether.
  */
 describe("a block in expression position", () => {
   test.each([
-    ["outside JSX", `const panel = @(\n  display: flex;\n);\nconst after = 1;\n`],
-    ["braced, as the second attribute", `const a = <div id="x" css={@( display: flex; )}>y</div>;\nconst after = 1;\n`],
+    ["outside JSX", `const panel = @@(\n  display: flex;\n);\nconst after = 1;\n`],
+    [
+      "braced, as the second attribute",
+      `const a = <div id="x" css={@@( display: flex; )}>y</div>;\nconst after = 1;\n`,
+    ],
     [
       "braced, three lines into the tag",
-      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    css={@(\n      display: flex;\n    )}\n  >y</div>\n);\nconst after = 1;\n`,
+      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    css={@@(\n      display: flex;\n    )}\n  >y</div>\n);\nconst after = 1;\n`,
     ],
     [
       "braced, with spaces inside the braces",
-      `const a = <div css={ @( display: flex; ) }>y</div>;\nconst after = 1;\n`,
+      `const a = <div css={ @@( display: flex; ) }>y</div>;\nconst after = 1;\n`,
     ],
   ])("%s is CSS", (_what, code) => {
     expect(scopeOf(code, "display")).toBe("support.type.property-name.css");
@@ -282,7 +285,7 @@ describe("a block in expression position", () => {
   });
 
   test("a hole in one is still the expression it holds", () => {
-    const code = `const panel = @( color: {{accent}}; );\n`;
+    const code = `const panel = @@( color: {{accent}}; );\n`;
 
     expect(scopeOf(code, "{{")).toBe("punctuation.section.embedded.begin.ramonda");
     expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
@@ -301,7 +304,7 @@ describe("a block in expression position", () => {
   });
 
   test("and prose that mentions the syntax is still not a block", () => {
-    const code = `const a = <p>a \`css=@( … )\` block</p>;\nconst after = 1;\n`;
+    const code = `const a = <p>a \`css=@@( … )\` block</p>;\nconst after = 1;\n`;
 
     expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
@@ -309,8 +312,8 @@ describe("a block in expression position", () => {
 });
 
 describe("where an injection cannot reach", () => {
-  const SECOND = `const a = <div id="x" css=@( color: red; )>y</div>;\nconst after = 1;\n`;
-  const NEXT_LINE = `const a = (\n  <div\n    css=@( color: red; )\n  >y</div>\n);\nconst after = 1;\n`;
+  const SECOND = `const a = <div id="x" css=@@( color: red; )>y</div>;\nconst after = 1;\n`;
+  const NEXT_LINE = `const a = (\n  <div\n    css=@@( color: red; )\n  >y</div>\n);\nconst after = 1;\n`;
 
   /**
    * Asserted as SAMENESS rather than as an outcome. What the tsx grammar makes of a block it was

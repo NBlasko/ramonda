@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 /**
- * Every file holding a `@( … )` style block is handled by the wrappers, and only those are.
+ * Every file holding a `@@( … )` style block is handled by the wrappers, and only those are.
  *
  * ## The fault it exists for
  *
@@ -36,8 +36,8 @@ const SOURCE = /\.[cm]?[jt]sx?$/;
  * Every source file that really holds a block.
  *
  * Read the way the compiler reads it — the cheap substring first, then the lexical scan — because
- * `@(` is also how a decorator is written, and this is a decorator-heavy repository. A list built
- * from the substring alone would name a hundred files that hold nothing.
+ * A string or a comment can hold the syntax — a file that documents it does — so a list built from
+ * the substring alone would name files that hold nothing.
  */
 async function filesWithBlocks() {
   const { findBlocks, mayHoldABlock } = await import("@ramonda/css/compiler");
@@ -115,7 +115,7 @@ if (faults.length > 0) {
   console.error(`\n${TAG} ${faults.length} thing(s) out of step:\n`);
   for (const fault of faults) console.error(`  - ${fault}`);
   console.error(
-    `\n  A file holding a \`@( … )\` block cannot be read by biome or oxlint, so it is excluded from\n` +
+    `\n  A file holding a \`@@( … )\` block cannot be read by biome or oxlint, so it is excluded from\n` +
       `  their runs and handed to \`ramonda-css format\` and \`ramonda-css lint\` instead. Both configs\n` +
       `  and both root scripts have to name it — and an exclusion left behind after the block is gone\n` +
       `  means a file nothing checks again, which is why this looks both ways.\n`,

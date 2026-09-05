@@ -13,14 +13,14 @@ This file is the *why*. `PLAN.md` is the *when*.
 The style is written beside the markup, in CSS:
 
 ```
-<div css=@(
+<div css=@@(
   display: flex;
   flex-direction: column;
   padding: 24px;
   background-color: #0f172a;
   border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
 )>
-  <h3 css=@( margin: 0; color: #ffffff; )>Nikola</h3>
+  <h3 css=@@( margin: 0; color: #ffffff; )>Nikola</h3>
 </div>
 ```
 
@@ -211,21 +211,30 @@ at a class that is not there.
 
 ## The syntax
 
-`@( … )` with `{{ … }}` holes. Kept, because we own the parser and there is no reason to pay a worse
-spelling to please a parser we are replacing anyway.
+`@@( … )` with `{{ … }}` holes.
 
-**One collision found, and it is worth knowing before writing the parser.** `@(expr)` is *already*
-valid TypeScript in **decorator position** — measured, this compiles:
+**It began as `@( … )`, and the second `@` was bought with two measurements.** `@(expr)` is *already*
+valid TypeScript in two places, and both compile:
 
 ```ts
 class C { @(dec) m() {} }
+class C { constructor(@(inject()) private x: number) {} }
 ```
 
-In a JSX attribute value position it is unambiguous (`"`, `{` or nothing are the only things allowed
-there), and in expression position it is a syntax error today (`TS1109`), so nothing existing changes
-meaning. **But this is a decorator-heavy framework**, so the parser must never look for a style block
-in front of a class, a method or a field. That is a one-line rule and a permanent test, not a design
-problem — as long as it is written down before rather than discovered after.
+In a decorator-heavy framework that is not a footnote. It forced the opening to be recognised only
+after `name =` — which is what kept a block out of every ordinary expression position: an argument,
+an object value, an array item, a branch of a ternary. **`@@(` is a syntax error everywhere**,
+measured in all five positions, so the rule disappeared and a block goes where any other value goes.
+
+The other half is the cheap pass, which runs on every file of every build. Measured on this
+repository: the substring `@(` matches **41** files and **2** hold a block — the other thirty-nine
+are decorators, each paying a full lexical walk for nothing. `@@(` matches the two.
+
+**What one `@` cost, and it is the honest half:** the walk now has to know a regular expression when
+it sees one. `/=@(x)/` used to be ruled out for free, because the `=` inside it is preceded by `/`
+rather than by a name; with no rule about what stands in front of a block, a regex body is just text
+that can contain anything. That is the classic lexer question and it is answered the classic way — a
+`/` divides when something that can end an expression is behind it, and opens a regex otherwise.
 
 ---
 
@@ -268,7 +277,7 @@ touching JavaScript at all.
 Four properties keep it there, and each is a design constraint rather than an optimisation:
 
 1. **The scan is one lexically-aware pass**, tracking strings, templates and comments — because
-   finding `=@(` is not the same as knowing it is an attribute rather than text. Measured at ~450 MB/s,
+   finding `=@@(` is not the same as knowing it is an attribute rather than text. Measured at ~450 MB/s,
    it is a fifth of the total.
 2. **No cross-file analysis, ever.** A class name is the hash of its own normalised text, so a block
    compiles knowing nothing about the rest of the app. That is what makes files independently
@@ -293,7 +302,7 @@ keeping written down.
 concatenates author code into attribute text, which drags in escaping — a `"` or a `;` out of a hole
 must not be able to end the declaration or the attribute — for a problem that need not exist.
 
-**It assumes the block is a JSX attribute.** It is not, necessarily. `@( … )` is an expression, and
+**It assumes the block is a JSX attribute.** It is not, necessarily. `@@( … )` is an expression, and
 where it is written is not the transform's business: it may be assigned to a variable, returned from
 a method, held in a field, or passed to something. A transform that only knows how to rewrite a
 `<div>` has decided the feature is narrower than the syntax.
@@ -365,10 +374,10 @@ message existing.
 
 ### Elsewhere, and in another framework
 
-Because the compiled form is a value, `@( … )` outside JSX is the same feature with no special case:
+Because the compiled form is a value, `@@( … )` outside JSX is the same feature with no special case:
 
 ```tsx
-const panel = @(
+const panel = @@(
   display: flex;
   gap: 8px;
 );
@@ -376,10 +385,10 @@ const panel = @(
 <div css={panel}>…</div>
 ```
 
-**And the same reasoning gives a second spelling inside JSX**, `css={@( … )}`, which is a value in the
+**And the same reasoning gives a second spelling inside JSX**, `css={@@( … )}`, which is a value in the
 braces JSX already has for one. It is not sugar: it exists because of a limit nothing in this package
 can lift. **An editor stops consulting syntax injections the moment it enters a tag's attribute
-list**, so a bare `css=@( … )` is only coloured when it is the first attribute on the tag name's own
+list**, so a bare `css=@@( … )` is only coloured when it is the first attribute on the tag name's own
 line — which is not how anyone writes a tag with several props. Inside braces there is no such limit,
 at any position and on any line.
 
@@ -690,14 +699,14 @@ The four pieces of work above are about the compiler, the check command, the edi
 There is a fifth thing that reads a `.tsx` file in this repository and it was not on the list:
 **`ramonda-check` itself**, which builds a `ts.Program` from the project's tsconfig.
 
-The obvious guess is that a file with `@( … )` in it fails to parse and the run stops. **Measured,
+The obvious guess is that a file with `@@( … )` in it fails to parse and the run stops. **Measured,
 and it is worse than that: TypeScript error-recovers, so the run looks completely normal.**
 
 The same component, twice, differing only in where the block sits in the attribute list:
 
 ```
-<div onclick={this.go} role="button" tabindex={5} css=@( display: flex; )>   // block last
-<div css=@( display: flex; ) onclick={this.go} role="button" tabindex={5}>   // block first
+<div onclick={this.go} role="button" tabindex={5} css=@@( display: flex; )>   // block last
+<div css=@@( display: flex; ) onclick={this.go} role="button" tabindex={5}>   // block first
 ```
 
 ```
@@ -732,7 +741,7 @@ the child intact — children survive the recovery, later attributes do not.
   over the blindness with a `// ramonda-check-ignore`.
 
 So the rule to write down before anyone builds a package with this: **a package whose source uses
-`@( … )` cannot honestly certify until the checker reads through the transform.** The certificate is
+`@@( … )` cannot honestly certify until the checker reads through the transform.** The certificate is
 not decoration here — it is the thing that would notice, and it should not be taught to look away.
 
 ---
@@ -847,7 +856,7 @@ block is put back at whatever indentation the formatter chose:
 export const Card = (props: { id: string }) => {
 	const accent = "#10b981";
 	return (
-		<div css=@(
+		<div css=@@(
 			display: flex;
 			border-left: {{accent}};
 		)>
@@ -878,7 +887,7 @@ deliberately, not something for the first person who runs the formatter to disco
 The parsers either work or stop. There is a third category — **the highlighters** — and it neither
 works nor stops. It renders the code in the wrong colours.
 
-A `.tsx` code fence containing `@( … )` is highlighted by whatever reads the fence: this repository's
+A `.tsx` code fence containing `@@( … )` is highlighted by whatever reads the fence: this repository's
 own documentation site, an editor's markdown preview, npm's README rendering, and GitHub's diff view,
 where it is visible in any pull request that touches this file.
 

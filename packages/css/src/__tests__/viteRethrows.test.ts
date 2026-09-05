@@ -24,7 +24,7 @@ describe("an error that is not a refusal", () => {
     const plugin = ramondaCss();
     const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
 
-    expect(() => transform.call({}, `const a = <div css=@( display: flex; )>x</div>;\n`, "/src/Card.tsx")).toThrow(
+    expect(() => transform.call({}, `const a = <div css=@@( display: flex; )>x</div>;\n`, "/src/Card.tsx")).toThrow(
       TypeError,
     );
   });

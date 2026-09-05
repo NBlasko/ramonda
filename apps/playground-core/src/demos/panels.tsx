@@ -233,7 +233,7 @@ export class LifecycleDemo extends Component {
  *
  * **Written as a value in braces**, which is what to reach for whenever a tag has other props: an
  * editor stops consulting syntax injections once it enters a tag's attribute list, so a bare
- * `css=@( … )` is only coloured as the FIRST attribute on the tag name's own line. In expression
+ * `css=@@( … )` is only coloured as the FIRST attribute on the tag name's own line. In expression
  * position there is no such limit, and nothing else about the block changes.
  */
 export class StyleBlock extends Component {
@@ -245,7 +245,7 @@ export class StyleBlock extends Component {
 
   render() {
     return (
-      <div className="panel" css={@(
+      <div className="panel" css={@@(
         display: flex;
         flex-direction: column;
         gap: 8px;
@@ -294,7 +294,7 @@ export class StyleBlockNested extends Component {
     const accent = this.urgent ? "#ff0055" : "#10b981";
 
     return (
-      <div className="panel" data-urgent={String(this.urgent)} css={@(
+      <div className="panel" data-urgent={String(this.urgent)} css={@@(
         display: grid;
         grid-template-columns: auto 1fr;
         gap: 4px 12px;

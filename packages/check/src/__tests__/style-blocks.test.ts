@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test } from "vitest";
 import { analyzeProject } from "../analyze";
 
 /**
- * Reading a project whose source contains `@( … )` style blocks.
+ * Reading a project whose source contains `@@( … )` style blocks.
  *
  * ## The fault this exists for, and it is silence
  *
@@ -27,7 +27,7 @@ import { analyzeProject } from "../analyze";
  *
  * ## Why the project is written to a temp directory
  *
- * A `.tsx` fixture containing `@( … )` cannot be read by this repository's formatter or its linter —
+ * A `.tsx` fixture containing `@@( … )` cannot be read by this repository's formatter or its linter —
  * measured, and there is no reason to make that the repository's problem. The other fixtures live on
  * disk because they are ordinary TypeScript.
  */
@@ -83,7 +83,7 @@ export class Card extends Component {
 }
 `;
 
-const BLOCK = `css=@( display: flex; )`;
+const BLOCK = `css=@@( display: flex; )`;
 const FAULTS = `onclick={this.go} role="button" tabindex={5}`;
 
 /** Which rules found something, so a test names behaviour rather than counting. */
@@ -124,7 +124,7 @@ export class Card extends Component {
     return (
       <div>
         <img src="a.png" />
-        <div css=@( border-left: 4px solid {{this.accent}}; ) ${FAULTS}>x</div>
+        <div css=@@( border-left: 4px solid {{this.accent}}; ) ${FAULTS}>x</div>
       </div>
     );
   }
@@ -141,9 +141,9 @@ export class Card extends Component {
   go() {}
   render() {
     return (
-      <div css=@( display: grid; )>
+      <div css=@@( display: grid; )>
         <img src="a.png" />
-        <span css=@( color: red; &:hover { color: blue; } ) ${FAULTS}>x</span>
+        <span css=@@( color: red; &:hover { color: blue; } ) ${FAULTS}>x</span>
       </div>
     );
   }
@@ -170,7 +170,7 @@ export class Card extends Component {
     return (
       <div>
         <img src="a.png" />
-        <div css=@( disp ) ${FAULTS}>x</div>
+        <div css=@@( disp ) ${FAULTS}>x</div>
       </div>
     );
   }

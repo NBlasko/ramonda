@@ -23,7 +23,7 @@ import { findBlocks, mayHoldABlock } from "./scan";
  *   Any other shape — a call with strings, a tagged template — throws that away.
  *
  * ```
- *   <div css=@( display: flex; border-left: 4px solid {{this.accent}}; )>
+ *   <div css=@@( display: flex; border-left: 4px solid {{this.accent}}; )>
  *
  *   <div css={__block({ "display":"flex", "border-left":`4px solid ${this.accent}` })}>
  * ```
@@ -209,7 +209,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 
   let cursor = 0;
   for (const site of sites) {
-    // A `name=@(` found INSIDE a block belongs to that block's text, not to the file. The transform
+    // A `name=@@(` found INSIDE a block belongs to that block's text, not to the file. The transform
     // refuses one; here it is simply passed over, because this file exists to be type-checked and a
     // refusal belongs to the build.
     if (site.start < cursor) continue;
@@ -227,7 +227,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       copy(site.start, site.start + site.name.length);
       write(`={${block}([`);
     } else {
-      copy(cursor, site.open - 1);
+      copy(cursor, site.start);
       write(`${block}([`);
     }
     /** How far the author's text has been accounted for, in LINES. See `keepLine`. */

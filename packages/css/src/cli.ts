@@ -8,7 +8,7 @@ import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
 /**
  * `ramonda-css [tsconfig.json]`
  *
- * Type-checks a project whose source TypeScript cannot parse — every `@( … )` block turned into a
+ * Type-checks a project whose source TypeScript cannot parse — every `@@( … )` block turned into a
  * virtual file, handed to `tsc`, and every diagnostic mapped back to the character the author typed.
  *
  * **A project using this syntax cannot run plain `tsc`**, which refuses the file at the parse step.

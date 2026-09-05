@@ -19,7 +19,7 @@ function hooks() {
   return { plugin, transform, load, resolveId };
 }
 
-const STYLED = `const a = <div css=@( display: flex; )>x</div>;\n`;
+const STYLED = `const a = <div css=@@( display: flex; )>x</div>;\n`;
 
 describe("where it sits in the pipeline", () => {
   test("before esbuild, which is a requirement rather than a preference", () => {
@@ -160,8 +160,8 @@ describe("a save, which is what a dev server does all day", () => {
 
   test("a block the author deleted leaves the sheet with it", () => {
     const { transform, load } = hooks();
-    transform.call({}, `const a = <div css=@( display: flex; )>x</div>;\n`, "/src/Card.tsx");
-    transform.call({}, `const a = <div css=@( display: grid; )>x</div>;\n`, "/src/Card.tsx");
+    transform.call({}, `const a = <div css=@@( display: flex; )>x</div>;\n`, "/src/Card.tsx");
+    transform.call({}, `const a = <div css=@@( display: grid; )>x</div>;\n`, "/src/Card.tsx");
 
     const css = load.call({}, cssOf("/src/Card.tsx"));
     expect(css).toContain("display:grid;");
@@ -225,16 +225,16 @@ describe("a save, which is what a dev server does all day", () => {
 
     transform.call(
       context,
-      `const a = <div css=@( display: flex; )>x</div>;\nconst b = <p css=@( color: red; )>y</p>;\n`,
+      `const a = <div css=@@( display: flex; )>x</div>;\nconst b = <p css=@@( color: red; )>y</p>;\n`,
       "/src/One.tsx",
     );
-    transform.call(context, `const c = <div css=@( color: red; )>z</div>;\n`, "/src/Two.tsx");
+    transform.call(context, `const c = <div css=@@( color: red; )>z</div>;\n`, "/src/Two.tsx");
     expect(load.call({}, cssOf("/src/Two.tsx"))).toBe("");
 
     reloaded.length = 0;
     // One.tsx keeps `display:flex` and drops `color:red`, so it still has blocks — a different path
     // from losing every one of them.
-    transform.call(context, `const a = <div css=@( display: flex; )>x</div>;\n`, "/src/One.tsx");
+    transform.call(context, `const a = <div css=@@( display: flex; )>x</div>;\n`, "/src/One.tsx");
 
     expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("color:red;");
     expect(reloaded).toContain(cssOf("/src/Two.tsx"));
@@ -253,7 +253,7 @@ describe("a block it cannot read", () => {
     const { transform } = hooks();
 
     try {
-      transform.call({}, `const a = <div css=@( {{name}}: 24px; )>x</div>;\n`, "/src/Card.tsx");
+      transform.call({}, `const a = <div css=@@( {{name}}: 24px; )>x</div>;\n`, "/src/Card.tsx");
       expect.unreachable("the plugin should have refused");
     } catch (error) {
       const refusal = error as Error & { id?: string; loc?: { line: number; column: number } };
@@ -266,11 +266,11 @@ describe("a block it cannot read", () => {
        * error anywhere to find it. Measured on a real parse error at a known position: `@` on
        * 1-based column 20 came back as `1:19`, caret under it.
        *
-       * The `{{` is at 1-based column 23 in the source below.
+       * The `{{` is at 1-based column 24 in the source below.
        */
-      const source = `const a = <div css=@( {{name}}: 24px; )>x</div>;\n`;
-      expect(source.indexOf("{{") + 1).toBe(23);
-      expect(refusal.loc).toEqual({ line: 1, column: 22 });
+      const source = `const a = <div css=@@( {{name}}: 24px; )>x</div>;\n`;
+      expect(source.indexOf("{{") + 1).toBe(24);
+      expect(refusal.loc).toEqual({ line: 1, column: 23 });
     }
   });
 });
@@ -306,7 +306,7 @@ describe("what an app has to write", () => {
  * in the stylesheet. Nothing throws. The page renders, unstyled, with nothing to blame.
  */
 describe("the assembled stylesheet", () => {
-  const SOURCE = `const a = <div css=@( color: {{c}}; )>x</div>;\n`;
+  const SOURCE = `const a = <div css=@@( color: {{c}}; )>x</div>;\n`;
 
   /** The plugin after one file has been through it, and the CSS it produced. */
   const built = () => {

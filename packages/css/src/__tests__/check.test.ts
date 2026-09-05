@@ -74,9 +74,9 @@ const check = (files: Record<string, string>) => checkProject(project(files));
 
 describe("a file that only looked like it held a block", () => {
   /**
-   * The cheap first pass is allowed to say maybe — `@(` is also how a decorator is written, and this
-   * is a decorator-heavy framework. A file that turns out to hold no block needs no overlay and no
-   * mapping, and its diagnostics are its own.
+   * The cheap first pass is allowed to say maybe — a string or a comment can hold the syntax, and this
+   * A file that turns out to hold no block needs no overlay and no mapping, and its diagnostics are
+   * its own.
    */
   test("a decorator is not a block, and the file is checked as it is", () => {
     const report = check({
@@ -92,7 +92,7 @@ describe("a file that only looked like it held a block", () => {
 describe("a project that is right", () => {
   test("reports nothing, and says how much of it carries a block", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div className="lead" css=@(\n    display: flex;\n    gap: 8px;\n  )>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div className="lead" css=@@(\n    display: flex;\n    gap: 8px;\n  )>x</div>\n);\nexport default a;\n`,
       "Plain.tsx": `const b = <div>x</div>;\nexport default b;\n`,
     });
 
@@ -104,7 +104,7 @@ describe("a project that is right", () => {
 
   test("a hole reads the class it was written in", () => {
     const report = check({
-      "Card.tsx": `export class Card {\n  accent = "#10b981";\n  render() {\n    return <div css=@( border-left: 4px solid {{this.accent}}; )>x</div>;\n  }\n}\n`,
+      "Card.tsx": `export class Card {\n  accent = "#10b981";\n  render() {\n    return <div css=@@( border-left: 4px solid {{this.accent}}; )>x</div>;\n  }\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -114,7 +114,7 @@ describe("a project that is right", () => {
 describe("a project that is not", () => {
   test("a property typo is reported at the author's own line and column", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div css=@(\n    dsiplay: flex;\n  )>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div css=@@(\n    dsiplay: flex;\n  )>x</div>\n);\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -127,7 +127,7 @@ describe("a project that is not", () => {
 
   test("a hole whose type the property cannot take is reported", () => {
     const report = check({
-      "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div css=@( position: {{this.wide}}; )>x</div>;\n  }\n}\n`,
+      "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div css=@@( position: {{this.wide}}; )>x</div>;\n  }\n}\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -142,7 +142,7 @@ describe("a project that is not", () => {
    */
   test("an ordinary type error in a file with a block is reported too", () => {
     const report = check({
-      "Card.tsx": `const n: number = "no";\nconst a = <div css=@( display: flex; )>x</div>;\nexport default [n, a];\n`,
+      "Card.tsx": `const n: number = "no";\nconst a = <div css=@@( display: flex; )>x</div>;\nexport default [n, a];\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -152,7 +152,7 @@ describe("a project that is not", () => {
 
   test("and one in a file with no block at all", () => {
     const report = check({
-      "Card.tsx": `const a = <div css=@( display: flex; )>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const a = <div css=@@( display: flex; )>x</div>;\nexport default a;\n`,
       "Plain.ts": `export const n: number = "no";\n`,
     });
 
@@ -168,7 +168,7 @@ describe("a project that is not", () => {
    */
   test("every fault in one block is reported at once, each at its own line", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div css=@(\n    dsiplay: flex;\n    position: statik;\n    &:hover {\n      colr: red;\n    }\n  )>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div css=@@(\n    dsiplay: flex;\n    position: statik;\n    &:hover {\n      colr: red;\n    }\n  )>x</div>\n);\nexport default a;\n`,
     });
 
     expect(report.findings.map((f) => f.line)).toEqual([3, 4, 6]);
@@ -179,8 +179,8 @@ describe("a project that is not", () => {
 
   test("two files each report their own", () => {
     const report = check({
-      "One.tsx": `const a = <div css=@( dsiplay: flex; )>x</div>;\nexport default a;\n`,
-      "Two.tsx": `const b = <div css=@( positon: absolute; )>x</div>;\nexport default b;\n`,
+      "One.tsx": `const a = <div css=@@( dsiplay: flex; )>x</div>;\nexport default a;\n`,
+      "Two.tsx": `const b = <div css=@@( positon: absolute; )>x</div>;\nexport default b;\n`,
     });
 
     expect(report.findings).toHaveLength(2);
@@ -195,7 +195,7 @@ describe("the CSS rules, beside the type errors", () => {
    */
   test("a fault only the rules can see is reported", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div css=@(\n    display: flexx;\n  )>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div css=@@(\n    display: flexx;\n  )>x</div>\n);\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -206,7 +206,7 @@ describe("the CSS rules, beside the type errors", () => {
 
   test("both kinds arrive in the order a person reads the file", () => {
     const report = check({
-      "Card.tsx": `const n: number = "no";\nconst a = (\n  <div css=@(\n    display: flexx;\n  )>x</div>\n);\nexport default [n, a];\n`,
+      "Card.tsx": `const n: number = "no";\nconst a = (\n  <div css=@@(\n    display: flexx;\n  )>x</div>\n);\nexport default [n, a];\n`,
     });
 
     expect(report.findings.map((finding) => [finding.line, finding.code])).toEqual([
@@ -222,7 +222,7 @@ describe("the CSS rules, beside the type errors", () => {
    */
   test("and the compiler's word is dropped where a rule of ours said it better", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div css=@(\n    flex-dirction: row;\n  )>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div css=@@(\n    flex-dirction: row;\n  )>x</div>\n);\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -234,7 +234,7 @@ describe("the CSS rules, beside the type errors", () => {
     // A nested rule's key that matches none of the shape's index signatures — nothing to do with a
     // property name, so nothing of ours claims it.
     const report = check({
-      "Card.tsx": `const a = (\n  <div css=@(\n    nope { color: red; }\n  )>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div css=@@(\n    nope { color: red; }\n  )>x</div>\n);\nexport default a;\n`,
     });
 
     expect(report.findings.some((finding) => finding.code === 2353)).toBe(true);
@@ -249,7 +249,7 @@ describe("a block that cannot be read at all", () => {
    */
   test("is reported alone, and nothing is type-checked", () => {
     const report = check({
-      "Card.tsx": `const n: number = "no";\nconst a = <div css=@(\n  {{name}}: 24px;\n)>x</div>;\nexport default [n, a];\n`,
+      "Card.tsx": `const n: number = "no";\nconst a = <div css=@@(\n  {{name}}: 24px;\n)>x</div>;\nexport default [n, a];\n`,
     });
 
     expect(report.refused).toBe(true);
@@ -269,7 +269,7 @@ describe("a setup that would otherwise pass silently", () => {
    */
   test("a block shape that does not resolve is reported, not dropped", () => {
     const report = checkProject(
-      project({ "Card.tsx": `const a = <div css=@( dsiplay: flex; )>x</div>;\nexport default a;\n` }, null),
+      project({ "Card.tsx": `const a = <div css=@@( dsiplay: flex; )>x</div>;\nexport default a;\n` }, null),
     );
 
     expect(report.findings).toHaveLength(1);
@@ -284,7 +284,7 @@ describe("a setup that would otherwise pass silently", () => {
 
     const report = checkProject(
       project(
-        { "Card.tsx": `const a = <div css=@( display: flex; )>x</div>;\nexport default a;\n` },
+        { "Card.tsx": `const a = <div css=@@( display: flex; )>x</div>;\nexport default a;\n` },
         join(root, "empty.ts"),
       ),
     );
@@ -296,7 +296,7 @@ describe("a setup that would otherwise pass silently", () => {
   test("and it is reported once, whatever the project's size", () => {
     const files: Record<string, string> = {};
     for (let n = 0; n < 4; n++)
-      files[`C${n}.tsx`] = `const a${n} = <div css=@( display: flex; )>x</div>;\nexport default a${n};\n`;
+      files[`C${n}.tsx`] = `const a${n} = <div css=@@( display: flex; )>x</div>;\nexport default a${n};\n`;
 
     const report = checkProject(project(files, null));
 

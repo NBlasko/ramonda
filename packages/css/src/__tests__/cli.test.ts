@@ -70,7 +70,7 @@ describe("the bin", () => {
   });
 
   test("says what it checked, and exits 0", () => {
-    const { output, status } = run(project(`const a = <div css=@( display: flex; )>x</div>;\nexport default a;\n`));
+    const { output, status } = run(project(`const a = <div css=@@( display: flex; )>x</div>;\nexport default a;\n`));
 
     expect(status).toBe(0);
     expect(output).toContain("[ramonda-css]");
@@ -79,7 +79,7 @@ describe("the bin", () => {
 
   test("names the fault at the author's own line, and exits 1", () => {
     const { output, status } = run(
-      project(`const a = (\n  <div css=@(\n    dsiplay: flex;\n  )>x</div>\n);\nexport default a;\n`),
+      project(`const a = (\n  <div css=@@(\n    dsiplay: flex;\n  )>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);
@@ -89,7 +89,7 @@ describe("the bin", () => {
 
   test("a block it cannot read is reported alone, and exits 1", () => {
     const { output, status } = run(
-      project(`const a = (\n  <div css=@(\n    {{name}}: 24px;\n  )>x</div>\n);\nexport default a;\n`),
+      project(`const a = (\n  <div css=@@(\n    {{name}}: 24px;\n  )>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);
@@ -133,12 +133,12 @@ describe("--stdin-file-path", () => {
   };
 
   test("formats the text it was given and writes nothing else", () => {
-    const source = `const a = <div   css={@(\n  display: flex;\n)}>x</div>;\nexport default a;\n`;
+    const source = `const a = <div   css={@@(\n  display: flex;\n)}>x</div>;\nexport default a;\n`;
     const { output, status } = through(source);
 
     expect(status).toBe(0);
     // biome's own work on the JavaScript around the block.
-    expect(output).toContain(`<div css={@(`);
+    expect(output).toContain(`<div css={@@(`);
     // And the block came back whole, at the indentation it went in with.
     expect(output).toContain(`  display: flex;\n)}`);
   });

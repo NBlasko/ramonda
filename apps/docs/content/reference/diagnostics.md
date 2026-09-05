@@ -1912,7 +1912,7 @@ class Row extends Component {
   @state weight = 4;
 
   render() {
-    return <div css={@( border-left: {{`${this.weight}px`}} solid #ff0055; )}>a row</div>;
+    return <div css={@@( border-left: {{`${this.weight}px`}} solid #ff0055; )}>a row</div>;
   }
 }
 ```
@@ -1948,7 +1948,7 @@ render down and named nothing about `css`.
 Write the block and let the transform produce the value:
 
 ```tsx
-const panel = @(
+const panel = @@(
   display: flex;
   gap: 8px;
 );

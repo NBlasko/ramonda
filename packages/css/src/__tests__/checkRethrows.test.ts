@@ -33,7 +33,7 @@ describe("an error that is not a refusal", () => {
     const root = mkdtempSync(join(tmpdir(), "ramonda-css-"));
     projects.push(root);
     mkdirSync(join(root, "src"), { recursive: true });
-    writeFileSync(join(root, "src", "Card.tsx"), `const a = <div css=@( display: flex; )>x</div>;\n`);
+    writeFileSync(join(root, "src", "Card.tsx"), `const a = <div css=@@( display: flex; )>x</div>;\n`);
     writeFileSync(join(root, "tsconfig.json"), JSON.stringify({ compilerOptions: { types: [] }, include: ["src"] }));
 
     expect(() => checkProject(join(root, "tsconfig.json"))).toThrow(TypeError);

@@ -4,7 +4,7 @@ A style block written in real CSS beside the markup. At build time the static de
 class in a stylesheet and each carried expression becomes a CSS custom property on the element.
 
 ```
-<div css=@(
+<div css=@@(
   display: flex;
   border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
 )>
@@ -25,9 +25,9 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 ## Three ways to write one
 
 ```tsx
-<div css=@( display: flex; )>…</div>            a bare JSX attribute
-<div css={@( display: flex; )}>…</div>          a value, in the braces JSX already has
-const panel = @( display: flex; );              a value, outside JSX
+<div css=@@( display: flex; )>…</div>            a bare JSX attribute
+<div css={@@( display: flex; )}>…</div>          a value, in the braces JSX already has
+const panel = @@( display: flex; );              a value, outside JSX
 ```
 
 Same class, same hash, same holes — only what is replaced differs. **Prefer one of the braced forms
@@ -76,7 +76,7 @@ handled:
   { "plugins": ["@ramonda/css/prettier"] }
   ```
 
-  One thing it changes: a bare `css=@( … )` comes back as `css={@( … )}`. Prettier prints a quoted
+  One thing it changes: a bare `css=@@( … )` comes back as `css={@@( … )}`. Prettier prints a quoted
   attribute value itself and never offers a plugin the chance to print one, so the placeholder has to
   be braced — and the two compile to the same class anyway.
 
@@ -123,7 +123,7 @@ const result = transform(readFileSync("Card.tsx", "utf8"), { filename: "Card.tsx
 The transform is what turns
 
 ```
-<div css=@( display: flex; border-left: {{accent}}; )>
+<div css=@@( display: flex; border-left: {{accent}}; )>
 ```
 
 into a hoisted `const _s0 = block("r-…", ["--r-…-0"])` and a site reading `css={_s0(accent)}`, plus

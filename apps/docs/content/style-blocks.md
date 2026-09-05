@@ -12,7 +12,7 @@ they have always arrived. This page is about the one thing built on top of it, a
 opt-in package rather than part of the framework.
 
 ```tsx
-<div css=@(
+<div css=@@(
   display: flex;
   gap: 8px;
   border-left: 4px solid #10b981;
@@ -43,7 +43,7 @@ class Row extends Component {
 
   render() {
     return (
-      <div css={@(
+      <div css={@@(
         border-left: {{`${this.weight}px`}} solid #ff0055;
         &:hover { border-left-color: #00b37e; }
       )}>
@@ -62,9 +62,9 @@ specificity against generated output.
 ## Three ways to write one
 
 ```tsx
-const one = <div css=@( display: flex; )>bare</div>;
-const two = <div css={@( display: flex; )}>braced</div>;
-const panel = @( display: flex; );
+const one = <div css=@@( display: flex; )>bare</div>;
+const two = <div css={@@( display: flex; )}>braced</div>;
+const panel = @@( display: flex; );
 const three = <div css={panel}>a value</div>;
 ```
 
@@ -111,7 +111,7 @@ theme exists.
 ```
 
 ```tsx
-const card = @(
+const card = @@(
   background: var(--surface);
   border-left: 4px solid var(--accent);
 
@@ -269,7 +269,7 @@ the format-on-save your editor does for you:
 { "plugins": ["@ramonda/css/prettier"] }
 ```
 
-One thing it changes: a bare `css=@( … )` comes back as `css={@( … )}`. Prettier prints a quoted
+One thing it changes: a bare `css=@@( … )` comes back as `css={@@( … )}`. Prettier prints a quoted
 attribute value itself and never offers a plugin the chance to print one, so the placeholder has to
 be braced — and the two compile to the same class anyway.
 

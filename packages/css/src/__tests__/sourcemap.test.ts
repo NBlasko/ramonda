@@ -24,7 +24,7 @@ export class Card extends Component<{ id: string }> {
 
   render() {
     return (
-      <div css=@(
+      <div css=@@(
         display: flex;
         flex-direction: column;
         padding: 24px;
@@ -103,7 +103,7 @@ describe("a column on a line the transform never touched", () => {
   const SOURCE_WITH_CALLS = `export class Card {
   render() {
     const a = one(two(three()), four());
-    return (<div css=@( display: flex; )>x</div>);
+    return (<div css=@@( display: flex; )>x</div>);
   }
   after() { return alpha(beta(), gamma()); }
 }

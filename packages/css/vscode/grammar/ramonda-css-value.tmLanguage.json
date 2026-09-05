@@ -1,21 +1,33 @@
 {
   "scopeName": "ramonda.css-value",
-  "comment": "A block written as a VALUE rather than as a bare JSX attribute: `const panel = @( … )` outside JSX, and `css={@( … )}` inside the braces JSX already has for an expression. The second exists because of a limit nothing here can lift — an editor stops consulting injections once it enters a tag's attribute list, so a bare block gets no colours unless it is the first attribute on the tag name's own line.",
+  "comment": "A block written as a VALUE rather than as a bare JSX attribute: `const panel = @@( … )` outside JSX, and `css={@@( … )}` inside the braces JSX already has for an expression. The second exists because of a limit nothing here can lift — an editor stops consulting injections once it enters a tag's attribute list, so a bare block gets no colours unless it is the first attribute on the tag name's own line.",
   "injectionSelector": "L:source.tsx -meta.jsx.children -string -comment, L:source.ts -string -comment, L:source.js -meta.jsx.children -string -comment, L:source.js.jsx -meta.jsx.children -string -comment",
-  "patterns": [{ "include": "#value" }],
+  "patterns": [
+    {
+      "include": "#value"
+    }
+  ],
   "repository": {
     "value": {
-      "comment": "The lookbehind mirrors the compiler's scanner, which requires a `=` before the block. Permitting a bare `{` instead would swallow a parenthesised decorator written on the same line as a class's opening brace — measured, `class C { @(dec) m() {} }` lost its `dec`.",
-      "begin": "(?<==|=\\{|=\\s\\{)\\s*(@\\()",
+      "comment": "No lookbehind, and that is the point of the spelling: `@@(` is a syntax error everywhere in TypeScript — measured after `=`, on a class member, on a parameter, as a call argument and as an object value — so nothing else can be mistaken for it. `@(` needed one, because a parenthesised decorator is real TypeScript in two of those positions.",
+      "begin": "(@@\\()",
       "beginCaptures": {
-        "1": { "name": "punctuation.section.embedded.begin.ramonda" }
+        "1": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        }
       },
       "end": "(\\))",
       "endCaptures": {
-        "1": { "name": "punctuation.section.embedded.end.ramonda" }
+        "1": {
+          "name": "punctuation.section.embedded.end.ramonda"
+        }
       },
       "contentName": "meta.embedded.block.css",
-      "patterns": [{ "include": "ramonda.css-block#innards" }]
+      "patterns": [
+        {
+          "include": "ramonda.css-block#innards"
+        }
+      ]
     }
   }
 }

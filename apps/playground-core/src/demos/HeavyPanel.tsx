@@ -19,7 +19,7 @@ export default class HeavyPanel extends Component<{ title?: string }> {
   render() {
     return (
       <div>
-        <div className="heavy" css={@(
+        <div className="heavy" css={@@(
           outline: 2px dashed #7c3aed;
           outline-offset: 4px;
         )}>

@@ -6,7 +6,7 @@ import ts from "typescript";
  *
  * ## The fault it exists for
  *
- * `@ramonda/css` compiles a `css=@( … )` block into a value, and `@ramonda/core` applies that value
+ * `@ramonda/css` compiles a `css=@@( … )` block into a value, and `@ramonda/core` applies that value
  * to an element. Neither package may name the other's type:
  *
  * - **`@ramonda/css` may not import the framework**, at any depth, not even as a peer — the whole

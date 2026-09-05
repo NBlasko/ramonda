@@ -139,10 +139,10 @@ export function lintFile(file: string, lint: (path: string) => Reported[]): Tool
   /**
    * No block, so the file is linted as it is and every position is already the author's.
    *
-   * `mayHoldABlock` is allowed to say maybe — `@(` is also how a decorator is written, and this is a
-   * decorator-heavy framework — so the second condition is not redundant. Found by a test: returning
-   * nothing there made every decorator file lint CLEAN, silently, which is the failure this whole
-   * package has been fixing all week.
+   * `mayHoldABlock` is allowed to say maybe — a string or a comment can hold the syntax, and this is a
+   * so the second condition is not redundant. Found by a test: returning nothing there made a file
+   * that only mentions the syntax lint CLEAN, silently, which is the failure this whole package has
+   * been fixing all week.
    */
   if (virtual === undefined) {
     return lint(file).map((diagnostic) => ({

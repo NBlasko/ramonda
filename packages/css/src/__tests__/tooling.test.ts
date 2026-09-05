@@ -23,7 +23,7 @@ import { placehold } from "../compiler/tooling";
 const SOURCE = `export const Card = (props: { id: string }) => {
   const accent = "#10b981";
   return (
-    <div css=@(
+    <div css=@@(
       display: flex;
       border-left: {{accent}};
     )>
@@ -51,7 +51,7 @@ describe("what the formatter is given", () => {
 
   test("everything outside the block is untouched, byte for byte", () => {
     const held = placehold(SOURCE);
-    const [before] = SOURCE.split("<div css=@(");
+    const [before] = SOURCE.split("<div css=@@(");
 
     expect(held?.text.startsWith(before)).toBe(true);
     expect(held?.text.endsWith("</div>\n  );\n};\n")).toBe(true);
@@ -87,13 +87,13 @@ describe("what comes back", () => {
     const tabbed = (held?.text ?? "").replace(/^ +/gm, (spaces) => "\t".repeat(spaces.length / 2));
     const out = held?.restore(tabbed) ?? "";
 
-    const block = out.slice(out.indexOf("<div css=@("));
+    const block = out.slice(out.indexOf("<div css=@@("));
     expect(block).toContain("\t\t\tdisplay: flex;");
     expect(block).not.toContain("  display: flex;");
   });
 
   test("two blocks each go back to their own place", () => {
-    const source = `const a = <div css=@( display: flex; )>x</div>;\nconst b = <p css=@( color: red; )>y</p>;\n`;
+    const source = `const a = <div css=@@( display: flex; )>x</div>;\nconst b = <p css=@@( color: red; )>y</p>;\n`;
     const held = placehold(source);
 
     expect(held?.restore(held.text)).toBe(source);
@@ -110,16 +110,16 @@ describe("what comes back", () => {
    * a file mid-edit — save on keystroke — and refusing there would be refusing whenever it matters.
    */
   test("a block that is not closed yet is still placeheld", () => {
-    const held = placehold(`const a = <div css=@( display: flex;\n`);
+    const held = placehold(`const a = <div css=@@( display: flex;\n`);
 
     expect(held?.text).not.toContain("@(");
-    expect(held?.restore(held.text)).toBe(`const a = <div css=@( display: flex;\n`);
+    expect(held?.restore(held.text)).toBe(`const a = <div css=@@( display: flex;\n`);
   });
 });
 
 describe("what it steps over", () => {
   test("a block found inside another is not placeheld twice", () => {
-    const held = placehold(`const a = <div css=@( color: {{ <b css=@( color: red; )/> }}; )>x</div>;\n`);
+    const held = placehold(`const a = <div css=@@( color: {{ <b css=@@( color: red; )/> }}; )>x</div>;\n`);
 
     expect(held?.text.match(/\/\*@ramonda-css:/g)).toHaveLength(1);
   });
@@ -127,7 +127,7 @@ describe("what it steps over", () => {
   test("a file that already contains the marker gets a different one", () => {
     // It goes into the text the FORMATTER sees, so an author who happened to write it would get
     // somebody else's block back where theirs was.
-    const source = `const m = "@ramonda-css:0";\nconst a = <div css=@( display: flex; )>x</div>;\n`;
+    const source = `const m = "@ramonda-css:0";\nconst a = <div css=@@( display: flex; )>x</div>;\n`;
     const held = placehold(source);
 
     expect(held?.text).toContain(`"@ramonda-css:0"`);
@@ -139,7 +139,7 @@ describe("the placeholder itself", () => {
   test("cannot collide with anything the author wrote", () => {
     // It goes into the file the FORMATTER sees, so an author who happened to write the same text
     // would get somebody else's block back. The name is built from what the file does not contain.
-    const source = `const marker = "__ramondaCss0";\nconst a = <div css=@( display: flex; )>x</div>;\n`;
+    const source = `const marker = "__ramondaCss0";\nconst a = <div css=@@( display: flex; )>x</div>;\n`;
     const held = placehold(source);
 
     expect(held?.restore(held.text)).toBe(source);
@@ -159,13 +159,13 @@ describe("the placeholder itself", () => {
  * The two spellings that are a value, through the placeholder.
  *
  * The placeholder has to own exactly what the transform owns, and this is where getting it wrong is
- * loudest: a placeholder that swallowed the author's own `}` in `css={@( … )}` left an extra one
+ * loudest: a placeholder that swallowed the author's own `}` in `css={@@( … )}` left an extra one
  * behind, and biome refused the file for the very parse error the placeholder exists to avoid —
  * *"Code formatting aborted due to parsing errors"*, on a file that was correct.
  */
 describe("a block written as a value", () => {
   test("the braced form leaves the author's braces where they are", () => {
-    const held = placehold(`const a = <div id="x" css={@( display: flex; )}>y</div>;\n`);
+    const held = placehold(`const a = <div id="x" css={@@( display: flex; )}>y</div>;\n`);
 
     expect(held?.text).toContain(`css={/*`);
     expect(held?.text).toContain(`}>y</div>`);
@@ -173,15 +173,15 @@ describe("a block written as a value", () => {
   });
 
   test("and a block outside JSX keeps its own assignment", () => {
-    const held = placehold(`const panel = @( display: flex; );\n`);
+    const held = placehold(`const panel = @@( display: flex; );\n`);
 
     expect(held?.text).toMatch(/^const panel = \/\*@ramonda-css:0\*\/ 0;\n$/);
   });
 
   test.each([
-    ["braced", `const a = <div id="x" css={@( display: flex; )}>y</div>;\n`],
-    ["outside JSX", `const panel = @(\n  display: flex;\n);\n`],
-    ["a bare attribute", `const a = <div css=@( display: flex; )>y</div>;\n`],
+    ["braced", `const a = <div id="x" css={@@( display: flex; )}>y</div>;\n`],
+    ["outside JSX", `const panel = @@(\n  display: flex;\n);\n`],
+    ["a bare attribute", `const a = <div css=@@( display: flex; )>y</div>;\n`],
   ])("%s comes back exactly as it went in", (_what, source) => {
     const held = placehold(source);
 
@@ -202,7 +202,7 @@ describe("a block written as a value", () => {
  *
  * ## The two rules
  *
- * **A one-line block stays one line.** `css=@( display: flex; )` is a deliberate shape and breaking
+ * **A one-line block stays one line.** `css=@@( display: flex; )` is a deliberate shape and breaking
  * it would be the formatter having an opinion about the markup.
  *
  * **A block already written across lines is laid out fully:** one declaration per line, a nested
@@ -224,29 +224,29 @@ describe("the CSS inside a block", () => {
   };
 
   test("a nested rule's body goes to its own line, one step in", () => {
-    const out = laid(`const a = <div css={@(\n  color: red;\n  &:hover { color: blue; gap: 8px; }\n)}>x</div>;\n`);
+    const out = laid(`const a = <div css={@@(\n  color: red;\n  &:hover { color: blue; gap: 8px; }\n)}>x</div>;\n`);
 
     expect(out).toBe(
-      `const a = <div css={@(\n  color: red;\n  &:hover {\n    color: blue;\n    gap: 8px;\n  }\n)}>x</div>;\n`,
+      `const a = <div css={@@(\n  color: red;\n  &:hover {\n    color: blue;\n    gap: 8px;\n  }\n)}>x</div>;\n`,
     );
   });
 
   test("and a rule inside a rule goes two steps in", () => {
-    const out = laid(`const a = <div css={@(\n  &:hover { & .title { color: red; } }\n)}>x</div>;\n`);
+    const out = laid(`const a = <div css={@@(\n  &:hover { & .title { color: red; } }\n)}>x</div>;\n`);
 
     expect(out).toBe(
-      `const a = <div css={@(\n  &:hover {\n    & .title {\n      color: red;\n    }\n  }\n)}>x</div>;\n`,
+      `const a = <div css={@@(\n  &:hover {\n    & .title {\n      color: red;\n    }\n  }\n)}>x</div>;\n`,
     );
   });
 
   test("a blank line is kept and carries no whitespace", () => {
-    const out = laid(`const a = <div css={@(\n  color: red;\n\n\n  gap: 8px;\n)}>x</div>;\n`);
+    const out = laid(`const a = <div css={@@(\n  color: red;\n\n\n  gap: 8px;\n)}>x</div>;\n`);
 
-    expect(out).toBe(`const a = <div css={@(\n  color: red;\n\n  gap: 8px;\n)}>x</div>;\n`);
+    expect(out).toBe(`const a = <div css={@@(\n  color: red;\n\n  gap: 8px;\n)}>x</div>;\n`);
   });
 
   test("a one-line block is left alone", () => {
-    const source = `const a = <div css={@( display: flex; )}>x</div>;\n`;
+    const source = `const a = <div css={@@( display: flex; )}>x</div>;\n`;
 
     expect(laid(source)).toBe(source);
   });
@@ -258,9 +258,9 @@ describe("the CSS inside a block", () => {
     ["a quoted brace", `  content: "}";`],
     ["a function", `  width: calc(100% - 8px);`],
   ])("%s is not structure", (_what, declaration) => {
-    const out = laid(`const a = <div css={@(\n${declaration}\n)}>x</div>;\n`);
+    const out = laid(`const a = <div css={@@(\n${declaration}\n)}>x</div>;\n`);
 
-    expect(out).toBe(`const a = <div css={@(\n${declaration}\n)}>x</div>;\n`);
+    expect(out).toBe(`const a = <div css={@@(\n${declaration}\n)}>x</div>;\n`);
   });
 
   /**
@@ -281,8 +281,8 @@ describe("the CSS inside a block", () => {
       `  transition: color 150ms, background 150ms;`,
     ],
   ])("%s is collapsed", (_what, written, expected) => {
-    expect(laid(`const a = <div css={@(\n${written}\n)}>x</div>;\n`)).toBe(
-      `const a = <div css={@(\n${expected}\n)}>x</div>;\n`,
+    expect(laid(`const a = <div css={@@(\n${written}\n)}>x</div>;\n`)).toBe(
+      `const a = <div css={@@(\n${expected}\n)}>x</div>;\n`,
     );
   });
 
@@ -291,20 +291,20 @@ describe("the CSS inside a block", () => {
     ["a hole", `  color: {{ a  ?  "red"  :  "blue" }};`],
     ["a comment", `  /* two  spaces */`],
   ])("%s keeps its own spacing", (_what, written) => {
-    expect(laid(`const a = <div css={@(\n${written}\n)}>x</div>;\n`)).toBe(
-      `const a = <div css={@(\n${written}\n)}>x</div>;\n`,
+    expect(laid(`const a = <div css={@@(\n${written}\n)}>x</div>;\n`)).toBe(
+      `const a = <div css={@@(\n${written}\n)}>x</div>;\n`,
     );
   });
 
   test("a comment survives, because the parser does not keep them", () => {
-    const out = laid(`const a = <div css={@(\n  /* why */\n  color: red;\n)}>x</div>;\n`);
+    const out = laid(`const a = <div css={@@(\n  /* why */\n  color: red;\n)}>x</div>;\n`);
 
     expect(out).toContain("/* why */");
   });
 
   /** The property nobody notices until it is missing: running it twice changes nothing. */
   test("laying out what is already laid out changes nothing", () => {
-    const once = laid(`const a = <div css={@(\n  &:hover { color: red; }\n)}>x</div>;\n`) as string;
+    const once = laid(`const a = <div css={@@(\n  &:hover { color: red; }\n)}>x</div>;\n`) as string;
 
     expect(laid(once)).toBe(once);
   });

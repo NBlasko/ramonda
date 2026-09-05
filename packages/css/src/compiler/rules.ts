@@ -66,7 +66,7 @@ const KNOWN = new Set(PROPERTIES);
  * What an editor will not colour, which is the one thing here a BUILD has no business failing over.
  *
  * An editor stops consulting syntax injections the moment it enters a tag's attribute list, so a
- * bare `css=@( … )` is coloured only as the FIRST attribute on the tag name's own line. Written
+ * bare `css=@@( … )` is coloured only as the FIRST attribute on the tag name's own line. Written
  * anywhere else it compiles, is checked, and looks like an error — with nothing on the screen to say
  * why, because what failed is a grammar nobody can see.
  *
@@ -83,7 +83,7 @@ export function checkSite(source: string, site: BlockSite): Finding[] {
       length: site.name.length,
       message:
         `an editor colours a bare block only as the first attribute on the tag name's own line — ` +
-        `write it as \`${site.name}={@( … )}\`, which is the same value and is coloured anywhere.`,
+        `write it as \`${site.name}={@@( … )}\`, which is the same value and is coloured anywhere.`,
     },
   ];
 }

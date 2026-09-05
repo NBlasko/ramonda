@@ -19,7 +19,7 @@ const grammar = (name) =>
 /**
  * The two grammars an editor gets are the two the site gets.
  *
- * A `css=@( … )` block is not TypeScript, so the tsx grammar cannot tokenise it — measured, a fence
+ * A `css=@@( … )` block is not TypeScript, so the tsx grammar cannot tokenise it — measured, a fence
  * holding one came back with the theme's INVALID colour, and so did every line BELOW it, to the end
  * of the fence. The same injections that colour it in the editor colour it here, which is also the
  * only way the two can agree.

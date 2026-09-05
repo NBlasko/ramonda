@@ -317,7 +317,7 @@ function ramondaGlobals(except = new Set()) {
 const PLANTED = `export class Planted extends Component {
   render() {
     return (
-      <div css=@(
+      <div css=@@(
         display: flex;
         dsiplay: flex;
       )>x</div>
@@ -338,7 +338,7 @@ const PLANTED = `export class Planted extends Component {
  * `export {}` makes the file a module, which is what a fragment with a top-level `await` needs and
  * what stops a `const` in one block colliding with the same name in another.
  *
- * ## A `@( … )` style block is read first, and that is not a convenience
+ * ## A `@@( … )` style block is read first, and that is not a convenience
  *
  * The syntax is not TypeScript, so no wrapper makes it parse and every attempt returns `null` — the
  * block is filed under "not standalone code and skipped" and the run exits 0. **Measured by planting

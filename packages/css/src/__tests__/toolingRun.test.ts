@@ -27,7 +27,7 @@ function file(name: string, text: string): string {
 
 const STYLED = `const before = 1;
 const a = (
-  <div css=@(
+  <div css=@@(
     display: flex;
     gap: 8px;
   )>x</div>

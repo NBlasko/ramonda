@@ -29,7 +29,7 @@ export class Card extends Component<{ id: string }> {
 
   render() {
     return (
-      <div css=@(
+      <div css=@@(
         display: flex;
         flex-direction: column;
         padding: 24px;
@@ -53,7 +53,7 @@ const magic = new MagicString(source);
 const hoisted = [];
 let cursor = 0;
 for (;;) {
-  const at = source.indexOf("css=@(", cursor);
+  const at = source.indexOf("css=@@(", cursor);
   if (at === -1) break;
   let scan = at + 6;
   let depth = 1;

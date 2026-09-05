@@ -4,13 +4,13 @@
 > is, what it compiles to, and every tool that has to be taught about it. This README is the part that
 > is about this extension.
 
-Syntax colours for `css=@( … )` style blocks, in `.ts`, `.tsx`, `.js` and `.jsx`.
+Syntax colours for `css=@@( … )` style blocks, in `.ts`, `.tsx`, `.js` and `.jsx`.
 
 ```tsx
-<div css=@( display: flex; color: {{accent}}; )>…</div>
+<div css=@@( display: flex; color: {{accent}}; )>…</div>
 ```
 
-Without it, an editor colours a block with whatever its TypeScript grammar makes of `@( … )`, which
+Without it, an editor colours a block with whatever its TypeScript grammar makes of `@@( … )`, which
 is an error — and the mistake runs to the end of the file, so code far below a block looks broken too.
 
 ## Where it works
@@ -18,7 +18,7 @@ is an error — and the mistake runs to the end of the file, so code far below a
 A block is coloured when it is the **first attribute, on the tag name's own line**:
 
 ```tsx
-<div css=@(
+<div css=@@(
   display: flex;
 )>…</div>
 ```
@@ -36,7 +36,7 @@ no such limit — any attribute, any line:
 <div
   id="x"
   onclick={f}
-  css={@(
+  css={@@(
     display: flex;
   )}
 >…</div>
@@ -45,7 +45,7 @@ no such limit — any attribute, any line:
 and outside JSX entirely:
 
 ```tsx
-const panel = @( display: flex; );
+const panel = @@( display: flex; );
 ```
 
 ## Formatting on save

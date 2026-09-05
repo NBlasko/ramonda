@@ -3787,7 +3787,7 @@ function createProgram(tsconfigPath: string): {
   const program = ts.createProgram({
     rootNames: parsed.fileNames,
     /**
-     * The host, with `@( … )` style blocks turned into TSX before the compiler sees them.
+     * The host, with `@@( … )` style blocks turned into TSX before the compiler sees them.
      *
      * **Not optional, and the failure is silence.** `ramonda-check` reads the author's source, and
      * the block's syntax is not TypeScript — so the parser gives up at it and error-recovers, and

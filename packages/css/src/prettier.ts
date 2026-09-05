@@ -39,7 +39,7 @@ import { placehold } from "./compiler/tooling";
  * to hug them — a template literal is one, which is how every CSS-in-a-backtick plugin gets the
  * layout it does.
  *
- * The cost is that Prettier normalises `css=@( … )` to `css={@( … )}`. The two compile to the same
+ * The cost is that Prettier normalises `css=@@( … )` to `css={@@( … )}`. The two compile to the same
  * class, and the braced one is what to reach for anyway — see README.
  */
 const STANDS = "@ramonda-css-block:";

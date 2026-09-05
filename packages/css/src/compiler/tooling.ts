@@ -27,7 +27,7 @@ export interface Placeheld {
   /** The file with every block replaced by something that parses. Hand this to the formatter. */
   readonly text: string;
   /**
-   * Each block's own `@( … )` text, in the order the placeholders were numbered — never the name in
+   * Each block's own `@@( … )` text, in the order the placeholders were numbered — never the name in
    * front of it, even where the placeholder took that too. A caller printing a placeholder back is
    * printing it INSIDE whatever the placeholder occupies, so the name is already there.
    */
@@ -82,16 +82,16 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
     /**
      * What the site owns, which is the transform's rule and has to be: a bare JSX attribute owns its
      * name, because the braces are ours to add; the two expression spellings own only the block. A
-     * placeholder that swallowed the author's own `}` in `css={@( … )}` leaves an extra one behind —
+     * placeholder that swallowed the author's own `}` in `css={@@( … )}` leaves an extra one behind —
      * measured, biome then refuses the file for the very parse error this exists to avoid.
      */
     const wrap = site.wrap && options.braces !== false;
-    const from = wrap ? site.start : site.open - 1;
+    const from = site.start;
     const held = stands(blocks.length);
 
     text += source.slice(cursor, from);
     text += wrap ? `${site.name}={${held}}` : held;
-    blocks.push({ text: source.slice(from, end), block: source.slice(site.open - 1, end), wrap });
+    blocks.push({ text: source.slice(from, end), block: source.slice(site.open - 2, end), wrap });
     cursor = end;
   }
 
@@ -135,7 +135,7 @@ function restore(formatted: string, blocks: readonly { text: string; wrap: boole
  * The first line stays as it is — it begins where the placeholder was, which the formatter has
  * already positioned. Everything after it is re-laid, and the last line closes what the first opened.
  *
- * **A one-line block is returned untouched.** `css=@( display: flex; )` is a deliberate shape and
+ * **A one-line block is returned untouched.** `css=@@( display: flex; )` is a deliberate shape and
  * breaking it would be the formatter having an opinion about the markup rather than about the CSS.
  */
 function relaid(block: string, outer: string, inner: string): string {

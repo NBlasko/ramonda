@@ -7,7 +7,7 @@ import { highlighter } from "../../scripts/highlighter.mjs";
  *
  * ## The fault this exists for
  *
- * A `css=@( … )` block is not TypeScript, and the tsx grammar cannot tokenise one. Measured before
+ * A `css=@@( … )` block is not TypeScript, and the tsx grammar cannot tokenise one. Measured before
  * the grammars were wired in, a fence holding a block came back with the theme's INVALID colour —
  * and so did every line BELOW it, to the end of the fence. Nothing failed; the page just shipped
  * looking broken, which is the worst outcome for a page whose job is to teach the syntax.
@@ -35,7 +35,7 @@ const colourOf = (code: string, lang: BundledLanguage, text: string) =>
 
 describe("a style block in a fence", () => {
   const FENCE = `const a = (
-  <div css=@(
+  <div css=@@(
     display: flex;
     color: {{accent}};
   )>x</div>

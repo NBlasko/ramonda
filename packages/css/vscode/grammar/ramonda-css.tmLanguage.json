@@ -8,7 +8,7 @@
   ],
   "repository": {
     "block": {
-      "begin": "(?<=\\s)([\\w:$-]+)\\s*(=)\\s*(@\\()",
+      "begin": "(?<=\\s)([\\w:$-]+)\\s*(=)\\s*(@@\\()",
       "beginCaptures": {
         "1": {
           "name": "entity.other.attribute-name"
@@ -32,7 +32,7 @@
           "include": "#innards"
         }
       ],
-      "comment": "The lookbehind mirrors the compiler's own scanner, which requires whitespace before the name — so `` `css=@( `` written inside prose is not a block to either of them."
+      "comment": "The lookbehind mirrors the compiler's own scanner, which requires whitespace before the name. This pattern is only the BARE attribute form, where the name and the `=` are coloured too; a block in expression position is `ramonda.css-value`."
     },
     "innards": {
       "patterns": [

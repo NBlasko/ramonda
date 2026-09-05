@@ -85,8 +85,8 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
 
     try {
       const virtual = virtualFile(text, { properties: options.properties });
-      // `mayHoldABlock` is allowed to say maybe: a decorator is `@(` too, and this is a
-      // decorator-heavy framework. A file that turns out to hold no block needs no overlay.
+      // `mayHoldABlock` is allowed to say maybe — a string or a comment can hold the syntax, and
+      // a file that turns out to hold no block needs no overlay.
       if (virtual !== undefined) {
         overlays.set(fileName, { virtual, source: text });
         css.push(...cssFindings(fileName, text));

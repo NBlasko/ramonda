@@ -114,13 +114,13 @@ describe("completion, at every caret a person passes through", () => {
    * the virtual file is what gives that caret somewhere to be.
    */
   test.each([
-    ["an empty block", `const a = <div css=@(${CARET} )>x</div>;\n`],
-    ["a property being typed", `const a = <div css=@( disp${CARET} )>x</div>;\n`],
-    ["a blank line after a declaration", `const a = <div css=@(\n  display: flex;\n  ${CARET}\n)>x</div>;\n`],
-    ["after a semicolon on the same line", `const a = <div css=@( display: flex; ${CARET} )>x</div>;\n`],
-    ["inside a nested rule", `const a = <div css=@( &:hover { colo${CARET} } )>x</div>;\n`],
-    ["a blank line inside a nested rule", `const a = <div css=@(\n  &:hover {\n    ${CARET}\n  }\n)>x</div>;\n`],
-    ["a block that has no closing paren yet", `const a = <div css=@( disp${CARET}\nconst after = 1;\n`],
+    ["an empty block", `const a = <div css=@@(${CARET} )>x</div>;\n`],
+    ["a property being typed", `const a = <div css=@@( disp${CARET} )>x</div>;\n`],
+    ["a blank line after a declaration", `const a = <div css=@@(\n  display: flex;\n  ${CARET}\n)>x</div>;\n`],
+    ["after a semicolon on the same line", `const a = <div css=@@( display: flex; ${CARET} )>x</div>;\n`],
+    ["inside a nested rule", `const a = <div css=@@( &:hover { colo${CARET} } )>x</div>;\n`],
+    ["a blank line inside a nested rule", `const a = <div css=@@(\n  &:hover {\n    ${CARET}\n  }\n)>x</div>;\n`],
+    ["a block that has no closing paren yet", `const a = <div css=@@( disp${CARET}\nconst after = 1;\n`],
   ])("%s offers the property names", (_what, marked) => {
     const offered = names(marked);
 
@@ -129,7 +129,7 @@ describe("completion, at every caret a person passes through", () => {
   });
 
   test("a value being typed offers what that property accepts, and nothing else", () => {
-    const offered = names(`const a = <div css=@( position: stat${CARET} )>x</div>;\n`);
+    const offered = names(`const a = <div css=@@( position: stat${CARET} )>x</div>;\n`);
 
     for (const value of POSITION_VALUES) expect(offered).toContain(value);
     expect(offered).not.toContain("display");
@@ -138,14 +138,14 @@ describe("completion, at every caret a person passes through", () => {
   test("and a value whose grammar is open offers no union, because there is not one", () => {
     // `display` takes combinations — `inline flow-root` — so it is `string | number` and its typos
     // are the CSS checker's. Said here so the limit is visible from the editor's side too.
-    const offered = names(`const a = <div css=@( display: fl${CARET} )>x</div>;\n`);
+    const offered = names(`const a = <div css=@@( display: fl${CARET} )>x</div>;\n`);
 
     expect(offered).not.toContain("flex");
   });
 
   test("ordinary code in the same file is untouched", () => {
     const offered = names(
-      `const before = 1;\nconst a = <div css=@( display: flex; )>x</div>;\nconst c = bef${CARET};\n`,
+      `const before = 1;\nconst a = <div css=@@( display: flex; )>x</div>;\nconst c = bef${CARET};\n`,
     );
 
     expect(offered).toContain("before");
@@ -165,7 +165,7 @@ describe("the red squiggles", () => {
    * wrong. Both diagnostic kinds have to come from the virtual file.
    */
   test("a correct block gets none, even though the file does not parse as TypeScript", () => {
-    const marked = `const a = <div css=@( display: flex; gap: 8px; )>x</div>;\nexport default a;\n`;
+    const marked = `const a = <div css=@@( display: flex; gap: 8px; )>x</div>;\nexport default a;\n`;
     const { service, withoutThePlugin } = editor(marked);
 
     expect(withoutThePlugin().length).toBeGreaterThan(0);
@@ -174,7 +174,7 @@ describe("the red squiggles", () => {
   });
 
   test("a property typo gets one, at the property", () => {
-    const marked = `const a = (\n  <div css=@(\n    dsiplay: flex;\n  )>x</div>\n);\nexport default a;\n`;
+    const marked = `const a = (\n  <div css=@@(\n    dsiplay: flex;\n  )>x</div>\n);\nexport default a;\n`;
     const { service, source } = editor(marked);
 
     const [only, ...rest] = service.getSemanticDiagnostics(FILE);
@@ -185,7 +185,7 @@ describe("the red squiggles", () => {
   });
 
   test("an ordinary type error in the same file still arrives, at its own place", () => {
-    const marked = `const n: number = "no";\nconst a = <div css=@( display: flex; )>x</div>;\nexport default [n, a];\n`;
+    const marked = `const n: number = "no";\nconst a = <div css=@@( display: flex; )>x</div>;\nexport default [n, a];\n`;
     const { service, source } = editor(marked);
 
     const [only] = service.getSemanticDiagnostics(FILE);
@@ -201,7 +201,7 @@ describe("the red squiggles", () => {
    * and has to have something to say.
    */
   test("the scaffolding's own diagnostics are not shown", () => {
-    const marked = `const a = <div css=@( display: flex; )>x</div>;\nexport default a;\n`;
+    const marked = `const a = <div css=@@( display: flex; )>x</div>;\nexport default a;\n`;
     // A shape that genuinely does not resolve. Leaving `properties` unset does NOT do it — measured:
     // `@ramonda/css/properties` resolves through this package's own `node_modules`, so the default is
     // the real map and there is nothing to report.
@@ -219,7 +219,7 @@ describe("the CSS rules, as squiggles", () => {
    * enforced is here, under the character, while it is being typed.
    */
   test("a hole where a custom property cannot go is a warning under the `{{`", () => {
-    const marked = `const a = (\n  <div css=@(\n    {{name}}: 24px;\n  )>x</div>\n);\n`;
+    const marked = `const a = (\n  <div css=@@(\n    {{name}}: 24px;\n  )>x</div>\n);\n`;
     const { service, source } = editor(marked);
 
     const [only] = service.getSemanticDiagnostics(FILE);
@@ -235,7 +235,7 @@ describe("the CSS rules, as squiggles", () => {
    * showing both while `ramonda-css` had been dropping the duplicate since it was written.
    */
   test("the compiler's word is dropped where a rule of ours said it better", () => {
-    const marked = `const a = (\n  <div css=@(\n    flex-dirction: row;\n  )>x</div>\n);\n`;
+    const marked = `const a = (\n  <div css=@@(\n    flex-dirction: row;\n  )>x</div>\n);\n`;
     const { service } = editor(marked);
 
     const found = service.getSemanticDiagnostics(FILE);
@@ -244,7 +244,7 @@ describe("the CSS rules, as squiggles", () => {
   });
 
   test("a property typo the types cannot suggest gets the rule's suggestion", () => {
-    const marked = `const a = (\n  <div css=@(\n    flex-dirction: row;\n  )>x</div>\n);\n`;
+    const marked = `const a = (\n  <div css=@@(\n    flex-dirction: row;\n  )>x</div>\n);\n`;
     const { service, source } = editor(marked);
 
     const ours = service
@@ -262,7 +262,7 @@ describe("the CSS rules, as squiggles", () => {
    * one would put the squiggle wherever they happen to diverge.
    */
   test("the file a diagnostic names holds the author's own text", () => {
-    const marked = `const a = (\n  <div css=@(\n    display: flexx;\n  )>x</div>\n);\n`;
+    const marked = `const a = (\n  <div css=@@(\n    display: flexx;\n  )>x</div>\n);\n`;
     const { service, source } = editor(marked);
 
     const [only] = service.getSemanticDiagnostics(FILE);
@@ -271,7 +271,7 @@ describe("the CSS rules, as squiggles", () => {
   });
 
   test("and a correct block still gets none", () => {
-    const { service } = editor(`const a = <div css=@( display: flex; gap: 8px; )>x</div>;\n`);
+    const { service } = editor(`const a = <div css=@@( display: flex; gap: 8px; )>x</div>;\n`);
 
     expect(service.getSemanticDiagnostics(FILE)).toEqual([]);
   });
@@ -279,7 +279,7 @@ describe("the CSS rules, as squiggles", () => {
 
 describe("hover", () => {
   test("over a hole's expression, it is the expression's own type", () => {
-    const marked = `const accent: string = "#10b981";\nconst a = <div css=@( color: {{acc${CARET}ent}}; )>x</div>;\n`;
+    const marked = `const accent: string = "#10b981";\nconst a = <div css=@@( color: {{acc${CARET}ent}}; )>x</div>;\n`;
     const { service, caret } = editor(marked);
 
     const info = service.getQuickInfoAtPosition(FILE, caret);
@@ -294,7 +294,7 @@ describe("hover", () => {
    * value, and a link to the page that documents it.
    */
   test("over a value, it is the property that value belongs to", () => {
-    const marked = `const a = <div css=@( flex-direction: col${CARET}umn; )>x</div>;\n`;
+    const marked = `const a = <div css=@@( flex-direction: col${CARET}umn; )>x</div>;\n`;
     const { service, caret } = editor(marked);
 
     const info = service.getQuickInfoAtPosition(FILE, caret);
@@ -304,7 +304,7 @@ describe("hover", () => {
   });
 
   test("over a property name, it is that property with what it accepts", () => {
-    const marked = `const a = <div css=@( flex-dir${CARET}ection: column; )>x</div>;\n`;
+    const marked = `const a = <div css=@@( flex-dir${CARET}ection: column; )>x</div>;\n`;
     const { service, caret } = editor(marked);
 
     const info = service.getQuickInfoAtPosition(FILE, caret);
@@ -324,7 +324,7 @@ describe("hover", () => {
 
 describe("what the plugin does not touch", () => {
   test("everything else falls through, so nothing an editor offers disappears", () => {
-    const marked = `const a = <div css=@( display: flex; )>x</div>;\nexport default a;\n`;
+    const marked = `const a = <div css=@@( display: flex; )>x</div>;\nexport default a;\n`;
     const { service } = editor(marked);
 
     // A method the proxy does not override, answering from the real service.
@@ -340,7 +340,7 @@ describe("what the plugin does not touch", () => {
   });
 
   test("a caret past the end of the file answers nothing rather than guessing", () => {
-    const { service, source } = editor(`const a = <div css=@( display: flex; )>x</div>;\n`);
+    const { service, source } = editor(`const a = <div css=@@( display: flex; )>x</div>;\n`);
 
     expect(service.getCompletionsAtPosition(FILE, source.length + 50, undefined)).toBeUndefined();
     expect(service.getQuickInfoAtPosition(FILE, source.length + 50)).toBeUndefined();
@@ -350,7 +350,7 @@ describe("what the plugin does not touch", () => {
     // `.css`, `.json`, somebody else's virtual module: not ours to read. "Left alone" is the whole
     // claim, so it is asserted as SAMENESS rather than as an outcome — measured, the real service
     // throws for a file outside the program, and the plugin has no business changing that.
-    const { service, plain } = editor(`const a = <div css=@( display: flex; )>x</div>;\n`);
+    const { service, plain } = editor(`const a = <div css=@@( display: flex; )>x</div>;\n`);
     const styles = join(PACKAGE, "src", "__tests__", "styles.css");
 
     const through = (run: () => unknown) => {
@@ -383,7 +383,7 @@ describe("what the plugin does not touch", () => {
  */
 describe("semantic colours", () => {
   const CODE = `const before = 1;
-const a = <div css=@( display: flex; )>x</div>;
+const a = <div css=@@( display: flex; )>x</div>;
 const after = 2;
 export default [before, a, after];
 `;
@@ -419,10 +419,10 @@ export default [before, a, after];
    * should read as `this.weight` reads anywhere else.
    */
   test("no semantic token paints the CSS, and a hole still gets one", () => {
-    const marked = `const accent = "red";\nconst a = <div css=@( display: flex; color: {{accent}}; )>x</div>;\nexport default [a, accent];\n`;
+    const marked = `const accent = "red";\nconst a = <div css=@@( display: flex; color: {{accent}}; )>x</div>;\nexport default [a, accent];\n`;
     const { service, source } = editor(marked);
     const covers = (what: string) => {
-      const at = source.indexOf(what, source.indexOf("css=@("));
+      const at = source.indexOf(what, source.indexOf("css=@@("));
       return spansOf(service, source).some((span) => span.at <= at && at < span.at + span.text.length);
     };
 
@@ -457,7 +457,7 @@ export default [before, a, after];
  */
 describe("every other answer that carries a position", () => {
   const CODE = `const before = 1;
-const a = <div css=@( display: flex; )>x</div>;
+const a = <div css=@@( display: flex; )>x</div>;
 const after = before;
 export default [a, after];
 `;
@@ -556,7 +556,7 @@ export default [a, after];
   });
 
   test("a type and an implementation are found where they are written", () => {
-    const marked = `interface Shape { n: number }\nconst s: Shape = { n: 1 };\nconst a = <div css=@( display: flex; )>x</div>;\nexport default [s, a];\n`;
+    const marked = `interface Shape { n: number }\nconst s: Shape = { n: 1 };\nconst a = <div css=@@( display: flex; )>x</div>;\nexport default [s, a];\n`;
     const { service, source } = editor(marked);
     const use = source.indexOf("s", source.indexOf("export default"));
 
@@ -567,7 +567,7 @@ export default [a, after];
   });
 
   test("signature help points at the call being written", () => {
-    const marked = `function f(n: number) { return n; }\nconst a = <div css=@( display: flex; )>x</div>;\nconst b = f(1);\nexport default [a, b];\n`;
+    const marked = `function f(n: number) { return n; }\nconst a = <div css=@@( display: flex; )>x</div>;\nconst b = f(1);\nexport default [a, b];\n`;
     const { service, source } = editor(marked);
     const inside = source.indexOf("f(1)") + 2;
 
@@ -627,7 +627,7 @@ export default [a, after];
  * ## The fault this exists for
  *
  * An editor stops consulting syntax injections the moment it enters a tag's attribute list, so a
- * bare `css=@( … )` is only coloured when it is the FIRST attribute on the tag name's own line.
+ * bare `css=@@( … )` is only coloured when it is the FIRST attribute on the tag name's own line.
  * Written anywhere else it still compiles, is still checked, and looks like an error — and there is
  * nothing on the screen to say why, because the thing that failed is a grammar nobody can see.
  *
@@ -642,28 +642,28 @@ describe("a block an editor cannot colour", () => {
       .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Suggestion);
 
   test.each([
-    ["not the first attribute", `const a = <div className="lead" css=@( display: flex; )>y</div>;\n`],
-    ["on the line below the tag name", `const a = (\n  <div\n    css=@( display: flex; )\n  >y</div>\n);\n`],
+    ["not the first attribute", `const a = <div className="lead" css=@@( display: flex; )>y</div>;\n`],
+    ["on the line below the tag name", `const a = (\n  <div\n    css=@@( display: flex; )\n  >y</div>\n);\n`],
   ])("%s is pointed at the braced spelling", (_what, source) => {
     const [only, ...rest] = suggestions(source);
 
     expect(rest).toEqual([]);
-    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("css={@(");
+    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("css={@@(");
     // On the name, which is the part to change.
     expect(source.slice(only.start ?? 0, (only.start ?? 0) + (only.length ?? 0))).toBe("css");
   });
 
   test.each([
-    ["the first attribute, on the tag name's line", `const a = <div css=@( display: flex; )>y</div>;\n`],
-    ["a braced attribute", `const a = <div className="lead" css={@( display: flex; )}>y</div>;\n`],
-    ["a value outside JSX", `const panel = @( display: flex; );\nexport default panel;\n`],
+    ["the first attribute, on the tag name's line", `const a = <div css=@@( display: flex; )>y</div>;\n`],
+    ["a braced attribute", `const a = <div className="lead" css={@@( display: flex; )}>y</div>;\n`],
+    ["a value outside JSX", `const panel = @@( display: flex; );\nexport default panel;\n`],
   ])("%s says nothing", (_what, source) => {
     expect(suggestions(source)).toEqual([]);
   });
 
   /** A suggestion is not a failure, and the rest of the file's diagnostics are unaffected by it. */
   test("it does not become an error anywhere", () => {
-    const source = `const a = <div className="lead" css=@( display: flex; )>y</div>;\n`;
+    const source = `const a = <div className="lead" css=@@( display: flex; )>y</div>;\n`;
     const errors = editor(source)
       .service.getSemanticDiagnostics(FILE)
       .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);

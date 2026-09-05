@@ -18,7 +18,7 @@ let hits = 0;
 const t0 = performance.now();
 for (let round = 0; round < 20; round++) {
   hits = 0;
-  for (const s of sources) if (s.includes("=@(")) hits++;
+  for (const s of sources) if (s.includes("=@@(")) hits++;
 }
 const t1 = performance.now();
 

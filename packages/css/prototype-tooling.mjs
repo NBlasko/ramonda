@@ -1,5 +1,5 @@
 /**
- * The formatter and the linter cannot read a file containing `@( … )`. What can be done about it?
+ * The formatter and the linter cannot read a file containing `@@( … )`. What can be done about it?
  *
  * The first answer people reach for is a suppression comment, and it cannot work: `biome-ignore` and
  * `oxlint-disable` are read BY the parser, and the parser fails before it reaches them. Measured —
@@ -42,7 +42,7 @@ const FILE = "Card.tsx";
 const source = `export const Card = (props: { id: string }) => {
   const accent = "#10b981";
   return (
-    <div css=@(
+    <div css=@@(
       display: flex;
       border-left: {{accent}};
     )>
@@ -63,7 +63,7 @@ function blocksIn(text) {
   const found = [];
   let cursor = 0;
   for (;;) {
-    const at = text.indexOf("css=@(", cursor);
+    const at = text.indexOf("css=@@(", cursor);
     if (at === -1) return found;
     let scan = at + 6;
     let depth = 1;

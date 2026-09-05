@@ -34,7 +34,7 @@ the element. The syntax is not TypeScript, so the package owns a parser and a vi
 the same way JSX is usable because somebody wrote the parser for it.
 
 ```
-<div css=@(
+<div css=@@(
   display: flex;
   border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
 )>
@@ -263,10 +263,11 @@ Requirements, each of which came out of a measurement rather than a preference:
 
 - **Bail out on a substring scan** before parsing anything. Measured: 1,268 files and 10.61 MB in
   1.33 ms. A codebase using none of this must pay nothing.
-- **The scan is lexically aware** — strings, templates, comments — because finding `=@(` is not the
+- **The scan is lexically aware** — strings, templates, comments — because finding `=@@(` is not the
   same as knowing it is a JSX attribute. Measured at ~450 MB/s, a fifth of the total cost.
-- **Never look for a block in decorator position.** `@(expr)` is *already* valid TypeScript there:
-  `class C { @(dec) m() {} }` compiles. This is a decorator-heavy framework, so this is a permanent
+- **The opening is `@@(`, and the second `@` was bought.** `@(expr)` is *already* valid TypeScript in
+  decorator position — `class C { @(dec) m() {} }` compiles, and so does
+  `constructor(@(inject()) private x: number)`. This is a decorator-heavy framework, so this is a permanent
   test, not a note.
 - **Replace only the CSS BETWEEN the expressions, never the expressions themselves.** Found by
   getting it wrong: overwriting a block in one span made a hole report line 8 instead of line 13.
@@ -534,7 +535,7 @@ object-literal completion. Without this the feature is technically safe and prac
 
 ### I2 — the docs example gate reads through the virtual file too. **DONE.**
 
-`shape()` turns a block holding `@( … )` into its virtual reading before it tries any wrapper, and
+`shape()` turns a block holding `@@( … )` into its virtual reading before it tries any wrapper, and
 `SELFTEST=block` plants a wrong example so the floor is asserted rather than assumed — proved to fail
 by removing the fix. It runs in `pnpm check` and in CI, beside the ordinary run.
 
@@ -562,7 +563,7 @@ a build.
 
 **Reproduced with this package's own CLI before the fix**, exactly as predicted — three findings
 became one, exit code unchanged. The test writes its project to a temp directory rather than adding a
-fixture: a `.tsx` holding `@( … )` cannot be read by this repository's formatter or linter, and there
+fixture: a `.tsx` holding `@@( … )` cannot be read by this repository's formatter or linter, and there
 is no reason to make that the repository's problem.
 
 `@ramonda/css` is a devDependency of `@ramonda/check`, bundled the way `@ramonda/dom-facts` is — so
@@ -587,7 +588,7 @@ block FIRST :  unnamed-image
 Two accessibility faults vanish, exit code 1 either way. **And the certificate lands on the same
 requirement**: `complete` fails on a reference the parser threw away, `plain` fails the moment
 somebody papers over the blindness with a `ramonda-check-ignore`. A package whose source uses
-`@( … )` cannot honestly certify until this is done.
+`@@( … )` cannot honestly certify until this is done.
 
 `@ramonda/check` **may** depend on `@ramonda/css`. The forbidden direction is the other one.
 
@@ -700,7 +701,7 @@ did every line BELOW it, to the end of the file. A block on line 243 made `const
 259 look broken.
 
 **Two injections, in `packages/css/vscode/grammar/`.** One is aimed at a JSX tag and scopes
-`name=@( … )` as embedded CSS; the other is aimed at the CSS a block scopes, and gives `{{ … }}` back
+`name=@@( … )` as embedded CSS; the other is aimed at the CSS a block scopes, and gives `{{ … }}` back
 to TypeScript. **The hole has to be a SEPARATE injection**, because `{{` in ordinary JSX is
 `style={{…}}` — a pattern in the tag-level grammar would colour every inline style object as CSS.
 
@@ -727,11 +728,11 @@ typo in either installs cleanly, activates cleanly and colours nothing.
 
 **Three faults the first sample did not have, all found on the REAL file:**
 
-- **prose that mentions the syntax opened a block.** `<p>a `css=@( … )` block</p>` matched in JSX
+- **prose that mentions the syntax opened a block.** `<p>a `css=@@( … )` block</p>` matched in JSX
   TEXT, and the block it opened never closed — the rest of the file was CSS. The injection selector
   excludes `meta.jsx.children`, strings and comments now.
 - **a block is not always the last attribute.** The first `end` required the closing paren to be
-  followed by `>` or `/`, so `css=@( … ) id="x"` never closed. A bare `)` is right, and safe: a paren
+  followed by `>` or `/`, so `css=@@( … ) id="x"` never closed. A bare `)` is right, and safe: a paren
   inside a block is always inside something — `calc(…)`, `url(…)`, a hole's own call — and a child
   construct is consumed before an end is tried.
 - **the language service was painting the file too, and nobody had mapped it.** Not a grammar fault
@@ -792,13 +793,13 @@ the honest answer, and `ramonda-css format` is what formats these files anyway.
 ### N — a block in expression position, which is two spellings and one case
 
 **A defect first.** `DESIGN.md` had promised from the start that "because the compiled form is a
-value, `@( … )` outside JSX is the same feature with no special case", and the code did not do it: the
-writer emitted the attribute form everywhere, so `const panel = @( display: flex; )` compiled to
+value, `@@( … )` outside JSX is the same feature with no special case", and the code did not do it: the
+writer emitted the attribute form everywhere, so `const panel = @@( display: flex; )` compiled to
 `const panel={_s0}` — an **object literal**, valid code meaning the wrong thing, with the type error
 landing wherever the value was eventually used.
 
 **And a second spelling that exists because of M's boundary**, not because two ways to write a thing
-are nice: `css={@( … )}`, a value in the braces JSX already has for one. Measured with the same
+are nice: `css={@@( … )}`, a value in the braces JSX already has for one. Measured with the same
 one-word grammar that found the boundary — an injection is consulted inside a braced attribute at
 **every** position tried: second attribute, fourth line of a tag, even a value on its own line. So the
 limit that no bare attribute can be coloured past the first one has a way round it that costs the
@@ -807,8 +808,8 @@ author two characters.
 Both are the same case downstream: **replace the block, touch nothing to its left.** A bare attribute
 is the odd one out — it is rewritten from its NAME, because the braces are ours to add.
 
-**Telling them apart is a backwards walk, and its direction is chosen.** `css=@( … )` and
-`const panel = @( … )` are the same three tokens to the scanner — whitespace, a name, `=` — so
+**Telling them apart is a backwards walk, and its direction is chosen.** `css=@@( … )` and
+`const panel = @@( … )` are the same three tokens to the scanner — whitespace, a name, `=` — so
 `isAttribute` consumes attributes backwards (bare, quoted, braced, spreads, namespaced tag names)
 until it reaches the `<` that opens a tag, and answers NO when it cannot prove otherwise. An attribute
 mistaken for a value emits `css=_s0`, a syntax error the build reports at once; a value mistaken for
@@ -839,7 +840,7 @@ block where the node was.
 | a plain string, `css="m0"` | Prettier prints a quoted attribute value ITSELF and never asks `embed` |
 | a template literal, ``css={`m0`}`` | asked, and it hugs its braces — only a few node types may |
 
-**The cost is one rewrite:** a bare `css=@( … )` comes back as `css={@( … )}`, because the
+**The cost is one rewrite:** a bare `css=@@( … )` comes back as `css={@@( … )}`, because the
 placeholder has to be braced for Prettier to ask about it at all. The two compile to the same class,
 and the braced spelling is the one to reach for anyway.
 
@@ -871,7 +872,7 @@ hook runs and passes, with the same class in both the stylesheet and the JavaScr
 A bare block that is not the first attribute on the tag name's own line still compiles and is still
 checked, and looks like an error — with nothing on the screen to say why, because what failed is a
 grammar nobody can see. `uncolourable-block` is the plugin telling them, on the attribute name,
-pointing at `css={@( … )}`.
+pointing at `css={@@( … )}`.
 
 **A SUGGESTION, and the weight was the whole decision.** Every finding `checkBlock` produces makes
 `ramonda-css` exit non-zero, and stopping a build because an editor will not colour something would
@@ -1024,7 +1025,9 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | hydration, four directions | two fail, and both are the `undefined` rows |
 | N instances | **one rule at any N**; 30–73 B per instance |
 | hash length | 8/12/16 hex all gzip to **46.7 KB** — length is free |
-| `@(expr)` in decorator position | **already valid TypeScript** |
+| `@(expr)` in decorator position | **already valid TypeScript**, on a member AND on a parameter |
+| `@@(` in all five positions | a syntax error everywhere — nothing to disambiguate against |
+| the substring `@(` on this repository | matches **41** files, **2** hold a block; `@@(` matches the 2 |
 | `ramonda-check` on the raw source | error-recovers; 3 rules become 1, silently |
 | source maps through both transforms | **5 of 5** positions land on the author's line |
 | the map's `hires` setting | all three get every line right; only `false` loses columns, everywhere |

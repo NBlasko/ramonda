@@ -21,22 +21,22 @@ const format = (source: string) => prettier.format(source, { parser: "typescript
 describe("without the plugin", () => {
   test("Prettier refuses a file holding a block, which is why this package ships one", async () => {
     await expect(
-      prettier.format(`const a = <div css=@( display: flex; )>y</div>;\n`, { parser: "typescript" }),
+      prettier.format(`const a = <div css=@@( display: flex; )>y</div>;\n`, { parser: "typescript" }),
     ).rejects.toThrow(/expected/);
   });
 });
 
 describe("with it", () => {
   test("a block written as a value keeps its line, and its CSS", async () => {
-    const out = await format(`const panel   =   @(\n  display: flex;\n  gap: 8px;\n);\n`);
+    const out = await format(`const panel   =   @@(\n  display: flex;\n  gap: 8px;\n);\n`);
 
-    expect(out).toBe(`const panel = @(\n  display: flex;\n  gap: 8px;\n);\n`);
+    expect(out).toBe(`const panel = @@(\n  display: flex;\n  gap: 8px;\n);\n`);
   });
 
   test("a braced attribute is laid out where the printer put it", async () => {
-    const out = await format(`const a = <div id="x" css={@(\n  display: flex;\n)}>y</div>;\n`);
+    const out = await format(`const a = <div id="x" css={@@(\n  display: flex;\n)}>y</div>;\n`);
 
-    expect(out).toContain("css={@(");
+    expect(out).toContain("css={@@(");
     expect(out).toContain("    display: flex;");
     expect(out).toContain(")}");
   });
@@ -48,15 +48,15 @@ describe("with it", () => {
    * two compile to the same class, and the braced spelling is the one to reach for anyway.
    */
   test("a bare attribute comes back braced, and nothing else about it moves", async () => {
-    const out = await format(`const a = <div css=@(\n  display: flex;\n)>y</div>;\n`);
+    const out = await format(`const a = <div css=@@(\n  display: flex;\n)>y</div>;\n`);
 
-    expect(out).toContain("css={@(");
-    expect(out).not.toContain("css=@(");
+    expect(out).toContain("css={@@(");
+    expect(out).not.toContain("css=@@(");
     expect(out).toContain("display: flex;");
   });
 
   test("the CSS inside is returned as written, holes and nesting and all", async () => {
-    const source = `const panel = @(\n  border-left: {{\`\${w}px\`}} solid #ff0055;\n  &:hover { color: red; }\n);\n`;
+    const source = `const panel = @@(\n  border-left: {{\`\${w}px\`}} solid #ff0055;\n  &:hover { color: red; }\n);\n`;
     const out = await format(source);
 
     expect(out).toContain("border-left: {{`${w}px`}} solid #ff0055;");
@@ -66,9 +66,9 @@ describe("with it", () => {
   /** A formatter that does not settle is worse than one that refuses: it rewrites the file forever. */
   test("formatting twice changes nothing the second time", async () => {
     for (const source of [
-      `const panel = @(\n  display: flex;\n);\n`,
-      `const a = <div id="x" css={@(\n  display: flex;\n)}>y</div>;\n`,
-      `const a = <div css=@(\n  display: flex;\n)>y</div>;\n`,
+      `const panel = @@(\n  display: flex;\n);\n`,
+      `const a = <div id="x" css={@@(\n  display: flex;\n)}>y</div>;\n`,
+      `const a = <div css=@@(\n  display: flex;\n)>y</div>;\n`,
     ]) {
       const once = await format(source);
       expect(await format(once)).toBe(once);

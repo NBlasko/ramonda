@@ -92,13 +92,13 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   /** Class name -> the descriptor that stands for it, so a block written twice is emitted once. */
   const descriptors = new Map<string, { id: string; emitted: EmittedBlock }>();
   const order: { id: string; emitted: EmittedBlock }[] = [];
-  /** The end of the block read last, so a `name=@(` found INSIDE one is not read as another. */
+  /** The end of the block read last, so a `name=@@(` found INSIDE one is not read as another. */
   let consumed = 0;
 
   for (const site of sites) {
     if (site.start < consumed) {
       refuse(
-        "a block cannot contain another block — a hole holds a value, and a nested `@( … )` is not one.",
+        "a block cannot contain another block — a hole holds a value, and a nested `@@( … )` is not one.",
         source,
         site.start,
         filename,
@@ -150,7 +150,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
  *
  * **What is replaced depends on how the block was written.** A bare JSX attribute needs braces the
  * author did not write, so the NAME is replaced too and the site becomes `css={_s0}`. The two
- * expression spellings — `css={@( … )}` and `const panel = @( … )` — need nothing but the value, so
+ * expression spellings — `css={@@( … )}` and `const panel = @@( … )` — need nothing but the value, so
  * only the block itself is replaced and everything to its left is the author's own text. Wrapping
  * one of those would turn a value into an object literal.
  */
@@ -161,7 +161,7 @@ function write(
   holes: readonly { start: number; end: number }[],
   end: number,
 ): void {
-  const start = site.wrap ? site.start : site.open - 1;
+  const start = site.start;
   const head = site.wrap ? `${site.name}={${id}` : id;
   const tail = site.wrap ? "}" : "";
 

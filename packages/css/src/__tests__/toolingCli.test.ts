@@ -73,7 +73,7 @@ function run(root: string, args: string[]): { output: string; status: number } {
 
 const STYLED = `export const Card = (props: { id: string }) => {
   return (
-    <div css=@(
+    <div css=@@(
       display: flex;
       border-left: {{props.id}};
     )>
@@ -96,7 +96,7 @@ describe("format", () => {
     // …and the block is still the author's own text, unreformatted.
     expect(out).toContain("display: flex;");
     expect(out).toContain("border-left: {{props.id}};");
-    expect(out).toContain("css=@(");
+    expect(out).toContain("css=@@(");
   });
 
   /**
