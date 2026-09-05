@@ -1328,9 +1328,22 @@ because the sheet already emits longhands after shorthands.
 The second row is the thing that was impossible before this: precedence decided at the call site
 rather than by the stylesheet.
 
-**AC5 — `...expr;` inside a block.** The parser already reads it as a declaration whose property is
-`"...base"` with no value (measured). What it needs is meaning in the transform, a type for the
-operand in the virtual file, and a rule for a spread of something that is not a block.
+**AC5 — `...{{expr}};` inside a block. DONE 2026-09-05.** It becomes an argument of the merge, in the
+position it was written, so what is above it merges first — which is what *later wins* means.
+
+**The operand is inside `{{ }}` like every other expression in a block**, for the reason the user gave
+when they chose `@@if {{expr}}`: TypeScript appears there and nowhere else. `...base;` would have
+been prettier and would have been a second spelling for the same thing.
+
+**One fault it exposed, and it failed in the worst way — quietly and only sometimes.** A spread hands
+`merge` whatever the binding holds, and `const base = @@( … )` compiles to a VALUE, not a map. A
+value has none of the keys a map has, so composing one lost everything: measured, a base spread into
+a modifier still produced a plausible class string, because iterating a value's own keys happens to
+yield its `className` — and nothing could be overridden or cleared. `padding: 8px` in the modifier
+left the base's `padding-left: 40px` standing. **A value now carries the map it came from**, under a
+non-enumerable symbol, and `compose` reads it back.
+
+The type for the operand is still to write — see AC7.
 
 **AC6 — `@@if {{ … }} { }`.** The parser already reads it as a nested rule with that prelude, and the
 scanner does NOT mistake it for a second block site (measured: one site, not two). Needs the condition
@@ -1340,6 +1353,26 @@ type-checked in the author's scope, and exemption from `at-rule-out-of-place`.
 what everyone expects. Consistency won, and it is this language's one standing rule: **TypeScript
 appears inside `{{ }}` and nowhere else.** A second spelling for "here is an expression" would be a
 second thing to teach and a second thing for every tool to know.
+
+**DONE 2026-09-05.** A group becomes an argument guarded by its condition — `c && { … }` — and a
+nested one a conjunction, `a && b && { … }`, which is only correct because the merge is associative.
+Declarations around a group keep their place, and a selector inside a group means what a group inside
+a selector means: the key is canonical, so both give the same class.
+
+Two parser changes, both narrow: a head that is exactly the marker and one hole records that hole
+rather than refusing it, and a spread is a declaration with no value rather than a declaration
+missing one. Everything else about a head is unchanged, so `@@iffy {{c}}` is still a selector and
+still refused.
+
+**Measured end to end** — compiled, run, and rendered in Chromium, across a spread, two guards and a
+shorthand:
+
+| | computed |
+|---|---|
+| neither | `cursor: pointer`, `padding-left: 40px` |
+| `off` | **`cursor: not-allowed`** — the guard beat the base, decided at the call site |
+| `roomy` | **`padding-left: 8px`** — a shorthand inside a GUARD cleared a longhand that arrived through a SPREAD |
+| both | composed |
 
 **AC7 — the rules the new shape makes possible.** A shorthand meeting one of its own longhands in a
 merge the author wrote INLINE is visible to the checker, which is a thing that could never be reported

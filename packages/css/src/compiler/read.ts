@@ -1,4 +1,5 @@
 import type { Block, BlockItem, ValuePart } from "./ast";
+import { HOLE } from "./normalise";
 import { holeOutOfPlace, refuse } from "./errors";
 
 /**
@@ -23,6 +24,17 @@ import { holeOutOfPlace, refuse } from "./errors";
  * So `tolerant` is a second mode of one parser rather than a second parser. **Strict is the default**,
  * so nothing gets the forgiving reading by forgetting to ask for it.
  */
+
+/** What opens a conditional group — see the note in `readHead`. */
+export const CONDITION = "@@if";
+
+/** What opens a spread of another block's map. */
+export const SPREAD = "...";
+
+/** The head of a spread: the marker and one hole, and nothing else. */
+export function isSpread(head: string): boolean {
+  return new RegExp(`^\\s*\\.\\.\\.\\s*${HOLE}\\d+${HOLE}\\s*$`).test(head);
+}
 
 export interface ReadOptions {
   /**
@@ -298,6 +310,25 @@ export function readBlock(source: string, open: number, filename: string, option
           continue;
         }
 
+        /**
+         * The two heads that ARE an expression rather than a name.
+         *
+         * `@@if {{cond}}` and `...{{block}}` are composition, and what follows the marker is
+         * TypeScript — which is what `{{ }}` means everywhere else in a block. Recorded like any
+         * other hole, so the transform leaves the author's expression exactly where they wrote it,
+         * and marked in the text with the same placeholder a value uses.
+         */
+        if (text.trimEnd() === CONDITION || text.trimEnd() === SPREAD) {
+          const part = pastHole();
+          // A part that came back as TEXT is a reference to a named site, resolved at build time —
+          // a `@@keyframes` name, which is a string and not a condition or a block. It falls
+          // through to the refusal below, which is the right answer for it.
+          if (part.kind === "hole") {
+            text += `${HOLE}${part.index}${HOLE}`;
+            continue;
+          }
+        }
+
         if (!tolerant) refuse(holeOutOfPlace(at === from ? "a declaration" : what), source, at, filename);
         // Kept as text, so the rest of the block still reads. The fault is the checker's to name.
         const start = at;
@@ -419,6 +450,17 @@ export function readBlock(source: string, open: number, filename: string, option
 
       const property = readHead(58 /* : */, "a property name").trim();
       if (at >= source.length || source.charCodeAt(at) !== 58) {
+        /**
+         * A spread has no value, and that is what it IS: `...{{base}};` merges another block's map
+         * at this point rather than setting anything. It reaches here because it has no colon —
+         * which for everything else is the missing half of a declaration.
+         */
+        if (isSpread(property)) {
+          if (at < source.length && source.charCodeAt(at) === 59) at++;
+          items.push({ kind: "declaration", at: from, end: at, property, value: [] });
+          continue;
+        }
+
         if (!tolerant) {
           refuse(
             `\`${property.trim()}\` is not a declaration — a block holds \`property: value;\` and nested rules, nothing else.`,

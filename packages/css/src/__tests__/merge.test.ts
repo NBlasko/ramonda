@@ -162,3 +162,40 @@ describe("clearing inside a condition", () => {
     expect(merge({ [`${WIDE}|padding-left`]: "r-bbbbbbbbbbbbbbbb" }, map).className).toBe("r-aaaaaaaaaaaaaaaa");
   });
 });
+
+/**
+ * A merged VALUE, spread back into another merge — which is what `...{{base}};` does.
+ *
+ * `const base = @@( … )` compiles to a merged value, not to a map, because that is what the `css`
+ * prop takes. So a spread of it hands `merge` the value, and a value has none of the keys a map has.
+ *
+ * **Measured before this existed, and it failed in the worst way — quietly and only sometimes:** a
+ * base spread into a modifier still produced a plausible class string, because iterating a value's
+ * own keys happens to yield its `className`. What it lost was the map, so nothing could be
+ * overridden and nothing could be cleared — `padding: 8px` in the modifier left the base's
+ * `padding-left: 40px` standing.
+ *
+ * So a value carries the map it came from, and `compose` reads it back.
+ */
+describe("a value spread back in", () => {
+  const base = { "padding-left": "r-left0000000000000", cursor: "r-pointer000000000" };
+  const roomy = { padding: "r-padding000000000", "~padding": ["padding-left"] };
+
+  test("composes as the map it came from", () => {
+    const value = merge(base);
+
+    expect(merge(value, roomy).className).toBe("r-pointer000000000 r-padding000000000");
+  });
+
+  test("and so does one that was composed already", () => {
+    const value = merge(base, { opacity: "r-opacity000000000" });
+
+    expect(merge(value, roomy).className.split(" ").sort()).toEqual(
+      ["r-pointer000000000", "r-opacity000000000", "r-padding000000000"].sort(),
+    );
+  });
+
+  test("which is the same answer as merging the maps directly", () => {
+    expect(merge(merge(base), roomy).className).toBe(merge(base, roomy).className);
+  });
+});

@@ -30,6 +30,24 @@ export type StyleMap = { readonly [key: string]: StyleEntry | StyleClears };
 const CLEARS = "~";
 
 /**
+ * Where a merged value keeps the map it came from.
+ *
+ * `const base = @@( … )` compiles to a VALUE, because that is what the `css` prop takes — and
+ * `...{{base}};` in another block hands that value back to a merge, which needs the MAP. Without
+ * this it failed quietly and only sometimes: iterating a value's own keys happens to yield a
+ * plausible class string, so a base spread into a modifier still rendered — with nothing
+ * overridable and nothing cleared.
+ *
+ * A symbol, so it is not a key any map can have and not a field anything serialises.
+ */
+const FROM = Symbol.for("ramonda.css.map");
+
+/** The map behind a merged value, or the map itself. */
+function mapOf(one: StyleMap | StyleValue): StyleMap {
+  return (one as { [FROM]?: StyleMap })[FROM] ?? (one as StyleMap);
+}
+
+/**
  * Compose blocks into one map — the primitive, and the one that is closed over its own output.
  *
  * `merge` returns the VALUE the framework takes, which is a different shape and cannot be composed
@@ -42,12 +60,13 @@ const CLEARS = "~";
  * replacing them. Measured over 50,301 random groupings drawn from one shorthand family: zero
  * disagreements.
  */
-export function compose(...maps: readonly (StyleMap | false | null | undefined)[]): StyleMap {
+export function compose(...maps: readonly (StyleMap | StyleValue | false | null | undefined)[]): StyleMap {
   /** Insertion-ordered, which is what keeps a composed map behaving like the sequence it came from. */
   const chosen: Record<string, StyleEntry | StyleClears> = {};
 
-  for (const map of maps) {
-    if (!map) continue;
+  for (const given of maps) {
+    if (!given) continue;
+    const map = mapOf(given);
     for (const key in map) {
       if (key.startsWith(CLEARS)) continue;
 
@@ -96,7 +115,7 @@ export function compose(...maps: readonly (StyleMap | false | null | undefined)[
  * This is the BOUNDARY; {@link compose} is the primitive, and it is the one that composes with
  * itself.
  */
-export function merge(...maps: readonly (StyleMap | false | null | undefined)[]): StyleValue {
+export function merge(...maps: readonly (StyleMap | StyleValue | false | null | undefined)[]): StyleValue {
   const chosen = compose(...maps);
 
   let className = "";
@@ -123,5 +142,13 @@ export function merge(...maps: readonly (StyleMap | false | null | undefined)[])
     }
   }
 
-  return { className, properties, values };
+  /**
+   * The map travels with the value, so a spread of it composes rather than iterating its fields.
+   *
+   * Not enumerable: it must not appear in a spread of the value, in `JSON.stringify`, or in anything
+   * that walks its keys — it is how a value is composed again, not part of what a value IS.
+   */
+  const value = { className, properties, values };
+  Object.defineProperty(value, FROM, { value: chosen, enumerable: false });
+  return value;
 }

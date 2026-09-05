@@ -1,5 +1,5 @@
 import MagicString from "magic-string";
-import { flatten } from "./flatten";
+import { segments } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
 import { classNameFor, substitute, variableNameFor } from "./names";
 import { namedSites } from "./references";
@@ -237,45 +237,77 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * An ordinary block is a MAP: one entry per declaration, from what it sets to the class that
      * sets it. See CONTRACT.md §1b, and `merge` for what a call site then does with two of them.
      */
+    /**
+     * The map's text, cut wherever one of the author's expressions goes.
+     *
+     * A hole in a value, a spread's operand and a condition are all TypeScript the transform must
+     * not touch — and all three appear in source order, because `segments` walks depth-first and a
+     * guard is written above what it guards. So one rule serves all three: end the piece, let the
+     * expression follow where it was written, begin the next piece after it.
+     */
     const pieces: string[] = [];
     let piece = "";
-    for (const declaration of flatten(read.block)) {
-      const own = classNameFor(declaration.canonical);
-      const variables = declaration.holes.map((_hole, index) => variableNameFor(own, index));
+    const expression = (): void => {
+      pieces.push(piece);
+      piece = "";
+    };
 
-      if (!atoms.has(own)) {
-        atoms.set(own, {
-          className: own,
-          css: substitute(declaration.canonical, own),
-          properties: variables,
-          property: declaration.property,
-          selector: declaration.selector,
-          conditions: declaration.conditions,
-        });
+    let first = true;
+    for (const segment of segments(read.block)) {
+      if (!first) piece += ",";
+      first = false;
+
+      // `guard && ` for each condition it sits under. Nesting is a conjunction — see `segments`.
+      for (let index = 0; index < segment.guards.length; index++) {
+        expression();
+        piece += " && ";
       }
 
-      piece += `${JSON.stringify(declaration.key)}:`;
-      if (declaration.holes.length === 0) piece += `${JSON.stringify(own)},`;
-      else {
-        piece += `[${JSON.stringify(own)},`;
-        for (let index = 0; index < declaration.holes.length; index++) {
-          pieces.push(piece);
-          piece = index === declaration.holes.length - 1 ? "]," : ",";
+      if (segment.kind === "spread") {
+        expression();
+        continue;
+      }
+
+      piece += "{";
+      for (const declaration of segment.items) {
+        const own = classNameFor(declaration.canonical);
+        const variables = declaration.holes.map((_hole, index) => variableNameFor(own, index));
+
+        if (!atoms.has(own)) {
+          atoms.set(own, {
+            className: own,
+            css: substitute(declaration.canonical, own),
+            properties: variables,
+            property: declaration.property,
+            selector: declaration.selector,
+            conditions: declaration.conditions,
+          });
+        }
+
+        piece += `${JSON.stringify(declaration.key)}:`;
+        if (declaration.holes.length === 0) piece += `${JSON.stringify(own)},`;
+        else {
+          piece += `[${JSON.stringify(own)},`;
+          for (let index = 0; index < declaration.holes.length; index++) {
+            expression();
+            piece = index === declaration.holes.length - 1 ? "]," : ",";
+          }
+        }
+
+        /**
+         * What this declaration clears, when it is a shorthand — full KEYS, so a `padding` inside a
+         * `@media` clears the `padding-left` inside that one and not the one outside it.
+         *
+         * Emitted only for the shorthands a block actually writes, which is what keeps a table of 78
+         * out of every page.
+         */
+        const clears = SHORTHANDS[declaration.property];
+        if (clears !== undefined) {
+          const context = declaration.key.slice(0, declaration.key.length - declaration.property.length);
+          piece += `${JSON.stringify(`~${declaration.key}`)}:${JSON.stringify(clears.map((one) => context + one))},`;
         }
       }
-
-      /**
-       * What this declaration clears, when it is a shorthand — full KEYS, so a `padding` inside a
-       * `@media` clears the `padding-left` inside that one and not the one outside it.
-       *
-       * Emitted only for the shorthands a block actually writes, which is what keeps a table of 78
-       * out of every page.
-       */
-      const clears = SHORTHANDS[declaration.property];
-      if (clears !== undefined) {
-        const context = declaration.key.slice(0, declaration.key.length - declaration.property.length);
-        piece += `${JSON.stringify(`~${declaration.key}`)}:${JSON.stringify(clears.map((one) => context + one))},`;
-      }
+      piece += "}";
     }
     pieces.push(piece);
 
@@ -312,11 +344,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       continue;
     }
 
-    magic.overwrite(one.site.start, one.holes[0].start, `${head}${block}({${one.pieces[0]}`);
+    magic.overwrite(one.site.start, one.holes[0].start, `${head}${block}(${one.pieces[0]}`);
     for (let index = 0; index < one.holes.length - 1; index++) {
       magic.overwrite(one.holes[index].end, one.holes[index + 1].start, one.pieces[index + 1]);
     }
-    magic.overwrite(one.holes[one.holes.length - 1].end, one.end + 1, `${one.pieces[one.pieces.length - 1]}})${tail}`);
+    magic.overwrite(one.holes[one.holes.length - 1].end, one.end + 1, `${one.pieces[one.pieces.length - 1]})${tail}`);
   }
 
   // A file of nothing but named sites needs no runtime at all: a name is a string, not a value to
@@ -325,7 +357,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     written.length === 0
       ? ""
       : `import { merge as ${block} } from "${options.runtime ?? "@ramonda/css"}";\n` +
-        `${[...hoisted].map(([map, id]) => `const ${id} = ${block}({${map}});`).join("\n")}\n\n`;
+        `${[...hoisted].map(([map, id]) => `const ${id} = ${block}(${map});`).join("\n")}\n\n`;
 
   const top = afterDirectives(source);
   if (top === 0) magic.prepend(prologue);
