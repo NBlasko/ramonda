@@ -474,3 +474,57 @@ describe("a named site", () => {
     );
   });
 });
+
+/**
+ * A block on a NESTED element, which is what "a `css` on every tag" means.
+ *
+ * A block used to be one class, so a component had one — on its root, with the children reached by
+ * descendant selectors. A block is one class per DECLARATION now, and the same declarations on two
+ * elements share their classes, so per-element is the cheaper shape as well as the clearer one.
+ *
+ * **It had no colours at all**, and the cause was a selector written for the old shape: the value
+ * injection excluded `meta.jsx.children` wholesale, so once the tsx grammar entered a parent's
+ * children nothing of ours was ever consulted again. Measured before this was written — a block on a
+ * nested element came back `variable.parameter.tsx`, and everything after it in the file was read as
+ * type parameters and arrow functions.
+ *
+ * The exclusion was load-bearing for one thing and one thing only: prose. `` `css=@@( … )` `` in a
+ * paragraph is JSX children TEXT, and it must not open a block. So the injection asks for a braced
+ * EXPRESSION instead of excluding children — prose is not one, and every nested element is.
+ */
+describe("a block on a nested element", () => {
+  test.each([
+    ["braced", `const a = (\n  <div>\n    <span css={@@( display: flex; )}>x</span>\n  </div>\n);\nconst after = 1;\n`],
+    [
+      "braced, with a sibling above it",
+      `const a = (\n  <div>\n    <p>t</p>\n    <span css={@@( display: flex; )}>x</span>\n  </div>\n);\nconst after = 1;\n`,
+    ],
+    [
+      "braced, several levels down",
+      `const a = (\n  <div>\n    <section>\n      <span css={@@( display: flex; )}>x</span>\n    </section>\n  </div>\n);\nconst after = 1;\n`,
+    ],
+  ])("%s is CSS, and the file below it is untouched", (_what, code) => {
+    expect(scopeOf(code, "display")).toBe("support.type.property-name.css");
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("the tags after it are still tags, not type parameters", () => {
+    const code = `const a = (\n  <div>\n    <span css={@@( display: flex; )}>x</span>\n    <em>y</em>\n  </div>\n);\n`;
+
+    expect(scopeOf(code, "em")).toBe("entity.name.tag.tsx");
+    expect(scopeOf(code, "div")).toBe("entity.name.tag.tsx");
+  });
+
+  test("and prose that mentions the syntax in children is still not a block", () => {
+    const code = `const a = (\n  <div>\n    <p>a \`css=@@( … )\` block</p>\n  </div>\n);\nconst after = 1;\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("a hole inside a nested block is still the expression it holds", () => {
+    const code = `const a = (\n  <div>\n    <span css={@@( color: {{accent}}; )}>x</span>\n  </div>\n);\n`;
+
+    expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
+  });
+});

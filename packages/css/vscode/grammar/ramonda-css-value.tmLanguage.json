@@ -1,7 +1,7 @@
 {
   "scopeName": "ramonda.css-value",
-  "comment": "A block written as a VALUE rather than as a bare JSX attribute: `const panel = @@( … )` outside JSX, and `css={@@( … )}` inside the braces JSX already has for an expression. The second exists because of a limit nothing here can lift — an editor stops consulting injections once it enters a tag's attribute list, so a bare block gets no colours unless it is the first attribute on the tag name's own line.",
-  "injectionSelector": "L:source.tsx -meta.jsx.children -string -comment, L:source.ts -string -comment, L:source.js -meta.jsx.children -string -comment, L:source.js.jsx -meta.jsx.children -string -comment",
+  "comment": "A block written as a VALUE rather than as a bare JSX attribute: `const panel = @@( \u2026 )` outside JSX, and `css={@@( \u2026 )}` inside the braces JSX already has for an expression. The second exists because of a limit nothing here can lift \u2014 an editor stops consulting injections once it enters a tag's attribute list, so a bare block gets no colours unless it is the first attribute on the tag name's own line. The selector has TWO clauses per language and both are load-bearing: outside JSX children, and inside a braced EXPRESSION. Excluding children wholesale was written when a component had one block on its root; a block is one class per DECLARATION now, so every tag carries its own and a nested element is always inside children \u2014 measured, a nested block then had no colours at all and the rest of the file was read as type parameters and arrow functions. Asking for a braced expression keeps the one thing the exclusion was for: prose. `css=@@( \u2026 )` written in a paragraph is children TEXT and is not an expression, so it still opens nothing.",
+  "injectionSelector": "L:source.tsx -meta.jsx.children -string -comment, L:source.tsx meta.embedded.expression -string -comment, L:source.ts -string -comment, L:source.js -meta.jsx.children -string -comment, L:source.js meta.embedded.expression -string -comment, L:source.js.jsx -meta.jsx.children -string -comment, L:source.js.jsx meta.embedded.expression -string -comment",
   "patterns": [
     {
       "include": "#value"
@@ -9,7 +9,7 @@
   ],
   "repository": {
     "value": {
-      "comment": "No lookbehind, and that is the point of the spelling: `@@(` is a syntax error everywhere in TypeScript — measured after `=`, on a class member, on a parameter, as a call argument and as an object value — so nothing else can be mistaken for it. `@(` needed one, because a parenthesised decorator is real TypeScript in two of those positions. The optional word between is a NAMED site — `@@keyframes(`, `@@font-face(`, `@@property(` — whose opening is not a fixed width; it is coloured as the at-rule it becomes.",
+      "comment": "No lookbehind, and that is the point of the spelling: `@@(` is a syntax error everywhere in TypeScript \u2014 measured after `=`, on a class member, on a parameter, as a call argument and as an object value \u2014 so nothing else can be mistaken for it. `@(` needed one, because a parenthesised decorator is real TypeScript in two of those positions. The optional word between is a NAMED site \u2014 `@@keyframes(`, `@@font-face(`, `@@property(` \u2014 whose opening is not a fixed width; it is coloured as the at-rule it becomes.",
       "begin": "(@@)([a-z][a-z-]*)?(\\()",
       "beginCaptures": {
         "1": {
