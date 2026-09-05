@@ -115,6 +115,31 @@ There is exactly one exception to the second line, and it is [below](#naming-som
 a name that came from `@@property( … )` may stand where a property name goes, because the compiler
 generated that name and nothing else can write it.
 
+### One hole, read many times
+
+A hole belongs to the declaration it is written in. Each declaration is its own rule reading its own
+generated name, so writing the same expression four times puts **four** custom properties on the
+element, all holding the same value — a rule is shared by every element that names it, so its
+variable cannot be named after anything but itself.
+
+Do what a CSS author already does: declare one custom property from the hole, and read it.
+
+```tsx
+declare const accent: string;
+
+const card = @@(
+  --accent: {{accent}};
+
+  border-left: 4px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent);
+);
+```
+
+One entry in the `style` attribute instead of four — and the three declarations below have no hole at
+all now, so they are static classes that dedupe with every other block writing the same thing. Less
+per element, and more shared.
+
 ### The unit goes inside the hole
 
 ```

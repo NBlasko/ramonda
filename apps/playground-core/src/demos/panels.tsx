@@ -405,6 +405,17 @@ export class StyleBlockComposed extends Component {
  * **The hole is still one value.** `{{ … }}` is a custom property, so it works the same inside a
  * nested rule as at the top — the property is set on the ELEMENT and the nested rule reads it, which
  * is why one value can drive a colour that only appears on hover.
+ *
+ * **And one hole drives four declarations here, deliberately.** A hole belongs to the declaration it
+ * is written in: each one becomes its own rule reading its own `--r-…` name, so writing `{{accent}}`
+ * four times puts four custom properties on the element, all holding the same colour. Measured, and
+ * it has to be that way — a rule is shared by every element that names it, so its variable cannot be
+ * named after anything but itself.
+ *
+ * What the AUTHOR can do is what CSS authors already do: declare one custom property from the hole
+ * and read it. The four declarations below have no hole at all then, so they are static classes that
+ * dedupe with every other block writing the same thing — one entry in the style attribute instead of
+ * four, and more sharing rather than less.
  */
 export class StyleBlockNested extends Component {
   @state urgent = false;
@@ -418,6 +429,9 @@ export class StyleBlockNested extends Component {
 
     return (
       <div className="panel" data-urgent={String(this.urgent)} css={@@(
+        /* One hole, read four times below — see the note above. */
+        --accent: {{accent}};
+
         display: grid;
         grid-template-columns: auto 1fr;
         gap: 4px 12px;
@@ -425,7 +439,7 @@ export class StyleBlockNested extends Component {
         padding: 12px;
         border: 1px solid #2a2a2a;
         border-radius: 8px;
-        border-left: 4px solid {{accent}};
+        border-left: 4px solid var(--accent);
         transition: border-color 150ms ease-in-out, transform 150ms ease-in-out;
 
         & .title {
@@ -445,14 +459,14 @@ export class StyleBlockNested extends Component {
           width: 10px;
           height: 10px;
           border-radius: 50%;
-          background: {{accent}};
+          background: var(--accent);
         }
 
         &[data-urgent="true"] {
-          border-color: {{accent}};
+          border-color: var(--accent);
 
           & .title {
-            color: {{accent}};
+            color: var(--accent);
           }
         }
 
