@@ -148,10 +148,27 @@ describe("linting", () => {
     expect(lintFile(path, at(0))).toEqual([]);
   });
 
-  test("a diagnostic with no position at all is dropped too", () => {
-    const path = file("Card.tsx", STYLED);
+  /**
+   * No position at all is a different thing from a position that maps nowhere, and this used to
+   * treat them as one.
+   *
+   * A diagnostic with no span names the FILE — a linter's complaint about its own setup, most often
+   * — and the scaffolding is always somewhere, so it can never be the thing being reported here.
+   * Grouping the two dropped it, and the path for a file with NO block reported the same complaint
+   * at the top of the file: one linter, one complaint, two answers, with the styled file going
+   * quiet. That is the failure this package keeps finding in other tools.
+   */
+  test("a diagnostic with no position names the file, and both paths say so", () => {
+    const styled = file("Card.tsx", STYLED);
+    const plain = file("Plain.ts", "const a = 1;\n");
+    const complaint = () => [{ message: "this file is excluded by your config", code: "setup" }];
 
-    expect(lintFile(path, () => [{ message: "no idea where", labels: [] }])).toEqual([]);
+    expect(lintFile(styled, complaint)).toEqual([
+      { file: styled, line: 1, column: 1, code: "setup", message: "this file is excluded by your config" },
+    ]);
+    expect(lintFile(plain, complaint)).toEqual([
+      { file: plain, line: 1, column: 1, code: "setup", message: "this file is excluded by your config" },
+    ]);
   });
 
   test("a linter that named no rule still gets its message through", () => {

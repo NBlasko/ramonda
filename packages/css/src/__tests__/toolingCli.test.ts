@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
+import { biomeFormatter, oxlintLinter } from "../tools";
 
 /**
  * The format and lint wrappers, driving the REAL tools.
@@ -267,5 +268,57 @@ describe("what the wrapper refuses to guess", () => {
 
     expect(status).toBe(1);
     expect(output).toContain("is not installed here");
+  });
+});
+
+/**
+ * Output bigger than a pipe's default buffer, which is a megabyte.
+ *
+ * `execFileSync` stops at `maxBuffer` and throws, and both tools can pass it: biome answers with the
+ * whole FORMATTED FILE on stdout, so a large generated source is enough on its own, and a long
+ * enough lint report is JSON of the same order. Measured with the real biome before this was fixed —
+ * a 1.87 MB file (60,000 lines) failed, and the "error" printed was a megabyte of the author's own
+ * source, truncated mid-line.
+ *
+ * The linter's shape is worse and is why this is not merely a message problem: it reads its report
+ * off the failure, so a truncated one is unparsable JSON, which is no findings, which is **a file
+ * that lints clean**.
+ *
+ * A stand-in binary rather than a two-million-line fixture: what is under test is the buffer, and a
+ * program that prints is the cheapest way to fill one.
+ */
+describe("a tool that says more than a megabyte", () => {
+  /** An executable that ignores its arguments and prints `bytes` of output. */
+  function printer(bytes: number, out: "stdout" | "stderr" = "stdout"): string {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-big-"));
+    projects.push(root);
+    const path = join(root, "printer.mjs");
+    writeFileSync(path, `#!/usr/bin/env node\nprocess.${out}.write("x".repeat(${bytes}));\n`);
+    execFileSync("chmod", ["+x", path]);
+    return path;
+  }
+
+  test("the formatter reads all of it", () => {
+    const format = biomeFormatter(printer(2_000_000), REPO);
+
+    expect(format("const a = 1;\n", join(REPO, "Probe.tsx"))).toHaveLength(2_000_000);
+  });
+
+  test("and the linter does not come back clean because the report was cut off", () => {
+    const report = JSON.stringify({
+      diagnostics: Array.from({ length: 6000 }, (_, index) => ({
+        message: `finding ${index} ${"x".repeat(200)}`,
+        code: "probe",
+        labels: [{ span: { offset: 0 } }],
+      })),
+    });
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-big-"));
+    projects.push(root);
+    const path = join(root, "printer.mjs");
+    writeFileSync(path, `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(report)});\n`);
+    execFileSync("chmod", ["+x", path]);
+
+    expect(report.length).toBeGreaterThan(1024 * 1024);
+    expect(oxlintLinter(path, REPO)(join(REPO, "Probe.tsx"))).toHaveLength(6000);
   });
 });

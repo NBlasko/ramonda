@@ -170,10 +170,16 @@ export function lintFile(file: string, lint: (path: string) => Reported[]): Tool
     const findings: ToolFinding[] = [];
     for (const diagnostic of lint(probe)) {
       const offset = diagnostic.labels?.[0]?.span?.offset;
-      if (offset === undefined) continue;
 
-      const home = virtual.homeOf(offset);
-      // Scaffolding: the helper the virtual file declared, the punctuation between declarations.
+      /**
+       * No position at all is a complaint about the FILE — a linter's own setup, most often — and it
+       * is reported at its top, which is what the path for a file with no block already did.
+       * Measured before they were made to agree: the same complaint came back for a plain file and
+       * vanished for a styled one, which is a styled file going quiet.
+       */
+      const home = offset === undefined ? 0 : virtual.homeOf(offset);
+      // Mapped nowhere is a different case: the helper the virtual file declared, the punctuation
+      // between declarations — scaffolding, which belongs to nothing the author wrote.
       if (home === undefined) continue;
 
       findings.push({

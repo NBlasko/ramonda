@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { placehold } from "../compiler/tooling";
+import { formatText } from "../tooling";
 
 /**
  * What a formatter can be given, and what comes back.
@@ -381,5 +382,42 @@ describe("a named site", () => {
     const formatted = held!.restore(held!.text);
     expect(formatted).toContain("const slide = @@keyframes(");
     expect(formatted).toContain("const panel = @@(");
+  });
+});
+
+/**
+ * A file whose lines end `\r\n`, which is what a Windows checkout gives every tool that opens it.
+ *
+ * Restoring LAYS OUT, and laying out means splitting a block into lines and putting them back. The
+ * first version split on `\n` and joined on `\n`, so every line of every block body lost its `\r` —
+ * measured with an identity formatter, which is the way to see this at all: whatever biome does to
+ * the rest of the file, a block coming back with different line endings than it went in with is
+ * ours. The file then has mixed endings inside each block, which is a diff on every line and a lint
+ * failure in most setups.
+ */
+describe("line endings the author's checkout uses", () => {
+  /** The formatter that changes nothing, so anything that changed is this package's doing. */
+  const identity = (text: string) => text;
+
+  test("a block in a CRLF file comes back CRLF", () => {
+    const source = "const a = 1;\r\nconst p = @@(\r\n  display: flex;\r\n  gap: 8px;\r\n);\r\n";
+
+    expect(formatText(source, "X.tsx", identity)).toBe(source);
+  });
+
+  test("and a block in an LF file is left alone too", () => {
+    const source = "const a = 1;\nconst p = @@(\n  display: flex;\n  gap: 8px;\n);\n";
+
+    expect(formatText(source, "X.tsx", identity)).toBe(source);
+  });
+
+  test("a CRLF block that needs laying out keeps the endings it had", () => {
+    const source = "const p = @@(\r\n      display:flex;\r\n  gap:8px;\r\n);\r\n";
+    const formatted = formatText(source, "X.tsx", identity);
+
+    expect(formatted).not.toBe(source);
+    // Every newline is still a CRLF, and the over-indented line was brought back into line.
+    expect(formatted).not.toMatch(/[^\r]\n/);
+    expect(formatted).toContain("\r\n  display:flex;\r\n");
   });
 });

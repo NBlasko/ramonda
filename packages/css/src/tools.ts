@@ -26,6 +26,22 @@ import { type Reported, readReport } from "./tooling";
  * Here rather than beside the decisions, because this is the only place that throws one — and it can
  * only be reached by a tool that really refuses, which is a subprocess test's question.
  */
+/**
+ * How much a tool is allowed to say, and the default is not enough.
+ *
+ * `execFileSync` stops at `maxBuffer` — a megabyte by default — and throws. Both tools reach it:
+ * biome answers with the whole FORMATTED FILE on stdout, and a lint report is JSON of the same
+ * order. Measured with the real biome: a 1.87 MB source (60,000 lines) failed, and the "error" was
+ * a megabyte of the author's own code, cut off mid-line.
+ *
+ * The linter's version is the one that decides this number: it reads its report off the failure, so
+ * a truncated one is unparsable JSON, which is no findings, which is a file that lints CLEAN.
+ *
+ * Bounded rather than `Infinity`, because a tool that never stops printing should fail rather than
+ * take the machine with it. Sixty-four megabytes is far past any source file anybody formats.
+ */
+const MAX_OUTPUT = 64 * 1024 * 1024;
+
 export class ToolFailed extends Error {
   constructor(message: string) {
     super(message);
@@ -52,6 +68,7 @@ export function biomeFormatter(binary: string, cwd: string): (text: string, path
         cwd,
         input: text,
         encoding: "utf8",
+        maxBuffer: MAX_OUTPUT,
       });
     } catch (error) {
       /**
@@ -87,7 +104,9 @@ function asIfNamed(path: string): string {
 export function oxlintLinter(binary: string, cwd: string): (path: string) => Reported[] {
   return (path) => {
     try {
-      return readReport(execFileSync(binary, ["--format=json", path], { cwd, encoding: "utf8" }));
+      return readReport(
+        execFileSync(binary, ["--format=json", path], { cwd, encoding: "utf8", maxBuffer: MAX_OUTPUT }),
+      );
     } catch (error) {
       return readReport((error as { stdout?: string }).stdout ?? "");
     }

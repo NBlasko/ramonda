@@ -137,15 +137,22 @@ function restore(formatted: string, blocks: readonly { text: string; wrap: boole
  *
  * **A one-line block is returned untouched.** `css=@@( display: flex; )` is a deliberate shape and
  * breaking it would be the formatter having an opinion about the markup rather than about the CSS.
+ *
+ * **The block's own line ending is what it is put back together with.** Splitting on `\n` and
+ * joining on `\n` cost every body line its `\r` in a CRLF checkout — measured with an identity
+ * formatter, which is the only way to see it: the file came back with mixed endings inside each
+ * block, a diff on every line and a lint failure in most setups. Nothing here is a decision about
+ * which ending a file should use.
  */
 function relaid(block: string, outer: string, inner: string): string {
-  const lines = block.split("\n");
+  const newline = block.includes("\r\n") ? "\r\n" : "\n";
+  const lines = block.split(newline);
   if (lines.length === 1) return block;
 
   const step = inner.slice(outer.length);
-  const body = lines.slice(1, -1).join("\n");
+  const body = lines.slice(1, -1).join(newline);
 
-  return [lines[0], ...layout(body, inner, step), outer + lines[lines.length - 1].trim()].join("\n");
+  return [lines[0], ...layout(body, inner, step), outer + lines[lines.length - 1].trim()].join(newline);
 }
 
 /**
