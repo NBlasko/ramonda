@@ -68,16 +68,9 @@ const panel = @( display: flex; );
 const three = <div css={panel}>a value</div>;
 ```
 
-They compile to the same class and differ only in where the value is written. **Reach for a braced
-one whenever the tag has other props**, and the reason is an editor limit rather than taste: an
-editor stops consulting syntax injections the moment it enters a tag's attribute list, so a bare
-attribute is only coloured when it is the first one, on the tag name's own line. In expression
-position there is no such limit — any attribute, any line, and outside JSX as well.
-
-The editor plugin says so where it matters: a bare block an editor cannot colour is marked as a
-suggestion, on the attribute name, pointing at the braced spelling. It is a suggestion rather than a
-warning because nothing is wrong — the block compiles and is checked either way, and a build has no
-business failing over colours.
+They compile to the same class and differ only in where the value is written. **Reach for a braced one
+whenever the tag has other props** — the reason is an editor limit rather than taste, and it is
+[below](#which-spelling-gets-colours).
 
 ## Everything in it is checked
 
@@ -105,19 +98,134 @@ The last one is refused rather than mangled: there is nothing to put a variable 
 carrying a `;` is refused outright — on the server as well, where it would otherwise become real
 declarations in the markup.
 
-## What your tools need
+## Setting up the build
 
-**The build**: `ramondaCss()` in your Vite config, and nothing else — there is no stylesheet to
-import, because the CSS is a module the bundler already knows about and follows the JavaScript chunk
-it belongs to.
+One plugin, and there is no stylesheet to import: the CSS is a module the bundler already knows
+about, and it follows the JavaScript chunk it belongs to.
 
-**Your editor**: a TypeScript plugin gives completion, hover and the red squiggles, and a TextMate
-grammar gives the colours. They are separate on purpose — colours cost nothing, and a project that
-has not asked for the compiler should not get it.
+```ts
+import { ramondaCss } from "@ramonda/css/vite";
 
-**Your formatter and linter**: neither biome nor Prettier nor oxlint can parse a file holding a block
-until it is taught, and each refuses rather than mangles. The package ships a Prettier plugin, and
-wrappers for the other two.
+export const plugins = [ramondaCss()];
+```
+
+esbuild builds the same thing:
+
+```ts
+import { ramondaCss } from "@ramonda/css/esbuild";
+
+export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
+```
+
+`filter` is worth setting. esbuild hands a plugin a **path** rather than the code, so a file has to be
+read to be asked whether it holds a block — measured at 17 µs a file, and pointing the plugin at the
+tree that holds them means nothing else is read at all.
+
+**A route that is already code-split gets its own stylesheet.** A block belongs to the module it was
+written in and each module imports its own CSS, so splitting is a decision the bundler was making
+anyway — measured on a real build: a lazily-loaded module produced its own `.css` asset, carrying
+that module's rule and not the entry's.
+
+## Setting up your editor
+
+Three things, and they are separate on purpose.
+
+**The compiler, for completion, hover and the red squiggles.** A TypeScript language-service plugin,
+turned on in your own `tsconfig.json`:
+
+```json
+{ "compilerOptions": { "plugins": [{ "name": "@ramonda/css/plugin" }] } }
+```
+
+Your editor has to be running the **workspace's** TypeScript for a plugin to load at all — in VS
+Code, *TypeScript: Select TypeScript Version → Use Workspace Version*.
+
+**One setting, and it is not optional:**
+
+```json
+{ "typescript.tsserver.useSyntaxServer": "never" }
+```
+
+An editor runs **two** TypeScript servers — a syntax one for what needs no types, and a semantic one
+for everything else — and **only the semantic one loads plugins**. So the syntax server reads your
+file, which is not TypeScript, and walks into an internal assertion. Taken from a real editor's own
+log:
+
+```
+[error] [vscode.typescript-language-features] provider FAILED
+[error] Error: <syntax> TypeScript Server Error (5.9.3)
+Debug Failure. False expression: Token end is child end
+```
+
+Nothing in a plugin can reach it. The setting is what stops the editor asking it.
+
+**The colours, and format-on-save**, come from an editor extension rather than from the plugin —
+colours are a grammar and cost nothing, and a project that has not asked for the compiler should not
+get one. The extension is not published yet; from a checkout it is
+`node packages/css/vscode/install.mjs`, and then:
+
+```json
+{
+  "[typescriptreact]": { "editor.defaultFormatter": "ramonda.ramonda-css-vscode" },
+  "editor.formatOnSave": true
+}
+```
+
+## Which spelling gets colours
+
+An editor stops consulting syntax injections the moment it enters a tag's attribute list. Measured
+with a grammar that does nothing but match one word: it colours a **first** attribute and is never
+asked about a second. So a bare block is coloured only as the first attribute on the tag name's own
+line, and everywhere else the file reads exactly as it would with nothing installed.
+
+That is what the braced spelling is for. Inside the braces JSX already has for an expression there is
+no such limit — any attribute, any line — and the plugin says so where it matters: a bare block an
+editor cannot colour is marked as a **suggestion**, on the attribute name. A suggestion rather than a
+warning, because nothing is wrong: the block compiles and is checked either way, and a build has no
+business failing over colours.
+
+## Formatters and linters
+
+No tool that parses TypeScript can read a file holding a block until it is taught, and each of them
+refuses rather than mangles — which is the safe half, and useless on its own:
+
+| tool | what it says |
+|---|---|
+| biome | *Code formatting aborted due to parsing errors* |
+| Prettier | *SyntaxError: ')' expected* |
+| oxlint | refuses at the parse step |
+| esbuild, `tsc` | refuse at the parse step |
+
+A suppression comment cannot help either: `biome-ignore` is read **by** the parser that already
+failed.
+
+**Prettier gets a plugin.** Add it to your Prettier config and formatting works everywhere, including
+the format-on-save your editor does for you:
+
+```json
+{ "plugins": ["@ramonda/css/prettier"] }
+```
+
+One thing it changes: a bare `css=@( … )` comes back as `css={@( … )}`. Prettier prints a quoted
+attribute value itself and never offers a plugin the chance to print one, so the placeholder has to
+be braced — and the two compile to the same class anyway.
+
+**biome and oxlint get wrappers**, because they have no plugin surface for a syntax they cannot
+parse:
+
+```bash
+ramonda-css format src        # your biome, your config
+ramonda-css lint src          # your oxlint, your rules
+```
+
+Each replaces every block with something that parses, runs your own tool, and puts the block back at
+the indentation the tool chose. Exclude the files that hold a block from those tools' own runs, or
+they will refuse the file before a wrapper can help.
+
+**And the editor formats the buffer, not the file.** `ramonda-css format --stdin-file-path <path>` is
+what the extension runs — an editor asks a formatter about the text on screen, and a formatter
+pointed at a path would format what was last saved and hand back edits computed against text you have
+since changed.
 
 ## What it does not do
 
@@ -135,3 +243,5 @@ from the compiler.
 - [Styling](/styling) — `className`, `style`, and where stylesheets come from.
 - [Performance](/performance) — why a value built in the markup costs more than it looks.
 - [JSX](/concepts/jsx) — the rest of the attribute surface.
+- [Diagnostics](/reference/diagnostics#rmd062-a-style-block-was-applied-with-no-values-for-its-holes)
+  — what the runtime says when a value reaches it that no transform produced.

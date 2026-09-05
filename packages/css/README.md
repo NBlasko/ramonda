@@ -19,6 +19,9 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 > `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
 > for what is done and what is next.
 
+> **Setting up an editor, a formatter or a linter**: the whole of it is on one page —
+> [Style blocks](https://ramonda.dev/style-blocks). What is below is the package.
+
 ## Three ways to write one
 
 ```tsx

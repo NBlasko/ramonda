@@ -1,5 +1,9 @@
 # Ramonda CSS blocks — editor colours
 
+> **The whole story is one page**: [Style blocks](https://ramonda.dev/style-blocks) — what the syntax
+> is, what it compiles to, and every tool that has to be taught about it. This README is the part that
+> is about this extension.
+
 Syntax colours for `css=@( … )` style blocks, in `.ts`, `.tsx`, `.js` and `.jsx`.
 
 ```tsx

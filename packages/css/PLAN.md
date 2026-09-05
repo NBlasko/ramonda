@@ -972,6 +972,17 @@ question, and the report is raised in one place because two for one element woul
 The fixtures are built by hand rather than by `block()`: core may not depend on the compiler at any
 depth, and what is asserted is what the RUNTIME does with a shape, so the shape is the fixture.
 
+### U — one page, because it was in five
+
+The syntax, the three spellings, the build plugins, the language-service plugin, the extension, the
+Prettier plugin, the wrappers, the `useSyntaxServer` setting and the colour limits were spread across
+`packages/css/README.md`, `packages/css/vscode/README.md`, `DESIGN.md`, this file and a docs page that
+covered only the syntax. Nobody setting up an editor would have found four of those.
+
+`apps/docs/content/style-blocks.md` carries all of it now, and the two READMEs point at it rather than
+repeating it — the extension's keeps its own half, because it is read on a marketplace where the site
+is not at hand.
+
 ---
 
 ## Do not re-measure these
