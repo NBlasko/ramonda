@@ -263,3 +263,105 @@ export class StyleBlock extends Component {
     );
   }
 }
+
+/**
+ * A block with as much nesting as real CSS actually has.
+ *
+ * The one above is the shape of the feature; this one is what a component's styles look like when
+ * they stop being three declarations. Everything here is CSS's own nesting, resolved by the browser
+ * — the compiler writes the block through verbatim and adds nothing of its own.
+ *
+ * **Three levels is where natural CSS stops.** A card, a state on the card, and one element inside
+ * it in that state — `&:hover { & .title { … } }` — is as deep as this gets before it is describing
+ * the markup rather than styling it. Nesting further is possible and is a smell either way.
+ *
+ * **An at-rule nests too, in both directions.** `@media` inside a rule and a rule inside a `@media`
+ * both compile, which is what lets a hover style and its reduced-motion answer sit beside each other
+ * instead of in two places.
+ *
+ * **The hole is still one value.** `{{ … }}` is a custom property, so it works the same inside a
+ * nested rule as at the top — the property is set on the ELEMENT and the nested rule reads it, which
+ * is why one value can drive a colour that only appears on hover.
+ */
+export class StyleBlockNested extends Component {
+  @state urgent = false;
+
+  toggle() {
+    this.urgent = !this.urgent;
+  }
+
+  render() {
+    const accent = this.urgent ? "#ff0055" : "#10b981";
+
+    return (
+      <div className="panel" data-urgent={String(this.urgent)} css={@(
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 12px;
+        align-items: center;
+        padding: 12px;
+        border: 1px solid #2a2a2a;
+        border-radius: 8px;
+        border-left: 4px solid {{accent}};
+        transition: border-color 150ms ease-in-out, transform 150ms ease-in-out;
+
+        & .title {
+          font-weight: 600;
+          color: #e6e6e6;
+        }
+
+        & .body {
+          grid-column: 2;
+          color: #9a9a9a;
+        }
+
+        &::after {
+          content: "";
+          grid-row: 1;
+          grid-column: 1;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: {{accent}};
+        }
+
+        &[data-urgent="true"] {
+          border-color: {{accent}};
+
+          & .title {
+            color: {{accent}};
+          }
+        }
+
+        &:hover, &:focus-within {
+          transform: translateY(-1px);
+
+          & .title {
+            text-decoration: underline;
+          }
+        }
+
+        @media (min-width: 40rem) {
+          padding: 16px 20px;
+          gap: 6px 16px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          transition: none;
+
+          &:hover, &:focus-within {
+            transform: none;
+          }
+        }
+      )}>
+        <p className="title" style="grid-column: 2">
+          Deploy finished
+        </p>
+        <p className="body small">Three levels of nesting, one class, one custom property.</p>
+        <button onclick={this.toggle} style="grid-column: 2; justify-self: start">
+          {this.urgent ? "urgent" : "normal"} — toggle
+        </button>
+      </div>
+    );
+  }
+}
