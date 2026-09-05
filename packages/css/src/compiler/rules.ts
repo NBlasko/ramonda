@@ -144,8 +144,18 @@ function walk(items: readonly BlockItem[], findings: Finding[]): void {
      */
     holeInHead(item.property, item.at, item.value.length === 0 ? "a declaration" : "a property name", findings);
     unknownProperty(item, findings);
-    unknownValue(item, findings);
+    /**
+     * The run-on FIRST, and it silences the value check for the same declaration.
+     *
+     * A missing `;` makes the next declaration part of this one's value, so the words in it are words
+     * this property does not accept — and both rules have something true to say about one mistake.
+     * Measured on the shape a person writes: `gap: 8px` with no `;` above `padding: 4px 0;` came back
+     * as BOTH *`gap` does not accept `padding`* and *`padding` is being read as part of `gap`'s
+     * value*. The second is the one that says what to do.
+     */
+    const before = findings.length;
     runOn(item, findings);
+    if (findings.length === before) unknownValue(item, findings);
     repeated(item, seen, findings);
   }
 }
@@ -270,7 +280,9 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
   const accepted = KEYWORDS[item.property];
   if (accepted === undefined) return;
 
-  const keywords = new Set(accepted.split(" "));
+  // An EMPTY row is a property that accepts no keyword at all — see the generator. Splitting `""`
+  // would give a set holding one empty string, which matches nothing and reads as a bug later.
+  const keywords = new Set(accepted === "" ? [] : accepted.split(" "));
 
   for (const word of words(item.value)) {
     if (keywords.has(word.text) || GLOBAL.has(word.text)) continue;
@@ -362,9 +374,27 @@ interface Word {
 function words(parts: readonly ValuePart[]): Word[] {
   const out: Word[] = [];
 
-  for (const part of parts) {
+  for (const [position, part] of parts.entries()) {
     if (part.kind !== "text") continue;
     const text = part.text;
+
+    /**
+     * A word TOUCHING a hole is part of the hole's value, not a value of its own.
+     *
+     * `padding: {{n}}px` is one length written in two pieces, and `px` on its own is nothing a
+     * property accepts. Measured before this existed, on every property with a keyword row:
+     * `gap: {{n}}px` reported *`gap` does not accept `px`* — a false report on correct CSS, which is
+     * how a checker earns being switched off. Whitespace is what separates values, so a piece with
+     * none between it and the hole is the same value.
+     */
+    const glued = {
+      before: position > 0 && parts[position - 1].kind === "hole" && !isSpace(text.charCodeAt(0)),
+      after:
+        position + 1 < parts.length &&
+        parts[position + 1].kind === "hole" &&
+        !isSpace(text.charCodeAt(text.length - 1)),
+    };
+    const first = out.length;
 
     for (let index = 0; index < text.length; index++) {
       const code = text.charCodeAt(index);
@@ -396,6 +426,9 @@ function words(parts: readonly ValuePart[]): Word[] {
       out.push({ text: text.slice(start, index), at: part.at === undefined ? undefined : part.at + start });
       index--;
     }
+
+    if (glued.before && out.length > first) out.splice(first, 1);
+    if (glued.after && out.length > first) out.pop();
   }
 
   return out;

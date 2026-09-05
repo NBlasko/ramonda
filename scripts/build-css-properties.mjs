@@ -237,7 +237,22 @@ for (const name of named) {
   }
 
   const scanned = scan(name);
-  if (scanned.free || scanned.words.length === 0) continue;
+  /**
+   * A grammar that admits a FREE identifier is the honest exclusion: a custom name, a font family,
+   * an animation's own name. Nothing here can tell one of those from a typo.
+   */
+  if (scanned.free) continue;
+
+  /**
+   * **No keyword is not no row.** Seventy properties reach no bare word at all — `padding` and its
+   * longhands, `scroll-margin` and its, the four `border-*-radius`, `opacity`, `order`, `flex-grow`,
+   * `transition-duration`, `tab-size`, the SVG geometry ones — and every one of them is numeric.
+   * Skipping them was measured to cost exactly what it sounds like: `padding: auto` and
+   * `padding: red` both passed, because a property with no row is one the rule cannot judge.
+   *
+   * An empty row says the stronger and truer thing: every bare word is wrong here. The CSS-wide
+   * keywords are still fine, because they are fine everywhere.
+   */
   checkable++;
   keywordRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(scanned.words.join(" "))},`);
 }

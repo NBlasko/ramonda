@@ -263,6 +263,39 @@ describe("the CSS inside a block", () => {
     expect(out).toBe(`const a = <div css={@(\n${declaration}\n)}>x</div>;\n`);
   });
 
+  /**
+   * Whitespace inside a value, which is the other half of laying one out. `4px     0   ;` is one
+   * declaration written loosely, and a formatter that fixed the indentation and left that alone
+   * would be doing half the job.
+   *
+   * Runs are COLLAPSED, never added: removing whitespace is safe and adding it is an opinion —
+   * `rgb(1,2,3)` is the author's spacing to keep, not this one's to improve.
+   */
+  test.each([
+    ["a run between values", `  padding: 4px     0;`, `  padding: 4px 0;`],
+    ["a run before the semicolon", `  padding: 4px 0   ;`, `  padding: 4px 0;`],
+    ["a tab", `  padding:\t4px\t0;`, `  padding: 4px 0;`],
+    [
+      "a value wrapped over two lines",
+      `  transition: color 150ms,\n    background 150ms;`,
+      `  transition: color 150ms, background 150ms;`,
+    ],
+  ])("%s is collapsed", (_what, written, expected) => {
+    expect(laid(`const a = <div css={@(\n${written}\n)}>x</div>;\n`)).toBe(
+      `const a = <div css={@(\n${expected}\n)}>x</div>;\n`,
+    );
+  });
+
+  test.each([
+    ["a string", `  grid-template-areas: "a   a" "b   b";`],
+    ["a hole", `  color: {{ a  ?  "red"  :  "blue" }};`],
+    ["a comment", `  /* two  spaces */`],
+  ])("%s keeps its own spacing", (_what, written) => {
+    expect(laid(`const a = <div css={@(\n${written}\n)}>x</div>;\n`)).toBe(
+      `const a = <div css={@(\n${written}\n)}>x</div>;\n`,
+    );
+  });
+
   test("a comment survives, because the parser does not keep them", () => {
     const out = laid(`const a = <div css={@(\n  /* why */\n  color: red;\n)}>x</div>;\n`);
 

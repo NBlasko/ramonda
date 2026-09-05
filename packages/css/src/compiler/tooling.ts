@@ -256,6 +256,20 @@ function layout(body: string, indent: string, step: string): string[] {
       continue;
     }
 
+    /**
+     * A run of whitespace inside a value is collapsed to one space.
+     *
+     * Removing whitespace is safe; adding it is an opinion. `rgb(1,2,3)` keeps the spacing the author
+     * chose — this only takes away what nobody meant, which is `4px     0   ;`.
+     *
+     * Only here, and that is the point: a string, a hole and a comment were appended whole further
+     * up and are never looked at again, so their own spacing is untouched.
+     */
+    if (code === 32 || code === 9) {
+      if (line !== "" && !line.endsWith(" ")) line += " ";
+      continue;
+    }
+
     line += String.fromCharCode(code);
   }
 

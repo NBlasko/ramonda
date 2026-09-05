@@ -325,3 +325,108 @@ describe("a declaration with no semicolon after it", () => {
     expect(rules).toContain("run-on-declaration");
   });
 });
+
+/**
+ * A property that accepts NO keyword at all, which nothing was checking.
+ *
+ * ## The fault this exists for
+ *
+ * Measured: `padding: auto` and `padding: red` both passed. `padding`'s grammar is
+ * `<'padding-top'>{1,4}` and reaches no bare word, so the generator emitted no row for it — and a
+ * property with no row is one this rule skips. Seventy properties were in that state, and every one
+ * of them is numeric: `padding` and its longhands, `scroll-margin` and its longhands, the four
+ * `border-*-radius`, `opacity`, `order`, `flex-grow`, `flex-shrink`, `transition-duration`,
+ * `tab-size`, the SVG geometry properties.
+ *
+ * **No keyword is valid for any of them**, so an empty row says more than no row: every bare word is
+ * wrong. The CSS-wide keywords are still fine, because they are fine everywhere.
+ */
+describe("a property that takes no keywords", () => {
+  test.each([
+    ["padding", `padding: auto;`, "auto"],
+    ["padding", `padding: red;`, "red"],
+    ["opacity", `opacity: half;`, "half"],
+    ["flex-grow", `flex-grow: auto;`, "auto"],
+    ["transition-duration", `transition-duration: fast;`, "fast"],
+    ["border-radius", `border-radius: round;`, "round"],
+  ])("%s refuses a bare word", (property, css, word) => {
+    const [only, ...rest] = check(css);
+
+    expect(rest).toEqual([]);
+    expect(only.rule).toBe("unknown-value");
+    expect(only.message).toContain(word);
+    expect(only.message).toContain(property);
+  });
+
+  test.each([
+    ["a length", `padding: 4px 0;`],
+    ["a percentage", `padding: 10%;`],
+    ["a number", `opacity: 0.5;`],
+    ["a time", `transition-duration: 150ms;`],
+    ["a CSS-wide keyword", `padding: inherit;`],
+    ["a variable", `padding: var(--x);`],
+    ["a calculation", `padding: calc(100% - 8px);`],
+    ["a hole", `padding: {{size}};`],
+  ])("%s is fine", (_what, css) => {
+    expect(check(css)).toEqual([]);
+  });
+});
+
+/**
+ * One fault, one report.
+ *
+ * A missing `;` makes the next declaration part of this one's VALUE, so the words in it are words
+ * the property does not accept — and both rules had something true to say about the same mistake.
+ * Measured on the shape a person actually writes: `gap: 8px` with no `;` above `padding: 4px 0;`
+ * came back as *`gap` does not accept `padding`* AND *`padding` is being read as part of `gap`'s
+ * value*. The second is the one that says what to do.
+ */
+/**
+ * A word touching a hole is part of the hole's value.
+ *
+ * Found by widening the rule to the seventy numeric properties, and it was already there: measured on
+ * every property with a keyword row, `gap: {{n}}px` reported *`gap` does not accept `px`*. A false
+ * report on correct CSS, and no test covered it — `padding: {{n}}px` was the case that did, and
+ * `padding` was one of the properties the rule was skipping.
+ *
+ * Whitespace is what separates one value from the next, so a piece with none between it and the hole
+ * is the same value written in two parts.
+ */
+describe("a hole and the text glued to it", () => {
+  test.each([
+    ["a unit after a hole", `gap: {{n}}px;`],
+    ["one on a property that takes no keywords", `padding: {{n}}px;`],
+    ["two holes, one unit", `margin: {{a}} {{b}}px;`],
+    ["a unit in the middle of a shorthand", `border-left: {{w}}px solid red;`],
+    ["a word before a hole", `grid-template-columns: minmax(0,{{n}}fr);`],
+  ])("%s is silent", (_what, css) => {
+    expect(check(css)).toEqual([]);
+  });
+
+  test.each([
+    ["a typo beside a glued unit", `border-left: {{w}}px sollid red;`, "sollid"],
+    ["a separate word after a hole", `gap: {{n}} auto;`, "auto"],
+  ])("%s is still caught", (_what, css, word) => {
+    expect(
+      check(css)
+        .map((finding) => finding.message)
+        .join(" "),
+    ).toContain(word);
+  });
+});
+
+describe("a missing semicolon reports once", () => {
+  test("the run-on is reported and the value is not judged", () => {
+    const [only, ...rest] = check(`gap: 8px\n  padding: 4px 0;`);
+
+    expect(rest).toEqual([]);
+    expect(only.rule).toBe("run-on-declaration");
+  });
+
+  test("and a value that is wrong on its own is still judged", () => {
+    const [only, ...rest] = check(`gap: sideways;`);
+
+    expect(rest).toEqual([]);
+    expect(only.rule).toBe("unknown-value");
+  });
+});
