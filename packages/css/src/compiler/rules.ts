@@ -57,7 +57,8 @@ export type RuleId =
   | "uncolourable-block"
   | "run-on-declaration"
   | "line-comment"
-  | "unknown-unit";
+  | "unknown-unit"
+  | "glued-hole";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -216,6 +217,7 @@ function walk(items: readonly BlockItem[], findings: Finding[]): void {
     runOn(item, findings);
     if (findings.length === before) unknownValue(item, findings);
     unknownUnit(item, findings);
+    gluedHole(item, findings);
     repeated(item, seen, findings);
   }
 }
@@ -401,20 +403,90 @@ function propertyNames(item: Declaration, accepted: string, findings: Finding[])
   }
 }
 
+/**
+ * Text with no whitespace between it and a hole, which does not do what it reads as.
+ *
+ * A hole becomes one custom property, so `{{n}}px` becomes `var(--r-…-0)px` — and a `var()` is
+ * substituted as TOKENS, so the `12` and the `px` never become one length. **Measured in Chromium**
+ * with `--w: 12`: `padding-left: var(--w)px` computes to `0px`, and
+ * `padding-left: 8px; padding-left: var(--w)px` computes to `0px` as well — invalid at
+ * computed-value time takes the property to its initial value and the earlier declaration with it.
+ * `calc(var(--w) * 1px)` computes to `12px`, and so does a hole that carries its own unit.
+ *
+ * The word reader steps over a glued piece rather than judging it — it has to, or `px` would be
+ * reported as a value `padding-left` does not accept. That silence was recorded as a false report
+ * and is now known to have been a TRUE one with the wrong message. This is the right message.
+ */
+function gluedHole(item: Declaration, findings: Finding[]): void {
+  for (const [position, part] of item.value.entries()) {
+    if (part.kind !== "hole") continue;
+
+    const before = item.value[position - 1];
+    const after = item.value[position + 1];
+    const glued =
+      (before !== undefined && before.kind === "text" && !endsInSpace(before.text)) ||
+      (after !== undefined && (after.kind === "hole" || (after.kind === "text" && !startsWithSpace(after.text))));
+    if (!glued) continue;
+
+    findings.push({
+      rule: "glued-hole",
+      at: item.valueAt ?? item.at ?? 0,
+      length: Math.max(1, (item.end ?? 0) - (item.valueAt ?? 0)),
+      message:
+        "a hole becomes one custom property, and text written against it is not part of that value — " +
+        "`{{n}}px` becomes `var(--…)px`, which computes to nothing and takes any earlier declaration " +
+        "of the property with it. Put the unit inside the hole, or write `calc({{n}} * 1px)`.",
+    });
+    return;
+  }
+}
+
+/**
+ * Whether a character keeps a hole apart from what is written next to it.
+ *
+ * Whitespace is the obvious one, and it is not the only one: `calc( … )` and a comma-separated list
+ * are their own grammars, so `calc({{n}} * 1px)` and `minmax(0, {{n}})` concatenate nothing. What is
+ * left — a letter, a digit, a `#`, a `-` — would run into the substituted tokens and produce a value
+ * the browser refuses.
+ */
+function separates(code: number): boolean {
+  return (
+    isSpace(code) ||
+    code === 40 /* ( */ ||
+    code === 41 /* ) */ ||
+    code === 44 /* , */ ||
+    code === 47 /* / */ ||
+    code === 42 /* * */ ||
+    code === 43 /* + */
+  );
+}
+
+/** A run that ends in something that separates — or an empty one, which separates by being nothing. */
+function endsInSpace(text: string): boolean {
+  return text === "" || separates(text.charCodeAt(text.length - 1));
+}
+
+/** The same at the other end. */
+function startsWithSpace(text: string): boolean {
+  return text !== "" && separates(text.charCodeAt(0));
+}
+
 /** Every unit CSS has, for the question below. */
 const KNOWN_UNITS = new Set(UNITS);
 
 /**
  * A number whose unit is NEARLY one — `150oms`, `10pxx`.
  *
- * **A near miss, deliberately, and not a membership test.** The obvious rule is "the unit must be one
- * CSS has", and it is the one failure a checker does not survive: `mdn-data`'s unit list is
- * incomplete — measured, thirty units, missing `%`, the line-height units, every container-query unit
- * and every viewport variant. Even with those written back in, a unit invented after this was written
- * would earn a false report on correct CSS.
+ * **It began as a near miss and that was too weak**, measured on the shape a person actually types:
+ * `150xxms` and `150asdasdms` both passed, because neither is within an edit or two of `ms`. The
+ * caution behind it was `mdn-data`'s unit list being incomplete — thirty units, missing `%`, the
+ * line-height units, every container-query unit and every viewport variant — and that is answered by
+ * the supplement rather than by refusing to speak: measured after it, every exotic real unit is in
+ * the set, `q` and `x` and `ic` and `rcap` and `dppx` and `svmin` and `cqmax` among them.
  *
- * So the known set is the floor rather than the ceiling: a unit close to a known one is a typo, and a
- * unit close to nothing is somebody using CSS this package has not heard of. `10zzzz` says nothing.
+ * So it is a membership test now, and the near miss only chooses the SUGGESTION. What is left is the
+ * one risk worth naming: a unit invented after this list was generated is reported until the list is
+ * regenerated, which is `scripts/build-css-properties.mjs` and one command.
  */
 function unknownUnit(item: Declaration, findings: Finding[]): void {
   for (const part of item.value) {
@@ -425,14 +497,12 @@ function unknownUnit(item: Declaration, findings: Finding[]): void {
       if (KNOWN_UNITS.has(unit)) continue;
 
       const meant = nearest(unit, UNITS as string[]);
-      if (meant === undefined) continue;
-
       const at = part.at + found.index + found[0].length - found[1].length;
       findings.push({
         rule: "unknown-unit",
         at,
         length: found[1].length,
-        message: `\`${found[1]}\` is not a CSS unit. Did you mean \`${meant}\`?`,
+        message: `\`${found[1]}\` is not a CSS unit.` + (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
       });
     }
   }

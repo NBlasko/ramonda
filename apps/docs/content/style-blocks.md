@@ -98,6 +98,28 @@ The last one is refused rather than mangled: there is nothing to put a variable 
 carrying a `;` is refused outright — on the server as well, where it would otherwise become real
 declarations in the markup.
 
+### The unit goes inside the hole
+
+```
+padding-left: {{`${n}px`}};          ✓  the hole carries its own unit
+padding-left: calc({{n}} * 1px);     ✓  the arithmetic is CSS's
+padding-left: {{n}}px;               ✗  reported
+```
+
+A hole becomes one custom property, and a `var()` is substituted as **tokens** — so the `12` and the
+`px` in `var(--…)px` never become one length. Measured in a browser, with `--w: 12`:
+
+| written | computed |
+|---|---|
+| `padding-left: var(--w)px` | **`0px`** |
+| `padding-left: 8px; padding-left: var(--w)px` | **`0px`** — the fallback above it is lost too |
+| `padding-left: calc(var(--w) * 1px)` | `12px` |
+| `--w: 12px; padding-left: var(--w)` | `12px` |
+
+Invalid at computed-value time is worse than invalid at parse time: the property falls back to its
+initial value **and takes any earlier declaration of it with it**. So text written against a hole is
+reported, on either side and whatever it is — a unit, a suffix, a `#` in front.
+
 ## Comments
 
 A block is CSS, so its comment is CSS's:

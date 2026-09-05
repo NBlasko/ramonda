@@ -110,7 +110,6 @@ describe("a bare word a property does not accept", () => {
     ["a named colour", "  border-left: 1px solid rebeccapurple;"],
     ["a word inside a string", `  content: "flexx";`],
     ["a value that is entirely a hole", "  display: {{how}};"],
-    ["a hole beside text", "  padding: {{n}}px;"],
     ["a property whose values are the author's own", "  animation-name: slidein;"],
     ["another", "  font-family: Helvetica, sans-serif;"],
     ["a grid area the author named", "  grid-area: myarea;"],
@@ -370,6 +369,7 @@ describe("a property that takes no keywords", () => {
     ["a variable", `padding: var(--x);`],
     ["a calculation", `padding: calc(100% - 8px);`],
     ["a hole", `padding: {{size}};`],
+    ["a hole with a space after it", `padding: {{size}} 0;`],
   ])("%s is fine", (_what, css) => {
     expect(check(css)).toEqual([]);
   });
@@ -402,8 +402,10 @@ describe("a hole and the text glued to it", () => {
     ["two holes, one unit", `margin: {{a}} {{b}}px;`],
     ["a unit in the middle of a shorthand", `border-left: {{w}}px solid red;`],
     ["a word before a hole", `grid-template-columns: minmax(0,{{n}}fr);`],
-  ])("%s is silent", (_what, css) => {
-    expect(check(css)).toEqual([]);
+  ])("%s says nothing about the WORD", (_what, css) => {
+    // The glued piece is not a value of its own, so no rule that reads words may judge it. It IS
+    // reported, by `glued-hole` — see that section — because the CSS it produces does not work.
+    expect(check(css).filter((finding) => finding.rule !== "glued-hole")).toEqual([]);
   });
 
   test.each([
@@ -625,8 +627,69 @@ describe("a unit that is nearly one", () => {
     expect(check(css).filter((finding) => finding.rule === "unknown-unit")).toEqual([]);
   });
 
-  /** Nothing close is nothing said: a unit this package has never heard of is not a typo of one. */
-  test("a unit that is not near anything is left alone", () => {
-    expect(check(`width: 10zzzz;`).filter((finding) => finding.rule === "unknown-unit")).toEqual([]);
+  /**
+   * A membership test, and it began as a near miss that was too weak: measured on what a person
+   * actually types, `150xxms` and `150asdasdms` both passed, because neither is within an edit or two
+   * of `ms`. The caution behind that was mdn-data's incomplete list, and the supplement is what
+   * answers it — every exotic real unit is in the set.
+   */
+  test.each([
+    ["nothing near", `width: 10zzzz;`],
+    ["a unit with letters in front", `transition-duration: 150xxms;`],
+    ["and a lot of them", `transition-duration: 150asdasdms;`],
+  ])("%s is reported, with no suggestion it cannot make", (_what, css) => {
+    const found = check(css).filter((finding) => finding.rule === "unknown-unit");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain("is not a CSS unit");
+  });
+});
+
+/**
+ * Text glued to a hole, which reads like the obvious way to write a length and does not work.
+ *
+ * ## Measured in a real browser, and it fails in the worst way
+ *
+ * A hole becomes one custom property, so `{{n}}px` becomes `var(--r-…-0)px`. Chromium, with
+ * `--w: 12`:
+ *
+ * | written | computed |
+ * |---|---|
+ * | `padding-left: var(--w)px` | **`0px`** |
+ * | `padding-left: 8px; padding-left: var(--w)px` | **`0px`** — the fallback above it is lost too |
+ * | `padding-left: calc(var(--w) * 1px)` | `12px` |
+ * | `--w: 12px; padding-left: var(--w)` | `12px` |
+ *
+ * A `var()` is substituted as TOKENS, so the `12` and the `px` never become one length. The
+ * declaration is invalid at computed-value time, which is worse than being dropped at parse time:
+ * the property falls back to its initial value and takes any earlier declaration of it with it.
+ *
+ * The word reader already steps over a glued piece — it has to, or `px` would be reported as a value
+ * `padding` does not accept. That silence was measured as a false report and is now known to have
+ * been a TRUE one with the wrong message, which is what this rule is.
+ */
+describe("text glued to a hole", () => {
+  test.each([
+    ["a unit after", `padding-left: {{n}}px;`],
+    ["inside a shorthand", `border-left: {{w}}px solid red;`],
+    ["a suffix that is not a unit", `grid-area: {{name}}-start;`],
+    ["something in front", `color: #{{hex}};`],
+    ["two holes with nothing between", `margin: {{a}}{{b}};`],
+  ])("%s is reported", (_what, css) => {
+    const found = check(css).filter((finding) => finding.rule === "glued-hole");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain("calc(");
+  });
+
+  test.each([
+    ["a hole with a space after it", `border-left: {{w}} solid red;`],
+    ["a whole value", `display: {{how}};`],
+    ["inside calc, spaced", `padding-left: calc({{n}} * 1px);`],
+    ["two holes with a space", `margin: {{a}} {{b}};`],
+    ["the unit inside the hole", "padding-left: {{`${n}px`}};"],
+    ["a hole ending a declaration", `color: {{c}};`],
+  ])("%s is fine", (_what, css) => {
+    expect(check(css).filter((finding) => finding.rule === "glued-hole")).toEqual([]);
   });
 });
