@@ -140,6 +140,16 @@ One entry in the `style` attribute instead of four — and the three declaration
 all now, so they are static classes that dedupe with every other block writing the same thing. Less
 per element, and more shared.
 
+**The name is yours, and a custom property INHERITS.** `--accent` is set on the element and is
+visible to everything inside it — measured: a descendant that reads `var(--accent)` and never sets
+one picks up the ancestor's value, a descendant that sets its own shadows it, and an element outside
+the subtree falls back. That is a feature when you mean it, and a collision when you do not: a card
+setting `--accent` changes any descendant whose own block reads that name.
+
+So pick a name you would be happy to see inherited, or one nobody else would write. The names the
+compiler generates for holes never have this problem — `--r-<class>-0` is derived from the
+declaration itself, so two different declarations can never agree on one by accident.
+
 ### The unit goes inside the hole
 
 ```
