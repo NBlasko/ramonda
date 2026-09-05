@@ -296,10 +296,35 @@ describe("the CSS inside a block", () => {
     );
   });
 
-  test("a comment survives, because the parser does not keep them", () => {
-    const out = laid(`const a = <div css={@@(\n  /* why */\n  color: red;\n)}>x</div>;\n`);
-
-    expect(out).toContain("/* why */");
+  /**
+   * A comment survives — the parser drops them, so a layout built from the parse would delete the
+   * author's notes — and it survives WHERE IT WAS. Measured before this was fixed: a block comment on
+   * its own line came back glued to the declaration below it, which is the one thing a note above a
+   * declaration must not become.
+   */
+  test.each([
+    [
+      "on its own line, stays on its own line",
+      `const a = <div css={@@(\n  /* why */\n  color: red;\n)}>x</div>;\n`,
+      `const a = <div css={@@(\n  /* why */\n  color: red;\n)}>x</div>;\n`,
+    ],
+    [
+      "at the end of a declaration, stays there",
+      `const a = <div css={@@(\n  color: red; /* the brand */\n)}>x</div>;\n`,
+      `const a = <div css={@@(\n  color: red; /* the brand */\n)}>x</div>;\n`,
+    ],
+    [
+      "above a nested rule, stays above it",
+      `const a = <div css={@@(\n  /* why */\n  &:hover { color: red; }\n)}>x</div>;\n`,
+      `const a = <div css={@@(\n  /* why */\n  &:hover {\n    color: red;\n  }\n)}>x</div>;\n`,
+    ],
+    [
+      "inside a nested rule, one step in",
+      `const a = <div css={@@(\n  &:hover {\n    /* why */\n    color: red;\n  }\n)}>x</div>;\n`,
+      `const a = <div css={@@(\n  &:hover {\n    /* why */\n    color: red;\n  }\n)}>x</div>;\n`,
+    ],
+  ])("a comment %s", (_what, written, expected) => {
+    expect(laid(written)).toBe(expected);
   });
 
   /** The property nobody notices until it is missing: running it twice changes nothing. */

@@ -176,12 +176,16 @@ function layout(body: string, indent: string, step: string): string[] {
    * then, because emitting cleared it — and every declaration gains one below it.
    */
   let fresh = true;
+  /** Whether a line was already emitted on this physical line — see the comment branch. */
+  let emitted = false;
 
   /** The line so far, at its depth — or a blank line, which carries no indentation of its own. */
   const emit = (): void => {
     const text = line.trim();
     line = "";
-    if (text !== "") out.push(indent + step.repeat(depth) + text);
+    if (text === "") return;
+    out.push(indent + step.repeat(depth) + text);
+    emitted = true;
   };
 
   /** A blank line the author wrote, kept once however many they wrote. */
@@ -192,17 +196,37 @@ function layout(body: string, indent: string, step: string): string[] {
   for (let index = 0; index < body.length; index++) {
     const code = body.charCodeAt(index);
 
-    if (code !== 10 /* \n */ && code !== 32 && code !== 9) fresh = false;
-
     if (code === 47 /* / */ && body.charCodeAt(index + 1) === 42 /* * */) {
+      /**
+       * A comment on a line of its own stays on one, and one at the end of a declaration stays
+       * there. The difference is whether anything came BEFORE it on this line — which is what
+       * `fresh` already knows, and what the first version of this got wrong: every standalone
+       * comment came back glued to the declaration below it, which is the one thing a note above a
+       * declaration must not become.
+       */
+      const alone = fresh;
       const end = body.indexOf("*/", index + 2);
       const stop = end === -1 ? body.length : end + 2;
-      line += body.slice(index, stop);
+      const comment = body.slice(index, stop);
       index = stop - 1;
-      // A comment on a line of its own stays on one.
-      if (line.trim() === body.slice(index + 1 - (stop - index), stop).trim()) emit();
+      fresh = false;
+
+      /**
+       * A comment AFTER a declaration belongs to the line it was written on, and by the time it is
+       * read that line has already been emitted — the `;` ended it. So it is appended to what was
+       * emitted rather than started as a line of its own.
+       */
+      if (line.trim() === "" && emitted && out.length > 0) {
+        out[out.length - 1] += ` ${comment}`;
+        continue;
+      }
+
+      line += comment;
+      if (alone) emit();
       continue;
     }
+
+    if (code !== 10 /* \n */ && code !== 32 && code !== 9) fresh = false;
 
     if (code === 34 /* " */ || code === 39 /* ' */) {
       const stop = endOfString(body, index);
@@ -253,6 +277,7 @@ function layout(body: string, indent: string, step: string): string[] {
       if (fresh) blank();
       else if (line.trim() !== "") line += " ";
       fresh = true;
+      emitted = false;
       continue;
     }
 
