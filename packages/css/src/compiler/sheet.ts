@@ -158,7 +158,15 @@ export class Sheet {
        * Both files are named because either one could be the one to change: nothing here can know
        * which block was there first in any sense the author would recognise.
        */
-      if (existing.block.css !== block.css) {
+      /**
+       * The whole rule, not its body alone.
+       *
+       * Two rules with identical CSS and different CONTEXTS are two rules — `.r-x{color:red}` and
+       * `.r-x:hover{color:red}` — and comparing bodies could not tell them apart. That is not
+       * hypothetical: it is the fault this assertion missed until the class name started hashing the
+       * context too, and an assertion that cannot see the fault it exists for is worth nothing.
+       */
+      if (write(block.className, existing.block) !== write(block.className, block)) {
         const other = [...existing.files].join(", ") || "another file";
         throw new CssBlockError(
           `two different style blocks hash to \`${block.className}\`, one in ${other} and one here. ` +

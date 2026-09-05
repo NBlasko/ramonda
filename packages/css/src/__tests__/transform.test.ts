@@ -615,3 +615,54 @@ describe("the reference map and the emitted rule", () => {
     expect(namedSites(source).get("x")).toBe(out?.blocks[0].className);
   });
 });
+
+/**
+ * Two declarations with the same TEXT in different contexts are two rules, not one.
+ *
+ * A class name is the hash of what makes a rule that rule, and the text alone does not: `color: red`
+ * and `&:hover { color: red }` say the same thing about two different states. **Measured before this
+ * was fixed — they hashed the same, the sheet kept whichever arrived first, and the hover rule was
+ * emitted as `.r-…{color:red}` with no selector.** It applied always.
+ *
+ * The failure is the one this whole package is written around: silent, and against a page nobody
+ * edited — across files it is worse still, since the two blocks need not know about each other, and
+ * the sheet's collision assertion could not see it either, because the css TEXT was identical.
+ */
+describe("the same declaration in two contexts", () => {
+  test("a selector makes it a different rule", () => {
+    const out = emit(`const c = @@( color: red; &:hover { color: red; } );\n`);
+
+    expect(out?.blocks).toHaveLength(2);
+    expect(out?.blocks[0].className).not.toBe(out?.blocks[1].className);
+    expect(out?.blocks.map((one) => one.selector).sort()).toEqual(["", ":hover"]);
+  });
+
+  test("a condition does too", () => {
+    const out = emit(`const c = @@( padding: 8px; @media (min-width: 40rem) { padding: 8px; } );\n`);
+
+    expect(out?.blocks).toHaveLength(2);
+    expect(out?.blocks[0].className).not.toBe(out?.blocks[1].className);
+  });
+
+  test("and two different conditions are two rules again", () => {
+    const out = emit(`const c = @@( @media (min-width: 40rem) { padding: 8px; } @media print { padding: 8px; } );\n`);
+
+    expect(out?.blocks).toHaveLength(2);
+  });
+
+  /** Dedupe is still dedupe: the same declaration in the same context is one rule, as it must be. */
+  test("but the same declaration in the same context is still one rule", () => {
+    const a = emit(`const c = @@( &:hover { color: red; } );\n`);
+    const b = emit(`const d = @@( &:hover { color: red; } );\n`);
+
+    expect(a?.blocks).toHaveLength(1);
+    expect(a?.blocks[0].className).toBe(b?.blocks[0].className);
+  });
+
+  test("and a nested rule's own declarations still dedupe against another file's", () => {
+    const a = emit(`const c = @@( @media print { color: red; } );\n`);
+    const b = emit(`const d = @@( @media print { color: red; } );\n`);
+
+    expect(a?.blocks[0].className).toBe(b?.blocks[0].className);
+  });
+});

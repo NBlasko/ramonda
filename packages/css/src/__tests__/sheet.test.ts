@@ -387,3 +387,46 @@ describe("an atomic rule", () => {
     expect(() => sheet.verify(".r-cccccccccccccccc:hover{background:red}")).toThrow(CssBlockError);
   });
 });
+
+/**
+ * The collision assertion sees the whole rule, not its body alone.
+ *
+ * Two rules with identical CSS and different CONTEXTS are two rules — `.r-x { color: red }` and
+ * `.r-x:hover { color: red }` — and comparing bodies could not tell them apart. The class name
+ * hashes the context now, so this can only be reached by a real hash collision; it is asserted
+ * because an assertion that cannot see the fault it exists for is worth nothing.
+ */
+describe("two rules under one name that differ only in context", () => {
+  const NAME = "r-cccccccccccccccc";
+
+  test("a different selector is a different rule, and fails the build", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [{ className: NAME, css: "color:red;", properties: [], property: "color", selector: "" }]);
+
+    expect(() =>
+      sheet.add("b.tsx", [
+        { className: NAME, css: "color:red;", properties: [], property: "color", selector: ":hover" },
+      ]),
+    ).toThrow(CssBlockError);
+  });
+
+  test("and so is a different condition", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [{ className: NAME, css: "padding:8px;", properties: [], property: "padding" }]);
+
+    expect(() =>
+      sheet.add("b.tsx", [
+        { className: NAME, css: "padding:8px;", properties: [], property: "padding", conditions: ["@media print"] },
+      ]),
+    ).toThrow(CssBlockError);
+  });
+
+  test("but the same rule twice is still one rule", () => {
+    const sheet = new Sheet();
+    const rule = { className: NAME, css: "color:red;", properties: [], property: "color", selector: ":hover" };
+
+    sheet.add("a.tsx", [rule]);
+    expect(() => sheet.add("b.tsx", [rule])).not.toThrow();
+    expect(sheet.css().match(/r-cccccccccccccccc/g)).toHaveLength(1);
+  });
+});

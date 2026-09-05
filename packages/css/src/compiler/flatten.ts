@@ -26,10 +26,21 @@ export interface AtomicDeclaration {
   /**
    * The text this declaration hashes as, holes standing in as placeholders.
    *
-   * The KEY is not enough to hash by: two blocks setting `color` to different values must be two
-   * classes. This is `property:value;`, canonical, and it is what the class name is derived from.
+   * `property:value;`, canonical — the RULE's body, and what the sheet writes between the braces.
+   * Not the whole identity of a rule: see {@link AtomicDeclaration.identity}.
    */
   readonly canonical: string;
+  /**
+   * Everything that makes this rule THAT rule: its context and its text.
+   *
+   * The class name is the hash of this and not of {@link canonical} alone, and the difference was a
+   * silent fault. `color: red` and `&:hover { color: red }` have the same text and are two different
+   * rules — measured, they hashed the same, the sheet kept whichever arrived first, and the hover
+   * one was emitted with no selector, so it applied always. Across files neither block need know
+   * about the other, and the sheet's collision assertion could not see it either, because the css
+   * text really was identical.
+   */
+  readonly identity: string;
   /** Appended to the class in the selector — `:hover`, ` .title`, `""` for the class alone. */
   readonly selector: string;
   /** The conditional at-rules around it, sorted — see {@link flatten}. */
@@ -205,12 +216,17 @@ function declarationOf(
     holes.push(part.index);
   }
 
+  const canonical = `${property}:${collapse(value)};`;
+  const sorted = [...conditions].sort();
+
   return {
-    key: [...[...conditions].sort(), ...(selector === "" ? [] : [selector]), property].join("|"),
+    key: [...sorted, ...(selector === "" ? [] : [selector]), property].join("|"),
     property,
-    canonical: `${property}:${collapse(value)};`,
+    canonical,
+    // The context first, so two rules differing only in it are visibly different text to hash.
+    identity: [...sorted, selector, canonical].join("|"),
     selector,
-    conditions: [...conditions].sort(),
+    conditions: sorted,
     holes,
     at: item.at,
   };

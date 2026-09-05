@@ -291,7 +291,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
 
       piece += "{";
       for (const declaration of segment.items) {
-        const own = classNameFor(declaration.canonical);
+        // The whole identity, not the text alone — see `AtomicDeclaration.identity`.
+        const own = classNameFor(declaration.identity);
         const variables = declaration.holes.map((_hole, index) => variableNameFor(own, index));
 
         if (!atoms.has(own)) {
