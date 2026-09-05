@@ -37,6 +37,9 @@
     "innards": {
       "patterns": [
         {
+          "include": "#composition"
+        },
+        {
           "include": "#nested"
         },
         {
@@ -45,7 +48,7 @@
       ]
     },
     "nested": {
-      "comment": "A nested rule. The editor's CSS grammar has no pattern for one — measured, `&:hover {` comes back as a property whose value is `hover {` — so the block handles nesting itself. The negative lookahead is the hole: `{{` opens an expression, never a rule list.",
+      "comment": "A nested rule. The editor's CSS grammar has no pattern for one \u2014 measured, `&:hover {` comes back as a property whose value is `hover {` \u2014 so the block handles nesting itself. The negative lookahead is the hole: `{{` opens an expression, never a rule list.",
       "begin": "([^;{}]+?)(\\{)(?!\\{)",
       "beginCaptures": {
         "1": {
@@ -73,6 +76,29 @@
       "patterns": [
         {
           "include": "#innards"
+        }
+      ]
+    },
+    "composition": {
+      "comment": "This language's own markers, which CSS has no idea about \u2014 measured, the CSS grammar read `@@if` as a property name and `...` as nothing at all. Neither broke anything, so it is a colour problem rather than a correctness one: a reader could not tell a condition from a declaration. What follows each marker is a hole, and a hole is TypeScript, which the hole injection already handles.",
+      "patterns": [
+        {
+          "comment": "`@@if {{ \u2026 }}` opens a conditional group. `@@` can never be CSS \u2014 an at-rule is `@` and then a name, and a name cannot begin with `@` \u2014 so this is unambiguous forever.",
+          "match": "(@@if)(?=\\s*\\{\\{)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.ramonda"
+            }
+          }
+        },
+        {
+          "comment": "`...{{ \u2026 }};` merges another block's map here. Anchored to the hole that must follow, so an ellipsis written in a comment or a value is left alone.",
+          "match": "(\\.\\.\\.)(?=\\s*\\{\\{)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.ramonda"
+            }
+          }
         }
       ]
     }

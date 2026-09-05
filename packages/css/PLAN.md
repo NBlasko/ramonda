@@ -1392,6 +1392,17 @@ beside the declarations rather than around them — writing a group as `__when(c
 a wrong condition hid every fault under it. Asserted directly: a bad condition with two typos under
 it comes back as three findings, on lines 3, 4 and 5.
 
+**Two more faults composition made possible, both found by asking where a spread cannot go:**
+
+- **A spread inside a selector or a `@media` compiled, and the context silently vanished.**
+  `&:hover { ...{{base}}; }` came out as `_merge(base)`, so a block meant for hover applied always.
+  It cannot mean anything else: a spread merges a whole block, and a block's map carries the context
+  each of its own declarations was written in, so nesting one would have to re-scope every key it
+  holds. Refused now, naming the two places it may go. A GUARD is still fine — `@@if` changes no key.
+- **A block's binding hovered as `never`.** The helper returned it because `never` is assignable
+  everywhere; a binding holding a block is exactly what an author points at to ask what a block IS.
+  It is `CssBlock` now, branded so a hand-written object with the same three fields is not one.
+
 **Left:** a shorthand meeting one of its own longhands in a merge the author wrote INLINE is visible
 to the checker, which could never be reported before; across files it needs a runtime diagnostic.
 

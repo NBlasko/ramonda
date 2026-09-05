@@ -528,3 +528,38 @@ describe("a block on a nested element", () => {
     expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
   });
 });
+
+/**
+ * Composition, coloured as what it is rather than as CSS that happens to parse.
+ *
+ * `@@if {{ … }}` and `...{{ … }}` are this language's own, not CSS's — measured before this was
+ * written, the CSS grammar read `@@if` as a property name and the `...` as nothing at all. Neither
+ * broke anything, which is why it is a colour problem rather than a correctness one: a reader could
+ * not tell a condition from a declaration.
+ *
+ * The condition and the operand inside `{{ }}` keep being TypeScript, which is what they are.
+ */
+describe("the composition markers", () => {
+  test("`@@if` is a keyword, and its condition is still an expression", () => {
+    const code = `const c = @@(\n  @@if {{this.off}} {\n    opacity: 0.5;\n  }\n);\n`;
+
+    expect(scopeOf(code, "@@if")).toBe("keyword.control.ramonda");
+    expect(scopeOf(code, "this")).toBe("variable.language.this.tsx");
+    expect(scopeOf(code, "opacity")).toBe("support.type.property-name.css");
+  });
+
+  test("`...` is one too, and its operand is the expression it holds", () => {
+    const code = `const c = @@(\n  ...{{base}};\n  color: red;\n);\n`;
+
+    expect(scopeOf(code, "...")).toBe("keyword.control.ramonda");
+    expect(scopeOf(code, "base")).toBe("variable.other.readwrite.tsx");
+    expect(scopeOf(code, "color")).toBe("support.type.property-name.css");
+  });
+
+  test("and neither takes the rest of the block with it", () => {
+    const code = `const c = @@(\n  ...{{base}};\n  @@if {{on}} { opacity: 0.5; }\n  color: red;\n);\nconst after = 1;\n`;
+
+    expect(scopeOf(code, "color")).toBe("support.type.property-name.css");
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+});

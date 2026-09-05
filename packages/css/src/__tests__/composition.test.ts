@@ -99,3 +99,38 @@ describe("the two together", () => {
     expect(args.indexOf("this.off &&")).toBeLessThan(args.indexOf('"width"'));
   });
 });
+
+/**
+ * Where a spread cannot go, and why it is a refusal rather than a best guess.
+ *
+ * A spread merges a whole block, and a block's map carries the context each of its declarations was
+ * written in. Nesting one inside a selector would have to re-scope every key it holds —
+ * `background` becoming `:hover|background` — which is not something a merge can do at runtime and
+ * not something the author asked for.
+ *
+ * **Measured before this was written: it compiled, and the selector silently vanished.**
+ * `&:hover { ...{{base}}; }` came out as `_merge(base)`, so a block meant for hover applied always.
+ *
+ * A GUARD is different and is allowed: `@@if` does not change any key, it only decides whether the
+ * whole map lands.
+ */
+describe("a spread that cannot mean anything", () => {
+  test.each([
+    ["inside a selector", `const c = @@( &:hover { ...{{base}}; } );\n`],
+    ["inside a descendant", `const c = @@( & .title { ...{{base}}; } );\n`],
+    ["inside a media query", `const c = @@( @media (min-width: 40rem) { ...{{base}}; } );\n`],
+    ["nested two deep", `const c = @@( &:hover { @media (min-width: 40rem) { ...{{base}}; } } );\n`],
+  ])("%s is refused", (_what, source) => {
+    expect(() => emit(source)).toThrow(/spread/);
+  });
+
+  test("but inside a conditional group it is fine, because a guard changes no key", () => {
+    const out = emit(`const c = @@( @@if {{on}} { ...{{base}}; } );\n`);
+
+    expect(out).toMatch(/_merge\(on && base\)/);
+  });
+
+  test("and the refusal says where it may go", () => {
+    expect(() => emit(`const c = @@( &:hover { ...{{base}}; } );\n`)).toThrow(/top level|@@if/);
+  });
+});

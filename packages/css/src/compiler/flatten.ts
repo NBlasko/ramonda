@@ -74,7 +74,23 @@ export interface AtomicDeclaration {
  */
 export type AtomicSegment =
   | { readonly kind: "declarations"; readonly guards: readonly number[]; readonly items: AtomicDeclaration[] }
-  | { readonly kind: "spread"; readonly guards: readonly number[]; readonly hole: number };
+  | {
+      readonly kind: "spread";
+      readonly guards: readonly number[];
+      readonly hole: number;
+      /**
+       * The selector and conditions it was written under, which must both be empty.
+       *
+       * A spread merges a whole block, and a block's map carries the context each of its own
+       * declarations was written in — so nesting one inside a selector would have to re-scope every
+       * key it holds, which a merge cannot do and the author did not ask for. Recorded rather than
+       * refused here, because `flatten` describes and the transform decides.
+       */
+      readonly selector: string;
+      readonly conditions: readonly string[];
+      /** Where it was written, so the refusal lands on it. */
+      readonly at?: number;
+    };
 
 /** Every declaration a block makes, ignoring how it is composed. */
 export function flatten(block: Block): AtomicDeclaration[] {
@@ -127,7 +143,7 @@ function walk(
 
     const spread = holeIn(item.property, SPREAD);
     if (spread !== undefined) {
-      out.push({ kind: "spread", guards: [...guards], hole: spread });
+      out.push({ kind: "spread", guards: [...guards], hole: spread, selector, conditions, at: item.at });
       continue;
     }
 

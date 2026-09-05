@@ -264,6 +264,27 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       }
 
       if (segment.kind === "spread") {
+        /**
+         * A spread merges a whole block, and a block's map carries the context each of its
+         * declarations was written in. Inside a selector or a conditional at-rule it would have to
+         * re-scope every key it holds — `background` becoming `:hover|background` — which a merge
+         * cannot do at runtime.
+         *
+         * **Measured before this refusal existed: it compiled and the selector silently vanished.**
+         * `&:hover { ...{{base}}; }` came out as `_merge(base)`, so a block meant for hover applied
+         * always. A GUARD is fine and is allowed: `@@if` changes no key, it only decides whether the
+         * whole map lands.
+         */
+        if (segment.selector !== "" || segment.conditions.length > 0) {
+          refuse(
+            "a spread merges a whole block, and a block carries the context its own declarations " +
+              "were written in — so it cannot go inside a selector or a `@media`. Write it at the " +
+              "top level of the block, or inside `@@if { … }`, which changes no declaration.",
+            source,
+            segment.at ?? site.start,
+            filename,
+          );
+        }
         expression();
         continue;
       }
