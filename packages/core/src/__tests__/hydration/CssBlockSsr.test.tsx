@@ -173,3 +173,49 @@ describe("what the markup does with a value the expression produced", () => {
     }).toEqual({ position: "", width: "", zIndex: "" });
   });
 });
+
+/**
+ * A hole's value becomes ATTRIBUTE TEXT on the server, and a `;` is not the only character that
+ * matters there.
+ *
+ * The semicolon rule exists because the CSS parse turns one into a second declaration. This asks the
+ * other question about the same text: whether the value can leave the attribute it was written in.
+ * A value is whatever an expression evaluated to and an expression can read a record, so a quote in
+ * it is not a hypothetical — and a quote that reached the markup unescaped would end `style="` and
+ * start an attribute of the attacker's choosing, on an element the author wrote.
+ *
+ * Measured, and the serializer holds: the quote comes back as `&quot;`. `<` and `>` are written
+ * literally, which is correct — inside a quoted attribute value the HTML parser reads them as text,
+ * so `</style><script>` there is inert. This is here so that stays true.
+ */
+describe("a value carrying characters that mean something in markup", () => {
+  test("a quote is escaped, so it cannot open an attribute of its own", async () => {
+    const Panel = panelWith(`red" onmouseover="alert(1)`);
+    const html = await renderToString(<Panel />);
+
+    expect(html).toContain("&quot; onmouseover=&quot;");
+    expect(html).not.toContain(`onmouseover="alert`);
+  });
+
+  test("and the element that comes back out of a parse has no attribute it was not given", async () => {
+    const Panel = panelWith(`red" onmouseover="alert(1)`);
+    const container = document.createElement("div");
+    container.innerHTML = await renderToString(<Panel />);
+
+    const styled = container.querySelector(".lead") as HTMLElement;
+    expect(styled.getAttribute("onmouseover")).toBeNull();
+    expect(styled.getAttributeNames().sort()).toEqual(["class", "style"]);
+  });
+
+  /** Literal, and inert: an attribute value is text, so nothing here opens an element. */
+  test("angle brackets stay text inside the attribute", async () => {
+    const Panel = panelWith(`red</style><script>alert(1)</script>`);
+    const container = document.createElement("div");
+    container.innerHTML = await renderToString(<Panel />);
+
+    expect(container.querySelector("script")).toBeNull();
+    expect(
+      (container.querySelector(".lead") as HTMLElement).style.getPropertyValue("--r-8e271c6c1f3a4b02-0"),
+    ).toContain("script");
+  });
+});

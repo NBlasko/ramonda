@@ -27,6 +27,15 @@ import ts from "typescript";
  * Field name -> field type, both ways, between `StyleValue` in the compiler and `CssBlockValue` in
  * the framework. Names and types both, because a field that quietly changed from `string` to
  * `string | number` is exactly as wrong as one that disappeared.
+ *
+ * **And one RULE, which is duplicated for the same reason the shape is.** `holdsOneDeclaration`
+ * decides whether a hole's value may be written at all — the answer to a hostile value that would
+ * become a second declaration — and it is written in both packages because neither may import the
+ * other. Two copies of a security decision is a place to drift where the symptom is an overlay
+ * somebody's record asked for, so the bodies are compared as text. A related decision, that no value
+ * means the property is left UNSET rather than written as `"null"`, is asserted by tests on both
+ * sides: it lives in different structures here and cannot be compared this way. It had already
+ * drifted once, and the adapter was the side that was wrong.
  */
 
 const root = join(import.meta.dirname, "..");
@@ -91,6 +100,22 @@ function inline(type, aliases) {
   return out;
 }
 
+/** One function's body, as written, whitespace collapsed. */
+function bodyOf(file, functionName) {
+  const source = ts.createSourceFile(file, ts.sys.readFile(file) ?? "", ts.ScriptTarget.Latest, true);
+  const found = source.statements.find(
+    (node) => ts.isFunctionDeclaration(node) && node.name?.text === functionName && node.body !== undefined,
+  );
+  return found === undefined ? undefined : found.body.getText().replace(/\s+/g, " ").trim();
+}
+
+/** The rule written on both sides, and where each copy lives. */
+const RULE = "holdsOneDeclaration";
+const RULE_SIDES = [
+  { label: "@ramonda/css", file: join(root, "packages/css/src/value.ts") },
+  { label: "@ramonda/core", file: join(root, "packages/core/src/core/cssBlock.ts") },
+];
+
 const read = SIDES.map((side) => ({ ...side, fields: fieldsOf(side.file, side.name) }));
 
 const missing = read.filter((side) => side.fields === undefined || Object.keys(side.fields).length === 0);
@@ -117,6 +142,20 @@ for (const name of new Set([...Object.keys(compiler.fields), ...Object.keys(fram
   else if (a !== b) faults.push(`\`${name}\` is \`${a}\` in ${compiler.label} and \`${b}\` in ${framework.label}`);
 }
 
+const bodies = RULE_SIDES.map((side) => ({ ...side, body: bodyOf(side.file, RULE) }));
+const unreadable = bodies.find((side) => side.body === undefined);
+
+if (unreadable !== undefined) {
+  faults.push(
+    `\`${RULE}\` is not a function declaration in ${unreadable.label} (${unreadable.file}) — ` +
+      `either it was renamed or it stopped being one, and this check would pass against nothing`,
+  );
+} else if (bodies[0].body !== bodies[1].body) {
+  faults.push(
+    `\`${RULE}\` is \`${bodies[0].body}\` in ${bodies[0].label} and \`${bodies[1].body}\` in ${bodies[1].label}`,
+  );
+}
+
 if (faults.length > 0) {
   console.error(`\n[css-contract] the two declarations of a compiled block disagree:\n`);
   for (const fault of faults) console.error(`  - ${fault}`);
@@ -129,4 +168,7 @@ if (faults.length > 0) {
 }
 
 const count = Object.keys(compiler.fields).length;
-console.log(`[css-contract] ${compiler.name} and ${framework.name} agree on all ${count} fields of a compiled block`);
+console.log(
+  `[css-contract] ${compiler.name} and ${framework.name} agree on all ${count} fields of a compiled block, ` +
+    `and both copies of \`${RULE}\` say the same thing`,
+);

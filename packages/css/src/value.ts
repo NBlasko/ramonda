@@ -1,5 +1,20 @@
 import type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
 
+/**
+ * What may be read as a value: one that has been CALLED, or a descriptor with nothing to call it
+ * with.
+ *
+ * The difference is a pair of parentheses, and a descriptor carries the same three fields, so
+ * nothing about the shape tells them apart — but one of them is a function, and `apply` is what
+ * every function has. Declaring it `never` makes a descriptor unassignable.
+ *
+ * **A block with NO holes is the exception, and it had to be**: there is nothing to pass it, so the
+ * descriptor IS the value and `css={_s0}` is how it is written everywhere. `StyleBlock<readonly []>`
+ * lets exactly that one through — a descriptor that takes an argument has a call signature the empty
+ * one does not, so it stays refused, which is the case the framework reports as `RMD062`.
+ */
+export type CalledStyleValue = (StyleValue & { readonly apply?: never }) | StyleBlock<readonly []>;
+
 /** Shared by every block with no holes, so the empty case allocates nothing at all. */
 const NONE: readonly string[] = Object.freeze([]);
 
@@ -41,12 +56,25 @@ export function block<const P extends readonly string[]>(className: string, prop
  *
  * This is the whole adapter surface. A wrapper on another JSX library spreads the result and gets
  * the same output Ramonda produces natively, which is what makes the package usable outside it.
+ *
+ * **A descriptor is refused by the type**, and that is the one thing this can do about the fault the
+ * framework reports as `RMD062`: `toStyleObject(_s0)` where `_s0(…)` was meant used to type-check —
+ * a descriptor structurally IS a value — and returned the class with no custom properties at all,
+ * so every declaration reading one fell back, in silence. This package ships to a browser and
+ * imports nothing, so it has no diagnostics to report it with; the type is what it has.
  */
-export function toStyleObject(value: StyleValue): { className: string; style: Record<string, string> } {
+export function toStyleObject(value: CalledStyleValue): { className: string; style: Record<string, string> } {
   const style: Record<string, string> = {};
   for (let index = 0; index < value.properties.length; index++) {
     const raw = value.values[index];
-    if (raw === undefined) continue;
+    /**
+     * No value is not the empty value — the property is left unset, so the declaration reading it
+     * falls back to whatever the stylesheet said. Writing the text `"null"` instead would substitute
+     * something the property cannot parse, which is invalid at computed-value time and drops the
+     * declaration **and any earlier one for the same property**. This answered that differently from
+     * the framework's own path until it was measured; they answer it the same way now.
+     */
+    if (raw === undefined || raw === null) continue;
     // A custom property holds text. A number reaching here is a property that takes one — the
     // per-property types are what refuse the ones that do not.
     const text = typeof raw === "string" ? raw : String(raw);
