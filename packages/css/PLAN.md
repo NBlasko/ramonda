@@ -949,12 +949,28 @@ a `main` was invisible until the link was replaced, with nothing logged — as f
 the extension had never declared a formatter. `vscode/install.mjs` re-links, which is why re-running
 it is the fix; it also had a bug of its own, `rmSync` on a link to a directory, which throws.
 
-### L — the runtime diagnostic. Deliberately last
+### L — the runtime diagnostic. Deliberately last — DONE
 
-A `css` value reaching the runtime that no transform produced must be reported rather than silently
-doing nothing. **The user's reasoning for putting it last is worth keeping:** diagnostics are this
-framework's signature, which is exactly why this one should be written against a feature that has
-stopped moving.
+**The user's reasoning for putting it last was right:** diagnostics are this framework's signature,
+and this one is written against a feature that has stopped moving. It turned out to be THREE, and the
+third was not silence at all.
+
+Measured, in core's own harness, before anything was written:
+
+| given | what happened |
+|---|---|
+| a descriptor read without being called | the class applied, NO custom property set, silence |
+| a value holding a `;` | the declaration dropped, silence |
+| a plain object, or a string | **threw** `Cannot read properties of undefined (reading 'length')` |
+
+`RMD062`, `RMD063`, `RMD064` — all `error`, because in every one of them the page is wrong rather
+than merely slower. The third is the one worth remembering: it took the render down and named nothing
+about `css`, so the fix is a report AND a shape guard. A value that is not a block is now ignored
+**whole**, class included, which is what `formatAttributes` had to be taught too — it asks the same
+question, and the report is raised in one place because two for one element would read as two faults.
+
+The fixtures are built by hand rather than by `block()`: core may not depend on the compiler at any
+depth, and what is asserted is what the RUNTIME does with a shape, so the shape is the fixture.
 
 ---
 

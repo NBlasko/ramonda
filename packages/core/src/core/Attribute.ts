@@ -1,7 +1,7 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
-import { applyCssBlock, classNameWithBlock } from "./cssBlock";
+import { applyCssBlock, classNameWithBlock, isCompiledBlock } from "./cssBlock";
 import type { CssBlockValue } from "../types/cssBlock";
 type NodeAttributes = Record<string, any>;
 
@@ -122,7 +122,10 @@ export function formatAttributes(attributes: NodeAttributes): Record<string, any
    * `setAttribute("class")` on an SVG element with no second rule for any of it.
    */
   const css = result.css as CssBlockValue | undefined | null;
-  if (css !== undefined && css !== null) {
+  // The same question the applier asks, and it has to be the same: a value that is not a block is
+  // ignored WHOLE, class included, which is what `RMD064` says happens. The applier is where the
+  // report is raised, because two for one element would read as two faults.
+  if (css !== undefined && css !== null && isCompiledBlock(css)) {
     result = { ...result, className: classNameWithBlock(result.className, css) };
   }
 

@@ -1892,3 +1892,69 @@ A callback belongs on a field too — `createRef<T>((node) => this.arrived(node)
 
 `ramonda-check` reports the same call before it ships, as
 [`ref-built-where-it-cannot-be-kept`](/reference/check).
+
+## RMD062 — A style block was applied with no values for its holes
+
+A compiled block that has `{{ … }}` holes is a **function**, and reading it without calling it hands
+the element every custom property name and no value for any of them.
+
+Measured: the element then renders with the class and **no custom properties at all**, so every
+declaration in the rule that reads one falls back to its initial value. Nothing else says so — the
+class is there, the stylesheet is there, and the page is simply wrong.
+
+The compiler never writes that, so what reaches the runtime is hand-written code or a wrapper. Write
+the block and let the transform produce the value:
+
+```tsx
+import { Component, state } from "@ramonda/core";
+
+class Row extends Component {
+  @state weight = 4;
+
+  render() {
+    return <div css={@( border-left: {{`${this.weight}px`}} solid #ff0055; )}>a row</div>;
+  }
+}
+```
+
+A block with **no** holes is a value already and is passed as it is. See
+[style blocks](/style-blocks).
+
+## RMD063 — A style block's value was refused
+
+A `{{ … }}` hole becomes one CSS custom property, and a custom property's value may not contain a
+`;` — that character is what separates declarations, so a value carrying one would become a **second
+declaration** on the element.
+
+Measured through a server render and back: a value like `red; position: fixed; width: 100vw` came out
+of the round trip as real, applied declarations, on a page nothing else would have refused. So the
+value is not written at all and the declaration is dropped, which is the right way round — a missing
+border beats a full-viewport overlay somebody's record asked for.
+
+The value came from an expression, so it is fixed where that expression reads its data, not at the
+block. A hole is for a value the page computes; text that arrives from a record, a query string or a
+form belongs behind whatever validates it first.
+
+## RMD064 — A `css` value is not a compiled style block
+
+The `css` prop takes what the compiler produced — a value with a `className`, and a `properties` and
+`values` array beside it. The types refuse anything else, so a value that reaches the runtime came
+from JavaScript that was not checked: a hand-written object, or another library's own shape.
+
+It is ignored and the element renders unstyled, class included. That is a change: measured, a plain
+object used to **throw** `Cannot read properties of undefined (reading 'length')`, which took the
+render down and named nothing about `css`.
+
+Write the block and let the transform produce the value:
+
+```tsx
+const panel = @(
+  display: flex;
+  gap: 8px;
+);
+
+const row = <div css={panel}>a row</div>;
+```
+
+If the value comes from a wrapper on another JSX library, `toStyleObject` from `@ramonda/css` is the
+adapter that turns a compiled block into `{ className, style }`.

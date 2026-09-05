@@ -1,3 +1,4 @@
+import { diagnose } from "../debug/diagnostics";
 import { CSS_SYM } from "../helpers/constants";
 import type { CssBlockValue } from "../types/cssBlock";
 import type { EnhancedHTMLNode } from "../types/vdom";
@@ -42,7 +43,9 @@ export function applyCssBlock(enhancedNode: EnhancedHTMLNode, next: CssBlockValu
   const written = enhancedNode[CSS_SYM];
   if (written === undefined && (next === undefined || next === null)) return;
 
-  const names = next == null ? EMPTY : next.properties;
+  const usable = next == null || isCompiledBlock(next);
+  if (__DEV__ && next != null && !usable) reportNotABlock(next);
+  const names = next == null || !usable ? EMPTY : next.properties;
 
   /**
    * Everything this element carried last time and does not now.
@@ -57,9 +60,29 @@ export function applyCssBlock(enhancedNode: EnhancedHTMLNode, next: CssBlockValu
     }
   }
 
-  if (next == null) {
+  if (next == null || !usable) {
     enhancedNode[CSS_SYM] = undefined;
     return;
+  }
+
+  /**
+   * A hole with no value, which is what an UNCALLED descriptor is.
+   *
+   * `block(className, properties)` returns a callable carrying `values: []`, so `css={_s0}` where
+   * `_s0(…)` was meant has every property name and no value for any of them. The transform never
+   * writes that — it comes from hand-written code or from a wrapper — and measured, the element then
+   * renders with the class and no custom properties at all: every declaration in the rule that reads
+   * one falls back, and nothing says so.
+   */
+  if (__DEV__ && names.length > next.values.length) {
+    diagnose(
+      "RMD062",
+      next.className,
+      `\`${next.className}\` was applied with ${next.values.length} value(s) for ${names.length} ` +
+        `hole(s), so ${names.slice(next.values.length).join(", ")} ${names.length - next.values.length === 1 ? "is" : "are"} ` +
+        `not set on the element and every declaration reading ${names.length - next.values.length === 1 ? "it" : "them"} falls back.`,
+      { className: next.className, properties: names, values: next.values },
+    );
   }
 
   for (let index = 0; index < names.length; index++) {
@@ -74,6 +97,15 @@ export function applyCssBlock(enhancedNode: EnhancedHTMLNode, next: CssBlockValu
      * puts last so it is written against a feature that has stopped moving.
      */
     if (typeof value === "string" && !holdsOneDeclaration(value)) {
+      if (__DEV__) {
+        diagnose(
+          "RMD063",
+          `${next.className}:${names[index]}`,
+          `${names[index]} was not set: its value holds a \`;\`, which would be a second declaration ` +
+            `rather than a value. The declaration is dropped instead.`,
+          { className: next.className, property: names[index], value },
+        );
+      }
       enhancedNode.style.removeProperty(names[index]);
       continue;
     }
@@ -98,6 +130,47 @@ export function applyCssBlock(enhancedNode: EnhancedHTMLNode, next: CssBlockValu
 
 /** Shared, so an element that drops its block allocates nothing to say so. */
 const EMPTY: readonly string[] = [];
+
+/**
+ * Whether a `css` value is the shape a compiler produced.
+ *
+ * The types refuse everything else, so what reaches here came from JavaScript that was not checked —
+ * a hand-written object, another library's own shape. **Measured before this existed: it did not do
+ * nothing, it THREW** — `Cannot read properties of undefined (reading 'length')`, which takes the
+ * render down and names nothing about `css`.
+ *
+ * Reported and skipped instead. An unstyled element beats a blank page, and the report is what says
+ * which of the two happened.
+ */
+export function isCompiledBlock(value: CssBlockValue): boolean {
+  return typeof value.className === "string" && Array.isArray(value.properties) && Array.isArray(value.values);
+}
+
+/**
+ * The report for one that is not, raised where the value is APPLIED and nowhere else.
+ *
+ * `formatAttributes` asks the same question to decide whether to merge the class, and two reports for
+ * one element would read as two faults.
+ */
+function reportNotABlock(value: CssBlockValue): void {
+  diagnose(
+    "RMD064",
+    String((value as { className?: unknown }).className ?? typeof value),
+    `\`css\` was given a value that is not a compiled style block, so it was ignored: a block has a ` +
+      `\`className\` and a \`properties\` and \`values\` array beside it, and this has ${describe(value)}.`,
+    { value },
+  );
+}
+
+/** What the value actually is, for a message that has to be read once and acted on. */
+function describe(value: CssBlockValue): string {
+  const parts: string[] = [];
+  if (value === null || typeof value !== "object") return `${typeof value} instead of an object`;
+  if (typeof value.className !== "string") parts.push(`\`className\` as ${typeof value.className}`);
+  if (!Array.isArray(value.properties)) parts.push(`\`properties\` as ${typeof value.properties}`);
+  if (!Array.isArray(value.values)) parts.push(`\`values\` as ${typeof value.values}`);
+  return parts.join(", ");
+}
 
 /**
  * Whether a hole's value is one custom property value and cannot become a second declaration.

@@ -85,7 +85,10 @@ export type DiagnosticCode =
   | "RMD058"
   | "RMD059"
   | "RMD060"
-  | "RMD061";
+  | "RMD061"
+  | "RMD062"
+  | "RMD063"
+  | "RMD064";
 interface DiagnosticSpec {
   /**
    * The rule, and it is about the OUTCOME rather than how bad the code looks:
@@ -419,6 +422,25 @@ export const SPECS: Record<DiagnosticCode, DiagnosticSpec> = {
     severity: "warning",
     title: "An async lifecycle rejected",
     fix: "An `async` `@created`, `@mounted` or `@destroyed` that rejects is NOT caught by an error boundary, and that is deliberate: the rejection arrives at an arbitrary later moment, when the page is already interactive and there is no render left to fail — replacing it with a fallback then is the worse outcome. So the page keeps running and this says what happened, which is the part that used to be missing. Handle it where it happens: wrap the body in `try`/`catch` and put the failure in `@state` — an `error` field the render can show — which is also the only way to tell the reader anything. If the work must take the page down, re-throw from `render()` rather than from the lifecycle, because that IS a render and a boundary can see it. `ramonda-check` reports the same method before it ships, as `unguarded-async-lifecycle`.",
+  },
+  RMD062: {
+    // An error: the element carries the class and none of the custom properties the rule reads, so
+    // every declaration that uses one falls back. The page is wrong, not merely slower.
+    severity: "error",
+    title: "A style block was applied with no values for its holes",
+    fix: "A compiled block with holes is a FUNCTION — `css={_s0(width)}` — and reading it without calling it, `css={_s0}`, hands the element every property name and no value for any of them. Measured, the element then renders with the class and no custom properties at all, and every declaration in the rule that reads one falls back to its initial value; nothing else says so. The compiler never writes that, so what reaches here is hand-written code or a wrapper: call the descriptor with one argument per `{{ … }}` in the block, in the order they were written. A block with NO holes is a value already and is passed as it is.",
+  },
+  RMD063: {
+    // An error: one declaration is missing from the element, so it renders unstyled in that respect.
+    severity: "error",
+    title: "A style block's value was refused",
+    fix: "A `{{ … }}` hole becomes one CSS custom property, and a custom property's value may not contain a `;` — that character is what separates declarations, so a value carrying one would become a SECOND declaration on the element. Measured through a server render and back: a value like `red; position: fixed; width: 100vw` came out of the round trip as real, applied declarations, on a page nothing else would have refused. So the value is not written at all and the declaration is dropped, which is the right way round — a missing border beats a full-viewport overlay somebody's record asked for. The value came from an expression, so fix it where the expression reads its data rather than here.",
+  },
+  RMD064: {
+    // An error, and it used to be worse than one: the render threw.
+    severity: "error",
+    title: "A `css` value is not a compiled style block",
+    fix: "The `css` prop takes what the compiler produced — a value with a `className` and a `properties` and `values` array beside it — and the types refuse anything else, so what reaches the runtime came from JavaScript that was not checked: a hand-written object, or another library's own shape. It is ignored, and the element renders unstyled rather than taking the render down, which is what it used to do: measured, a plain object threw `Cannot read properties of undefined (reading 'length')` and named nothing about `css`. Write the block as `css=@( … )`, or `css={@( … )}`, and let the transform produce the value; if the value comes from a wrapper, `toStyleObject` from `@ramonda/css` is the adapter that turns one into `{ className, style }`.",
   },
   RMD061: {
     // A warning: the page is not wrong, it costs a render it did not need and loses a ref the author
