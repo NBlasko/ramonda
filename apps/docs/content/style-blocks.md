@@ -98,6 +98,69 @@ The last one is refused rather than mangled: there is nothing to put a variable 
 carrying a `;` is refused outright — on the server as well, where it would otherwise become real
 declarations in the markup.
 
+## Theming
+
+**A theme is custom properties, and a block reads them.** Nothing here is a theme system, and that is
+the same position [styling](/styling) takes: the theme lives in an ordinary stylesheet, and switching
+it is one attribute on `<html>` — no render, no JavaScript per element, and the block does not know a
+theme exists.
+
+```css
+:root                  { --accent: #10b981; --surface: #ffffff; }
+[data-theme="dark"]    { --accent: #34d399; --surface: #0b0b0b; }
+```
+
+```tsx
+const card = @(
+  background: var(--surface);
+  border-left: 4px solid var(--accent);
+
+  &[data-theme="dark"] {
+    box-shadow: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    border-left-color: var(--accent, #34d399);
+  }
+);
+```
+
+Four things a block does with a theme, and each one compiles to exactly what it says:
+
+| written | what is emitted |
+|---|---|
+| `color: var(--accent)` | `color:var(--accent)` |
+| `color: var(--accent, #10b981)` | the fallback, untouched |
+| `--card-bg: var(--surface)` | the block naming its own value from the theme's |
+| `&[data-theme="dark"] { … }` | `.r-… [data-theme=dark]`, after the build flattens it |
+
+### A hole is not a theme
+
+It is tempting, because a hole and a `var()` are the same thing underneath — a hole compiles to
+`var(--r-<hash>-0)` and the element carries the value. The difference is who sets it, and it decides
+the cost.
+
+**Measured on a server render of 500 rows with one themed value:** through a hole the markup went from
+19.4 KB to 39.9 KB — **41 bytes on every element**, and that is one themed value. Through `var()` it is
+nothing, because the value is on `:root` and each element inherits it.
+
+And a theme switch through a hole is a **render**. A hole's value is a value of that render, so every
+element carrying it has to render again to change it; a `var()` changes when the attribute on `<html>`
+changes, which is not a render at all.
+
+A hole is for what varies per **instance** — `border-left: {{`${this.weight}px`}}`, a value this
+element has and the one beside it does not. A theme is the opposite of that.
+
+### `:root` does not work inside a block
+
+```
+:root { --accent: red; }        ✗  inside a block
+```
+
+It compiles, and then does nothing. Measured through the same CSS compiler a build uses, it flattens
+to `.r-… :root` — a descendant selector, and `:root` is the `<html>` element, which is nobody's
+descendant. The theme's own declarations belong in a stylesheet.
+
 ## Setting up the build
 
 One plugin, and there is no stylesheet to import: the CSS is a module the bundler already knows
