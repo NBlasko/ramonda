@@ -1572,11 +1572,21 @@ be read back — which is what stops `p` + `l-40px` being confused with `pl` + `
 
 ### The tracks, in order
 
-**RN1 — the abbreviation map.** Out of the same sweep that writes the property map, with two
-assertions: no abbreviation contains a `-`, and no two properties share one. **Written here rather
-than taken from any library**: no library covers 551 properties, and where one does have a
-convention — `p`, `m`, `w`, `h`, `bg`, `gap`, `items`, `justify`, `rounded` — that convention is the
-point, not the source. A property with no abbreviation uses its own name, which is already readable.
+**RN1 — the abbreviation map. DONE 2026-09-06.** 65 entries out of the same sweep that writes the
+property map. **Written here rather than taken from any library**: none covers 551 properties, and
+where a convention exists — `p`, `m`, `w`, `h`, `bg`, `gap`, `items`, `justify`, `rounded` — that
+convention is the point, not the source. A property with no entry uses its own name, which is already
+readable.
+
+**Three assertions, and the third caught two entries on the first run.** No abbreviation may contain
+a `-`; no two properties may share one; and **no abbreviation may be another property's NAME**, since
+a property with no entry uses its own. That last one is what found `d` — it is a real property, the
+SVG path data — and `flex`, which is the flex shorthand. Either would have made `display: flex` and
+`d: M0,0` one class. They are `disp` and `fdir`, which is the honest cost of a name that must never
+be ambiguous, and both are pinned by name in a test so they cannot quietly come back.
+
+Also fixed while here: `TAG` was referenced in four of this script's error paths and defined nowhere.
+None had ever run.
 
 **RN2 — the encoder.** `nameFor(declaration)`, pure, with the hash as the FALLBACK rather than the
 default. It falls back for exactly four reasons, and each is measured rather than assumed: the value

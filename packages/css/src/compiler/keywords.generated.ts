@@ -523,6 +523,82 @@ export const SHORTHANDS: Readonly<Record<string, readonly string[]>> = {
  * Measured before this existed: a value position offered NOTHING, so the editor fell back to words
  * from the document and suggested `nav`, `noframes`, `noscript` — HTML tag names, in CSS.
  */
+/**
+ * Property -> its short spelling, for a readable class name: `padding: 12px` is `r-p-12px`.
+ *
+ * A property absent from this map uses its own NAME, which is already readable — so this is a small
+ * curated list rather than a second vocabulary to learn. Three properties hold it together and are
+ * asserted where it is generated: no abbreviation contains a `-`, no two properties share one, and
+ * no abbreviation is another property's name.
+ */
+export const ABBREVIATIONS: Readonly<Record<string, string>> = {
+  "padding": "p",
+  "padding-top": "pt",
+  "padding-right": "pr",
+  "padding-bottom": "pb",
+  "padding-left": "pl",
+  "padding-inline": "px",
+  "padding-block": "py",
+  "margin": "m",
+  "margin-top": "mt",
+  "margin-right": "mr",
+  "margin-bottom": "mb",
+  "margin-left": "ml",
+  "margin-inline": "mx",
+  "margin-block": "my",
+  "width": "w",
+  "height": "h",
+  "min-width": "minw",
+  "min-height": "minh",
+  "max-width": "maxw",
+  "max-height": "maxh",
+  "display": "disp",
+  "position": "pos",
+  "overflow": "of",
+  "z-index": "z",
+  "background": "bg",
+  "background-color": "bgc",
+  "background-image": "bgi",
+  "color": "c",
+  "opacity": "o",
+  "border": "b",
+  "border-top": "bt",
+  "border-right": "br",
+  "border-bottom": "bb",
+  "border-left": "bl",
+  "border-color": "bc",
+  "border-width": "bw",
+  "border-style": "bs",
+  "border-radius": "rounded",
+  "box-shadow": "shadow",
+  "outline": "ol",
+  "font-size": "fs",
+  "font-weight": "fw",
+  "font-family": "ff",
+  "line-height": "lh",
+  "letter-spacing": "ls",
+  "text-align": "ta",
+  "text-transform": "tt",
+  "text-decoration": "td",
+  "white-space": "ws",
+  "align-items": "items",
+  "align-self": "self",
+  "justify-content": "justify",
+  "flex-direction": "fdir",
+  "flex-wrap": "wrap",
+  "grid-column": "gcol",
+  "grid-row": "grow",
+  "grid-template-columns": "gtc",
+  "grid-template-rows": "gtr",
+  "transition": "tr",
+  "transform": "tf",
+  "animation": "anim",
+  "cursor": "cur",
+  "pointer-events": "pe",
+  "user-select": "us",
+  "visibility": "vis",
+};
+
 export const VALUE_WORDS: Readonly<Record<string, string>> = {
   "accent-color": "aliceblue antiquewhite aqua aquamarine auto azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson current cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato transparent turquoise violet wheat white whitesmoke yellow yellowgreen color() color-mix() hsl() hsla() hwb() lab() lch() light-dark() oklab() oklch() rgb() rgba()",
   "align-content": "baseline center end first flex-end flex-start last normal safe space-around space-between space-evenly start stretch unsafe",

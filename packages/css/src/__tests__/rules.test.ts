@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
+import { ABBREVIATIONS, KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
 import { type Finding, checkBlock, checkText } from "../compiler/rules";
 import { findBlocks } from "../compiler/scan";
@@ -1055,5 +1055,84 @@ describe("an override the sheet's order will not honour", () => {
     ])("%s", (_what, css) => {
       expect(checkNamedFree(css)).toEqual([]);
     });
+  });
+});
+
+/**
+ * The abbreviations a readable class name is built from.
+ *
+ * A class is `r-<abbreviation>-<value>`, and the abbreviation is what makes `r-p-12px` shorter than
+ * `r-padding-12px` while still saying the same thing. **Written here rather than taken from any
+ * library**: none covers 551 properties, and where a convention exists — `p`, `m`, `bg`, `gap` —
+ * the convention is the point rather than the source. A property with no entry uses its own name,
+ * which is already readable.
+ *
+ * Three things have to hold or two different declarations can produce one name, which is the worst
+ * failure this package has — two rules merged into one. Each is asserted here AND at generation, so
+ * a bad entry cannot reach a build.
+ */
+describe("the abbreviation map", () => {
+  test("the conventional ones are what a reader expects", () => {
+    expect(ABBREVIATIONS.padding).toBe("p");
+    expect(ABBREVIATIONS.margin).toBe("m");
+    expect(ABBREVIATIONS.background).toBe("bg");
+    expect(ABBREVIATIONS["align-items"]).toBe("items");
+    expect(ABBREVIATIONS["border-radius"]).toBe("rounded");
+  });
+
+  /**
+   * **The rule that makes a name readable BACK.** `r-<abbr>-<value>` is only unambiguous if the
+   * first `-` ends the abbreviation — otherwise `p` with the value `l-40px` and `pl` with `40px`
+   * are one string.
+   */
+  test("no abbreviation contains a hyphen", () => {
+    for (const [property, short] of Object.entries(ABBREVIATIONS)) {
+      expect(short, `${property} -> ${short}`).not.toContain("-");
+    }
+  });
+
+  test("no two properties share one", () => {
+    const byShort = new Map<string, string>();
+    for (const [property, short] of Object.entries(ABBREVIATIONS)) {
+      expect(byShort.get(short), `${short} is taken by ${byShort.get(short)}`).toBeUndefined();
+      byShort.set(short, property);
+    }
+  });
+
+  /**
+   * A property with no abbreviation uses its own NAME, so an abbreviation that IS another property's
+   * name would collide with it — `r-<that name>-<value>` from two different properties.
+   */
+  test("and no abbreviation is another property's name", () => {
+    const known = new Set(PROPERTIES);
+    for (const [property, short] of Object.entries(ABBREVIATIONS)) {
+      if (short === property) continue;
+      expect(known.has(short), `${short} (for ${property}) is a property of its own`).toBe(false);
+    }
+  });
+
+  test("every abbreviated property is a property CSS has", () => {
+    const known = new Set(PROPERTIES);
+    for (const property of Object.keys(ABBREVIATIONS)) {
+      expect(known.has(property), `${property} is not a CSS property`).toBe(true);
+    }
+  });
+
+  test("an ordinary property has none, because its own name reads fine", () => {
+    expect(ABBREVIATIONS["outline-offset"]).toBeUndefined();
+    expect(ABBREVIATIONS.isolation).toBeUndefined();
+  });
+
+  /**
+   * **Two conventional spellings had to be given up, and the third assertion found them on the first
+   * run this map was generated.** `d` is a property of its own — the SVG path data — and so is
+   * `flex`. Either would have made `display: flex` and `d: M0,0` one class, or `flex-direction: row`
+   * and `flex: 1`. Asserted by name so they cannot quietly come back.
+   */
+  test("the two conventional ones that would have collided are not used", () => {
+    expect(ABBREVIATIONS.display).toBe("disp");
+    expect(ABBREVIATIONS["flex-direction"]).toBe("fdir");
+    expect(PROPERTIES).toContain("d");
+    expect(PROPERTIES).toContain("flex");
   });
 });

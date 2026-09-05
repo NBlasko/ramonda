@@ -61,6 +61,9 @@ const TYPES = join(root, "packages/css/src/properties.generated.ts");
 const KEYWORDS = join(root, "packages/css/src/compiler/keywords.generated.ts");
 const check = process.argv.includes("--check");
 
+/** What every message from this script is prefixed with, so a build log says who spoke. */
+const TAG = "[css-properties]";
+
 const properties = require("mdn-data/css/properties.json");
 const syntaxes = require("mdn-data/css/syntaxes.json");
 
@@ -513,6 +516,120 @@ for (const name of named) {
   shorthandRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(cleared)},`);
 }
 
+/**
+ * The short spellings a readable class name is built from — `padding: 12px` becomes `r-p-12px`.
+ *
+ * **Written here rather than taken from any library.** None covers 551 properties, and where a
+ * convention exists — `p`, `m`, `w`, `h`, `bg`, `gap`, `items`, `justify`, `rounded` — the
+ * convention is the point rather than the source. A property with no entry uses its own name, which
+ * is already readable: `outline-offset: 4px` becomes `r-outline-offset-4px`.
+ *
+ * Three things have to hold or two different declarations can produce one name, which is two rules
+ * merged into one — the worst failure this package has. All three are asserted below:
+ *
+ * 1. **No abbreviation contains a `-`.** That is what makes the first `-` after `r-` the end of the
+ *    abbreviation, so `p` with the value `l-40px` cannot be confused with `pl` and `40px`.
+ * 2. **No two properties share one.**
+ * 3. **No abbreviation is another property's NAME**, because a property with no entry uses its own.
+ *
+ * Kept small on purpose. An abbreviation nobody recognises is worse than the property's own name: it
+ * is shorter and it has to be learned, which is the trade this design refuses everywhere else.
+ *
+ * **Two conventional spellings had to be given up, and the third assertion is what found them on the
+ * first run:** `d` is a property of its own — the SVG path data — and so is `flex`. Either would have
+ * made `display: flex` and `d: M0,0` one class, or `flex-direction: row` and `flex: 1`. They are
+ * `disp` and `fdir` instead, which is the honest cost of a name that must never be ambiguous.
+ */
+const ABBREVIATIONS = {
+  padding: "p",
+  "padding-top": "pt",
+  "padding-right": "pr",
+  "padding-bottom": "pb",
+  "padding-left": "pl",
+  "padding-inline": "px",
+  "padding-block": "py",
+  margin: "m",
+  "margin-top": "mt",
+  "margin-right": "mr",
+  "margin-bottom": "mb",
+  "margin-left": "ml",
+  "margin-inline": "mx",
+  "margin-block": "my",
+  width: "w",
+  height: "h",
+  "min-width": "minw",
+  "min-height": "minh",
+  "max-width": "maxw",
+  "max-height": "maxh",
+  display: "disp",
+  position: "pos",
+  overflow: "of",
+  "z-index": "z",
+  background: "bg",
+  "background-color": "bgc",
+  "background-image": "bgi",
+  color: "c",
+  opacity: "o",
+  border: "b",
+  "border-top": "bt",
+  "border-right": "br",
+  "border-bottom": "bb",
+  "border-left": "bl",
+  "border-color": "bc",
+  "border-width": "bw",
+  "border-style": "bs",
+  "border-radius": "rounded",
+  "box-shadow": "shadow",
+  outline: "ol",
+  "font-size": "fs",
+  "font-weight": "fw",
+  "font-family": "ff",
+  "line-height": "lh",
+  "letter-spacing": "ls",
+  "text-align": "ta",
+  "text-transform": "tt",
+  "text-decoration": "td",
+  "white-space": "ws",
+  "align-items": "items",
+  "align-self": "self",
+  "justify-content": "justify",
+  "flex-direction": "fdir",
+  "flex-wrap": "wrap",
+  "grid-column": "gcol",
+  "grid-row": "grow",
+  "grid-template-columns": "gtc",
+  "grid-template-rows": "gtr",
+  transition: "tr",
+  transform: "tf",
+  animation: "anim",
+  cursor: "cur",
+  "pointer-events": "pe",
+  "user-select": "us",
+  visibility: "vis",
+};
+
+{
+  const known = new Set(named);
+  const taken = new Map();
+  for (const [property, short] of Object.entries(ABBREVIATIONS)) {
+    const wrong = short.includes("-")
+      ? `\`${short}\` holds a hyphen, which is what ends an abbreviation in a class name`
+      : taken.has(short)
+        ? `\`${short}\` is already ${taken.get(short)}'s`
+        : !known.has(property)
+          ? `\`${property}\` is not a CSS property mdn-data knows`
+          : short !== property && known.has(short)
+            ? `\`${short}\` is a property of its own, and a property with no abbreviation uses its name`
+            : undefined;
+
+    if (wrong !== undefined) {
+      console.error(`\n${TAG} the abbreviation for \`${property}\` cannot be used: ${wrong}.\n`);
+      process.exit(1);
+    }
+    taken.set(short, property);
+  }
+}
+
 const atRules = JSON.parse(readFileSync(join(root, "node_modules/mdn-data/css/at-rules.json"), "utf8"));
 
 /**
@@ -753,6 +870,20 @@ ${shorthandRows.join("\n")}
  * Measured before this existed: a value position offered NOTHING, so the editor fell back to words
  * from the document and suggested \`nav\`, \`noframes\`, \`noscript\` — HTML tag names, in CSS.
  */
+/**
+ * Property -> its short spelling, for a readable class name: \`padding: 12px\` is \`r-p-12px\`.
+ *
+ * A property absent from this map uses its own NAME, which is already readable — so this is a small
+ * curated list rather than a second vocabulary to learn. Three properties hold it together and are
+ * asserted where it is generated: no abbreviation contains a \`-\`, no two properties share one, and
+ * no abbreviation is another property's name.
+ */
+export const ABBREVIATIONS: Readonly<Record<string, string>> = {
+${Object.entries(ABBREVIATIONS)
+  .map(([property, short]) => `  ${JSON.stringify(property)}: ${JSON.stringify(short)},`)
+  .join("\n")}
+};
+
 export const VALUE_WORDS: Readonly<Record<string, string>> = {
 ${valueRows.join("\n")}
 };
@@ -770,7 +901,7 @@ const said =
   `${named.length} properties, ${unions} typed as a union, ${checkable} value-checkable by the rules, ` +
   `${propertyNamedRows.length} whose value is a property name, ${allUnits.length} units, ` +
   `${NOT_IN_A_RULE.length} at-rules that may not sit in a block, ${shorthandRows.length} shorthands, ` +
-  `${valueRows.length} with values to suggest`;
+  `${valueRows.length} with values to suggest, ${Object.keys(ABBREVIATIONS).length} abbreviated`;
 
 if (!check) {
   writeFileSync(TYPES, types);
