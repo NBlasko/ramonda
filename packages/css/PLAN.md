@@ -1395,7 +1395,17 @@ it comes back as three findings, on lines 3, 4 and 5.
 **Left:** a shorthand meeting one of its own longhands in a merge the author wrote INLINE is visible
 to the checker, which could never be reported before; across files it needs a runtime diagnostic.
 
-**AC8 — the page.** `style-blocks.md` gains composition; every example in it is already gated.
+**AC8 — the page. DONE 2026-09-05.** `style-blocks.md` gains *Composing blocks*: the two spellings,
+the later-wins rule, why the condition is inside `{{ }}` and why the keyword is `@@if`, what is
+checked, and the shorthand behaviour — which is CSS's own and worth saying out loud because it is the
+one place a merge does something the reader did not literally write.
+
+**The page's opening claim was wrong and is corrected:** a block is one class per DECLARATION now,
+not one class, and that is what makes composition possible at all. Also added to *what it does not
+do*: it decides nothing from the order of your classes, because nothing can.
+
+**The gate caught three real faults in the new example** — an undeclared `@prop`, a `full` nothing
+declared and a `children` nothing declared — which is exactly what `check-examples.mjs` is for.
 
 ### Type safety, measured before it was promised
 

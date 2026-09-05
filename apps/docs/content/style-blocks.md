@@ -1,6 +1,6 @@
 ---
 title: Style blocks
-description: Real CSS written beside the markup and compiled before the build into one class and one custom property per hole, with every property and value type-checked.
+description: Real CSS beside the markup, compiled before the build into one class per declaration, composed where you write it and type-checked throughout.
 section: Across the app
 order: 119
 ---
@@ -22,22 +22,30 @@ opt-in package rather than part of the framework.
 ```
 
 That is real CSS, written where the element is, and **compiled before the build**. What ships is a
-class in a stylesheet and a `className` on the element. Nothing is parsed at runtime, nothing is
-built per render, and the browser caches the stylesheet as a file like any other.
+class per declaration in a stylesheet and a `className` on the element. Nothing is parsed at runtime,
+nothing is built per render, and the browser caches the stylesheet as a file like any other.
+
+Blocks [compose](#composing-blocks): one merges into another, a group of declarations switches on and
+off, and **what you wrote later wins** — the rule you already have when you read CSS.
 
 > **Not released yet.** `@ramonda/css` lives in this repository at `0.0.0` and is not published. The
 > page is here because the syntax and its guarantees are settled; the version number is what is not.
 
 ## What a block becomes
 
-**The static declarations become one class**, named after the hash of the block — so however many
-elements carry it, and however many pages, they all match one rule. Two files writing the same CSS
-agree on the same class, because a hash is what lets two people who never spoke arrive at one answer.
+**Each declaration becomes one class**, named after the hash of that declaration — so `display: flex`
+written anywhere in your app is one rule, and an element carries one class per thing its block sets.
+Two files writing the same CSS agree on the same classes, because a hash is what lets two people who
+never spoke arrive at one answer.
 
-Each file carries that rule in its own stylesheet, which is what lets a code-split route stand on its
-own: a class whose rule lives only in another route's sheet renders unstyled the moment that route
-loads alone. Where the two sheets are identical the bundler dedupes them by content and it costs
-nothing; where it cannot, the measured price is 3.5x the CSS bytes and **1.1x gzipped**.
+A class per declaration rather than per block is what makes [composition](#composing-blocks) possible
+at all: merging two blocks keeps, per thing set, the one written later — and it can only do that if
+each thing set has its own class to keep or drop.
+
+Each file carries the rules it names in its own stylesheet, which is what lets a code-split route
+stand on its own: a class whose rule lives only in another route's sheet renders unstyled the moment
+that route loads alone. Where two sheets are identical the bundler dedupes them by content and it
+costs nothing.
 
 **Each `{{ … }}` becomes one CSS custom property on the element.** A value that differs per instance
 costs a property rather than a rule:
@@ -254,6 +262,87 @@ Each of the three has its own vocabulary, and the check follows it:
 
 A hole may not go in one of these blocks otherwise: a hole is a custom property **on an element**, and
 these name something the whole stylesheet uses, so there is no element for the value to come from.
+
+## Composing blocks
+
+A block is rarely one thing. A button has a base, a variant, a size and a couple of toggles — and the
+toggles change **groups of keys**, not only values. Two spellings do that, both inside the block, and
+both mean the same thing: **later wins**, which is the rule you already have when you read CSS.
+
+```tsx
+const button = @@(
+  display: inline-flex;  align-items: center;  gap: 8px;
+  border-radius: 6px;  font-weight: 600;  cursor: pointer;
+  &:hover { filter: brightness(1.02); }
+);
+
+const variants = {
+  primary:   @@( background: #10b981; color: #fff; &:hover { background: #0e9f6e; } ),
+  secondary: @@( background: transparent; color: #10b981; box-shadow: inset 0 0 0 1px #10b981; ),
+};
+
+class Button extends Component {
+  @state variant: "primary" | "secondary" = "primary";
+  @state disabled = false;
+  @state full = false;
+
+  render() {
+    return (
+      <button css={@@(
+        ...{{button}};
+        ...{{variants[this.variant]}};
+
+        @@if {{this.disabled}} {
+          opacity: 0.5;
+          cursor: not-allowed;     /* wins over `cursor: pointer` above, because it is BELOW it */
+        }
+
+        width: {{this.full ? "100%" : "auto"}};
+      )}>press</button>
+    );
+  }
+}
+```
+
+**`...{{ … }}` merges another block here**, and it works across files — what it merges is a value, so
+it can be imported, put in an object, or picked out of one. **`@@if {{ … }} { … }` merges a group only
+when the condition holds.** Both are arguments of the same merge, in the order you wrote them, so
+what comes later wins.
+
+There is no `@else`, and the thing that replaces it is better: spreading a **lookup** gives you
+exhaustiveness. Add a third variant to the union above and forget the map, and TypeScript reports it.
+For a two-way choice of a *value*, a hole with a ternary is still the answer.
+
+### Why the condition is inside `{{ }}`
+
+Because that is the one rule this syntax has: **TypeScript appears inside `{{ }}` and nowhere else.**
+`@@if (this.disabled)` would read more naturally and would be a second spelling for the same thing —
+a second thing to learn, and a second thing for every tool to know about.
+
+And `@@if` rather than `@if` because **`@@anything` can never become CSS**: an at-rule is `@` followed
+by a name, and a name cannot start with `@`. `@if` is free today and that is all it is.
+
+### What is checked
+
+Everything a block is checked for, a group is checked for the same way — a typo inside `@@if` is the
+same error, with the same *did you mean*, that it is outside one. On top of that:
+
+| written | what happens |
+|---|---|
+| `@@if {{this.method}}` — a method you forgot to call | reported: *a function is always truthy — call it, or test a value* |
+| `@@if {{someObject}}` | reported: *this is always truthy, so the group can never be off* |
+| `@@if {{maybeUndefined}}` | fine — that is the shape a prop has |
+| `...{{notABlock}}` | reported: *only a style block can be spread* |
+
+### Nesting, and a shorthand meeting its longhand
+
+`@@if` nests, and a nested condition means both must hold. A selector inside a group and a group
+inside a selector mean the same thing, so write whichever reads better.
+
+One thing worth knowing, because CSS itself works this way: a **shorthand** written later clears the
+longhands it covers. If a base sets `padding-left: 40px` and a modifier sets `padding: 8px`, the
+modifier wins completely — which is what the same two declarations would do in a plain stylesheet.
+The other direction leaves both standing, also as CSS does.
 
 ## Theming
 
@@ -496,6 +585,10 @@ your source is the class in the served HTML — see [styling](/styling).
 
 **It is not a theme system.** A theme is a context and some custom properties, which needs nothing
 from the compiler.
+
+**It does not decide anything from the order of your classes.** Nothing can — the order of names in a
+`class` attribute has no meaning in CSS, which is exactly why composition merges maps rather than
+concatenating class names. What decides is where you wrote something, and that is the whole point.
 
 ## Next
 
