@@ -483,6 +483,19 @@ function atRuleOutOfPlace(rule: NestedRule, findings: Finding[]): void {
 }
 
 /**
+ * A CSS number, which is more than the shape a person types.
+ *
+ * Measured in Chromium, all of these are kept as frames: `.5%` becomes `0.5%`, `1e2%` becomes
+ * `100%`, `+50%` becomes `50%`. A rule written from `50%` alone reported four correct spellings — so
+ * this is the grammar rather than the habit, and the range is asked separately, because `150%` is a
+ * number this matches and a frame the browser drops.
+ */
+const NUMBER = /^[+]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/;
+
+/** The same, carrying a `%`, with the number kept so its range can be asked. */
+const PERCENTAGE = /^([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)%$/;
+
+/**
  * A word in a `@keyframes` body that is not a frame.
  *
  * **The types cannot ask this and it was measured before it was written.** A frame is any string to
@@ -498,9 +511,24 @@ function unknownFrame(rule: NestedRule, findings: Finding[]): void {
   for (const part of rule.prelude.split(",")) {
     const frame = part.trim().toLowerCase();
     if (frame === "" || frame === "from" || frame === "to") continue;
-    if (/^\d+(\.\d+)?%$/.test(frame)) continue;
 
-    const meant = /^\d+(\.\d+)?$/.test(frame) ? `${frame}%` : nearest(frame, ["from", "to"]);
+    const percentage = PERCENTAGE.exec(frame);
+    if (percentage !== null) {
+      const time = Number.parseFloat(percentage[1]);
+      if (time >= 0 && time <= 100) continue;
+
+      findings.push({
+        rule: "unknown-frame",
+        at: rule.at ?? 0,
+        length: rule.prelude.trimEnd().length,
+        message:
+          `\`${part.trim()}\` is not a keyframe — a frame is a time between 0% and 100%, and the ` +
+          `browser drops one outside it along with everything that frame would have set.`,
+      });
+      return;
+    }
+
+    const meant = NUMBER.test(frame) ? `${frame}%` : nearest(frame, ["from", "to"]);
     findings.push({
       rule: "unknown-frame",
       at: rule.at ?? 0,

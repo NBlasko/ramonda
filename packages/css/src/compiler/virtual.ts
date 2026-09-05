@@ -250,6 +250,8 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
      */
     /** A named site's own function and its single literal; `undefined` for an ordinary block. */
     const surface = site.at === undefined ? undefined : surfaces.get(site.at);
+    /** Just inside a named site's literal — where a caret that claims nothing else belongs. */
+    let inside = 0;
 
     if (surface !== undefined) {
       copy(cursor, site.start);
@@ -263,6 +265,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        * which is where an author would look for a fault about the block as a whole.
        */
       derived("{", site.start, site.open + 1 - site.start);
+      inside = code.length;
     } else if (site.wrap) {
       copy(cursor, site.start);
       copy(site.start, site.start + site.name.length);
@@ -298,9 +301,16 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
      * items do not claim here.
      */
     if (tolerant) {
-      slots.push({ from: site.open, to: read.end, at: code.length + 1 });
-      // A named site is already one literal, so the caret has somewhere to be without adding another
-      // — and adding one would be a second `{}` inside an object, which is not a place at all.
+      /**
+       * Somewhere for a caret that no run of text claims — see the note below on the empty literal.
+       *
+       * A named site gets no literal of its own to sit in: it IS one already, and a second `{}`
+       * inside an object is a syntax error rather than a place. So its slot points just inside its
+       * own brace. Measured before that was written: the slot pointed past the last declaration,
+       * which lands in the `})` that closes the call, and **every caret in a named block got zero
+       * completions** — thirteen descriptors offered as nothing at all.
+       */
+      slots.push({ from: site.open, to: read.end, at: surface === undefined ? code.length + 1 : inside });
       if (surface === undefined) write("{},");
     }
 

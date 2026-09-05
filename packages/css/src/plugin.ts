@@ -197,10 +197,30 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         const got = service.getCompletionsAtPosition(fileName, at, options, settings);
         if (got === undefined) return undefined;
 
+        /**
+         * A CSS key is never quoted, and TypeScript sometimes offers one that is.
+         *
+         * A name that cannot be an identifier is a quoted key in the virtual file, and for a body
+         * typed against a plain interface TypeScript answers with the quotes in the entry's NAME —
+         * with no `insertText` beside it, so the name is what an editor writes. Measured: completing
+         * inside `@@font-face( … )` offered `"font-family"`, and accepting it put those quotes into
+         * the author's CSS, where they are a parse error. An ordinary block does not do this, which
+         * is why it went unnoticed: its shape carries index signatures and TypeScript offers bare
+         * names against it.
+         *
+         * Only inside the CSS, where a quoted key cannot be right. A hole is TypeScript and keeps
+         * every quote it was given.
+         */
+        // `overlay` above has just filled the cache for this version, and `where` is the regions it
+        // recorded — the same ones the classifications use.
+        const css = isCss(cache.get(fileName)?.where ?? { blocks: [], holes: [] }, position);
+
         return {
           ...got,
           entries: got.entries.map((entry) => ({
             ...entry,
+            name: css ? unquoted(entry.name) : entry.name,
+            insertText: css && entry.insertText === undefined ? unquoted(entry.name) : entry.insertText,
             replacementSpan: back(file, entry.replacementSpan),
           })),
         };
@@ -523,6 +543,11 @@ function regions(text: string): { blocks: Span[]; holes: Span[] } {
     holes.push(...read.holes);
   }
   return { blocks, holes };
+}
+
+/** A quoted key as CSS spells it — see the note in `getCompletionsAtPosition`. */
+function unquoted(name: string): string {
+  return name.length > 1 && name.startsWith('"') && name.endsWith('"') ? name.slice(1, -1) : name;
 }
 
 /** True when the position belongs to the CSS itself — inside a block, outside every hole. */

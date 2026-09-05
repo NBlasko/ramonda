@@ -671,3 +671,58 @@ describe("a block an editor cannot colour", () => {
     expect(errors).toEqual([]);
   });
 });
+
+/**
+ * Completion inside a NAMED block, where the vocabulary is not the properties.
+ *
+ * The virtual file types each named body against its own surface, and completion comes from the same
+ * types — so this asks whether that reaches the editor, not whether the type is right. What would be
+ * wrong is subtle and unhelpful rather than broken: 551 property names offered where thirteen
+ * descriptors belong, and `src` — the one descriptor a `@font-face` cannot do without — missing from
+ * the list.
+ */
+describe("completion inside a named block", () => {
+  test("a font face offers its descriptors", () => {
+    const offered = names(`const brand = @@font-face(\n  fo${CARET}\n);\n`);
+
+    expect(offered).toContain("src");
+    expect(offered).toContain("font-family");
+    expect(offered).toContain("font-display");
+  });
+
+  test("and not the properties, which are a different vocabulary", () => {
+    const offered = names(`const brand = @@font-face(\n  fo${CARET}\n);\n`);
+
+    expect(offered).not.toContain("display");
+    expect(offered).not.toContain("padding");
+  });
+
+  /**
+   * What an editor would actually WRITE, which is the name when there is no `insertText` beside it.
+   *
+   * A name that cannot be an identifier is a quoted key in the virtual file, and against a plain
+   * interface TypeScript offers it with the quotes still on. Measured: accepting `"font-family"` put
+   * those quotes into the author's CSS, where they are a parse error — and an ordinary block never
+   * showed it, because its shape carries index signatures and TypeScript answers those bare.
+   */
+  test("and what it offers is spelled as CSS spells it, with no quotes to accept", () => {
+    const { service, caret } = editor(`const brand = @@font-face(\n  fo${CARET}\n);\n`);
+    const entries = service.getCompletionsAtPosition(FILE, caret, undefined)?.entries ?? [];
+    const family = entries.find((entry) => entry.name.includes("font-family"));
+
+    expect(family?.name).toBe("font-family");
+    expect(family?.insertText ?? family?.name).toBe("font-family");
+  });
+
+  test("a registered property offers the three it takes", () => {
+    const offered = names(`const angle = @@property(\n  ${CARET}\n);\n`);
+
+    expect(offered).toEqual(expect.arrayContaining(["syntax", "inherits", "initial-value"]));
+  });
+
+  test("and a frame's contents are ordinary properties again", () => {
+    const offered = names(`const slide = @@keyframes(\n  from { op${CARET} }\n);\n`);
+
+    expect(offered).toContain("opacity");
+  });
+});

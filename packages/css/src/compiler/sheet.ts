@@ -203,9 +203,30 @@ export class Sheet {
    */
   verify(processed: string, where = "the assembled stylesheet"): void {
     const missing: string[] = [];
+    /**
+     * How many rules of each NAMELESS at-rule the sheet holds.
+     *
+     * A class is asked for by its selector and a `@keyframes` by its name; a `@font-face` has
+     * neither, so two of them look exactly like one to a substring test. Measured before this was
+     * written: with two in the sheet and one dropped, `verify` passed and said nothing. The promise
+     * is that every rule survived, so for these the question is how many.
+     */
+    const nameless = new Map<string, number>();
+    for (const rule of this.rules.values()) {
+      const at = rule.block.at;
+      if (at !== undefined && NAMELESS.has(at)) nameless.set(at, (nameless.get(at) ?? 0) + 1);
+    }
+
+    for (const [at, expected] of nameless) {
+      const found = processed.split(`@${at}`).length - 1;
+      if (found >= expected) continue;
+      missing.push(`${expected - found} of the ${expected} \`@${at}\` rule(s) — ${found} came back`);
+    }
 
     for (const [className, rule] of this.rules) {
       const wanted = nameIn(className, rule.block);
+      // Counted above, together, because one of these cannot be told from another by name.
+      if (rule.block.at !== undefined && NAMELESS.has(rule.block.at)) continue;
       if (!processed.includes(wanted)) {
         missing.push(rule.block.at === undefined ? `the class \`${className}\`` : `the rule \`${wanted}\``);
         continue;

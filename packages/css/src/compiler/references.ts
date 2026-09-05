@@ -35,8 +35,16 @@ import { findBlocks } from "./scan";
  * Built in source order, so a named site sees only the ones above it — which is what a `const` does
  * anyway, and what keeps a site that refers to another from being a question about itself.
  */
+/** `@@` and then a name character, which only a named site has. See the note inside. */
+const NAMED_OPENING = /@@[A-Za-z0-9_-]/;
+
 export function namedSites(source: string): Map<string, string> {
   const found = new Map<string, string>();
+  // The same bargain as `mayHoldABlock`, and for the same reason: this runs beside every read of
+  // every file, and a NAMED site needs a name character after the two `@`. Measured on a 40-block
+  // file with none, the full walk was 0.029 ms against the virtual file's 0.35 — real, and avoidable
+  // without asking the expensive question. An ordinary block reaches `@@(` and stops here.
+  if (!NAMED_OPENING.test(source)) return found;
 
   for (const site of findBlocks(source)) {
     if (site.at === undefined || site.name === "") continue;

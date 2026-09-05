@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { CssBlockError } from "../compiler/errors";
 import { transform } from "../compiler/transform";
+import { namedSites } from "../compiler/references";
 
 /**
  * The transform: an author's file in, valid TSX out, plus the blocks it found.
@@ -533,5 +534,49 @@ describe("a reference to a named site", () => {
   /** A hole in a property name stays a refusal for everything that is not a registered property. */
   test("a hole that resolves to nothing cannot stand in a property name", () => {
     expect(() => emit(`const card = @@( {{whatever}}: 45deg; );\n`)).toThrow(/@@property/);
+  });
+});
+
+/**
+ * A named site is a VALUE, so it cannot be a JSX attribute.
+ *
+ * `css=@@( … )` is rewritten from the attribute's NAME, because the braces are ours to add. A named
+ * site compiles to a string instead, and the same rewrite put that string where the attribute name
+ * was: measured, `<div css=@@keyframes( … )>` came out as `<div "r-…">x</div>` — a syntax error the
+ * build emitted without a word.
+ */
+describe("a named site in attribute position", () => {
+  test("is refused rather than emitted as broken JSX", () => {
+    expect(() => emit(`const a = <div css=@@keyframes( from { opacity: 0; } )>x</div>;\n`)).toThrow(/attribute/);
+  });
+
+  test("and the refusal says where it does belong", () => {
+    expect(() => emit(`const a = <div css=@@font-face( src: url("/b.woff2"); )>x</div>;\n`)).toThrow(/const/);
+  });
+});
+
+/**
+ * The map and the rule agree on the name — which is not free, because they are read differently.
+ *
+ * `namedSites` reads TOLERANTLY: it runs in an editor as well as in a build, and a name is still a
+ * name while the block under it is half-typed. The transform reads STRICTLY. If those two ever
+ * disagreed about a block the build ACCEPTED, a reference would compile to a name no rule has — an
+ * animation that silently does not run, with nothing to blame.
+ *
+ * Measured on the three shapes where the reads do diverge — an unclosed frame, a declaration with no
+ * colon, a stray brace — the strict read REFUSES all three, so nothing ships. This asserts the other
+ * half: where the build accepts, the two names are the same one.
+ */
+describe("the reference map and the emitted rule", () => {
+  test.each([
+    ["frames", `const x = @@keyframes( from { opacity: 0; } to { opacity: 1; } );\n`],
+    ["a face", `const x = @@font-face( font-family: "B"; src: url("/b.woff2"); );\n`],
+    ["a property", `const x = @@property( syntax: "*"; inherits: false; );\n`],
+    ["a frame with a comment in it", `const x = @@keyframes( from { /* start */ opacity: 0; } );\n`],
+    ["nested rules and odd spacing", `const x = @@keyframes(\n\n  from   {\n opacity:0;\n  }\n\n);\n`],
+  ])("agree for %s", (_what, source) => {
+    const out = emit(source);
+
+    expect(namedSites(source).get("x")).toBe(out?.blocks[0].className);
   });
 });

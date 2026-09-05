@@ -822,3 +822,33 @@ describe("inside `@@font-face` and `@@property`", () => {
     );
   });
 });
+
+/**
+ * What a percentage frame may be, measured in Chromium rather than reasoned about.
+ *
+ * The first version of this rule was written from the shape a person types — `50%` — and reported
+ * four spellings the browser accepts while passing one it drops:
+ *
+ * | written | Chromium | the rule, before |
+ * |---|---|---|
+ * | `.5%` | kept as `0.5%` | reported |
+ * | `1e2%` | kept as `100%` | reported |
+ * | `+50%` | kept as `50%` | reported |
+ * | `150%` | **dropped** | passed |
+ *
+ * Reporting valid CSS is the failure a checker does not survive, and passing what the browser throws
+ * away is the failure this rule exists for. A percentage is a CSS number, and it is in range.
+ */
+describe("a percentage frame", () => {
+  test.each([[".5%"], ["1e2%"], ["+50%"], ["50.0%"], ["0%"], ["100%"]])("%s is a frame", (frame) => {
+    expect(checkNamed("keyframes", `${frame} { opacity: 0; }`)).toEqual([]);
+  });
+
+  test.each([["150%"], ["-10%"], ["1e3%"]])("%s is not, because the browser drops it", (frame) => {
+    expect(checkNamed("keyframes", `${frame} { opacity: 0; }`)[0]?.rule).toBe("unknown-frame");
+  });
+
+  test("and one out of range says so, rather than offering a spelling", () => {
+    expect(checkNamed("keyframes", "150% { opacity: 0; }")[0]?.message).toContain("0% and 100%");
+  });
+});

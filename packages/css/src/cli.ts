@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import { checkProject } from "./check";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
 import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
@@ -31,6 +31,15 @@ import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
  */
 
 const TAG = "[ramonda-css]";
+
+const USAGE = `ramonda-css — the tools for a project whose source TypeScript cannot parse
+
+  ramonda-css [tsconfig.json]      type-check the project, mapping every diagnostic home
+  ramonda-css format <paths…>      format through the project's own biome (--check to report)
+  ramonda-css lint <paths…>        lint through the project's own oxlint
+
+The check takes a PROJECT — a tsconfig, or the directory holding one — because a program is what
+is type-checked. \`format\` and \`lint\` take paths, because a file is what they rewrite and read.`;
 const argv = process.argv.slice(2);
 
 /** Relative to where the command was run, which is how a person reads their own tree. */
@@ -40,7 +49,32 @@ if (argv[0] === "format" || argv[0] === "lint") {
   runTool(argv[0], argv.slice(1));
 }
 
-const tsconfig = argv.find((argument) => !argument.startsWith("-")) ?? "tsconfig.json";
+if (argv.includes("--help") || argv.includes("-h")) {
+  console.log(USAGE);
+  process.exit(0);
+}
+
+/**
+ * The project to check — a tsconfig, or the directory holding one, which is what `tsc -p` takes too.
+ *
+ * **`format` and `lint` take PATHS and this takes a project**, so `ramonda-css src/App.tsx` is the
+ * mistake the command itself invites. Measured before this existed: the path went to TypeScript's
+ * JSON reader, which answered `'{' expected.` at line 1 column 1 of the author's own component — a
+ * message that says the source is broken when the source is fine.
+ */
+const given = argv.find((argument) => !argument.startsWith("-")) ?? "tsconfig.json";
+const tsconfig = statSync(given, { throwIfNoEntry: false })?.isDirectory() ? join(given, "tsconfig.json") : given;
+
+if (!tsconfig.endsWith(".json")) {
+  console.error(
+    `\n${TAG} \`${given}\` is not a project. This checks a whole program, so it takes a tsconfig — ` +
+      `or the directory holding one — and defaults to \`tsconfig.json\` here.\n\n` +
+      `  It is \`format\` and \`lint\` that take paths:\n\n` +
+      `    ramonda-css format ${given}\n` +
+      `    ramonda-css lint ${given}\n`,
+  );
+  process.exit(1);
+}
 
 const report = checkProject(tsconfig);
 

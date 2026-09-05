@@ -230,3 +230,37 @@ describe("a named rule", () => {
     expect(() => sheet.verify(".r-1 { color: red }")).toThrow(CssBlockError);
   });
 });
+
+/**
+ * The round trip for a rule with NO name, which is the one that could be counted wrong.
+ *
+ * A class is looked for by its selector and a `@keyframes` by its name. A `@font-face` has neither —
+ * the only thing it can be asked for is its at-rule — so two of them look exactly like one, and
+ * measured before this was written: with two in the sheet and one dropped by post-processing,
+ * `verify` passed. The promise is that every rule survived, so the question has to be how MANY.
+ */
+describe("verifying rules that have no name", () => {
+  const A = { ...block("r-6666666666666666", 'font-family:"A";src:url(/a.woff2);'), at: "font-face" };
+  const B = { ...block("r-7777777777777777", 'font-family:"B";src:url(/b.woff2);'), at: "font-face" };
+
+  test("two survive as two", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [A, B]);
+
+    expect(() => sheet.verify("@font-face{font-family:A}@font-face{font-family:B}")).not.toThrow();
+  });
+
+  test("and one of two coming back is a failure, not a pass", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [A, B]);
+
+    expect(() => sheet.verify("@font-face{font-family:A}")).toThrow(CssBlockError);
+  });
+
+  test("the refusal says how many went missing", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [A, B]);
+
+    expect(() => sheet.verify("@font-face{font-family:A}")).toThrow(/1 of the 2/);
+  });
+});

@@ -44,10 +44,11 @@ afterEach(() => {
  * A project Vite can build, with the plugin loaded from `dist` — the built artefact, so this also
  * asserts the package's own build produced a loadable plugin.
  */
-function project(card: string, entry: string): string {
+function project(card: string, entry: string, assets: Record<string, string> = {}): string {
   const root = mkdtempSync(join(tmpdir(), "ramonda-css-vite-"));
   projects.push(root);
   mkdirSync(join(root, "src"), { recursive: true });
+  for (const [name, contents] of Object.entries(assets)) writeFileSync(join(root, "src", name), contents);
 
   // Vite has to resolve its own runtime imports from somewhere. This package's own tree has it.
   symlinkSync(join(PACKAGE, "node_modules"), join(root, "node_modules"));
@@ -172,5 +173,37 @@ describe("a block, all the way through a production build", () => {
     // printed position is the author's own. Measured — see the note in `src/vite.ts`.
     expect(result.output).toContain("Card.tsx:3:5");
     expect(result.output).toContain("a hole cannot be a whole declaration");
+  });
+});
+
+/**
+ * A named block's own asset, which is the one thing about it that is not this package's to get right.
+ *
+ * `@@font-face( src: url("./brand.woff2") )` puts a RELATIVE url in a stylesheet the author never
+ * writes — a virtual module, served by the plugin — so what it is relative TO is decided by the id
+ * that module is given. Get that wrong and the build either fails to resolve the font or emits a url
+ * pointing at nothing, and the page renders in the fallback face with no error anywhere.
+ *
+ * Measured here rather than reasoned about: Vite resolves it against the author's own file, finds
+ * the asset and processes it. This is slow, and it is here because nothing cheaper can ask it.
+ */
+describe("a named block that refers to a file beside it", () => {
+  test("the url is resolved against the author's file, not against a virtual one", () => {
+    const result = build(
+      project(
+        `export const brand = @@font-face(\n  font-family: "Brand";\n  src: url("./brand.woff2") format("woff2");\n);\n` +
+          `export const card = @@( font-family: "Brand", serif; );\n`,
+        `import { card, brand } from "./Card";\nconsole.log(card, brand);\n`,
+        { "brand.woff2": "a real file, standing in for a font" },
+      ),
+    );
+
+    expect(result.ok).toBe(true);
+    const css = of(result.files, ".css");
+    expect(css).toContain("@font-face");
+    // Resolved and processed — Vite inlines an asset this small, which it can only do having found
+    // it. What must NOT survive is the author's own relative path, which resolves to nothing.
+    expect(css).not.toContain("./brand.woff2");
+    expect(css).toContain('format("woff2")');
   });
 });

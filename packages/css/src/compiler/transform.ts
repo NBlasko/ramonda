@@ -144,6 +144,25 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       );
     }
 
+    /**
+     * A named site is a VALUE — a name the stylesheet uses — so it cannot be an attribute.
+     *
+     * The attribute spelling is rewritten from the attribute's NAME, because the braces are ours to
+     * add; a named site compiles to a string instead, and the same rewrite put that string where the
+     * name was. Measured: `<div css=@@keyframes( … )>` came out as `<div "r-…">x</div>`, a syntax
+     * error the build emitted without a word.
+     */
+    if (site.at !== undefined && site.wrap) {
+      refuse(
+        `\`@@${site.at}( … )\` names something the whole stylesheet uses, so it cannot be an ` +
+          `attribute on one element. Write it as \`const ${site.at === "font-face" ? "brand" : "name"} = ` +
+          `@@${site.at}( … );\` and refer to it from a block with a hole.`,
+        source,
+        site.start,
+        filename,
+      );
+    }
+
     const read = readBlock(source, site.open, filename, { resolve });
     consumed = read.end + 1;
 

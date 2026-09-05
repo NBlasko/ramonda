@@ -157,3 +157,49 @@ describe("--stdin-file-path", () => {
     expect(output).toContain("is for `format`");
   });
 });
+
+/**
+ * What the command does with an argument that is not a project.
+ *
+ * `format` and `lint` take PATHS, and the check takes a tsconfig — so `ramonda-css src/App.tsx` is
+ * the mistake this command invites. Measured before it was fixed: TypeScript's JSON reader answered
+ * `'{' expected.` at line 1 column 1 of the author's own source file, which reads as *your component
+ * is broken* and sent one reader looking for a fault in a file that had none.
+ */
+describe("an argument that is not a project", () => {
+  /** Run with arbitrary arguments, not the tsconfig the other tests pass. */
+  function runWith(root: string, args: readonly string[]): { output: string; status: number } {
+    try {
+      const output = execFileSync(process.execPath, [BIN, ...args], { cwd: root, encoding: "utf8" });
+      return { output, status: 0 };
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? -1 };
+    }
+  }
+
+  test("a source file is answered by saying what this takes", () => {
+    const { output, status } = runWith(project(`const a = <div css=@@( display: flex; )>x</div>;\n`), ["src/Card.tsx"]);
+
+    expect(status).toBe(1);
+    expect(output).toContain("tsconfig");
+    expect(output).not.toContain("'{' expected");
+  });
+
+  test("a file that is not there says so, rather than reporting a parse", () => {
+    const { output, status } = runWith(project(`const a = 1;\n`), ["nope.json"]);
+
+    expect(status).toBe(1);
+    expect(output).toContain("nope.json");
+  });
+
+  test("`--help` prints the usage instead of checking a project", () => {
+    const { output, status } = runWith(project(`const a = 1;\n`), ["--help"]);
+
+    expect(status).toBe(0);
+    expect(output).toContain("ramonda-css");
+    expect(output).toContain("format");
+    expect(output).toContain("lint");
+    expect(output).not.toContain("file(s) type-check");
+  });
+});
