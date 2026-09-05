@@ -156,6 +156,33 @@ const card = @@(
 );
 ```
 
+## What belongs in a stylesheet instead
+
+A block is **one element's rule**. An at-rule that names something for the whole stylesheet is not
+that, and written inside a block it compiles, nests inside the class rule, and does nothing:
+
+```
+@media (min-width: 40rem) { … }     ✓  a condition on this element's rule
+@supports (display: grid) { … }     ✓
+@container (min-width: 20rem) { … } ✓
+@keyframes slide { … }              ✗  reported
+@font-face { … }                    ✗  reported
+@property --brand { … }             ✗  reported
+```
+
+So an animation is written in two places, which is where CSS puts it anyway:
+
+```css
+/* app.css */
+@keyframes slide { from { opacity: 0 } to { opacity: 1 } }
+```
+
+```tsx
+const card = @@(
+  animation: slide 1s ease-in-out;
+);
+```
+
 ## Theming
 
 **A theme is custom properties, and a block reads them.** Nothing here is a theme system, and that is

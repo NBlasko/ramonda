@@ -253,6 +253,32 @@ const ELIMINATION = { transition: ["transition-property", "transition-timing-fun
  * Written down rather than inferred, because there is nothing to infer it from. Each line is one
  * family from CSS Values and Units 4 or Containment 3.
  */
+/**
+ * The at-rules that are NOT part of an element's rule, so a style block may not hold one.
+ *
+ * A deny-list rather than an allow-list, and the reason is which mistake is cheaper. The at-rules
+ * that DO nest are a growing set — `@scope` and `@starting-style` are recent — and an allow-list
+ * would have reported both as faults when they arrived. This way a new top-level at-rule is missed
+ * in silence, which a checker survives; laying on correct CSS is what it does not.
+ *
+ * Every name here is asserted against `mdn-data`'s own list below, so a typo cannot sit in it.
+ */
+const NOT_IN_A_RULE = [
+  "@charset",
+  "@counter-style",
+  "@document",
+  "@font-face",
+  "@font-feature-values",
+  "@font-palette-values",
+  "@import",
+  "@keyframes",
+  "@namespace",
+  "@page",
+  "@position-try",
+  "@property",
+  "@view-transition",
+];
+
 const MORE_UNITS = [
   "%",
   // Line height: CSS Values 4.
@@ -350,6 +376,13 @@ for (const name of named) {
   propertyNamedRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify([...words].sort().join(" "))},`);
 }
 
+const atRules = JSON.parse(readFileSync(join(root, "node_modules/mdn-data/css/at-rules.json"), "utf8"));
+const unknownAtRule = NOT_IN_A_RULE.find((name) => atRules[name] === undefined);
+if (unknownAtRule !== undefined) {
+  console.error(`\n${TAG} \`${unknownAtRule}\` is not an at-rule mdn-data knows. Check the spelling.\n`);
+  process.exit(1);
+}
+
 const unitsData = JSON.parse(readFileSync(join(root, "node_modules/mdn-data/css/units.json"), "utf8"));
 const allUnits = [...new Set([...Object.keys(unitsData), ...MORE_UNITS].map((unit) => unit.toLowerCase()))].sort();
 
@@ -428,11 +461,20 @@ ${propertyNamedRows.join("\n")}
  * thirty alone would report \`height: 100dvh\` as a fault.
  */
 export const UNITS: readonly string[] = ${JSON.stringify(allUnits)};
+
+/**
+ * The at-rules that are not part of an element's rule, so a style block may not hold one.
+ *
+ * A deny-list rather than an allow-list: the at-rules that DO nest are a growing set — \`@scope\` and
+ * \`@starting-style\` are recent — and an allow-list would have reported both when they arrived.
+ */
+export const NOT_IN_A_RULE: readonly string[] = ${JSON.stringify(NOT_IN_A_RULE)};
 `;
 
 const said =
   `${named.length} properties, ${unions} typed as a union, ${checkable} value-checkable by the rules, ` +
-  `${propertyNamedRows.length} whose value is a property name, ${allUnits.length} units`;
+  `${propertyNamedRows.length} whose value is a property name, ${allUnits.length} units, ` +
+  `${NOT_IN_A_RULE.length} at-rules that may not sit in a block`;
 
 if (!check) {
   writeFileSync(TYPES, types);

@@ -1,6 +1,6 @@
-import type { Block, BlockItem, Declaration, ValuePart } from "./ast";
+import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { holeOutOfPlace } from "./errors";
-import { KEYWORDS, PROPERTIES, PROPERTY_NAMED, UNITS } from "./keywords.generated";
+import { KEYWORDS, NOT_IN_A_RULE, PROPERTIES, PROPERTY_NAMED, UNITS } from "./keywords.generated";
 import { closingHole } from "./read";
 import type { BlockSite } from "./scan";
 
@@ -58,7 +58,8 @@ export type RuleId =
   | "run-on-declaration"
   | "line-comment"
   | "unknown-unit"
-  | "glued-hole";
+  | "glued-hole"
+  | "at-rule-out-of-place";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -190,6 +191,7 @@ function walk(items: readonly BlockItem[], findings: Finding[]): void {
 
   for (const item of items) {
     if (item.kind === "rule") {
+      atRuleOutOfPlace(item, findings);
       holeInHead(item.prelude, item.at, "a selector", findings);
       // A nested rule has its own scope: `color` beside it and `color` inside it are two
       // declarations on two different elements, and neither repeats the other.
@@ -401,6 +403,38 @@ function propertyNames(item: Declaration, accepted: string, findings: Finding[])
         (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
     });
   }
+}
+
+/** The at-rules that name something for the whole stylesheet, so a block may not hold one. */
+const ELSEWHERE = new Set(NOT_IN_A_RULE);
+
+/**
+ * An at-rule that is not part of an element's rule.
+ *
+ * A block IS one element's rule. `@keyframes`, `@font-face` and `@property` are not that — each names
+ * something the whole stylesheet can use — and written inside a block they compile, nest inside the
+ * class rule, and do nothing at all. Measured: `@keyframes slide { … }` came out as
+ * `.r-…{@keyframes slide{…}}`, which no browser resolves and nothing else reports.
+ *
+ * The list is a deny-list, and which mistake that chooses is written down where it is generated: the
+ * at-rules that DO nest are a growing set, so an allow-list would have reported `@scope` and
+ * `@starting-style` as faults on the day they arrived.
+ */
+function atRuleOutOfPlace(rule: NestedRule, findings: Finding[]): void {
+  if (!rule.prelude.startsWith("@")) return;
+
+  const name = `@${rule.prelude.slice(1).split(/[\s(]/, 1)[0].toLowerCase()}`;
+  if (!ELSEWHERE.has(name)) return;
+
+  findings.push({
+    rule: "at-rule-out-of-place",
+    at: rule.at ?? 0,
+    length: name.length,
+    message:
+      `\`${name}\` is not part of an element's rule — it names something the whole stylesheet uses, ` +
+      `and inside a block it compiles to a rule no browser resolves. Put it in a stylesheet; a block ` +
+      `holds what applies to this element.`,
+  });
 }
 
 /**

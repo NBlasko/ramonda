@@ -395,3 +395,11 @@ export const PROPERTY_NAMED: Readonly<Record<string, string>> = {
  * thirty alone would report `height: 100dvh` as a fault.
  */
 export const UNITS: readonly string[] = ["%","cap","ch","cm","cqb","cqh","cqi","cqmax","cqmin","cqw","deg","dpcm","dpi","dppx","dvb","dvh","dvi","dvmax","dvmin","dvw","em","ex","fr","grad","hz","ic","in","khz","lh","lvb","lvh","lvi","lvmax","lvmin","lvw","mm","ms","pc","pt","px","q","rad","rcap","rch","rem","rex","ric","rlh","s","svb","svh","svi","svmax","svmin","svw","turn","vb","vh","vi","vmax","vmin","vw","x"];
+
+/**
+ * The at-rules that are not part of an element's rule, so a style block may not hold one.
+ *
+ * A deny-list rather than an allow-list: the at-rules that DO nest are a growing set — `@scope` and
+ * `@starting-style` are recent — and an allow-list would have reported both when they arrived.
+ */
+export const NOT_IN_A_RULE: readonly string[] = ["@charset","@counter-style","@document","@font-face","@font-feature-values","@font-palette-values","@import","@keyframes","@namespace","@page","@position-try","@property","@view-transition"];

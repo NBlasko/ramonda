@@ -1009,6 +1009,21 @@ The known set is mdn-data's thirty plus a supplement written down family by fami
 all. Even then the rule only speaks when the unit is within `nearest()`'s bound of a known one, so a
 unit invented after this was written stays silent: `10zzzz` says nothing, `150oms` says `ms`.
 
+### Y — an at-rule that belongs in a stylesheet
+
+A block is ONE element's rule. `@keyframes`, `@font-face` and `@property` are not that — each names
+something the whole stylesheet uses — and written inside a block they compile, nest inside the class
+rule and do nothing. Measured: `@keyframes slide { … }` came out as `.r-…{@keyframes slide{…}}`,
+which no browser resolves and nothing reported.
+
+**A deny-list, not an allow-list, and that choice is the interesting part.** The at-rules that DO nest
+are a growing set — `@scope` and `@starting-style` are recent — so an allow-list would have reported
+both as faults on the day they arrived. This way a new top-level at-rule is missed in silence, which a
+checker survives; laying on correct CSS is what it does not.
+
+Thirteen names, generated, and each one asserted against `mdn-data`'s own at-rule list so a typo
+cannot sit in it.
+
 ### L — the runtime diagnostic. Deliberately last — DONE
 
 **The user's reasoning for putting it last was right:** diagnostics are this framework's signature,

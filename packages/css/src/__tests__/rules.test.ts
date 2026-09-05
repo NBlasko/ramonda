@@ -693,3 +693,55 @@ describe("text glued to a hole", () => {
     expect(check(css).filter((finding) => finding.rule === "glued-hole")).toEqual([]);
   });
 });
+
+/**
+ * An at-rule that is not part of an element's rule.
+ *
+ * ## The fault this exists for
+ *
+ * A block is one element's rule. `@keyframes`, `@font-face` and `@property` are not that — each names
+ * something the whole stylesheet can use — and written inside a block they compile, nest inside the
+ * class rule, and **do nothing**. Measured: `@keyframes slide { … }` came out as
+ * `.r-…{@keyframes slide{…}}`, which no browser resolves and nothing reports.
+ *
+ * ## Why a deny-list rather than an allow-list
+ *
+ * The at-rules that DO nest are a growing set — `@scope` and `@starting-style` are recent additions,
+ * and an allow-list would have reported both as faults when they arrived. A deny-list misses a new
+ * top-level at-rule in silence, which is the cheaper of the two mistakes: a checker survives a gap
+ * and does not survive laying on correct CSS.
+ */
+describe("an at-rule that belongs in a stylesheet", () => {
+  test.each([
+    ["@keyframes", `@keyframes slide { from { opacity: 0; } to { opacity: 1; } }`],
+    ["@font-face", `@font-face { font-family: Brand; src: url(a.woff2); }`],
+    ["@property", `@property --brand { syntax: "<color>"; inherits: false; }`],
+    ["@page", `@page { margin: 1cm; }`],
+    ["@counter-style", `@counter-style thumbs { system: cyclic; }`],
+  ])("%s is reported", (name, css) => {
+    const found = check(css).filter((finding) => finding.rule === "at-rule-out-of-place");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain(name);
+  });
+
+  test.each([
+    ["@media", `@media (min-width: 40rem) { gap: 16px; }`],
+    ["@supports", `@supports (display: grid) { display: grid; }`],
+    ["@container", `@container (min-width: 20rem) { gap: 16px; }`],
+    ["@layer", `@layer overrides { color: red; }`],
+    ["@scope", `@scope (.card) { color: red; }`],
+    ["@starting-style", `@starting-style { opacity: 0; }`],
+    ["a nested rule that is not an at-rule", `&:hover { color: red; }`],
+    ["an ordinary declaration", `animation: slide 1s ease-in-out;`],
+  ])("%s is fine", (_what, css) => {
+    expect(check(css).filter((finding) => finding.rule === "at-rule-out-of-place")).toEqual([]);
+  });
+
+  /** Nested one level down, because a block is a tree and the fault does not care how deep it is. */
+  test("and it is found inside a nested rule too", () => {
+    const found = check(`&:hover {\n    @keyframes slide { from { opacity: 0; } }\n  }`);
+
+    expect(found.filter((finding) => finding.rule === "at-rule-out-of-place")).toHaveLength(1);
+  });
+});
