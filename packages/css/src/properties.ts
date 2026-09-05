@@ -82,3 +82,35 @@ export type CssBlockShape = Partial<CssProperties> & {
  * a frame — `--angle: 45deg`, which is the whole point of animating a registered one — is allowed.
  */
 export type CssKeyframesShape = { [frame: string]: CssBlockShape[] };
+
+/**
+ * A condition that can never be false is a group that can never be off.
+ *
+ * The message IS the type, so TypeScript prints it as the expected parameter and there is no
+ * diagnostic of ours to write. Measured through a real `tsc` before it was promised: `boolean`, a
+ * number, a string, a comparison and `T | undefined` are all silent — and so are **`any` and
+ * `unknown`**, which is the row that would have made the whole check unusable, since a hole reading
+ * untyped data is ordinary.
+ */
+export type CssCondition<T> = [T] extends [(...args: never[]) => unknown]
+  ? "a function is always truthy — call it, or test a value"
+  : [T] extends [Promise<unknown>]
+    ? "a promise is always truthy — await it, or test a value"
+    : [null] extends [T]
+      ? T
+      : [undefined] extends [T]
+        ? T
+        : [T] extends [object]
+          ? "this is always truthy, so the group can never be off"
+          : T;
+
+/**
+ * What may be spread into a block: another block, and nothing else.
+ *
+ * A compiled block is a value this compiler produced, so a hand-written object is not one however
+ * closely it reads. `never` is what a block is in the virtual file — the helper that stands for one
+ * returns it — and `never` is assignable to everything, which is exactly why a real block passes.
+ */
+export type CssSpreadable<T> = [T] extends [never]
+  ? T
+  : "only a style block can be spread — this is not one, so write the declarations out";

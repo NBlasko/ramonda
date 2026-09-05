@@ -293,8 +293,10 @@ describe("a setup that would otherwise pass silently", () => {
       ),
     );
 
-    expect(report.findings).toHaveLength(1);
-    expect(report.findings[0].message).toContain("CssBlockShape");
+    // Three, because the virtual file declares three types against that module now — the block's
+    // shape and composition's two. Each missing one is its own setup fault, and each is reported.
+    expect(report.findings).toHaveLength(3);
+    expect(report.findings.map((one) => one.message).join(" ")).toContain("CssBlockShape");
   });
 
   test("and it is reported once, whatever the project's size", () => {
@@ -521,5 +523,96 @@ describe("a file whose first lines are directives", () => {
 
     expect(report.findings).toHaveLength(1);
     expect(report.findings[0].line).toBe(5);
+  });
+});
+
+/**
+ * Composition, through a real program — the two new places an author can be wrong.
+ *
+ * Both are caught by a TYPE rather than by a rule of ours, which means TypeScript's own message at
+ * the author's own position and no diagnostic to write. And what the block already had must survive:
+ * a typo inside `@@if` is the same `TS2561` it is outside one.
+ */
+describe("a conditional group", () => {
+  test("an ordinary condition is not a fault", () => {
+    const report = check({
+      "Card.tsx": `class C {\n  off = false;\n  r() {\n    return <div css=@@( cursor: pointer; @@if {{this.off}} { cursor: not-allowed; } )>x</div>;\n  }\n}\nexport default C;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("and so is one that may be missing, which is the shape a prop has", () => {
+    const report = check({
+      "Card.tsx": `declare const maybe: { a: 1 } | undefined;\nconst a = <div css=@@( @@if {{maybe}} { opacity: 0.5; } )>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  /** A condition that can never be false is a group that can never be off. */
+  test.each([
+    [
+      "a method that was not called",
+      `class C { off() {} r() { return <div css=@@( @@if {{this.off}} { opacity: 0.5; } )>x</div>; } }`,
+    ],
+    ["an object", `declare const o: { a: 1 };\nconst a = <div css=@@( @@if {{o}} { opacity: 0.5; } )>x</div>;`],
+    ["a promise", `declare const p: Promise<number>;\nconst a = <div css=@@( @@if {{p}} { opacity: 0.5; } )>x</div>;`],
+  ])("%s is reported, because it is always truthy", (_what, code) => {
+    const report = check({ "Card.tsx": `${code}\nexport {};\n` });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toMatch(/always truthy/);
+  });
+
+  test("a typo inside a group is the same fault it is outside one", () => {
+    const report = check({
+      "Card.tsx": `declare const c: boolean;\nconst a = <div css=@@(\n  @@if {{c}} {\n    dsiplay: flex;\n  }\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].line).toBe(4);
+    expect(report.findings[0].message).toContain("display");
+  });
+
+  /**
+   * **The condition is its own element, not an argument wrapping the group**, and this is the test
+   * that decided it: measured, writing the group as `__when(condition, [ … ])` meant a wrong
+   * condition HID every fault under it — the failed inference degrades the whole call.
+   */
+  test("a wrong condition does not hide the faults under it", () => {
+    const report = check({
+      "Card.tsx": `declare const o: { a: 1 };\nconst a = <div css=@@(\n  @@if {{o}} {\n    dsiplay: flex;\n    colr: red;\n  }\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(3);
+    expect(report.findings.map((one) => one.line)).toEqual([3, 4, 5]);
+  });
+});
+
+describe("a spread", () => {
+  test("of a block is not a fault", () => {
+    const report = check({
+      "Card.tsx": `const base = @@( display: flex; );\nconst a = <div css=@@( ...{{base}}; opacity: 0.5; )>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("of something that is not a block is reported", () => {
+    const report = check({
+      "Card.tsx": `declare const plain: { color: string };\nconst a = <div css=@@( ...{{plain}}; )>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toMatch(/style block/);
+  });
+
+  test("and the fault lands on the expression the author wrote", () => {
+    const report = check({
+      "Card.tsx": `declare const plain: string;\nconst a = <div css=@@(\n  display: flex;\n  ...{{plain}};\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings[0].line).toBe(4);
   });
 });

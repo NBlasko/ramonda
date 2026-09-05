@@ -1,4 +1,5 @@
 import type { BlockItem, ValuePart } from "./ast";
+import { CONDITION, SPREAD, holeIn } from "./read";
 import { collapse } from "./normalise";
 import type { Span } from "./read";
 import { readBlock } from "./read";
@@ -216,6 +217,21 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   write(`declare function ${block}(declarations: import(${from}).CssBlockShape[]): never;`);
 
   /**
+   * Composition's two helpers, and each is its own ARRAY ELEMENT rather than something wrapping a
+   * group — which is the one thing measured about this encoding.
+   *
+   * Writing a group as `__when(condition, [ … ])` means a wrong condition **hides every fault in the
+   * body**: the failed inference degrades the whole call, so the condition was reported and the two
+   * typos under it were not. Beside the declarations rather than around them, everything comes back
+   * together, each at its own position — and the group's nesting is not needed here at all, because
+   * a declaration inside a group is checked exactly like one outside it.
+   */
+  const condition = binding(source, "__cond");
+  const spread = binding(source, "__from");
+  write(`declare function ${condition}<T>(condition: import(${from}).CssCondition<T>): never;`);
+  write(`declare function ${spread}<T>(block: import(${from}).CssSpreadable<T>): never;`);
+
+  /**
    * One more declaration per KIND of named site the file holds, and only the kinds it holds.
    *
    * A named site is a different vocabulary — frames, or descriptors — so it cannot go through the
@@ -373,6 +389,38 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     for (const item of list) {
       // The newlines the author wrote above this declaration, so it lands on its own line.
       keepLine(item.at);
+
+      /**
+       * Composition is checked BESIDE the declarations, not around them.
+       *
+       * A group's condition and a spread's operand are each their own array element — `never` is
+       * assignable to a declaration, so a helper call sits among them — and each is written before
+       * the object literal a declaration would open, because neither is one.
+       *
+       * **Measured, and it is why the encoding is this and not the obvious one:** writing a group as
+       * `__when(condition, [ … ])` meant a wrong condition HID every fault under it, because the
+       * failed inference degrades the whole call. Beside rather than around, everything comes back
+       * at once. The grouping itself is written down nowhere, because nothing about it is a type
+       * question — a declaration inside a group is checked exactly like one outside it.
+       */
+      const guard = item.kind === "rule" ? holeIn(item.prelude, CONDITION) : undefined;
+      if (guard !== undefined && item.kind === "rule") {
+        write(`${condition}(`);
+        expression(holes[guard]);
+        write(single ? ")," : "),");
+        items(item.items, holes, keepLine, single);
+        continue;
+      }
+
+      const spreading = item.kind === "declaration" ? holeIn(item.property, SPREAD) : undefined;
+      if (spreading !== undefined && item.kind === "declaration") {
+        write(`${spread}(`);
+        expression(holes[spreading]);
+        write("),");
+        keepLine(item.end);
+        continue;
+      }
+
       if (!single) write("{");
       if (item.kind === "rule") {
         if (item.at !== undefined) {

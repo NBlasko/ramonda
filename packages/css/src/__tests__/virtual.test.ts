@@ -117,12 +117,23 @@ describe("what a block becomes", () => {
     expect(body('const a = <div css=@@( content: "`${x}" {{y}}; )>x</div>;\n')).toContain("\\`\\${x}");
   });
 
-  test("the preamble is a declaration, not an import, so a script does not become a module", () => {
+  /**
+   * Three declarations now — the block's shape and composition's two — and the claim is about all of
+   * them: `declare`, never `import`. An import statement would turn a file that is a SCRIPT into a
+   * module, which changes what the author's own code means; an import TYPE in a type position does
+   * not.
+   */
+  test("the preamble is declarations, not imports, so a script does not become a module", () => {
     const file = build(`const a = <div css=@@( display: flex; )>x</div>;\n`);
+    const preamble = file?.code.slice(0, file.preamble) ?? "";
 
-    expect(file?.code.slice(0, file.preamble)).toBe(
+    expect(preamble).toContain(
       `declare function __block(declarations: import("./properties").CssBlockShape[]): never;`,
     );
+    expect(preamble).toContain(`__cond<T>(condition: import("./properties").CssCondition<T>): never;`);
+    expect(preamble).toContain(`__from<T>(block: import("./properties").CssSpreadable<T>): never;`);
+    expect(preamble.split("declare function")).toHaveLength(4);
+    expect(preamble).not.toMatch(/^\s*import /m);
   });
 
   test("a file with no block gets no virtual copy at all", () => {

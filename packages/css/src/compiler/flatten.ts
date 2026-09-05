@@ -1,6 +1,6 @@
 import type { Block, BlockItem, NestedRule } from "./ast";
 import { HOLE, collapse } from "./normalise";
-import { CONDITION, SPREAD } from "./read";
+import { CONDITION, SPREAD, holeIn } from "./read";
 
 /**
  * One declaration, taken out of the block it was written in.
@@ -162,19 +162,6 @@ function declarationOf(
     conditions: [...conditions].sort(),
     holes,
   };
-}
-
-/**
- * The hole index a composition marker's head holds — `@@if {{c}}`, `...{{base}}` — or nothing.
- *
- * The marker and nothing else: `@@iffy {{c}}` is not a condition, and `... {{a}} {{b}}` is not a
- * spread. Anything that is not exactly the marker and one hole falls through to being read as what
- * it looks like, which is a selector or a property name, and is refused there.
- */
-function holeIn(head: string, marker: string): number | undefined {
-  const escaped = marker === SPREAD ? "\\.\\.\\." : marker;
-  const found = new RegExp(`^\\s*${escaped}\\s*${HOLE}(\\d+)${HOLE}\\s*$`).exec(head);
-  return found === null ? undefined : Number(found[1]);
 }
 
 const same = (a: readonly number[], b: readonly number[]) =>

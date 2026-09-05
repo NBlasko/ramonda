@@ -31,9 +31,23 @@ export const CONDITION = "@@if";
 /** What opens a spread of another block's map. */
 export const SPREAD = "...";
 
+/**
+ * The hole index a composition marker's head holds — `@@if {{c}}`, `...{{base}}` — or nothing.
+ *
+ * One definition, because two readers of one syntax is where this package keeps finding faults: the
+ * transform, the virtual file and the rules all ask this and must agree. The marker and one hole and
+ * nothing else — `@@iffy {{c}}` is not a condition and `... {{a}} {{b}}` is not a spread, so both
+ * fall through to being read as what they look like and are refused there.
+ */
+export function holeIn(head: string, marker: string): number | undefined {
+  const escaped = marker === SPREAD ? "\\.\\.\\." : marker;
+  const found = new RegExp(`^\\s*${escaped}\\s*${HOLE}(\\d+)${HOLE}\\s*$`).exec(head);
+  return found === null ? undefined : Number(found[1]);
+}
+
 /** The head of a spread: the marker and one hole, and nothing else. */
 export function isSpread(head: string): boolean {
-  return new RegExp(`^\\s*\\.\\.\\.\\s*${HOLE}\\d+${HOLE}\\s*$`).test(head);
+  return holeIn(head, SPREAD) !== undefined;
 }
 
 export interface ReadOptions {

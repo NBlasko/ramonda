@@ -1374,10 +1374,26 @@ shorthand:
 | `roomy` | **`padding-left: 8px`** — a shorthand inside a GUARD cleared a longhand that arrived through a SPREAD |
 | both | composed |
 
-**AC7 — the rules the new shape makes possible.** A shorthand meeting one of its own longhands in a
-merge the author wrote INLINE is visible to the checker, which is a thing that could never be reported
-before; across files it is a runtime diagnostic. Plus a non-boolean condition, and a spread of a
-non-block.
+**AC7 — the checks. The TYPES are DONE 2026-09-05; one rule is left.**
+
+Both new ways to be wrong are caught by a type, so it is TypeScript's own message at the author's own
+position and there is no diagnostic of ours to write. Asserted through a real program:
+
+| written | answer |
+|---|---|
+| `@@if {{this.off}}`, `@@if {{maybe}}` where `maybe` may be `undefined` | silent |
+| `@@if {{this.method}}` (not called), `@@if {{o}}`, `@@if {{p}}` (a promise) | *always truthy* |
+| `...{{base}}` where `base` is a block | silent |
+| `...{{plain}}`, `...{{text}}` | *only a style block can be spread*, at the author's line |
+| a typo inside a group | the same `TS2561` and the same *did you mean* it is outside one |
+
+**The encoding is the measured one:** the condition and the spread are their own array ELEMENTS,
+beside the declarations rather than around them — writing a group as `__when(condition, [ … ])` meant
+a wrong condition hid every fault under it. Asserted directly: a bad condition with two typos under
+it comes back as three findings, on lines 3, 4 and 5.
+
+**Left:** a shorthand meeting one of its own longhands in a merge the author wrote INLINE is visible
+to the checker, which could never be reported before; across files it needs a runtime diagnostic.
 
 **AC8 — the page.** `style-blocks.md` gains composition; every example in it is already gated.
 
