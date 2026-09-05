@@ -1527,6 +1527,83 @@ Chromium, an element carrying 13 atomic classes against one carrying a single cl
 **2.5x–2.8x per recalc** — 7.3 ms for 2000 elements against 2.6 ms. Under a frame either way, and it
 is the number to watch if a page ever feels slow.
 
+## After that — readable class names, and the objection they answer
+
+**The user's first objection to this whole design was the hash, and it was never about bytes: it was
+about magic.** `r-6EGL6aW4l` tells a reader nothing, and a block is one class per DECLARATION now, so
+an element carries three or four of them and a complicated one carries twenty-eight. A name that
+says what it does turns the markup back into something a person can read, and the devtools inspector
+with it.
+
+**Decided with the user: one scheme, everywhere.** No dev/prod split. That is not only simpler — the
+server and the client have to agree on a class name or hydration diverges, and two naming modes are
+two ways for that to go wrong.
+
+**Decided with the user: literal, no scale.** A short name from a design scale — `p-2` for `8px` — is
+exactly the magic the hash was being replaced for, and we have no scale to be short against. Maybe a
+later version; not this one.
+
+### What the author would see
+
+```
+r-o-.5            r-p-12px         r-d-flex          r-gap-8px
+r-c-#fff          r-items-center   r-rounded-8px     r-tt-uppercase
+r-:hover-blc-#00b37e               r-@media(min-width:40rem)-p-24px
+```
+
+`r-` plus an abbreviation, a `-`, and the value **verbatim** — spaces written `_`. Context is written
+in front of it, literally.
+
+### The measurements this rests on, all taken before anything was planned
+
+| asked | answer |
+|---|---|
+| an escaped class selector, every value shape | works in Chromium — `#`, `%`, `.`, `(`, `)`, `,`, `/`, and `_` for a space |
+| minification | **esbuild and lightningcss both keep every escape**, and `.r-o\[\.5\]` stays distinct from `.r-o\[5\]` |
+| **stripping** unsafe characters | **lossy — 7 of 7 planted pairs collide**, including `opacity: .5` against `opacity: 5`, both valid CSS |
+| writing the value verbatim instead | injective; nothing collides |
+| the real corpus, context written literally | **82% readable, median 14 characters, min 6, max 38, zero collisions** |
+| against the hash it replaces | **11 characters** — so the common case costs one character, not more |
+| gzipped | readable names are **smaller**: 1469 B → 1430 B, because they share substrings and hashes share none |
+
+**The one rule that makes it injective**, and the generator must assert it: **an abbreviation may not
+contain `-`**. Then the first `-` after `r-` always ends the abbreviation, and `r-<abbr>-<value>` can
+be read back — which is what stops `p` + `l-40px` being confused with `pl` + `40px`.
+
+### The tracks, in order
+
+**RN1 — the abbreviation map.** Out of the same sweep that writes the property map, with two
+assertions: no abbreviation contains a `-`, and no two properties share one. **Written here rather
+than taken from any library**: no library covers 551 properties, and where one does have a
+convention — `p`, `m`, `w`, `h`, `bg`, `gap`, `items`, `justify`, `rounded` — that convention is the
+point, not the source. A property with no abbreviation uses its own name, which is already readable.
+
+**RN2 — the encoder.** `nameFor(declaration)`, pure, with the hash as the FALLBACK rather than the
+default. It falls back for exactly four reasons, and each is measured rather than assumed: the value
+carries a hole, the name is over budget, the context has no literal spelling, or the value holds a
+character that cannot be escaped. A test asserts injectivity over the whole property map.
+
+**RN3 — escaping in the sheet.** The class attribute takes the name raw; the SELECTOR needs `\` in
+front of `#`, `.`, `%`, `(`, `)`, `,`, `/`, `:`, `[`, `]`. This is where the cost lands, and it is not
+only the sheet: `Sheet.verify` looks for a class by substring and must look for the escaped form, the
+splitting gate and a dozen tests match `r-[0-9a-zA-Z]{9}`, and every one of them has to accept a name
+of **mixed shape** — readable or hashed.
+
+**RN4 — context, one form at a time.** Pseudo-classes first, then `@media` and `@supports`, then
+attribute and descendant selectors. Each is a rule that can be wrong, and a wrong name is a wrongly
+merged rule — so each lands with its own measurement, and anything not yet covered keeps falling
+back to the hash, which is always correct.
+
+**RN5 — the page.** What a name means, why some are hashed, and the one thing an author can act on:
+a shorter value is a shorter class.
+
+### What it costs, honestly
+
+Not length — measured, the common case is one character more than the hash and gzips smaller. The
+cost is **the encoder**: every context form we want readable is a rule that can be wrong, and a wrong
+name is two rules merged into one, which is the worst failure this package has. That is why the hash
+stays as the floor and why RN4 is one form at a time rather than one commit.
+
 ## Do not re-measure these
 
 Every row was run, not reasoned. Re-deriving them is the main way to waste a week.
