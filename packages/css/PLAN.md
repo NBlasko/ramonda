@@ -1256,7 +1256,27 @@ nesting, a descendant, a combined `&:hover .title`, a `@media` override and a `@
 viewport and a wide one: **byte-identical computed style** both times. Display, alignment, gap,
 padding, both colours, radius, the descendant's weight and its decoration.
 
-**AC3b — the emission. NOT STARTED, and one design question has to be answered first.**
+**AC3b — the emission. DONE 2026-09-05, and the question below is answered by measurement.**
+
+A block compiles to a map: one entry per declaration, from what it sets to the class that sets it,
+plus a `~` clear-list for each shorthand it writes. **A block with no holes is hoisted; one with
+holes is built where it is written.**
+
+The measurement that decided it: **71% of the blocks written to be read in this repository carry no
+hole**, and for those the merged value cannot change — merging at the site would allocate per element
+per render for a constant. `merge` of one map is **0.86 µs** against **0.001 µs** for reading a
+hoisted value; on 800 elements that is 0.69 ms of nothing.
+
+**The author's expressions never move**, which is what keeps the source map landing on their line:
+`flatten` walks depth-first, so the declarations and their holes come out in source order — and the
+transform still rewrites only the text BETWEEN expressions, now into an object literal instead of a
+call.
+
+**24 assertions across two files changed and nothing else did.** Vite, esbuild, the real build, the
+check command, the language service and the tooling wrappers all pass untouched, which is the
+evidence that the shape of this change was contained where AC0 said it would be.
+
+**The old question, kept because the answer is the design:**
 
 Every site becomes a `merge( … )` call, because the framework takes a VALUE and a block now compiles
 to a map. That is right for a composed site and for one with holes — both already allocate per

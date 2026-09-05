@@ -130,17 +130,27 @@ describe("a block, all the way through a production build", () => {
     const js = of(result.files, ".js");
     const css = of(result.files, ".css");
 
-    // The class the transform chose, read out of the emitted JavaScript rather than assumed.
-    const className = js.match(/r-[0-9a-f]{16}/)?.[0];
-    expect(className).toBeDefined();
+    /**
+     * The classes the transform chose, read out of the emitted JavaScript rather than assumed.
+     *
+     * **Two of them, because a block is one rule per DECLARATION now** — one for `display:flex` and
+     * one for the `border-left` that carries the hole. Which is which is not this test's business,
+     * so it asserts what must hold of the set: every class the markup names exists in the sheet, and
+     * the one with a hole reads the custom property named after ITSELF.
+     */
+    const named = [...new Set(js.match(/r-[0-9a-f]{16}/g) ?? [])];
+    expect(named.length).toBeGreaterThan(1);
 
-    // The same name on both sides. This is the whole point: the markup names a class, and the class
-    // has to exist. The rule is asserted without its whitespace, because Vite minifies the output —
-    // which is also the round trip the sheet's own `verify` is about.
-    expect(css).toContain(`.${className}`);
+    // The same names on both sides. This is the whole point: the markup names classes, and every one
+    // of them has to exist. Asserted without whitespace, because Vite minifies the output — which is
+    // also the round trip the sheet's own `verify` is about.
+    for (const one of named) expect(css, `${one} is named by the JavaScript`).toContain(`.${one}`);
     expect(css).toContain("display:flex");
-    expect(css).toContain(`var(--${className}-0)`);
     expect(css).toContain("@layer ramonda");
+
+    const holed = named.find((one) => css.includes(`var(--${one}-0)`));
+    expect(holed, "one rule reads a custom property named after its own class").toBeDefined();
+    expect(css).toContain(`.${holed}{border-left:4px solid var(--${holed}-0)}`);
 
     // And the hole is a value at the call site, not text the compiler built.
     expect(js).toContain("#10b981");

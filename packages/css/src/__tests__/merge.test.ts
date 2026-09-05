@@ -98,7 +98,7 @@ describe("a hole's value, which travels with its class", () => {
 describe("a shorthand meeting its own longhand", () => {
   const PADDING = "r-2222222222222222";
   const LEFT = "r-3333333333333333";
-  const shorthand = { padding: PADDING, "~padding": "padding-top padding-left" };
+  const shorthand = { padding: PADDING, "~padding": ["padding-top", "padding-left"] };
   const longhand = { "padding-left": LEFT };
 
   test("a later shorthand clears it, which is what CSS says", () => {
@@ -127,5 +127,38 @@ describe("a shorthand meeting its own longhand", () => {
     expect(merge(other, compose(longhand, shorthand)).className).toBe(flat);
     expect(merge(compose(other, longhand), shorthand).className).toBe(flat);
     expect(merge(compose(compose(other, longhand), shorthand)).className).toBe(flat);
+  });
+});
+
+/**
+ * A clear-list names full KEYS, not property names, and both halves of that were nearly wrong.
+ *
+ * A key carries the context it was written in, so `padding` inside a `@media` clears `padding-left`
+ * inside THAT `@media` and leaves the one outside it alone — they are different declarations on
+ * different conditions and neither replaces the other. And a key may contain spaces, so a list
+ * joined by one could not be split back.
+ */
+describe("clearing inside a condition", () => {
+  const WIDE = "@media (min-width: 40rem)";
+
+  test("clears only what shares its context", () => {
+    const outside = { "padding-left": "r-outside00000000" };
+    const inside = {
+      [`${WIDE}|padding`]: "r-inside000000000",
+      [`~${WIDE}|padding`]: [`${WIDE}|padding-left`],
+    };
+
+    const { className } = merge(outside, { [`${WIDE}|padding-left`]: "r-innerleft000000" }, inside);
+
+    expect(className.split(" ").sort()).toEqual(["r-inside000000000", "r-outside00000000"]);
+  });
+
+  test("and a key holding a space survives being a list entry", () => {
+    const map = {
+      [`${WIDE}|padding`]: "r-aaaaaaaaaaaaaaaa",
+      [`~${WIDE}|padding`]: [`${WIDE}|padding-left`],
+    };
+
+    expect(merge({ [`${WIDE}|padding-left`]: "r-bbbbbbbbbbbbbbbb" }, map).className).toBe("r-aaaaaaaaaaaaaaaa");
   });
 });

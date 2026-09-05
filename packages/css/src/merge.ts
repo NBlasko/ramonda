@@ -9,12 +9,22 @@ import type { StyleValue, StyleVarValue } from "./types";
 export type StyleEntry = string | readonly [className: string, ...values: StyleVarValue[]];
 
 /**
+ * What a `~` key holds: the KEYS a property clears, in full.
+ *
+ * A list rather than a joined string, and full keys rather than property names — both were nearly
+ * wrong. A key carries its context (`@media (min-width: 40rem)|:hover|padding`), so `padding` inside
+ * a `@media` must clear `padding-left` inside THAT `@media` and not the one outside it; and a key
+ * may contain spaces, so anything joined by one could not be split back.
+ */
+export type StyleClears = readonly string[];
+
+/**
  * What one `@@( … )` compiles to: a map from what a declaration SETS to the class that sets it.
  *
  * A key beginning with `~` is not a declaration. It is the list of things the property named after
  * it clears — see {@link merge} — and it never reaches an element.
  */
-export type StyleMap = { readonly [key: string]: StyleEntry };
+export type StyleMap = { readonly [key: string]: StyleEntry | StyleClears };
 
 /** How a clear-list is marked. No CSS property may begin with `~`, so nothing collides. */
 const CLEARS = "~";
@@ -34,7 +44,7 @@ const CLEARS = "~";
  */
 export function compose(...maps: readonly (StyleMap | false | null | undefined)[]): StyleMap {
   /** Insertion-ordered, which is what keeps a composed map behaving like the sequence it came from. */
-  const chosen: Record<string, StyleEntry> = {};
+  const chosen: Record<string, StyleEntry | StyleClears> = {};
 
   for (const map of maps) {
     if (!map) continue;
@@ -42,10 +52,12 @@ export function compose(...maps: readonly (StyleMap | false | null | undefined)[
       if (key.startsWith(CLEARS)) continue;
 
       const cleared = map[`${CLEARS}${key}`];
-      if (typeof cleared === "string") {
-        for (const one of cleared.split(" ")) delete chosen[one];
+      if (Array.isArray(cleared)) {
+        for (const one of cleared) delete chosen[one];
         chosen[`${CLEARS}${key}`] = cleared;
       }
+      // Deleted first, so a key set twice moves to where it was set LAST rather than staying where
+      // it was set first — which is what "later wins" means for the order the classes come out in.
       delete chosen[key];
       chosen[key] = map[key];
     }
@@ -93,7 +105,7 @@ export function merge(...maps: readonly (StyleMap | false | null | undefined)[])
 
   for (const key in chosen) {
     if (key.startsWith(CLEARS)) continue;
-    const entry = chosen[key];
+    const entry = chosen[key] as StyleEntry;
 
     if (typeof entry === "string") {
       className = className === "" ? entry : `${className} ${entry}`;

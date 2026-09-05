@@ -127,10 +127,12 @@ describe("a column on a line the transform never touched", () => {
 describe("the transformed file", () => {
   test("is valid TSX, which is the only reason the second map exists at all", () => {
     expect(emitted.code).toContain("afterTheBlock");
-    expect(emitted.code).toContain("_s0");
+    expect(emitted.code).toContain("merge");
   });
 
   test("still contains the author's expression, unmoved and unquoted", () => {
-    expect(result?.code).toContain("_s0(this.accent)");
+    // The expression sits inside the map the block compiles to, where the author wrote it — the
+    // transform rewrites the CSS BETWEEN expressions and never the expressions themselves.
+    expect(result?.code).toMatch(/\[\s*"r-[0-9a-f]{16}"\s*,\s*this\.accent\s*\]/);
   });
 });

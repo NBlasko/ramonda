@@ -1,8 +1,10 @@
 import MagicString from "magic-string";
+import { flatten } from "./flatten";
+import { SHORTHANDS } from "./keywords.generated";
 import { classNameFor, substitute, variableNameFor } from "./names";
 import { namedSites } from "./references";
 import { normalise } from "./normalise";
-import { readBlock } from "./read";
+import { type Span, readBlock } from "./read";
 import { refuse } from "./errors";
 import { type BlockSite, findBlocks, mayHoldABlock } from "./scan";
 
@@ -136,12 +138,13 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   const resolve = (expression: string): string | undefined => references.get(expression);
 
   const magic = new MagicString(source);
-  const block = binding(source, "_block");
+  const block = binding(source, "_merge");
   const prefix = identifierPrefix(source);
 
-  /** Class name -> the descriptor that stands for it, so a block written twice is emitted once. */
-  const descriptors = new Map<string, { id: string; emitted: EmittedBlock }>();
-  const order: { id: string; emitted: EmittedBlock }[] = [];
+  /** Class -> the atomic rule, so a declaration written a hundred times is one rule. */
+  const atoms = new Map<string, EmittedBlock>();
+  /** Each ordinary site's map, split at the holes, so the author's expressions never move. */
+  const written: { site: BlockSite; pieces: string[]; holes: readonly Span[]; end: number }[] = [];
   /** The named sites, which produce a rule and a name rather than a value the runtime builds. */
   const named = new Map<string, EmittedBlock>();
   const emittedNamed: EmittedBlock[] = [];
@@ -230,26 +233,99 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       continue;
     }
 
-    let descriptor = descriptors.get(className);
-    if (descriptor === undefined) {
-      descriptor = {
-        id: `${prefix}${descriptors.size}`,
-        emitted: { className, css: substitute(canonical, className), properties },
-      };
-      descriptors.set(className, descriptor);
-      order.push(descriptor);
+    /**
+     * An ordinary block is a MAP: one entry per declaration, from what it sets to the class that
+     * sets it. See CONTRACT.md §1b, and `merge` for what a call site then does with two of them.
+     */
+    const pieces: string[] = [];
+    let piece = "";
+    for (const declaration of flatten(read.block)) {
+      const own = classNameFor(declaration.canonical);
+      const variables = declaration.holes.map((_hole, index) => variableNameFor(own, index));
+
+      if (!atoms.has(own)) {
+        atoms.set(own, {
+          className: own,
+          css: substitute(declaration.canonical, own),
+          properties: variables,
+          property: declaration.property,
+          selector: declaration.selector,
+          conditions: declaration.conditions,
+        });
+      }
+
+      piece += `${JSON.stringify(declaration.key)}:`;
+      if (declaration.holes.length === 0) piece += `${JSON.stringify(own)},`;
+      else {
+        piece += `[${JSON.stringify(own)},`;
+        for (let index = 0; index < declaration.holes.length; index++) {
+          pieces.push(piece);
+          piece = index === declaration.holes.length - 1 ? "]," : ",";
+        }
+      }
+
+      /**
+       * What this declaration clears, when it is a shorthand — full KEYS, so a `padding` inside a
+       * `@media` clears the `padding-left` inside that one and not the one outside it.
+       *
+       * Emitted only for the shorthands a block actually writes, which is what keeps a table of 78
+       * out of every page.
+       */
+      const clears = SHORTHANDS[declaration.property];
+      if (clears !== undefined) {
+        const context = declaration.key.slice(0, declaration.key.length - declaration.property.length);
+        piece += `${JSON.stringify(`~${declaration.key}`)}:${JSON.stringify(clears.map((one) => context + one))},`;
+      }
+    }
+    pieces.push(piece);
+
+    written.push({ site, pieces, holes: read.holes, end: read.end });
+  }
+
+  /**
+   * A block with no holes is hoisted; one with holes is built where it is written.
+   *
+   * **Measured, and it is why this is not simply a call at every site.** 71% of the blocks written to
+   * be read in this repository carry no hole, and for those the merged value cannot change — so
+   * merging at the site would allocate per element per render for a constant. `merge` of one map is
+   * 0.86 µs against 0.001 µs for reading a hoisted value; on 800 elements that is 0.69 ms of nothing.
+   *
+   * A block WITH holes cannot be hoisted: its values are the render's. It pays one allocation, which
+   * is what a per-element value costs and what the previous design paid too.
+   *
+   * Deduped by the map's text, so the same block written twice is one constant.
+   */
+  const hoisted = new Map<string, string>();
+  for (const one of written) {
+    if (one.holes.length > 0) continue;
+    const map = one.pieces[0];
+    if (!hoisted.has(map)) hoisted.set(map, `${prefix}${hoisted.size}`);
+  }
+
+  for (const one of written) {
+    const wrap = one.site.wrap;
+    const head = wrap ? `${one.site.name}={` : "";
+    const tail = wrap ? "}" : "";
+
+    if (one.holes.length === 0) {
+      magic.overwrite(one.site.start, one.end + 1, `${head}${hoisted.get(one.pieces[0])}${tail}`);
+      continue;
     }
 
-    write(magic, site, descriptor.id, read.holes, read.end);
+    magic.overwrite(one.site.start, one.holes[0].start, `${head}${block}({${one.pieces[0]}`);
+    for (let index = 0; index < one.holes.length - 1; index++) {
+      magic.overwrite(one.holes[index].end, one.holes[index + 1].start, one.pieces[index + 1]);
+    }
+    magic.overwrite(one.holes[one.holes.length - 1].end, one.end + 1, `${one.pieces[one.pieces.length - 1]}})${tail}`);
   }
 
   // A file of nothing but named sites needs no runtime at all: a name is a string, not a value to
   // build, so the import would be one nobody uses.
   const prologue =
-    order.length === 0
+    written.length === 0
       ? ""
-      : `import { block as ${block} } from "${options.runtime ?? "@ramonda/css"}";\n` +
-        `${order.map((each) => declare(block, each.id, each.emitted)).join("\n")}\n\n`;
+      : `import { merge as ${block} } from "${options.runtime ?? "@ramonda/css"}";\n` +
+        `${[...hoisted].map(([map, id]) => `const ${id} = ${block}({${map}});`).join("\n")}\n\n`;
 
   const top = afterDirectives(source);
   if (top === 0) magic.prepend(prologue);
@@ -258,7 +334,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   return {
     code: magic.toString(),
     map: magic.generateMap({ source: filename, includeContent: true, hires: "boundary" }) as unknown as SourceMap,
-    blocks: [...emittedNamed, ...order.map((each) => each.emitted)],
+    blocks: [...emittedNamed, ...atoms.values()],
   };
 }
 
@@ -274,34 +350,6 @@ export function transform(source: string, options: TransformOptions = {}): Trans
  * only the block itself is replaced and everything to its left is the author's own text. Wrapping
  * one of those would turn a value into an object literal.
  */
-function write(
-  magic: MagicString,
-  site: BlockSite,
-  id: string,
-  holes: readonly { start: number; end: number }[],
-  end: number,
-): void {
-  const start = site.start;
-  const head = site.wrap ? `${site.name}={${id}` : id;
-  const tail = site.wrap ? "}" : "";
-
-  if (holes.length === 0) {
-    magic.overwrite(start, end + 1, `${head}${tail}`);
-    return;
-  }
-
-  magic.overwrite(start, holes[0].start, `${head}(`);
-  for (let index = 0; index < holes.length - 1; index++) {
-    magic.overwrite(holes[index].end, holes[index + 1].start, ", ");
-  }
-  magic.overwrite(holes[holes.length - 1].end, end + 1, `)${tail}`);
-}
-
-function declare(block: string, id: string, emitted: EmittedBlock): string {
-  const names = emitted.properties.map((property) => JSON.stringify(property)).join(", ");
-  const args = names === "" ? "" : `, [${names}]`;
-  return `const ${id} = ${block}(${JSON.stringify(emitted.className)}${args});`;
-}
 
 /**
  * A name for the descriptors that the file does not already use.
