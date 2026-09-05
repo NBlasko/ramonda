@@ -10,3 +10,5 @@
  */
 export type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
 export { block, toStyleObject } from "./value";
+export type { StyleEntry, StyleMap } from "./merge";
+export { compose, merge } from "./merge";

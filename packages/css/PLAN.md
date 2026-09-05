@@ -1259,9 +1259,30 @@ padding, both colours, radius, the descendant's weight and its decoration.
 **AC3b — the emission.** The map, the per-declaration hash, and the site becoming a merge. Still to
 do.
 
-**AC4 — the runtime merge.** `_m(…)` in `@ramonda/css`, and `applyCssBlock` takes what it produces.
-Measured: 0.64 µs per element for four maps and 24 declarations — 0.5 ms for a page of 800 elements,
-3.2 ms for 5000. Free.
+**AC4 — the runtime merge. DONE 2026-09-05.** Two functions, because one shape cannot do both jobs:
+
+- **`compose(...maps) → map`** is the primitive and is closed over its own output, which is what a
+  nested group needs. Clear-lists are carried into the result, or `compose(compose(a, b), c)` would
+  stop clearing halfway.
+- **`merge(...maps) → value`** is the boundary, and produces exactly what the framework already
+  takes. A falsy argument is a group switched off, which is what `disabled && block` compiles to.
+
+**The shorthand clear-list travels with the block that needs it**, under a `~` key — no CSS property
+may begin with one. That is what keeps a table of 78 shorthands out of every page: a block pays for
+the shorthands it actually writes, and nothing else. The other direction needs no list at all,
+because the sheet already emits longhands after shorthands.
+
+**Measured end to end, through `flatten` + the sheet + `merge`, in Chromium:**
+
+| the call site | computed |
+|---|---|
+| `merge(base)` | `cursor: pointer`, `padding-left: 40px` |
+| `merge(base, off)` | **`cursor: not-allowed`** — the modifier beat the base because it is LATER IN THE CALL |
+| `merge(base, roomy)` | **`padding-left: 8px`** — the later shorthand cleared the base's longhand |
+| `merge(base, off, roomy)` | both, composed |
+
+The second row is the thing that was impossible before this: precedence decided at the call site
+rather than by the stylesheet.
 
 **AC5 — `...expr;` inside a block.** The parser already reads it as a declaration whose property is
 `"...base"` with no value (measured). What it needs is meaning in the transform, a type for the
@@ -1423,6 +1444,7 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | `@@if` nested in `@@if`, and either way round with `&:hover` | all four already parse, as ordinary nested rules |
 | the sheet's emission order, end to end | gives CSS's own answer on both sides of a `@media`, from rules added in the wrong order |
 | one block as 1 whole rule vs its 14 atomic ones | **identical computed style**, hovered, narrow and wide |
+| `merge(base, modifier)` end to end | the CALL SITE decides — `cursor` and a shorthand override both land right |
 | the shorthand-aware merge, 50,309 random groupings | **associative** — nesting and flattening never disagree |
 | an always-truthy `@@if` condition, as a TYPE | reportable — and `any`/`unknown`/`T \| undefined` stay silent |
 | a spread of a non-block, as a TYPE | reportable; a lookup with a union key passes |

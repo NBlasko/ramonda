@@ -10,7 +10,13 @@ import * as api from "../index";
  * runs in a build and may reach for `node:crypto`. The split is what keeps the second out of the
  * first, and a list per entry is what keeps the split honest.
  */
-const RUNTIME = ["block", "toStyleObject"];
+/**
+ * `merge` and `compose` are composition's half: a block compiles to a map, and merging maps at the
+ * call site is the only place precedence can be decided — measured, the order of classes in a
+ * `class` attribute decides nothing. `compose` is the primitive and composes with itself; `merge` is
+ * the boundary and produces the value the framework already takes.
+ */
+const RUNTIME = ["block", "compose", "merge", "toStyleObject"];
 
 const COMPILER = [
   "CssBlockError",
