@@ -1090,7 +1090,7 @@ const variants = {
   ...button;                                 // merge another block's map, across files
   ...variants[this.variant];                 // exhaustive — TypeScript checks the key
 
-  @@if (this.disabled) {
+  @@if {{this.disabled}} {
     opacity: 0.5;
     cursor: not-allowed;                     // beats `cursor: pointer` above, because it is BELOW
   }
@@ -1202,11 +1202,14 @@ Measured: 0.64 µs per element for four maps and 24 declarations — 0.5 ms for 
 `"...base"` with no value (measured). What it needs is meaning in the transform, a type for the
 operand in the virtual file, and a rule for a spread of something that is not a block.
 
-**AC6 — `@@if (…) { }`.** The parser already reads it as a nested rule with that prelude, and the
-scanner does NOT mistake it for a second block site (measured: one site, not two). Needs: the
-condition type-checked in the author's scope, exemption from `at-rule-out-of-place`, and a decision
-between `@@if (expr)` and `@@if {{expr}}` — the second is consistent with this language's one standing
-rule, that TypeScript only ever appears inside `{{ }}`.
+**AC6 — `@@if {{ … }} { }`.** The parser already reads it as a nested rule with that prelude, and the
+scanner does NOT mistake it for a second block site (measured: one site, not two). Needs the condition
+type-checked in the author's scope, and exemption from `at-rule-out-of-place`.
+
+**The condition is written `{{ … }}`, decided by the user 2026-09-05**, against `@@if (expr)` which is
+what everyone expects. Consistency won, and it is this language's one standing rule: **TypeScript
+appears inside `{{ }}` and nowhere else.** A second spelling for "here is an expression" would be a
+second thing to teach and a second thing for every tool to know.
 
 **AC7 — the rules the new shape makes possible.** A shorthand meeting one of its own longhands in a
 merge the author wrote INLINE is visible to the checker, which is a thing that could never be reported
@@ -1214,6 +1217,48 @@ before; across files it is a runtime diagnostic. Plus a non-boolean condition, a
 non-block.
 
 **AC8 — the page.** `style-blocks.md` gains composition; every example in it is already gated.
+
+### Type safety, measured before it was promised
+
+The condition and the spread are both new places for the author to be wrong, and both are checkable
+by a TYPE rather than by a rule of ours — which means TypeScript's own message, at the author's own
+position, with no diagnostic to write. Both were put through a real `tsc` first.
+
+**A condition that can never be false** is a group that can never be off. The message IS the type, so
+TypeScript prints it as the expected parameter:
+
+```ts
+type Condition<T> =
+  [T] extends [(...args: never[]) => unknown] ? "a function is always truthy — call it, or test a value" :
+  [T] extends [Promise<unknown>]              ? "a promise is always truthy — await it, or test a value" :
+  [null] extends [T] ? T : [undefined] extends [T] ? T :
+  [T] extends [object]                        ? "this is always truthy, so the group can never be off" :
+  T;
+```
+
+Measured, 14 conditions through `tsc`:
+
+| written | answer |
+|---|---|
+| `boolean`, `number`, `string`, `count > 0`, `text.length`, `union === "sm"` | silent |
+| `{ a: 1 } \| undefined`, `{ a: 1 } \| null` | silent — the legitimate case, and it must stay silent |
+| **`any`, `unknown`** | **silent** — the edge that would have made this unusable |
+| `{ a: 1 }`, `string[]` | reported: *this is always truthy, so the group can never be off* |
+| `() => void` | reported: *a function is always truthy — call it, or test a value* |
+| `Promise<number>` | reported: *a promise is always truthy — await it, or test a value* |
+
+**A spread of something that is not a block** is refused the same way, with a branded map type a
+hand-written object cannot forge:
+
+| written | answer |
+|---|---|
+| `...button`, `...variants.primary`, `...variants[this.variant]` | silent — and the lookup is what replaces `@else` |
+| `...plain` (a plain object), `...text` | reported: *only a style block can be spread* |
+| `...partial[this.variant]` (possibly missing) | reported — spreading something that may not exist |
+
+A cast still beats both, as it beats every type in this repository; that is what the CHECKER is for.
+Worth refining when AC6 is built: a possibly-`undefined` spread should say so rather than say it is
+not a block.
 
 ### What does NOT change, and it is most of the package
 
@@ -1291,6 +1336,8 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | `@@if` inside a block body | the scanner does not read it as a second site; the parser gives a nested rule |
 | `@@if` nested in `@@if`, and either way round with `&:hover` | all four already parse, as ordinary nested rules |
 | the shorthand-aware merge, 50,309 random groupings | **associative** — nesting and flattening never disagree |
+| an always-truthy `@@if` condition, as a TYPE | reportable — and `any`/`unknown`/`T \| undefined` stay silent |
+| a spread of a non-block, as a TYPE | reportable; a lookup with a union key passes |
 | `var(var(--x))` | resolves to nothing — a `var()` name must be literal, so a reference cannot be a hole |
 | one rule per OWNER, through a real build | a sibling lazy route named a class **no stylesheet contained** |
 | every file serving what it names | 3.5x the CSS bytes, **1.1x gzipped**, on a corpus that duplicates every rule 3x |
