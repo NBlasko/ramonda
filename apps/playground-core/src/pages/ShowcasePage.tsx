@@ -7,6 +7,7 @@ import {
   DerivedSync,
   StyleBlock,
   StyleBlockNested,
+  StyleBlockComposed,
   Toast,
   LifecycleDemo,
 } from "../demos/panels";
@@ -48,6 +49,7 @@ export class ShowcasePage extends Component {
           <div className="panel">
             <StyleBlock />
             <StyleBlockNested />
+            <StyleBlockComposed />
           </div>
         </section>
       </div>

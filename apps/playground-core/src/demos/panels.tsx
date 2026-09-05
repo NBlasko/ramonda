@@ -265,6 +265,125 @@ export class StyleBlock extends Component {
 }
 
 /**
+ * Composition: `css` on every tag, blocks merged into blocks, and groups switched on and off.
+ *
+ * The two blocks above are one class each, on one element, with the children reached by descendant
+ * selectors. That was the only shape available when a block was one class. **A block is one class
+ * per DECLARATION now**, which changes what is cheap: the same three declarations on a `<div>` and
+ * on a `<button>` share the same three classes, while as two descendant contexts they could not.
+ * Measured on a four-element fixture — `css` on every tag came out at 8 rules and 321 B against
+ * 8 rules and 353 B for one root block with descendant selectors. So per-element is not a
+ * concession, it is the cheaper and clearer one, and this panel is written that way.
+ *
+ * **`...{{ … }}` merges another block here.** It works across files, because what it merges is a
+ * value — importable, storable in an object, pickable out of one.
+ *
+ * **`@@if {{ … }} { … }` merges a group only when the condition holds**, and both are arguments of
+ * the same merge in the order they were written, so **what comes later wins**. That is the rule a
+ * reader of CSS already has, and it is the thing whole-block classes could never express: the order
+ * of names in a `class` attribute means nothing in CSS, so precedence has to be decided where the
+ * author wrote it.
+ *
+ * **There is no `@else`, and the replacement is stronger.** Spreading a lookup —
+ * `...{{TONES[this.tone]}}` — is exhaustive: add a tone to the union and forget the map, and
+ * TypeScript reports it. `@else` never could.
+ *
+ * **Watch `padding` when "roomy" is on.** The base sets `padding-left` and the group sets the
+ * `padding` shorthand, so the shorthand wins completely — which is exactly what those two
+ * declarations would do in a plain stylesheet, and it is the merge doing CSS's own cascade rather
+ * than the stylesheet breaking the tie.
+ */
+const CONTROL = @@(
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  border: 1px solid #2a2a2a;
+  padding-left: 18px;
+  cursor: pointer;
+  transition: background 120ms ease-in-out;
+);
+
+const TONES = {
+  calm: @@( background: #10b981; color: #04150e; ),
+  loud: @@( background: #ff0055; color: #ffffff; ),
+};
+
+export class StyleBlockComposed extends Component {
+  @state tone: "calm" | "loud" = "calm";
+  @state off = false;
+  @state roomy = false;
+
+  flip() {
+    this.tone = this.tone === "calm" ? "loud" : "calm";
+  }
+
+  render() {
+    return (
+      <div className="panel" css={@@(
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 4px 0;
+      )}>
+        <p className="label" css={@@(
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: #9a9a9a;
+        )}>
+          composition — every tag has its own block
+        </p>
+
+        <div css={@@(
+          ...{{CONTROL}};
+          ...{{TONES[this.tone]}};
+
+          @@if {{this.off}} {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
+
+          @@if {{this.roomy}} {
+            padding: 14px 20px;
+          }
+        )}>tone: {this.tone}</div>
+
+        <button onclick={this.flip}>flip the tone</button>
+
+        <p className="muted small">
+          Later wins: <code>cursor</code> and <code>padding</code> above are set twice, and the group that is switched
+          on decides. The styled element is a <code>div</code> on purpose — this app's own stylesheet styles
+          <code>button</code>, and unlayered CSS beats <code>@layer ramonda</code>, which is what the layer is for.
+        </p>
+
+        <div css={@@( display: flex; gap: 12px; align-items: center; )}>
+          <label css={@@( display: inline-flex; gap: 6px; align-items: center; )}>
+            <input
+              type="checkbox"
+              checked={this.off}
+              onchange={() => {
+                this.off = !this.off;
+              }}
+            />
+            off
+          </label>
+          <label css={@@( display: inline-flex; gap: 6px; align-items: center; )}>
+            <input
+              type="checkbox"
+              checked={this.roomy}
+              onchange={() => {
+                this.roomy = !this.roomy;
+              }}
+            />
+            roomy
+          </label>
+        </div>
+      </div>
+    );
+  }
+}
+
+/**
  * A block with as much nesting as real CSS actually has.
  *
  * The one above is the shape of the feature; this one is what a component's styles look like when
