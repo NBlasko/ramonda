@@ -1209,10 +1209,27 @@ table** — 50,301 groupings from a pool drawn from one family, so shorthands an
 constantly: zero disagreements. That mattered, because clearing REMOVES keys rather than replacing
 them, and the earlier measurement had used a four-entry synthetic table. Both are tests now.
 
-**AC2 — the sheet emits declarations.** `Sheet.add` takes atomic rules; the collision assertion and the
-round trip are unchanged in kind. New: the emission order above. Per-file serving is unchanged, and
-so is "a file serves every rule it names" — atomic makes that CHEAPER, since a duplicate is ~30 bytes
-rather than a whole rule.
+**AC2 — the sheet emits declarations. DONE 2026-09-05.** An atomic rule is an `EmittedBlock` with
+three fields a whole-block one does not have: the `property` it sets, the `selector` appended to its
+class, and the `conditions` written around it. Everything else — dedupe, the collision assertion, the
+round trip, per-file serving — is unchanged in kind, and a whole block still emits exactly as before.
+
+A whole-block rule keeps its nesting INSIDE it and lets CSS resolve it. An atomic one cannot: each
+declaration is its own rule with its own class, so `&:hover` becomes `.r-…:hover` and a `@media`
+becomes a wrapper.
+
+**The order is now a rule rather than an accident**, and it is two numbers and a STABLE sort — so
+anything neither separates keeps the order it arrived in, and a file's rules stay in source order.
+Conditional rules after unconditional ones; within each, the broadest property first, measured by how
+many other properties it clears. Verified end to end in Chromium, with the rules ADDED in the wrong
+order on purpose:
+
+| viewport | computed |
+|---|---|
+| wide, so the `@media` applies | `padding-left: 24px`, `padding-top: 24px` — the media rule wins, because it is emitted last |
+| narrow, so it does not | `padding-left: 40px`, `padding-top: 8px` — the longhand wins, because it is emitted after the shorthand |
+
+Both are CSS's own answer, from a sheet the author never ordered.
 
 **AC3 — the transform emits maps.** One hash per declaration, keyed by `selector|property|value` with a
 placeholder for a hole (the same `U+0000` trick that already breaks the circular naming). A block with
@@ -1380,6 +1397,7 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | atomic vs whole blocks, 800 elements | CSS 1.5 KB vs 26.8 KB, markup 157.7 KB vs 21.1 KB — **3.1 vs 3.5 KB gzipped together** |
 | `@@if` inside a block body | the scanner does not read it as a second site; the parser gives a nested rule |
 | `@@if` nested in `@@if`, and either way round with `&:hover` | all four already parse, as ordinary nested rules |
+| the sheet's emission order, end to end | gives CSS's own answer on both sides of a `@media`, from rules added in the wrong order |
 | the shorthand-aware merge, 50,309 random groupings | **associative** — nesting and flattening never disagree |
 | an always-truthy `@@if` condition, as a TYPE | reportable — and `any`/`unknown`/`T \| undefined` stay silent |
 | a spread of a non-block, as a TYPE | reportable; a lookup with a union key passes |

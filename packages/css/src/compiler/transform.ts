@@ -68,6 +68,30 @@ export interface EmittedBlock {
   readonly css: string;
   /** The custom property names this rule reads, in hole order. */
   readonly properties: readonly string[];
+  /**
+   * The property this rule sets, when it sets exactly one — an ATOMIC rule.
+   *
+   * `undefined` for a whole-block rule, which sets several and is ordered by nothing. What this
+   * decides is emission ORDER: a shorthand has to be written before its own longhands, or a longhand
+   * the author put first loses to it. See {@link Sheet}.
+   */
+  readonly property?: string;
+  /**
+   * What is appended to the class in the selector — `:hover`, ` .title`, `::before`.
+   *
+   * A whole-block rule keeps its nested rules INSIDE it and CSS resolves the nesting. An atomic one
+   * cannot: each declaration is its own rule with its own class, so the selector belongs on that
+   * class. `undefined` and `""` both mean the class alone.
+   */
+  readonly selector?: string;
+  /**
+   * The conditional at-rules this sits inside, outermost first — `@media (min-width: 40rem)`.
+   *
+   * Written around the rule rather than around the block, for the same reason as {@link selector}.
+   * They are also what puts a rule LAST in the sheet: measured, a `@media` rule beats a base rule
+   * for the same property only if it is emitted after it.
+   */
+  readonly conditions?: readonly string[];
 }
 
 /**

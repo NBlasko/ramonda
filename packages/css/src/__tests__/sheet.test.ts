@@ -264,3 +264,126 @@ describe("verifying rules that have no name", () => {
     expect(() => sheet.verify("@font-face{font-family:A}")).toThrow(/1 of the 2/);
   });
 });
+
+/**
+ * An ATOMIC rule — one declaration, its own class — which is what composition emits.
+ *
+ * A whole-block rule carries its nested rules inside it, verbatim, because a block is one class and
+ * CSS resolves the nesting. An atomic rule cannot: `&:hover { background: … }` is its own rule with
+ * its own class, so the selector has to be written onto that class, and a `@media` around it has to
+ * be written around it. This is that emission, and the ORDER it emits in — which is a rule now
+ * rather than an accident, because two measurements say the sheet decides what the merge cannot:
+ *
+ * - a `@media` rule beats a base rule for the same property **only if emitted after it**;
+ * - a longhand emitted before a shorthand **loses to it**, whatever the call site said.
+ */
+describe("an atomic rule", () => {
+  const atom = (className: string, css: string, extra: Partial<EmittedBlock> = {}): EmittedBlock => ({
+    className,
+    css,
+    properties: [],
+    ...extra,
+  });
+
+  test("a plain declaration is a rule on its class", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [atom("r-1111111111111111", "display:flex;", { property: "display" })]);
+
+    expect(sheet.css()).toBe("@layer ramonda {\n.r-1111111111111111 { display:flex; }\n}\n");
+  });
+
+  test("a nested selector is written onto the class, not inside the rule", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [atom("r-2222222222222222", "background:red;", { property: "background", selector: ":hover" })]);
+
+    expect(sheet.css()).toContain(".r-2222222222222222:hover { background:red; }");
+    expect(sheet.css()).not.toContain("&");
+  });
+
+  test("a descendant selector keeps its space, because that is what it means", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [atom("r-3333333333333333", "color:red;", { property: "color", selector: " .title" })]);
+
+    expect(sheet.css()).toContain(".r-3333333333333333 .title { color:red; }");
+  });
+
+  test("a condition is written around it", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [
+      atom("r-4444444444444444", "padding:24px;", { property: "padding", conditions: ["@media (min-width: 40rem)"] }),
+    ]);
+
+    expect(sheet.css()).toContain("@media (min-width: 40rem) { .r-4444444444444444 { padding:24px; } }");
+  });
+
+  test("and several conditions nest, outermost first", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [
+      atom("r-5555555555555555", "padding:24px;", {
+        property: "padding",
+        selector: ":hover",
+        conditions: ["@media (min-width: 40rem)", "@supports (display: grid)"],
+      }),
+    ]);
+
+    expect(sheet.css()).toContain(
+      "@media (min-width: 40rem) { @supports (display: grid) { .r-5555555555555555:hover { padding:24px; } } }",
+    );
+  });
+
+  describe("the order it emits in, which is what the merge cannot decide", () => {
+    test("a shorthand is emitted before its longhand, however they arrived", () => {
+      const sheet = new Sheet();
+      sheet.add("a.tsx", [
+        atom("r-6666666666666666", "padding-left:40px;", { property: "padding-left" }),
+        atom("r-7777777777777777", "padding:8px;", { property: "padding" }),
+      ]);
+
+      const css = sheet.css();
+      expect(css.indexOf("padding:8px")).toBeLessThan(css.indexOf("padding-left:40px"));
+    });
+
+    test("and a shorthand of shorthands before both", () => {
+      const sheet = new Sheet();
+      sheet.add("a.tsx", [
+        atom("r-1000000000000000", "border-left-width:4px;", { property: "border-left-width" }),
+        atom("r-2000000000000000", "border:1px solid red;", { property: "border" }),
+        atom("r-3000000000000000", "border-left:2px solid blue;", { property: "border-left" }),
+      ]);
+
+      const css = sheet.css();
+      expect(css.indexOf("border:1px")).toBeLessThan(css.indexOf("border-left:2px"));
+      expect(css.indexOf("border-left:2px")).toBeLessThan(css.indexOf("border-left-width:4px"));
+    });
+
+    test("an unconditional rule is emitted before a conditional one, however they arrived", () => {
+      const sheet = new Sheet();
+      sheet.add("a.tsx", [
+        atom("r-8888888888888888", "padding:24px;", { property: "padding", conditions: ["@media (min-width: 40rem)"] }),
+        atom("r-9999999999999999", "padding:8px;", { property: "padding" }),
+      ]);
+
+      const css = sheet.css();
+      expect(css.indexOf("padding:8px")).toBeLessThan(css.indexOf("padding:24px"));
+    });
+
+    test("and two rules nothing orders keep the order they arrived in", () => {
+      const sheet = new Sheet();
+      sheet.add("a.tsx", [
+        atom("r-aaaaaaaaaaaaaaa1", "color:red;", { property: "color" }),
+        atom("r-aaaaaaaaaaaaaaa2", "display:flex;", { property: "display" }),
+      ]);
+
+      const css = sheet.css();
+      expect(css.indexOf("color:red")).toBeLessThan(css.indexOf("display:flex"));
+    });
+  });
+
+  test("the round trip asks for it by its class, like any other rule", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [atom("r-bbbbbbbbbbbbbbbb", "background:red;", { property: "background", selector: ":hover" })]);
+
+    expect(() => sheet.verify(".r-bbbbbbbbbbbbbbbb:hover{background:red}")).not.toThrow();
+    expect(() => sheet.verify(".r-cccccccccccccccc:hover{background:red}")).toThrow(CssBlockError);
+  });
+});
