@@ -333,6 +333,7 @@ same error, with the same *did you mean*, that it is outside one. On top of that
 | `@@if {{someObject}}` | reported: *this is always truthy, so the group can never be off* |
 | `@@if {{maybeUndefined}}` | fine — that is the shape a prop has |
 | `...{{notABlock}}` | reported: *only a style block can be spread* |
+| `...{{base}}` inside `&:hover` or a `@media` | reported — see below |
 
 ### Nesting, and a shorthand meeting its longhand
 
@@ -343,6 +344,37 @@ One thing worth knowing, because CSS itself works this way: a **shorthand** writ
 longhands it covers. If a base sets `padding-left: 40px` and a modifier sets `padding: 8px`, the
 modifier wins completely — which is what the same two declarations would do in a plain stylesheet.
 The other direction leaves both standing, also as CSS does.
+
+**A spread goes at the top of a block, or inside `@@if`** — not inside a selector or a `@media`. It
+merges a whole block, and a block carries the context each of its own declarations was written in,
+so there is nothing sensible for a nested one to mean. A `@@if` is fine: it changes no declaration,
+it only decides whether the whole thing lands.
+
+### The one place the stylesheet decides instead of you
+
+Everything above is decided where you wrote it. There is one exception, it is reported rather than
+silent, and it is worth understanding once.
+
+A stylesheet has **one** order, and a rule in it is shared by every element that names it — so it
+cannot follow any single block's order. It emits unconditional rules before conditional ones, which
+is what makes the ordinary shape right:
+
+```tsx
+const card = @@(
+  padding: 8px;
+  @media (min-width: 40rem) { padding: 24px; }   /* wins on a wide screen, as you would expect */
+);
+```
+
+Write those two the other way round and the `@media` still wins — your `padding: 8px` below it
+cannot take effect, because its rule is emitted first. That is reported:
+
+> `padding` is written to override `@media (min-width: 40rem)` above it, and it will not — the
+> stylesheet emits conditional rules after unconditional ones, so the earlier one wins wherever both
+> apply. Write it above, or put it under the same condition.
+
+A condition written **on a selector** — `@media { &:hover { … } }` — is not affected, because a
+selector adds specificity and that beats source order on its own.
 
 ## Theming
 

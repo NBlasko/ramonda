@@ -1,5 +1,5 @@
 import { CssBlockError } from "./errors";
-import { SHORTHANDS } from "./keywords.generated";
+import { sheetRank } from "./flatten";
 import type { EmittedBlock } from "./transform";
 
 /**
@@ -31,37 +31,18 @@ function write(className: string, block: EmittedBlock): string {
 }
 
 /**
- * Where a rule goes in the sheet, and it is a RULE rather than the order things happened to arrive.
- *
- * The merge decides which classes land on an element; two things it cannot decide are left to the
- * sheet, and both were measured in Chromium:
- *
- * - **a `@media` rule beats a base rule for the same property only if it is emitted after it** —
- *   24px after, 8px before, with the same classes on the element;
- * - **a longhand emitted before a shorthand loses to it** — so `padding` has to be written before
- *   `padding-left`, whatever order the author's blocks arrived in.
- *
- * Two numbers, and a STABLE sort, so anything neither of them separates stays where it was: a file's
- * rules keep their source order, which is what a person reading the sheet expects.
- */
-function rank(block: EmittedBlock): number {
-  // A conditional rule after every unconditional one, whatever it sets.
-  const conditional = (block.conditions?.length ?? 0) > 0 ? 1 : 0;
-  // Then the broadest property first: `border` sets 12 leaves, `border-left` 3, `border-left-width`
-  // itself alone. Descending, so a shorthand precedes everything it can overwrite.
-  const breadth = block.property === undefined ? 0 : (SHORTHANDS[block.property]?.length ?? 0);
-  return conditional * 1000 - breadth;
-}
-
-/**
  * The rules of one sheet, in the order they are written out.
  *
  * Generic over what a rule carries beside its block, so nothing about the caller's shape is dropped
  * on the way through — the first version declared the parameter it read and silently narrowed the
  * rest away.
+ *
+ * The order itself is {@link sheetRank}, which lives beside the declarations because the checker
+ * needs the same answer: `override-out-of-order` reports where this order contradicts the author's.
+ * A STABLE sort, so anything the rank does not separate keeps the order it arrived in.
  */
 function ordered<T extends { block: EmittedBlock }>(rules: Iterable<[string, T]>): [string, T][] {
-  return [...rules].sort((a, b) => rank(a[1].block) - rank(b[1].block));
+  return [...rules].sort((a, b) => sheetRank(a[1].block) - sheetRank(b[1].block));
 }
 
 /**

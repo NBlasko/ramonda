@@ -1,5 +1,6 @@
 import type { Block, BlockItem, NestedRule } from "./ast";
 import { HOLE, collapse } from "./normalise";
+import { SHORTHANDS } from "./keywords.generated";
 import { CONDITION, SPREAD, holeIn } from "./read";
 
 /**
@@ -35,6 +36,40 @@ export interface AtomicDeclaration {
   readonly conditions: readonly string[];
   /** The BLOCK's hole indices this declaration uses, in the order it uses them. */
   readonly holes: readonly number[];
+  /** Where it was written, so a finding lands on it. */
+  readonly at?: number;
+}
+
+/**
+ * Where a declaration's rule goes in the stylesheet, and it is a RULE rather than an accident.
+ *
+ * The merge decides which classes land on an element; two things it cannot decide are the sheet's,
+ * and both were measured in Chromium:
+ *
+ * - **a conditional rule beats an unconditional one for the same property only if emitted after it**;
+ * - **a longhand emitted before a shorthand loses to it**, whatever the call site said.
+ *
+ * So: conditional after unconditional, and within each the broadest property first — measured by how
+ * many other properties it clears, which is what the shorthand table already knows.
+ *
+ * **One definition, used twice.** The sheet emits in this order and `override-out-of-order` reports
+ * where it contradicts the order the author wrote. Two copies of that question is the shape this
+ * package keeps finding a fault in.
+ */
+export function sheetRank(declaration: { property?: string; conditions?: readonly string[] }): number {
+  const conditional = (declaration.conditions?.length ?? 0) > 0 ? 1 : 0;
+  const breadth = declaration.property === undefined ? 0 : (SHORTHANDS[declaration.property]?.length ?? 0);
+  return conditional * 1000 - breadth;
+}
+
+/** Whether a shorthand sets everything another property sets, so a later one CLEARS it in the merge. */
+export function covers(shorthand: string, other: string): boolean {
+  return SHORTHANDS[shorthand]?.includes(other) ?? false;
+}
+
+/** Whether two properties fight over anything — the same one, or one covering the other. */
+export function conflict(a: string, b: string): boolean {
+  return a === b || covers(a, b) || covers(b, a);
 }
 
 /**
@@ -177,6 +212,7 @@ function declarationOf(
     selector,
     conditions: [...conditions].sort(),
     holes,
+    at: item.at,
   };
 }
 

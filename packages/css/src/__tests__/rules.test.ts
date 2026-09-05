@@ -759,6 +759,14 @@ describe("an at-rule that belongs in a stylesheet", () => {
  * | `opacity: 0` loose in `@@keyframes` | **silent** — same signature accepts it |
  * | `&:hover { … }` in `@@font-face` | `TS2353`, but about a descriptor, not about nesting |
  */
+/** The findings for a block's own CSS, with no named site around it. */
+function checkNamedFree(css: string): Finding[] {
+  const source = `const x = @@(\n${css}\n);`;
+  const [site] = findBlocks(source);
+  const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+  return checkBlock(read.block).sort((a, b) => a.at - b.at);
+}
+
 function checkNamed(at: string, css: string): Finding[] {
   const source = `const x = @@${at}(\n${css}\n);`;
   const [site] = findBlocks(source);
@@ -970,5 +978,82 @@ describe("the shorthand table", () => {
     for (const one of ["padding", "margin", "gap", "border-left", "transition", "border-radius", "background"]) {
       expect(SHORTHANDS[one], one).toBeDefined();
     }
+  });
+});
+
+/**
+ * A declaration written to override an earlier one, which the stylesheet's order will not let win.
+ *
+ * **The stylesheet has ONE order and a block has another.** The sheet emits unconditional rules
+ * before conditional ones, and broader properties before the ones they cover — it has to, because a
+ * rule is shared by every element that names it and there is no per-block order to honour. Inside a
+ * block the author's order is what decides, and the two agree almost always.
+ *
+ * Where they disagree, the author's loses SILENTLY, and that is the whole fault. Measured against
+ * plain CSS in Chromium, the same declarations written in the same order:
+ *
+ * | written | plain CSS | ours |
+ * |---|---|---|
+ * | `@media { padding: 40px }` then `padding: 8px` | 8px | **40px** |
+ * | `@media { padding: 40px }` then `padding-left: 8px` | left 8px | **left 40px** |
+ * | `@media { … }` then an unrelated property | same | same |
+ * | `@media { &:hover { … } }` then a plain one | same | same — a selector adds specificity |
+ * | two declarations under the SAME condition | same | same — their order is kept |
+ *
+ * The merge cannot answer it: these are different keys, so both classes land and the sheet breaks
+ * the tie. Nothing else reports it, and a page that silently ignores an override is exactly what
+ * this package exists to stop.
+ */
+describe("an override the sheet's order will not honour", () => {
+  test("a plain declaration below a conditional one that sets the same thing", () => {
+    const found = checkNamedFree("@media (min-width: 40rem) { padding: 40px; }\npadding: 8px;");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("override-out-of-order");
+    expect(found[0].message).toContain("@media (min-width: 40rem)");
+  });
+
+  test("and below one that sets a shorthand it is part of", () => {
+    expect(checkNamedFree("@media (min-width: 40rem) { padding: 40px; }\npadding-left: 8px;")[0]?.rule).toBe(
+      "override-out-of-order",
+    );
+  });
+
+  test("`@supports` is the same, because a condition adds no specificity", () => {
+    expect(checkNamedFree("@supports (display: grid) { padding: 40px; }\npadding: 8px;")[0]?.rule).toBe(
+      "override-out-of-order",
+    );
+  });
+
+  test("a broader property below a narrower one under the same condition", () => {
+    // The sheet emits `padding` before `padding-left` whatever their order, so the author's
+    // `padding` written second cannot win the way they wrote it.
+    expect(
+      checkNamedFree("@media (min-width: 40rem) { padding-left: 8px; }\n@media (min-width: 40rem) { padding: 40px; }"),
+    ).toEqual([]);
+  });
+
+  describe("what it must not report, because the sheet and the author agree", () => {
+    test.each([
+      [
+        "the ordinary shape — a condition BELOW what it overrides",
+        "padding: 8px;\n@media (min-width: 40rem) { padding: 40px; }",
+      ],
+      ["an unrelated property below a condition", "@media (min-width: 40rem) { padding: 40px; }\ncolor: red;"],
+      [
+        "a condition on a SELECTOR, which adds specificity",
+        "@media (min-width: 40rem) { &:hover { padding: 40px; } }\npadding: 8px;",
+      ],
+      [
+        "two under the same condition, which keep their order",
+        "@media (min-width: 40rem) { padding: 40px; }\n@media (min-width: 40rem) { padding: 8px; }",
+      ],
+      ["the same property twice, which the merge settles", "padding: 40px;\npadding: 8px;"],
+      ["a shorthand below its own longhand", "padding-left: 40px;\npadding: 8px;"],
+      ["a longhand below its own shorthand", "padding: 8px;\npadding-left: 40px;"],
+      ["a selector below a plain declaration", "padding: 8px;\n&:hover { padding: 40px; }"],
+    ])("%s", (_what, css) => {
+      expect(checkNamedFree(css)).toEqual([]);
+    });
   });
 });

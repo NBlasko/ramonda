@@ -1403,8 +1403,34 @@ it comes back as three findings, on lines 3, 4 and 5.
   everywhere; a binding holding a block is exactly what an author points at to ask what a block IS.
   It is `CssBlock` now, branded so a hand-written object with the same three fields is not one.
 
-**Left:** a shorthand meeting one of its own longhands in a merge the author wrote INLINE is visible
-to the checker, which could never be reported before; across files it needs a runtime diagnostic.
+**`override-out-of-order`, the last rule. DONE 2026-09-05 — and it is not the rule the plan expected.**
+
+The plan said a shorthand meeting its own longhand needed reporting. **Measured, it does not:** nine
+shorthand/longhand pairs compiled and rendered in Chromium against the same declarations in a plain
+rule, and all nine agreed. The merge already does CSS's cascade in both directions.
+
+The real divergence is elsewhere and the differential test is what found it: **a conditional group
+written ABOVE a plain declaration for the same property.** The sheet emits conditional rules last, so
+the author's later declaration silently never wins.
+
+| written | plain CSS | ours, before |
+|---|---|---|
+| `@media { padding: 40px }` then `padding: 8px` | 8px | **40px** |
+| `@media { padding: 40px }` then `padding-left: 8px` | left 8px | **left 40px** |
+| `@supports { … }` then the same property | later wins | **the condition wins** |
+| `@media { &:hover { … } }` then a plain one | same | same — a selector adds specificity |
+| two under the SAME condition | same | same — the rank does not separate them |
+
+**Reported rather than silently reordered.** The sheet's order is what makes every other block right,
+and changing it to satisfy one block would move a page nobody edited.
+
+Two boundaries it must not cross, both measured and both tests: the selector must match, because a
+selector beats source order on its own; and a later shorthand covering an earlier longhand in the
+same context is settled by the MERGE, so reporting it would be reporting correct CSS.
+
+**One definition of the order, used twice.** `sheetRank` lives beside the declarations: the sheet
+emits by it and this rule reports where it contradicts the author. Two copies of that question is the
+shape this package keeps finding a fault in.
 
 **AC8 — the page. DONE 2026-09-05.** `style-blocks.md` gains *Composing blocks*: the two spellings,
 the later-wins rule, why the condition is inside `{{ }}` and why the keyword is `@@if`, what is

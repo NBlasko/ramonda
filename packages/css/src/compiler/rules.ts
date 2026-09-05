@@ -1,4 +1,5 @@
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
+import { conflict, covers, flatten, sheetRank } from "./flatten";
 import { holeOutOfPlace } from "./errors";
 import { DESCRIPTORS, KEYWORDS, NOT_IN_A_RULE, PROPERTIES, PROPERTY_NAMED, UNITS } from "./keywords.generated";
 import { closingHole } from "./read";
@@ -62,7 +63,8 @@ export type RuleId =
   | "at-rule-out-of-place"
   | "unknown-frame"
   | "declaration-out-of-place"
-  | "rule-out-of-place";
+  | "rule-out-of-place"
+  | "override-out-of-order";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -194,7 +196,69 @@ export function checkText(source: string, open: number, end: number): Finding[] 
 export function checkBlock(block: Block, at?: string): Finding[] {
   const findings: Finding[] = [];
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
+  overrideOutOfOrder(block, findings);
   return findings.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * A declaration written to override an earlier one, which the stylesheet's order will not let win.
+ *
+ * **The stylesheet has ONE order and a block has another.** A rule is shared by every element that
+ * names it, so the sheet cannot honour any block's order — it emits unconditional rules before
+ * conditional ones and broader properties before the ones they cover, and that is what makes the
+ * common shapes right. Inside a block, the author's order is what decides. The two agree almost
+ * always, and where they do not the author's loses SILENTLY.
+ *
+ * Measured against plain CSS in Chromium, the same declarations in the same order:
+ *
+ * | written | plain CSS | ours |
+ * |---|---|---|
+ * | `@media { padding: 40px }` then `padding: 8px` | 8px | **40px** |
+ * | `@media { padding: 40px }` then `padding-left: 8px` | left 8px | **left 40px** |
+ * | `@media { &:hover { … } }` then a plain one | same | same — a selector adds specificity |
+ * | two under the SAME condition | same | same — the rank does not separate them |
+ *
+ * The merge cannot answer it: two different keys are two classes, both land, and the sheet breaks
+ * the tie. Reported rather than silently reordered, because the sheet's order is what makes every
+ * other block right and a page nobody edited must not move.
+ *
+ * Only the SELECTOR has to match, because a selector adds specificity and that beats source order
+ * on its own — measured, and it is why the rule would otherwise report correct CSS.
+ */
+function overrideOutOfOrder(block: Block, findings: Finding[]): void {
+  const flat = flatten(block);
+
+  for (const [index, later] of flat.entries()) {
+    for (const earlier of flat.slice(0, index)) {
+      if (earlier.selector !== later.selector) continue;
+      // The same key is the same thing set twice, and the merge already keeps the later one.
+      if (earlier.key === later.key) continue;
+      if (!conflict(earlier.property, later.property)) continue;
+
+      /**
+       * The merge settles it, so the sheet never gets to. A later shorthand CLEARS its own
+       * longhands, and the clear-list carries the context — so it reaches an earlier longhand under
+       * the same conditions and no other. Measured: `padding-left: 40px; padding: 8px` is the same
+       * as plain CSS, and reporting it would be reporting correct CSS.
+       */
+      const sameContext = earlier.conditions.join("|") === later.conditions.join("|");
+      if (sameContext && covers(later.property, earlier.property)) continue;
+
+      if (sheetRank(later) >= sheetRank(earlier)) continue;
+
+      const where = earlier.conditions.length > 0 ? earlier.conditions.join(" ") : `\`${earlier.property}\``;
+      findings.push({
+        rule: "override-out-of-order",
+        at: later.at ?? 0,
+        length: later.property.length,
+        message:
+          `\`${later.property}\` is written to override ${where} above it, and it will not — the ` +
+          `stylesheet emits ${earlier.conditions.length > 0 ? "conditional rules after unconditional ones" : "a shorthand before its own longhands"}, ` +
+          `so the earlier one wins wherever both apply. Write it above, or put it under the same condition.`,
+      });
+      return;
+    }
+  }
 }
 
 /**
