@@ -58,14 +58,14 @@ describe("what a block becomes", () => {
   test("one hole: the expression stays where it was, inside its declaration's entry", () => {
     const out = body(`const a = <div css=@@( color: {{this.accent}}; )>x</div>;\n`);
 
-    expect(out).toMatch(/css=\{_merge\(\{"color":\["r-[0-9a-f]{16}",this\.accent\],\}\)\}/);
+    expect(out).toMatch(/css=\{_merge\(\{"color":\["r-[0-9a-zA-Z]{11}",this\.accent\],\}\)\}/);
   });
 
   test("several holes arrive in source order, each with the declaration it belongs to", () => {
     const out = body(`const a = <div css=@@( color: {{a}}; padding: {{b}}px; )>x</div>;\n`);
 
-    expect(out).toMatch(/"color":\["r-[0-9a-f]{16}",a\],/);
-    expect(out).toMatch(/"padding":\["r-[0-9a-f]{16}",b\],/);
+    expect(out).toMatch(/"color":\["r-[0-9a-zA-Z]{11}",a\],/);
+    expect(out).toMatch(/"padding":\["r-[0-9a-zA-Z]{11}",b\],/);
     expect(out.indexOf('"color"')).toBeLessThan(out.indexOf('"padding"'));
   });
 
@@ -127,7 +127,7 @@ describe("the blocks it found", () => {
     const [flex, border] = result?.blocks ?? [];
 
     expect(result?.blocks).toHaveLength(2);
-    expect(flex.className).toMatch(/^r-[0-9a-f]{16}$/);
+    expect(flex.className).toMatch(/^r-[0-9a-zA-Z]{11}$/);
     expect(flex.css).toBe("display:flex;");
     expect(flex.properties).toEqual([]);
     expect(border.css).toBe(`border-left:var(--${border.className}-0);`);
@@ -411,10 +411,10 @@ describe("a block written as a value", () => {
 
   test("a hole builds the map where it was written, in both places", () => {
     expect(emit(`const panel = @@( color: {{c}}; );\n`)?.code).toMatch(
-      /const panel = _merge\(\{"color":\["r-[0-9a-f]{16}",c\],\}\);/,
+      /const panel = _merge\(\{"color":\["r-[0-9a-zA-Z]{11}",c\],\}\);/,
     );
     expect(emit(`const a = <div css={@@( color: {{c}}; )}>y</div>;\n`)?.code).toMatch(
-      /css=\{_merge\(\{"color":\["r-[0-9a-f]{16}",c\],\}\)\}/,
+      /css=\{_merge\(\{"color":\["r-[0-9a-zA-Z]{11}",c\],\}\)\}/,
     );
   });
 
@@ -449,7 +449,7 @@ describe("a keyframes site", () => {
   test("becomes a name, and the rule goes to the sheet", () => {
     const out = emit(`const slide = @@keyframes(\n  from { opacity: 0; }\n  to { opacity: 1; }\n);\n`);
 
-    expect(out?.code).toMatch(/const slide = "r-[0-9a-f]{16}";/);
+    expect(out?.code).toMatch(/const slide = "r-[0-9a-zA-Z]{11}";/);
     expect(out?.blocks[0].at).toBe("keyframes");
     expect(out?.blocks[0].css).toContain("from{opacity:0;}");
   });
@@ -511,7 +511,7 @@ describe("a reference to a named site", () => {
   test("a registered property is named as a custom property, because that is what it names", () => {
     const out = emit(`const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n`);
 
-    expect(out?.code).toMatch(/const angle = "--r-[0-9a-f]{16}";/);
+    expect(out?.code).toMatch(/const angle = "--r-[0-9a-zA-Z]{11}";/);
     expect(out?.blocks[0].className).toMatch(/^--r-/);
   });
 

@@ -133,6 +133,6 @@ describe("the transformed file", () => {
   test("still contains the author's expression, unmoved and unquoted", () => {
     // The expression sits inside the map the block compiles to, where the author wrote it — the
     // transform rewrites the CSS BETWEEN expressions and never the expressions themselves.
-    expect(result?.code).toMatch(/\[\s*"r-[0-9a-f]{16}"\s*,\s*this\.accent\s*\]/);
+    expect(result?.code).toMatch(/\[\s*"r-[0-9a-zA-Z]{11}"\s*,\s*this\.accent\s*\]/);
   });
 });

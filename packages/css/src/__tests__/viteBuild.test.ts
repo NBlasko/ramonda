@@ -138,7 +138,7 @@ describe("a block, all the way through a production build", () => {
      * so it asserts what must hold of the set: every class the markup names exists in the sheet, and
      * the one with a hole reads the custom property named after ITSELF.
      */
-    const named = [...new Set(js.match(/r-[0-9a-f]{16}/g) ?? [])];
+    const named = [...new Set(js.match(/r-[0-9a-zA-Z]{11}/g) ?? [])];
     expect(named.length).toBeGreaterThan(1);
 
     // The same names on both sides. This is the whole point: the markup names classes, and every one
@@ -260,7 +260,7 @@ describe("a block written in two routes that never load together", () => {
 
     for (const route of ["One", "Two"]) {
       const entry = manifest[`src/${route}.tsx`];
-      const named = readFileSync(join(root, "out", entry.file), "utf8").match(/r-[0-9a-f]{16}/)?.[0];
+      const named = readFileSync(join(root, "out", entry.file), "utf8").match(/r-[0-9a-zA-Z]{11}/)?.[0];
       const loaded = (entry.css ?? []).map((each) => readFileSync(join(root, "out", each), "utf8")).join("");
 
       expect(named).toBeDefined();

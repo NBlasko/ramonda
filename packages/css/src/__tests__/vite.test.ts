@@ -163,7 +163,7 @@ describe("the stylesheet, one module per file", () => {
     const one = transform.call({}, STYLED, "/src/One.tsx")?.code ?? "";
     const two = transform.call({}, STYLED, "/src/Two.tsx")?.code ?? "";
 
-    const className = one.match(/r-[0-9a-f]{16}/)?.[0];
+    const className = one.match(/r-[0-9a-zA-Z]{11}/)?.[0];
     expect(className).toBeDefined();
     expect(two).toContain(className as string);
   });

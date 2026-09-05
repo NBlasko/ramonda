@@ -25,16 +25,16 @@ One hoisted descriptor at module scope, one call at the site.
 import { merge as _merge } from "@ramonda/css";
 
 <div css={_merge({
-  "display": "r-22c8dfe8600286b2",
-  "border-left": ["r-5f9c21b16411478d", isOnline ? "4px solid #10b981" : "4px solid #64748b"],
+  "display": "r-2Z9Nddmm7rY",
+  "border-left": ["r-2Z9Nddmm7rY", isOnline ? "4px solid #10b981" : "4px solid #64748b"],
 })}>
 ```
 
 and the stylesheet gains one rule per declaration
 
 ```css
-.r-22c8dfe8600286b2 { display: flex; }
-.r-5f9c21b16411478d { border-left: var(--r-5f9c21b16411478d-0); }
+.r-2Z9Nddmm7rY { display: flex; }
+.r-2Z9Nddmm7rY { border-left: var(--r-2Z9Nddmm7rY-0); }
 ```
 
 **A block with NO holes is hoisted, and this was measured rather than assumed.** Its merged value

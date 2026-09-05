@@ -20,11 +20,31 @@ import { HOLE } from "./normalise";
  *
  * The length only decides whether that assertion ever fires — and firing is expensive, because the
  * name is already written into the emitted JavaScript by then. So it is set to make the assertion a
- * tripwire that never trips: at 16 hex characters, 200,000 blocks give 1.1e-9. Measured, the extra
- * characters are free — 8, 12 and 16 hex all gzip to the same 46.7 KB, because the name is the part
- * that repeats. See DESIGN.md.
+ * tripwire that never trips: **64 bits**, which at 100,000 rules gives 2.7e-10.
+ *
+ * ## Why base62 rather than hex, and why the width rather than the bits
+ *
+ * Bytes were never the reason to be short — measured, 8, 12 and 16 hex all gzip to the same 46.7 KB,
+ * because the name is the part that repeats. **Reading is the reason.** A block is one class per
+ * DECLARATION now, so an element carries three or four of these and a complicated one carries
+ * twenty-eight, and eighteen characters each is a wall of noise in the markup.
+ *
+ * A wider alphabet is the answer that costs nothing: the same 64 bits need 16 hex characters, 13 in
+ * base36, and **11 in base62**. So the class is `r-` plus 11 rather than `r-` plus 16 — 13 characters
+ * against 18, with the same tripwire. Reducing the BITS would have been the other way to shorten it,
+ * and it is the one that trades the guarantee away.
+ *
+ * Case matters and is safe: a class attribute is matched case-sensitively in standards mode, and a
+ * custom property name is case-sensitive in CSS itself — which is also why `normalise` keeps the case
+ * of one the author writes.
  */
-export const HASH_LENGTH = 16;
+export const HASH_BITS = 64;
+
+/** How many base62 characters those bits need. `Math.ceil(64 / Math.log2(62))`. */
+export const HASH_LENGTH = 11;
+
+/** Digits, lower case, upper case — every character a CSS ident may hold after the first. */
+const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /**
  * `r-` plus the hash of the normalised block.
@@ -35,7 +55,16 @@ export const HASH_LENGTH = 16;
  * no registry and no coordination is the property the whole design rests on.
  */
 export function classNameFor(normalised: string): string {
-  return `r-${createHash("sha256").update(normalised, "utf8").digest("hex").slice(0, HASH_LENGTH)}`;
+  const digest = createHash("sha256").update(normalised, "utf8").digest();
+  // The first 64 bits, as one number, so the encoding below is a base change and not a re-hash.
+  let left = digest.readBigUInt64BE(0);
+
+  let name = "";
+  for (let index = 0; index < HASH_LENGTH; index++) {
+    name = ALPHABET[Number(left % 62n)] + name;
+    left /= 62n;
+  }
+  return `r-${name}`;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Block } from "../compiler/ast";
-import { HASH_LENGTH, classNameFor, substitute, variableNameFor } from "../compiler/names";
+import { HASH_BITS, HASH_LENGTH, classNameFor, substitute, variableNameFor } from "../compiler/names";
 import { normalise } from "../compiler/normalise";
 
 /**
@@ -21,15 +21,42 @@ describe("the class name", () => {
   });
 
   test("starts with a letter, because a class may not start with a digit", () => {
-    expect(classNameFor("display:flex;")).toMatch(/^r-[0-9a-f]+$/);
+    expect(classNameFor("display:flex;")).toMatch(/^r-[0-9a-zA-Z]+$/);
   });
 
-  test("carries the agreed number of hex characters", () => {
-    // 16 is not a guess: the guarantee is the assembly-time assertion that no two distinct blocks
-    // share a name, and the length only decides whether that assertion ever fires. Measured, the
-    // extra characters gzip to nothing — see DESIGN.md.
+  /**
+   * **Base62, and the BITS are what is agreed — the width follows from them.**
+   *
+   * The guarantee is the assembly-time assertion that no two distinct rules share a name; the length
+   * only decides whether it ever fires. Bytes were never the reason to be short, and were measured
+   * not to be: 8, 12 and 16 hex all gzip to the same 46.7 KB. **Reading is the reason.** A block is
+   * one class per DECLARATION now, so an element carries three or four and a complicated one carries
+   * twenty-eight — and eighteen characters each is a wall of noise in the markup.
+   *
+   * A wider alphabet costs nothing: the same 64 bits are 16 hex characters, 13 in base36, 11 in
+   * base62. Reducing the bits would have been the other way to shorten it, and it is the one that
+   * trades the guarantee away.
+   */
+  test("carries 64 bits, in as few characters as an alphabet allows", () => {
     expect(classNameFor("display:flex;")).toHaveLength("r-".length + HASH_LENGTH);
-    expect(HASH_LENGTH).toBe(16);
+    expect(HASH_BITS).toBe(64);
+    expect(HASH_LENGTH).toBe(Math.ceil(HASH_BITS / Math.log2(62)));
+  });
+
+  test("and the whole alphabet is reachable, or it is not the width it claims", () => {
+    const seen = new Set<string>();
+    for (let index = 0; index < 20_000; index++) {
+      for (const character of classNameFor(`color:c${index};`).slice(2)) seen.add(character);
+    }
+
+    expect(seen.size).toBe(62);
+  });
+
+  test("two hundred thousand distinct declarations give two hundred thousand distinct names", () => {
+    const seen = new Set<string>();
+    for (let index = 0; index < 200_000; index++) seen.add(classNameFor(`color:c${index};`));
+
+    expect(seen.size).toBe(200_000);
   });
 
   test("two different blocks do not land on the same name", () => {

@@ -52,12 +52,12 @@ describe("a build", () => {
     const root = project({ "index.tsx": APP });
     const { js, css } = outputs(await build(root));
 
-    expect(js).toMatch(/r-[0-9a-f]{16}/);
+    expect(js).toMatch(/r-[0-9a-zA-Z]{11}/);
     expect(css).toContain("@layer ramonda");
     expect(css).toContain("display: flex");
 
     // The same class in the JavaScript and in the stylesheet, which is the only thing that matters.
-    const named = /r-[0-9a-f]{16}/.exec(js ?? "")?.[0];
+    const named = /r-[0-9a-zA-Z]{11}/.exec(js ?? "")?.[0];
     expect(css).toContain(`.${named}`);
   });
 
@@ -67,7 +67,7 @@ describe("a build", () => {
     });
     const { js, css } = outputs(await build(root));
 
-    expect(css).toMatch(/var\(--r-[0-9a-f]{16}-0\)/);
+    expect(css).toMatch(/var\(--r-[0-9a-zA-Z]{11}-0\)/);
     expect(js).toContain("`${w}px`");
   });
 
@@ -147,7 +147,7 @@ export const panel = @@(\n  gap: {{\`\${width}px\`}};\n);
 
     // The annotation is TypeScript, and a `ts` loader is what strips it rather than choking on it.
     expect(js).not.toContain(": number");
-    expect(css).toMatch(/var\(--r-[0-9a-f]{16}-0\)/);
+    expect(css).toMatch(/var\(--r-[0-9a-zA-Z]{11}-0\)/);
   });
 
   test("a block in a .jsx file keeps its JSX", async () => {
@@ -159,7 +159,7 @@ export default c;
 `,
     });
 
-    expect(outputs(await build(root)).js).toMatch(/r-[0-9a-f]{16}/);
+    expect(outputs(await build(root)).js).toMatch(/r-[0-9a-zA-Z]{11}/);
   });
 });
 

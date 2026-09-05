@@ -24,13 +24,13 @@ describe("a spread", () => {
   test("becomes an argument of the merge, in the position it was written", () => {
     const out = emit(`const card = @@(\n  ...{{base}};\n  opacity: 0.5;\n);\n`);
 
-    expect(out).toMatch(/_merge\(base,\s*\{"opacity":"r-[0-9a-f]{16}",\}\)/);
+    expect(out).toMatch(/_merge\(base,\s*\{"opacity":"r-[0-9a-zA-Z]{11}",\}\)/);
   });
 
   test("what is written above it merges first, which is what later-wins means", () => {
     const out = emit(`const card = @@(\n  display: flex;\n  ...{{base}};\n);\n`);
 
-    expect(out).toMatch(/_merge\(\{"display":"r-[0-9a-f]{16}",\},\s*base\)/);
+    expect(out).toMatch(/_merge\(\{"display":"r-[0-9a-zA-Z]{11}",\},\s*base\)/);
   });
 
   test("the expression is the author's own, byte for byte", () => {
@@ -52,12 +52,14 @@ describe("a conditional group", () => {
       `const card = @@(\n  cursor: pointer;\n  @@if {{this.off}} {\n    cursor: not-allowed;\n  }\n);\n`,
     );
 
-    expect(out).toMatch(/_merge\(\{"cursor":"r-[0-9a-f]{16}",\},\s*this\.off && \{"cursor":"r-[0-9a-f]{16}",\}\)/);
+    expect(out).toMatch(
+      /_merge\(\{"cursor":"r-[0-9a-zA-Z]{11}",\},\s*this\.off && \{"cursor":"r-[0-9a-zA-Z]{11}",\}\)/,
+    );
   });
 
   test("the two `cursor` entries are different classes, so the merge has something to choose", () => {
     const out = emit(`const card = @@(\n  cursor: pointer;\n  @@if {{this.off}} { cursor: not-allowed; }\n);\n`);
-    const found = out.match(/r-[0-9a-f]{16}/g) ?? [];
+    const found = out.match(/r-[0-9a-zA-Z]{11}/g) ?? [];
 
     expect(new Set(found).size).toBe(2);
   });
@@ -65,7 +67,7 @@ describe("a conditional group", () => {
   test("a nested group is a conjunction, because that is what nesting means", () => {
     const out = emit(`const card = @@(\n  @@if {{a}} {\n    @@if {{b}} { opacity: 0.5; }\n  }\n);\n`);
 
-    expect(out).toMatch(/_merge\(a && b && \{"opacity":"r-[0-9a-f]{16}",\}\)/);
+    expect(out).toMatch(/_merge\(a && b && \{"opacity":"r-[0-9a-zA-Z]{11}",\}\)/);
   });
 
   test("declarations around a group keep their place", () => {
@@ -79,14 +81,14 @@ describe("a conditional group", () => {
   test("a selector inside a group is still a selector on its own rule", () => {
     const out = emit(`const card = @@(\n  @@if {{c}} {\n    &:hover { color: red; }\n  }\n);\n`);
 
-    expect(out).toMatch(/c && \{":hover\|color":"r-[0-9a-f]{16}",\}/);
+    expect(out).toMatch(/c && \{":hover\|color":"r-[0-9a-zA-Z]{11}",\}/);
   });
 
   test("and a group inside a selector means the same thing", () => {
     const inside = emit(`const card = @@(\n  &:hover {\n    @@if {{c}} { color: red; }\n  }\n);\n`);
     const around = emit(`const card = @@(\n  @@if {{c}} {\n    &:hover { color: red; }\n  }\n);\n`);
 
-    expect(inside.match(/r-[0-9a-f]{16}/)?.[0]).toBe(around.match(/r-[0-9a-f]{16}/)?.[0]);
+    expect(inside.match(/r-[0-9a-zA-Z]{11}/)?.[0]).toBe(around.match(/r-[0-9a-zA-Z]{11}/)?.[0]);
   });
 });
 
