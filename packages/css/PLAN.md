@@ -1256,8 +1256,32 @@ nesting, a descendant, a combined `&:hover .title`, a `@media` override and a `@
 viewport and a wide one: **byte-identical computed style** both times. Display, alignment, gap,
 padding, both colours, radius, the descendant's weight and its decoration.
 
-**AC3b — the emission.** The map, the per-declaration hash, and the site becoming a merge. Still to
-do.
+**AC3b — the emission. NOT STARTED, and one design question has to be answered first.**
+
+Every site becomes a `merge( … )` call, because the framework takes a VALUE and a block now compiles
+to a map. That is right for a composed site and for one with holes — both already allocate per
+render, because both depend on something only the render knows.
+
+**It is wrong for the common case, and this design deliberately removed that cost once already.** A
+block with no holes and no composition is a module constant today: `css={_s0}`, one allocation for
+the life of the program however many elements carry it. Naively, atomic makes it `merge(_s0)` — an
+allocation per element per render, for a value that cannot change.
+
+The answer is presumably to hoist the merged value where every argument is static —
+`const _v0 = merge(_s0);` at module scope — and to emit a call only where something is conditional.
+**That is a decision with a measurement behind it, not a detail**, so it is written down here rather
+than made in passing:
+
+- what fraction of real sites are fully static (this repository's own blocks are a corpus);
+- what `merge` costs per element against the allocation it replaces — 0.64 µs was measured for four
+  maps and 24 declarations, and a one-map merge is the case that matters here;
+- whether a hoisted static value and a per-render composed one can share one spelling at the site, or
+  whether the transform emits two shapes.
+
+The rest of AC3b is mechanical: one hash per declaration, the map, the `~` clear-lists for the
+shorthands a block writes, and the site rewrite. It changes the emitted code, so it lands with every
+transform, Vite, esbuild and docs assertion in one commit — which is why it is worth having the
+question settled before it starts.
 
 **AC4 — the runtime merge. DONE 2026-09-05.** Two functions, because one shape cannot do both jobs:
 
