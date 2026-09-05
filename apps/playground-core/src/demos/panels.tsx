@@ -253,7 +253,9 @@ export class StyleBlock extends Component {
         border-left: {{`${this.weight}px`}} solid #ff0055;
         padding-left: {{`${this.weight + 8}px`}};
         transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
-        &:hover { border-left-color: #00b37e; }
+        &:hover {
+          border-left-color: #00b37e;
+        }
       )}>
         <p className="label">one class, one custom property per hole</p>
         <button onclick={this.thicker}>border {this.weight}px — thicker</button>

@@ -188,3 +188,91 @@ describe("a block written as a value", () => {
     expect(held?.restore(held.text)).toBe(source);
   });
 });
+
+/**
+ * The CSS inside a block, laid out.
+ *
+ * ## What changed and why
+ *
+ * For a long time the answer was "the block's inside is the author's and is not re-laid at all",
+ * which was defensible while nothing could parse it. It stopped being defensible once a formatter
+ * ran on save: `&:hover { color: red; gap: 8px; }` stayed on one line however long it grew, and a
+ * blank line came back with the block's indentation on it — trailing whitespace, which is the one
+ * thing every formatter removes.
+ *
+ * ## The two rules
+ *
+ * **A one-line block stays one line.** `css=@( display: flex; )` is a deliberate shape and breaking
+ * it would be the formatter having an opinion about the markup.
+ *
+ * **A block already written across lines is laid out fully:** one declaration per line, a nested
+ * rule's body one step in, and its `}` back out.
+ *
+ * ## What it must not touch
+ *
+ * A comment, because the PARSER drops them — measured, a block comment is not in the AST at all — so a
+ * layout built from the parse would delete the author's own notes. This works on the text.
+ *
+ * And anything inside a hole, a string, `url( … )` or a function: a `;` or a `{` in one of those is
+ * not structure, and treating it as structure is how a formatter breaks working code.
+ */
+describe("the CSS inside a block", () => {
+  const laid = (source: string) => {
+    const held = placehold(source);
+    // The formatter is not run: what is asserted is the LAYOUT, which is `restore`'s half.
+    return held?.restore(held.text);
+  };
+
+  test("a nested rule's body goes to its own line, one step in", () => {
+    const out = laid(`const a = <div css={@(\n  color: red;\n  &:hover { color: blue; gap: 8px; }\n)}>x</div>;\n`);
+
+    expect(out).toBe(
+      `const a = <div css={@(\n  color: red;\n  &:hover {\n    color: blue;\n    gap: 8px;\n  }\n)}>x</div>;\n`,
+    );
+  });
+
+  test("and a rule inside a rule goes two steps in", () => {
+    const out = laid(`const a = <div css={@(\n  &:hover { & .title { color: red; } }\n)}>x</div>;\n`);
+
+    expect(out).toBe(
+      `const a = <div css={@(\n  &:hover {\n    & .title {\n      color: red;\n    }\n  }\n)}>x</div>;\n`,
+    );
+  });
+
+  test("a blank line is kept and carries no whitespace", () => {
+    const out = laid(`const a = <div css={@(\n  color: red;\n\n\n  gap: 8px;\n)}>x</div>;\n`);
+
+    expect(out).toBe(`const a = <div css={@(\n  color: red;\n\n  gap: 8px;\n)}>x</div>;\n`);
+  });
+
+  test("a one-line block is left alone", () => {
+    const source = `const a = <div css={@( display: flex; )}>x</div>;\n`;
+
+    expect(laid(source)).toBe(source);
+  });
+
+  test.each([
+    ["a hole", `  color: {{a ? "red" : "blue"}};`],
+    ["a hole holding braces", `  color: {{ {a: 1}.a }};`],
+    ["a url with a semicolon", `  background: url("a;b.png");`],
+    ["a quoted brace", `  content: "}";`],
+    ["a function", `  width: calc(100% - 8px);`],
+  ])("%s is not structure", (_what, declaration) => {
+    const out = laid(`const a = <div css={@(\n${declaration}\n)}>x</div>;\n`);
+
+    expect(out).toBe(`const a = <div css={@(\n${declaration}\n)}>x</div>;\n`);
+  });
+
+  test("a comment survives, because the parser does not keep them", () => {
+    const out = laid(`const a = <div css={@(\n  /* why */\n  color: red;\n)}>x</div>;\n`);
+
+    expect(out).toContain("/* why */");
+  });
+
+  /** The property nobody notices until it is missing: running it twice changes nothing. */
+  test("laying out what is already laid out changes nothing", () => {
+    const once = laid(`const a = <div css={@(\n  &:hover { color: red; }\n)}>x</div>;\n`) as string;
+
+    expect(laid(once)).toBe(once);
+  });
+});

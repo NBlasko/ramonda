@@ -130,25 +130,155 @@ function restore(formatted: string, blocks: readonly { text: string; wrap: boole
 }
 
 /**
- * One block at the indentation the formatter settled on.
+ * One block at the indentation the formatter settled on, and its CSS laid out inside that.
  *
  * The first line stays as it is — it begins where the placeholder was, which the formatter has
- * already positioned. The last takes the outer indentation, because it closes what the first opened.
- * Everything between is one step in.
+ * already positioned. Everything after it is re-laid, and the last line closes what the first opened.
  *
- * A one-line block is returned untouched: there is no inside to indent, and adding a newline would
- * be the formatter's decision to make rather than this one's.
+ * **A one-line block is returned untouched.** `css=@( display: flex; )` is a deliberate shape and
+ * breaking it would be the formatter having an opinion about the markup rather than about the CSS.
  */
 function relaid(block: string, outer: string, inner: string): string {
   const lines = block.split("\n");
   if (lines.length === 1) return block;
 
-  return lines
-    .map((line, index) => {
-      if (index === 0) return line;
-      return index === lines.length - 1 ? outer + line.trim() : inner + line.trim();
-    })
-    .join("\n");
+  const step = inner.slice(outer.length);
+  const body = lines.slice(1, -1).join("\n");
+
+  return [lines[0], ...layout(body, inner, step), outer + lines[lines.length - 1].trim()].join("\n");
+}
+
+/**
+ * The CSS between a block's parens, one declaration to a line and a nested rule's body one step in.
+ *
+ * ## Why it works on the TEXT rather than on the parse
+ *
+ * The parser drops comments — measured, a block comment between two declarations is not in the AST at
+ * all — so a layout emitted from the parse would delete the author's own notes. Everything here is
+ * the author's bytes with the whitespace between them rewritten.
+ *
+ * ## What is not structure
+ *
+ * A `;` or a brace inside a hole, a string, a comment or a function is not a boundary, and treating
+ * one as a boundary is how a formatter breaks working code. Each of those is stepped over whole,
+ * which is also what keeps `{{ … }}` byte-for-byte: the expression inside it is TypeScript and none
+ * of this may touch it.
+ */
+function layout(body: string, indent: string, step: string): string[] {
+  const out: string[] = [];
+  let line = "";
+  let depth = 0;
+  let parens = 0;
+  /**
+   * Whether this physical line has produced anything yet.
+   *
+   * Without it, the newline after a `;` reads as a blank line the author wrote — `line` is empty by
+   * then, because emitting cleared it — and every declaration gains one below it.
+   */
+  let fresh = true;
+
+  /** The line so far, at its depth — or a blank line, which carries no indentation of its own. */
+  const emit = (): void => {
+    const text = line.trim();
+    line = "";
+    if (text !== "") out.push(indent + step.repeat(depth) + text);
+  };
+
+  /** A blank line the author wrote, kept once however many they wrote. */
+  const blank = (): void => {
+    if (out.length > 0 && out[out.length - 1] !== "") out.push("");
+  };
+
+  for (let index = 0; index < body.length; index++) {
+    const code = body.charCodeAt(index);
+
+    if (code !== 10 /* \n */ && code !== 32 && code !== 9) fresh = false;
+
+    if (code === 47 /* / */ && body.charCodeAt(index + 1) === 42 /* * */) {
+      const end = body.indexOf("*/", index + 2);
+      const stop = end === -1 ? body.length : end + 2;
+      line += body.slice(index, stop);
+      index = stop - 1;
+      // A comment on a line of its own stays on one.
+      if (line.trim() === body.slice(index + 1 - (stop - index), stop).trim()) emit();
+      continue;
+    }
+
+    if (code === 34 /* " */ || code === 39 /* ' */) {
+      const stop = endOfString(body, index);
+      line += body.slice(index, stop);
+      index = stop - 1;
+      continue;
+    }
+
+    if (code === 123 /* { */ && body.charCodeAt(index + 1) === 123) {
+      const stop = endOfHole(body, index);
+      line += body.slice(index, stop);
+      index = stop - 1;
+      continue;
+    }
+
+    if (code === 40 /* ( */) {
+      parens++;
+      line += "(";
+      continue;
+    }
+    if (code === 41 /* ) */) {
+      parens = Math.max(0, parens - 1);
+      line += ")";
+      continue;
+    }
+
+    if (parens === 0 && code === 123 /* { */) {
+      line = `${line.trim()} {`;
+      emit();
+      depth++;
+      continue;
+    }
+
+    if (parens === 0 && code === 125 /* } */) {
+      emit();
+      depth = Math.max(0, depth - 1);
+      out.push(indent + step.repeat(depth) + "}");
+      continue;
+    }
+
+    if (parens === 0 && code === 59 /* ; */) {
+      line = `${line.trim()};`;
+      emit();
+      continue;
+    }
+
+    if (code === 10 /* \n */) {
+      if (fresh) blank();
+      else if (line.trim() !== "") line += " ";
+      fresh = true;
+      continue;
+    }
+
+    line += String.fromCharCode(code);
+  }
+
+  emit();
+  // A trailing blank line would put an empty one before the closing paren, which nobody wrote.
+  while (out.length > 0 && out[out.length - 1] === "") out.pop();
+  return out;
+}
+
+/** Past the closing quote of the string starting at `at`, or the end of the text. */
+function endOfString(text: string, at: number): number {
+  const quote = text.charCodeAt(at);
+  for (let index = at + 1; index < text.length; index++) {
+    if (text.charCodeAt(index) === 92 /* \\ */) index++;
+    else if (text.charCodeAt(index) === quote) return index + 1;
+  }
+  return text.length;
+}
+
+/** Past the `}}` closing the hole starting at `at`, or the end of the text. */
+function endOfHole(text: string, at: number): number {
+  const close = text.indexOf("}}", at + 2);
+  return close === -1 ? text.length : close + 2;
 }
 
 /**
