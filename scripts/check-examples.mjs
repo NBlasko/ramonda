@@ -25,7 +25,7 @@
  *   node scripts/check-examples.mjs query     # only paths containing "query"
  */
 import { analyzeProgram } from "@ramonda/check";
-import { mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
+import { checkBlock, checkText, findBlocks, mayHoldABlock, readBlock, virtualFile } from "@ramonda/css/compiler";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -558,6 +558,8 @@ for (const file of files) {
       file,
       index,
       line: block.line,
+      /** The example as WRITTEN, for the CSS rules — they answer in the author's coordinates. */
+      code: block.code,
       offset: shaped.offset,
       ambient,
       expectReport: block.expectReport,
@@ -667,6 +669,44 @@ for (const group of groups.values()) {
 
   const globalsFile = join(work, `__globals-${groupIndex++}.d.ts`);
   writeFileSync(globalsFile, ramondaGlobals(declaredHere));
+
+  /**
+   * The CSS rules, which the type check cannot stand in for.
+   *
+   * Measured by planting one: `display: flexx` in a documented example passed this gate in silence.
+   * `display` has an open grammar, so there is no union for TypeScript to refuse it against — which
+   * is the exact case `unknown-value` exists for. A page can teach a value that does not exist, and
+   * this repository has shipped three wrong examples that way already.
+   *
+   * Read from the example's own text rather than from the virtual copy: the rules answer in the
+   * author's coordinates, which is what a line number here has to be.
+   */
+  for (const unit of group.units) {
+    if (!mayHoldABlock(unit.code)) continue;
+    for (const site of findBlocks(unit.code)) {
+      let read;
+      try {
+        read = readBlock(unit.code, site.open, unit.file);
+      } catch {
+        // A block the parser refuses is already reported as a refusal, above.
+        continue;
+      }
+      const found = [...checkText(unit.code, site.open, read.end), ...checkBlock(read.block)];
+      if (found.length === 0) continue;
+      const list = byUnit.get(unit) ?? [];
+      for (const finding of found) {
+        const before = unit.code.slice(0, finding.at);
+        const line = before.split("\n").length - 1;
+        list.push({
+          where: `${unit.file}:${unit.line + line}`,
+          column: finding.at - (before.lastIndexOf("\n") + 1) + 1,
+          message: `${finding.rule}: ${finding.message}`,
+          code: 0,
+        });
+      }
+      byUnit.set(unit, list);
+    }
+  }
 
   const program = ts.createProgram([globalsFile, ...ambientFiles, ...group.units.map((u) => u.path)], options);
   for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
@@ -807,7 +847,10 @@ if (total === 0 && reported.length === 0 && stale.length === 0) {
 if (total > 0) console.error(`\n[examples] ${total} problem(s) in ${byUnit.size} of ${units.length} code blocks:\n`);
 for (const [unit, list] of byUnit) {
   console.error(`  ${unit.file}  (block ${unit.index + 1})`);
-  for (const problem of list) console.error(`    ${problem.where}  TS${problem.code}: ${problem.message}`);
+  // A CSS rule has no TypeScript code and says its own name in the message — see the block above.
+  for (const problem of list) {
+    console.error(`    ${problem.where}  ${problem.code === 0 ? "" : `TS${problem.code}: `}${problem.message}`);
+  }
   console.error("");
 }
 if (total > 0)

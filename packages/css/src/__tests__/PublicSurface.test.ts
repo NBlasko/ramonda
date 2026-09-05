@@ -16,6 +16,7 @@ const COMPILER = [
   "CssBlockError",
   "Sheet",
   "checkBlock",
+  "checkText",
   "HASH_LENGTH",
   "HOLE",
   "classNameFor",
