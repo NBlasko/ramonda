@@ -89,10 +89,14 @@ export interface VirtualFile {
   /**
    * Where the generated prologue ends.
    *
-   * A diagnostic before this is about the declaration this wrote — the helper, and the type it is
-   * declared against. It maps nowhere, like all scaffolding, but it is the one scaffolding a caller
-   * must NOT drop: if the shape cannot be resolved, everything becomes `any`, nothing is checked,
-   * and a silent pass is the worst answer a checker can give.
+   * A diagnostic before this and mapping NOWHERE is about the declaration this wrote — the helper,
+   * and the type it is declared against. It is the one scaffolding a caller must not drop: if the
+   * shape cannot be resolved, everything becomes `any`, nothing is checked, and a silent pass is the
+   * worst answer a checker can give.
+   *
+   * The author's own leading comments are copied in front of the prologue, so they are before this
+   * too — and they map, which is how a diagnostic about a bad `/// <reference … />` still lands on
+   * the line the author wrote it. Mapping is what tells the two apart, not the offset alone.
    */
   readonly preamble: number;
   /**
@@ -160,6 +164,8 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   if (sites.length === 0) return undefined;
 
   const segments: Segment[] = [];
+  /** How far the author's text has been accounted for. Set once the leading trivia is copied. */
+  let cursor = 0;
   let code = "";
 
   /** Text this file invented. Nothing maps to it, so a diagnostic in it is dropped. */
@@ -183,6 +189,22 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     }
     code += text;
   };
+
+  /**
+   * The author's leading comments, copied BEFORE anything of ours is written.
+   *
+   * Two directives only work in a file's leading trivia, and putting a `declare` in front of them
+   * took both away — measured: `// @ts-nocheck` was ignored, so every error in a file the author had
+   * switched off came back, and `/// <reference … />` was dropped, so the types it pulls in were
+   * missing and the check reported code that is fine. Both are FALSE reports, which is the one
+   * failure a checker does not survive.
+   *
+   * Nothing moves: the `declare` goes at the start of the line the first statement was already on,
+   * which is what it did at line 1 before.
+   */
+  const top = afterLeadingTrivia(source);
+  if (top > 0) copy(0, top);
+  cursor = top;
 
   const block = binding(source, "__block");
   const from = JSON.stringify(options.properties ?? "@ramonda/css/properties");
@@ -230,7 +252,6 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   /** What a reference stands for, so the check reads the file the way the build compiles it. */
   const references = namedSites(source);
 
-  let cursor = 0;
   for (const site of sites) {
     // A `name=@@(` found INSIDE a block belongs to that block's text, not to the file. The transform
     // refuses one; here it is simply passed over, because this file exists to be type-checked and a
@@ -425,6 +446,37 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     copy(span.start, span.end);
     write(")");
   }
+}
+
+/**
+ * Where the author's leading comments end, which is where a `declare` of ours may first go.
+ *
+ * Only whitespace and comments are skipped — the first thing that is neither is where the file's
+ * own code begins, and a directive that has to be above it stays above it. A file that is nothing
+ * but comments has no code to put anything in front of, so the whole file is trivia and the answer
+ * is its length.
+ */
+function afterLeadingTrivia(source: string): number {
+  let at = 0;
+  while (at < source.length) {
+    const code = source.charCodeAt(at);
+    if (code === 32 || code === 9 || code === 10 || code === 13 || code === 12) {
+      at++;
+      continue;
+    }
+    if (code === 47 /* / */ && source.charCodeAt(at + 1) === 47) {
+      const end = source.indexOf("\n", at + 2);
+      at = end === -1 ? source.length : end + 1;
+      continue;
+    }
+    if (code === 47 && source.charCodeAt(at + 1) === 42 /* * */) {
+      const end = source.indexOf("*/", at + 2);
+      at = end === -1 ? source.length : end + 2;
+      continue;
+    }
+    return at;
+  }
+  return at;
 }
 
 /**

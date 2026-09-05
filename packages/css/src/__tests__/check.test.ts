@@ -45,7 +45,11 @@ function project(files: Record<string, string>, shape: string | null = join(PACK
 
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "src", "jsx.d.ts"), JSX_TYPES);
-  for (const [name, text] of Object.entries(files)) writeFileSync(join(root, "src", name), text);
+  for (const [name, text] of Object.entries(files)) {
+    const path = join(root, "src", name);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, text);
+  }
 
   writeFileSync(
     join(root, "tsconfig.json"),
@@ -461,5 +465,61 @@ describe("a reference to a named site", () => {
     });
 
     expect(report.findings.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * What has to stay at the TOP of the author's file, because TypeScript reads it there or not at all.
+ *
+ * The virtual file writes a `declare` in front of the author's text, and that used to go before
+ * everything — including the leading comments, which is where two directives live and are the only
+ * place they work:
+ *
+ * | written | what happened |
+ * |---|---|
+ * | `// @ts-nocheck` | ignored — every error in a file the author switched off came back |
+ * | `/// <reference types="…" />` | **dropped**, so the types it pulls in were missing and the check reported code that is fine |
+ *
+ * Both are false reports, which is the one failure a checker does not survive. The leading trivia is
+ * copied first now and the `declare` goes after it, at the start of the line the author's first
+ * statement was already on — so the line numbers are the same and the directives are still first.
+ */
+describe("a file whose first lines are directives", () => {
+  test("`@ts-nocheck` switches the file off, block and all", () => {
+    const report = check({
+      "Card.tsx": `// @ts-nocheck\nconst n: number = "no";\nconst a = <div css=@@( display: flex; )>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("and it does not switch off a file that never asked", () => {
+    const report = check({
+      "Card.tsx": `const n: number = "no";\nconst a = <div css=@@( display: flex; )>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+  });
+
+  /**
+   * OUTSIDE `include`, or the test proves nothing: a `.d.ts` beside the sources is in the program
+   * anyway, and the first version of this passed with the reference already broken.
+   */
+  test("a triple-slash reference still pulls its types in", () => {
+    const report = check({
+      "../outside/globals.d.ts": `declare const PLANTED: string;\n`,
+      "Card.tsx": `/// <reference path="../outside/globals.d.ts" />\nconst a = <div css=@@( display: flex; )>{PLANTED}</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("a licence header above a block does not move anything", () => {
+    const report = check({
+      "Card.tsx": `/*\n * Copyright somebody.\n */\nconst a = <div css=@@(\n  dsiplay: flex;\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].line).toBe(5);
   });
 });
