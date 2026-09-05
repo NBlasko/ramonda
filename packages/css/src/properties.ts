@@ -32,6 +32,9 @@
  * Regenerate with `node scripts/build-css-properties.mjs`; `pnpm check` runs it with `--check`.
  */
 export type { CssGlobal, CssProperties, CssValue, Keyword } from "./properties.generated";
+export type { StyleValue } from "./types";
+
+import type { StyleValue } from "./types";
 
 /**
  * What a NAMED site's body is typed by — `@@font-face( … )`, `@@property( … )`.
@@ -84,6 +87,31 @@ export type CssBlockShape = Partial<CssProperties> & {
 export type CssKeyframesShape = { [frame: string]: CssBlockShape[] };
 
 /**
+ * The brand on a compiled block: not a field, and not forgeable.
+ *
+ * A hand-written `{ className, properties, values }` has the same three fields and is NOT a compiled
+ * block — it carries no map, so spreading one would compose nothing, quietly. A `unique symbol` is
+ * what makes the difference visible to the type checker; it emits nothing and exists at no runtime.
+ */
+declare const COMPILED: unique symbol;
+
+/**
+ * What a `@@( … )` compiles to, as an editor sees it.
+ *
+ * **The helper that stands for a block used to return `never`**, which is assignable everywhere and
+ * so never got in the way — and read, on hover, as *this is nothing*. A binding holding a block is
+ * exactly what an author points at to ask what a block IS, so the answer is the value the `css` prop
+ * takes, under a name that says so.
+ *
+ * It extends {@link StyleValue} rather than restating it: the shape is declared twice already, once
+ * here and once in the framework, and `scripts/check-css-contract.mjs` is what keeps those two from
+ * drifting. A third copy would be a third place to drift.
+ */
+export interface CssBlock extends StyleValue {
+  readonly [COMPILED]: true;
+}
+
+/**
  * A condition that can never be false is a group that can never be off.
  *
  * The message IS the type, so TypeScript prints it as the expected parameter and there is no
@@ -111,6 +139,6 @@ export type CssCondition<T> = [T] extends [(...args: never[]) => unknown]
  * closely it reads. `never` is what a block is in the virtual file — the helper that stands for one
  * returns it — and `never` is assignable to everything, which is exactly why a real block passes.
  */
-export type CssSpreadable<T> = [T] extends [never]
+export type CssSpreadable<T> = [T] extends [CssBlock]
   ? T
   : "only a style block can be spread — this is not one, so write the declarations out";

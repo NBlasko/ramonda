@@ -293,9 +293,9 @@ describe("a setup that would otherwise pass silently", () => {
       ),
     );
 
-    // Three, because the virtual file declares three types against that module now — the block's
-    // shape and composition's two. Each missing one is its own setup fault, and each is reported.
-    expect(report.findings).toHaveLength(3);
+    // Four, because the virtual file names four types from that module — the block's shape, what a
+    // block IS, and composition's two. Each missing one is its own setup fault, and each is reported.
+    expect(report.findings).toHaveLength(4);
     expect(report.findings.map((one) => one.message).join(" ")).toContain("CssBlockShape");
   });
 
@@ -614,5 +614,48 @@ describe("a spread", () => {
     });
 
     expect(report.findings[0].line).toBe(4);
+  });
+});
+
+/**
+ * What a block's own binding LOOKS like when you hover it.
+ *
+ * The virtual file's helper returned `never`, which is assignable everywhere and so never got in the
+ * way — and read, in an editor, as *this is nothing*. A binding holding a block is the one thing an
+ * author points at to ask what a block IS, so the answer has to be the value the `css` prop takes.
+ *
+ * Branded, and that is not decoration: a hand-written object with the same three fields is not a
+ * compiled block. It has no map behind it, so spreading one would compose nothing — quietly, which
+ * is the failure this package keeps finding.
+ */
+describe("the type a block has", () => {
+  test("a binding holding a block is a block, not `never`", () => {
+    const report = check({
+      "Card.tsx":
+        `const panel = @@( display: flex; );\n` +
+        `const named: import("@ramonda/css/properties").CssBlock = panel;\n` +
+        `export { named };\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("and it still goes where a compiled value goes", () => {
+    const report = check({
+      "Card.tsx": `const panel = @@( display: flex; );\nconst a = <div css={panel}>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("a hand-written object with the same fields is not one", () => {
+    const report = check({
+      "Card.tsx":
+        `const forged = { className: "r-x", properties: [], values: [] };\n` +
+        `const a = <div css=@@( ...{{forged}}; )>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toMatch(/style block/);
   });
 });

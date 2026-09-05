@@ -214,7 +214,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * module, which changes what the author's own code means. An import TYPE in a type position does
    * not.
    */
-  write(`declare function ${block}(declarations: import(${from}).CssBlockShape[]): never;`);
+  write(`declare function ${block}(declarations: import(${from}).CssBlockShape[]): import(${from}).CssBlock;`);
 
   /**
    * Composition's two helpers, and each is its own ARRAY ELEMENT rather than something wrapping a

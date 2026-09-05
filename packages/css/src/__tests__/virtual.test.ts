@@ -127,8 +127,10 @@ describe("what a block becomes", () => {
     const file = build(`const a = <div css=@@( display: flex; )>x</div>;\n`);
     const preamble = file?.code.slice(0, file.preamble) ?? "";
 
+    // Not `never`, which is what it used to return: assignable everywhere and so never in the way,
+    // and read on hover as *this is nothing*. A binding holding a block is what an author points at.
     expect(preamble).toContain(
-      `declare function __block(declarations: import("./properties").CssBlockShape[]): never;`,
+      `declare function __block(declarations: import("./properties").CssBlockShape[]): import("./properties").CssBlock;`,
     );
     expect(preamble).toContain(`__cond<T>(condition: import("./properties").CssCondition<T>): never;`);
     expect(preamble).toContain(`__from<T>(block: import("./properties").CssSpreadable<T>): never;`);
