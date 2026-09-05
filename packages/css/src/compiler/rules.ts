@@ -362,11 +362,18 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
 }
 
 /**
- * A value that has to be a PROPERTY NAME — `transition-property`, `will-change`.
+ * A value whose bare words are keywords or PROPERTY NAMES — `transition-property`, `will-change`,
+ * and the `transition` shorthand.
  *
  * Their grammars admit a free identifier, which is normally the honest reason to check nothing: a
  * name somebody invented cannot be told from a name somebody mistyped. Here it can, because the
  * identifier is a property name and that is a closed set this package already generates.
+ *
+ * **The shorthand is checked by elimination rather than by a model of its grammar.** `transition`
+ * mixes a property, two times and an easing function in one comma-separated list, and nothing here
+ * parses that. It does not have to: a time is not a bare word, `cubic-bezier( … )` is a function, and
+ * the keywords come from the longhands — so what is left is a property name. `animation` is
+ * deliberately not treated the same way, because `animation-name` is the author's own `@keyframes`.
  *
  * **Three things are not typos and must not be reported.** A vendor-prefixed property is not in the
  * generated list, which holds only unprefixed names. A custom property is animatable and is the
@@ -385,7 +392,8 @@ function propertyNames(item: Declaration, accepted: string, findings: Finding[])
       at: word.at ?? item.valueAt ?? item.at ?? 0,
       length: word.text.length,
       message:
-        `\`${item.property}\` takes a property name, and \`${word.text}\` is not one.` +
+        `\`${item.property}\` does not accept \`${word.text}\` — it takes a property name` +
+        (keywords.size === 0 ? "." : ` or one of ${[...keywords].sort().join(", ")}.`) +
         (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
     });
   }

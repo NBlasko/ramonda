@@ -382,6 +382,7 @@ export const KEYWORDS: Readonly<Record<string, string>> = {
  * than a set of names.
  */
 export const PROPERTY_NAMED: Readonly<Record<string, string>> = {
+  "transition": "all allow-discrete ease ease-in ease-in-out ease-out linear none normal step-end step-start",
   "transition-property": "all none",
   "will-change": "auto contents scroll-position",
 };

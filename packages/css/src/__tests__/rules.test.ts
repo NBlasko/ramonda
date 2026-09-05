@@ -532,8 +532,46 @@ describe("a value that has to be a property name", () => {
     expect(check(css)).toEqual([]);
   });
 
-  /** The shorthand is left alone, and the test says so rather than leaving it to be discovered. */
-  test("the transition shorthand is not checked this way", () => {
-    expect(check(`transition: bordr-left-width 150ms ease-in-out;`)).toEqual([]);
+  /**
+   * The `transition` SHORTHAND, checked by elimination rather than by a model of its grammar.
+   *
+   * Its value mixes a property, two times and an easing function in one comma-separated list, and
+   * nothing here parses that. It does not have to: every bare word in it is one of four things, and
+   * three of them are sets this package already generates — `transition-property`'s `all` and
+   * `none`, `transition-timing-function`'s seven keywords, `transition-behavior`'s two. A time is
+   * not a bare word and `cubic-bezier( … )` is a function, so both are stepped over. **What is left
+   * is a property name**, and that is the closed set too.
+   *
+   * `animation` is deliberately not treated the same way: `animation-name` is a genuinely free
+   * identifier — the author's own `@keyframes` — so there is nothing to check it against.
+   */
+  test.each([
+    ["a typo in the property", `transition: bordr-left-width 150ms ease-in-out;`, "border-left-width"],
+    ["a typo in the second item", `transition: opacity 1s, trnsform 2s;`, "transform"],
+  ])("%s is reported", (_what, css, meant) => {
+    const [only, ...rest] = check(css);
+
+    expect(rest).toEqual([]);
+    expect(only.message).toContain(meant);
+  });
+
+  test.each([
+    ["a property and a time", `transition: border-left-width 150ms ease-in-out;`],
+    ["two items", `transition: opacity 1s ease, transform 2s linear;`],
+    ["all", `transition: all 0.3s;`],
+    ["none", `transition: none;`],
+    ["a cubic-bezier", `transition: opacity 1s cubic-bezier(0.4, 0, 0.2, 1);`],
+    ["steps()", `transition: opacity 1s steps(4, end);`],
+    ["allow-discrete", `transition: display 1s allow-discrete;`],
+    ["a custom property being transitioned", `transition: --brand 1s;`],
+    ["a vendor-prefixed property", `transition: -webkit-transform 1s;`],
+    ["a variable", `transition: var(--motion);`],
+  ])("%s is fine", (_what, css) => {
+    expect(check(css)).toEqual([]);
+  });
+
+  /** `animation` stays out, and the test says so rather than leaving it to be discovered. */
+  test("animation is not checked this way, because a keyframes name is the author's own", () => {
+    expect(check(`animation: slidein 1s ease-in-out;`)).toEqual([]);
   });
 });
