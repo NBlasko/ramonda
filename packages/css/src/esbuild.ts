@@ -123,7 +123,7 @@ const NAMESPACE = "ramonda-css";
 const SOURCE = /\.[cm]?[jt]sx?$/;
 
 /** What esbuild is told a transformed file is. See the note above about `.js`. */
-function loaderFor(path: string): "tsx" | "ts" | "jsx" {
+export function loaderFor(path: string): "tsx" | "ts" | "jsx" {
   if (path.endsWith(".tsx")) return "tsx";
   if (/\.[cm]?ts$/.test(path)) return "ts";
   return "jsx";

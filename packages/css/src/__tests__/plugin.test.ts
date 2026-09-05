@@ -846,3 +846,47 @@ describe("what a person typed", () => {
     }
   });
 });
+
+/**
+ * A value can be a FUNCTION, and for some properties that is the only useful answer.
+ *
+ * The checker's word scan drops function names on purpose — a call is not a bare word, so it can
+ * never be reported as a wrong one. Completion is the other question again: `transform` reaches
+ * exactly one keyword, `none`, while `translate`, `rotate` and `scale` are what an author is
+ * reaching for. Measured, they were all missing.
+ */
+describe("a value that is a function", () => {
+  test.each([
+    ["transform: tr", "translate()"],
+    ["transform: rot", "rotate()"],
+    ["filter: bl", "blur()"],
+    ["background-image: lin", "linear-gradient()"],
+    ["grid-template-columns: rep", "repeat()"],
+    ["color: rg", "rgb()"],
+    ["width: cl", "clamp()"],
+  ])("`%s` offers `%s`", (typed, wanted) => {
+    expect(names(`const a = <div css=@@( ${typed}${CARET} )>x</div>;\n`)).toContain(wanted);
+  });
+
+  test("it is inserted without the closing bracket, so the caret lands in the arguments", () => {
+    const { service, caret } = editor(`const a = <div css=@@( transform: tr${CARET} )>x</div>;\n`);
+    const entry = service
+      .getCompletionsAtPosition(FILE, caret, undefined)
+      ?.entries.find((one) => one.name === "translate()");
+
+    expect(entry?.insertText).toBe("translate(");
+  });
+
+  test("and a keyword sorts above a function, because it is the shorter answer", () => {
+    const { service, caret } = editor(`const a = <div css=@@( transform: ${CARET} )>x</div>;\n`);
+    const entries = service.getCompletionsAtPosition(FILE, caret, undefined)?.entries ?? [];
+
+    expect(entries.find((one) => one.name === "none")?.sortText).toBe("0");
+    expect(entries.find((one) => one.name === "rotate()")?.sortText).toBe("1");
+  });
+
+  test("`var()` is offered everywhere, because every property takes it", () => {
+    expect(names(`const a = <div css=@@( transform: v${CARET} )>x</div>;\n`)).toContain("var()");
+    expect(names(`const a = <div css=@@( cursor: v${CARET} )>x</div>;\n`)).toContain("var()");
+  });
+});

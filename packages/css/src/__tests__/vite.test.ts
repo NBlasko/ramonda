@@ -1,5 +1,14 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { ramondaCss } from "../vite";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+/** Temporary directories the scan tests write into, cleaned up after each one. */
+const roots: string[] = [];
+afterEach(() => {
+  for (const one of roots.splice(0)) rmSync(one, { recursive: true, force: true });
+});
 
 /**
  * The plugin, exercised through the hooks Vite calls rather than through Vite.
@@ -375,5 +384,76 @@ describe("the assembled stylesheet", () => {
     expect(() =>
       plugin.generateBundle?.call({}, {}, { "index.js": { type: "chunk", fileName: "index.js" } }),
     ).not.toThrow();
+  });
+});
+
+/**
+ * The dependency SCAN, which is a second pass and never sees this plugin's `transform`.
+ *
+ * Reported from a real `pnpm dev`: the server starts, the first request arrives, and the scan fails
+ * with *Expected identifier but found "@"* on every file holding a block — then *Skipping dependency
+ * pre-bundling*, which leaves every bare import unbundled.
+ *
+ * Vite pre-bundles by walking the entries with **esbuild**, and that walk has its own plugin list.
+ * So the same transform is handed to it through `config`. It only has to make the file PARSE,
+ * because all the scan wants is the imports.
+ */
+describe("the dependency scan", () => {
+  /** The esbuild plugin the config hook contributes, and its one `onLoad` handler. */
+  function scanner() {
+    const config = ramondaCss().config() as {
+      optimizeDeps: { esbuildOptions: { plugins: { name: string; setup(build: unknown): void }[] } };
+    };
+    const [plugin] = config.optimizeDeps.esbuildOptions.plugins;
+    let handler: ((args: { path: string }) => { contents: string; loader: string } | null) | undefined;
+    plugin.setup({ onLoad: (_filter: unknown, callback: typeof handler) => void (handler = callback) });
+    return { name: plugin.name, load: handler };
+  }
+
+  const written = (name: string, text: string) => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-scan-"));
+    roots.push(root);
+    const path = join(root, name);
+    writeFileSync(path, text);
+    return path;
+  };
+
+  test("the plugin contributes one to the scan", () => {
+    expect(scanner().name).toBe("ramonda-css:scan");
+  });
+
+  test("a file with a block is handed back as something esbuild can parse", () => {
+    const { load } = scanner();
+    const path = written(
+      "Card.tsx",
+      `import { thing } from "./thing";\nconst a = <div css=@@( display: flex; )>x</div>;\n`,
+    );
+
+    const result = load?.({ path });
+    expect(result?.contents).not.toContain("@@(");
+    // The imports are the whole point of a scan.
+    expect(result?.contents).toContain(`from "./thing"`);
+    expect(result?.loader).toBe("tsx");
+  });
+
+  test("a file with no block is left to esbuild", () => {
+    const { load } = scanner();
+
+    expect(load?.({ path: written("Plain.ts", "const a = 1;\n") })).toBeNull();
+  });
+
+  /** A scan is not where an author should meet a diagnostic — the real transform reports it. */
+  test("a block it cannot read is passed over rather than thrown from", () => {
+    const { load } = scanner();
+    const path = written("Broken.tsx", `const a = <div css=@@( {{whatever}}: 4px; )>x</div>;\n`);
+
+    expect(() => load?.({ path })).not.toThrow();
+    expect(load?.({ path })).toBeNull();
+  });
+
+  test("and a path that is not there does not take the scan down", () => {
+    const { load } = scanner();
+
+    expect(load?.({ path: "/nowhere/at/all.tsx" })).toBeNull();
   });
 });

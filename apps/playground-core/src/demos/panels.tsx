@@ -318,6 +318,22 @@ export class StyleBlockComposed extends Component {
     this.tone = this.tone === "calm" ? "loud" : "calm";
   }
 
+  /**
+   * Bound methods rather than arrows written in the markup, which `ramonda-check` reports as
+   * `function-built-in-the-markup` — and it reported these, which is how they were found.
+   *
+   * An arrow in the markup is a new identity every render, so the diff takes the old listener off
+   * and puts the new one on each time. Ramonda binds a method to its instance when the component is
+   * built, so there is no constructor and no arrow-field to write.
+   */
+  toggleOff() {
+    this.off = !this.off;
+  }
+
+  toggleRoomy() {
+    this.roomy = !this.roomy;
+  }
+
   render() {
     return (
       <div className="panel" css={@@(
@@ -340,7 +356,7 @@ export class StyleBlockComposed extends Component {
 
           @@if {{this.off}} {
             opacity: 0.5;
-            cursor: not-allowed;
+            cursor: none;
           }
 
           @@if {{this.roomy}} {
@@ -358,23 +374,11 @@ export class StyleBlockComposed extends Component {
 
         <div css={@@( display: flex; gap: 12px; align-items: center; )}>
           <label css={@@( display: inline-flex; gap: 6px; align-items: center; )}>
-            <input
-              type="checkbox"
-              checked={this.off}
-              onchange={() => {
-                this.off = !this.off;
-              }}
-            />
+            <input type="checkbox" checked={this.off} onchange={this.toggleOff} />
             off
           </label>
           <label css={@@( display: inline-flex; gap: 6px; align-items: center; )}>
-            <input
-              type="checkbox"
-              checked={this.roomy}
-              onchange={() => {
-                this.roomy = !this.roomy;
-              }}
-            />
+            <input type="checkbox" checked={this.roomy} onchange={this.toggleRoomy} />
             roomy
           </label>
         </div>

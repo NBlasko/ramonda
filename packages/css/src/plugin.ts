@@ -231,8 +231,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
               isMemberCompletion: false,
               isNewIdentifierLocation: true,
               // `string` rather than a keyword: these are CSS values, and it is the icon a real CSS
-              // language service gives them.
-              entries: words.map((name) => ({ name, kind: "string" as ts.ScriptElementKind, sortText: "0" })),
+              // language service gives them. Keywords sort above functions — see `entryFor`.
+              entries: words.map(entryFor),
             };
           }
         }
@@ -640,12 +640,30 @@ function valueWords(property: string): readonly string[] | undefined {
   return [
     ...(own === undefined ? [] : own.split(" ").filter(Boolean)),
     ...named,
+    "var()",
     "inherit",
     "initial",
     "unset",
     "revert",
     "revert-layer",
   ];
+}
+
+/**
+ * One word as a completion entry.
+ *
+ * A function is written `translate()` in the table and offered under that name — which is what a
+ * reader recognises — but INSERTED without its closing parenthesis, so the caret lands where the
+ * arguments go and the editor closes the bracket itself.
+ */
+function entryFor(name: string): ts.CompletionEntry {
+  const call = name.endsWith("()");
+  return {
+    name,
+    kind: "string" as ts.ScriptElementKind,
+    sortText: call ? "1" : "0",
+    ...(call ? { insertText: name.slice(0, -1) } : {}),
+  };
 }
 
 /** A quoted key as CSS spells it — see the note in `getCompletionsAtPosition`. */

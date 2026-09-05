@@ -141,8 +141,46 @@ const FREE = new Set([
  * A type that resolves to nothing — `<length>`, `<color-function>` — is simply dropped, because it
  * can never be a bare identifier and the question here is only about those.
  */
+/** The terminals that mean a number can be written here, so the maths functions can be too. */
+const NUMERIC = new Set([
+  "number",
+  "integer",
+  "length",
+  "percentage",
+  "length-percentage",
+  "angle",
+  "angle-percentage",
+  "time",
+  "time-percentage",
+  "frequency",
+  "resolution",
+  "flex",
+  "ratio",
+]);
+
+/** Valid wherever a number is, and named by no property's grammar. See `numeric` in {@link scan}. */
+const MATHS = ["calc", "clamp", "min", "max", "round", "abs"];
+
 function scan(name) {
   const words = new Set();
+  /**
+   * The FUNCTION names the grammar reaches — `translate`, `linear-gradient`, `repeat`.
+   *
+   * Collected for completion and ignored by the checker, which is the same split as the two value
+   * tables: a function call is not a bare word, so it can never be reported as one — and it is
+   * often the only useful answer. `transform` reaches exactly one keyword, `none`.
+   */
+  const calls = new Set();
+  /**
+   * Whether the grammar reaches a NUMERIC terminal, which decides the maths functions.
+   *
+   * `calc()`, `clamp()`, `min()` and `max()` are valid wherever a number, length, percentage, angle
+   * or time is — and `mdn-data` never spells them out, because they belong to the value syntax
+   * rather than to any property. Measured: `width: cl` offered nothing, because `<length-percentage>`
+   * says nothing about `clamp`. Offering them for `cursor` instead would be junk of our own, so the
+   * question is asked of the grammar rather than answered everywhere.
+   */
+  let numeric = false;
   let free = false;
   const seen = new Set();
 
@@ -167,6 +205,7 @@ function scan(name) {
     });
 
     rest = rest.replace(/<([a-zA-Z0-9-]+)(?:\s*\[[^\]]*\])?>/g, (_whole, referenced) => {
+      if (NUMERIC.has(referenced)) numeric = true;
       if (FREE.has(referenced)) free = true;
       else if (syntaxes[referenced] !== undefined && !seen.has(`s:${referenced}`)) {
         seen.add(`s:${referenced}`);
@@ -177,10 +216,13 @@ function scan(name) {
 
     // A bare word, and never a function name — `rgb(` is a function, `red` is a keyword.
     for (const match of rest.matchAll(/(?<![\w-])([a-z][a-z0-9-]*)(?![\w-]*\()/g)) words.add(match[1]);
+    // The function names on their own, for the completion table only — see `calls` above.
+    for (const match of rest.matchAll(/(?<![\w-])([a-z][a-zA-Z0-9-]*)\s*\(/g)) calls.add(match[1]);
   };
 
   walk(properties[name].syntax, 0);
-  return { words: [...words].sort(), free };
+  if (numeric) for (const one of MATHS) calls.add(one);
+  return { words: [...words].sort(), calls: [...calls].sort(), free };
 }
 
 /**
@@ -359,10 +401,16 @@ for (const name of named) {
   }
 
   const scanned = scan(name);
-  // For COMPLETION, and unlike the row below, a free identifier is no reason to say nothing: the
-  // words a grammar reaches are worth offering even when an unknown one cannot be called wrong.
-  if (scanned.words.length > 0)
-    valueRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(scanned.words.join(" "))},`);
+  /**
+   * For COMPLETION, and it differs from the row below in two ways, each measured.
+   *
+   * A free identifier is no reason to say nothing: the words a grammar reaches are worth offering
+   * even when an unknown one cannot be called WRONG. And FUNCTIONS are included, which the checker's
+   * scan drops on purpose — `transform` reaches exactly one keyword, `none`, while every useful
+   * answer there is a function. Written with their parentheses, so an editor shows them as calls.
+   */
+  const offerable = [...scanned.words, ...scanned.calls.map((one) => `${one}()`)];
+  if (offerable.length > 0) valueRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(offerable.join(" "))},`);
   /**
    * A grammar that admits a FREE identifier is the honest exclusion: a custom name, a font family,
    * an animation's own name. Nothing here can tell one of those from a typo.

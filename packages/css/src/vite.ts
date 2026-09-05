@@ -1,4 +1,7 @@
 import { CssBlockError } from "./compiler/errors";
+import { readFileSync } from "node:fs";
+import { loaderFor } from "./esbuild";
+import { mayHoldABlock } from "./compiler/scan";
 import { Sheet } from "./compiler/sheet";
 import { type SourceMap, transform } from "./compiler/transform";
 
@@ -63,9 +66,18 @@ export interface CssPluginOptions {
 }
 
 /** What Vite is handed. Only the hooks this uses are declared. */
+/** The bit of esbuild's plugin API the dependency scan hands us. Declared, never imported. */
+interface ScanBuild {
+  onLoad(
+    filter: { filter: RegExp },
+    callback: (args: { path: string }) => { contents: string; loader: string } | null,
+  ): void;
+}
+
 export interface CssPluginLike {
   name: string;
   enforce: "pre";
+  config(): unknown;
   resolveId(this: unknown, id: string): string | null;
   load(this: unknown, id: string): string | null;
   transform(this: unknown, code: string, id: string): { code: string; map: SourceMap } | null;
@@ -98,6 +110,53 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
 
   return {
     name: "ramonda-css",
+
+    /**
+     * The dependency SCAN is a second pass, and it never sees this plugin.
+     *
+     * Reported from a real `pnpm dev`: the server starts, the first request arrives, and the scan
+     * fails with *Expected identifier but found "@"* on every file holding a block — then
+     * *Skipping dependency pre-bundling*, which means every bare import is served unbundled and the
+     * page loads hundreds of modules or breaks outright.
+     *
+     * Vite pre-bundles a project's dependencies by walking its entries with **esbuild**, and that
+     * walk has its own plugin list — `transform` above is Rollup's and is not consulted. So the same
+     * transform is handed to it here. It only has to make the file PARSE, because all the scan wants
+     * is the imports; a block that the real transform would refuse is left alone rather than thrown
+     * from, since a scan is not where an author should meet a diagnostic.
+     */
+    config() {
+      return {
+        optimizeDeps: {
+          esbuildOptions: {
+            plugins: [
+              {
+                name: "ramonda-css:scan",
+                setup(build: ScanBuild) {
+                  build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, (args: { path: string }) => {
+                    let source: string;
+                    try {
+                      source = readFileSync(args.path, "utf8");
+                    } catch {
+                      return null;
+                    }
+                    if (!mayHoldABlock(source)) return null;
+
+                    try {
+                      const result = transform(source, { filename: args.path, runtime: options.runtime });
+                      return result === undefined ? null : { contents: result.code, loader: loaderFor(args.path) };
+                    } catch {
+                      // The real transform reports it, at the author's own line. Twice is worse.
+                      return null;
+                    }
+                  });
+                },
+              },
+            ],
+          },
+        },
+      };
+    },
     /** See the note above: this is what puts the transform before esbuild. Measured, not assumed. */
     enforce: "pre",
 
