@@ -1231,9 +1231,33 @@ order on purpose:
 
 Both are CSS's own answer, from a sheet the author never ordered.
 
-**AC3 — the transform emits maps.** One hash per declaration, keyed by `selector|property|value` with a
-placeholder for a hole (the same `U+0000` trick that already breaks the circular naming). A block with
-no holes stays a module constant.
+**AC3 — the transform emits maps.** Split in two, because the emission cannot change before the
+thing being emitted exists.
+
+**AC3a — the flattening. DONE 2026-09-05.** `flatten(block)` turns a parse into the declarations it
+makes, each with its canonical KEY, the text it hashes as, its selector suffix, its conditions and
+the block's hole indices it uses. A pure function over the AST: nothing emits differently, nothing
+breaks.
+
+Three things it decides, and each was a way to be silently wrong:
+
+- **at-rules sorted, selector parts composed in order** — the contract's rule, and the reason is that
+  the first commutes and the second does not. Keyed as written, `@media X { &:hover { … } }` and
+  `&:hover { @media X { … } }` would be two keys for one thing set, and a modifier would fail to
+  override a base written the other way round.
+- **holes renumbered per declaration.** A hole's index belongs to the block, so `color: {{x}}` is
+  hole 0 alone and hole 1 under another declaration — the same declaration, two canonical texts, two
+  classes, and the dedupe that pays for the whole design gone.
+- **a bare nested selector is a descendant**, which is what CSS nesting says it means.
+
+**Correctness is a browser, and it was measured before the code was written.** A realistic block —
+nesting, a descendant, a combined `&:hover .title`, a `@media` override and a `@media` around a
+`&:hover` — emitted as ONE whole-block rule and as **14 atomic rules**, read hovered on a narrow
+viewport and a wide one: **byte-identical computed style** both times. Display, alignment, gap,
+padding, both colours, radius, the descendant's weight and its decoration.
+
+**AC3b — the emission.** The map, the per-declaration hash, and the site becoming a merge. Still to
+do.
 
 **AC4 — the runtime merge.** `_m(…)` in `@ramonda/css`, and `applyCssBlock` takes what it produces.
 Measured: 0.64 µs per element for four maps and 24 declarations — 0.5 ms for a page of 800 elements,
@@ -1398,6 +1422,7 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | `@@if` inside a block body | the scanner does not read it as a second site; the parser gives a nested rule |
 | `@@if` nested in `@@if`, and either way round with `&:hover` | all four already parse, as ordinary nested rules |
 | the sheet's emission order, end to end | gives CSS's own answer on both sides of a `@media`, from rules added in the wrong order |
+| one block as 1 whole rule vs its 14 atomic ones | **identical computed style**, hovered, narrow and wide |
 | the shorthand-aware merge, 50,309 random groupings | **associative** — nesting and flattening never disagree |
 | an always-truthy `@@if` condition, as a TYPE | reportable — and `any`/`unknown`/`T \| undefined` stay silent |
 | a spread of a non-block, as a TYPE | reportable; a lookup with a union key passes |
