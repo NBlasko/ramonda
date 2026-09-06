@@ -302,9 +302,10 @@ describe("hover", () => {
     const { service, caret } = editor(marked);
 
     const info = service.getQuickInfoAtPosition(FILE, caret);
+    // The grammar — out of MDN's own data — is the SIGNATURE line now rather than a footnote.
+    // See *hovering a declaration*: it moved up, it was not copied.
     expect(ts.displayPartsToString(info?.displayParts ?? [])).toContain("flex-direction");
-    // The documentation the generated map carries — the grammar, out of MDN's own data.
-    expect(ts.displayPartsToString(info?.documentation ?? [])).toContain("row-reverse");
+    expect(ts.displayPartsToString(info?.displayParts ?? [])).toContain("row-reverse");
   });
 
   test("over a property name, it is that property with what it accepts", () => {
@@ -888,5 +889,67 @@ describe("a value that is a function", () => {
   test("`var()` is offered everywhere, because every property takes it", () => {
     expect(names(`const a = <div css=@@( transform: v${CARET} )>x</div>;\n`)).toContain("var()");
     expect(names(`const a = <div css=@@( cursor: v${CARET} )>x</div>;\n`)).toContain("var()");
+  });
+});
+
+/**
+ * Hovering a declaration reads as CSS, not as the object literal it is checked through.
+ *
+ * The type map is an object type, so TypeScript's own answer is
+ * `(property) "padding-left"?: CssValue | undefined` — true, and the least useful true thing to put
+ * on the first and largest line. What a person hovering a CSS property wants is its GRAMMAR.
+ *
+ * The grammar is already there: the generated type carries it as JSDoc, whose first line is
+ * `` `name` — `syntax` ``, written by `build-css-properties.mjs`. So this moves it up rather than
+ * finding it again — one source, and a test that pins the shape so it cannot drift in silence.
+ */
+describe("hovering a declaration", () => {
+  const hover = (source: string) => {
+    const { service, caret } = editor(source);
+    const got = service.getQuickInfoAtPosition(FILE, caret);
+    return {
+      signature: got?.displayParts?.map((one) => one.text).join("") ?? "",
+      documentation: got?.documentation?.map((one) => one.text).join("") ?? "",
+    };
+  };
+
+  test("the first line is the property and its grammar", () => {
+    const { signature } = hover(`const a = <div css=@@( padd${CARET}ing-left: 12px; )>x</div>;\n`);
+
+    expect(signature).toBe("padding-left: <length-percentage [0,∞]>");
+  });
+
+  test("and what is left below is what the first line does not say", () => {
+    const { documentation } = hover(`const a = <div css=@@( padd${CARET}ing-left: 12px; )>x</div>;\n`);
+
+    expect(documentation).toContain("Initial: `0`. Inherited: no.");
+    // Not twice — the grammar moved up, it was not copied.
+    expect(documentation).not.toContain("<length-percentage");
+  });
+
+  test("hovering the VALUE says the same thing, because it is the same declaration", () => {
+    const { signature } = hover(`const a = <div css=@@( padding-left: 12${CARET}px; )>x</div>;\n`);
+
+    expect(signature).toBe("padding-left: <length-percentage [0,∞]>");
+  });
+
+  test("a shorthand says what it sets", () => {
+    const { signature } = hover(`const a = <div css=@@( pad${CARET}ding: 12px; )>x</div>;\n`);
+
+    expect(signature).toContain("padding:");
+  });
+
+  /** A custom property has no grammar to state, so TypeScript's own answer stands. */
+  test("a custom property is left to TypeScript", () => {
+    const { signature } = hover(`const a = <div css=@@( --Acc${CARET}ent: red; )>x</div>;\n`);
+
+    expect(signature).not.toBe("");
+    expect(signature).toContain("--Accent");
+  });
+
+  test("and a hover outside the CSS is untouched", () => {
+    const { signature } = hover(`const acc${CARET}ent = "red";\nconst a = <div css=@@( color: red; )>x</div>;\n`);
+
+    expect(signature).toContain("accent");
   });
 });

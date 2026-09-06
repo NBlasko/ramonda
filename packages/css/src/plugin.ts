@@ -286,8 +286,10 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          */
         const got =
           service.getQuickInfoAtPosition(fileName, at) ?? quickInfoAt(service, fileName, file.declarationOf(position));
+        if (got === undefined) return undefined;
 
-        return got === undefined ? undefined : { ...got, textSpan: back(file, got.textSpan) ?? got.textSpan };
+        const read = asCss(got);
+        return { ...read, textSpan: back(file, read.textSpan) ?? read.textSpan };
       };
 
       proxy.getSemanticDiagnostics = (fileName) => {
@@ -805,4 +807,42 @@ function mapped<T extends ts.Diagnostic>(file: VirtualFile, diagnostics: readonl
     out.push({ ...diagnostic, start: span.start, length: span.length });
   }
   return out;
+}
+
+/** The first line of a generated property's JSDoc: the name, an em dash, and the grammar. */
+const GRAMMAR = /^`([a-z-]+)` — `([^`]*)`\n?/;
+
+/**
+ * A hover that reads as CSS rather than as the object literal the CSS is checked through.
+ *
+ * The type map is an object type, so TypeScript's own answer is
+ * `(property) "padding-left"?: CssValue | undefined` — true, and the least useful true thing to put
+ * on the first and largest line a reader sees. What someone hovering a CSS property wants is its
+ * GRAMMAR, and the grammar is already here: the generated type carries it as the first line of its
+ * JSDoc, written by `build-css-properties.mjs`.
+ *
+ * So this MOVES that line up rather than finding the answer a second time — the shape is pinned by a
+ * test, because a format read in one place and written in another is where this package keeps
+ * finding faults.
+ *
+ * A property the generator knows nothing about — a custom property — has no such line, and then
+ * TypeScript's own answer stands, which is the right answer for a name only the author knows.
+ */
+function asCss(info: ts.QuickInfo): ts.QuickInfo {
+  const documentation = info.documentation ?? [];
+  const text = documentation.map((one) => one.text).join("");
+  const found = GRAMMAR.exec(text);
+  if (found === null) return info;
+
+  const [whole, property, syntax] = found;
+  return {
+    ...info,
+    displayParts: [
+      { text: property, kind: "propertyName" },
+      { text: ": ", kind: "punctuation" },
+      { text: syntax, kind: "text" },
+    ],
+    // Without the line that just became the signature: moved, not copied.
+    documentation: [{ text: text.slice(whole.length), kind: "text" }],
+  };
 }
