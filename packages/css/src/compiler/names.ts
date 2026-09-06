@@ -147,16 +147,18 @@ const SAFE_VALUE = /^[a-zA-Z0-9#.,%()/_+*=<>:;!&|~^$?@[\]{}-]+$/;
  * failure this package has.
  *
  * **The hash is the FLOOR, not the default.** It answers for a declaration carrying a hole, a name
- * over {@link NAME_BUDGET}, a value holding a character that cannot be written, and any CONTEXT —
- * a selector or a conditional at-rule — which the encoder does not yet spell. So a form not yet
- * covered is always correct and merely less pretty, which is what lets the readable half grow one
- * context at a time rather than in one commit.
+ * over {@link NAME_BUDGET}, and anything — a value or a context — holding a character that cannot be
+ * written. So a form not yet covered is always correct and merely less pretty, which is what lets
+ * the readable half grow one context at a time rather than in one commit.
  *
  * **The two forms can never collide, structurally rather than by luck.** A hash is base62, which has
  * no `-`, so a hashed name holds none after the prefix; a readable name always holds the one that
  * separates the property from the value. And two readable names differ whenever their declarations
  * do, because the abbreviation map forbids a `-` inside an abbreviation — so the first `-` always
  * ends it, and `p` with the value `l-40px` cannot be read as `pl` with `40px`.
+ *
+ * The same argument covers CONTEXT: every context form starts with a character an abbreviation
+ * cannot — `:`, `.`, `_`, `@`, `[` — so a name carrying one can never be read as a name without.
  */
 export function nameFor(declaration: {
   property: string;
@@ -169,7 +171,9 @@ export function nameFor(declaration: {
   const hash = () => classNameFor(declaration.identity);
 
   if (declaration.holes.length > 0) return hash();
-  if (declaration.selector !== "" || declaration.conditions.length > 0) return hash();
+
+  const context = contextOf(declaration.selector, declaration.conditions);
+  if (context === undefined) return hash();
 
   // From the canonical text rather than from anywhere else, so the name and the rule cannot disagree
   // about what the value is.
@@ -180,7 +184,7 @@ export function nameFor(declaration: {
     .replace(/ /g, "_");
   if (value === "" || !SAFE_VALUE.test(value)) return hash();
 
-  const name = `r-${ABBREVIATIONS[declaration.property] ?? declaration.property}-${value}`;
+  const name = `r-${context}${ABBREVIATIONS[declaration.property] ?? declaration.property}-${value}`;
   return name.length > NAME_BUDGET ? hash() : name;
 }
 
@@ -199,4 +203,46 @@ export function nameFor(declaration: {
  */
 export function escapeClass(className: string): string {
   return className.replace(/[^a-zA-Z0-9_\u00a0-\uffff-]/g, (character) => `\\${character}`);
+}
+
+/**
+ * A selector list, which is two selectors sharing a body rather than one context.
+ *
+ * `&:hover, &:focus` names two states and there is no single spelling for it — so it is left to the
+ * hash rather than given a name that reads like one thing and is two.
+ */
+const A_LIST = /,/;
+
+/** What a context may hold and still be written. Quotes are out: markup would have to escape one. */
+const SAFE_CONTEXT = /^[a-zA-Z0-9@:.[\]()=_ -]+$/;
+
+/**
+ * The context a declaration sits in, written for a class name — or nothing, when it cannot be.
+ *
+ * **Literal, and that was decided rather than defaulted to.** A short name from a design scale —
+ * `md-` for `@media (min-width: 40rem)` — is exactly the magic the hash is being replaced for, and
+ * there is no scale here to be short against. So it is the author's own text with its whitespace
+ * collapsed, and a name that grows past {@link NAME_BUDGET} becomes a hash like any other.
+ *
+ * **Every form starts with a character an abbreviation cannot** — `:` a pseudo-class, `.` a class,
+ * `_` a descendant, `@` a conditional at-rule, `[` an attribute — which is what keeps a name with a
+ * context from ever reading as a name without one. The descendant marker matters twice over:
+ * `& .title` and `&.title` are different selectors, and `_` is what keeps them different names.
+ */
+function contextOf(selector: string, conditions: readonly string[]): string | undefined {
+  /**
+   * The conditions joined, then the selector appended VERBATIM — never joined to them.
+   *
+   * A selector carries its own leading space when it is a descendant, and that space is the whole
+   * difference between `& .title` and `&.title`. Joining with one would have added it to the
+   * compound form too, and `@media print` with `.title` would have become the same name as
+   * `@media print` with ` .title` — two different rules, one class.
+   */
+  const written = `${conditions.join(" ")}${selector}`.replace(/\s+/g, " ").replace(/^ (?=[^.[:])/, "");
+  if (written === "") return "";
+  if (A_LIST.test(written) || !SAFE_CONTEXT.test(written)) return undefined;
+
+  // A leading space is a DESCENDANT and is what `_` stands for; every other space is inside the
+  // text the author wrote and becomes one too, so nothing about the shape is lost.
+  return `${written.replace(/ /g, "_")}-`;
 }

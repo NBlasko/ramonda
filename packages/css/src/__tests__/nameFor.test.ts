@@ -63,12 +63,12 @@ describe("what falls back to the hash", () => {
     expect(hashed(name("color: {{accent}};"))).toBe(true);
   });
 
-  test("a selector, until the encoder learns to write one", () => {
-    expect(hashed(nameFor(declarationsOf("&:hover { color: red; }")[0]))).toBe(true);
-  });
-
-  test("a condition, for the same reason", () => {
-    expect(hashed(nameFor(declarationsOf("@media print { color: red; }")[0]))).toBe(true);
+  /**
+   * A context is written now — see *context in a readable name* below. What is left here is the
+   * shape that cannot be one thing: a selector LIST names two states sharing a body.
+   */
+  test("a selector list, which is two selectors rather than one context", () => {
+    expect(hashed(nameFor(declarationsOf("&:hover, &:focus { color: red; }")[0]))).toBe(true);
   });
 
   test("a value longer than the budget", () => {
@@ -130,5 +130,95 @@ describe("what must hold of every name", () => {
     const [only] = declarationsOf("color: {{accent}};");
 
     expect(nameFor(only)).toBe(classNameFor(only.identity));
+  });
+});
+
+/**
+ * Context in the name, written LITERALLY — decided with the user, against a scale.
+ *
+ * A short name from a design scale — `md-` for `@media (min-width: 40rem)` — is exactly the magic
+ * the hash was being replaced for, and there is no scale here to be short against. So the context is
+ * written as the author wrote it, with whitespace collapsed.
+ *
+ * **Every context form starts with a character an abbreviation cannot**, which is what keeps the
+ * name injective: `:` for a pseudo-class, `.` for a class, `_` for a descendant, `@` for a
+ * conditional at-rule, `[` for an attribute. An abbreviation is letters and a property name is
+ * letters and hyphens, so no context can be mistaken for one.
+ *
+ * Ordered by what each recovers, measured on the demo file: a pseudo-class 8 declarations, a
+ * descendant 4, an at-rule 4, an attribute 2.
+ */
+describe("context in a readable name", () => {
+  const one = (css: string) => nameFor(declarationsOf(css)[0]);
+
+  test("a pseudo-class is written as it is", () => {
+    expect(one("&:hover { color: red; }")).toBe("r-:hover-c-red");
+    expect(one("&:focus-within { opacity: .5; }")).toBe("r-:focus-within-o-.5");
+  });
+
+  test("and so is a pseudo-element", () => {
+    expect(one("&::after { content: none; }")).toBe("r-::after-content-none");
+  });
+
+  test("a compound class keeps its dot, and a descendant is marked with `_`", () => {
+    // `&.title` and `& .title` are different selectors and must be different names.
+    expect(one("&.title { color: red; }")).toBe("r-.title-c-red");
+    expect(one("& .title { color: red; }")).toBe("r-_.title-c-red");
+    expect(one("&.title { color: red; }")).not.toBe(one("& .title { color: red; }"));
+  });
+
+  test("a conditional at-rule is written literally, with its whitespace collapsed", () => {
+    expect(one("@media print { color: red; }")).toBe("r-@media_print-c-red");
+    expect(one("@supports (display:grid) { color: red; }")).toBe("r-@supports_(display:grid)-c-red");
+  });
+
+  test("an attribute selector too", () => {
+    expect(one("&[data-on] { color: red; }")).toBe("r-[data-on]-c-red");
+  });
+
+  test("a condition and a selector compose, outermost first", () => {
+    expect(one("@media print { &:hover { color: red; } }")).toBe("r-@media_print:hover-c-red");
+  });
+
+  test("and the same declaration in two contexts is two names", () => {
+    expect(one("color: red;")).not.toBe(one("&:hover { color: red; }"));
+    expect(one("@media print { color: red; }")).not.toBe(one("&:hover { color: red; }"));
+  });
+
+  describe("what still falls back", () => {
+    test("a selector list, which is two selectors rather than one context", () => {
+      expect(hashed(one("&:hover, &:focus { color: red; }"))).toBe(true);
+    });
+
+    test("a context holding a quote, which markup would have to escape", () => {
+      expect(hashed(one('&[data-on="yes"] { color: red; }'))).toBe(true);
+    });
+
+    test("and a context that pushes the name over the budget", () => {
+      const long = "@media (min-width: 40rem) and (orientation: landscape) { padding: 24px; }";
+
+      expect(hashed(one(long))).toBe(true);
+    });
+  });
+});
+
+/**
+ * The collision a naive join would have made, asserted so it cannot come back.
+ *
+ * A selector carries its own leading space when it is a DESCENDANT, and that space is the whole
+ * difference between `& .title` and `&.title`. Joining the conditions to the selector with a space
+ * added one to the compound form too — so `@media print` with `.title` and `@media print` with
+ * ` .title` became one name, which is two different rules under one class.
+ */
+describe("a descendant under a condition", () => {
+  const one = (css: string) => nameFor(declarationsOf(css)[0]);
+
+  test("is not the same name as a compound one", () => {
+    const descendant = one("@media print { & .title { color: red; } }");
+    const compound = one("@media print { &.title { color: red; } }");
+
+    expect(descendant).not.toBe(compound);
+    expect(descendant).toBe("r-@media_print_.title-c-red");
+    expect(compound).toBe("r-@media_print.title-c-red");
   });
 });

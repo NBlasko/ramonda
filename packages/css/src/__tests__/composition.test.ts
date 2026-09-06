@@ -81,7 +81,9 @@ describe("a conditional group", () => {
   test("a selector inside a group is still a selector on its own rule", () => {
     const out = emit(`const card = @@(\n  @@if {{c}} {\n    &:hover { color: red; }\n  }\n);\n`);
 
-    expect(out).toMatch(/c && \{":hover\|color":"r-[0-9a-zA-Z][^"\s)]*",\}/);
+    // The class is readable now, and a readable one carries the selector — so the pattern has to
+    // stop at the closing quote rather than at the first `)` or `:`.
+    expect(out).toMatch(/c && \{":hover\|color":"r-[^"]+",\}/);
   });
 
   test("and a group inside a selector means the same thing", () => {

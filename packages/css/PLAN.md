@@ -1623,10 +1623,30 @@ The cost landed where the plan said, and in one place more:
 
 A hole's declaration always falls back to the hash, so a custom property name is never escaped.
 
-**RN4 — context, one form at a time.** Pseudo-classes first, then `@media` and `@supports`, then
-attribute and descendant selectors. Each is a rule that can be wrong, and a wrong name is a wrongly
-merged rule — so each lands with its own measurement, and anything not yet covered keeps falling
-back to the hash, which is always correct.
+**RN4 — context in the name. DONE 2026-09-06.** Written LITERALLY, decided against a scale: a short
+`md-` for `@media (min-width: 40rem)` is exactly the magic the hash was being replaced for.
+
+**62% readable to 76%**, measured on the demo file. Ordered by what each form recovered — a
+pseudo-class 8 declarations, a descendant 4, an at-rule 4, an attribute 2.
+
+```
+r-:hover-c-red      r-::after-w-10px     r-_.title-fw-600
+r-.title-c-red      r-@media_print-c-red r-[data-on]-c-red
+```
+
+**Every form starts with a character an abbreviation cannot** — `:` `.` `_` `@` `[` — which is what
+keeps a name with a context from ever reading as one without. An abbreviation is letters; a property
+name is letters and hyphens.
+
+**One collision this nearly shipped, and the test that found it is worth keeping.** A selector
+carries its own leading space when it is a DESCENDANT, and that space is the whole difference between
+`& .title` and `&.title`. Joining the conditions to the selector with a space added one to the
+compound form too — so `@media print` with `.title` and `@media print` with ` .title` became one
+name, which is two different rules under one class. The selector is appended verbatim now.
+
+**What stays hashed:** a selector LIST, which is two selectors sharing a body and has no single
+spelling; a context holding a quote, which markup would have to escape; a hole; and anything over
+the budget.
 
 **RN5 — the page.** What a name means, why some are hashed, and the one thing an author can act on:
 a shorter value is a shorter class.
