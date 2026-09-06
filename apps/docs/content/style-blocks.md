@@ -120,19 +120,33 @@ There is exactly one exception to the second line, and it is [below](#naming-som
 a name that came from `@@property( … )` may stand where a property name goes, because the compiler
 generated that name and nothing else can write it.
 
-### One hole, read many times
+### One value, read many times
 
-A hole belongs to the declaration it is written in. Each declaration is its own rule reading its own
-generated name, so writing the same expression four times puts **four** custom properties on the
-element, all holding the same value — a rule is shared by every element that names it, so its
-variable cannot be named after anything but itself.
-
-Do what a CSS author already does: declare one custom property from the hole, and read it.
+Write the hole wherever you need the value. That is the whole answer for almost every block:
 
 ```tsx
 declare const accent: string;
 
 const card = @@(
+  border-left: 4px solid {{accent}};
+  background: {{accent}};
+  color: {{accent}};
+);
+```
+
+A hole belongs to the declaration it is written in, so this puts **three** custom properties on the
+element rather than one, all holding the same value — a rule is shared by every element that names
+it, so its variable cannot be named after anything but itself.
+
+**Whether that matters is a number, and the number is small.** On a real block reading one value five
+times, measured: the `style` attribute is 102 B written directly, and 24 B if you declare a custom
+property once and read it. **Seventy-eight bytes an element.** On one card that is nothing; on a list
+of a hundred rows it is 7.8 KB of markup, and then it is worth a line:
+
+```tsx
+declare const accent: string;
+
+const row = @@(
   --accent: {{accent}};
 
   border-left: 4px solid var(--accent);
@@ -141,9 +155,9 @@ const card = @@(
 );
 ```
 
-One entry in the `style` attribute instead of four — and the three declarations below have no hole at
-all now, so they are static classes that dedupe with every other block writing the same thing. Less
-per element, and more shared.
+The three declarations below have no hole at all now, so they are static classes that dedupe with
+every other block writing the same thing. **Reach for it when a block repeats across many elements,
+not by default** — the direct form is shorter to read and to write, and 78 bytes is not a reason.
 
 **The name is yours, and a custom property INHERITS.** `--accent` is set on the element and is
 visible to everything inside it — measured: a descendant that reads `var(--accent)` and never sets
