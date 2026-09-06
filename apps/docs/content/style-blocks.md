@@ -252,6 +252,39 @@ A reference is resolved **when the file compiles**, not on the element: `{{slide
 itself, so it costs no custom property. It has to be — `var()` takes a literal name, and a reference
 that stayed a hole would compile to `var(var(--…))`, which resolves to nothing.
 
+### A variable with a name TypeScript checks
+
+A named `@@property` block is a binding like any other, so a variable can be declared once, typed,
+and read wherever it is imported:
+
+```tsx
+export const accent = @@property(
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #10b981;
+);
+
+const card = @@(
+  {{accent}}: #f05;
+  background: var({{accent}});
+);
+```
+
+A misspelling is not a CSS problem here, it is an unresolved name: `var({{ackcent}})` is
+*Cannot find name 'ackcent'. Did you mean 'accent'?*, from TypeScript, with the suggestion it
+already knows how to make.
+
+**Set it with the binding, not with the name it looks like.** `--accent: #f05` and
+`var({{accent}})` are two different custom properties — the block generates its own name — so the
+declaration would do nothing for the value you read, which would fall back to `initial-value`. That
+is reported:
+
+> `--accent` is set here, and `accent` is read as a binding below — those are two different custom
+> properties, so this declaration does nothing for it. Write `{{accent}}: …` to set the one you read.
+
+A plain `--name` you both set and read is ordinary CSS and is left alone; so is one that comes from a
+stylesheet outside your app.
+
 ### A font, and a property you can animate
 
 ```tsx

@@ -163,7 +163,7 @@ function cssFindings(fileName: string, source: string): Finding[] {
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName, { resolve: (name) => references.get(name) });
     // The text and the parse, because one of them has no name for a `//` — see `checkText`.
-    for (const finding of [...checkText(source, site.open, read.end), ...checkBlock(read.block, site.at)]) {
+    for (const finding of [...checkText(source, site.open, read.end), ...checkBlock(read.block, site.at, references)]) {
       out.push({ file: fileName, ...positionOf(source, finding.at), code: finding.rule, message: finding.message });
     }
   }

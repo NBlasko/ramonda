@@ -559,7 +559,7 @@ function cssFindings(text: string): Finding[] {
   for (const site of findBlocks(text)) {
     const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     // The text and the parse, because one of them has no name for a `//` — see `checkText`.
-    out.push(...checkText(text, site.open, read.end), ...checkBlock(read.block, site.at));
+    out.push(...checkText(text, site.open, read.end), ...checkBlock(read.block, site.at, references));
   }
   return out;
 }

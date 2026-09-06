@@ -64,7 +64,8 @@ export type RuleId =
   | "unknown-frame"
   | "declaration-out-of-place"
   | "rule-out-of-place"
-  | "override-out-of-order";
+  | "override-out-of-order"
+  | "variable-set-by-another-name";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -193,11 +194,74 @@ export function checkText(source: string, open: number, end: number): Finding[] 
  * each at-rule's own descriptors and say *did you mean* about them. What is left here is the two
  * faults a type cannot see, because both are about shape rather than about a name.
  */
-export function checkBlock(block: Block, at?: string): Finding[] {
+export function checkBlock(block: Block, at?: string, references?: ReadonlyMap<string, string>): Finding[] {
   const findings: Finding[] = [];
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
+  if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   return findings.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * A variable set by one name and read by another, when the author meant one.
+ *
+ * A named `@@property` block is a TypeScript binding, and `var({{accent}})` resolves at build time to
+ * the name that block generated. Setting it with the same binding works end to end — `{{accent}}:
+ * blue` writes `--r-…: blue` and the `var()` reads it back.
+ *
+ * **Writing the literal name instead is two variables, and nothing said so.** Measured:
+ *
+ * ```
+ * --accent: blue;               ->  .r-… { --accent: blue }       ONE variable
+ * background: var({{accent}});  ->  reads --r-k8u6ISIlk           ANOTHER
+ * ```
+ *
+ * The author believes they set what they read; the `var()` falls back to the `@property`
+ * `initial-value` and the declaration they wrote does nothing for it. Reported before the binding
+ * form is recommended anywhere, or the recommendation creates the fault it exists to remove.
+ *
+ * **It matches by NAME and nothing else**, which is what keeps it precise: `--accent` set while the
+ * binding `accent` is read. A literal nobody has a binding for is ordinary CSS and is left alone; so
+ * is a block that reads the literal it set.
+ */
+function setByAnotherName(block: Block, references: ReadonlyMap<string, string>, findings: Finding[]): void {
+  // What a resolved reference looks like once it is text: the generated name, by binding.
+  const generated = new Map([...references].map(([binding, name]) => [name, binding]));
+  const read = new Set<string>();
+  const set: { name: string; at: number }[] = [];
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      if (item.property.startsWith("--") && item.at !== undefined) {
+        set.push({ name: item.property, at: item.at });
+      }
+      for (const part of item.value) {
+        if (part.kind !== "text") continue;
+        const binding = generated.get(part.text);
+        if (binding !== undefined) read.add(binding);
+      }
+    }
+  };
+  walkItems(block.items);
+
+  for (const one of set) {
+    const binding = one.name.slice(2);
+    if (!read.has(binding)) continue;
+
+    findings.push({
+      rule: "variable-set-by-another-name",
+      at: one.at,
+      length: one.name.length,
+      message:
+        `\`${one.name}\` is set here, and \`${binding}\` is read as a binding below — those are two ` +
+        `different custom properties, so this declaration does nothing for it. Write ` +
+        `\`{{${binding}}}: …\` to set the one you read.`,
+    });
+  }
 }
 
 /**
