@@ -558,11 +558,47 @@ describe("a conditional group", () => {
     ],
     ["an object", `declare const o: { a: 1 };\nconst a = <div css=@@( @@if {{o}} { opacity: 0.5; } )>x</div>;`],
     ["a promise", `declare const p: Promise<number>;\nconst a = <div css=@@( @@if {{p}} { opacity: 0.5; } )>x</div>;`],
+    // **Measured and MISSED before this line existed.** The check asked whether the type was an
+    // object, and a literal is not one — so every one of these passed while never being false.
+    ["a string literal", `declare const s: "yes";\nconst a = <div css=@@( @@if {{s}} { opacity: 0.5; } )>x</div>;`],
+    ["a union of them", `declare const s: "a" | "b";\nconst a = <div css=@@( @@if {{s}} { opacity: 0.5; } )>x</div>;`],
+    ["a union of numbers", `declare const n: 1 | 2;\nconst a = <div css=@@( @@if {{n}} { opacity: 0.5; } )>x</div>;`],
+    [
+      "a template type that cannot be empty",
+      `declare const t: \`x\${string}\`;\nconst a = <div css=@@( @@if {{t}} { opacity: 0.5; } )>x</div>;`,
+    ],
+    [
+      "an array, which is an object wearing a length",
+      `declare const xs: number[];\nconst a = <div css=@@( @@if {{xs}} { opacity: 0.5; } )>x</div>;`,
+    ],
   ])("%s is reported, because it is always truthy", (_what, code) => {
     const report = check({ "Card.tsx": `${code}\nexport {};\n` });
 
     expect(report.findings).toHaveLength(1);
     expect(report.findings[0].message).toMatch(/always truthy/);
+  });
+
+  /**
+   * What must stay allowed, because truthiness is the QUESTION rather than an accident.
+   *
+   * `@@if` is an `if`, and a condition that can be false is a condition. Requiring `boolean` would
+   * refuse `items.length`, which is exactly the shape a person reaches for — so the type refuses
+   * only what can never be off, and lets everything else through.
+   */
+  test.each([
+    ["a boolean", "declare const b: boolean;", "b"],
+    ["one that may be missing", "declare const b: boolean | undefined;", "b"],
+    ["a number, because 0 is false", "declare const n: number;", "n"],
+    ["a length, which is the usual reason", "declare const xs: number[];", "xs.length"],
+    ["a string, because empty is false", "declare const s: string;", "s"],
+    ["an object that may be missing", "declare const o: { a: 1 } | undefined;", "o"],
+    ["a comparison", "declare const n: number;", "n > 2"],
+  ])("%s is allowed", (_what, declare, expression) => {
+    const report = check({
+      "Card.tsx": `${declare}\nconst a = <div css=@@( @@if {{${expression}}} { opacity: 0.5; } )>x</div>;\nexport {};\n`,
+    });
+
+    expect(report.findings).toEqual([]);
   });
 
   test("a typo inside a group is the same fault it is outside one", () => {

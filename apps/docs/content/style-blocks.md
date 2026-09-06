@@ -431,13 +431,23 @@ by a name, and a name cannot start with `@`. `@if` is free today and that is all
 ### What is checked
 
 Everything a block is checked for, a group is checked for the same way — a typo inside `@@if` is the
-same error, with the same *did you mean*, that it is outside one. On top of that:
+same error, with the same *did you mean*, that it is outside one.
+
+**The condition is an ordinary expression and is not required to be a `boolean`.** `@@if` is an `if`,
+and `@@if {{items.length}}` is the shape people reach for — demanding a `boolean` would refuse it for
+nothing. What is refused is a condition that can never be FALSE, because that is a group that can
+never be off: an object, an array, a function you forgot to call, a promise, a string or number
+*literal*. A type that holds `false`, `0`, `""`, `null` or `undefined` is a condition; one that holds
+none of them is a mistake.
+
+On top of that:
 
 | written | what happens |
 |---|---|
 | `@@if {{this.method}}` — a method you forgot to call | reported: *a function is always truthy — call it, or test a value* |
-| `@@if {{someObject}}` | reported: *this is always truthy, so the group can never be off* |
+| `@@if {{someObject}}`, `@@if {{"yes"}}`, `@@if {{items}}` | reported: *this is always truthy, so the group can never be off* |
 | `@@if {{maybeUndefined}}` | fine — that is the shape a prop has |
+| `@@if {{items.length}}`, `@@if {{name}}` | fine — `0` and `""` are false, so the group can be off |
 | `...{{notABlock}}` | reported: *only a style block can be spread* |
 | `...{{base}}` inside `&:hover` or a `@media` | reported — see below |
 

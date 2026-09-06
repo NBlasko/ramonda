@@ -124,13 +124,27 @@ export type CssCondition<T> = [T] extends [(...args: never[]) => unknown]
   ? "a function is always truthy — call it, or test a value"
   : [T] extends [Promise<unknown>]
     ? "a promise is always truthy — await it, or test a value"
-    : [null] extends [T]
-      ? T
-      : [undefined] extends [T]
-        ? T
-        : [T] extends [object]
-          ? "this is always truthy, so the group can never be off"
-          : T;
+    : [Extract<FALSY, T>] extends [never]
+      ? "this is always truthy, so the group can never be off"
+      : T;
+
+/**
+ * Every value JavaScript reads as false, as a type.
+ *
+ * A condition is worth writing when it can be false, so a type holding NONE of these can never turn
+ * its group off. Asking it this way rather than asking whether the type is an OBJECT was a real gap:
+ * `"yes"`, `"a" | "b"`, `1 | 2` and `` `x${string}` `` are all literals rather than objects, and every
+ * one of them passed while never being false.
+ *
+ * It reads the right way round for the shapes that must stay allowed, too — `string` holds `""`,
+ * `number` holds `0`, and `{ a: 1 } | undefined` holds `undefined`, so all three are conditions.
+ *
+ * **The direction matters and the first attempt had it backwards.** `Extract<T, FALSY>` asks whether
+ * the TYPE fits into a falsy value, which `number` does not — so it refused `items.length`, the very
+ * shape this is meant to allow. `Extract<FALSY, T>` asks the question that was meant: is any falsy
+ * value one this type could hold.
+ */
+type FALSY = false | 0 | 0n | "" | null | undefined;
 
 /**
  * What may be spread into a block: another block, and nothing else.
