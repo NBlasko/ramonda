@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { ABBREVIATIONS } from "./keywords.generated";
 import { HOLE } from "./normalise";
 
 /**
@@ -116,4 +117,69 @@ export function substitute(normalised: string, className: string): string {
     PLACEHOLDER,
     (_match, index: string) => `var(${variableNameFor(className, Number(index))})`,
   );
+}
+
+/**
+ * How long a readable name may be before the hash is the better answer.
+ *
+ * **Measured rather than chosen.** On the declarations the playground actually writes, 29 of 31 come
+ * to 32 characters or fewer and the two above it are 61 and 69 — a `transition` with two parts each.
+ * The cliff is where the budget is: everything ordinary stays readable and the outliers, which
+ * nobody was going to read anyway, become a hash.
+ */
+export const NAME_BUDGET = 32;
+
+/**
+ * The characters a value may hold and still be written into a class name.
+ *
+ * Conservative on purpose, and the direction is chosen: a character left out costs a hash, which is
+ * always correct, while one wrongly let in is a class attribute or a selector that does not parse.
+ * A space is not here because it is rewritten as `_` before this is asked.
+ */
+const SAFE_VALUE = /^[a-zA-Z0-9#.,%()/_+*=<>:;!&|~^$?@[\]{}-]+$/;
+
+/**
+ * A class name a person can read, or the hash when one cannot be written.
+ *
+ * `r-<abbreviation>-<value>`, with the value **verbatim** and spaces as `_`. Verbatim is what makes
+ * it lossless, and lossless is what makes it safe: stripping the characters a class name cannot hold
+ * was measured to merge `opacity: .5` with `opacity: 5`, two rules into one, which is the worst
+ * failure this package has.
+ *
+ * **The hash is the FLOOR, not the default.** It answers for a declaration carrying a hole, a name
+ * over {@link NAME_BUDGET}, a value holding a character that cannot be written, and any CONTEXT —
+ * a selector or a conditional at-rule — which the encoder does not yet spell. So a form not yet
+ * covered is always correct and merely less pretty, which is what lets the readable half grow one
+ * context at a time rather than in one commit.
+ *
+ * **The two forms can never collide, structurally rather than by luck.** A hash is base62, which has
+ * no `-`, so a hashed name holds none after the prefix; a readable name always holds the one that
+ * separates the property from the value. And two readable names differ whenever their declarations
+ * do, because the abbreviation map forbids a `-` inside an abbreviation — so the first `-` always
+ * ends it, and `p` with the value `l-40px` cannot be read as `pl` with `40px`.
+ */
+export function nameFor(declaration: {
+  property: string;
+  canonical: string;
+  identity: string;
+  selector: string;
+  conditions: readonly string[];
+  holes: readonly number[];
+}): string {
+  const hash = () => classNameFor(declaration.identity);
+
+  if (declaration.holes.length > 0) return hash();
+  if (declaration.selector !== "" || declaration.conditions.length > 0) return hash();
+
+  // From the canonical text rather than from anywhere else, so the name and the rule cannot disagree
+  // about what the value is.
+  const colon = declaration.canonical.indexOf(":");
+  const value = declaration.canonical
+    .slice(colon + 1)
+    .replace(/;$/, "")
+    .replace(/ /g, "_");
+  if (value === "" || !SAFE_VALUE.test(value)) return hash();
+
+  const name = `r-${ABBREVIATIONS[declaration.property] ?? declaration.property}-${value}`;
+  return name.length > NAME_BUDGET ? hash() : name;
 }

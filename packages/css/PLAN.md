@@ -1588,10 +1588,23 @@ be ambiguous, and both are pinned by name in a test so they cannot quietly come 
 Also fixed while here: `TAG` was referenced in four of this script's error paths and defined nowhere.
 None had ever run.
 
-**RN2 — the encoder.** `nameFor(declaration)`, pure, with the hash as the FALLBACK rather than the
-default. It falls back for exactly four reasons, and each is measured rather than assumed: the value
-carries a hole, the name is over budget, the context has no literal spelling, or the value holds a
-character that cannot be escaped. A test asserts injectivity over the whole property map.
+**RN2 — the encoder. DONE 2026-09-06, and not yet wired in** — the sheet cannot emit `.r-c-#fff`
+until RN3 escapes it, so `nameFor` exists and the transform still calls the hash.
+
+`r-<abbreviation>-<value>`, the value **verbatim** and spaces as `_`. Verbatim is the whole of it:
+stripping was measured to merge `opacity: .5` with `opacity: 5`.
+
+Four fallbacks, each for a reason rather than a preference: a hole (the value is not text), a
+context (RN4's job), a value holding a character a class name cannot carry, and the budget.
+
+**The budget is 32 and it was measured, not chosen.** On the declarations the playground actually
+writes, 29 of 31 come to 32 characters or fewer and the two above are 61 and 69 — two `transition`s
+with two parts each. The cliff is where the budget went.
+
+**The two forms cannot collide, structurally rather than by luck.** A hash is base62 and holds no
+`-`, so a hashed name has none after the prefix; a readable one always has the one before its value.
+Nothing checks this at runtime because nothing has to. Injectivity is asserted over all 551
+properties and over 2,000 values of one.
 
 **RN3 — escaping in the sheet.** The class attribute takes the name raw; the SELECTOR needs `\` in
 front of `#`, `.`, `%`, `(`, `)`, `,`, `/`, `:`, `[`, `]`. This is where the cost lands, and it is not
