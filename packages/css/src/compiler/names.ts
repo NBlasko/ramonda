@@ -183,3 +183,20 @@ export function nameFor(declaration: {
   const name = `r-${ABBREVIATIONS[declaration.property] ?? declaration.property}-${value}`;
   return name.length > NAME_BUDGET ? hash() : name;
 }
+
+/**
+ * A class name as a SELECTOR holds it, which is not how the markup holds it.
+ *
+ * A class attribute takes anything but whitespace, so `r-c-#fff` goes into the markup as it is. A
+ * selector does not: `#` starts an id, `.` starts another class, `(` opens a function — so
+ * `.r-c-#fff` would parse as `.r-c` followed by `#fff` and match nothing the markup carries. Each of
+ * them takes a `\` in front of it.
+ *
+ * What is left alone is what an identifier may already hold: letters, digits, `_`, `-`, and anything
+ * outside ASCII, which CSS treats as an identifier character.
+ *
+ * Both minifiers were measured to keep these: esbuild and lightningcss.
+ */
+export function escapeClass(className: string): string {
+  return className.replace(/[^a-zA-Z0-9_\u00a0-\uffff-]/g, (character) => `\\${character}`);
+}

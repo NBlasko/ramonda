@@ -1,7 +1,7 @@
 import MagicString from "magic-string";
 import { segments } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
-import { classNameFor, substitute, variableNameFor } from "./names";
+import { classNameFor, nameFor, substitute, variableNameFor } from "./names";
 import { namedSites } from "./references";
 import { normalise } from "./normalise";
 import { type Span, readBlock } from "./read";
@@ -291,8 +291,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
 
       piece += "{";
       for (const declaration of segment.items) {
-        // The whole identity, not the text alone — see `AtomicDeclaration.identity`.
-        const own = classNameFor(declaration.identity);
+        // Readable where one can be written, the hash where it cannot — see `nameFor`, which is
+        // where the whole identity is hashed when it comes to that.
+        const own = nameFor(declaration);
         const variables = declaration.holes.map((_hole, index) => variableNameFor(own, index));
 
         if (!atoms.has(own)) {

@@ -1,5 +1,6 @@
 import { CssBlockError } from "./errors";
 import { sheetRank } from "./flatten";
+import { escapeClass } from "./names";
 import type { EmittedBlock } from "./transform";
 
 /**
@@ -24,7 +25,9 @@ function write(className: string, block: EmittedBlock): string {
     return `@${block.at} ${className} { ${block.css} }\n`;
   }
 
-  let rule = `.${className}${block.selector ?? ""} { ${block.css} }`;
+  // The class ESCAPED, the selector after it not — `:hover` is CSS's own punctuation and means what
+  // it says, while a `#` inside the class name is a character the name happens to hold.
+  let rule = `.${escapeClass(className)}${block.selector ?? ""} { ${block.css} }`;
   // Outermost first, so they are written from the inside out.
   for (const condition of [...(block.conditions ?? [])].reverse()) rule = `${condition} { ${rule} }`;
   return `${rule}\n`;
@@ -52,7 +55,9 @@ function ordered<T extends { block: EmittedBlock }>(rules: Iterable<[string, T]>
  * nameless one by the only thing it has — its at-rule, which a minifier may not invent or drop.
  */
 function nameIn(className: string, block: EmittedBlock): string {
-  if (block.at === undefined) return `.${className}`;
+  // Escaped, because that is what a stylesheet holds — looking for the raw name would find nothing
+  // and fail every build the moment a name became readable.
+  if (block.at === undefined) return `.${escapeClass(className)}`;
   return NAMELESS.has(block.at) ? `@${block.at}` : className;
 }
 

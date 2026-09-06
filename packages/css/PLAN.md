@@ -1606,11 +1606,22 @@ with two parts each. The cliff is where the budget went.
 Nothing checks this at runtime because nothing has to. Injectivity is asserted over all 551
 properties and over 2,000 values of one.
 
-**RN3 — escaping in the sheet.** The class attribute takes the name raw; the SELECTOR needs `\` in
-front of `#`, `.`, `%`, `(`, `)`, `,`, `/`, `:`, `[`, `]`. This is where the cost lands, and it is not
-only the sheet: `Sheet.verify` looks for a class by substring and must look for the escaped form, the
-splitting gate and a dozen tests match `r-[0-9a-zA-Z]{9}`, and every one of them has to accept a name
-of **mixed shape** — readable or hashed.
+**RN3 — escaping, and the encoder wired in. DONE 2026-09-06.** The class attribute takes the name
+raw; the SELECTOR takes a `\` in front of every character an identifier may not hold. Verified
+through a real build and a real browser: the sheet holds `.r-ol-2px_dashed_\#7c3aed`, the markup
+holds `r-ol-2px_dashed_#7c3aed`, and the element computes what it should.
+
+The cost landed where the plan said, and in one place more:
+
+- `Sheet.verify` looks for a class by substring, and looks for the escaped form now.
+- Twelve test assertions matched `r-[0-9a-zA-Z]{9}` and accept a mixed shape now.
+- **Two of them were reading names out of TEXT and found `r-left` inside `border-left`** — a map key,
+  since a block compiles to a map. They read whole quoted strings instead.
+- **The splitting gate matched neither shape and reported ZERO classes in a build of fifty-six**,
+  passing on the strength of nothing. Third time that shape has turned up here. It compares both
+  sides in one spelling now, and sees all 56.
+
+A hole's declaration always falls back to the hash, so a custom property name is never escaped.
 
 **RN4 — context, one form at a time.** Pseudo-classes first, then `@media` and `@supports`, then
 attribute and descendant selectors. Each is a rule that can be wrong, and a wrong name is a wrongly

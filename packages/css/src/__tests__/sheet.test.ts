@@ -430,3 +430,90 @@ describe("two rules under one name that differ only in context", () => {
     expect(sheet.css().match(/r-cccccccccccccccc/g)).toHaveLength(1);
   });
 });
+
+/**
+ * A readable class name in a SELECTOR, where it has to be escaped.
+ *
+ * The class attribute takes `r-c-#fff` as it is — an attribute holds anything but whitespace. A
+ * selector does not: `#`, `.`, `%`, `(`, `,` and the rest end the class and start something else, so
+ * `.r-c-#fff` would parse as the class `r-c` followed by an id. Every one of them takes a `\` in
+ * front of it, and both minifiers were measured to keep those.
+ *
+ * A hashed name is base62 and needs nothing, so the escaping is only ever about the readable half.
+ */
+describe("a readable class in a selector", () => {
+  const rule = (className: string, css: string, extra: Partial<EmittedBlock> = {}): EmittedBlock => ({
+    className,
+    css,
+    properties: [],
+    ...extra,
+  });
+
+  test("a name with nothing special is written as it is", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [rule("r-p-12px", "padding:12px;", { property: "padding" })]);
+
+    expect(sheet.css()).toContain(".r-p-12px { padding:12px; }");
+  });
+
+  test.each([
+    ["a colour", "r-c-#fff", ".r-c-\\#fff"],
+    ["a decimal", "r-o-.5", ".r-o-\\.5"],
+    ["a percentage", "r-w-50%", ".r-w-50\\%"],
+    ["a function", "r-tf-rotate(45deg)", ".r-tf-rotate\\(45deg\\)"],
+    ["a list", "r-m-0,auto", ".r-m-0\\,auto"],
+    ["a ratio", "r-ar-16/9", ".r-ar-16\\/9"],
+  ])("%s is escaped", (_what, className, selector) => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [rule(className, "x:y;", { property: "x" })]);
+
+    expect(sheet.css()).toContain(`${selector} { x:y; }`);
+  });
+
+  test("an underscore and a hyphen are not, because an identifier may hold them", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [rule("r-p-4px_0", "padding:4px 0;", { property: "padding" })]);
+
+    expect(sheet.css()).toContain(".r-p-4px_0 {");
+    expect(sheet.css()).not.toContain("\\_");
+  });
+
+  test("a hashed name is left alone entirely", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [rule("r-2Z9Nddmm7", "color:red;", { property: "color" })]);
+
+    expect(sheet.css()).toContain(".r-2Z9Nddmm7 { color:red; }");
+    expect(sheet.css()).not.toContain("\\");
+  });
+
+  test("and the selector suffix keeps its own punctuation, which is CSS's own", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [rule("r-c-#fff", "color:#fff;", { property: "color", selector: ":hover" })]);
+
+    // The class is escaped; the `:hover` after it is a pseudo-class and must not be.
+    expect(sheet.css()).toContain(".r-c-\\#fff:hover { color:#fff; }");
+  });
+});
+
+/**
+ * The round trip has to look for the ESCAPED name, because that is what a stylesheet holds.
+ *
+ * `verify` asks whether every class the markup names is still in the CSS that came back from
+ * post-processing. It looks by substring, and the substring in a stylesheet is escaped — so looking
+ * for the raw name would find nothing and fail every build the moment names became readable.
+ */
+describe("verifying a readable class", () => {
+  test("finds it in a stylesheet, where it is escaped", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [{ className: "r-c-#fff", css: "color:#fff;", properties: [], property: "color" }]);
+
+    expect(() => sheet.verify(".r-c-\\#fff{color:#fff}")).not.toThrow();
+  });
+
+  test("and still refuses when it was renamed away", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [{ className: "r-c-#fff", css: "color:#fff;", properties: [], property: "color" }]);
+
+    expect(() => sheet.verify(".a1{color:#fff}")).toThrow(CssBlockError);
+  });
+});

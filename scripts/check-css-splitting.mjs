@@ -57,8 +57,17 @@ const assets = join(dist, "assets");
 const files = readdirSync(assets);
 const sheets = files.filter((name) => name.endsWith(".css"));
 
-/** Every generated class a stylesheet names. The hash is the block's, so this needs no fixture. */
-const classesIn = (name) => new Set(readFileSync(join(assets, name), "utf8").match(/\.r-[0-9a-f]{16}/g) ?? []);
+/**
+ * A class name as a SELECTOR holds it — escaped, which is how a stylesheet writes one.
+ *
+ * A class name can be readable now (`r-b-1px_solid_#2a2a2a`), and in a selector every character an
+ * identifier may not hold takes a `\`. Matching the raw name would find nothing: measured, this gate
+ * reported zero classes in a build that had fifty-six, and passed on the strength of it.
+ */
+const escapeClass = (name) => name.replace(/[^a-zA-Z0-9_\u00a0-\uffff-]/g, (one) => `\\${one}`);
+
+/** Every generated class a stylesheet names, as the selector spells it. */
+const classesIn = (name) => new Set(readFileSync(join(assets, name), "utf8").match(/\.r-(?:\\.|[\w-])+/g) ?? []);
 
 const manifest = JSON.parse(readFileSync(join(dist, ".vite", "manifest.json"), "utf8"));
 
@@ -89,7 +98,13 @@ const loadedBy = (key, seen = new Set()) => {
 for (const [key, entry] of Object.entries(manifest)) {
   if (entry.file === undefined || !entry.file.endsWith(".js")) continue;
 
-  const named = new Set(readFileSync(join(dist, entry.file), "utf8").match(/r-[0-9a-f]{16}/g) ?? []);
+  /**
+   * Out of the QUOTED strings, not out of the text: a block compiles to a map whose keys are
+   * property names, so the JavaScript holds `"border-left"` — and a pattern looking for `r-`
+   * anywhere finds `r-left` inside it.
+   */
+  const source = readFileSync(join(dist, entry.file), "utf8");
+  const named = new Set([...source.matchAll(/"(r-[^"]+)"/g)].map((one) => one[1]));
   if (named.size === 0) continue;
 
   const loaded = loadedBy(key)
@@ -97,7 +112,9 @@ for (const [key, entry] of Object.entries(manifest)) {
     .join("");
 
   for (const one of named) {
-    if (!loaded.includes(one)) faults.push(`${key} names \`${one}\` and loads no stylesheet holding it`);
+    if (!loaded.includes(`.${escapeClass(one)}`)) {
+      faults.push(`${key} names \`${one}\` and loads no stylesheet holding it`);
+    }
   }
 }
 
@@ -105,8 +122,11 @@ for (const [key, entry] of Object.entries(manifest)) {
 const scripts = files.filter((name) => name.endsWith(".js")).map((name) => readFileSync(join(assets, name), "utf8"));
 for (const sheet of sheets) {
   for (const named of classesIn(sheet)) {
-    const bare = named.slice(1);
-    if (!scripts.some((code) => code.includes(bare))) faults.push(`${sheet} carries ${bare}, which no chunk names`);
+    // The selector is escaped and the markup's name is not — compare in the markup's spelling.
+    const bare = named.slice(1).replace(/\\(.)/g, "$1");
+    if (!scripts.some((code) => code.includes(`"${bare}"`))) {
+      faults.push(`${sheet} carries ${bare}, which no chunk names`);
+    }
   }
 }
 
