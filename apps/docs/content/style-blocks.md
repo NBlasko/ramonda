@@ -33,10 +33,15 @@ off, and **what you wrote later wins** — the rule you already have when you re
 
 ## What a block becomes
 
-**Each declaration becomes one class**, named after the hash of that declaration — so `display: flex`
-written anywhere in your app is one rule, and an element carries one class per thing its block sets.
-Two files writing the same CSS agree on the same classes, because a hash is what lets two people who
-never spoke arrive at one answer.
+**Each declaration becomes one class**, named after what it does — so `display: flex` written
+anywhere in your app is one rule, and an element carries one class per thing its block sets:
+
+```html
+<div class="r-disp-flex r-gap-8px r-bl-4px_solid_#10b981">
+```
+
+Two files writing the same CSS agree on the same classes without knowing about each other, because
+the name is derived from the declaration and nothing else.
 
 A class per declaration rather than per block is what makes [composition](#composing-blocks) possible
 at all: merging two blocks keeps, per thing set, the one written later — and it can only do that if
@@ -236,8 +241,9 @@ const card = @@(
 );
 ```
 
-**The rule goes to the stylesheet and the site becomes its name.** The name is a hash, like a class,
-so the same animation written in two files is one `@keyframes` — and `slide` is an ordinary
+**The rule goes to the stylesheet and the site becomes its name.** The name is a hash — a whole
+`@keyframes` has no short spelling the way one declaration does — so the same animation written in
+two files is one rule, and `slide` is an ordinary
 binding, which is what makes the reference checkable: a typo is an unresolved identifier and
 TypeScript reports it with its own *did you mean*. Written in a stylesheet instead, the name would be
 a string on both sides and `animation: slidein` would be one typo away from silence.
@@ -297,6 +303,71 @@ Each of the three has its own vocabulary, and the check follows it:
 
 A hole may not go in one of these blocks otherwise: a hole is a custom property **on an element**, and
 these name something the whole stylesheet uses, so there is no element for the value to come from.
+
+## The names
+
+A class name says what its rule does. It is `r-`, a short spelling of the property, a `-`, and the
+**value as you wrote it** — spaces written `_`, because a class name cannot hold one.
+
+```
+padding: 12px            r-p-12px
+display: inline-flex     r-disp-inline-flex
+opacity: .5              r-o-.5
+padding: 4px 0           r-p-4px_0
+outline-offset: 4px      r-outline-offset-4px
+```
+
+About sixty properties have a short spelling — `p`, `m`, `w`, `h`, `bg`, `c`, `gap`, `items`,
+`rounded` — and the rest use their own name, which already reads. It is a small list on purpose: a
+short form nobody recognises is worse than the property's own name, because it is shorter *and* has
+to be learned.
+
+**The value is written exactly as you wrote it, and that is not a nicety.** `opacity: .5` and
+`opacity: 5` are both valid CSS, and anything that tidied the `.` away would give them one class —
+two rules merged into one, on a page nobody edited.
+
+Where a declaration sits is written in front of it:
+
+```
+&:hover { color: red }                    r-:hover-c-red
+&::after { width: 10px }                  r-::after-w-10px
+& .title { font-weight: 600 }             r-_.title-fw-600
+@media print { color: red }               r-@media_print-c-red
+```
+
+The `_` before `.title` is the space in `& .title` — it is what separates a descendant from `&.title`,
+which is a different element and a different class.
+
+### Why some are still a hash
+
+```
+r-QbofRLj5j
+```
+
+Four reasons, and each one is a name that could not be written rather than a preference:
+
+- **the declaration carries a hole** — its value is a custom property, not text you wrote;
+- **the name would be too long** — over 32 characters, which in practice means a `transition` or a
+  `grid-template` with several parts;
+- **the value or the context holds a character a class name cannot** — a quote, most often;
+- **the selector is a list** — `&:hover, &:focus` is two selectors sharing a body, and there is no
+  one spelling for it.
+
+A hashed name is exactly as correct as a readable one. It is only less pleasant to read, which is why
+the readable half can grow without anything else changing.
+
+**The one thing you can act on**: a shorter value is a shorter class. Splitting a long `transition`
+into its longhands gives you three readable names instead of one hash.
+
+### In the stylesheet they look escaped
+
+```css
+.r-bg-\#10b981 { background: #10b981 }
+```
+
+That backslash is CSS's own: in a selector a `#` starts an id, so a class name holding one has to say
+it means a `#`. The markup carries the name without it, which is what you see in devtools and what
+you would grep for.
 
 ## Composing blocks
 

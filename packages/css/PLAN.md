@@ -1648,8 +1648,29 @@ name, which is two different rules under one class. The selector is appended ver
 spelling; a context holding a quote, which markup would have to escape; a hole; and anything over
 the budget.
 
-**RN5 — the page.** What a name means, why some are hashed, and the one thing an author can act on:
-a shorter value is a shorter class.
+**RN5 — the page. DONE 2026-09-06.** `style-blocks.md` gains *The names*: what a name is made of,
+how a context is written in front of it, the four reasons one is still a hash, and the escaping a
+reader will meet in the stylesheet — a `\#` is CSS's own and the markup carries the name without it.
+
+**The page's opening claim was wrong and is corrected**: it said a class is named after the HASH of
+its declaration. It is named after what the declaration does, and two files agree without knowing
+about each other because the name is derived from the declaration and nothing else.
+
+**And one claim about `@keyframes` needed a reason rather than a comparison.** It said the name is a
+hash *like a class* — which stopped being true. A whole `@keyframes` has no short spelling the way
+one declaration does, which is why it is hashed.
+
+### What it cost, measured at the end rather than promised at the start
+
+**62% of the demo's declarations readable after RN2 and RN3, 76% after RN4** — the rest hashed for
+four reasons, each a name that could not be written rather than a preference. A readable name is a
+median of 12 characters against the hash's 11, and gzips slightly smaller.
+
+**Four faults this found, none of them in the encoder.** A `d` and a `flex` that are real CSS
+properties, caught by the map's third assertion on its first run. Two test helpers reading class
+names out of TEXT and finding `r-left` inside `border-left`. The splitting gate matching neither
+shape and reporting zero classes in a build of fifty-six. And a descendant collapsing into a compound
+selector when the context was joined with a space.
 
 ### What it costs, honestly
 
