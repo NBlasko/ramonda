@@ -138,3 +138,47 @@ describe("a spread that cannot mean anything", () => {
     expect(() => emit(`const c = @@( &:hover { ...{{base}}; } );\n`)).toThrow(/top level|@@if/);
   });
 });
+
+/**
+ * A condition is the marker and ONE hole, and nothing else.
+ *
+ * **Measured before this was written: `@@if {{on}}Error { … }` compiled.** The parser lets a hole
+ * into a prelude only when the text so far is exactly `@@if`, records it, and carries on reading —
+ * so anything after the hole joined the prelude as ordinary text and nobody asked about it. The
+ * group still worked, which is why it was silent: `Error` meant nothing and did nothing.
+ *
+ * The mirror case was already refused, and that asymmetry is what gave it away: `@@if Error{{on}}`
+ * fails because the text before the hole is not the marker.
+ */
+describe("a condition head with something extra in it", () => {
+  test.each([
+    ["text after the hole", "@@if {{on}}Error { opacity: .5; }"],
+    ["a word", "@@if {{on}} and { opacity: .5; }"],
+    ["a selector after it", "@@if {{on}}:hover { opacity: .5; }"],
+  ])("%s is refused", (_what, body) => {
+    expect(() => emit(`const c = @@(\n  ${body}\n);\n`)).toThrow(/@@if/);
+  });
+
+  /**
+   * A SECOND hole is refused earlier and says something better: by then the head is no longer the
+   * marker, so it is the same fault as a hole written anywhere else a hole cannot go.
+   */
+  test("a second hole is refused as a hole in a selector", () => {
+    expect(() => emit("const c = @@(\n  @@if {{on}}{{off}} { opacity: .5; }\n);\n")).toThrow(
+      /hole cannot stand in a selector/,
+    );
+  });
+
+  test("and the refusal says what a condition is", () => {
+    expect(() => emit("const c = @@(\n  @@if {{on}}Error { opacity: .5; }\n);\n")).toThrow(/one .*\{\{/);
+  });
+
+  test.each([
+    ["the ordinary shape", "@@if {{on}} { opacity: .5; }"],
+    ["no space before the hole", "@@if{{on}} { opacity: .5; }"],
+    ["space either side", "@@if  {{on}}  { opacity: .5; }"],
+    ["an expression with braces in it", "@@if {{ f({a: 1}) }} { opacity: .5; }"],
+  ])("%s is fine", (_what, body) => {
+    expect(() => emit(`const c = @@(\n  ${body}\n);\n`)).not.toThrow();
+  });
+});

@@ -456,6 +456,27 @@ export function readBlock(source: string, open: number, filename: string, option
 
       if (looksLikeARule(closer)) {
         const prelude = readHead(123 /* { */, "a selector").trim();
+
+        /**
+         * A condition is the marker and ONE hole, and nothing else.
+         *
+         * **Measured before this refusal existed: `@@if {{on}}Error { … }` compiled.** A hole is let
+         * into a prelude only when the text so far is exactly `@@if`, and after recording it the
+         * read carries on — so anything written after the hole joined the prelude as ordinary text
+         * and nothing asked about it. The group still worked, which is why it was silent.
+         *
+         * The mirror case was already refused, and that asymmetry is what gave it away: the text
+         * BEFORE the hole was checked and the text after it was not.
+         */
+        if (prelude.startsWith(CONDITION) && holeIn(prelude, CONDITION) === undefined && !tolerant) {
+          refuse(
+            `\`${CONDITION}\` takes one \`{{ … }}\` and nothing else — everything the condition needs goes ` +
+              "inside the braces, where it is ordinary TypeScript.",
+            source,
+            from,
+            filename,
+          );
+        }
         // `readHead` stopped on the `{` the lookahead found, so this cannot be anything else.
         at++;
         items.push({ kind: "rule", at: from, preludeEnd: at - 1, prelude, items: readItems(BRACE) });

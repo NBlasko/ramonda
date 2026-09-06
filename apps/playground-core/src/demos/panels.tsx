@@ -483,7 +483,7 @@ export class StyleBlockNested extends Component {
           gap: 6px 16px;
         }
 
-        @media (prefers-reduced-mErrorotion: reduce) {
+        @media (prefers-reduced-motion: reduce) {
           transition: none;
 
           &:hover, &:focus-within {
