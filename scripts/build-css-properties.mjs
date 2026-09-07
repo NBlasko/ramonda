@@ -113,6 +113,21 @@ function keywordsOf(syntax) {
  *
  * Listed rather than pattern-matched on `-ident`: `<custom-property-name>` and `<counter-name>` do
  * not end in one, and a pattern would have to be read as a claim about every future type name.
+ *
+ * ## What is NOT free, and it was here until somebody hit it
+ *
+ * `<url>` and `<string>` were both in this set, and neither is a bare word: a `<url>` is `url(…)`, a
+ * FUNCTION, and a `<string>` is quoted — and the checker's scanner steps over both before it reads a
+ * word. So they excluded 33 properties from being checked at all while promising completions for
+ * them, which is the shape a user reported as `cursor: noned` passing.
+ *
+ * Measured both ways before the change was believed. 77 real declarations across all 33 —
+ * `content: attr(data-x)`, `cursor: url(a.cur), auto`, `grid-template-areas: "a b" "c d"`,
+ * `font-feature-settings: "liga" 1`, `d: path("M0 0")`, `stroke: url(#g)` — **0 falsely reported**;
+ * 15 typos across the same 33 — **0 missed**. Checkable rows went from 346 to 379.
+ *
+ * The question this set answers is "can a bare word here be something nobody can judge", and only a
+ * production that IS a bare word can make it so.
  */
 const FREE = new Set([
   "custom-ident",
@@ -128,8 +143,6 @@ const FREE = new Set([
   "container-name",
   "anchor-name",
   "position-area",
-  "string",
-  "url",
   "attr-name",
 ]);
 

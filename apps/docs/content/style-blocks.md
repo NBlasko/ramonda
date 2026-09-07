@@ -97,6 +97,9 @@ JSX is usable because somebody wrote the parser for it. What that buys is the ch
 
 - **A property that does not exist** is TypeScript's own *did you mean*, on the property.
 - **A value the property does not take** is reported the same way, with the values it does take.
+  A property whose grammar admits a name nobody can judge — `animation-name: slidein` is yours to
+  pick — is left alone, and a `url()` or a quoted string in the value does not make it one:
+  `cursor: url(a.cur), pointerr` is still reported on `pointerr`.
 - **A hole is checked against the type the property accepts**, in the scope where it was written —
   `this.weight` resolves to the field beside it, because the expression stays where you put it.
 

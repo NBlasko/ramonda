@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { positionOf } from "../compiler/errors";
+import { KEYWORDS } from "../compiler/keywords.generated";
+import { readBlock } from "../compiler/read";
+import { checkBlock } from "../compiler/rules";
 import { virtualFile } from "../compiler/virtual";
 
 /**
@@ -167,5 +170,99 @@ describe("a hole, checked against the property it stands in", () => {
 
   test("and a hole in an open property takes a string or a number", () => {
     expect(check("    padding: {8}px;")).toEqual([]);
+  });
+});
+
+/**
+ * The 33 properties that had no `KEYWORDS` row because their grammar mentions a `<url>` or a
+ * `<string>`.
+ *
+ * **Reported by a user as `cursor: noned` passing**, and the cause was one line in the generator:
+ * `url` and `string` sat in the set of productions that make a word unjudgeable. Neither is a bare
+ * word — a `<url>` is `url(…)`, a function, and a `<string>` is quoted — and the checker's scanner
+ * steps over both before it reads a word at all. So `cursor` was offered `pointer` as a completion
+ * and could not be told `pointerr` was wrong.
+ *
+ * Both directions are asserted here, because a rule that reports correct CSS is worse than one that
+ * misses a typo, and this change could only have gone wrong in the first way.
+ */
+describe("properties whose grammar mentions a url or a string", () => {
+  const of = (declaration: string) => checkBlock(readBlock(`@@(\n  ${declaration};\n)`, 2, "C.tsx").block);
+
+  const GAINED = [
+    "backdrop-filter",
+    "background",
+    "background-image",
+    "border-image",
+    "border-image-source",
+    "clip-path",
+    "content",
+    "cursor",
+    "d",
+    "fill",
+    "filter",
+    "font-feature-settings",
+    "font-language-override",
+    "font-variation-settings",
+    "grid-template-areas",
+    "hyphenate-character",
+    "list-style-image",
+    "marker",
+    "marker-end",
+    "marker-mid",
+    "marker-start",
+    "mask",
+    "mask-border",
+    "mask-border-source",
+    "mask-image",
+    "offset",
+    "offset-path",
+    "quotes",
+    "shape-outside",
+    "stroke",
+    "text-emphasis",
+    "text-emphasis-style",
+    "text-overflow",
+  ];
+
+  test("every one of them can be judged now", () => {
+    expect(GAINED.filter((one) => KEYWORDS[one] === undefined)).toEqual([]);
+  });
+
+  test.each([
+    "backdrop-filter: blur(4px)",
+    "background: url(a.png) no-repeat center / cover",
+    "clip-path: url(#c)",
+    "content: attr(data-x)",
+    "content: open-quote",
+    "cursor: url(a.cur), auto",
+    'd: path("M0 0 L1 1")',
+    "fill: context-fill",
+    "filter: blur(2px) saturate(2)",
+    'font-feature-settings: "liga" 1',
+    'grid-template-areas: "a b" "c d"',
+    'hyphenate-character: "-"',
+    "mask: url(m.svg) luminance",
+    'offset: path("M0 0") 50%',
+    'quotes: "«" "»"',
+    "shape-outside: border-box",
+    "stroke: url(#g)",
+    "text-emphasis: filled dot red",
+    'text-overflow: "…"',
+  ])("%s is left alone", (declaration) => {
+    expect(of(declaration)).toEqual([]);
+  });
+
+  test.each([
+    "cursor: noned",
+    "cursor: pointerr",
+    "content: opne-quote",
+    "text-overflow: elipsis",
+    "clip-path: bordr-box",
+    "quotes: aut",
+    "filter: non",
+    "font-feature-settings: normol",
+  ])("%s is reported", (declaration) => {
+    expect(of(declaration).map((one) => one.rule)).toEqual(["unknown-value"]);
   });
 });
