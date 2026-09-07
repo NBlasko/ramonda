@@ -116,6 +116,8 @@ describe("a bare word a property does not accept", () => {
     ["a grid area the author named", "  grid-area: myarea;"],
     ["a custom property, whose value is anything", "  --brand: whatever-i-like;"],
     ["a vendor-prefixed property", "  -webkit-box-orient: vertical;"],
+    ["a vendor-prefixed VALUE, which is the same argument one level down", "  display: -webkit-box;"],
+    ["another, on a property whose row is long enough to suggest from", "  cursor: -webkit-grab;"],
   ])("%s is silent", (_what, css) => {
     expect(rules(css)).toEqual([]);
   });

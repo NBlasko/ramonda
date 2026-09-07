@@ -1004,6 +1004,18 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
   const keywords = new Set(accepted === "" ? [] : accepted.split(" "));
 
   for (const word of words(item.value)) {
+    /**
+     * A word that starts with a dash is never a keyword, and reporting one was a live fault.
+     *
+     * `display: -webkit-box` and `cursor: -webkit-grab` are CSS that works, and both were reported
+     * as typos: the vendor's own vocabulary is not in any generated row, and it never will be —
+     * `mdn-data` holds the unprefixed names. A `--`-prefixed word is the other half, and it is
+     * valid for eighteen properties: `anchor-name: --card`, `view-timeline-name: --t`.
+     *
+     * `propertyNames` below has had this skip since it was written. This rule did not, which is the
+     * drift: one question — is a dashed word a keyword — answered in two places, one of them wrong.
+     */
+    if (word.text.startsWith("-")) continue;
     if (keywords.has(word.text) || GLOBAL.has(word.text)) continue;
 
     const meant = nearest(word.text, [...keywords]);
