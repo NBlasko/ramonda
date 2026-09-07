@@ -4,7 +4,7 @@ import { collapse } from "./normalise";
 import type { Span } from "./read";
 import { readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
-import { namedSites } from "./references";
+import { type Imported, namedSites } from "./references";
 
 /**
  * The virtual file: the author's file as valid TSX, and the way back from a diagnostic to the
@@ -74,6 +74,17 @@ import { namedSites } from "./references";
 export interface VirtualFileOptions {
   /** Where the block shape is imported from. Track C fills that module in; the shape is stable. */
   readonly properties?: string;
+  /** The importing file's own path, for resolving a relative specifier — see {@link Imported}. */
+  readonly filename?: string;
+  /**
+   * How to read a module a block imports a named site from.
+   *
+   * The same reader the build and the checker use, for the reason all of them share one: a reference
+   * that resolves is TEXT and one that does not is a hole, and those are checked differently. A
+   * virtual file that resolved less than the build would type-check an expression the build never
+   * emits — and report a name the author was right to write.
+   */
+  readonly read?: Imported["read"];
   /**
    * Read a half-written block instead of refusing it — for an editor, which sees nothing else.
    *
@@ -266,7 +277,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   const heads: { from: number; to: number; at: number }[] = [];
 
   /** What a reference stands for, so the check reads the file the way the build compiles it. */
-  const references = namedSites(source);
+  const references = namedSites(source, { filename: options.filename, read: options.read });
 
   for (const site of sites) {
     // A `name=@@(` found INSIDE a block belongs to that block's text, not to the file. The transform

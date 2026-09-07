@@ -85,6 +85,15 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           author: ts.SourceFile | undefined;
           /** Where the CSS, the holes and the values are — read once per version, asked on every paint. */
           where: Regions;
+          /**
+           * Every module this file READ a named site from, and the version each had.
+           *
+           * The file's own version is not enough once a block can resolve a token from elsewhere: the
+           * answer is derived from the other module's TEXT, so editing the theme changes what this
+           * file means without touching this file. Measured when cross-module resolution was first
+           * written — the editor kept saying a token existed after it had been deleted.
+           */
+          read: { name: string; version: string }[];
         }
       >();
 
@@ -108,12 +117,34 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        * touched. The names stay correct — they are recomputed whenever the reading file changes —
        * but a stale one can survive a keystroke in another window.
        */
+      /**
+       * Resolution asks the HOST, not the disk.
+       *
+       * `ts.sys` was the first version and it is wrong for the same reason the reader is: an editor's
+       * project can hold a file the disk does not — a virtual one, a renamed one, one whose content
+       * is only in a buffer. Measured, it resolved nothing at all in a project whose files were the
+       * host's rather than the filesystem's, so every cross-module token read as unresolved.
+       */
+      const resolutionHost: ts.ModuleResolutionHost = {
+        fileExists: (name) => host.fileExists?.(name) ?? tsModule.sys.fileExists(name),
+        readFile: (name) => host.readFile?.(name) ?? tsModule.sys.readFile(name),
+        directoryExists: (name) => host.directoryExists?.(name) ?? tsModule.sys.directoryExists(name),
+        getCurrentDirectory: () => host.getCurrentDirectory(),
+        getDirectories: (name) => host.getDirectories?.(name) ?? tsModule.sys.getDirectories(name),
+        realpath: host.realpath?.bind(host),
+      };
+
+      /** The list the current `overlay` pass is filling — see the note on the cache's `read`. */
+      let reading: { name: string; version: string }[] | undefined;
+
       const readModuleFromEditor = (specifier: string, from: string): string | undefined => {
-        const resolved = tsModule.resolveModuleName(specifier, from, host.getCompilationSettings(), tsModule.sys);
+        const resolved = tsModule.resolveModuleName(specifier, from, host.getCompilationSettings(), resolutionHost);
         const name = resolved.resolvedModule?.resolvedFileName;
         if (name === undefined) return undefined;
         const snapshot = readSnapshot(name);
-        return snapshot?.getText(0, snapshot.getLength());
+        if (snapshot === undefined) return undefined;
+        reading?.push({ name, version: host.getScriptVersion(name) });
+        return snapshot.getText(0, snapshot.getLength());
       };
 
       const overlay = (
@@ -124,7 +155,18 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
 
         const version = host.getScriptVersion(fileName);
         const cached = cache.get(fileName);
-        if (cached !== undefined && cached.version === version) return cached.file;
+        if (
+          cached !== undefined &&
+          cached.version === version &&
+          cached.read.every((one) => host.getScriptVersion(one.name) === one.version)
+        ) {
+          return cached.file;
+        }
+
+        /** What this pass reads, filled in by the reader below and stored with the entry. */
+        const readHere: { name: string; version: string }[] = [];
+        // Armed for the whole pass — the virtual file resolves the same references the rules do.
+        reading = readHere;
 
         // The ORIGINAL reader, or this would ask itself for the text it is about to replace.
         const snapshot = read(fileName);
@@ -137,7 +179,14 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          * package into an editor that quietly stops understanding the syntax.
          */
         const file =
-          text === undefined ? undefined : virtualFile(text, { properties: properties(info), tolerant: true });
+          text === undefined
+            ? undefined
+            : virtualFile(text, {
+                properties: properties(info),
+                tolerant: true,
+                filename: fileName,
+                read: readModuleFromEditor,
+              });
 
         /**
          * The author's own text as a source file, for the CSS rules' diagnostics to hang on.
@@ -152,13 +201,18 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
             ? undefined
             : tsModule.createSourceFile(fileName, text, tsModule.ScriptTarget.Latest, true, tsModule.ScriptKind.TSX);
 
+        const css = text === undefined ? [] : cssFindings(text, fileName, readModuleFromEditor);
+        const where = regions(text ?? "", fileName, readModuleFromEditor);
+        reading = undefined;
+
         cache.set(fileName, {
           version,
           file,
           author,
-          css: text === undefined ? [] : cssFindings(text, fileName, readModuleFromEditor),
+          css,
           hints: text === undefined ? [] : siteFindings(text),
-          where: regions(text ?? "", fileName, readModuleFromEditor),
+          where,
+          read: readHere,
         });
         return file;
       };
