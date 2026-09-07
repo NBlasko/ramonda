@@ -1185,3 +1185,102 @@ describe("a caret on a blank line at the end", () => {
     for (const property of SOME_PROPERTIES) expect(offered).toContain(property);
   });
 });
+
+/**
+ * Hover, where the answer used to be about the virtual file rather than about CSS.
+ *
+ * **Reported by a user**: hovering `::after` showed
+ * `(property) "&::after": ({ content: string } | …)[]`, which is a true sentence about the object
+ * literal the virtual file builds and tells a reader nothing. Measured, three shapes were wrong in
+ * two different ways:
+ *
+ *     display, content    CSS grammar plus Initial/Inherited     already right
+ *     ::after, :hover     (property) "&::after": {               noise
+ *     @media (…)          (property) "@media (…)": {             noise
+ *     @@if, ...           nothing at all
+ *
+ * A property already answers well because `asCss` reshapes what the generated types carry. A
+ * selector, an at-rule and this language's own markers had nobody to answer for them.
+ *
+ * ## What is generated and what is written
+ *
+ * `mdn-data` has 144 selectors with their group and their MDN url and **no description** — so the
+ * NAMES are generated, and the sentences are written for the ones whose behaviour surprises people.
+ * The generator asserts every written name exists in `mdn-data`, so a sentence cannot be attached to
+ * a selector CSS does not have.
+ *
+ * `@@if` and `...` are this language's own and have no upstream to read; what they say is what this
+ * repository measured about them.
+ */
+describe("hover", () => {
+  const hovered = (code: string, at: string) => {
+    const { service, source } = editor(code);
+    const got = service.getQuickInfoAtPosition(FILE, source.indexOf(at) + 1);
+    return {
+      signature: got?.displayParts?.map((one) => one.text).join("") ?? "",
+      documentation: got?.documentation?.map((one) => one.text).join("") ?? "",
+    };
+  };
+
+  const BLOCK =
+    `const a = <div css=@@(\n` +
+    `  display: flex;\n` +
+    `  &::after { content: ""; }\n` +
+    `  &:hover { color: red; }\n` +
+    `  @@if ({on}) { opacity: 0.5; }\n` +
+    `  ...{base};\n` +
+    `  @media (min-width: 40rem) { gap: 8px; }\n` +
+    `)>x</div>;\n`;
+
+  test("a pseudo-element says what it is, and what it needs", () => {
+    const { signature, documentation } = hovered(BLOCK, "::after");
+
+    expect(signature).toContain("::after");
+    expect(signature).not.toContain("(property)");
+    expect(documentation).toContain("content");
+  });
+
+  test("a pseudo-class says what it is", () => {
+    const { signature, documentation } = hovered(BLOCK, ":hover");
+
+    expect(signature).toContain(":hover");
+    expect(signature).not.toContain("(property)");
+    expect(documentation).not.toBe("");
+  });
+
+  test("and carries the MDN link, which is where the rest of it is", () => {
+    expect(hovered(BLOCK, "::after").documentation).toContain("developer.mozilla.org");
+  });
+
+  test("`@@if` says what a group does", () => {
+    const { signature, documentation } = hovered(BLOCK, "@@if");
+
+    expect(signature).toContain("@@if");
+    expect(documentation).toContain("later");
+  });
+
+  test("`...` says what a spread does", () => {
+    const { signature } = hovered(BLOCK, "...{base}");
+
+    expect(signature).toContain("...");
+  });
+
+  test("an at-rule condition says which at-rule it is", () => {
+    const { signature } = hovered(BLOCK, "@media");
+
+    expect(signature).toContain("@media");
+    expect(signature).not.toContain("(property)");
+  });
+
+  /** What already worked must keep working — the reason the property path is untouched. */
+  test("a property still shows its grammar and its initial value", () => {
+    const { signature, documentation } = hovered(BLOCK, "display");
+
+    expect(signature).toContain("display:");
+    expect(documentation).toContain("Initial");
+  });
+
+  test("and so does a value, through the declaration it belongs to", () => {
+    expect(hovered(BLOCK, "flex").signature).toContain("display:");
+  });
+});

@@ -424,6 +424,51 @@ const UNIT_FAMILIES = {
   flex: ["fr"],
 };
 
+/**
+ * What a selector DOES, for the ones whose behaviour surprises people.
+ *
+ * `mdn-data` carries 144 selectors with their group and their MDN url and **no description**, so the
+ * names below are checked against it and the sentences are written. Written, not generated, and the
+ * assertion beneath is what keeps that safe: a sentence cannot be attached to a selector CSS does not
+ * have, so this can go stale in only one direction — a missing entry, which shows the group and the
+ * link and nothing else.
+ *
+ * Chosen for the surprise rather than for coverage. `:hover` needs no sentence about what hovering
+ * is; `::after` needs one, because without `content` it does not exist at all.
+ */
+const SELECTOR_NOTES = {
+  "::after":
+    'A generated element after this one\'s content. It does not exist without `content` — even `content: ""` is enough.',
+  "::before":
+    'A generated element before this one\'s content. It does not exist without `content` — even `content: ""` is enough.',
+  "::placeholder": "The placeholder text of an input. Only a few properties apply, and which ones differ by browser.",
+  "::selection":
+    "The part of this element the user has selected. Only colour, background, and a few text decorations apply.",
+  "::first-line":
+    "The first formatted line. Only inline properties apply, and the line is decided by layout rather than by the markup.",
+  "::first-letter": "The first letter, if the first thing is text. Only a small set of properties apply.",
+  "::marker": "A list item's bullet or number. Only `content`, colour, and font properties apply.",
+  "::backdrop": "The layer behind an element in the top layer — a `<dialog>`, or fullscreen.",
+  ":hover":
+    "While the pointer is over this element. Never the only way to reach something — a keyboard has no pointer.",
+  ":focus-visible":
+    "Focused AND the browser thinks a focus ring should show — which is what to style rather than `:focus`.",
+  ":focus-within": "This element, or anything inside it, has focus.",
+  ":has()":
+    "This element, if the selector inside matches something it contains. The one selector that looks downwards.",
+  ":is()": "Any of the selectors inside, and it takes the specificity of the most specific one.",
+  ":where()": "Any of the selectors inside, at ZERO specificity — which is what makes it safe in a library.",
+  ":not()": "Anything the selectors inside do not match, at the specificity of the most specific one.",
+  ":nth-child()": "Counted among ALL siblings, not among the ones that match. `:nth-of-type` is the other question.",
+  ":only-child": "The only child of its parent, of any kind.",
+  ":empty": "No children at all, and text counts as a child — whitespace included.",
+  ":target": "The element the URL's fragment names.",
+  ":disabled":
+    "A form control that is disabled. Not the same as `[disabled]`, which is the attribute rather than the state.",
+  ":checked": "A checkbox, radio or option that is checked. The STATE, which the attribute only starts.",
+  ":root": "The document's root element — `<html>`, and the usual place for custom properties.",
+};
+
 const MEDIA_FEATURES = [
   "any-hover",
   "any-pointer",
@@ -901,6 +946,40 @@ for (const [family, units] of Object.entries(UNIT_FAMILIES)) {
   }
 }
 
+const selectorData = JSON.parse(readFileSync(join(root, "node_modules/mdn-data/css/selectors.json"), "utf8"));
+
+/**
+ * Name -> its group and its MDN url. Generated; the sentences beside them are not.
+ *
+ * A functional pseudo-class is keyed `:has()` in `mdn-data` and written `:has(…)` in a block, so the
+ * table holds the upstream spelling and the reader strips the parentheses to look it up. Measured by
+ * getting it wrong: five of the notes below named `:has`, `:is`, `:where`, `:not` and `:nth-child`,
+ * and the assertion beneath refused all five — which is exactly what it is for.
+ */
+const selectors = Object.fromEntries(
+  Object.entries(selectorData)
+    .filter(([name]) => name.startsWith(":"))
+    .map(([name, one]) => [
+      name,
+      {
+        group: (one.groups ?? []).join(", "),
+        url: one.mdn_url ?? "",
+        note: SELECTOR_NOTES[name] ?? "",
+      },
+    ]),
+);
+
+const notesForNothing = Object.keys(SELECTOR_NOTES).filter((name) => selectors[name] === undefined);
+if (notesForNothing.length > 0) {
+  console.error(
+    `[css-properties] ${notesForNothing.length} written selector note(s) for a selector CSS does not have: ` +
+      `${notesForNothing.join(", ")}.\n` +
+      `  A note is prose and cannot be generated, but the NAME can be checked — and a note on a\n` +
+      `  selector that does not exist would be a sentence nobody could ever read.`,
+  );
+  process.exit(1);
+}
+
 const mediaFeatures = [
   ...new Set([...MEDIA_FEATURES, ...RANGE_FEATURES.flatMap((one) => [`min-${one}`, `max-${one}`])]),
 ].sort();
@@ -1029,6 +1108,19 @@ export const UNIT_TYPE: Readonly<Record<string, string>> = ${JSON.stringify(Obje
  * Verified against a real browser in \`apps/playground-core/browser\`.
  */
 export const MEDIA_FEATURES: readonly string[] = ${JSON.stringify(mediaFeatures)};
+
+/**
+ * Every pseudo-class and pseudo-element CSS has, with its group, its MDN url, and a note for the
+ * ones whose behaviour surprises people.
+ *
+ * The names, groups and urls come from \`mdn-data\`. The NOTES do not — that file carries no
+ * descriptions — so they are written in \`scripts/build-css-properties.mjs\`, and the generator
+ * refuses to run if one names a selector CSS does not have. A selector with no note shows its group
+ * and its link, which is already more than "\`(property) "&::after"\`".
+ *
+ * Read by the editor's hover, where a reader is already looking at the thing they are asking about.
+ */
+export const SELECTORS: Readonly<Record<string, { group: string; url: string; note: string }>> = ${JSON.stringify(selectors)};
 
 /**
  * The at-rules that are not part of an element's rule, so a style block may not hold one.

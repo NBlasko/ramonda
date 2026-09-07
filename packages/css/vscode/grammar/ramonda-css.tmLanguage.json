@@ -8,7 +8,7 @@
   ],
   "repository": {
     "block": {
-      "begin": "(?<=\\s)([\\w:$-]+)\\s*(=)\\s*(@@\\()",
+      "begin": "(?<=\\s)([\\w:$-]+)\\s*(=)\\s*(@@)(\\()",
       "beginCaptures": {
         "1": {
           "name": "entity.other.attribute-name"
@@ -17,6 +17,9 @@
           "name": "keyword.operator.assignment"
         },
         "3": {
+          "name": "keyword.control.ramonda"
+        },
+        "4": {
           "name": "punctuation.section.embedded.begin.ramonda"
         }
       },
@@ -32,7 +35,7 @@
           "include": "#innards"
         }
       ],
-      "comment": "The lookbehind mirrors the compiler's own scanner, which requires whitespace before the name. This pattern is only the BARE attribute form, where the name and the `=` are coloured too; a block in expression position is `ramonda.css-value`."
+      "comment": "The lookbehind mirrors the compiler's own scanner, which requires whitespace before the name. This pattern is only the BARE attribute form, where the name and the `=` are coloured too; a block in expression position is `ramonda.css-value`. The `@@` is this language's MARKER and is coloured as one wherever it appears — here, on `@@if`, and on `...`. A user reported the two characters coming out as punctuation in one place and a keyword in another, which is a reader having to learn that the same marker means two things. The BRACKET keeps `punctuation.section.embedded.begin`, and that is not cosmetic: it is what pairs with the `contentName` an editor reads to treat the inside as CSS."
     },
     "innards": {
       "comment": "Order is the whole of it. A hole is ONE brace, and so is a nested rule's body — so every pattern that can recognise a hole from its POSITION runs before `#nested`, which would otherwise read `color: ` as a selector and the hole as a rule list. Measured: it did exactly that, and the CSS grammar agreed with it, scoping `accent` as a property name.",

@@ -75,7 +75,8 @@ describe("a block on one line", () => {
 
   test.each([
     ["the attribute name", "css", "entity.other.attribute-name"],
-    ["the block's opening", "@@(", "punctuation.section.embedded.begin.ramonda"],
+    // The marker and the bracket are two tokens now — see *the `@@` marker's colour* below.
+    ["the block's marker", "@@", "keyword.control.ramonda"],
     ["a property name", "display", "support.type.property-name.css"],
     ["a value", "flex", "support.constant.property-value.css"],
     ["the semicolon", ";", "punctuation.terminator.rule.css"],
@@ -168,7 +169,7 @@ describe("shapes a first sample did not have", () => {
     // And on what is: the same shape, written where a block really goes.
     const real = `const a = <div css=@@( color: red; )>y</div>;\n`;
     expect(findBlocks(real)).toHaveLength(1);
-    expect(scopeOf(real, "@@(")).toBe("punctuation.section.embedded.begin.ramonda");
+    expect(scopeOf(real, "@@")).toBe("keyword.control.ramonda");
   });
 
   /**
@@ -572,5 +573,63 @@ describe("the composition markers", () => {
 
     expect(scopeOf(code, "color")).toBe("support.type.property-name.css");
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+});
+
+/**
+ * `@@` is one colour wherever it appears, and the bracket after it is a bracket.
+ *
+ * **Reported by a user**: `@@(` came out as punctuation and `@@if` as a keyword, so the same two
+ * characters were two colours in one block. Measured before this:
+ *
+ *     @@(     punctuation.section.embedded.begin.ramonda
+ *     @@if    keyword.control.ramonda
+ *     ...     keyword.control.ramonda
+ *
+ * `@@` is this language's marker — it is what says "the next thing is not TypeScript", and CSS can
+ * never produce it, since an at-keyword is `@` and then an ident and an ident cannot begin with `@`.
+ * A reader should not have to learn that the same marker means two things.
+ *
+ * The BRACKET keeps its own scope, and that is not a detail: `punctuation.section.embedded.begin` is
+ * what pairs with the `contentName` an editor reads to treat the inside as CSS. Colouring it as a
+ * keyword would have made the marker consistent and stopped the CSS from being CSS.
+ */
+describe("the `@@` marker's colour", () => {
+  const CODE =
+    `const a = <div css={@@(\n  ...{CONTROL};\n  @@if ({on}) { opacity: 0.5; }\n)}>x</div>;\n` +
+    `const b = @@keyframes( from { opacity: 0; } );\n` +
+    `const c = <div css=@@( color: red; )>y</div>;\n`;
+
+  test("every `@@` is the same scope", () => {
+    const markers = scopesOf(CODE).filter((token) => token.text.startsWith("@@"));
+
+    expect(markers.length).toBeGreaterThan(3);
+    expect(new Set(markers.map((token) => token.scope))).toEqual(new Set(["keyword.control.ramonda"]));
+  });
+
+  test("and so is the composition marker beside it", () => {
+    expect(scopeOf(CODE, "...")).toBe("keyword.control.ramonda");
+  });
+
+  /** The bracket is what the editor pairs with the embedded content — see the note above. */
+  test("the bracket after it still opens the embedded region", () => {
+    const opens = scopesOf(CODE).filter(
+      (token) => token.text === "(" && token.scope === "punctuation.section.embedded.begin.ramonda",
+    );
+
+    expect(opens.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * A named site's NAME keeps its own scope, and that is the one difference worth having: `@@` says
+   * whose language this is, `keyframes` says which at-rule — the way CSS scopes `@keyframes` itself.
+   */
+  test("but a named site's name is still an at-rule keyword", () => {
+    expect(scopeOf(CODE, "keyframes")).toBe("keyword.control.at-rule.ramonda");
+  });
+
+  test("and the CSS inside is still CSS", () => {
+    expect(scopeOf(CODE, "opacity")).toBe("support.type.property-name.css");
+    expect(scopeOf(CODE, "red")).toBe("support.constant.color.w3c-standard-color-name.css");
   });
 });

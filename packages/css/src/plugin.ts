@@ -1,6 +1,6 @@
 import type ts from "typescript";
 import type { BlockItem } from "./compiler/ast";
-import { PROPERTIES, PROPERTY_NAMED, UNION_TYPED, VALUE_WORDS } from "./compiler/keywords.generated";
+import { PROPERTIES, PROPERTY_NAMED, UNION_TYPED, VALUE_WORDS, SELECTORS } from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
@@ -447,6 +447,17 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          * The declaration is what a reader was asking about anyway: hovering a value shows the
          * property it belongs to, its grammar and its initial value.
          */
+        /**
+         * What THIS language has to say, before TypeScript's answer about the virtual file.
+         *
+         * A selector, an at-rule condition and this language's own markers had nobody to answer for
+         * them: measured, hovering `::after` gave `(property) "&::after": ({ content: string } | …)[]`
+         * — a true sentence about an object literal, and useless. `@@if` and `...` gave nothing at
+         * all. A property already answers well, so that path is untouched.
+         */
+        const said = spoken(cache.get(fileName)?.where ?? EMPTY_REGIONS, position);
+        if (said !== undefined) return said;
+
         const got =
           service.getQuickInfoAtPosition(fileName, at) ?? quickInfoAt(service, fileName, file.declarationOf(position));
         if (got === undefined) return undefined;
@@ -754,6 +765,7 @@ function regions(text: string, fileName: string, readModule: Imported["read"]): 
   const blocks: Span[] = [];
   const holes: Span[] = [];
   const values: ValueSpan[] = [];
+  const preludes: PreludeSpan[] = [];
   // A resolved reference is not a hole, so it is not a region TypeScript owns — an editor must not
   // colour `{slide}` as an expression in a place the build writes a name into. Imports included:
   // a token from another module is resolved here exactly as the build resolves it.
@@ -762,17 +774,25 @@ function regions(text: string, fileName: string, readModule: Imported["read"]): 
     const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     blocks.push({ start: site.open, end: read.end });
     holes.push(...read.holes);
-    collect(read.block.items, values);
+    collect(read.block.items, values, preludes);
   }
-  return { blocks, holes, values };
+  return { blocks, holes, values, preludes };
 }
 
 /** Every declaration's VALUE, with the property it belongs to — see `valueWords`. */
-function collect(items: readonly BlockItem[], out: ValueSpan[]): void {
+function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: PreludeSpan[]): void {
   for (const item of items) {
     if (item.kind === "rule") {
-      collect(item.items, out);
+      // The prelude's own span, which a nested rule already carries for the checker's squiggles.
+      if (item.at !== undefined && item.preludeEnd !== undefined) {
+        preludes?.push({ start: item.at, end: item.preludeEnd, prelude: item.prelude });
+      }
+      collect(item.items, out, preludes);
       continue;
+    }
+    // A spread has no value and its own marker is what a reader hovers — see `spoken`.
+    if (item.property.startsWith("...") && item.at !== undefined) {
+      preludes?.push({ start: item.at, end: item.at + 3, prelude: "..." });
     }
     if (item.at === undefined || item.end === undefined) continue;
     /**
@@ -849,7 +869,91 @@ function unquoted(name: string): string {
 }
 
 /** Nothing at all, for a file whose regions are not cached. */
-const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [] };
+const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [], preludes: [] };
+
+/**
+ * What THIS language says about a prelude, which nobody else can.
+ *
+ * **Reported by a user.** Hovering `::after` gave `(property) "&::after": ({ content: string } | …)[]`
+ * — a true sentence about the object literal the virtual file builds, and useless to somebody asking
+ * what `::after` does. `@@if` and `...` gave nothing at all. Measured, three shapes were wrong in two
+ * ways and one was already right:
+ *
+ *     display, content    CSS grammar plus Initial/Inherited     already right, and untouched
+ *     ::after, :hover     (property) "&::after": {               noise
+ *     @media (…)          (property) "@media (…)": {             noise
+ *     @@if, ...           nothing at all
+ *
+ * A property answers well because `asCss` reshapes what the generated types carry. This is the same
+ * idea for everything else a block holds.
+ *
+ * The selector names, their groups and their MDN links are generated from `mdn-data`; the sentences
+ * are written, and the generator refuses a sentence naming a selector CSS does not have. `@@if` and
+ * `...` have no upstream — what they say is what this repository measured about them.
+ */
+const COMPOSITION: Readonly<Record<string, { signature: string; note: string }>> = {
+  "@@if": {
+    signature: "@@if ({ … })",
+    note:
+      "The declarations inside apply only while the condition holds.\n\n" +
+      "Everything is one merge in the order it was written, so **later wins** — a group below a " +
+      "declaration overrides it, and a group above it does not. That is the rule a reader of CSS " +
+      "already has, and it is the thing a whole-block class could never express: the order of names " +
+      "in a `class` attribute means nothing in CSS.\n\n" +
+      "A group inside a group holds only when both conditions do.",
+  },
+  "...": {
+    signature: "...{ … }",
+    note:
+      "Merges another block's declarations here, in this position.\n\n" +
+      "It works across files, because what it merges is a value — importable, storable in an object, " +
+      "or picked out of one, which is what makes a lookup exhaustive where an `@else` never could be.\n\n" +
+      "**Later wins**, so what is spread above a declaration loses to it and what is spread below " +
+      "overrides it.",
+  },
+};
+
+/** `:has(…)` in a block is `:has()` upstream, and a bare `:hover` is itself. */
+function selectorNamed(prelude: string): string | undefined {
+  const trimmed = prelude.trim().replace(/^&/, "").trim();
+  if (!trimmed.startsWith(":")) return undefined;
+
+  const called = /^(:{1,2}[a-z-]+)\(/.exec(trimmed);
+  if (called !== null) return `${called[1]}()`;
+  return /^(:{1,2}[a-z-]+)$/.exec(trimmed)?.[1];
+}
+
+function spoken(where: Regions, at: number): ts.QuickInfo | undefined {
+  const found = where.preludes.find((span) => span.start <= at && at <= span.end);
+  if (found === undefined) return undefined;
+
+  const span = { start: found.start, length: found.end - found.start };
+  const say = (signature: string, note: string): ts.QuickInfo => ({
+    // The kind an editor shows beside the signature. "" is "no icon", which is right for a
+    // selector: it is not a variable, a property or a function.
+    kind: "" as ts.ScriptElementKind,
+    kindModifiers: "",
+    textSpan: span,
+    displayParts: [{ text: signature, kind: "text" }],
+    documentation: note === "" ? [] : [{ text: note, kind: "text" }],
+  });
+
+  const trimmed = found.prelude.trim();
+  const marker = trimmed.startsWith("@@if") ? "@@if" : trimmed === "..." ? "..." : undefined;
+  const composition = marker === undefined ? undefined : COMPOSITION[marker];
+  if (composition !== undefined) return say(composition.signature, composition.note);
+
+  const name = selectorNamed(found.prelude);
+  const known = name === undefined ? undefined : SELECTORS[name];
+  if (name !== undefined && known !== undefined) {
+    const lines = [known.group, known.note, known.url].filter((one) => one !== "");
+    return say(name, lines.join("\n\n"));
+  }
+
+  // An at-rule, or a selector with no entry: its own text is the honest answer, and it is better
+  // than a sentence about an object literal.
+  return trimmed.startsWith("@") || trimmed.startsWith("&") || trimmed.startsWith(":") ? say(trimmed, "") : undefined;
+}
 
 /** A declaration's value, and the property it sets. */
 interface ValueSpan {
@@ -859,10 +963,19 @@ interface ValueSpan {
 }
 
 /** What one file's text is made of, as far as this plugin has to care. */
+/** A nested rule's prelude, in the author's coordinates, with the text it holds. */
+interface PreludeSpan {
+  readonly start: number;
+  readonly end: number;
+  readonly prelude: string;
+}
+
 interface Regions {
   readonly blocks: readonly Span[];
   readonly holes: readonly Span[];
   readonly values: readonly ValueSpan[];
+  /** Where each nested rule's prelude runs — a selector, an at-rule, or a condition. */
+  readonly preludes: readonly PreludeSpan[];
 }
 
 /** True when the position belongs to the CSS itself — inside a block, outside every hole. */
