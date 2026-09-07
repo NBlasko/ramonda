@@ -398,10 +398,74 @@ describe("the assembled stylesheet", () => {
  * So the same transform is handed to it through `config`. It only has to make the file PARSE,
  * because all the scan wants is the imports.
  */
+/**
+ * The build's own answer to "is this production", which the config may ask and nothing supplied.
+ *
+ * `readConfig` takes an environment and every consumer passed two arguments, so `env.production` was
+ * always `undefined`: a config written the way the docs document it took its development branch in
+ * a production build, silently. The mechanism had a test; the JOIN had none.
+ *
+ * Vite is told which build this is, in the `config` hook — which is why the settings are read
+ * lazily now rather than when the plugin is constructed, since a plugin exists before any hook runs.
+ */
+describe("what the plugin tells a config about the build", () => {
+  const project = (body: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-vite-env-"));
+    writeFileSync(join(dir, "ramonda.css.ts"), body);
+    return dir;
+  };
+
+  const inside = <T>(dir: string, run: () => T): T => {
+    const before = process.cwd();
+    process.chdir(dir);
+    try {
+      return run();
+    } finally {
+      process.chdir(before);
+    }
+  };
+
+  const STRICT = `export default (env: { production: boolean }) => ({\n  units: env.production ? ["px"] : ["px", "em"],\n});\n`;
+
+  test("a production build gets the production branch", () => {
+    const dir = project(STRICT);
+    const said = inside(dir, () => {
+      const plugin = ramondaCss();
+      plugin.config({}, { mode: "production" });
+      const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+      try {
+        transform.call({}, `const a = <div css=@@( padding: 1em; )>x</div>;\n`, join(dir, "Card.tsx"));
+        return "accepted";
+      } catch (error) {
+        return (error as Error).message;
+      }
+    });
+
+    expect(said).toContain("em");
+  });
+
+  test("and a dev server gets the other one, from the same file", () => {
+    const dir = project(STRICT);
+    const said = inside(dir, () => {
+      const plugin = ramondaCss();
+      plugin.config({}, { mode: "development" });
+      const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+      try {
+        transform.call({}, `const a = <div css=@@( padding: 1em; )>x</div>;\n`, join(dir, "Card.tsx"));
+        return "accepted";
+      } catch (error) {
+        return (error as Error).message;
+      }
+    });
+
+    expect(said).toBe("accepted");
+  });
+});
+
 describe("the dependency scan", () => {
   /** The esbuild plugin the config hook contributes, and its one `onLoad` handler. */
   function scanner() {
-    const config = ramondaCss().config() as {
+    const config = ramondaCss().config({}, { mode: "development" }) as {
       optimizeDeps: { esbuildOptions: { plugins: { name: string; setup(build: unknown): void }[] } };
     };
     const [plugin] = config.optimizeDeps.esbuildOptions.plugins;

@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
+import { RULE_IDS, nearest } from "./compiler/rules";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, sep } from "node:path";
 import type ts from "typescript";
 
 /**
@@ -44,6 +46,28 @@ export interface ConfigEnvironment {
 }
 
 /**
+ * What `production` means to each consumer, in ONE place, because there are four of them.
+ *
+ * A review found this wired nowhere: every caller passed two arguments, so `environment` was always
+ * `{}` and `env.production` was always `undefined` — while the docs gave
+ * `env.production ? ["px"] : ["px", "rem", "em"]` as the example, and this package's own reason for
+ * the config being TypeScript rather than JSON is that a setting may depend on the environment. It
+ * silently took the development branch of every such config, in production builds included.
+ *
+ * The mechanism had a test and the WIRING had none, which is the shape to watch for: a unit test
+ * proves the function, and nothing proves anybody calls it properly.
+ *
+ * A consumer that genuinely knows says so — a bundler is told which build this is. One that cannot
+ * know falls back to `NODE_ENV`, which is the convention every tool in the ecosystem already reads.
+ * An EDITOR passes `false` and means it: an editor session is a development session, and an author
+ * whose config is stricter in production is choosing to meet those errors in CI, the same trade
+ * every project already makes with `NODE_ENV`.
+ */
+export function environmentOf(production?: boolean): ConfigEnvironment {
+  return { production: production ?? process.env.NODE_ENV === "production" };
+}
+
+/**
  * The keys this refuses, and why refusing them is not a limitation.
  *
  * Identity is the one thing every consumer of this package must agree about: the class is a hash of
@@ -56,13 +80,37 @@ const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
 const KNOWN = new Set(["units", "rules", "format"]);
 
-/** Walks up from `from` looking for the file. `undefined` when a project has none, which is fine. */
+/**
+ * Walks up from `from` looking for the file. `undefined` when a project has none, which is fine.
+ *
+ * **Where it stops matters more than where it looks**, because this file is not merely read: it is
+ * transpiled and run through `new Function`, inside `tsserver`, on merely opening a folder, and
+ * nothing is shown to say which file was loaded. Until a review found it, the only stop was the
+ * filesystem root — so a `ramonda.css.ts` left in a home directory from an experiment, or unzipped
+ * beside a downloaded project, silently became the settings of every project opened afterwards.
+ *
+ * The repository root is the outermost thing that is still "the project": it is checked, and the
+ * walk ends there — which is what lets a monorepo keep one config its packages share, while a
+ * package's own still wins by being found first. A project that is not a repository stops before
+ * the home directory instead, which is the case this exists for.
+ *
+ * A directory under `node_modules` is skipped whole: a dependency's own file is not this project's
+ * settings, whatever it holds.
+ */
 export function findConfig(from: string): string | undefined {
+  const home = homedir();
   let directory = from;
 
   for (;;) {
-    const candidate = join(directory, "ramonda.css.ts");
-    if (existsSync(candidate)) return candidate;
+    if (directory === home) return undefined;
+
+    if (!directory.split(sep).includes("node_modules")) {
+      const candidate = join(directory, "ramonda.css.ts");
+      if (existsSync(candidate)) return candidate;
+    }
+
+    // Checked AFTER the candidate, so a repository's own root config is still found.
+    if (existsSync(join(directory, ".git"))) return undefined;
 
     const above = dirname(directory);
     if (above === directory) return undefined;
@@ -134,5 +182,63 @@ export function readConfig(
     }
   }
 
+  validate(config as Record<string, unknown>, path);
   return config as Config;
+}
+
+/**
+ * The VALUES, which used to be a cast and nothing else.
+ *
+ * A review traced where an unchecked value lands, and it is not a diagnostic: `units: "px"` reaches
+ * `allowed.map` in `rules.ts` and throws a `TypeError` from inside the editor's
+ * `getScriptSnapshot` — which tsserver calls for every file in the program, so **one wrong value in
+ * one config takes down completion, hover and every squiggle in the whole project**, on every
+ * keystroke, because the cache is written after the throw. The build dies with a stack naming
+ * neither the file nor the key.
+ *
+ * Nothing types this file: the documented example is a bare object literal, and `units: "px"` is
+ * the obvious thing to write when the list has one entry. So the value is checked here, where the
+ * message can name the file and say what to write instead — which is the same standard the key
+ * check above already met.
+ */
+function validate(config: Record<string, unknown>, path: string): void {
+  const refuse = (says: string): never => {
+    throw new Error(`${path} ${says}`);
+  };
+
+  const units = config.units;
+  if (units !== undefined) {
+    if (!Array.isArray(units)) refuse(`sets \`units\` to ${describe(units)}. It takes a list, like ["px", "rem"].`);
+    for (const one of units as unknown[]) {
+      if (typeof one !== "string") refuse(`lists ${describe(one)} in \`units\`. Every unit is a string, like "px".`);
+    }
+  }
+
+  const rules = config.rules;
+  if (rules !== undefined) {
+    if (typeof rules !== "object" || rules === null || Array.isArray(rules)) {
+      refuse(`sets \`rules\` to ${describe(rules)}. It takes an object, like { "unknown-unit": "off" }.`);
+    }
+    for (const [id, severity] of Object.entries(rules as Record<string, unknown>)) {
+      if (!(RULE_IDS as readonly string[]).includes(id)) {
+        const meant = nearest(id, RULE_IDS as readonly string[]);
+        refuse(`silences \`${id}\`, which is not a rule.` + (meant === undefined ? "" : ` Did you mean \`${meant}\`?`));
+      }
+      if (severity !== "off" && severity !== "error") {
+        refuse(`sets \`${id}\` to ${describe(severity)}. A rule is "error" or "off".`);
+      }
+    }
+  }
+
+  const format = config.format;
+  if (format !== undefined && (typeof format !== "object" || format === null || Array.isArray(format))) {
+    refuse(`sets \`format\` to ${describe(format)}. It takes an object, like { indent: 2 }.`);
+  }
+}
+
+/** What a wrong value IS, for a message that can be acted on without opening the source. */
+function describe(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "a list";
+  return typeof value === "string" ? `the string ${JSON.stringify(value)}` : `a ${typeof value}`;
 }

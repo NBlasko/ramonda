@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
 import ts from "typescript";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config";
-import { findConfig, readConfig } from "../config";
+import { environmentOf, findConfig, readConfig } from "../config";
 import { readBlock } from "../compiler/read";
 import { checkBlock } from "../compiler/rules";
 
@@ -51,6 +51,42 @@ describe("the project's config", () => {
     expect(readConfig(findConfig(dir), ts, { production: false })).toEqual({ units: ["px", "rem"] });
   });
 
+  /**
+   * And the WIRING, which is a different claim from the one above and had no test at all.
+   *
+   * A review found `environment` never supplied: all four consumers passed two arguments, so
+   * `env.production` was always `undefined` and every such config silently took its development
+   * branch — in production builds included. The test above passed throughout, because it calls
+   * `readConfig` itself. **One rule, four consumers, and nothing watching the join.**
+   */
+  test("`environmentOf` answers from NODE_ENV when nobody knows better", () => {
+    const before = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      expect(environmentOf()).toEqual({ production: true });
+      process.env.NODE_ENV = "development";
+      expect(environmentOf()).toEqual({ production: false });
+    } finally {
+      if (before === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = before;
+    }
+  });
+
+  test("and a consumer that KNOWS is believed over it", () => {
+    const before = process.env.NODE_ENV;
+    try {
+      // A bundler is told which build this is; `NODE_ENV` is the fallback, not the authority.
+      process.env.NODE_ENV = "development";
+      expect(environmentOf(true)).toEqual({ production: true });
+      process.env.NODE_ENV = "production";
+      // An editor session is a development session, whatever the shell says.
+      expect(environmentOf(false)).toEqual({ production: false });
+    } finally {
+      if (before === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = before;
+    }
+  });
+
   test("TypeScript that is not erasable, which type stripping would refuse", () => {
     const dir = project({
       "ramonda.css.ts": `enum Unit { px = "px" }\nexport default { units: [Unit.px] };\n`,
@@ -63,6 +99,60 @@ describe("the project's config", () => {
     const dir = project({ "ramonda.css.ts": `export default { units: ["px"] };\n` });
 
     expect(findConfig(join(dir, "src", "deep"))).toBe(join(dir, "ramonda.css.ts"));
+  });
+
+  /**
+   * Where the walk STOPS, which it did not: only at the filesystem root.
+   *
+   * Reading a stray file would be one thing. This one is EXECUTED — transpiled and run through
+   * `new Function`, inside `tsserver`, on merely opening a folder, with nothing shown to say which
+   * file was loaded. So a `ramonda.css.ts` left in a home directory from an experiment, or unzipped
+   * beside a downloaded project, silently became every project's settings.
+   *
+   * The repository root is the outermost thing that is still "the project", so the walk checks the
+   * directory holding `.git` and stops there. A project that is not a repository still stops before
+   * the home directory, which is the case this exists for.
+   */
+  describe("how far up it looks", () => {
+    test("stops at the repository root, and does not read what is above it", () => {
+      const outer = project({ "ramonda.css.ts": `export default { units: ["cm"] };\n` });
+      const repo = join(outer, "repo");
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      mkdirSync(join(repo, "src"), { recursive: true });
+
+      expect(findConfig(join(repo, "src"))).toBeUndefined();
+    });
+
+    test("but the root's OWN config is the one a monorepo shares", () => {
+      const outer = project({});
+      const repo = join(outer, "repo");
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      mkdirSync(join(repo, "packages", "web"), { recursive: true });
+      writeFileSync(join(repo, "ramonda.css.ts"), `export default { units: ["px"] };\n`);
+
+      expect(findConfig(join(repo, "packages", "web"))).toBe(join(repo, "ramonda.css.ts"));
+    });
+
+    test("and a package's own config still wins over the root's", () => {
+      const repo = project({ "ramonda.css.ts": `export default { units: ["px"] };\n` });
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      const inner = join(repo, "packages", "web");
+      mkdirSync(inner, { recursive: true });
+      writeFileSync(join(inner, "ramonda.css.ts"), `export default { units: ["rem"] };\n`);
+
+      expect(findConfig(inner)).toBe(join(inner, "ramonda.css.ts"));
+    });
+
+    /** A dependency's own file is not this project's settings, whatever it holds. */
+    test("a config inside node_modules is not a project's settings", () => {
+      const repo = project({});
+      mkdirSync(join(repo, ".git"), { recursive: true });
+      const dep = join(repo, "node_modules", "some-package");
+      mkdirSync(dep, { recursive: true });
+      writeFileSync(join(dep, "ramonda.css.ts"), `export default { units: ["cm"] };\n`);
+
+      expect(findConfig(dep)).toBeUndefined();
+    });
   });
 
   describe("what it does when there is nothing to read", () => {
@@ -112,6 +202,55 @@ describe("the project's config", () => {
       const dir = project({ "ramonda.css.ts": `export default { untis: ["px"] };\n` });
 
       expect(() => readConfig(findConfig(dir), ts)).toThrow(/untis/);
+    });
+  });
+
+  /**
+   * A key with the right NAME and the wrong VALUE, which was a cast and nothing else.
+   *
+   * `readConfig` validated key names and returned `config as Config`. A review traced where an
+   * unchecked value lands, and it is not a diagnostic — it is a `TypeError` deep in `rules.ts`,
+   * thrown from inside the editor's `getScriptSnapshot`. tsserver asks for a snapshot of every file
+   * in the program, so **one wrong value in one config takes down completion, hover and every
+   * squiggle in the whole project**, and does it again on every retry because the cache is written
+   * after the throw. The build dies with a stack naming neither the file nor the key.
+   *
+   * Nothing types this file — the documented example is a bare object literal — so a wrong value is
+   * not exotic. `units: "px"` is the obvious thing to write when the list has one entry.
+   */
+  describe("a key whose value is the wrong shape", () => {
+    const refused = (body: string) => {
+      const dir = project({ "ramonda.css.ts": `export default ${body};\n` });
+      return () => readConfig(findConfig(dir), ts);
+    };
+
+    test.each([
+      ["units as a bare string", `{ units: "px" }`, /units/],
+      ["units holding a number", `{ units: [1] }`, /units/],
+      ["units as null", `{ units: null }`, /units/],
+      ["rules as null", `{ rules: null }`, /rules/],
+      ["rules as an array", `{ rules: ["unknown-unit"] }`, /rules/],
+      ["a rule set to a boolean", `{ rules: { "unknown-unit": false } }`, /unknown-unit/],
+      ["a rule set to a word that is not a severity", `{ rules: { "unknown-unit": "quiet" } }`, /quiet/],
+      ["format as a string", `{ format: "wide" }`, /format/],
+    ])("%s is refused, naming what is wrong", (_what, body, says) => {
+      expect(refused(body)).toThrow(says);
+    });
+
+    /** A rule id that does not exist is a typo, and a typo that is ignored is invisible. */
+    test("a misspelled rule id is refused, with the nearest real one", () => {
+      expect(refused(`{ rules: { "unkown-unit": "off" } }`)).toThrow(/unknown-unit/);
+    });
+
+    test.each([
+      ["one unit", `{ units: ["px"] }`],
+      ["several", `{ units: ["px", "rem", "%"] }`],
+      ["a rule silenced", `{ rules: { "unknown-unit": "off" } }`],
+      ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],
+      ["an empty object", `{}`],
+      ["format with its one setting", `{ format: { indent: 4 } }`],
+    ])("%s is accepted", (_what, body) => {
+      expect(refused(body)).not.toThrow();
     });
   });
 });

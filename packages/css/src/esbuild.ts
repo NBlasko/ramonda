@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
-import { findConfig, readConfig } from "./config";
+import { environmentOf, findConfig, readConfig } from "./config";
 import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
 import { Sheet } from "./compiler/sheet";
@@ -142,7 +142,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
    * that would be one import less, but it would be a SECOND way to read one config: the editor
    * cannot use it, and two readers of one file is this repository's recurring fault.
    */
-  const config = readConfig(findConfig(process.cwd()), ts);
+  const config = readConfig(findConfig(process.cwd()), ts, environmentOf());
 
   return {
     name: "ramonda-css",

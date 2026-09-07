@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
 import { positionOf } from "./compiler/errors";
-import { type Config, findConfig, readConfig } from "./config";
+import { type Config, environmentOf, findConfig, readConfig } from "./config";
 import { readModule } from "./modules";
 import { mayHoldABlock } from "./compiler/scan";
 import { checkSource } from "./compiler/source";
@@ -81,7 +81,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
    * somebody happens to be, and a config found relative to the shell would make the answer depend on
    * where the command was typed.
    */
-  const config = readConfig(findConfig(dirname(configPath)), ts);
+  const config = readConfig(findConfig(dirname(configPath)), ts, environmentOf());
 
   /** The overlay and the text it was built from, together — one lookup, and no half-set state. */
   const overlays = new Map<string, { virtual: VirtualFile; source: string }>();

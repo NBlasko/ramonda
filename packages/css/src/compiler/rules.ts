@@ -60,28 +60,38 @@ export interface Finding {
   readonly message: string;
 }
 
-export type RuleId =
-  | "unknown-property"
-  | "unknown-value"
-  | "repeated-declaration"
-  | "hole-out-of-place"
-  | "uncolourable-block"
-  | "run-on-declaration"
-  | "line-comment"
-  | "unknown-unit"
-  | "glued-hole"
-  | "at-rule-out-of-place"
-  | "unknown-frame"
-  | "declaration-out-of-place"
-  | "rule-out-of-place"
-  | "override-out-of-order"
-  | "variable-set-by-another-name"
-  | "variable-read-by-another-name"
-  | "hole-as-a-variable-name"
-  | "initial-value-and-syntax"
-  | "unknown-media-feature"
-  | "value-and-registered-syntax"
-  | "unit-not-allowed";
+/**
+ * Every rule this package can report, as a LIST — and the type is derived from it, not beside it.
+ *
+ * Written this way round because the config validates a rule id against this, and a union with a
+ * hand-kept array next to it would be two lists that must agree: exactly the fault this repository
+ * keeps finding. Here there is one list, and `RuleId` cannot name anything absent from it.
+ */
+export const RULE_IDS = [
+  "unknown-property",
+  "unknown-value",
+  "repeated-declaration",
+  "hole-out-of-place",
+  "uncolourable-block",
+  "run-on-declaration",
+  "line-comment",
+  "unknown-unit",
+  "glued-hole",
+  "at-rule-out-of-place",
+  "unknown-frame",
+  "declaration-out-of-place",
+  "rule-out-of-place",
+  "override-out-of-order",
+  "variable-set-by-another-name",
+  "variable-read-by-another-name",
+  "hole-as-a-variable-name",
+  "initial-value-and-syntax",
+  "unknown-media-feature",
+  "value-and-registered-syntax",
+  "unit-not-allowed",
+] as const;
+
+export type RuleId = (typeof RULE_IDS)[number];
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -1530,7 +1540,7 @@ const isWordCharacter = (code: number) => isWordStart(code) || (code >= 48 && co
  * not a typo of it, and offering one anyway sends a reader to change a line that was right for a
  * different reason. Scaled by length, so a short name needs a closer match than a long one.
  */
-function nearest(word: string, among: readonly string[]): string | undefined {
+export function nearest(word: string, among: readonly string[]): string | undefined {
   const bound = Math.min(3, Math.max(1, Math.floor(word.length / 4)));
   let best: string | undefined;
   let closest = bound + 1;

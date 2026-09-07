@@ -12,7 +12,7 @@ import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
-import { type Config, findConfig, readConfig } from "./config";
+import { type Config, environmentOf, findConfig, readConfig } from "./config";
 import { warnIfStale } from "./stale";
 import { type Imported, namedSites, syntaxesIn } from "./compiler/references";
 
@@ -178,7 +178,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        */
       const projectConfig = (): Config => {
         try {
-          return readConfig(findConfig(host.getCurrentDirectory()), tsModule);
+          // An editor session is a development session — see `environmentOf`.
+          return readConfig(findConfig(host.getCurrentDirectory()), tsModule, environmentOf(false));
         } catch {
           // A broken config must not take the editor's completions with it. `ramonda-css lint` is
           // where it is reported, with the file and the reason.

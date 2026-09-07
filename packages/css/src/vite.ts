@@ -1,7 +1,8 @@
 import { CssBlockError } from "./compiler/errors";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { findConfig, readConfig } from "./config";
+import { type Config, environmentOf, findConfig, readConfig } from "./config";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
@@ -81,7 +82,7 @@ interface ScanBuild {
 export interface CssPluginLike {
   name: string;
   enforce: "pre";
-  config(): unknown;
+  config(this: unknown, userConfig: unknown, environment: { mode?: string } | undefined): unknown;
   resolveId(this: unknown, id: string): string | null;
   load(this: unknown, id: string): string | null;
   transform(this: unknown, code: string, id: string): { code: string; map: SourceMap } | null;
@@ -116,10 +117,24 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    * that would be one import less, but it would be a SECOND way to read one config: the editor
    * cannot use it, and two readers of one file is this repository's recurring fault.
    */
-  const config = readConfig(findConfig(process.cwd()), ts);
+  /**
+   * Read LAZILY, because the one thing a config may ask about is not known when the plugin is made.
+   *
+   * Vite tells a plugin which build this is in the `config` hook, and a plugin is constructed before
+   * any hook runs — so reading here would be reading before the answer exists. Deferring to the
+   * first transform is safe: Vite resolves its config before it transforms anything.
+   */
+  let production: boolean | undefined;
+  let settings: Config | undefined;
+  const projectConfig = (): Config =>
+    (settings ??= readConfig(findConfig(process.cwd()), ts, environmentOf(production)));
 
   // Said once, when the built package is behind its sources — see `warnIfStale` for the day it cost.
-  warnIfStale(import.meta.url.replace("file://", ""), (message) => console.warn(message));
+  // `fileURLToPath`, not a string replace: a `file://` url PERCENT-ENCODES, so a checkout at
+  // `~/My Projects/…` came back with `%20` still in it, `readdirSync` threw ENOENT, and the warning
+  // written because staleness cost a day went silently dead — indistinguishable from a published
+  // package with no `src`. The editor, which uses `__filename`, warned; the build did not.
+  warnIfStale(fileURLToPath(import.meta.url), (message) => console.warn(message));
 
   const sheet = new Sheet();
   /** Files that currently contribute rules, so a file losing its last block is noticed. */
@@ -142,7 +157,9 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
      * is the imports; a block that the real transform would refuse is left alone rather than thrown
      * from, since a scan is not where an author should meet a diagnostic.
      */
-    config() {
+    config(_userConfig, environment) {
+      // Vite's own `isProduction` is exactly this, and it is the answer a config asks for.
+      production = environment?.mode === "production";
       return {
         optimizeDeps: {
           esbuildOptions: {
@@ -205,7 +222,12 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
 
       let result: ReturnType<typeof transform>;
       try {
-        result = transform(code, { filename: file, runtime: options.runtime, read: readModule, config });
+        result = transform(code, {
+          filename: file,
+          runtime: options.runtime,
+          read: readModule,
+          config: projectConfig(),
+        });
       } catch (error) {
         if (!(error instanceof CssBlockError)) throw error;
         /**
