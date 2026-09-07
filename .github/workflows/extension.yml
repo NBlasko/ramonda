@@ -1,0 +1,58 @@
+# Packaging and publishing the editor extension.
+#
+# DISABLED ON PURPOSE: the only trigger is `workflow_dispatch`, so it cannot fire before somebody has
+# created the publisher and the `VSCE_PAT` secret. See packages/css/vscode/PUBLISHING.md.
+#
+# It is separate from `release.yml` because the two answer different questions. The npm packages are
+# released when their API changes; the extension is released when its grammars or diagnostics do.
+# One workflow would publish an unchanged extension on every patch of anything.
+name: Extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to the marketplace, rather than only building the .vsix"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  extension:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The grammars the extension ships are the ones the package's tests read, so a broken grammar
+      # fails here before anything is packaged. Through turbo, because `test` depends on `build` and
+      # calling the script directly would skip it — the repo's own workflow check says so.
+      - name: The grammar tests
+        run: pnpm exec turbo run test --filter=@ramonda/css
+
+      - name: Package
+        run: pnpm --filter ramonda-css-vscode package
+
+      # Kept whether or not it is published, so a build can be installed by hand from a run.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ramonda-css-vsix
+          path: packages/css/vscode/ramonda-css.vsix
+          if-no-files-found: error
+
+      - name: Publish
+        if: ${{ inputs.publish }}
+        run: pnpm --filter ramonda-css-vscode publish
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

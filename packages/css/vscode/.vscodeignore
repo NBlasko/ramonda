@@ -1,0 +1,14 @@
+# What does NOT ship in the .vsix.
+#
+# An extension is downloaded by everyone who installs it, so the default — everything in the folder —
+# is the wrong default. This is an allow-list in reverse: the grammars, the two entry points, the
+# manifest and the two documents a marketplace page is built from.
+
+install.mjs
+# For whoever publishes it, not for whoever installs it.
+PUBLISHING.md
+.vscodeignore
+node_modules/**
+**/*.map
+**/tsconfig.json
+**/*.test.*

@@ -1,7 +1,7 @@
 {
   "name": "ramonda-css-vscode",
   "displayName": "Ramonda CSS blocks",
-  "description": "Syntax colours for `css=@@( … )` style blocks, and format-on-save through the project's own `ramonda-css`.",
+  "description": "Real CSS beside your markup: syntax colouring, formatting and diagnostics for @@( … ) style blocks.",
   "version": "0.0.0",
   "private": true,
   "publisher": "ramonda",
@@ -10,7 +10,9 @@
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Formatters",
+    "Linters"
   ],
   "contributes": {
     "grammars": [
@@ -62,5 +64,27 @@
     "onLanguage:typescript",
     "onLanguage:javascriptreact",
     "onLanguage:javascript"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/css/vscode"
+  },
+  "homepage": "https://ramonda.dev/style-blocks",
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "author": "Nikola Blagojević",
+  "keywords": [
+    "css",
+    "css-in-js",
+    "atomic-css",
+    "syntax-highlighting",
+    "typescript"
+  ],
+  "scripts": {
+    "install-locally": "node install.mjs",
+    "package": "vsce package --no-dependencies --out ramonda-css.vsix",
+    "publish": "vsce publish --no-dependencies"
+  }
 }
