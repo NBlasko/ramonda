@@ -146,6 +146,52 @@ describe("a bare word a property does not accept", () => {
   });
 });
 
+/**
+ * A property whose value is a name the author writes with TWO dashes — and the eighteen that were
+ * excluded from checking because of it.
+ *
+ * The generator's `FREE` set answers one question: can a bare word here be something nobody can
+ * judge. `<custom-ident>` makes it so — `animation-name: slidein` is the author's own word. A
+ * `<dashed-ident>` does NOT, for the same reason a `url()` and a `<string>` do not: the shape is
+ * decidable before anybody reads a vocabulary. It starts with `--`, and the rule above skips it.
+ *
+ * So the anchor, timeline and position families are checkable, and `position-area` was the sharpest
+ * case: its grammar is a CLOSED keyword set of forty-one words, and `position-area: topp` passed.
+ */
+describe("a property whose value is a dashed name", () => {
+  test.each([
+    ["an anchor the author named", "  anchor-name: --card;"],
+    ["a reference to one", "  position-anchor: --card;"],
+    ["a scope", "  anchor-scope: --card;"],
+    ["two of them", "  timeline-scope: --a, --b;"],
+    ["a view timeline", "  view-timeline-name: --reveal;"],
+    ["a scroll timeline", "  scroll-timeline-name: --scroller;"],
+    ["an animation reading one", "  animation-timeline: --scroller;"],
+    ["a font palette", "  font-palette: --duo;"],
+    ["a keyword on the same property", "  font-palette: dark;"],
+    ["a fallback the author named", "  position-try-fallbacks: --narrow;"],
+    ["a keyword pair from a closed grammar", "  position-area: top span-all;"],
+    ["another", "  position-area: block-start center;"],
+    ["the keyword these all also take", "  anchor-name: none;"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).toEqual([]);
+  });
+
+  test.each([
+    ["a typo in a closed grammar", "  position-area: topp;", "top"],
+    ["a typo of the keyword", "  anchor-name: nonee;", "none"],
+    ["a typo of a palette keyword", "  font-palette: lightt;", "light"],
+    ["a typo where a timeline is named", "  animation-timeline: nonee;", "none"],
+    ["a typo of a fallback keyword", "  position-try-fallbacks: flip-blockk;", "flip-block"],
+  ])("%s is reported, with the word that exists", (_what, css, meant) => {
+    const [only, ...rest] = check(css);
+
+    expect(rest).toEqual([]);
+    expect(only.rule).toBe("unknown-value");
+    expect(only.message).toContain(meant);
+  });
+});
+
 describe("the same declaration written twice", () => {
   /**
    * **Only when the VALUE is the same too**, and that narrowing is the whole rule.

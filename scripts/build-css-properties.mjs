@@ -128,22 +128,31 @@ function keywordsOf(syntax) {
  *
  * The question this set answers is "can a bare word here be something nobody can judge", and only a
  * production that IS a bare word can make it so.
+ *
+ * ## Six more went the same way, and one of them was hiding a closed grammar
+ *
+ * `<dashed-ident>` is decidable before anybody reads a vocabulary: it starts with `--`, and the
+ * checker skips a word that starts with a dash — it has to, because `display: -webkit-box` is CSS
+ * that works. So the anchor, timeline and position families are checkable now, and with them
+ * `<anchor-name>` and `<palette-identifier>`, which are each written `<dashed-ident>`.
+ *
+ * `<attr-name>` and `<custom-property-name>` are the `url()` argument again: they appear only
+ * inside `attr()` and `var()`, and the scanner steps over a call before it reads a word.
+ *
+ * **`<position-area>` was the sharpest one.** Its grammar is a CLOSED set of forty-one keywords,
+ * and listing it here made `position-area: topp` pass while offering `none` as the only completion.
+ * An entry in this set is a claim, and that claim was simply false. {@link freeIsFree} now refuses
+ * it: measured, 379 checkable rows became 397, with no property losing one.
  */
 const FREE = new Set([
   "custom-ident",
-  "dashed-ident",
   "ident",
-  "custom-property-name",
   "counter-name",
   "keyframes-name",
   "timeline-name",
   "view-transition-name",
   "feature-value-name",
-  "palette-identifier",
   "container-name",
-  "anchor-name",
-  "position-area",
-  "attr-name",
 ]);
 
 /**
@@ -177,7 +186,7 @@ const NUMERIC = new Set([
 /** Valid wherever a number is, and named by no property's grammar. See `numeric` in {@link scan}. */
 const MATHS = ["calc", "clamp", "min", "max", "round", "abs"];
 
-function scan(name) {
+function scan(name, from) {
   const words = new Set();
   /**
    * The FUNCTION names the grammar reaches — `translate`, `linear-gradient`, `repeat`.
@@ -236,9 +245,43 @@ function scan(name) {
     for (const match of rest.matchAll(/(?<![\w-])([a-z][a-zA-Z0-9-]*)\s*\(/g)) calls.add(match[1]);
   };
 
-  walk(properties[name].syntax, 0);
+  walk(from ?? properties[name].syntax, 0);
   if (numeric) for (const one of MATHS) calls.add(one);
   return { words: [...words].sort(), calls: [...calls].sort(), free };
+}
+
+/**
+ * Every entry in {@link FREE} has to BE free, and the set cannot say so about itself.
+ *
+ * `<position-area>` was listed there while its grammar is a closed set of keywords, so one property
+ * was excluded from checking on a false claim and a typo in it passed. The claim is checkable: walk
+ * the production's own grammar with the set minus itself, and if the walk comes back decidable then
+ * the entry is wrong — nothing about it admits a word nobody can judge.
+ *
+ * Only the entries `syntaxes.json` defines can be asked. `<custom-ident>`, `<ident>` and
+ * `<dashed-ident>` are terminals of the value spec with no grammar to walk, which is exactly why
+ * they are the ones worth naming by hand.
+ */
+function freeIsFree() {
+  const wrong = [];
+  // A COPY, because the walk below needs the set without the entry it is asking about — and deleting
+  // from a `Set` mid-iteration then adding it back puts it at the end, where the iterator sees it
+  // again. That is an infinite loop, and it was this function's first version.
+  for (const one of [...FREE]) {
+    const grammar = syntaxes[one]?.syntax;
+    if (grammar === undefined) continue;
+
+    FREE.delete(one);
+    if (!scan(undefined, grammar).free) wrong.push(one);
+    FREE.add(one);
+  }
+  if (wrong.length > 0) {
+    throw new Error(
+      `FREE names ${wrong.length} production(s) whose grammar is decidable: ${wrong.join(", ")}. ` +
+        `An entry there excludes every property that reaches it from being checked at all, so a typo ` +
+        `in one passes. Remove it, or say here which bare word in it nobody can judge.`,
+    );
+  }
 }
 
 /**
@@ -560,6 +603,8 @@ const MORE_UNITS = [
 const named = Object.keys(properties)
   .filter((name) => !name.startsWith("-"))
   .sort();
+
+freeIsFree();
 
 const rows = [];
 const keywordRows = [];
