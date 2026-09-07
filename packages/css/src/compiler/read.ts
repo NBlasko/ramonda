@@ -40,8 +40,12 @@ export const SPREAD = "...";
  * fall through to being read as what they look like and are refused there.
  */
 export function holeIn(head: string, marker: string): number | undefined {
+  // A condition PARENTHESISES its hole — `@@if ({cond})`, the shape `@media (…)` has — and a spread
+  // does not, because a spread is a declaration's position rather than an at-rule's head.
   const escaped = marker === SPREAD ? "\\.\\.\\." : marker;
-  const found = new RegExp(`^\\s*${escaped}\\s*${HOLE}(\\d+)${HOLE}\\s*$`).exec(head);
+  const open = marker === SPREAD ? "" : "\\(\\s*";
+  const close = marker === SPREAD ? "" : "\\s*\\)";
+  const found = new RegExp(`^\\s*${escaped}\\s*${open}${HOLE}(\\d+)${HOLE}${close}\\s*$`).exec(head);
   return found === null ? undefined : Number(found[1]);
 }
 
@@ -101,7 +105,7 @@ const BRACE = 125; /* } */
  * hole holding an object literal came back cut in half.
  */
 export function closingHole(source: string, at: number): number {
-  let index = at + 2;
+  let index = at + 1;
   let depth = 0;
 
   while (index < source.length) {
@@ -127,13 +131,57 @@ export function closingHole(source: string, at: number): number {
     if (code === 123 /* { */ || code === 40 /* ( */ || code === 91 /* [ */) depth++;
     else if (code === 41 /* ) */ || code === 93 /* ] */) depth--;
     else if (code === BRACE) {
-      if (depth === 0 && source.charCodeAt(index + 1) === BRACE) return index;
+      // Just PAST the closer, so no caller has to know how long the closer is. It used to return the
+      // first of `}}` and every one of the four call sites added 2.
+      if (depth === 0) return index + 1;
       depth--;
     }
     index++;
   }
 
   return -1;
+}
+
+/**
+ * Whether a `{` opens a HOLE rather than a nested rule, judged by the text in front of it.
+ *
+ * A hole is one brace, so this is the one question the parser has that CSS's own grammar cannot
+ * answer — and there are exactly three positions where a `{` is a hole, each of them something a
+ * selector provably is not:
+ *
+ * - **nothing in front of it**, a hole in a property NAME — `{accent}: #34d399`, the only way to set
+ *   a registered property. A prelude cannot start with `{`: that would be an empty selector.
+ * - **exactly `<name>:`**, a value. A selector cannot END in a colon, which is what makes `&:hover`,
+ *   `@media (min-width: 40rem)` and `&[data-x="y"]` unambiguous — measured against every prelude in
+ *   this repository, twelve distinct, none misread.
+ * - **exactly `...`**, a spread.
+ *
+ * And one that is a bracket rather than a position: **immediately after `(`**. That is the
+ * condition, `@@if ({cond})`, and a hole inside a function, `url({href})`. No CSS construct puts a
+ * `{` after a `(`, so it cannot be anything else.
+ *
+ * **The condition needing no case of its own is why it is parenthesised.** `@@if {cond} {` would put
+ * two brackets of different kinds a space apart, and `} {` reads as a close and an open at one
+ * level. `@@if ({cond}) {` is the shape `@media (…) {` already has — and it is the same length as
+ * the `{{ }}` spelling it replaces, so the readable form costs nothing.
+ */
+/**
+ * A property name, a colon, and then either a space or the end of the text.
+ *
+ * **The space is load-bearing and a probe found it.** A bare type selector is a legal prelude —
+ * `a:hover { … }` parses today — and it begins with a property-shaped name and a colon exactly like
+ * `border: 4px solid` does. What separates them is that a declaration's colon is followed by
+ * whitespace or by the value itself, and a pseudo-class's is followed immediately by its own name.
+ *
+ * So `a:hover` is a selector, `color:{accent}` is a value, and `border: 4px solid {accent}` is a
+ * value. Measured against every prelude in this repository and against the four bare-type-selector
+ * shapes the parser accepts.
+ */
+const A_DECLARATION = /^\s*(--)?[a-zA-Z][\w-]*\s*:(\s|$)/;
+
+export function opensAHole(before: string): boolean {
+  const text = before.trimEnd();
+  return text === "" || text === SPREAD || text.endsWith("(") || A_DECLARATION.test(before);
 }
 
 export function readBlock(source: string, open: number, filename: string, options: ReadOptions = {}): ReadBlock {
@@ -168,16 +216,17 @@ export function readBlock(source: string, open: number, filename: string, option
    * is why this cannot be `indexOf("}}")`.
    */
   function pastHole(): ValuePart {
-    /** Where the `{{` itself is, before `at` moves past the hole. */
+    /** Where the `{` itself is, before `at` moves past the hole. */
     const opens = at;
-    const start = at + 2;
+    const start = at + 1;
+    /** Just past the `}` — see {@link closingHole}. */
     const close = closingHole(source, at);
 
     if (close === -1 && !tolerant) {
-      refuse("this hole is never closed — a `{{` needs a `}}`.", source, at, filename);
+      refuse("this hole is never closed — a `{` needs a `}`.", source, at, filename);
     }
 
-    const end = close === -1 ? source.length : close;
+    const end = close === -1 ? source.length : close - 1;
 
     /**
      * A reference to a named site is not a hole — see {@link namedSites}. It is text this compiler
@@ -185,10 +234,10 @@ export function readBlock(source: string, open: number, filename: string, option
      */
     const written = close === -1 ? undefined : resolve?.(source.slice(start, end).trim());
     if (written !== undefined) {
-      at = close + 2;
+      at = close;
       // `resolved`, because this text is the compiler's and holds nothing anybody can act on — see
       // the field's own note for the false report that found it.
-      return { kind: "text", text: written, at: start - 2, resolved: true };
+      return { kind: "text", text: written, at: opens, resolved: true };
     }
 
     // Unclosed and tolerant: everything to the end of the text is the expression. Mid-typing, that
@@ -197,10 +246,10 @@ export function readBlock(source: string, open: number, filename: string, option
       kind: "hole",
       index: holes.length,
       at: opens,
-      length: (close === -1 ? source.length : close + 2) - opens,
+      length: (close === -1 ? source.length : close) - opens,
     };
     holes.push({ start, end });
-    at = close === -1 ? source.length : close + 2;
+    at = close === -1 ? source.length : close;
     return part;
   }
 
@@ -247,7 +296,9 @@ export function readBlock(source: string, open: number, filename: string, option
         continue;
       }
       if (code === 123 /* { */) {
-        if (source.charCodeAt(index + 1) === 123) {
+        // The one question CSS's grammar cannot answer — see {@link opensAHole}, which the head
+        // reader asks in the same words so the lookahead and the read cannot disagree.
+        if (opensAHole(source.slice(at, index))) {
           const mark = at;
           at = index;
           pastHoleWithoutRecording();
@@ -318,18 +369,18 @@ export function readBlock(source: string, open: number, filename: string, option
         text += " ";
         continue;
       }
-      if (code === 123 && source.charCodeAt(at + 1) === 123) {
+      if (code === 123 && opensAHole(text)) {
         /**
          * The one hole that MAY stand in a property name: a reference to a registered property,
          * which is a name this compiler generated and the author has no other way to write.
-         * `{{angle}}: 45deg` is how a `@@property( … )` is set, and without it registering one is
+         * `{angle}: 45deg` is how a `@@property( … )` is set, and without it registering one is
          * only half a feature — nothing else can name it.
          */
         const close = closingHole(source, at);
-        const written = close === -1 ? undefined : resolve?.(source.slice(at + 2, close).trim());
+        const written = close === -1 ? undefined : resolve?.(source.slice(at + 1, close - 1).trim());
         if (written !== undefined) {
           text += written;
-          at = close + 2;
+          at = close;
           continue;
         }
 
@@ -341,7 +392,8 @@ export function readBlock(source: string, open: number, filename: string, option
          * other hole, so the transform leaves the author's expression exactly where they wrote it,
          * and marked in the text with the same placeholder a value uses.
          */
-        if (text.trimEnd() === CONDITION || text.trimEnd() === SPREAD) {
+        const head = text.trimEnd();
+        if (head === `${CONDITION} (` || head === `${CONDITION}(` || head === SPREAD) {
           const part = pastHole();
           // A part that came back as TEXT is a reference to a named site, resolved at build time —
           // a `@@keyframes` name, which is a string and not a condition or a block. It falls
@@ -413,7 +465,8 @@ export function readBlock(source: string, open: number, filename: string, option
         text += " ";
         continue;
       }
-      if (code === 123 && source.charCodeAt(at + 1) === 123) {
+      // Inside a value there is nothing else a `{` could be, so no question is asked here.
+      if (code === 123) {
         flush();
         parts.push(pastHole());
         continue;
@@ -479,8 +532,8 @@ export function readBlock(source: string, open: number, filename: string, option
          */
         if (prelude.startsWith(CONDITION) && holeIn(prelude, CONDITION) === undefined && !tolerant) {
           refuse(
-            `\`${CONDITION}\` takes one \`{{ … }}\` and nothing else — everything the condition needs goes ` +
-              "inside the braces, where it is ordinary TypeScript.",
+            `\`${CONDITION}\` takes one parenthesised \`({ … })\` and nothing else — everything the ` +
+              "condition needs goes inside the braces, where it is ordinary TypeScript.",
             source,
             from,
             filename,

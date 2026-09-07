@@ -28,7 +28,7 @@ splitting, which A3 made nearly free.
 
 ## What is being built, in three sentences
 
-A `css` block written in real CSS beside the markup, with `{{expr}}` holes. At build time the static
+A `css` block written in real CSS beside the markup, with `{expr}` holes. At build time the static
 declarations become a class in a stylesheet and each hole becomes a CSS custom property carried on
 the element. The syntax is not TypeScript, so the package owns a parser and a virtual-file layer —
 the same way JSX is usable because somebody wrote the parser for it.
@@ -36,7 +36,7 @@ the same way JSX is usable because somebody wrote the parser for it.
 ```
 <div css=@@(
   display: flex;
-  border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
+  border-left: {isOnline ? "4px solid #10b981" : "4px solid #64748b"};
 )>
 ```
 
@@ -315,8 +315,8 @@ a correct block reports nothing at all.
    |---|---|---|
    | `dsiplay: flex` | `TS2561` | the property |
    | `display: flexx` | `TS2820` | the property |
-   | `padding: {{this.size}}` | `TS2322` | the property |
-   | `color: {{missing}}` | `TS2304` | the **expression** |
+   | `padding: {this.size}` | `TS2322` | the property |
+   | `color: {missing}` | `TS2304` | the **expression** |
 
    Nothing to fix in either — but a caller printing a caret has to know that a value error points at
    its declaration.
@@ -703,9 +703,9 @@ did every line BELOW it, to the end of the file. A block on line 243 made `const
 259 look broken.
 
 **Two injections, in `packages/css/vscode/grammar/`.** One is aimed at a JSX tag and scopes
-`name=@@( … )` as embedded CSS; the other is aimed at the CSS a block scopes, and gives `{{ … }}` back
-to TypeScript. **The hole has to be a SEPARATE injection**, because `{{` in ordinary JSX is
-`style={{…}}` — a pattern in the tag-level grammar would colour every inline style object as CSS.
+`name=@@( … )` as embedded CSS; the other is aimed at the CSS a block scopes, and gives `{ … }` back
+to TypeScript. **The hole has to be a SEPARATE injection**, because `{` in ordinary JSX is
+`style={…}` — a pattern in the tag-level grammar would colour every inline style object as CSS.
 
 **A grammar does not have to be judged by screenshot.** It is a function from text to scopes, and
 shiki carries the same engine an editor does, so every claim is a test —
@@ -753,7 +753,7 @@ affair.
 `.css` file, `a { &:hover { color: red; } }` comes back with `&` as a PROPERTY, `hover {` as its
 VALUE, and `color` inside coloured as a value rather than a property — one construct in two colours,
 inside every block that hovers. The block grammar carries a `nested` rule and its own `&`, and the
-negative lookahead in it is the hole: `{{` opens an expression, never a rule list.
+negative lookahead in it is the hole: `{` after a colon opens an expression, never a rule list.
 
 **GitHub and npm cannot be taught without upstreaming a grammar**, so a fence there stays plain,
 which is an acceptable end state.
@@ -1090,12 +1090,12 @@ const variants = {
   ...button;                                 // merge another block's map, across files
   ...variants[this.variant];                 // exhaustive — TypeScript checks the key
 
-  @@if {{this.disabled}} {
+  @@if ({this.disabled}) {
     opacity: 0.5;
     cursor: not-allowed;                     // beats `cursor: pointer` above, because it is BELOW
   }
 
-  width: {{this.full ? "100%" : "auto"}};    // a VALUE choice is still a hole
+  width: {this.full ? "100%" : "auto"}   // a VALUE choice is still a hole
 )>
 ```
 
@@ -1245,7 +1245,7 @@ Three things it decides, and each was a way to be silently wrong:
   the first commutes and the second does not. Keyed as written, `@media X { &:hover { … } }` and
   `&:hover { @media X { … } }` would be two keys for one thing set, and a modifier would fail to
   override a base written the other way round.
-- **holes renumbered per declaration.** A hole's index belongs to the block, so `color: {{x}}` is
+- **holes renumbered per declaration.** A hole's index belongs to the block, so `color: {x}is
   hole 0 alone and hole 1 under another declaration — the same declaration, two canonical texts, two
   classes, and the dedupe that pays for the whole design gone.
 - **a bare nested selector is a descendant**, which is what CSS nesting says it means.
@@ -1328,11 +1328,11 @@ because the sheet already emits longhands after shorthands.
 The second row is the thing that was impossible before this: precedence decided at the call site
 rather than by the stylesheet.
 
-**AC5 — `...{{expr}};` inside a block. DONE 2026-09-05.** It becomes an argument of the merge, in the
+**AC5 — `...{expr};` inside a block. DONE 2026-09-05.** It becomes an argument of the merge, in the
 position it was written, so what is above it merges first — which is what *later wins* means.
 
-**The operand is inside `{{ }}` like every other expression in a block**, for the reason the user gave
-when they chose `@@if {{expr}}`: TypeScript appears there and nowhere else. `...base;` would have
+**The operand is inside `{ }` like every other expression in a block**, for the reason the user gave
+when they chose `@@if ({expr})`: TypeScript appears there and nowhere else. `...base;` would have
 been prettier and would have been a second spelling for the same thing.
 
 **One fault it exposed, and it failed in the worst way — quietly and only sometimes.** A spread hands
@@ -1345,13 +1345,13 @@ non-enumerable symbol, and `compose` reads it back.
 
 The type for the operand is still to write — see AC7.
 
-**AC6 — `@@if {{ … }} { }`.** The parser already reads it as a nested rule with that prelude, and the
+**AC6 — `@@if ({ … }) { }`.** The parser already reads it as a nested rule with that prelude, and the
 scanner does NOT mistake it for a second block site (measured: one site, not two). Needs the condition
 type-checked in the author's scope, and exemption from `at-rule-out-of-place`.
 
-**The condition is written `{{ … }}`, decided by the user 2026-09-05**, against `@@if (expr)` which is
+**The condition is written `{ … }`, decided by the user 2026-09-05**, against `@@if (expr)` which is
 what everyone expects. Consistency won, and it is this language's one standing rule: **TypeScript
-appears inside `{{ }}` and nowhere else.** A second spelling for "here is an expression" would be a
+appears inside `{ }` and nowhere else.** A second spelling for "here is an expression" would be a
 second thing to teach and a second thing for every tool to know.
 
 **DONE 2026-09-05.** A group becomes an argument guarded by its condition — `c && { … }` — and a
@@ -1361,7 +1361,7 @@ a selector means: the key is canonical, so both give the same class.
 
 Two parser changes, both narrow: a head that is exactly the marker and one hole records that hole
 rather than refusing it, and a spread is a declaration with no value rather than a declaration
-missing one. Everything else about a head is unchanged, so `@@iffy {{c}}` is still a selector and
+missing one. Everything else about a head is unchanged, so `@@iffy {c}` is still a selector and
 still refused.
 
 **Measured end to end** — compiled, run, and rendered in Chromium, across a spread, two guards and a
@@ -1381,10 +1381,10 @@ position and there is no diagnostic of ours to write. Asserted through a real pr
 
 | written | answer |
 |---|---|
-| `@@if {{this.off}}`, `@@if {{maybe}}` where `maybe` may be `undefined` | silent |
-| `@@if {{this.method}}` (not called), `@@if {{o}}`, `@@if {{p}}` (a promise) | *always truthy* |
-| `...{{base}}` where `base` is a block | silent |
-| `...{{plain}}`, `...{{text}}` | *only a style block can be spread*, at the author's line |
+| `@@if ({this.off})`, `@@if ({maybe})` where `maybe` may be `undefined` | silent |
+| `@@if ({this.method})` (not called), `@@if ({o})`, `@@if ({p})` (a promise) | *always truthy* |
+| `...{base}` where `base` is a block | silent |
+| `...{plain}`, `...{text}` | *only a style block can be spread*, at the author's line |
 | a typo inside a group | the same `TS2561` and the same *did you mean* it is outside one |
 
 **The encoding is the measured one:** the condition and the spread are their own array ELEMENTS,
@@ -1395,7 +1395,7 @@ it comes back as three findings, on lines 3, 4 and 5.
 **Two more faults composition made possible, both found by asking where a spread cannot go:**
 
 - **A spread inside a selector or a `@media` compiled, and the context silently vanished.**
-  `&:hover { ...{{base}}; }` came out as `_merge(base)`, so a block meant for hover applied always.
+  `&:hover { ...{base}; }` came out as `_merge(base)`, so a block meant for hover applied always.
   It cannot mean anything else: a spread merges a whole block, and a block's map carries the context
   each of its own declarations was written in, so nesting one would have to re-scope every key it
   holds. Refused now, naming the two places it may go. A GUARD is still fine — `@@if` changes no key.
@@ -1433,7 +1433,7 @@ emits by it and this rule reports where it contradicts the author. Two copies of
 shape this package keeps finding a fault in.
 
 **AC8 — the page. DONE 2026-09-05.** `style-blocks.md` gains *Composing blocks*: the two spellings,
-the later-wins rule, why the condition is inside `{{ }}` and why the keyword is `@@if`, what is
+the later-wins rule, why the condition is inside `{ }` and why the keyword is `@@if`, what is
 checked, and the shorthand behaviour — which is CSS's own and worth saying out loud because it is the
 one place a merge does something the reader did not literally write.
 
@@ -1698,7 +1698,7 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | one object literal per block | TypeScript reports ONE failure and stops — so a block reports one fault per run |
 | one literal per declaration, in an array | every fault at once; +15 points of check time |
 | a block shape that does not resolve | everything becomes `any` and the diagnostic is scaffolding — reported now, or it passes silently |
-| a hole typed by its property | `TS2322` on `padding: {{nekaFunc()}}` |
+| a hole typed by its property | `TS2322` on `padding: {nekaFunc()}` |
 | a template-literal length type | catches `10pxx`, prints an unreadable expanded union |
 | transform cost, the PROTOTYPE | +2.6% over esbuild — superseded, it built no AST and no map |
 | transform cost, the REAL one | **+9.7%** over esbuild; 58.8 µs/file, every component carrying four blocks |
@@ -1707,7 +1707,7 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | reading bytes instead of text | not faster (+62%): the syscall, not the UTF-8 |
 | esbuild contents returned with NO loader | parsed as plain JavaScript, JSX refused on every file |
 | bail-out on an unused codebase | 1,290 files, 10.73 MB, **0.84 ms**, scan included |
-| the generated `style={{…}}` object | `RMD020` on every render |
+| the generated `style={…}` object | `RMD020` on every render |
 | the same as a string / prop | silent |
 | a block in a lazily-loaded module | its OWN stylesheet asset, disjoint from the entry's — splitting is free |
 | a `;` deleted after a CLOSED-grammar property | reported: the next name is a value it does not accept |

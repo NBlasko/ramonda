@@ -110,7 +110,7 @@ describe("a bare word a property does not accept", () => {
     ["a function", "  color: rgb(0 0 0 / 50%);"],
     ["a named colour", "  border-left: 1px solid rebeccapurple;"],
     ["a word inside a string", `  content: "flexx";`],
-    ["a value that is entirely a hole", "  display: {{how}};"],
+    ["a value that is entirely a hole", "  display: {how};"],
     ["a property whose values are the author's own", "  animation-name: slidein;"],
     ["another", "  font-family: Helvetica, sans-serif;"],
     ["a grid area the author named", "  grid-area: myarea;"],
@@ -165,7 +165,7 @@ describe("the same declaration written twice", () => {
     ["a fallback, which is a technique", "  width: 100px;\n  width: fit-content;"],
     ["the same property in a nested rule", "  color: red;\n  &:hover { color: red; }"],
     ["two properties that merely look alike", "  border-left: red;\n  border-right: red;"],
-    ["the same property with a hole in one of them", "  color: red;\n  color: {{accent}};"],
+    ["the same property with a hole in one of them", "  color: red;\n  color: {accent};"],
   ])("%s is silent", (_what, css) => {
     expect(rules(css)).toEqual([]);
   });
@@ -180,9 +180,9 @@ describe("a hole where a custom property cannot go", () => {
    * FIRST: in an editor, while it is being typed, rather than at the end of a build.
    */
   test.each([
-    ["a property name", "  {{name}}: 24px;"],
-    ["a whole declaration", `  {{cond ? "display:flex" : ""}}`],
-    ["a selector", "  &:{{state}} { color: red; }"],
+    ["a property name", "  {name}: 24px;"],
+    ["a whole declaration", `  {cond ? "display:flex" : ""}`],
+    ["a selector", "  &:{state} { color: red; }"],
   ])("%s is named", (_what, css) => {
     const [only, ...rest] = check(css);
 
@@ -192,7 +192,7 @@ describe("a hole where a custom property cannot go", () => {
   });
 
   test("and a hole in a value is exactly where one belongs", () => {
-    expect(rules("  border-left: 4px solid {{accent}};")).toEqual([]);
+    expect(rules("  border-left: 4px solid {accent};")).toEqual([]);
   });
 });
 
@@ -369,8 +369,8 @@ describe("a property that takes no keywords", () => {
     ["a CSS-wide keyword", `padding: inherit;`],
     ["a variable", `padding: var(--x);`],
     ["a calculation", `padding: calc(100% - 8px);`],
-    ["a hole", `padding: {{size}};`],
-    ["a hole with a space after it", `padding: {{size}} 0;`],
+    ["a hole", `padding: {size};`],
+    ["a hole with a space after it", `padding: {size} 0;`],
   ])("%s is fine", (_what, css) => {
     expect(check(css)).toEqual([]);
   });
@@ -398,11 +398,11 @@ describe("a property that takes no keywords", () => {
  */
 describe("a hole and the text glued to it", () => {
   test.each([
-    ["a unit after a hole", `gap: {{n}}px;`],
-    ["one on a property that takes no keywords", `padding: {{n}}px;`],
-    ["two holes, one unit", `margin: {{a}} {{b}}px;`],
-    ["a unit in the middle of a shorthand", `border-left: {{w}}px solid red;`],
-    ["a word before a hole", `grid-template-columns: minmax(0,{{n}}fr);`],
+    ["a unit after a hole", `gap: {n}px;`],
+    ["one on a property that takes no keywords", `padding: {n}px;`],
+    ["two holes, one unit", `margin: {a} {b}px;`],
+    ["a unit in the middle of a shorthand", `border-left: {w}px solid red;`],
+    ["a word before a hole", `grid-template-columns: minmax(0,{n}fr);`],
   ])("%s says nothing about the WORD", (_what, css) => {
     // The glued piece is not a value of its own, so no rule that reads words may judge it. It IS
     // reported, by `glued-hole` — see that section — because the CSS it produces does not work.
@@ -410,8 +410,8 @@ describe("a hole and the text glued to it", () => {
   });
 
   test.each([
-    ["a typo beside a glued unit", `border-left: {{w}}px sollid red;`, "sollid"],
-    ["a separate word after a hole", `gap: {{n}} auto;`, "auto"],
+    ["a typo beside a glued unit", `border-left: {w}px sollid red;`, "sollid"],
+    ["a separate word after a hole", `gap: {n} auto;`, "auto"],
   ])("%s is still caught", (_what, css, word) => {
     expect(
       check(css)
@@ -478,7 +478,7 @@ describe("a line comment", () => {
     ["a quoted one", `content: "// not a comment";`],
     ["a single slash", `font: 12px/1.5 system-ui;`],
     ["a ratio", `aspect-ratio: 16 / 9;`],
-    ["one inside a hole", `color: {{cond ? "red" : "blue"}}; /* fine */`],
+    ["one inside a hole", `color: {cond ? "red" : "blue"}; /* fine */`],
   ])("%s is not one", (_what, css) => {
     expect(check(css).filter((finding) => finding.rule === "line-comment")).toEqual([]);
   });
@@ -531,7 +531,7 @@ describe("a value that has to be a property name", () => {
     ["a vendor-prefixed property", `transition-property: -webkit-transform;`],
     ["a custom property, which is animatable", `transition-property: --brand-colour;`],
     ["a CSS-wide keyword", `transition-property: inherit;`],
-    ["a hole", `transition-property: {{what}};`],
+    ["a hole", `transition-property: {what};`],
   ])("%s is fine", (_what, css) => {
     expect(check(css)).toEqual([]);
   });
@@ -621,7 +621,7 @@ describe("a unit that is nearly one", () => {
     ["fr", `grid-template-columns: 1fr 2fr;`],
     ["a hex colour", `color: #10b981;`],
     ["a number inside a function", `width: calc(100% - 8px);`],
-    ["a unit beside a hole", `border-left: {{w}}px solid red;`],
+    ["a unit beside a hole", `border-left: {w}px solid red;`],
     ["an angle", `rotate: 45deg;`],
     ["a resolution", `image-resolution: 300dpi;`],
   ])("%s is silent", (_what, css) => {
@@ -671,11 +671,11 @@ describe("a unit that is nearly one", () => {
  */
 describe("text glued to a hole", () => {
   test.each([
-    ["a unit after", `padding-left: {{n}}px;`],
-    ["inside a shorthand", `border-left: {{w}}px solid red;`],
-    ["a suffix that is not a unit", `grid-area: {{name}}-start;`],
-    ["something in front", `color: #{{hex}};`],
-    ["two holes with nothing between", `margin: {{a}}{{b}};`],
+    ["a unit after", `padding-left: {n}px;`],
+    ["inside a shorthand", `border-left: {w}px solid red;`],
+    ["a suffix that is not a unit", `grid-area: {name}-start;`],
+    ["something in front", `color: #{hex};`],
+    ["two holes with nothing between", `margin: {a}{b};`],
   ])("%s is reported", (_what, css) => {
     const found = check(css).filter((finding) => finding.rule === "glued-hole");
 
@@ -684,12 +684,12 @@ describe("text glued to a hole", () => {
   });
 
   test.each([
-    ["a hole with a space after it", `border-left: {{w}} solid red;`],
-    ["a whole value", `display: {{how}};`],
-    ["inside calc, spaced", `padding-left: calc({{n}} * 1px);`],
-    ["two holes with a space", `margin: {{a}} {{b}};`],
-    ["the unit inside the hole", "padding-left: {{`${n}px`}};"],
-    ["a hole ending a declaration", `color: {{c}};`],
+    ["a hole with a space after it", `border-left: {w} solid red;`],
+    ["a whole value", `display: {how};`],
+    ["inside calc, spaced", `padding-left: calc({n} * 1px);`],
+    ["two holes with a space", `margin: {a} {b};`],
+    ["the unit inside the hole", "padding-left: {`${n}px`};"],
+    ["a hole ending a declaration", `color: {c};`],
   ])("%s is fine", (_what, css) => {
     expect(check(css).filter((finding) => finding.rule === "glued-hole")).toEqual([]);
   });
@@ -1168,7 +1168,7 @@ describe("a variable set by one name and read by another", () => {
   };
 
   test("setting the literal name while reading the binding is reported", () => {
-    const found = bound("  --accent: blue;\n  background: var({{accent}});");
+    const found = bound("  --accent: blue;\n  background: var({accent});");
 
     expect(found).toHaveLength(1);
     expect(found[0].rule).toBe("variable-set-by-another-name");
@@ -1176,21 +1176,21 @@ describe("a variable set by one name and read by another", () => {
   });
 
   test("the message says what to write instead", () => {
-    expect(bound("  --accent: blue;\n  background: var({{accent}});")[0].message).toContain("{{accent}}");
+    expect(bound("  --accent: blue;\n  background: var({accent});")[0].message).toContain("{accent}");
   });
 
   test("it lands on the declaration the author has to change", () => {
-    const found = bound("  --accent: blue;\n  background: var({{accent}});");
+    const found = bound("  --accent: blue;\n  background: var({accent});");
     // The SET is the mistake — the read is what they meant.
     expect(found[0].length).toBe("--accent".length);
   });
 
   describe("what it must not report", () => {
     test.each([
-      ["setting it with the binding, which is the right way", "  {{accent}}: blue;\n  background: var({{accent}});"],
-      ["reading the binding and setting nothing", "  background: var({{accent}});"],
+      ["setting it with the binding, which is the right way", "  {accent}: blue;\n  background: var({accent});"],
+      ["reading the binding and setting nothing", "  background: var({accent});"],
       ["setting a literal nobody reads as a binding", "  --gap: 8px;\n  gap: var(--gap);"],
-      ["a literal whose name matches nothing bound", "  --tone: blue;\n  background: var({{accent}});"],
+      ["a literal whose name matches nothing bound", "  --tone: blue;\n  background: var({accent});"],
       ["setting the literal and reading the literal", "  --accent: blue;\n  background: var(--accent);"],
     ])("%s", (_what, css) => {
       expect(bound(css)).toEqual([]);
@@ -1242,7 +1242,7 @@ describe("a reference to a named site is checked as the text it became", () => {
   test("a resolved name inside `var()` reports nothing, as the literal does not", () => {
     const source =
       `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
-      `const card = @@( transform: rotate(var({{angle}})); );\n`;
+      `const card = @@( transform: rotate(var({angle})); );\n`;
 
     expect(findings(source)).toEqual([]);
   });
@@ -1250,7 +1250,7 @@ describe("a reference to a named site is checked as the text it became", () => {
   test("a resolved `@@keyframes` name in `animation` reports nothing either", () => {
     const source =
       `const spin = @@keyframes( from { opacity: 0; } to { opacity: 1; } );\n` +
-      `const card = @@( animation: {{spin}} 3s linear; );\n`;
+      `const card = @@( animation: {spin} 3s linear; );\n`;
 
     expect(findings(source)).toEqual([]);
   });
@@ -1262,7 +1262,7 @@ describe("a reference to a named site is checked as the text it became", () => {
   test("but a real fault in the same declaration is still reported", () => {
     const source =
       `const spin = @@keyframes( from { opacity: 0; } to { opacity: 1; } );\n` +
-      `const card = @@( transition: {{spin}} 3s liner; );\n`;
+      `const card = @@( transition: {spin} 3s liner; );\n`;
 
     expect(findings(source).map((one) => one.rule)).toContain("unknown-value");
   });
@@ -1314,7 +1314,7 @@ describe("a variable read by a name the block does not set", () => {
   });
 
   test("a name set by a hole is still a name the block sets", () => {
-    expect(rules(`@@(\n  --accent: {{accent}};\n  background: var(--ackcent);\n)`)).toEqual([
+    expect(rules(`@@(\n  --accent: {accent};\n  background: var(--ackcent);\n)`)).toEqual([
       "variable-read-by-another-name",
     ]);
   });
@@ -1395,35 +1395,35 @@ describe("a hole where `var()` takes a name", () => {
   const rules = (source: string) => of(source).map((one) => one.rule);
 
   test("directly inside `var(`", () => {
-    expect(rules(`@@(\n  background: var({{accent}});\n)`)).toEqual(["hole-as-a-variable-name"]);
+    expect(rules(`@@(\n  background: var({accent});\n)`)).toEqual(["hole-as-a-variable-name"]);
   });
 
   test("with whitespace between, which changes nothing", () => {
-    expect(rules(`@@(\n  background: var(  {{accent}} );\n)`)).toEqual(["hole-as-a-variable-name"]);
+    expect(rules(`@@(\n  background: var(  {accent} );\n)`)).toEqual(["hole-as-a-variable-name"]);
   });
 
   test("and nested in a fallback's own `var(`, which is still a name position", () => {
-    expect(rules(`@@(\n  background: var(--brand, var({{accent}}));\n)`)).toEqual(["hole-as-a-variable-name"]);
+    expect(rules(`@@(\n  background: var(--brand, var({accent}));\n)`)).toEqual(["hole-as-a-variable-name"]);
   });
 
   test("the squiggle covers the hole the author wrote", () => {
-    const source = `@@(\n  background: var({{accent}});\n)`;
+    const source = `@@(\n  background: var({accent});\n)`;
     const [finding] = of(source);
 
-    expect(source.slice(finding.at, finding.at + finding.length)).toBe("{{accent}}");
+    expect(source.slice(finding.at, finding.at + finding.length)).toBe("{accent}");
   });
 
   test("the message says what `var()` needs", () => {
-    expect(of(`@@(\n  background: var({{accent}});\n)`)[0].message).toContain("literal name");
+    expect(of(`@@(\n  background: var({accent});\n)`)[0].message).toContain("literal name");
   });
 
   describe("what it must not report", () => {
     test("a hole in the FALLBACK, which is a value where a value belongs", () => {
-      expect(rules(`@@(\n  background: var(--brand, {{fallback}});\n)`)).toEqual([]);
+      expect(rules(`@@(\n  background: var(--brand, {fallback});\n)`)).toEqual([]);
     });
 
     test("an ordinary hole, which is the whole point of a hole", () => {
-      expect(rules(`@@(\n  background: {{accent}};\n)`)).toEqual([]);
+      expect(rules(`@@(\n  background: {accent};\n)`)).toEqual([]);
     });
 
     test("a literal name, which is what `var()` wants", () => {
@@ -1438,7 +1438,7 @@ describe("a hole where `var()` takes a name", () => {
     test("a reference to a named site in the same file, which resolves to a literal", () => {
       const source =
         `const accent = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n` +
-        `const card = @@( background: var({{accent}}); );\n`;
+        `const card = @@( background: var({accent}); );\n`;
       const references = namedSites(source);
       const sites = findBlocks(source);
       const site = sites[sites.length - 1];
@@ -1540,7 +1540,7 @@ describe("an initial-value its own syntax does not accept", () => {
     });
 
     test("a syntax written as a hole, which cannot be read", () => {
-      expect(rules(property(`syntax: {{shape}}; inherits: false; initial-value: 12px;`))).toEqual([]);
+      expect(rules(property(`syntax: {shape}; inherits: false; initial-value: 12px;`))).toEqual([]);
     });
 
     test("an ordinary block, where neither descriptor means this", () => {

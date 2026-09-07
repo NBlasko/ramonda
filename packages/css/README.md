@@ -6,7 +6,7 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 ```
 <div css=@@(
   display: flex;
-  border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
+  border-left: {isOnline ? "4px solid #10b981" : "4px solid #64748b"};
 )>
 ```
 
@@ -123,7 +123,7 @@ const result = transform(readFileSync("Card.tsx", "utf8"), { filename: "Card.tsx
 The transform is what turns
 
 ```
-<div css=@@( display: flex; border-left: {{accent}}; )>
+<div css=@@( display: flex; border-left: {accent}; )>
 ```
 
 into a hoisted `const _s0 = block("r-…", ["--r-…-0"])` and a site reading `css={_s0(accent)}`, plus
@@ -156,7 +156,7 @@ the imports and the generics are all the ones the author sees.
 ```
 dsiplay: flex;      TS2561 … 'dsiplay' does not exist. Did you mean to write 'display'?
 position: statik;   TS2820 … Did you mean '"static"'?
-padding: {{f()}};   TS2322 … 'boolean' is not assignable
+padding: {f()};   TS2322 … 'boolean' is not assignable
 ```
 
 The property map is generated from MDN's own data — 551 properties, **123 of them a closed keyword

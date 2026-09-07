@@ -64,7 +64,7 @@ describe("a build", () => {
 
   test("a hole becomes a custom property the element carries", async () => {
     const root = project({
-      "index.tsx": `const w = 4;\nconst a = <div css=@@(\n  border-left: {{\`\${w}px\`}} solid red;\n)>x</div>;\nexport default a;\n`,
+      "index.tsx": `const w = 4;\nconst a = <div css=@@(\n  border-left: {\`\${w}px\`} solid red;\n)>x</div>;\nexport default a;\n`,
     });
     const { js, css } = outputs(await build(root));
 
@@ -82,7 +82,7 @@ describe("a build", () => {
 
   /** The refusal has to arrive as a position in the author's file, not as a stack trace. */
   test("a block it cannot read is reported on the author's line", async () => {
-    const root = project({ "index.tsx": `const a = <div css=@@(\n  {{whole}}\n)>x</div>;\n` });
+    const root = project({ "index.tsx": `const a = <div css=@@(\n  {whole}\n)>x</div>;\n` });
 
     await expect(build(root)).rejects.toMatchObject({
       errors: [expect.objectContaining({ location: expect.objectContaining({ line: 2 }) })],
@@ -141,7 +141,7 @@ describe("what a file is loaded as", () => {
 export default <div css={panel}>x</div>;
 `,
       "styles.ts": `const width: number = 4;
-export const panel = @@(\n  gap: {{\`\${width}px\`}};\n);
+export const panel = @@(\n  gap: {\`\${width}px\`};\n);
 `,
     });
     const { js, css } = outputs(await build(root));

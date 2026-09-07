@@ -159,13 +159,13 @@ describe("the limit, said out loud rather than hidden", () => {
 
 describe("a hole, checked against the property it stands in", () => {
   test("a value that cannot be one is reported on its declaration", () => {
-    const source = `class Card {\n  wide = true;\n  render() {\n    return (\n      <div css=@@(\n        position: {{this.wide}};\n      )>x</div>\n    );\n  }\n}\n`;
+    const source = `class Card {\n  wide = true;\n  render() {\n    return (\n      <div css=@@(\n        position: {this.wide};\n      )>x</div>\n    );\n  }\n}\n`;
     const file = virtualFile(source, { properties: "../properties" });
 
     expect(file?.code).toContain("position:(this.wide)");
   });
 
   test("and a hole in an open property takes a string or a number", () => {
-    expect(check("    padding: {{8}}px;")).toEqual([]);
+    expect(check("    padding: {8}px;")).toEqual([]);
   });
 });

@@ -250,8 +250,8 @@ export class StyleBlock extends Component {
         flex-direction: column;
         gap: 8px;
         padding: 4px 0;
-        border-left: {{`${this.weight}px`}} solid #ff0055;
-        padding-left: {{`${this.weight + 8}px`}};
+        border-left: {`${this.weight}px`} solid #ff0055;
+        padding-left: {`${this.weight + 8}px`};
         transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
         &:hover {
           border-left-color: #00b37e;
@@ -351,15 +351,15 @@ export class StyleBlockComposed extends Component {
         </p>
 
         <div css={@@(
-          ...{{CONTROL}};
-          ...{{TONES[this.tone]}};
+          ...{CONTROL};
+          ...{TONES[this.tone]};
 
-          @@if {{this.off}} {
+          @@if ({this.off}) {
             opacity: 0.5;
             cursor: none;
           }
 
-          @@if {{this.roomy}} {
+          @@if ({this.roomy}) {
             padding: 14px 20px;
           }
         )}>tone: {this.tone}</div>
@@ -430,7 +430,7 @@ export class StyleBlockNested extends Component {
     return (
       <div className="panel" data-urgent={String(this.urgent)} css={@@(
         /* One hole, read four times below — see the note above. */
-        --accent: {{accent}};
+        --accent: {accent};
 
         display: grid;
         grid-template-columns: auto 1fr;

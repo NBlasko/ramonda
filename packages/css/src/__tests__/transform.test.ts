@@ -56,7 +56,7 @@ describe("what a block becomes", () => {
   });
 
   test("one hole: the expression stays where it was, inside its declaration's entry", () => {
-    const out = body(`const a = <div css=@@( color: {{this.accent}}; )>x</div>;\n`);
+    const out = body(`const a = <div css=@@( color: {this.accent}; )>x</div>;\n`);
 
     expect(out).toMatch(/css=\{_merge\(\{"color":\["r-[0-9a-zA-Z][^"\s)]*",this\.accent\],\}\)\}/);
   });
@@ -67,7 +67,7 @@ describe("what a block becomes", () => {
    * checker, which is a small demonstration of what was shipping.
    */
   test("several holes arrive in source order, each with the declaration it belongs to", () => {
-    const out = body(`const a = <div css=@@( color: {{a}}; padding: {{b}}; )>x</div>;\n`);
+    const out = body(`const a = <div css=@@( color: {a}; padding: {b}; )>x</div>;\n`);
 
     expect(out).toMatch(/"color":\["r-[0-9a-zA-Z][^"\s)]*",a\],/);
     expect(out).toMatch(/"padding":\["r-[0-9a-zA-Z][^"\s)]*",b\],/);
@@ -88,7 +88,7 @@ describe("what a block becomes", () => {
    * for reading a hoisted one.
    */
   test("the import is hoisted above everything, and a block with no holes with it", () => {
-    const holed = emit(`const a = <div css=@@( color: {{x}}; )>y</div>;\n`);
+    const holed = emit(`const a = <div css=@@( color: {x}; )>y</div>;\n`);
     const still = emit(`const a = <div css=@@( color: red; )>y</div>;\n`);
 
     expect(holed?.code.split("\n")[0]).toBe(`import { merge as _merge } from "@ramonda/css";`);
@@ -128,7 +128,7 @@ describe("the blocks it found", () => {
    * the sheet can write the selector onto its own class and the condition around it.
    */
   test("a class per declaration, its body, and the properties it declares", () => {
-    const result = emit(`const a = <div css=@@( display: flex; border-left: {{accent}}; )>x</div>;\n`);
+    const result = emit(`const a = <div css=@@( display: flex; border-left: {accent}; )>x</div>;\n`);
     const [flex, border] = result?.blocks ?? [];
 
     expect(result?.blocks).toHaveLength(2);
@@ -158,7 +158,7 @@ describe("the blocks it found", () => {
   });
 
   test("a hole inside a nested rule belongs to its own declaration", () => {
-    const result = emit(`const a = <div css=@@( &:hover { color: {{hot}}; } )>x</div>;\n`);
+    const result = emit(`const a = <div css=@@( &:hover { color: {hot}; } )>x</div>;\n`);
     const [only] = result?.blocks ?? [];
 
     expect(only.css).toBe(`color:var(--${only.className}-0);`);
@@ -175,15 +175,15 @@ describe("the blocks it found", () => {
 describe("what it refuses, and where", () => {
   /** A custom property holds a value. Everything below is a position one cannot occupy. */
   test.each([
-    ["a hole as a property name", `<div css=@@( {{name}}: 24px; )>x</div>`],
-    ["a hole in a selector", `<div css=@@( &:{{state}} { color: red; } )>x</div>`],
-    ["a hole standing as a whole declaration", `<div css=@@( {{cond ? "display:flex" : ""}} )>x</div>`],
+    ["a hole as a property name", `<div css=@@( {name}: 24px; )>x</div>`],
+    ["a hole in a selector", `<div css=@@( &:{state} { color: red; } )>x</div>`],
+    ["a hole standing as a whole declaration", `<div css=@@( {cond ? "display:flex" : ""} )>x</div>`],
   ])("%s", (_what, source) => {
     expect(() => emit(`const a = ${source};\n`)).toThrow(CssBlockError);
   });
 
   test("the refusal carries the file and the position of the hole itself", () => {
-    const source = `const a = (\n  <div css=@@(\n    {{name}}: 24px;\n  )>x</div>\n);\n`;
+    const source = `const a = (\n  <div css=@@(\n    {name}: 24px;\n  )>x</div>\n);\n`;
 
     try {
       emit(source);
@@ -301,19 +301,19 @@ describe("what the block's own text may contain", () => {
   });
 
   test("an expression may contain braces, strings and parens of its own", () => {
-    const out = body(`const a = <div css=@@( color: {{pick({ on: "}}" })}}; )>x</div>;\n`);
+    const out = body(`const a = <div css=@@( color: {pick({ on: "}}" })})>x</div>;\n`);
 
     expect(out).toContain(`pick({ on: "}}" })`);
   });
 
   test("an expression may be a template literal, substitutions and all", () => {
-    const out = body("const a = <div css=@@( color: {{`rgb(${r}, ${g}, 0)`}}; )>x</div>;\n");
+    const out = body("const a = <div css=@@( color: {`rgb(${r}, ${g}, 0)`})>x</div>;\n");
 
     expect(out).toContain("`rgb(${r}, ${g}, 0)`");
   });
 
   test("a comment inside an expression is the expression's own", () => {
-    const out = body(`const a = <div css=@@( color: {{/* why */ accent // and this\n}}; )>x</div>;\n`);
+    const out = body(`const a = <div css=@@( color: {/* why */ accent // and this\n})>x</div>;\n`);
 
     expect(out).toContain("/* why */ accent // and this\n");
   });
@@ -346,7 +346,7 @@ describe("what the block's own text may contain", () => {
   });
 
   test("a nested block is refused rather than silently left behind", () => {
-    expect(() => emit(`const a = <div css=@@( color: {{ <b css=@@( color: red; )/> }}; )>x</div>;\n`)).toThrow(
+    expect(() => emit(`const a = <div css=@@( color: { <b css=@@( color: red; )/> }; )>x</div>;\n`)).toThrow(
       CssBlockError,
     );
   });
@@ -381,9 +381,9 @@ describe("what the block's own text may contain", () => {
   });
 
   test("a template with braces and strings in its substitutions is one expression", () => {
-    const out = body("const a = <div css=@@( color: {{`a${ { x: `}}` } }b`}}; )>x</div>;\n");
+    const out = body("const a = <div css=@@( color: {`a${ { x: `}` } }b`}; )>x</div>;\n");
 
-    expect(out).toContain("`a${ { x: `}}` } }b`");
+    expect(out).toContain("`a${ { x: `}` } }b`");
   });
 
   test("a template that is never closed inside an expression is refused", () => {
@@ -415,10 +415,10 @@ describe("a block written as a value", () => {
   });
 
   test("a hole builds the map where it was written, in both places", () => {
-    expect(emit(`const panel = @@( color: {{c}}; );\n`)?.code).toMatch(
+    expect(emit(`const panel = @@( color: {c}; );\n`)?.code).toMatch(
       /const panel = _merge\(\{"color":\["r-[0-9a-zA-Z][^"\s)]*",c\],\}\);/,
     );
-    expect(emit(`const a = <div css={@@( color: {{c}}; )}>y</div>;\n`)?.code).toMatch(
+    expect(emit(`const a = <div css={@@( color: {c}; )}>y</div>;\n`)?.code).toMatch(
       /css=\{_merge\(\{"color":\["r-[0-9a-zA-Z][^"\s)]*",c\],\}\)\}/,
     );
   });
@@ -478,7 +478,7 @@ describe("a keyframes site", () => {
    * be applied to.
    */
   test("a hole in one is refused", () => {
-    expect(() => emit(`const slide = @@keyframes( from { opacity: {{n}}; } );\n`)).toThrow(/hole/);
+    expect(() => emit(`const slide = @@keyframes( from { opacity: {n}; } );\n`)).toThrow(/hole/);
   });
 
   test("an at-rule this package does not know is refused", () => {
@@ -504,7 +504,7 @@ describe("a keyframes site", () => {
 describe("a reference to a named site", () => {
   test("is written in, and costs no custom property", () => {
     const out = emit(
-      `const slide = @@keyframes( from { opacity: 0; } );\nconst card = @@( animation: {{slide}} 3s; );\n`,
+      `const slide = @@keyframes( from { opacity: 0; } );\nconst card = @@( animation: {slide} 3s; );\n`,
     );
 
     const [frames, card] = out?.blocks ?? [];
@@ -523,7 +523,7 @@ describe("a reference to a named site", () => {
   test("and one can be READ by a block, which is what `var()` needs a literal for", () => {
     const out = emit(
       `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
-        `const card = @@( transform: rotate(var({{angle}})); );\n`,
+        `const card = @@( transform: rotate(var({angle})); );\n`,
     );
 
     const [property, card] = out?.blocks ?? [];
@@ -534,7 +534,7 @@ describe("a reference to a named site", () => {
   test("and SET by one, which is the only way a registered property is worth registering", () => {
     const out = emit(
       `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
-        `const card = @@( {{angle}}: 45deg; );\n`,
+        `const card = @@( {angle}: 45deg; );\n`,
     );
 
     const [property, card] = out?.blocks ?? [];
@@ -544,8 +544,8 @@ describe("a reference to a named site", () => {
   test("two blocks referring to the same name are still one rule each", () => {
     const out = emit(
       `const slide = @@keyframes( from { opacity: 0; } );\n` +
-        `const a = @@( animation: {{slide}} 3s; );\n` +
-        `const b = @@( animation: {{slide}} 3s; );\n`,
+        `const a = @@( animation: {slide} 3s; );\n` +
+        `const b = @@( animation: {slide} 3s; );\n`,
     );
 
     expect(out?.blocks).toHaveLength(2);
@@ -555,8 +555,8 @@ describe("a reference to a named site", () => {
     const out = emit(
       `const one = @@keyframes( from { opacity: 0; } );\n` +
         `const two = @@keyframes( to { opacity: 1; } );\n` +
-        `const a = @@( animation: {{one}} 3s; );\n` +
-        `const b = @@( animation: {{two}} 3s; );\n`,
+        `const a = @@( animation: {one} 3s; );\n` +
+        `const b = @@( animation: {two} 3s; );\n`,
     );
 
     const [, , a, b] = out?.blocks ?? [];
@@ -565,7 +565,7 @@ describe("a reference to a named site", () => {
 
   /** Anything else in a hole is a runtime value, and nothing about this changes that. */
   test("an expression that is not one of them is still a hole", () => {
-    const out = emit(`const card = @@( animation: {{name}} 3s; );\n`);
+    const out = emit(`const card = @@( animation: {name} 3s; );\n`);
 
     expect(out?.blocks[0].properties).toHaveLength(1);
     expect(out?.blocks[0].css).toContain("var(--");
@@ -573,7 +573,7 @@ describe("a reference to a named site", () => {
 
   /** A hole in a property name stays a refusal for everything that is not a registered property. */
   test("a hole that resolves to nothing cannot stand in a property name", () => {
-    expect(() => emit(`const card = @@( {{whatever}}: 45deg; );\n`)).toThrow(/@@property/);
+    expect(() => emit(`const card = @@( {whatever}: 45deg; );\n`)).toThrow(/@@property/);
   });
 });
 

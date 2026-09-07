@@ -7,7 +7,7 @@
 Syntax colours for `css=@@( … )` style blocks, in `.ts`, `.tsx`, `.js` and `.jsx`.
 
 ```tsx
-<div css=@@( display: flex; color: {{accent}}; )>…</div>
+<div css=@@( display: flex; color: {accent}; )>…</div>
 ```
 
 Without it, an editor colours a block with whatever its TypeScript grammar makes of `@@( … )`, which

@@ -29,7 +29,7 @@ export class Card extends Component<{ id: string }> {
         flex-direction: column;
         padding: 24px;
         background-color: #0f172a;
-        border-left: {{this.accent}};
+        border-left: {this.accent};
       )>
         <span>{this.id}</span>
       </div>

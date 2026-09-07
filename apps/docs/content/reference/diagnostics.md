@@ -1895,7 +1895,7 @@ A callback belongs on a field too — `createRef<T>((node) => this.arrived(node)
 
 ## RMD062 — A style block was applied with no values for its holes
 
-A compiled block that has `{{ … }}` holes is a **function**, and reading it without calling it hands
+A compiled block that has `{ … }` holes is a **function**, and reading it without calling it hands
 the element every custom property name and no value for any of them.
 
 Measured: the element then renders with the class and **no custom properties at all**, so every
@@ -1912,7 +1912,7 @@ class Row extends Component {
   @state weight = 4;
 
   render() {
-    return <div css={@@( border-left: {{`${this.weight}px`}} solid #ff0055; )}>a row</div>;
+    return <div css={@@( border-left: {`${this.weight}px`} solid #ff0055; )}>a row</div>;
   }
 }
 ```
@@ -1922,7 +1922,7 @@ A block with **no** holes is a value already and is passed as it is. See
 
 ## RMD063 — A style block's value was refused
 
-A `{{ … }}` hole becomes one CSS custom property, and a custom property's value may not contain a
+A `{ … }` hole becomes one CSS custom property, and a custom property's value may not contain a
 `;` — that character is what separates declarations, so a value carrying one would become a **second
 declaration** on the element.
 

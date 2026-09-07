@@ -108,7 +108,7 @@ describe("a project that is right", () => {
 
   test("a hole reads the class it was written in", () => {
     const report = check({
-      "Card.tsx": `export class Card {\n  accent = "#10b981";\n  render() {\n    return <div css=@@( border-left: 4px solid {{this.accent}}; )>x</div>;\n  }\n}\n`,
+      "Card.tsx": `export class Card {\n  accent = "#10b981";\n  render() {\n    return <div css=@@( border-left: 4px solid {this.accent}; )>x</div>;\n  }\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -131,7 +131,7 @@ describe("a project that is not", () => {
 
   test("a hole whose type the property cannot take is reported", () => {
     const report = check({
-      "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div css=@@( position: {{this.wide}}; )>x</div>;\n  }\n}\n`,
+      "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div css=@@( position: {this.wide}; )>x</div>;\n  }\n}\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -253,7 +253,7 @@ describe("a block that cannot be read at all", () => {
    */
   test("is reported alone, and nothing is type-checked", () => {
     const report = check({
-      "Card.tsx": `const n: number = "no";\nconst a = <div css=@@(\n  {{name}}: 24px;\n)>x</div>;\nexport default [n, a];\n`,
+      "Card.tsx": `const n: number = "no";\nconst a = <div css=@@(\n  {name}: 24px;\n)>x</div>;\nexport default [n, a];\n`,
     });
 
     expect(report.refused).toBe(true);
@@ -447,7 +447,7 @@ describe("a named site", () => {
 describe("a reference to a named site", () => {
   test("reading one in a value is not a fault", () => {
     const report = check({
-      "Card.tsx": `const slide = @@keyframes(\n  from { opacity: 0; }\n);\nconst card = @@( animation: {{slide}} 3s; );\nexport { card };\n`,
+      "Card.tsx": `const slide = @@keyframes(\n  from { opacity: 0; }\n);\nconst card = @@( animation: {slide} 3s; );\nexport { card };\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -455,7 +455,7 @@ describe("a reference to a named site", () => {
 
   test("and setting a registered property by name is not either", () => {
     const report = check({
-      "Card.tsx": `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\nconst card = @@( {{angle}}: 45deg; );\nexport { card };\n`,
+      "Card.tsx": `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\nconst card = @@( {angle}: 45deg; );\nexport { card };\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -463,7 +463,7 @@ describe("a reference to a named site", () => {
 
   test("while a hole in a name that stands for nothing is still reported", () => {
     const report = check({
-      "Card.tsx": `const card = @@( {{whatever}}: 45deg; );\nexport { card };\n`,
+      "Card.tsx": `const card = @@( {whatever}: 45deg; );\nexport { card };\n`,
     });
 
     expect(report.findings.length).toBeGreaterThan(0);
@@ -536,7 +536,7 @@ describe("a file whose first lines are directives", () => {
 describe("a conditional group", () => {
   test("an ordinary condition is not a fault", () => {
     const report = check({
-      "Card.tsx": `class C {\n  off = false;\n  r() {\n    return <div css=@@( cursor: pointer; @@if {{this.off}} { cursor: not-allowed; } )>x</div>;\n  }\n}\nexport default C;\n`,
+      "Card.tsx": `class C {\n  off = false;\n  r() {\n    return <div css=@@( cursor: pointer; @@if ({this.off}) { cursor: not-allowed; } )>x</div>;\n  }\n}\nexport default C;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -544,7 +544,7 @@ describe("a conditional group", () => {
 
   test("and so is one that may be missing, which is the shape a prop has", () => {
     const report = check({
-      "Card.tsx": `declare const maybe: { a: 1 } | undefined;\nconst a = <div css=@@( @@if {{maybe}} { opacity: 0.5; } )>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const maybe: { a: 1 } | undefined;\nconst a = <div css=@@( @@if ({maybe}) { opacity: 0.5; } )>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -554,22 +554,22 @@ describe("a conditional group", () => {
   test.each([
     [
       "a method that was not called",
-      `class C { off() {} r() { return <div css=@@( @@if {{this.off}} { opacity: 0.5; } )>x</div>; } }`,
+      `class C { off() {} r() { return <div css=@@( @@if ({this.off}) { opacity: 0.5; } )>x</div>; } }`,
     ],
-    ["an object", `declare const o: { a: 1 };\nconst a = <div css=@@( @@if {{o}} { opacity: 0.5; } )>x</div>;`],
-    ["a promise", `declare const p: Promise<number>;\nconst a = <div css=@@( @@if {{p}} { opacity: 0.5; } )>x</div>;`],
+    ["an object", `declare const o: { a: 1 };\nconst a = <div css=@@( @@if ({o}) { opacity: 0.5; } )>x</div>;`],
+    ["a promise", `declare const p: Promise<number>;\nconst a = <div css=@@( @@if ({p}) { opacity: 0.5; } )>x</div>;`],
     // **Measured and MISSED before this line existed.** The check asked whether the type was an
     // object, and a literal is not one — so every one of these passed while never being false.
-    ["a string literal", `declare const s: "yes";\nconst a = <div css=@@( @@if {{s}} { opacity: 0.5; } )>x</div>;`],
-    ["a union of them", `declare const s: "a" | "b";\nconst a = <div css=@@( @@if {{s}} { opacity: 0.5; } )>x</div>;`],
-    ["a union of numbers", `declare const n: 1 | 2;\nconst a = <div css=@@( @@if {{n}} { opacity: 0.5; } )>x</div>;`],
+    ["a string literal", `declare const s: "yes";\nconst a = <div css=@@( @@if ({s}) { opacity: 0.5; } )>x</div>;`],
+    ["a union of them", `declare const s: "a" | "b";\nconst a = <div css=@@( @@if ({s}) { opacity: 0.5; } )>x</div>;`],
+    ["a union of numbers", `declare const n: 1 | 2;\nconst a = <div css=@@( @@if ({n}) { opacity: 0.5; } )>x</div>;`],
     [
       "a template type that cannot be empty",
-      `declare const t: \`x\${string}\`;\nconst a = <div css=@@( @@if {{t}} { opacity: 0.5; } )>x</div>;`,
+      `declare const t: \`x\${string}\`;\nconst a = <div css=@@( @@if ({t}) { opacity: 0.5; } )>x</div>;`,
     ],
     [
       "an array, which is an object wearing a length",
-      `declare const xs: number[];\nconst a = <div css=@@( @@if {{xs}} { opacity: 0.5; } )>x</div>;`,
+      `declare const xs: number[];\nconst a = <div css=@@( @@if ({xs}) { opacity: 0.5; } )>x</div>;`,
     ],
   ])("%s is reported, because it is always truthy", (_what, code) => {
     const report = check({ "Card.tsx": `${code}\nexport {};\n` });
@@ -595,7 +595,7 @@ describe("a conditional group", () => {
     ["a comparison", "declare const n: number;", "n > 2"],
   ])("%s is allowed", (_what, declare, expression) => {
     const report = check({
-      "Card.tsx": `${declare}\nconst a = <div css=@@( @@if {{${expression}}} { opacity: 0.5; } )>x</div>;\nexport {};\n`,
+      "Card.tsx": `${declare}\nconst a = <div css=@@( @@if ({${expression}}) { opacity: 0.5; } )>x</div>;\nexport {};\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -603,7 +603,7 @@ describe("a conditional group", () => {
 
   test("a typo inside a group is the same fault it is outside one", () => {
     const report = check({
-      "Card.tsx": `declare const c: boolean;\nconst a = <div css=@@(\n  @@if {{c}} {\n    dsiplay: flex;\n  }\n)>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const c: boolean;\nconst a = <div css=@@(\n  @@if ({c}) {\n    dsiplay: flex;\n  }\n)>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -618,7 +618,7 @@ describe("a conditional group", () => {
    */
   test("a wrong condition does not hide the faults under it", () => {
     const report = check({
-      "Card.tsx": `declare const o: { a: 1 };\nconst a = <div css=@@(\n  @@if {{o}} {\n    dsiplay: flex;\n    colr: red;\n  }\n)>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const o: { a: 1 };\nconst a = <div css=@@(\n  @@if ({o}) {\n    dsiplay: flex;\n    colr: red;\n  }\n)>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(3);
@@ -629,7 +629,7 @@ describe("a conditional group", () => {
 describe("a spread", () => {
   test("of a block is not a fault", () => {
     const report = check({
-      "Card.tsx": `const base = @@( display: flex; );\nconst a = <div css=@@( ...{{base}}; opacity: 0.5; )>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const base = @@( display: flex; );\nconst a = <div css=@@( ...{base}; opacity: 0.5; )>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -637,7 +637,7 @@ describe("a spread", () => {
 
   test("of something that is not a block is reported", () => {
     const report = check({
-      "Card.tsx": `declare const plain: { color: string };\nconst a = <div css=@@( ...{{plain}}; )>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const plain: { color: string };\nconst a = <div css=@@( ...{plain}; )>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -646,7 +646,7 @@ describe("a spread", () => {
 
   test("and the fault lands on the expression the author wrote", () => {
     const report = check({
-      "Card.tsx": `declare const plain: string;\nconst a = <div css=@@(\n  display: flex;\n  ...{{plain}};\n)>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const plain: string;\nconst a = <div css=@@(\n  display: flex;\n  ...{plain};\n)>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings[0].line).toBe(4);
@@ -688,7 +688,7 @@ describe("the type a block has", () => {
     const report = check({
       "Card.tsx":
         `const forged = { className: "r-x", properties: [], values: [] };\n` +
-        `const a = <div css=@@( ...{{forged}}; )>x</div>;\nexport default a;\n`,
+        `const a = <div css=@@( ...{forged}; )>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);

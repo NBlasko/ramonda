@@ -89,7 +89,7 @@ describe("the bin", () => {
 
   test("a block it cannot read is reported alone, and exits 1", () => {
     const { output, status } = run(
-      project(`const a = (\n  <div css=@@(\n    {{name}}: 24px;\n  )>x</div>\n);\nexport default a;\n`),
+      project(`const a = (\n  <div css=@@(\n    {name}: 24px;\n  )>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);

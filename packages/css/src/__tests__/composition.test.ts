@@ -22,25 +22,25 @@ const emit = (source: string) => transform(source, { filename: "Card.tsx" })?.co
 
 describe("a spread", () => {
   test("becomes an argument of the merge, in the position it was written", () => {
-    const out = emit(`const card = @@(\n  ...{{base}};\n  opacity: 0.5;\n);\n`);
+    const out = emit(`const card = @@(\n  ...{base};\n  opacity: 0.5;\n);\n`);
 
     expect(out).toMatch(/_merge\(base,\s*\{"opacity":"r-[0-9a-zA-Z][^"\s)]*",\}\)/);
   });
 
   test("what is written above it merges first, which is what later-wins means", () => {
-    const out = emit(`const card = @@(\n  display: flex;\n  ...{{base}};\n);\n`);
+    const out = emit(`const card = @@(\n  display: flex;\n  ...{base};\n);\n`);
 
     expect(out).toMatch(/_merge\(\{"display":"r-[0-9a-zA-Z][^"\s)]*",\},\s*base\)/);
   });
 
   test("the expression is the author's own, byte for byte", () => {
-    const out = emit(`const card = @@(\n  ...{{variants[this.variant]}};\n);\n`);
+    const out = emit(`const card = @@(\n  ...{variants[this.variant]};\n);\n`);
 
     expect(out).toContain("variants[this.variant]");
   });
 
   test("and a block holding one is never hoisted, because it is not a constant", () => {
-    const out = emit(`const card = @@(\n  ...{{base}};\n);\n`);
+    const out = emit(`const card = @@(\n  ...{base};\n);\n`);
 
     expect(out).not.toContain("const _s0 =");
   });
@@ -49,7 +49,7 @@ describe("a spread", () => {
 describe("a conditional group", () => {
   test("becomes an argument guarded by its condition", () => {
     const out = emit(
-      `const card = @@(\n  cursor: pointer;\n  @@if {{this.off}} {\n    cursor: not-allowed;\n  }\n);\n`,
+      `const card = @@(\n  cursor: pointer;\n  @@if ({this.off}) {\n    cursor: not-allowed;\n  }\n);\n`,
     );
 
     expect(out).toMatch(
@@ -58,20 +58,20 @@ describe("a conditional group", () => {
   });
 
   test("the two `cursor` entries are different classes, so the merge has something to choose", () => {
-    const out = emit(`const card = @@(\n  cursor: pointer;\n  @@if {{this.off}} { cursor: not-allowed; }\n);\n`);
+    const out = emit(`const card = @@(\n  cursor: pointer;\n  @@if ({this.off}) { cursor: not-allowed; }\n);\n`);
     const found = out.match(/r-[0-9a-zA-Z][^"\s)]*/g) ?? [];
 
     expect(new Set(found).size).toBe(2);
   });
 
   test("a nested group is a conjunction, because that is what nesting means", () => {
-    const out = emit(`const card = @@(\n  @@if {{a}} {\n    @@if {{b}} { opacity: 0.5; }\n  }\n);\n`);
+    const out = emit(`const card = @@(\n  @@if ({a}) {\n    @@if ({b}) { opacity: 0.5; }\n  }\n);\n`);
 
     expect(out).toMatch(/_merge\(a && b && \{"opacity":"r-[0-9a-zA-Z][^"\s)]*",\}\)/);
   });
 
   test("declarations around a group keep their place", () => {
-    const out = emit(`const card = @@(\n  color: red;\n  @@if {{c}} { color: blue; }\n  background: white;\n);\n`);
+    const out = emit(`const card = @@(\n  color: red;\n  @@if ({c}) { color: blue; }\n  background: white;\n);\n`);
     const args = out.slice(out.indexOf("_merge("));
 
     expect(args.indexOf('"color"')).toBeLessThan(args.indexOf("c &&"));
@@ -79,7 +79,7 @@ describe("a conditional group", () => {
   });
 
   test("a selector inside a group is still a selector on its own rule", () => {
-    const out = emit(`const card = @@(\n  @@if {{c}} {\n    &:hover { color: red; }\n  }\n);\n`);
+    const out = emit(`const card = @@(\n  @@if ({c}) {\n    &:hover { color: red; }\n  }\n);\n`);
 
     // The class is readable now, and a readable one carries the selector — so the pattern has to
     // stop at the closing quote rather than at the first `)` or `:`.
@@ -87,8 +87,8 @@ describe("a conditional group", () => {
   });
 
   test("and a group inside a selector means the same thing", () => {
-    const inside = emit(`const card = @@(\n  &:hover {\n    @@if {{c}} { color: red; }\n  }\n);\n`);
-    const around = emit(`const card = @@(\n  @@if {{c}} {\n    &:hover { color: red; }\n  }\n);\n`);
+    const inside = emit(`const card = @@(\n  &:hover {\n    @@if ({c}) { color: red; }\n  }\n);\n`);
+    const around = emit(`const card = @@(\n  @@if ({c}) {\n    &:hover { color: red; }\n  }\n);\n`);
 
     expect(inside.match(/r-[0-9a-zA-Z][^"\s)]*/)?.[0]).toBe(around.match(/r-[0-9a-zA-Z][^"\s)]*/)?.[0]);
   });
@@ -96,7 +96,7 @@ describe("a conditional group", () => {
 
 describe("the two together", () => {
   test("compose in the order they were written", () => {
-    const out = emit(`const card = @@(\n  ...{{base}};\n  @@if {{this.off}} { opacity: 0.5; }\n  width: 100%;\n);\n`);
+    const out = emit(`const card = @@(\n  ...{base};\n  @@if ({this.off}) { opacity: 0.5; }\n  width: 100%;\n);\n`);
     const args = out.slice(out.indexOf("_merge("));
 
     expect(args.indexOf("base")).toBeLessThan(args.indexOf("this.off &&"));
@@ -120,22 +120,22 @@ describe("the two together", () => {
  */
 describe("a spread that cannot mean anything", () => {
   test.each([
-    ["inside a selector", `const c = @@( &:hover { ...{{base}}; } );\n`],
-    ["inside a descendant", `const c = @@( & .title { ...{{base}}; } );\n`],
-    ["inside a media query", `const c = @@( @media (min-width: 40rem) { ...{{base}}; } );\n`],
-    ["nested two deep", `const c = @@( &:hover { @media (min-width: 40rem) { ...{{base}}; } } );\n`],
+    ["inside a selector", `const c = @@( &:hover { ...{base}; } );\n`],
+    ["inside a descendant", `const c = @@( & .title { ...{base}; } );\n`],
+    ["inside a media query", `const c = @@( @media (min-width: 40rem) { ...{base}; } );\n`],
+    ["nested two deep", `const c = @@( &:hover { @media (min-width: 40rem) { ...{base}; } } );\n`],
   ])("%s is refused", (_what, source) => {
     expect(() => emit(source)).toThrow(/spread/);
   });
 
   test("but inside a conditional group it is fine, because a guard changes no key", () => {
-    const out = emit(`const c = @@( @@if {{on}} { ...{{base}}; } );\n`);
+    const out = emit(`const c = @@( @@if ({on}) { ...{base}; } );\n`);
 
     expect(out).toMatch(/_merge\(on && base\)/);
   });
 
   test("and the refusal says where it may go", () => {
-    expect(() => emit(`const c = @@( &:hover { ...{{base}}; } );\n`)).toThrow(/top level|@@if/);
+    expect(() => emit(`const c = @@( &:hover { ...{base}; } );\n`)).toThrow(/top level|@@if/);
   });
 });
 
@@ -152,9 +152,9 @@ describe("a spread that cannot mean anything", () => {
  */
 describe("a condition head with something extra in it", () => {
   test.each([
-    ["text after the hole", "@@if {{on}}Error { opacity: .5; }"],
-    ["a word", "@@if {{on}} and { opacity: .5; }"],
-    ["a selector after it", "@@if {{on}}:hover { opacity: .5; }"],
+    ["text after the hole", "@@if ({on})Error { opacity: .5; }"],
+    ["a word", "@@if ({on}) and { opacity: .5; }"],
+    ["a selector after it", "@@if ({on}):hover { opacity: .5; }"],
   ])("%s is refused", (_what, body) => {
     expect(() => emit(`const c = @@(\n  ${body}\n);\n`)).toThrow(/@@if/);
   });
@@ -164,20 +164,18 @@ describe("a condition head with something extra in it", () => {
    * marker, so it is the same fault as a hole written anywhere else a hole cannot go.
    */
   test("a second hole is refused as a hole in a selector", () => {
-    expect(() => emit("const c = @@(\n  @@if {{on}}{{off}} { opacity: .5; }\n);\n")).toThrow(
-      /hole cannot stand in a selector/,
-    );
+    expect(() => emit("const c = @@(\n  @@if ({on}){off} { opacity: .5; }\n);\n")).toThrow(/is not a declaration/);
   });
 
   test("and the refusal says what a condition is", () => {
-    expect(() => emit("const c = @@(\n  @@if {{on}}Error { opacity: .5; }\n);\n")).toThrow(/one .*\{\{/);
+    expect(() => emit("const c = @@(\n  @@if ({on})Error { opacity: .5; }\n);\n")).toThrow(/takes one parenthesised/);
   });
 
   test.each([
-    ["the ordinary shape", "@@if {{on}} { opacity: .5; }"],
-    ["no space before the hole", "@@if{{on}} { opacity: .5; }"],
-    ["space either side", "@@if  {{on}}  { opacity: .5; }"],
-    ["an expression with braces in it", "@@if {{ f({a: 1}) }} { opacity: .5; }"],
+    ["the ordinary shape", "@@if ({on}) { opacity: .5; }"],
+    ["no space before the hole", "@@if ({on}) { opacity: .5; }"],
+    ["space either side", "@@if ({on})  { opacity: .5; }"],
+    ["an expression with braces in it", "@@if ({ f({a: 1}) }) { opacity: .5; }"],
   ])("%s is fine", (_what, body) => {
     expect(() => emit(`const c = @@(\n  ${body}\n);\n`)).not.toThrow();
   });

@@ -124,7 +124,7 @@ export class Card extends Component {
     return (
       <div>
         <img src="a.png" />
-        <div css=@@( border-left: 4px solid {{this.accent}}; ) ${FAULTS}>x</div>
+        <div css=@@( border-left: 4px solid {this.accent}; ) ${FAULTS}>x</div>
       </div>
     );
   }

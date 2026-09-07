@@ -273,7 +273,7 @@ describe("a block it cannot read", () => {
     const { transform } = hooks();
 
     try {
-      transform.call({}, `const a = <div css=@@( {{name}}: 24px; )>x</div>;\n`, "/src/Card.tsx");
+      transform.call({}, `const a = <div css=@@( {name}: 24px; )>x</div>;\n`, "/src/Card.tsx");
       expect.unreachable("the plugin should have refused");
     } catch (error) {
       const refusal = error as Error & { id?: string; loc?: { line: number; column: number } };
@@ -286,10 +286,10 @@ describe("a block it cannot read", () => {
        * error anywhere to find it. Measured on a real parse error at a known position: `@` on
        * 1-based column 20 came back as `1:19`, caret under it.
        *
-       * The `{{` is at 1-based column 24 in the source below.
+       * The hole's `{` is at 1-based column 24 in the source below.
        */
-      const source = `const a = <div css=@@( {{name}}: 24px; )>x</div>;\n`;
-      expect(source.indexOf("{{") + 1).toBe(24);
+      const source = `const a = <div css=@@( {name}: 24px; )>x</div>;\n`;
+      expect(source.indexOf("{", source.indexOf("@@(") + 3) + 1).toBe(24);
       expect(refusal.loc).toEqual({ line: 1, column: 23 });
     }
   });
@@ -326,7 +326,7 @@ describe("what an app has to write", () => {
  * in the stylesheet. Nothing throws. The page renders, unstyled, with nothing to blame.
  */
 describe("the assembled stylesheet", () => {
-  const SOURCE = `const a = <div css=@@( color: {{c}}; )>x</div>;\n`;
+  const SOURCE = `const a = <div css=@@( color: {c}; )>x</div>;\n`;
 
   /** The plugin after one file has been through it, and the CSS it produced. */
   const built = () => {
@@ -445,7 +445,7 @@ describe("the dependency scan", () => {
   /** A scan is not where an author should meet a diagnostic — the real transform reports it. */
   test("a block it cannot read is passed over rather than thrown from", () => {
     const { load } = scanner();
-    const path = written("Broken.tsx", `const a = <div css=@@( {{whatever}}: 4px; )>x</div>;\n`);
+    const path = written("Broken.tsx", `const a = <div css=@@( {whatever}: 4px; )>x</div>;\n`);
 
     expect(() => load?.({ path })).not.toThrow();
     expect(load?.({ path })).toBeNull();

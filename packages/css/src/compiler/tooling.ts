@@ -1,4 +1,4 @@
-import { closingHole, readBlock } from "./read";
+import { closingHole, opensAHole, readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
 
 /**
@@ -242,9 +242,9 @@ function layout(body: string, indent: string, step: string): string[] {
       continue;
     }
 
-    if (code === 123 /* { */ && body.charCodeAt(index + 1) === 123) {
+    if (code === 123 /* { */ && opensAHole(line)) {
       const close = closingHole(body, index);
-      const stop = close === -1 ? body.length : close + 2;
+      const stop = close === -1 ? body.length : close;
       line += body.slice(index, stop);
       index = stop - 1;
       continue;

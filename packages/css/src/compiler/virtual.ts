@@ -25,7 +25,7 @@ import { namedSites } from "./references";
  *   Any other shape — a call with strings, a tagged template — throws that away.
  *
  * ```
- *   <div css=@@( display: flex; border-left: 4px solid {{this.accent}}; )>
+ *   <div css=@@( display: flex; border-left: 4px solid {this.accent}; )>
  *
  *   <div css={__block({ "display":"flex", "border-left":`4px solid ${this.accent}` })}>
  * ```

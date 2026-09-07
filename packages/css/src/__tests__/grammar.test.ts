@@ -101,7 +101,7 @@ describe("a block across several lines", () => {
   const CODE = `const a = (
   <div css=@@(
     display: flex;
-    color: {{accent}};
+    color: {accent};
     &:hover { color: red; }
   )>x</div>
 );
@@ -115,9 +115,9 @@ const after = 1;
 
   /** A hole is TypeScript, and the point of scoping it is that it reads as code rather than as CSS. */
   test("a hole is the expression it holds", () => {
-    expect(scopeOf(CODE, "{{")).toBe("punctuation.section.embedded.begin.ramonda");
+    expect(scopeOf(CODE, "{")).toBe("punctuation.section.embedded.begin.ramonda");
     expect(scopeOf(CODE, "accent")).toBe("variable.other.readwrite.tsx");
-    expect(scopeOf(CODE, "}}")).toBe("punctuation.section.embedded.end.ramonda");
+    expect(scopeOf(CODE, "}")).toBe("punctuation.section.embedded.end.ramonda");
   });
 
   /**
@@ -181,7 +181,7 @@ describe("shapes a first sample did not have", () => {
     ["an attribute after the block", `const a = <div css=@@( color: red; ) id="x">y</div>;\nconst after = 1;\n`],
     ["calc() in a value", `const a = <div css=@@( width: calc(100% - 8px); )>y</div>;\nconst after = 1;\n`],
     ["url() in a value", `const a = <div css=@@( background: url(a.png); )>y</div>;\nconst after = 1;\n`],
-    ["a call inside a hole", `const a = <div css=@@( color: {{pick(1)}}; )>y</div>;\nconst after = 1;\n`],
+    ["a call inside a hole", `const a = <div css=@@( color: {pick(1)}; )>y</div>;\nconst after = 1;\n`],
     ["a self-closing tag", `const a = <img css=@@( color: red; ) />;\nconst after = 1;\n`],
   ])("%s", (_what, code) => {
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
@@ -243,10 +243,21 @@ describe("a nested rule", () => {
 
   /** A hole inside a nested rule — the two constructs meet, and neither may eat the other. */
   test("a hole inside one is still code", () => {
-    const code = `const a = <div css=@@(\n  &:hover { color: {{accent}}; }\n)>x</div>;\nconst after = 1;\n`;
+    const code = `const a = <div css=@@(\n  &:hover { color: {accent}; }\n)>x</div>;\nconst after = 1;\n`;
 
     expect(scopeOf(code, "hover")).toBe("entity.other.attribute-name.pseudo-class.css");
-    expect(scopeOf(code, "{{")).toBe("punctuation.section.embedded.begin.ramonda");
+    /**
+     * A hole and a rule body are both `{` now, so the brace is named by its SCOPE rather than by
+     * being the first one on the line — there are two, and the rule's comes first.
+     */
+    expect(
+      scopesOf(code)
+        .filter((token) => token.text === "{")
+        .map((token) => token.scope),
+    ).toEqual([
+      "punctuation.section.property-list.begin.bracket.curly.css",
+      "punctuation.section.embedded.begin.ramonda",
+    ]);
     expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
   });
@@ -285,9 +296,9 @@ describe("a block in expression position", () => {
   });
 
   test("a hole in one is still the expression it holds", () => {
-    const code = `const panel = @@( color: {{accent}}; );\n`;
+    const code = `const panel = @@( color: {accent}; );\n`;
 
-    expect(scopeOf(code, "{{")).toBe("punctuation.section.embedded.begin.ramonda");
+    expect(scopeOf(code, "{")).toBe("punctuation.section.embedded.begin.ramonda");
     expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
   });
 
@@ -523,7 +534,7 @@ describe("a block on a nested element", () => {
   });
 
   test("a hole inside a nested block is still the expression it holds", () => {
-    const code = `const a = (\n  <div>\n    <span css={@@( color: {{accent}}; )}>x</span>\n  </div>\n);\n`;
+    const code = `const a = (\n  <div>\n    <span css={@@( color: {accent}; )}>x</span>\n  </div>\n);\n`;
 
     expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
   });
@@ -541,7 +552,7 @@ describe("a block on a nested element", () => {
  */
 describe("the composition markers", () => {
   test("`@@if` is a keyword, and its condition is still an expression", () => {
-    const code = `const c = @@(\n  @@if {{this.off}} {\n    opacity: 0.5;\n  }\n);\n`;
+    const code = `const c = @@(\n  @@if ({this.off}) {\n    opacity: 0.5;\n  }\n);\n`;
 
     expect(scopeOf(code, "@@if")).toBe("keyword.control.ramonda");
     expect(scopeOf(code, "this")).toBe("variable.language.this.tsx");
@@ -549,7 +560,7 @@ describe("the composition markers", () => {
   });
 
   test("`...` is one too, and its operand is the expression it holds", () => {
-    const code = `const c = @@(\n  ...{{base}};\n  color: red;\n);\n`;
+    const code = `const c = @@(\n  ...{base};\n  color: red;\n);\n`;
 
     expect(scopeOf(code, "...")).toBe("keyword.control.ramonda");
     expect(scopeOf(code, "base")).toBe("variable.other.readwrite.tsx");
@@ -557,7 +568,7 @@ describe("the composition markers", () => {
   });
 
   test("and neither takes the rest of the block with it", () => {
-    const code = `const c = @@(\n  ...{{base}};\n  @@if {{on}} { opacity: 0.5; }\n  color: red;\n);\nconst after = 1;\n`;
+    const code = `const c = @@(\n  ...{base};\n  @@if ({on}) { opacity: 0.5; }\n  color: red;\n);\nconst after = 1;\n`;
 
     expect(scopeOf(code, "color")).toBe("support.type.property-name.css");
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");

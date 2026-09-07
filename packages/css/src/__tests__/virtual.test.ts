@@ -88,11 +88,11 @@ describe("what a block becomes", () => {
   });
 
   test("a value that is entirely one hole is the expression itself, so its own type is checked", () => {
-    expect(body(`const a = <div css=@@( padding: {{size}}; )>x</div>;\n`)).toContain(`{padding:(size)}`);
+    expect(body(`const a = <div css=@@( padding: {size}; )>x</div>;\n`)).toContain(`{padding:(size)}`);
   });
 
   test("text and a hole together become a template literal, which keeps the pattern", () => {
-    expect(body(`const a = <div css=@@( padding: {{n}}px; )>x</div>;\n`)).toContain("{padding:`${(n)}px`}");
+    expect(body(`const a = <div css=@@( padding: {n}px; )>x</div>;\n`)).toContain("{padding:`${(n)}px`}");
   });
 
   test("a nested rule holds an array of its own, so its declarations are checked one by one too", () => {
@@ -110,11 +110,11 @@ describe("what a block becomes", () => {
   });
 
   test("the expression is parenthesised, so a comma inside cannot change the call", () => {
-    expect(body(`const a = <div css=@@( color: {{(a, b)}}; )>x</div>;\n`)).toContain(`{color:((a, b))}`);
+    expect(body(`const a = <div css=@@( color: {(a, b)}; )>x</div>;\n`)).toContain(`{color:((a, b))}`);
   });
 
   test("a backtick in the CSS cannot end the template literal it lands in", () => {
-    expect(body('const a = <div css=@@( content: "`${x}" {{y}}; )>x</div>;\n')).toContain("\\`\\${x}");
+    expect(body('const a = <div css=@@( content: "`${x}" {y}; )>x</div>;\n')).toContain("\\`\\${x}");
   });
 
   /**
@@ -158,7 +158,7 @@ describe("what a block becomes", () => {
    * it over, because a virtual file exists to be type-checked and a refusal belongs to the build.
    */
   test("a block found inside another block is passed over rather than read twice", () => {
-    const file = build(`const a = <div css=@@( color: {{ <b css=@@( color: red; )/> }}; )>x</div>;\n`);
+    const file = build(`const a = <div css=@@( color: { <b css=@@( color: red; )/> })>x</div>;\n`);
 
     expect(file?.code.match(/__block\(\[/g)).toHaveLength(1);
   });
@@ -272,7 +272,7 @@ describe("the declaration a caret is in", () => {
 });
 
 describe("the way home", () => {
-  const source = `const accent = 1;\nconst a = <div css=@@( display: flex; color: {{accent}}; )>x</div>;\n`;
+  const source = `const accent = 1;\nconst a = <div css=@@( display: flex; color: {accent}; )>x</div>;\n`;
   const file = build(source);
   if (file === undefined) throw new Error("the virtual file found no block");
 
@@ -280,7 +280,7 @@ describe("the way home", () => {
   const from = (needle: string) => file.homeOf(file.code.indexOf(needle));
 
   test("an expression maps offset for offset, because it was copied", () => {
-    expect(from("accent)")).toBe(source.indexOf("accent}}"));
+    expect(from("accent)")).toBe(source.indexOf("accent}"));
   });
 
   test("code outside a block maps offset for offset too", () => {
@@ -400,7 +400,7 @@ describe("through tsc, and back to the author's own file", () => {
   });
 
   test("a hole in a value block is still checked in its own scope", () => {
-    const source = `class Card {\n  size = true;\n  panel = @@(\n    padding: {{this.size}};\n  );\n}\n`;
+    const source = `class Card {\n  size = true;\n  panel = @@(\n    padding: {this.size};\n  );\n}\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2322);
@@ -439,7 +439,7 @@ describe("through tsc, and back to the author's own file", () => {
   test("a hole is checked against the property it stands in, in its own lexical scope", () => {
     // `this.size` resolves to the class's own field, which is the whole point of leaving the
     // expression where the author wrote it rather than lifting it out.
-    const source = `class Card {\n  size = true;\n  render() {\n    return (\n      <div css=@@(\n        padding: {{this.size}};\n      )>x</div>\n    );\n  }\n}\n`;
+    const source = `class Card {\n  size = true;\n  render() {\n    return (\n      <div css=@@(\n        padding: {this.size};\n      )>x</div>\n    );\n  }\n}\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2322);
@@ -458,16 +458,16 @@ describe("through tsc, and back to the author's own file", () => {
   });
 
   test("a name that does not exist is reported where it is written", () => {
-    const source = `const a = (\n  <div css=@@(\n    color: {{missing}};\n  )>x</div>\n);\n`;
+    const source = `const a = (\n  <div css=@@(\n    color: {missing};\n  )>x</div>\n);\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2304);
     expect(only.message).toContain("missing");
-    expect({ line: only.line, column: only.column }).toEqual({ line: 3, column: 14 });
+    expect({ line: only.line, column: only.column }).toEqual({ line: 3, column: 13 });
   });
 
   test("a block that is right reports nothing at all", () => {
-    const source = `const size = "8px" as const;\nconst a = (\n  <div css=@@(\n    display: flex;\n    padding: {{size}};\n    &:hover { color: red; }\n    --brand: red;\n  )>x</div>\n);\n`;
+    const source = `const size = "8px" as const;\nconst a = (\n  <div css=@@(\n    display: flex;\n    padding: {size};\n    &:hover { color: red; }\n    --brand: red;\n  )>x</div>\n);\n`;
 
     expect(check(source)).toEqual([]);
   });

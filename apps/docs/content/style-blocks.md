@@ -52,7 +52,7 @@ stand on its own: a class whose rule lives only in another route's sheet renders
 that route loads alone. Where two sheets are identical the bundler dedupes them by content and it
 costs nothing.
 
-**Each `{{ … }}` becomes one CSS custom property on the element.** A value that differs per instance
+**Each `{ … }` becomes one CSS custom property on the element.** A value that differs per instance
 costs a property rather than a rule:
 
 ```tsx
@@ -62,7 +62,7 @@ class Row extends Component {
   render() {
     return (
       <div css={@@(
-        border-left: {{`${this.weight}px`}} solid #ff0055;
+        border-left: {`${this.weight}px`} solid #ff0055;
         &:hover { border-left-color: #00b37e; }
       )}>
         a row
@@ -106,10 +106,10 @@ A custom property holds a **value**. That is the whole rule, and the three thing
 worth writing down:
 
 ```
-border-left: {{width}};             ✓  a value
-{{name}}: 24px;                     ✗  a property name
-&:{{state}} { … }                   ✗  a selector
-{{on ? "display:flex" : ""}}        ✗  a whole declaration
+border-left: {width};             ✓  a value
+{name}: 24px;                     ✗  a property name
+&:{state} { … }                   ✗  a selector
+{on ? "display:flex" : ""}        ✗  a whole declaration
 ```
 
 The last one is refused rather than mangled: there is nothing to put a variable in, and a value
@@ -128,9 +128,9 @@ Write the hole wherever you need the value. That is the whole answer for almost 
 declare const accent: string;
 
 const card = @@(
-  border-left: 4px solid {{accent}};
-  background: {{accent}};
-  color: {{accent}};
+  border-left: 4px solid {accent};
+  background: {accent};
+  color: {accent};
 );
 ```
 
@@ -147,7 +147,7 @@ of a hundred rows it is 7.8 KB of markup, and then it is worth a line:
 declare const accent: string;
 
 const row = @@(
-  --accent: {{accent}};
+  --accent: {accent};
 
   border-left: 4px solid var(--accent);
   background: var(--accent);
@@ -172,9 +172,9 @@ declaration itself, so two different declarations can never agree on one by acci
 ### The unit goes inside the hole
 
 ```
-padding-left: {{`${n}px`}};          ✓  the hole carries its own unit
-padding-left: calc({{n}} * 1px);     ✓  the arithmetic is CSS's
-padding-left: {{n}}px;               ✗  reported
+padding-left: {`${n}px`};            ✓  the hole carries its own unit
+padding-left: calc({n} * 1px);     ✓  the arithmetic is CSS's
+padding-left: {n}px;               ✗  reported
 ```
 
 A hole becomes one custom property, and a `var()` is substituted as **tokens** — so the `12` and the
@@ -223,7 +223,7 @@ somewhere else entirely, for a comment. So it is reported before it gets there, 
 
 ```tsx
 const card = @@(
-  color: {{/* the brand, not the accent */ "#ff0055"}};
+  color: {/* the brand, not the accent */ "#ff0055"};
 );
 ```
 
@@ -251,7 +251,7 @@ const slide = @@keyframes(
 );
 
 const card = @@(
-  animation: {{slide}} 240ms ease-out;
+  animation: {slide} 240ms ease-out;
 );
 ```
 
@@ -262,7 +262,7 @@ binding, which is what makes the reference checkable: a typo is an unresolved id
 TypeScript reports it with its own *did you mean*. Written in a stylesheet instead, the name would be
 a string on both sides and `animation: slidein` would be one typo away from silence.
 
-A reference is resolved **when the file compiles**, not on the element: `{{slide}}` becomes the name
+A reference is resolved **when the file compiles**, not on the element: `{slide}` becomes the name
 itself, so it costs no custom property. It has to be — `var()` takes a literal name, and a reference
 that stayed a hole would compile to `var(var(--…))`, which resolves to nothing.
 
@@ -279,12 +279,12 @@ export const accent = @@property(
 );
 
 const card = @@(
-  {{accent}}: #f05;
-  background: var({{accent}});
+  {accent}: #f05;
+  background: var({accent});
 );
 ```
 
-A misspelling is not a CSS problem here, it is an unresolved name: `var({{ackcent}})` is
+A misspelling is not a CSS problem here, it is an unresolved name: `var({ackcent})` is
 *Cannot find name 'ackcent'. Did you mean 'accent'?*, from TypeScript, with the suggestion it
 already knows how to make.
 
@@ -296,7 +296,7 @@ does by reading one file, so an `import` is not something it can follow:
 import { accent } from "./theme";
 
 const card = @@(
-  background: var({{accent}});
+  background: var({accent});
 );
 ```
 
@@ -308,12 +308,12 @@ the declaration *beside* it in the same rule is applied — which is what makes 
 it is refused rather than left to be noticed.
 
 **Set it with the binding, not with the name it looks like.** `--accent: #f05` and
-`var({{accent}})` are two different custom properties — the block generates its own name — so the
+`var({accent})` are two different custom properties — the block generates its own name — so the
 declaration would do nothing for the value you read, which would fall back to `initial-value`. That
 is reported:
 
 > `--accent` is set here, and `accent` is read as a binding below — those are two different custom
-> properties, so this declaration does nothing for it. Write `{{accent}}: …` to set the one you read.
+> properties, so this declaration does nothing for it. Write `{accent}: …` to set the one you read.
 
 A plain `--name` you both set and read is ordinary CSS and is left alone.
 
@@ -351,13 +351,13 @@ const angle = @@property(
 );
 
 const turn = @@keyframes(
-  from { {{angle}}: 0deg; }
-  to { {{angle}}: 180deg; }
+  from { {angle}: 0deg; }
+  to { {angle}: 180deg; }
 );
 
 const dial = @@(
-  transform: rotate(var({{angle}}));
-  animation: {{turn}} 1.2s linear infinite;
+  transform: rotate(var({angle}));
+  animation: {turn} 1.2s linear infinite;
 );
 ```
 
@@ -501,23 +501,23 @@ class Button extends Component {
   render() {
     return (
       <button css={@@(
-        ...{{button}};
-        ...{{variants[this.variant]}};
+        ...{button};
+        ...{variants[this.variant]};
 
-        @@if {{this.disabled}} {
+        @@if ({this.disabled}) {
           opacity: 0.5;
           cursor: not-allowed;     /* wins over `cursor: pointer` above, because it is BELOW it */
         }
 
-        width: {{this.full ? "100%" : "auto"}};
+        width: {this.full ? "100%" : "auto"};
       )}>press</button>
     );
   }
 }
 ```
 
-**`...{{ … }}` merges another block here**, and it works across files — what it merges is a value, so
-it can be imported, put in an object, or picked out of one. **`@@if {{ … }} { … }` merges a group only
+**`...{ … }` merges another block here**, and it works across files — what it merges is a value, so
+it can be imported, put in an object, or picked out of one. **`@@if ({ … }) { … }` merges a group only
 when the condition holds.** Both are arguments of the same merge, in the order you wrote them, so
 what comes later wins.
 
@@ -525,9 +525,9 @@ There is no `@else`, and the thing that replaces it is better: spreading a **loo
 exhaustiveness. Add a third variant to the union above and forget the map, and TypeScript reports it.
 For a two-way choice of a *value*, a hole with a ternary is still the answer.
 
-### Why the condition is inside `{{ }}`
+### Why the condition is inside `{ }`
 
-Because that is the one rule this syntax has: **TypeScript appears inside `{{ }}` and nowhere else.**
+Because that is the one rule this syntax has: **TypeScript appears inside `{ }` and nowhere else.**
 `@@if (this.disabled)` would read more naturally and would be a second spelling for the same thing —
 a second thing to learn, and a second thing for every tool to know about.
 
@@ -540,7 +540,7 @@ Everything a block is checked for, a group is checked for the same way — a typ
 same error, with the same *did you mean*, that it is outside one.
 
 **The condition is an ordinary expression and is not required to be a `boolean`.** `@@if` is an `if`,
-and `@@if {{items.length}}` is the shape people reach for — demanding a `boolean` would refuse it for
+and `@@if ({items.length})` is the shape people reach for — demanding a `boolean` would refuse it for
 nothing. What is refused is a condition that can never be FALSE, because that is a group that can
 never be off: an object, an array, a function you forgot to call, a promise, a string or number
 *literal*. A type that holds `false`, `0`, `""`, `null` or `undefined` is a condition; one that holds
@@ -550,12 +550,12 @@ On top of that:
 
 | written | what happens |
 |---|---|
-| `@@if {{this.method}}` — a method you forgot to call | reported: *a function is always truthy — call it, or test a value* |
-| `@@if {{someObject}}`, `@@if {{"yes"}}`, `@@if {{items}}` | reported: *this is always truthy, so the group can never be off* |
-| `@@if {{maybeUndefined}}` | fine — that is the shape a prop has |
-| `@@if {{items.length}}`, `@@if {{name}}` | fine — `0` and `""` are false, so the group can be off |
-| `...{{notABlock}}` | reported: *only a style block can be spread* |
-| `...{{base}}` inside `&:hover` or a `@media` | reported — see below |
+| `@@if ({this.method})` — a method you forgot to call | reported: *a function is always truthy — call it, or test a value* |
+| `@@if ({someObject})`, `@@if ({"yes"})`, `@@if ({items})` | reported: *this is always truthy, so the group can never be off* |
+| `@@if ({maybeUndefined})` | fine — that is the shape a prop has |
+| `@@if ({items.length})`, `@@if ({name})` | fine — `0` and `""` are false, so the group can be off |
+| `...{notABlock}` | reported: *only a style block can be spread* |
+| `...{base}` inside `&:hover` or a `@media` | reported — see below |
 
 ### Nesting, and a shorthand meeting its longhand
 
@@ -648,7 +648,7 @@ And a theme switch through a hole is a **render**. A hole's value is a value of 
 element carrying it has to render again to change it; a `var()` changes when the attribute on `<html>`
 changes, which is not a render at all.
 
-A hole is for what varies per **instance** — `border-left: {{`${this.weight}px`}}`, a value this
+A hole is for what varies per **instance** — `border-left: {`${this.weight}px`}`, a value this
 element has and the one beside it does not. A theme is the opposite of that.
 
 ### `:root` does not work inside a block

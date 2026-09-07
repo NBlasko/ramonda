@@ -37,7 +37,7 @@ describe("a style block in a fence", () => {
   const FENCE = `const a = (
   <div css=@@(
     display: flex;
-    color: {{accent}};
+    color: {accent};
   )>x</div>
 );
 const after = 1;

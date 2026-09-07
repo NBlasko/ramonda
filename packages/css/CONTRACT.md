@@ -18,7 +18,7 @@ One hoisted descriptor at module scope, one call at the site.
                                        source
 <div css=@@(
   display: flex;
-  border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
+  border-left: {isOnline ? "4px solid #10b981" : "4px solid #64748b"};
 )>
 
                                        emitted
@@ -87,7 +87,7 @@ type StyleMap = { readonly [key: string]: StyleEntry };
                                        source
 const panel = @@(
   display: flex;
-  color: {{accent}};
+  color: {accent};
   &:hover { color: #0e9f6e; }
 );
 
@@ -298,10 +298,10 @@ A custom property holds a *value*. Refused at build time, with the source positi
 the checker first:
 
 ```
-border-left: {{…}};                ✓   becomes  border-left: var(--r-…-0)
-{{cond ? "display:flex" : ""}}     ✗   a declaration — nothing to put a variable in
-{{name}}: 24px;                    ✗   a property name
-&:{{state}} { … }                  ✗   a selector
+border-left: {…};                ✓   becomes  border-left: var(--r-…-0)
+{cond ? "display:flex" : ""}     ✗   a declaration — nothing to put a variable in
+{name}: 24px;                    ✗   a property name
+&:{state} { … }                  ✗   a selector
 ```
 
 ## What this contract does not decide

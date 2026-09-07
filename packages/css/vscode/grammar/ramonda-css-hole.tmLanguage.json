@@ -1,6 +1,6 @@
 {
   "scopeName": "ramonda.css-hole",
-  "injectionSelector": "L:meta.embedded.block.css",
+  "injectionSelector": "L:meta.embedded.block.css meta.property-value.css, L:meta.embedded.block.css meta.property-name.css",
   "patterns": [
     {
       "include": "#hole"
@@ -8,13 +8,13 @@
   ],
   "repository": {
     "hole": {
-      "begin": "(\\{\\{)",
+      "begin": "(\\{)",
       "beginCaptures": {
         "1": {
           "name": "punctuation.section.embedded.begin.ramonda"
         }
       },
-      "end": "(\\}\\})",
+      "end": "(\\})",
       "endCaptures": {
         "1": {
           "name": "punctuation.section.embedded.end.ramonda"
@@ -25,7 +25,8 @@
         {
           "include": "source.tsx"
         }
-      ]
+      ],
+      "comment": "A hole is ONE brace, so the injection cannot simply match `{` — the CSS grammar uses that for a nested rule's body, and an `L:` injection outruns the host grammar everywhere it matches. It is narrowed to the scopes a rule's `{` is never in: a property's value, and a property's name, which is where `{accent}: red` sets a registered property. The `@@if` and `...` heads are the block grammar's own patterns and are not this injection's to colour."
     }
   }
 }

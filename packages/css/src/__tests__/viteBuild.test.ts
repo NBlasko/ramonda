@@ -120,7 +120,7 @@ describe("a block, all the way through a production build", () => {
   test("the class reaches the JavaScript AND the stylesheet, and they are the same class", () => {
     const result = build(
       project(
-        `export const accent = "#10b981";\nexport const card = (\n  <div className="lead" css=@@(\n    display: flex;\n    border-left: 4px solid {{accent}};\n  )>x</div>\n);\n`,
+        `export const accent = "#10b981";\nexport const card = (\n  <div className="lead" css=@@(\n    display: flex;\n    border-left: 4px solid {accent};\n  )>x</div>\n);\n`,
         `import { card } from "./Card";\nconsole.log(card);\n`,
       ),
     );
@@ -180,7 +180,7 @@ describe("a block, all the way through a production build", () => {
   test("a block it cannot read fails the build, at the author's own line and column", () => {
     const result = build(
       project(
-        `export const card = (\n  <div css=@@(\n    {{name}}: 24px;\n  )>x</div>\n);\n`,
+        `export const card = (\n  <div css=@@(\n    {name}: 24px;\n  )>x</div>\n);\n`,
         `import { card } from "./Card";\nconsole.log(card);\n`,
       ),
     );

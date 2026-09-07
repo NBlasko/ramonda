@@ -74,7 +74,7 @@ describe("what tolerance recovers", () => {
   test("and a hole in a position a custom property cannot occupy is kept as text", () => {
     // Refusing is right for a build and useless for an editor: the author is mid-thought, and taking
     // the whole file's completions away is not a way to tell them so. The CSS checker says it.
-    const { block } = read(`<div css=@@( {{name}}: 24px; )>x</div>`, true);
+    const { block } = read(`<div css=@@( {name}24px; )>x</div>`, true);
 
     expect(block.items).toMatchObject([{ kind: "declaration" }]);
   });
@@ -85,7 +85,7 @@ describe("what strict still refuses, because a build has no correct answer", () 
     ["a property with no colon", `<div css=@@( disp )>x</div>`],
     ["a block with no closing paren", `<div css=@@( display: flex;\n`],
     ["a hole with no closing braces", `<div css=@@( color: {{accent`],
-    ["a hole as a property name", `<div css=@@( {{name}}: 24px; )>x</div>`],
+    ["a hole as a property name", `<div css=@@( {name}; )>x</div>`],
   ])("%s", (_what, source) => {
     expect(() => read(source, false)).toThrow(CssBlockError);
   });

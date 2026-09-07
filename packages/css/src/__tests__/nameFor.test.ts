@@ -60,7 +60,7 @@ describe("a name a person can read", () => {
 
 describe("what falls back to the hash", () => {
   test("a declaration carrying a hole, because its value is not text", () => {
-    expect(hashed(name("color: {{accent}};"))).toBe(true);
+    expect(hashed(name("color: {accent};"))).toBe(true);
   });
 
   /**
@@ -100,8 +100,8 @@ describe("what must hold of every name", () => {
   test("a hashed name and a readable one can never be the same string", () => {
     // A hash is base62 and holds no `-`; a readable name always holds the one before its value.
     expect(name("padding: 12px;")).toContain("-");
-    expect(hashed(name("color: {{accent}};"))).toBe(true);
-    expect(name("color: {{accent}};").slice(2)).not.toContain("-");
+    expect(hashed(name("color: {accent};"))).toBe(true);
+    expect(name("color: {accent};").slice(2)).not.toContain("-");
   });
 
   test("the same declaration is the same name, or dedupe stops working", () => {
@@ -127,7 +127,7 @@ describe("what must hold of every name", () => {
   });
 
   test("the hash is still the hash where it is used", () => {
-    const [only] = declarationsOf("color: {{accent}};");
+    const [only] = declarationsOf("color: {accent};");
 
     expect(nameFor(only)).toBe(classNameFor(only.identity));
   });

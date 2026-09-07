@@ -26,7 +26,7 @@ const SOURCE = `export const Card = (props: { id: string }) => {
   return (
     <div css=@@(
       display: flex;
-      border-left: {{accent}};
+      border-left: {accent};
     )>
       <span>{props.id}</span>
     </div>
@@ -68,7 +68,7 @@ describe("what comes back", () => {
     const out = held?.restore(reindent(held.text));
 
     expect(out).toContain("display: flex;");
-    expect(out).toContain("border-left: {{accent}};");
+    expect(out).toContain("border-left: {accent};");
   });
 
   test("and the formatter's own work outside the block survives", () => {
@@ -120,7 +120,7 @@ describe("what comes back", () => {
 
 describe("what it steps over", () => {
   test("a block found inside another is not placeheld twice", () => {
-    const held = placehold(`const a = <div css=@@( color: {{ <b css=@@( color: red; )/> }}; )>x</div>;\n`);
+    const held = placehold(`const a = <div css=@@( color: { <b css=@@( color: red; )/> }; )>x</div>;\n`);
 
     expect(held?.text.match(/\/\*@ramonda-css:/g)).toHaveLength(1);
   });
@@ -253,8 +253,8 @@ describe("the CSS inside a block", () => {
   });
 
   test.each([
-    ["a hole", `  color: {{a ? "red" : "blue"}};`],
-    ["a hole holding braces", `  color: {{ {a: 1}.a }};`],
+    ["a hole", `  color: {a ? "red" : "blue"};`],
+    ["a hole holding braces", `  color: { {a: 1}.a };`],
     ["a url with a semicolon", `  background: url("a;b.png");`],
     ["a quoted brace", `  content: "}";`],
     ["a function", `  width: calc(100% - 8px);`],
@@ -289,8 +289,8 @@ describe("the CSS inside a block", () => {
 
   test.each([
     ["a string", `  grid-template-areas: "a   a" "b   b";`],
-    ["a hole", `  color: {{ a  ?  "red"  :  "blue" }};`],
-    ["a hole holding an object", `  color: {{ {a: {b: 1}}.a.b }};`],
+    ["a hole", `  color: { a  ?  "red"  :  "blue" };`],
+    ["a hole holding an object", `  color: { {a: {b: 1}}.a.b };`],
     ["a hole holding a `}}` in a string", `  color: {{ x["}}"] }};`],
     ["a comment", `  /* two  spaces */`],
   ])("%s keeps its own spacing", (_what, written) => {

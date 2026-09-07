@@ -222,13 +222,13 @@ describe("the CSS rules, as squiggles", () => {
    * cannot go — there is no correct compilation — so the only place it can be SAID rather than
    * enforced is here, under the character, while it is being typed.
    */
-  test("a hole where a custom property cannot go is a warning under the `{{`", () => {
-    const marked = `const a = (\n  <div css=@@(\n    {{name}}: 24px;\n  )>x</div>\n);\n`;
+  test("a hole where a custom property cannot go is a warning under the `{`", () => {
+    const marked = `const a = (\n  <div css=@@(\n    {name}: 24px;\n  )>x</div>\n);\n`;
     const { service, source } = editor(marked);
 
     const [only] = service.getSemanticDiagnostics(FILE);
-    expect(only.start).toBe(source.indexOf("{{"));
-    expect(only.length).toBe(2);
+    expect(only.start).toBe(source.indexOf("{", source.indexOf("@@(") + 3));
+    expect(only.length).toBe(1);
     expect(only.category).toBe(ts.DiagnosticCategory.Warning);
     expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("hole-out-of-place");
   });
@@ -283,7 +283,7 @@ describe("the CSS rules, as squiggles", () => {
 
 describe("hover", () => {
   test("over a hole's expression, it is the expression's own type", () => {
-    const marked = `const accent: string = "#10b981";\nconst a = <div css=@@( color: {{acc${CARET}ent}}; )>x</div>;\n`;
+    const marked = `const accent: string = "#10b981";\nconst a = <div css=@@( color: {acc${CARET}ent}; )>x</div>;\n`;
     const { service, caret } = editor(marked);
 
     const info = service.getQuickInfoAtPosition(FILE, caret);
@@ -424,7 +424,7 @@ export default [before, a, after];
    * should read as `this.weight` reads anywhere else.
    */
   test("no semantic token paints the CSS, and a hole still gets one", () => {
-    const marked = `const accent = "red";\nconst a = <div css=@@( display: flex; color: {{accent}}; )>x</div>;\nexport default [a, accent];\n`;
+    const marked = `const accent = "red";\nconst a = <div css=@@( display: flex; color: {accent}; )>x</div>;\nexport default [a, accent];\n`;
     const { service, source } = editor(marked);
     const covers = (what: string) => {
       const at = source.indexOf(what, source.indexOf("css=@@("));
@@ -797,7 +797,7 @@ describe("completion in a value", () => {
   });
 
   test("a hole is TypeScript, and keeps being TypeScript", () => {
-    const offered = names(`const accent = "red";\nconst a = <div css=@@( color: {{acc${CARET}}}; )>x</div>;\n`);
+    const offered = names(`const accent = "red";\nconst a = <div css=@@( color: {acc${CARET}}; )>x</div>;\n`);
 
     expect(offered).toContain("accent");
     expect(offered).not.toContain("inherit");

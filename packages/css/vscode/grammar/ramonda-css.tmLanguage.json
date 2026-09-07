@@ -35,9 +35,16 @@
       "comment": "The lookbehind mirrors the compiler's own scanner, which requires whitespace before the name. This pattern is only the BARE attribute form, where the name and the `=` are coloured too; a block in expression position is `ramonda.css-value`."
     },
     "innards": {
+      "comment": "Order is the whole of it. A hole is ONE brace, and so is a nested rule's body — so every pattern that can recognise a hole from its POSITION runs before `#nested`, which would otherwise read `color: ` as a selector and the hole as a rule list. Measured: it did exactly that, and the CSS grammar agreed with it, scoping `accent` as a property name.",
       "patterns": [
         {
           "include": "#composition"
+        },
+        {
+          "include": "#hole-in-a-name"
+        },
+        {
+          "include": "#declaration-with-a-hole"
         },
         {
           "include": "#nested"
@@ -48,8 +55,8 @@
       ]
     },
     "nested": {
-      "comment": "A nested rule. The editor's CSS grammar has no pattern for one \u2014 measured, `&:hover {` comes back as a property whose value is `hover {` \u2014 so the block handles nesting itself. The negative lookahead is the hole: `{{` opens an expression, never a rule list.",
-      "begin": "([^;{}]+?)(\\{)(?!\\{)",
+      "comment": "A nested rule. The editor's CSS grammar has no pattern for one — measured, `&:hover {` comes back as a property whose value is `hover {` — so the block handles nesting itself. It runs LAST among the brace patterns: everything that can tell a hole by its position has already had the line, so a `{` reaching here opens a rule.",
+      "begin": "([^;{}]+?)(\\{)",
       "beginCaptures": {
         "1": {
           "patterns": [
@@ -80,25 +87,126 @@
       ]
     },
     "composition": {
-      "comment": "This language's own markers, which CSS has no idea about \u2014 measured, the CSS grammar read `@@if` as a property name and `...` as nothing at all. Neither broke anything, so it is a colour problem rather than a correctness one: a reader could not tell a condition from a declaration. What follows each marker is a hole, and a hole is TypeScript, which the hole injection already handles.",
+      "comment": "This language's own markers, which CSS has no idea about — measured, the CSS grammar read `@@if` as a property name and `...` as nothing at all. Each one CONSUMES its hole rather than only colouring the marker: with one brace the hole left behind would be read as a rule body.",
       "patterns": [
         {
-          "comment": "`@@if {{ \u2026 }}` opens a conditional group. `@@` can never be CSS \u2014 an at-rule is `@` and then a name, and a name cannot begin with `@` \u2014 so this is unambiguous forever.",
-          "match": "(@@if)(?=\\s*\\{\\{)",
-          "captures": {
+          "comment": "`@@if ({ … })` opens a conditional group. `@@` can never be CSS — an at-rule is `@` and then a name, and a name cannot begin with `@` — so this is unambiguous forever. The parentheses are the at-rule's head, the shape `@media (…)` already has, and they are why the condition needs no position rule of its own: a `(` is not a place a rule can open.",
+          "begin": "\\s*(@@if)\\s*(\\()\\s*(\\{)",
+          "beginCaptures": {
             "1": {
               "name": "keyword.control.ramonda"
+            },
+            "2": {
+              "name": "meta.brace.round.tsx"
+            },
+            "3": {
+              "name": "punctuation.section.embedded.begin.ramonda"
             }
-          }
+          },
+          "end": "(\\})\\s*(\\))",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.end.ramonda"
+            },
+            "2": {
+              "name": "meta.brace.round.tsx"
+            }
+          },
+          "contentName": "meta.embedded.expression.tsx",
+          "patterns": [
+            {
+              "include": "source.tsx"
+            }
+          ]
         },
         {
-          "comment": "`...{{ \u2026 }};` merges another block's map here. Anchored to the hole that must follow, so an ellipsis written in a comment or a value is left alone.",
-          "match": "(\\.\\.\\.)(?=\\s*\\{\\{)",
-          "captures": {
+          "comment": "`...{ … };` merges another block's map here, in the position a declaration would be.",
+          "begin": "\\s*(\\.\\.\\.)\\s*(\\{)",
+          "beginCaptures": {
             "1": {
               "name": "keyword.control.ramonda"
+            },
+            "2": {
+              "name": "punctuation.section.embedded.begin.ramonda"
             }
-          }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.end.ramonda"
+            }
+          },
+          "contentName": "meta.embedded.expression.tsx",
+          "patterns": [
+            {
+              "include": "source.tsx"
+            }
+          ]
+        }
+      ]
+    },
+    "hole-in-a-name": {
+      "comment": "A hole standing in a property NAME — `{accent}: #34d399`, the only way to set a registered property. Recognised by what FOLLOWS it: a brace pair with a colon after it. A rule's body cannot look like that, because nothing follows its `}` but the next item. The leading `\\s*` is there for the same reason as in `#declaration-with-a-hole`: to start where `#nested` starts, so order decides between them rather than indentation.",
+      "begin": "\\s*(\\{)(?=[^{}]*\\}\\s*:)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.end.ramonda"
+        }
+      },
+      "contentName": "meta.embedded.expression.tsx",
+      "patterns": [
+        {
+          "include": "source.tsx"
+        }
+      ]
+    },
+    "declaration-with-a-hole": {
+      "comment": "A declaration whose value holds a hole, matched whole so the CSS grammar never sees the `{`.\n\nThe lookahead is the discriminator the parser uses, written as a regex: a property name, a colon, and then WHITESPACE OR THE BRACE ITSELF — and a `{` before any `;` or `}`. The space is load-bearing and a probe found it: `a:hover { … }` is a legal prelude and begins with a property-shaped name and a colon exactly like `border: 4px solid` does. A declaration's colon is followed by whitespace or its value; a pseudo-class's is followed at once by its own name.\n\nA declaration with no hole is left to the CSS grammar, so nothing that worked stops working.\n\nThe leading `\\s*` is not decoration. TextMate picks the pattern whose match starts EARLIEST in the line, and `#nested` begins with `[^;{}]+?`, which happily starts at the indentation — so a pattern anchored at the property name always lost to it. Measured: the rule won, and the CSS grammar then scoped the hole's expression as a property name.",
+      "begin": "(?=\\s*(?:--)?[-\\w]+\\s*:(?:\\s|\\{)[^;{}]*\\{)\\s*((?:--)?[-\\w]+)\\s*(:)",
+      "beginCaptures": {
+        "1": {
+          "name": "support.type.property-name.css"
+        },
+        "2": {
+          "name": "punctuation.separator.key-value.css"
+        }
+      },
+      "end": "(;)|(?=\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.terminator.rule.css"
+        }
+      },
+      "patterns": [
+        {
+          "comment": "The hole itself. Inside a value there is nothing else a `{` can be.",
+          "begin": "(\\{)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.begin.ramonda"
+            }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.end.ramonda"
+            }
+          },
+          "contentName": "meta.embedded.expression.tsx",
+          "patterns": [
+            {
+              "include": "source.tsx"
+            }
+          ]
+        },
+        {
+          "include": "source.css#property-values"
         }
       ]
     }

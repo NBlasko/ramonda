@@ -30,7 +30,7 @@ export class CssBlockError extends Error {
  */
 export function holeOutOfPlace(what: "a declaration" | "a property name" | "a selector" | "a frame"): string {
   return what === "a declaration"
-    ? "a hole cannot be a whole declaration — a custom property holds a value, so write `property: {{…}}` and put the choice inside it. The one name a hole may stand in is a `@@property( … )` declared in this file."
+    ? "a hole cannot be a whole declaration — a custom property holds a value, so write `property: {…}` and put the choice inside it. The one name a hole may stand in is a `@@property( … )` declared in this file."
     : `a hole cannot stand in ${what} — a custom property holds a value, and ${what} is not one.` +
         (what === "a property name"
           ? " The one exception is a `@@property( … )` declared in this file, whose name only this compiler knows."

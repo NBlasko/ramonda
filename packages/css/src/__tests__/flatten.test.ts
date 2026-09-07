@@ -100,9 +100,9 @@ describe("a hole", () => {
    * the dedupe that pays for the whole design gone.
    */
   test("is numbered within its own declaration, not within the block", () => {
-    const alone = of("color: {{x}};")[0];
+    const alone = of("color: {x};")[0];
     // The SECOND hole of its block, so its block index is 1 and its own index is still 0.
-    const later = of("background: {{a}};\ncolor: {{b}};")[1];
+    const later = of("background: {a};\ncolor: {b};")[1];
 
     expect(later.holes).toEqual([1]);
     expect(later.canonical).toBe(alone.canonical);
@@ -110,10 +110,10 @@ describe("a hole", () => {
   });
 
   test("and a declaration with two keeps them in order", () => {
-    const [one] = of("border-left: {{w}} solid {{c}};");
+    const [one] = of("border-left: {w} solid {c};");
 
     expect(one.holes).toEqual([0, 1]);
-    expect(one.canonical).toBe(of("border-left: {{a}} solid {{b}};")[0].canonical);
+    expect(one.canonical).toBe(of("border-left: {a} solid {b};")[0].canonical);
   });
 });
 

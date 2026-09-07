@@ -56,10 +56,10 @@ describe("with it", () => {
   });
 
   test("the CSS inside is returned as written, holes and nesting and all", async () => {
-    const source = `const panel = @@(\n  border-left: {{\`\${w}px\`}} solid #ff0055;\n  &:hover { color: red; }\n);\n`;
+    const source = `const panel = @@(\n  border-left: {\`\${w}px\`} solid #ff0055;\n  &:hover { color: red; }\n);\n`;
     const out = await format(source);
 
-    expect(out).toContain("border-left: {{`${w}px`}} solid #ff0055;");
+    expect(out).toContain("border-left: {`${w}px`} solid #ff0055;");
     expect(out).toContain("&:hover { color: red; }");
   });
 

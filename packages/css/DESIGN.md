@@ -18,7 +18,7 @@ The style is written beside the markup, in CSS:
   flex-direction: column;
   padding: 24px;
   background-color: #0f172a;
-  border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
+  border-left: {isOnline ? "4px solid #10b981" : "4px solid #64748b"};
 )>
   <h3 css=@@( margin: 0; color: #ffffff; )>Nikola</h3>
 </div>
@@ -87,7 +87,7 @@ Two checkers, each doing the half it is good at.
 
 ### The interpolated expressions — `tsc`, through a virtual file
 
-`{{isOnline ? … }}` is TypeScript and has to be checked as TypeScript, in its real lexical scope,
+`{isOnline ? … }` is TypeScript and has to be checked as TypeScript, in its real lexical scope,
 with the surrounding file's imports and generics intact. The way to get that from a compiler that
 cannot parse the file is the same three moves the file-format frameworks make:
 
@@ -101,7 +101,7 @@ a genuine type error inside a hole:
 
 ```
 packages/css/example.tsx(13,27): error TS2339: Property 'toUpperCase' does not exist on type 'number'.
-      border-left: {{accent.toUpperCase()}};
+      border-left: {accent.toUpperCase()};
 ```
 
 Line 13, column 27, in the file the author wrote — not in a generated file, not "somewhere in this
@@ -150,7 +150,7 @@ Three things fall out of that one encoding, and they were three separate questio
 - **a typo in the property name**, with TypeScript's own *did you mean* — because an object literal
   gets excess-property checking, which an argument list does not;
 - **a typo in a value**, likewise, for the 123 properties whose grammar is a closed keyword set;
-- **a hole checked against the property it belongs to.** `padding: {{nekaFunc()}}` is checked against
+- **a hole checked against the property it belongs to.** `padding: {nekaFunc()}` is checked against
   `CssProperties["padding"]`, so the function's return type has to be something padding accepts. That
   was the hardest-sounding request and it costs nothing extra: the hole simply lands in the value
   position of the object literal, and the mapping back to the author's line is already proved.
@@ -211,7 +211,7 @@ at a class that is not there.
 
 ## The syntax
 
-`@@( … )` with `{{ … }}` holes.
+`@@( … )` with `{ … }` holes.
 
 **It began as `@( … )`, and the second `@` was bought with two measurements.** `@(expr)` is *already*
 valid TypeScript in two places, and both compile:
@@ -411,10 +411,10 @@ else has to.
 selector, or a whole declaration:
 
 ```
-border-left: {{…}};                ✓   becomes  border-left: var(--r-8e271c6c1f3a4b02-0)
-{{cond ? "display:flex" : ""}}     ✗   a declaration — nothing to put a variable in
-{{name}}: 24px;                    ✗   a property name
-&:{{state}} { … }                  ✗   a selector
+border-left: {…};                ✓   becomes  border-left: var(--r-8e271c6c1f3a4b02-0)
+{cond ? "display:flex" : ""}     ✗   a declaration — nothing to put a variable in
+{name}: 24px;                    ✗   a property name
+&:{state} { … }                  ✗   a selector
 ```
 *Recommended:* value position only, refused at build time with the source position, and reported by
 the checker first.
@@ -561,8 +561,8 @@ Two components. A card styles its own title through a nested rule; the title has
 Both are ordinary, and neither author knows about the other:
 
 ```
-Card's block:    & .title { color: {{this.accent}} }
-Title's block:   padding: {{this.pad}}
+Card's block:    & .title { color: {this.accent} }
+Title's block:   padding: {this.pad}
 ```
 
 With positional names, both call their first hole `--r0`:
@@ -761,7 +761,7 @@ but "which parts are still opinion".
 | a hole is type-checked in its real scope | a real `TS2339` at the author's line and column |
 | a property-name typo | `TS2561 … Did you mean to write 'display'?` |
 | a value typo | `TS2820 … Did you mean '"flex"'?` |
-| a hole typed by its property | `TS2322` on `padding: {{nekaFunc()}}` |
+| a hole typed by its property | `TS2322` on `padding: {nekaFunc()}` |
 | dev speed | +2.6% over esbuild; 15–22 µs per file, linear |
 | values crossing to the client | in the markup; no channel, no registry |
 | instances do not multiply rules | one rule at any N; 0.10 KB either way |
@@ -861,7 +861,7 @@ export const Card = (props: { id: string }) => {
 	return (
 		<div css=@@(
 			display: flex;
-			border-left: {{accent}};
+			border-left: {accent};
 		)>
 			<span>{props.id}</span>
 		</div>
@@ -962,7 +962,7 @@ argument the design is right — and a page to rewrite rather than quietly amend
 node packages/css/prototype-typecheck.mjs packages/css/example.tsx.txt
 ```
 
-Proves the claim everything else depends on: a `tsc` diagnostic from inside a `{{ … }}` hole,
+Proves the claim everything else depends on: a `tsc` diagnostic from inside a `{ … }` hole,
 reported at the right line and column of the author's own file.
 
 **The `.txt` on the end of the fixture is itself a measurement.** Named `example.tsx`, it turned this

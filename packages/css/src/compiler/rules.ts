@@ -2,7 +2,7 @@ import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast
 import { conflict, covers, flatten, sheetRank } from "./flatten";
 import { holeOutOfPlace } from "./errors";
 import { DESCRIPTORS, KEYWORDS, NOT_IN_A_RULE, PROPERTIES, PROPERTY_NAMED, UNITS } from "./keywords.generated";
-import { closingHole } from "./read";
+import { closingHole, opensAHole } from "./read";
 import type { BlockSite } from "./scan";
 
 /**
@@ -149,9 +149,13 @@ function isTagNameCharacter(code: number): boolean {
 export function checkText(source: string, open: number, end: number): Finding[] {
   const findings: Finding[] = [];
   let parens = 0;
+  /** Where the current item began — `opensAHole` reads the text in front of a `{`, not the block. */
+  let item = open + 1;
 
   for (let index = open + 1; index < end; index++) {
     const code = source.charCodeAt(index);
+
+    if (code === 59 /* ; */ || code === 125 /* } */) item = index + 1;
 
     if (code === 34 /* " */ || code === 39 /* ' */) {
       index = endOfString(source, index);
@@ -162,11 +166,14 @@ export function checkText(source: string, open: number, end: number): Finding[] 
       index = close === -1 ? end : close + 1;
       continue;
     }
-    if (code === 123 /* { */ && source.charCodeAt(index + 1) === 123) {
-      // Not `indexOf("}}")`: a hole holds JavaScript, so an object literal inside one has its own —
+    if (code === 123 /* { */ && opensAHole(source.slice(item, index))) {
+      // Not `indexOf("}")`: a hole holds JavaScript, so an object literal inside one has its own —
       // see `closingHole`, which three scanners share for exactly this reason.
+      //
+      // A `{` that opens a nested RULE is deliberately NOT stepped over: a `//` inside one is the
+      // same fault as a `//` anywhere else, and skipping the body would take it with it.
       const close = closingHole(source, index);
-      index = close === -1 ? end : close + 1;
+      index = close === -1 ? end : close - 1;
       continue;
     }
     if (code === 40 /* ( */) parens++;
@@ -981,7 +988,7 @@ function ruleOutOfPlace(rule: NestedRule, atRule: string, findings: Finding[]): 
 /**
  * Text with no whitespace between it and a hole, which does not do what it reads as.
  *
- * A hole becomes one custom property, so `{{n}}px` becomes `var(--r-…-0)px` — and a `var()` is
+ * A hole becomes one custom property, so `{n}px` becomes `var(--r-…-0)px` — and a `var()` is
  * substituted as TOKENS, so the `12` and the `px` never become one length. **Measured in Chromium**
  * with `--w: 12`: `padding-left: var(--w)px` computes to `0px`, and
  * `padding-left: 8px; padding-left: var(--w)px` computes to `0px` as well — invalid at
@@ -1009,8 +1016,8 @@ function gluedHole(item: Declaration, findings: Finding[]): void {
       length: Math.max(1, (item.end ?? 0) - (item.valueAt ?? 0)),
       message:
         "a hole becomes one custom property, and text written against it is not part of that value — " +
-        "`{{n}}px` becomes `var(--…)px`, which computes to nothing and takes any earlier declaration " +
-        "of the property with it. Put the unit inside the hole, or write `calc({{n}} * 1px)`.",
+        "`{n}px` becomes `var(--…)px`, which computes to nothing and takes any earlier declaration " +
+        "of the property with it. Put the unit inside the hole, or write `calc({n} * 1px)`.",
     });
     return;
   }
@@ -1130,12 +1137,12 @@ function holeInHead(
   what: "a declaration" | "a property name" | "a selector" | "a frame",
   findings: Finding[],
 ): void {
-  const found = text.indexOf("{{");
+  const found = text.indexOf("{");
   if (found === -1 || at === undefined) return;
 
-  // The `{{`, which is where the author has to move something. The expression's own length is not
-  // the fault and underlining it would say the expression is wrong.
-  findings.push({ rule: "hole-out-of-place", at: at + found, length: 2, message: holeOutOfPlace(what) });
+  // The `{`, which is where the author has to move something. The expression's own length is not the
+  // fault and underlining it would say the expression is wrong.
+  findings.push({ rule: "hole-out-of-place", at: at + found, length: 1, message: holeOutOfPlace(what) });
 }
 
 /* ── reading a value ───────────────────────────────────────────────────────────────────────── */
