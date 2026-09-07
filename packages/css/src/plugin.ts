@@ -1,6 +1,13 @@
 import type ts from "typescript";
 import type { BlockItem } from "./compiler/ast";
-import { PROPERTIES, PROPERTY_NAMED, UNION_TYPED, VALUE_WORDS, SELECTORS } from "./compiler/keywords.generated";
+import {
+  PROPERTIES,
+  PROPERTY_NAMED,
+  UNION_TYPED,
+  VALUE_WORDS,
+  SELECTORS,
+  AT_RULE_LINKS,
+} from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
@@ -950,8 +957,20 @@ function spoken(where: Regions, at: number): ts.QuickInfo | undefined {
     return say(name, lines.join("\n\n"));
   }
 
-  // An at-rule, or a selector with no entry: its own text is the honest answer, and it is better
-  // than a sentence about an object literal.
+  /**
+   * An at-rule shows its own text and its link, and no sentence.
+   *
+   * The difference from a selector is what the reader is asking: `@media (min-width: 40rem)` says
+   * what it asks already, so a sentence would repeat the text. All 19 at-rules in `mdn-data` carry a
+   * url, so this needs nothing written for it — which is also why an at-rule invented tomorrow shows
+   * its own text rather than nothing.
+   */
+  const atRule = /^(@[a-z-]+)/.exec(trimmed)?.[1];
+  const link = atRule === undefined ? undefined : AT_RULE_LINKS[atRule];
+  if (link !== undefined) return say(trimmed, link);
+
+  // A selector with no entry, or an at-rule nobody has heard of: its own text is the honest answer,
+  // and it is better than a sentence about an object literal.
   return trimmed.startsWith("@") || trimmed.startsWith("&") || trimmed.startsWith(":") ? say(trimmed, "") : undefined;
 }
 

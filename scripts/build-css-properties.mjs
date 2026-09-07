@@ -980,6 +980,19 @@ if (notesForNothing.length > 0) {
   process.exit(1);
 }
 
+/**
+ * Every at-rule's MDN url, and nothing written beside it.
+ *
+ * Unlike the selectors, this needs no prose at all: all 19 at-rules in `mdn-data` carry a url, and
+ * the CONDITION a person hovers — `@media (min-width: 40rem)` — is already the specific question.
+ * Its own text plus the link is the whole answer, and a sentence would be repeating the text.
+ */
+const atRuleLinks = Object.fromEntries(
+  Object.entries(atRules)
+    .filter(([, one]) => one.mdn_url)
+    .map(([name, one]) => [name, one.mdn_url]),
+);
+
 const mediaFeatures = [
   ...new Set([...MEDIA_FEATURES, ...RANGE_FEATURES.flatMap((one) => [`min-${one}`, `max-${one}`])]),
 ].sort();
@@ -1121,6 +1134,15 @@ export const MEDIA_FEATURES: readonly string[] = ${JSON.stringify(mediaFeatures)
  * Read by the editor's hover, where a reader is already looking at the thing they are asking about.
  */
 export const SELECTORS: Readonly<Record<string, { group: string; url: string; note: string }>> = ${JSON.stringify(selectors)};
+
+/**
+ * Every at-rule's MDN url, read from \`mdn-data\` — all 19 of them have one.
+ *
+ * No prose beside it, and that is the difference from \`SELECTORS\`: the CONDITION somebody hovers is
+ * already the specific question — \`@media (min-width: 40rem)\` says what it asks — so its own text
+ * and the link are the whole answer.
+ */
+export const AT_RULE_LINKS: Readonly<Record<string, string>> = ${JSON.stringify(atRuleLinks)};
 
 /**
  * The at-rules that are not part of an element's rule, so a style block may not hold one.

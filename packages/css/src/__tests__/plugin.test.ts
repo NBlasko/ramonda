@@ -1272,6 +1272,34 @@ describe("hover", () => {
     expect(signature).not.toContain("(property)");
   });
 
+  /**
+   * And it carries the at-rule's own link. All 19 at-rules in `mdn-data` have one, so this needs no
+   * sentence written for it — the condition a person hovers is already the specific question, and
+   * the link is where the answer to it lives.
+   */
+  test("and the at-rule's MDN link, which is generated rather than written", () => {
+    const { documentation } = hovered(BLOCK, "@media");
+
+    expect(documentation).toContain("developer.mozilla.org/docs/Web/CSS/@media");
+  });
+
+  test.each([
+    ["@supports", `const a = <div css=@@(\n  @supports (display: grid) { gap: 8px; }\n)>x</div>;\n`],
+    ["@container", `const a = <div css=@@(\n  @container (min-width: 20rem) { gap: 8px; }\n)>x</div>;\n`],
+  ])("%s too", (name, code) => {
+    const { signature, documentation } = hovered(code, name);
+
+    expect(signature).toContain(name);
+    expect(documentation).toContain(`developer.mozilla.org/docs/Web/CSS/${name}`);
+  });
+
+  /** An at-rule nobody has heard of shows its own text, which is still the honest answer. */
+  test("and one with no entry shows its own text", () => {
+    const { signature } = hovered(`const a = <div css=@@(\n  @invented (x) { gap: 8px; }\n)>x</div>;\n`, "@invented");
+
+    expect(signature).toContain("@invented");
+  });
+
   /** What already worked must keep working — the reason the property path is untouched. */
   test("a property still shows its grammar and its initial value", () => {
     const { signature, documentation } = hovered(BLOCK, "display");
