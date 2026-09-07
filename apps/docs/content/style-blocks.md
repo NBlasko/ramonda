@@ -72,10 +72,62 @@ class Row extends Component {
 }
 ```
 
-The nested `&:hover` is CSS's own nesting, resolved by the browser rather than by the compiler. Every
-rule is emitted inside `@layer ramonda`, which sits beneath all unlayered CSS — so your own
-`.row { border: none }` wins whatever order the files load in, and nobody has to reason about
-specificity against generated output.
+The nested `&:hover` is CSS's own nesting, resolved by the browser rather than by the compiler.
+
+### The one place this is not plain CSS
+
+Every rule is emitted inside `@layer ramonda`, and **a layer is the one thing here that behaves
+differently from CSS written by hand.** It is worth two minutes, because it decides who wins.
+
+A layer is a bucket, and buckets are ranked ahead of everything else — a rule in no bucket beats a
+rule in one, and that is decided **before** specificity is looked at. Measured in Chromium, the same
+two declarations five ways:
+
+```
+.a { color: red }  .b { color: blue }                  blue    the later one wins
+.b { color: blue }  .a { color: red }                  red     the later one wins
+
+.a { color: red }  @layer L { .b { color: blue } }     red
+@layer L { .b { color: blue } }  .a { color: red }     red     order stops mattering
+.a { color: red }  @layer L { p#q.b.c { color: blue } } red    specificity stops mattering too
+```
+
+So your own stylesheet always wins:
+
+```css
+/* app.css */
+.panel { padding: 0 }
+```
+
+```tsx
+<div className="panel" css=@@( padding: 12px; )>…</div>
+```
+
+The element gets `padding: 0`. Not because of where the files load, and not because one selector is
+stronger — the block is in a layer and `app.css` is not.
+
+**This is on purpose, and it is a trade.** Adding blocks to a project that already has CSS does not
+make you fight your own stylesheet: nothing has to be rewritten, and no `!important` appears. What it
+costs is the CSS answer, where those two would be settled by whichever was written later.
+
+The alternative was measured and is worse: with no layer, the winner is whichever stylesheet your
+bundler happens to emit last — which you do not choose and which can differ between a dev server and
+a build. **A predictable answer that is not CSS's beats CSS's answer to a question you cannot see.**
+
+To let a block win, put your own CSS in a layer too and say which order the layers go in. Measured,
+the same `.panel { padding: 0 }` against the same block:
+
+```
+.panel { padding: 0 }                                    0px    unlayered, so it wins
+@layer app, ramonda;   @layer app { .panel … }          12px    app ranked first, so it loses
+@layer ramonda, app;   @layer app { .panel … }           0px    app ranked last, so it wins
+                       @layer app { .panel … }          12px    no statement: first seen is first
+```
+
+The `@layer a, b;` statement is what ranks them, and **a layer named later in it wins** — so
+`@layer ramonda, app;` puts your CSS above the blocks, and `@layer app, ramonda;` puts it below.
+Without that statement the order is whichever layer the browser meets first, which is the same "your
+bundler decides" problem in a smaller box: write the statement.
 
 ## Three ways to write one
 
