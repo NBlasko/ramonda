@@ -275,3 +275,37 @@ describe("a block written in two routes that never load together", () => {
     }
   });
 });
+
+/**
+ * A named site that REGISTERS, all the way through a production build.
+ *
+ * `@property` is the one named site whose whole purpose is a browser behaviour rather than a name:
+ * a registered custom property interpolates in a transition and falls back to its `initial-value`
+ * instead of dropping the declaration. Measured in Chromium 151, both of those are had ONLY by a
+ * registration the browser kept, and a `@property` that is not at the top level of the stylesheet is
+ * **dropped entirely** — `.host { @property --n { … } }` came out of `cssRules` as `.host { }`, with
+ * the name left accepting any junk at all.
+ *
+ * So "the CSS is in the output" is not the question here. The question is whether it is still a
+ * top-level at-rule holding descriptors after the bundler and the minifier have had it, and nothing
+ * asked that: the sheet writes it correctly, and what ships is what a person gets.
+ */
+test("a `@property` ships as a top-level at-rule holding its descriptors", () => {
+  const result = build(
+    project(
+      `export const ANGLE = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
+        `export const card = (\n  <div className="lead" css=@@(\n    transform: rotate(var(--r-angle));\n  )>x</div>\n);\n`,
+      `import { card, ANGLE } from "./Card";\nconsole.log(card, ANGLE);\n`,
+    ),
+  );
+
+  expect(result.ok, result.output).toBe(true);
+
+  const css = of(result.files, ".css");
+
+  // The descriptors are the registration. A `@property` that lost them registers nothing.
+  expect(css).toContain("syntax");
+  // And they must be DIRECTLY inside it — not wrapped in a style rule, which is the shape that made
+  // Chromium drop the whole at-rule.
+  expect(css).not.toMatch(/@property[^{]*\{\s*[.#]/);
+});

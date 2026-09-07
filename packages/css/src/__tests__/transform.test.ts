@@ -61,8 +61,13 @@ describe("what a block becomes", () => {
     expect(out).toMatch(/css=\{_merge\(\{"color":\["r-[0-9a-zA-Z][^"\s)]*",this\.accent\],\}\)\}/);
   });
 
+  /**
+   * The unit is INSIDE the hole, and that is not tidying — `padding: {{b}}px` is the `glued-hole`
+   * fault, which the build now refuses. It stood in this fixture until the build began running the
+   * checker, which is a small demonstration of what was shipping.
+   */
   test("several holes arrive in source order, each with the declaration it belongs to", () => {
-    const out = body(`const a = <div css=@@( color: {{a}}; padding: {{b}}px; )>x</div>;\n`);
+    const out = body(`const a = <div css=@@( color: {{a}}; padding: {{b}}; )>x</div>;\n`);
 
     expect(out).toMatch(/"color":\["r-[0-9a-zA-Z][^"\s)]*",a\],/);
     expect(out).toMatch(/"padding":\["r-[0-9a-zA-Z][^"\s)]*",b\],/);
@@ -664,5 +669,61 @@ describe("the same declaration in two contexts", () => {
     const b = emit(`const d = @@( @media print { color: red; } );\n`);
 
     expect(a?.blocks[0].className).toBe(b?.blocks[0].className);
+  });
+});
+
+/**
+ * The build refuses what the checker finds, and it did NOT until this was written.
+ *
+ * **Measured, and it is the fault behind the `@property` report.** `checkBlock` reports
+ * `at-rule-out-of-place` for a `@property` written inside a block, with a message that says exactly
+ * what to do — and the transform compiled it anyway, as a CONDITION. What shipped out of a real
+ * build was `@property --x { .r-hash { syntax: "<color>" } }`: a `@property` wrapping a style rule,
+ * which Chromium 151 drops entirely, leaving the name accepting any junk at all. Every other fault
+ * the checker knows about shipped the same way.
+ *
+ * The reason is one seam: `checkBlock` was called by `ramonda-check` and by the editor, and
+ * `transform` — the only path a BUILD takes — called neither. So the two people most likely to see a
+ * fault were told, and the artefact was not.
+ *
+ * It goes in `transform` rather than in each bundler's plugin because there are two of those today
+ * and the next one would forget. `transform` has exactly two callers, `vite.ts` and `esbuild.ts`,
+ * and both of them must refuse.
+ */
+describe("the build refuses what the checker finds", () => {
+  test("a `@property` inside a block, which used to ship as invalid CSS", () => {
+    expect(() => emit(`const s = @@(\n  @property --x { syntax: "<color>"; }\n  color: red;\n);\n`)).toThrow(
+      CssBlockError,
+    );
+  });
+
+  test("and the refusal carries the checker's own words, not a second opinion", () => {
+    try {
+      emit(`const s = @@(\n  @property --x { syntax: "<color>"; }\n);\n`);
+      throw new Error("the transform did not refuse");
+    } catch (error) {
+      expect(error).toBeInstanceOf(CssBlockError);
+      expect((error as CssBlockError).message).toContain("names something the whole stylesheet uses");
+    }
+  });
+
+  /** `//` is not a CSS comment. Shipped, it takes the whole stylesheet down somewhere else entirely. */
+  test("a `//` comment, which a real CSS compiler refuses by failing the FILE", () => {
+    expect(() => emit(`const s = @@(\n  // why\n  color: red;\n);\n`)).toThrow(CssBlockError);
+  });
+
+  /**
+   * A DASHED property name near a real one. A bare name is deliberately not this rule's — the types
+   * report it with TypeScript's own *did you mean*, and a dashed name cannot be an unquoted object
+   * key, so this is the hole the types leave. Measured while writing these: `colour: red` is
+   * reported by nothing the transform runs, which is correct and is why the example is dashed.
+   */
+  test("a dashed property name that is nearly a real one", () => {
+    expect(() => emit(`const s = @@( padding-lft: 8px; );\n`)).toThrow(CssBlockError);
+  });
+
+  /** And a block with nothing wrong still compiles, which is the half that must not regress. */
+  test("a sound block is untouched", () => {
+    expect(body(`const s = @@( display: flex; gap: 8px; );\n`)).toContain("const s = _s0;");
   });
 });

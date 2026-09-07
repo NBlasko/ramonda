@@ -1197,3 +1197,73 @@ describe("a variable set by one name and read by another", () => {
     });
   });
 });
+
+/**
+ * A reference to a named site, checked as the TEXT it resolves to — and it must answer exactly as
+ * the same text written by hand does.
+ *
+ * A `{{ … }}` that names a `@@keyframes` or `@@property` site is not a hole: it becomes text this
+ * compiler decided, part of the hash, with no custom property. **So the block a checker sees is the
+ * block the author would have written literally, and the two must be reported the same way.**
+ *
+ * They were not. Measured — the same CSS, two answers:
+ *
+ * | written | reported |
+ * |---|---|
+ * | `transform: rotate(var(--r-KJ03bK3La))` | nothing |
+ * | `transform: rotate(var({{angle}}))`, resolving to that name | ``transform` does not accept …` |
+ *
+ * The cause is that `words()` steps over a function within ONE text part, and a resolved reference
+ * arrived as a part of its own — so `rotate(var(` , the name, and `))` were three parts and the
+ * step-over could not span them. The name then stood alone as a bare word in a value.
+ *
+ * The fix is not to teach the scanner to span parts. It is that **a resolved part holds the
+ * COMPILER's text, not the author's**: a name this compiler generated cannot be a typo of anything,
+ * and there is no position in the author's file to point a squiggle at. So nothing in it is read.
+ *
+ * This shipped as a false report in `ramonda-check` before the build ran the checker at all. Making
+ * the build refuse findings is what turned it from noise into a failed build, which is how it was
+ * found.
+ */
+describe("a reference to a named site is checked as the text it became", () => {
+  /**
+   * The references come from the WHOLE file and the block checked is the LAST site — which is the
+   * arrangement that matters: a named site is declared in one statement and read in another, and
+   * slicing the declaration away is what made the first version of this test pass against nothing.
+   */
+  const findings = (source: string): Finding[] => {
+    const references = namedSites(source);
+    const sites = findBlocks(source);
+    const site = sites[sites.length - 1];
+    const read = readBlock(source, site.open, "C.tsx", { resolve: (name) => references.get(name) });
+    return checkBlock(read.block, site.at, references);
+  };
+
+  test("a resolved name inside `var()` reports nothing, as the literal does not", () => {
+    const source =
+      `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n` +
+      `const card = @@( transform: rotate(var({{angle}})); );\n`;
+
+    expect(findings(source)).toEqual([]);
+  });
+
+  test("a resolved `@@keyframes` name in `animation` reports nothing either", () => {
+    const source =
+      `const spin = @@keyframes( from { opacity: 0; } to { opacity: 1; } );\n` +
+      `const card = @@( animation: {{spin}} 3s linear; );\n`;
+
+    expect(findings(source)).toEqual([]);
+  });
+
+  /**
+   * And the author's OWN words beside a resolved one are still read — the part is skipped, not the
+   * declaration. A rule that went quiet for the whole value would hide a real fault next door.
+   */
+  test("but a real fault in the same declaration is still reported", () => {
+    const source =
+      `const spin = @@keyframes( from { opacity: 0; } to { opacity: 1; } );\n` +
+      `const card = @@( transition: {{spin}} 3s liner; );\n`;
+
+    expect(findings(source).map((one) => one.rule)).toContain("unknown-value");
+  });
+});

@@ -184,7 +184,9 @@ export function readBlock(source: string, open: number, filename: string, option
     const written = close === -1 ? undefined : resolve?.(source.slice(start, end).trim());
     if (written !== undefined) {
       at = close + 2;
-      return { kind: "text", text: written, at: start - 2 };
+      // `resolved`, because this text is the compiler's and holds nothing anybody can act on — see
+      // the field's own note for the false report that found it.
+      return { kind: "text", text: written, at: start - 2, resolved: true };
     }
 
     // Unclosed and tolerant: everything to the end of the text is the expression. Mid-typing, that

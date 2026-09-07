@@ -6,6 +6,7 @@ import { namedSites } from "./references";
 import { normalise } from "./normalise";
 import { type Span, readBlock } from "./read";
 import { refuse } from "./errors";
+import { checkBlock, checkText } from "./rules";
 import { type BlockSite, findBlocks, mayHoldABlock } from "./scan";
 
 /**
@@ -207,6 +208,25 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         filename,
       );
     }
+
+    /**
+     * Everything the checker knows, applied to the artefact.
+     *
+     * **This seam was missing and it is the fault behind the `@property` report.** `checkBlock` was
+     * called by `ramonda-check` and by the editor; `transform` — the only path a BUILD takes —
+     * called neither, so a fault was reported to the two people most likely to notice it and
+     * compiled into the output anyway. Measured, a `@property` written inside a block shipped out of
+     * a real Vite build as `@property --x { .r-hash { syntax: "<color>" } }`, a registration
+     * Chromium 151 drops entirely while leaving the name accepting any junk.
+     *
+     * It is here rather than in each bundler's plugin because there are two of those and the next
+     * one would forget. The FIRST finding is what the refusal names: findings arrive sorted by
+     * position, the build stops at one anyway, and `ramonda-check` is what lists them all.
+     */
+    const [finding] = [...checkText(source, site.open, read.end), ...checkBlock(read.block, site.at, references)].sort(
+      (a, b) => a.at - b.at,
+    );
+    if (finding !== undefined) refuse(finding.message, source, finding.at, filename);
 
     // Normalised ONCE. It was called twice — for the name and again for the rule — and normalisation
     // walks the whole block, so that was a second full pass per block for a string already in hand.

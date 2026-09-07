@@ -887,6 +887,8 @@ function words(parts: readonly ValuePart[]): Word[] {
 
   for (const [position, part] of parts.entries()) {
     if (part.kind !== "text") continue;
+    // The compiler's own text, not the author's: a generated name is no typo and has no position.
+    if (part.resolved) continue;
     const text = part.text;
 
     /**

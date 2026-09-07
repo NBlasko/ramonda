@@ -73,6 +73,22 @@ export interface TextPart {
   /** Where this run of text starts in the author's file. See {@link Declaration.at}. */
   readonly at?: number;
   readonly text: string;
+  /**
+   * Text this COMPILER decided, not text the author wrote — a `{{ … }}` that named a `@@keyframes`
+   * or `@@property` site and was resolved to that site's generated name.
+   *
+   * It is text for every purpose that matters: part of the hash, no custom property, and it stands
+   * where a hole may not. But **nothing in it can be a fault.** A generated name cannot be a typo of
+   * anything, and there is no position in the author's file to point a squiggle at — `at` is where
+   * the `{{` was, and the text is a different length.
+   *
+   * The checker skips it for exactly that reason. Measured before this existed: the name stood alone
+   * as a bare word in a value, because a resolved reference arrived as its own part and the function
+   * step-over in `words()` works within one part — so `rotate(var(`, the name and `))` were three
+   * parts, and `transform: rotate(var({{angle}}))` was reported while the same text written by hand
+   * was silent. The same CSS, two answers.
+   */
+  readonly resolved?: true;
 }
 
 /**
