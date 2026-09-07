@@ -1,10 +1,20 @@
 # A style block that becomes a class before the browser sees it
 
-**Status: a design, not a package.** No `package.json` on purpose — a manifest with no code is a
-package claiming to exist. This folder holds the design, seven runnable prototypes, and
-**[`PLAN.md`](./PLAN.md) — the order of work, what blocks what, and what may run in parallel.**
+**Status: BUILT.** This header said *a design, not a package — no `package.json` on purpose*, and
+that stopped being true when the package landed: `@ramonda/css` is a real workspace package at
+`0.0.0`, private and unpublished, with a compiler, a check command, an editor plugin, two bundler
+adapters and a formatter wrapper.
 
-This file is the *why*. `PLAN.md` is the *when*.
+This file is the *why*, and it is the oldest of the three. `PLAN.md` is the *when*; `CONTRACT.md` is
+what both halves must agree on.
+
+**It can drift, and it had — read on 2026-09-07 against the code it describes, six claims were
+wrong.** The header above was one. Decision 1 forbade a hole in a property name, which is now the one
+thing that makes a generated custom property settable; decision 2 promised an `initial` floor that is
+not emitted; decision 4 recommended one class per BLOCK where one class per DECLARATION ships;
+decision 6 named a shape that moved; and a whole section listed as *verified but not yet built* is
+built. Each is corrected in place, with what replaced it and why, rather than deleted — the
+reasoning is what stops the next version arriving by drift instead of by decision.
 
 ---
 
@@ -413,27 +423,51 @@ selector, or a whole declaration:
 ```
 border-left: {…};                ✓   becomes  border-left: var(--r-8e271c6c1f3a4b02-0)
 {cond ? "display:flex" : ""}     ✗   a declaration — nothing to put a variable in
-{name}: 24px;                    ✗   a property name
 &:{state} { … }                  ✗   a selector
+{name}: 24px;                    ✓   ONLY where `name` is a `@@property( … )` — see below
 ```
-*Recommended:* value position only, refused at build time with the source position, and reported by
-the checker first.
+*Decided:* value position only, refused at build time with the source position, and reported by the
+checker first — **with one exception this section did not foresee.** A `@@property( … )` compiles to
+a NAME, a string known at build time, so a hole holding one is written in rather than substituted,
+and `{W}: 24px` emits `--r-…: 24px`. That is what makes a generated custom property settable; without
+it, registering one would be half a feature. `A_HELD_NAME` in `read.ts` is the discriminator, and
+nothing else may stand there.
 
 **2. ~~What an `undefined` hole does.~~ DECIDED by the server-rendering measurement below: the type
-refuses `undefined`.** It was a preference; the four hydration directions make it a requirement. Emit
-`var(--r-8e271c6c1f3a4b02-0, initial)` as the floor anyway, for the value that arrives from outside the types.
+refuses `undefined`.** It was a preference; the four hydration directions make it a requirement.
+
+**The `var(--…, initial)` floor was NOT built, and this line used to say it would be.** What ships is
+`var(--r-…-0)` with no fallback. The floor would be dead weight: the type refuses `undefined`, the
+runtime refuses a value that is not a boolean, a number or a string, and a custom property that is
+genuinely unset already computes to the guaranteed-invalid value, which is what `initial` names.
 
 **3. Merging with a written `style`.** *Recommended:* merge, generated first, author last.
 
-**4. Ordering and specificity.** Two classes setting the same property are decided by their order in
-the sheet, which comes from module graph order. *Recommended:* one block emits one class holding all
-its declarations, and the sheet sits in a named `@layer` beneath author stylesheets.
+**4. ~~Ordering and specificity.~~ DECIDED, and NOT the way this line recommended.** It said *one
+block emits one class holding all its declarations*. **What ships is one class per DECLARATION** —
+`display: flex` written anywhere in an app is one rule, and an element carries one class per thing
+its block sets. That is what lets two files agree on a class without knowing about each other, and it
+is why the sheet does not grow with the number of blocks.
+
+Order is decided by `sheetRank` — `conditional * 1000 - breadth` — not by module graph order, because
+a rule may land in any chunk and a chunk has to stand on its own.
+
+The sheet does sit in a named `@layer ramonda`, and the honest statement of what that buys is on the
+docs page rather than here: **unlayered CSS beats layered CSS**, checked before specificity, so an
+author's ordinary stylesheet wins without doing anything. An author who wants the other order writes
+`@layer app, ramonda;`.
 
 **5. Nesting, `&:hover`, `@media`.** Unusable without them. *Recommended:* those three in v1.
 
-**6. ~~The compiled value's exact shape.~~ DECIDED: a call, `_s2(value)`.** It reads better and
-allocates the same as an array. The compiler still concatenates nothing — the expression is an
-argument, transplanted verbatim.
+**6. ~~The compiled value's exact shape.~~ DECIDED, and it moved again after this line was written.**
+It said `_s2(value)`. What ships is a MAP — `_merge({"color":["r-OsXzXT1Qd",x],"gap":"r-gap-8px"})` —
+which decision 4 forced: one class per declaration needs a value that says which class belongs to
+which property, so that merging two blocks can decide precedence property by property. Measured: the
+order of classes in a `class` attribute decides nothing, so the call site is the only place
+precedence can be decided at all.
+
+What survives from this line, and it is the part that mattered: **the compiler concatenates nothing**.
+The expression is transplanted verbatim as an array element, emitted exactly once.
 
 **7. May anything happen at runtime?** **DECIDED — no.** Custom properties only, never an injected
 rule. Injecting would give up server-render determinism, the cached sheet and the checker's view of
@@ -769,13 +803,24 @@ but "which parts are still opinion".
 | the generated object is reported | `RMD020`, every render |
 | the checker goes quietly blind | three rules become one, silently |
 
-### Answered by a decision, with the mechanism verified but not yet built
+### ~~Answered by a decision, with the mechanism verified but not yet built~~ — ALL OF IT IS BUILT
 
-The `RMD020` exemption — the place exists and already skips two other keys, but the line is not
-written. Scoped variable names — the cost is measured, the failure they prevent is read from the
-specification, because jsdom cannot resolve an inherited custom property. The assembly-time collision
-assertion, the round-trip assertion after post-processing, and the checker reading the virtual file:
-all three are ordinary work in places that already exist, and none is proved.
+This section listed five things as designed-but-unwritten. Every one of them now runs, and the list
+is kept because reading it against the code is what found this document drifting:
+
+- **The `RMD020` exemption** is written, in `renderStability.ts`, beside the two keys it already
+  skipped.
+- **The assembly-time collision assertion** is in `Sheet` — no two distinct blocks may share a class,
+  because a longer hash makes a collision unlikely and probability is not a promise.
+- **The round-trip assertion after post-processing** is `Sheet.verify`, called from the bundler's
+  `generateBundle` against every emitted stylesheet at once. It catches the failure that is invisible
+  by construction: a minifier renaming a class the emitted JavaScript already points at.
+- **The checker reading the virtual file** is what `ramonda-check` and the editor plugin both do, and
+  `checkSource` is the one sequence all three consumers share.
+- **Scoped variable names** ship, and the cost stayed where it was measured.
+
+Only jsdom's limit is unchanged: it still cannot resolve an inherited custom property, so that
+failure is read from the specification rather than from a test.
 
 ### The two that were unexamined — both measured now, both fine
 
@@ -945,14 +990,16 @@ proved above — which turns "no tooling" into "our tooling".
 
 ---
 
-## What this contradicts today
+## ~~What this contradicts today~~ — RESOLVED, and the page was rewritten rather than amended
 
-`apps/docs/content/styling.md` says, under *What the framework does not do*: **no scoping, no
-generated class names, no CSS-in-JS.** Its three stated reasons are that such a style ships in the
-bundle, is rebuilt every render, and cannot be cached as a file.
+`apps/docs/content/styling.md` said, under *What the framework does not do*: **no scoping, no
+generated class names, no CSS-in-JS**, for three reasons — such a style ships in the bundle, is
+rebuilt every render, and cannot be cached as a file.
 
-**Build-time extraction satisfies all three rather than contradicting them.** That is the strongest
-argument the design is right — and a page to rewrite rather than quietly amend when it lands.
+**Build-time extraction satisfies all three rather than contradicting them**, which was the strongest
+argument the design was right. The page now says so in its own words: both paragraphs name style
+blocks, one as the opt-in that generates a class and one as *"not the exception they look like"*.
+The framework's position is unchanged and the exception is stated where a reader meets the rule.
 
 ---
 

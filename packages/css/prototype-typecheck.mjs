@@ -43,16 +43,26 @@ for (;;) {
   }
   out += original.slice(cursor, at);
 
-  // Walk to the block's closing paren. `{{ … }}` holes are skipped whole, so a paren inside an
+  // Walk to the block's closing paren. A `{ … }` hole is skipped whole, so a paren inside an
   // expression cannot close the block.
+  //
+  // **A prototype, so a hole's closer is found by counting braces rather than by reading
+  // TypeScript.** The real parser reads the expression; this cannot tell a `}` in a string from
+  // one that closes the hole, and it does not have to — see the header.
   let scan = at + "css=@@(".length;
   let depth = 1;
   const holes = [];
   while (scan < original.length && depth > 0) {
-    if (original.startsWith("{{", scan)) {
-      const end = original.indexOf("}}", scan + 2);
-      holes.push({ start: scan + 2, end });
-      scan = end + 2;
+    if (original[scan] === "{") {
+      let braces = 1;
+      let end = scan + 1;
+      while (end < original.length && braces > 0) {
+        if (original[end] === "{") braces++;
+        else if (original[end] === "}") braces--;
+        if (braces > 0) end++;
+      }
+      holes.push({ start: scan + 1, end });
+      scan = end + 1;
       continue;
     }
     if (original[scan] === "(") depth++;

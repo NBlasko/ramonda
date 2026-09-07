@@ -48,7 +48,7 @@ function makeFile(n) {
         padding: ${8 + b}px 16px;
         background-color: #0f172a;
         border-radius: 6px;
-        border-left: {{this.open ? "4px solid " + this.accent : "4px solid #64748b"}};
+        border-left: {this.open ? "4px solid " + this.accent : "4px solid #64748b"};
       )>
         <span>{this.label}</span>
       </div>\n`;
@@ -98,9 +98,14 @@ function findBlocks(source) {
         i++;
       }
       continue;
-    } else if (c === 61 /* = */ && source.charCodeAt(i + 1) === 64 /* @ */ && source.charCodeAt(i + 2) === 40 /* ( */) {
+    } else if (
+      c === 61 /* = */ &&
+      source.charCodeAt(i + 1) === 64 /* @ */ &&
+      source.charCodeAt(i + 2) === 64 /* @ */ &&
+      source.charCodeAt(i + 3) === 40 /* ( */
+    ) {
       found.push(i);
-      i += 3;
+      i += 4;
       continue;
     }
     i++;
@@ -126,18 +131,26 @@ function transform(source) {
     let nameStart = start;
     while (nameStart > 0 && /[A-Za-z]/.test(source[nameStart - 1])) nameStart--;
     out += source.slice(cursor, nameStart);
-    let scan = start + 3;
+    let scan = start + 4;
     let depth = 1;
     const chunks = [];
     const holes = [];
     let chunk = "";
     while (scan < source.length && depth > 0) {
-      if (source.charCodeAt(scan) === 123 && source.charCodeAt(scan + 1) === 123) {
-        const end = source.indexOf("}}", scan + 2);
-        holes.push(source.slice(scan + 2, end));
+      if (source.charCodeAt(scan) === 123 /* { */) {
+        // A prototype counts braces; the real parser reads the expression. See the header.
+        let braces = 1;
+        let end = scan + 1;
+        while (end < source.length && braces > 0) {
+          const b = source.charCodeAt(end);
+          if (b === 123) braces++;
+          else if (b === 125) braces--;
+          if (braces > 0) end++;
+        }
+        holes.push(source.slice(scan + 1, end));
         chunks.push(chunk);
         chunk = "";
-        scan = end + 2;
+        scan = end + 1;
         continue;
       }
       const c = source.charCodeAt(scan);

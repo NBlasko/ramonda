@@ -34,7 +34,7 @@ export class Card extends Component<{ id: string }> {
         flex-direction: column;
         padding: 24px;
         background-color: #0f172a;
-        border-left: {{this.accent}};
+        border-left: {this.accent};
       )>
         <span>{this.id}</span>
       </div>
@@ -55,14 +55,21 @@ let cursor = 0;
 for (;;) {
   const at = source.indexOf("css=@@(", cursor);
   if (at === -1) break;
-  let scan = at + 6;
+  let scan = at + "css=@@(".length;
   let depth = 1;
   const holes = [];
   while (scan < source.length && depth > 0) {
-    if (source.startsWith("{{", scan)) {
-      const end = source.indexOf("}}", scan + 2);
-      holes.push({ start: scan + 2, end });
-      scan = end + 2;
+    if (source[scan] === "{") {
+      // A prototype counts braces; the real parser reads the expression. See the header.
+      let braces = 1;
+      let end = scan + 1;
+      while (end < source.length && braces > 0) {
+        if (source[end] === "{") braces++;
+        else if (source[end] === "}") braces--;
+        if (braces > 0) end++;
+      }
+      holes.push({ start: scan + 1, end });
+      scan = end + 1;
       continue;
     }
     if (source[scan] === "(") depth++;

@@ -40,8 +40,8 @@ const cssBlocks = () => ({
   transform(code: string, id: string) {
     if (!id.endsWith(".tsx") || !code.includes("=@@(")) return null;
     return {
-      code: code.replace(/css=@\\(([\\s\\S]*?)\\)>/g, (_m, body: string) => {
-        const holes = [...body.matchAll(/\\{\\{([\\s\\S]*?)\\}\\}/g)].map((m) => m[1]);
+      code: code.replace(/css=@@\\(([\\s\\S]*?)\\)>/g, (_m, body: string) => {
+        const holes = [...body.matchAll(/\\{([\\s\\S]*?)\\}/g)].map((m) => m[1]);
         return \`className="r-abc" data-vars={[\${holes.join(",")}].join("|")}>\`;
       }),
       map: null,
@@ -75,7 +75,7 @@ class Card extends Component {
     return (
       <div css=@@(
         display: flex;
-        border-left: {{this.accent}};
+        border-left: {this.accent};
       )>
         <span>Nikola</span>
       </div>
