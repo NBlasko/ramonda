@@ -28,6 +28,10 @@ nothing is built per render, and the browser caches the stylesheet as a file lik
 Blocks [compose](#composing-blocks): one merges into another, a group of declarations switches on and
 off, and **what you wrote later wins** — the rule you already have when you read CSS.
 
+The two `@`s gave the syntax a nickname among the people who built it: an **eteti**. *Et* is what the
+sign is called, and two of them, said in the accent of southern Serbia, come out like that. Nothing
+in the API uses the word — these pages call it a style block.
+
 > **Not released yet.** `@ramonda/css` lives in this repository at `0.0.0` and is not published. The
 > page is here because the syntax and its guarantees are settled; the version number is what is not.
 

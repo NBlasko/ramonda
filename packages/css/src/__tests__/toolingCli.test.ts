@@ -145,6 +145,31 @@ describe("format", () => {
   });
 
   /**
+   * What it SAYS when there was nothing to do, and the two modes cannot say the same thing.
+   *
+   * Measured on this repository's own gate: `format:check` printed *2 file(s) formatted* having
+   * written to neither. A tool that reports work it did not do is a tool nobody can read a log of.
+   */
+  test("`--check` with nothing to do does not claim to have formatted anything", () => {
+    const root = project({ "Card.tsx": STYLED });
+    run(root, ["format", "src/Card.tsx"]);
+
+    const { output } = run(root, ["format", "--check", "src/Card.tsx"]);
+
+    expect(output).toContain("already formatted");
+    expect(output).not.toContain("file(s) formatted");
+  });
+
+  test("and a write with nothing to do says that instead", () => {
+    const root = project({ "Card.tsx": STYLED });
+    run(root, ["format", "src/Card.tsx"]);
+
+    const { output } = run(root, ["format", "src/Card.tsx"]);
+
+    expect(output).toContain("nothing to rewrite");
+  });
+
+  /**
    * The one that would never settle. A formatter may have chosen tabs, and a block re-laid with
    * spaces inside a tabbed file is a file the formatter disagrees with on the next run.
    */

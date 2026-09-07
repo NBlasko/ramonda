@@ -178,7 +178,10 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     }
 
     if (changed.length === 0) {
-      console.log(`${TAG} ${files.length} file(s) formatted`);
+      // The two modes did different things and must not claim the same one: `--check` wrote to
+      // nothing by design, and a write run with nothing to change wrote to nothing in fact.
+      const said = check ? `${files.length} file(s) already formatted` : `${files.length} file(s), nothing to rewrite`;
+      console.log(`${TAG} ${said}`);
       process.exit(0);
     }
     if (!check) {
