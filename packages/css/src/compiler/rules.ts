@@ -67,7 +67,8 @@ export type RuleId =
   | "override-out-of-order"
   | "variable-set-by-another-name"
   | "variable-read-by-another-name"
-  | "hole-as-a-variable-name";
+  | "hole-as-a-variable-name"
+  | "initial-value-and-syntax";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -202,6 +203,7 @@ export function checkBlock(block: Block, at?: string, references?: ReadonlyMap<s
   overrideOutOfOrder(block, findings);
   readByAnotherName(block, findings);
   holeAsAVariableName(block, findings);
+  if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   return findings.sort((a, b) => a.at - b.at);
 }
@@ -266,6 +268,104 @@ function setByAnotherName(block: Block, references: ReadonlyMap<string, string>,
         `\`{{${binding}}}: …\` to set the one you read.`,
     });
   }
+}
+
+/**
+ * What a `syntax` component accepts, as a test on the value's own text.
+ *
+ * **Matchers rather than a classifier, and that is the whole safety of the rule.** Classifying the
+ * value and comparing types fails the wrong way — an incomplete classification makes a good value
+ * look like the wrong type and reports correct CSS. Asking each component "do you accept this" fails
+ * by going quiet, because a component with no matcher here silences the rule entirely.
+ *
+ * They are LOOSE for the same reason, and each looseness is a report given up on purpose:
+ *
+ * - `<color>` accepts any bare word rather than a list of named colours, so a value that is really a
+ *   `<custom-ident>` is never mistaken for a fault;
+ * - `<length>` and its kind accept a number with ANY unit, because `units.json` does not group units
+ *   by value type and a hand-written partition would rot — so `<length>` with `3s` is MISSED;
+ * - anything holding a function is accepted wherever a function could go, because `calc()`,
+ *   `min()` and `var()` can each be any type at all.
+ *
+ * What survives all of that is the case that actually happens: a value of visibly the wrong SHAPE.
+ */
+const A_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)$/;
+const A_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)[a-z%]+$/i;
+const A_HEX = /^#[0-9a-f]{3,8}$/i;
+const AN_IDENT = /^-?[a-z_][\w-]*$/i;
+const A_CALL = /^[a-z-]+\(/i;
+
+const dimensional = (value: string) => A_DIMENSION.test(value) || value === "0" || A_CALL.test(value);
+
+const ACCEPTS: Readonly<Record<string, (value: string) => boolean>> = {
+  "<length>": dimensional,
+  "<percentage>": dimensional,
+  "<length-percentage>": dimensional,
+  "<angle>": dimensional,
+  "<time>": dimensional,
+  "<resolution>": dimensional,
+  "<number>": (value) => A_NUMBER.test(value) || A_CALL.test(value),
+  "<integer>": (value) => /^[+-]?\d+$/.test(value) || A_CALL.test(value),
+  "<color>": (value) => A_HEX.test(value) || AN_IDENT.test(value) || A_CALL.test(value),
+  "<url>": (value) => A_CALL.test(value),
+  "<image>": (value) => A_CALL.test(value) || AN_IDENT.test(value),
+  "<custom-ident>": (value) => AN_IDENT.test(value),
+};
+
+/**
+ * An `initial-value` its own `syntax` does not accept.
+ *
+ * **Measured in Chromium 151, and the registration does not half-work — it is GONE:**
+ *
+ * | written | kept? | the name then |
+ * |---|---|---|
+ * | `syntax: "<color>"; initial-value: #10b981` | yes | refuses junk, falls back to the colour |
+ * | `syntax: "<color>"; initial-value: 12px` | **no**, absent from `cssRules` | **accepts any junk** |
+ * | `syntax: "<length>"; initial-value: red` | **no** | **accepts any junk** |
+ *
+ * No interpolation in a transition, no fallback for a value the property cannot parse, and the name
+ * back to holding whatever it is handed. Every reason to write `@@property( … )` at all, removed by
+ * one mismatched line, and nothing anywhere says so.
+ *
+ * See {@link ACCEPTS} for why it is matchers, and for the reports deliberately given up.
+ */
+function initialValueAndSyntax(block: Block, findings: Finding[]): void {
+  let syntax: string | undefined;
+  let value: { text: string; at: number } | undefined;
+
+  for (const item of block.items) {
+    if (item.kind !== "declaration") continue;
+    // A descriptor written with a hole cannot be read, and a hole is the author's business.
+    const text = item.value.every((part) => part.kind === "text")
+      ? item.value
+          .map((part) => (part.kind === "text" ? part.text : ""))
+          .join("")
+          .trim()
+      : undefined;
+    if (text === undefined) continue;
+
+    if (item.property === "syntax") syntax = text.replace(/^["']|["']$/g, "");
+    if (item.property === "initial-value") value = { text, at: item.valueAt ?? item.at ?? 0 };
+  }
+
+  if (syntax === undefined || value === undefined || syntax === "*") return;
+
+  const components = syntax.split("|").map((one) => one.trim());
+  // A multiplier is a LIST, which this does not read; one unknown component silences the whole rule.
+  if (components.some((one) => /[+#]$/.test(one) || (one.startsWith("<") && ACCEPTS[one] === undefined))) return;
+
+  const accepted = components.some((one) => (one.startsWith("<") ? ACCEPTS[one](value.text) : one === value.text));
+  if (accepted) return;
+
+  findings.push({
+    rule: "initial-value-and-syntax",
+    at: value.at,
+    length: value.text.length,
+    message:
+      `\`syntax: "${syntax}"\` does not accept \`${value.text}\`, so the browser drops the whole ` +
+      `registration — measured, the name then holds any value at all, with no interpolation and no ` +
+      `fall back to this one. Fix whichever of the two is wrong.`,
+  });
 }
 
 /** `var(` and nothing but whitespace since — the position where a NAME belongs. */

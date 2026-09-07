@@ -1448,3 +1448,103 @@ describe("a hole where `var()` takes a name", () => {
     });
   });
 });
+
+/**
+ * An `initial-value` that its own `syntax` does not accept.
+ *
+ * **Measured in Chromium 151, and it voids the whole registration in silence:**
+ *
+ * | written | the browser kept it? | the name then |
+ * |---|---|---|
+ * | `syntax: "<color>"; initial-value: #10b981` | **yes** | refuses junk, falls back to the colour |
+ * | `syntax: "<color>"; initial-value: 12px` | **no** — absent from `cssRules` | **accepts any junk** |
+ * | `syntax: "<length>"; initial-value: red` | **no** | **accepts any junk** |
+ * | `syntax: "*"; initial-value: whatever` | yes | accepts anything, which `*` means |
+ *
+ * So the registration is not half-broken, it is GONE: no interpolation in a transition, no fallback
+ * for a value the property cannot parse, and the name back to holding whatever it is handed. Every
+ * reason to write `@@property( … )` at all, removed by one mismatched line.
+ *
+ * ## Why it is matchers and not a classifier, which is the whole safety of it
+ *
+ * The rule speaks only when it has a matcher for **every** component of the syntax and none of them
+ * accepts the value. A component it does not understand — `<transform-list>`, anything with a `+` or
+ * `#` multiplier — makes it say nothing at all.
+ *
+ * That is deliberate and it is the opposite of the obvious design. Classifying the VALUE and
+ * comparing types fails the wrong way: an incomplete classification makes a value look like the
+ * wrong type and reports correct CSS. Asking "does any component accept this" fails by going quiet.
+ *
+ * The matchers are loose for the same reason. `<color>` accepts any bare word rather than a list of
+ * named colours, so `<custom-ident>`-shaped values are never mistaken for a fault; `<length>` accepts
+ * a number with any unit rather than only length units, so `<length>` with `3s` is MISSED. Both are
+ * reports given up to keep the rule from ever being wrong.
+ */
+describe("an initial-value its own syntax does not accept", () => {
+  const of = (source: string): Finding[] => {
+    const sites = findBlocks(source);
+    const site = sites[sites.length - 1];
+    return checkBlock(readBlock(source, site.open, "C.tsx").block, site.at);
+  };
+  const rules = (source: string) => of(source).map((one) => one.rule);
+  const property = (body: string) => `const t = @@property(\n  ${body}\n);`;
+
+  test("a length where a colour was declared", () => {
+    expect(rules(property(`syntax: "<color>"; inherits: false; initial-value: 12px;`))).toEqual([
+      "initial-value-and-syntax",
+    ]);
+  });
+
+  test("a word where a length was declared", () => {
+    expect(rules(property(`syntax: "<length>"; inherits: false; initial-value: red;`))).toEqual([
+      "initial-value-and-syntax",
+    ]);
+  });
+
+  test("a fraction where an integer was declared", () => {
+    expect(rules(property(`syntax: "<integer>"; inherits: false; initial-value: 1.5;`))).toEqual([
+      "initial-value-and-syntax",
+    ]);
+  });
+
+  test("the message names both halves, because either one could be the mistake", () => {
+    const [finding] = of(property(`syntax: "<color>"; inherits: false; initial-value: 12px;`));
+
+    expect(finding.message).toContain("<color>");
+    expect(finding.message).toContain("12px");
+  });
+
+  test("the squiggle covers the value, which is the half more likely to be wrong", () => {
+    const source = property(`syntax: "<color>"; inherits: false; initial-value: 12px;`);
+    const [finding] = of(source);
+
+    expect(source.slice(finding.at, finding.at + finding.length)).toBe("12px");
+  });
+
+  describe("what it must not report", () => {
+    test.each([
+      ["a colour for a colour", `syntax: "<color>"; inherits: false; initial-value: #10b981;`],
+      ["a named colour, which is a bare word", `syntax: "<color>"; inherits: false; initial-value: red;`],
+      ["a colour function", `syntax: "<color>"; inherits: false; initial-value: rgb(1 2 3);`],
+      ["a length for a length", `syntax: "<length>"; inherits: false; initial-value: 12px;`],
+      ["zero, which is a length without a unit", `syntax: "<length>"; inherits: false; initial-value: 0;`],
+      ["a literal in the syntax", `syntax: "<length> | auto"; inherits: false; initial-value: auto;`],
+      ["`*`, which accepts anything", `syntax: "*"; inherits: false; initial-value: whatever;`],
+      ["a word for a custom-ident", `syntax: "<custom-ident>"; inherits: false; initial-value: red;`],
+      ["calc, which can be any type", `syntax: "<length>"; inherits: false; initial-value: calc(1px + 2em);`],
+      ["a component with no matcher", `syntax: "<transform-list>"; inherits: false; initial-value: rotate(0deg);`],
+      ["a multiplier, which this does not read", `syntax: "<length>+"; inherits: false; initial-value: 1px 2px;`],
+      ["no initial-value at all, a different fault", `syntax: "*"; inherits: false;`],
+    ])("%s", (_what, body) => {
+      expect(rules(property(body))).toEqual([]);
+    });
+
+    test("a syntax written as a hole, which cannot be read", () => {
+      expect(rules(property(`syntax: {{shape}}; inherits: false; initial-value: 12px;`))).toEqual([]);
+    });
+
+    test("an ordinary block, where neither descriptor means this", () => {
+      expect(rules(`const s = @@( color: red; );`)).toEqual([]);
+    });
+  });
+});

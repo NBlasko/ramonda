@@ -382,10 +382,33 @@ Each of the three has its own vocabulary, and the check follows it:
 | `@@font-face` with no `src` | reported — the descriptor is required, and the face would load nothing |
 | `font-familly: "Brand"` | reported, with the descriptor you meant |
 | `@@property` with no `inherits` | reported — measured, the browser drops the whole rule without it |
+| `initial-value` its `syntax` does not accept | reported — measured, the browser drops the whole rule for that too |
 | `&:hover { … }` in either | reported — a descriptor list has no element to select against |
 
 A hole may not go in one of these blocks otherwise: a hole is a custom property **on an element**, and
 these name something the whole stylesheet uses, so there is no element for the value to come from.
+
+**That fourth row is the one worth reading twice**, because a mismatched `initial-value` does not
+half-work — it takes the registration away entirely:
+
+```tsx expect-report:initial-value-and-syntax
+const accent = @@property(
+  syntax: "<color>";
+  inherits: false;
+  initial-value: 12px;
+);
+```
+
+> `syntax: "<color>"` does not accept `12px`, so the browser drops the whole registration — measured,
+> the name then holds any value at all, with no interpolation and no fall back to this one.
+
+Measured in Chromium: with `initial-value: #10b981` the rule is in `cssRules` and a junk value falls
+back to the colour. With `12px` the rule is **absent**, and the name accepts junk verbatim — so every
+reason to register it is gone, from one line, and nothing else would have said so.
+
+The check runs on the shape of the value and is deliberately incomplete in one direction: it accepts a
+number with any unit wherever a dimension belongs, so `syntax: "<length>"` with `3s` is **not**
+reported. A missed report costs a registration; a wrong one costs your trust in the checker.
 
 ## The names
 
