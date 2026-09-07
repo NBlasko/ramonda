@@ -25,7 +25,7 @@
  *   node scripts/check-examples.mjs query     # only paths containing "query"
  */
 import { analyzeProgram } from "@ramonda/check";
-import { checkBlock, checkText, findBlocks, mayHoldABlock, readBlock, virtualFile } from "@ramonda/css/compiler";
+import { checkSource, mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -680,32 +680,58 @@ for (const group of groups.values()) {
    *
    * Read from the example's own text rather than from the virtual copy: the rules answer in the
    * author's coordinates, which is what a line number here has to be.
+   *
+   * **`checkSource` rather than the sequence written out here, and that was a real divergence.** This
+   * used to call `readBlock` with no `resolve` and `checkBlock` with no `references`, while
+   * `ramonda-check` passed both — so a reference to a named site read here as a HOLE rather than as
+   * the name it compiles to, and `variable-set-by-another-name` could never fire on a documented
+   * example. Three callers of one sequence, and this was the one that had drifted.
+   *
+   * A refused block loses the other blocks in its file rather than only itself, which the per-site
+   * loop did not. That is the right trade: the refusal is already reported above and the file fails
+   * either way, so what is lost is CSS findings on a file that is not going to pass.
    */
   for (const unit of group.units) {
     if (!mayHoldABlock(unit.code)) continue;
-    for (const site of findBlocks(unit.code)) {
-      let read;
-      try {
-        read = readBlock(unit.code, site.open, unit.file);
-      } catch {
-        // A block the parser refuses is already reported as a refusal, above.
+    let found;
+    try {
+      found = checkSource(unit.code, unit.file);
+    } catch {
+      // A block the parser refuses is already reported as a refusal, above.
+      continue;
+    }
+    if (found.length === 0) continue;
+    const list = byUnit.get(unit) ?? [];
+    for (const finding of found) {
+      /**
+       * `expect-report` silences a CSS rule exactly as it silences a framework one, and it did not.
+       * The marker was honoured only in the `analyzeProgram` loop, so a page that teaches a CSS
+       * mistake had no way to say so — measured on this page's own `var(--ackcent)` example, which
+       * failed the gate while carrying the marker for the very rule that reported it. `usedRules` is
+       * fed too, so a marker for a rule that has stopped firing is still caught as stale.
+       */
+      const allowed = unit.expectReport;
+      if (allowed === true) {
+        used.add(unit);
         continue;
       }
-      const found = [...checkText(unit.code, site.open, read.end), ...checkBlock(read.block, site.at)];
-      if (found.length === 0) continue;
-      const list = byUnit.get(unit) ?? [];
-      for (const finding of found) {
-        const before = unit.code.slice(0, finding.at);
-        const line = before.split("\n").length - 1;
-        list.push({
-          where: `${unit.file}:${unit.line + line}`,
-          column: finding.at - (before.lastIndexOf("\n") + 1) + 1,
-          message: `${finding.rule}: ${finding.message}`,
-          code: 0,
-        });
+      if (allowed !== undefined && allowed.has(finding.rule)) {
+        used.add(unit);
+        usedRules.add(`${unit.file}\u0000${finding.rule}`);
+        continue;
       }
-      byUnit.set(unit, list);
+
+      const before = unit.code.slice(0, finding.at);
+      const line = before.split("\n").length - 1;
+      list.push({
+        where: `${unit.file}:${unit.line + line}`,
+        column: finding.at - (before.lastIndexOf("\n") + 1) + 1,
+        message: `${finding.rule}: ${finding.message}`,
+        code: 0,
+      });
     }
+    if (list.length === 0) continue;
+    byUnit.set(unit, list);
   }
 
   const program = ts.createProgram([globalsFile, ...ambientFiles, ...group.units.map((u) => u.path)], options);

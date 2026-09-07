@@ -32,6 +32,7 @@ export { Sheet } from "./sheet";
 export { readBlock } from "./read";
 export type { Finding, RuleId } from "./rules";
 export { checkBlock, checkText } from "./rules";
+export { checkSource } from "./source";
 export type { BlockSite } from "./scan";
 export { findBlocks, mayHoldABlock } from "./scan";
 export type { Placeheld } from "./tooling";

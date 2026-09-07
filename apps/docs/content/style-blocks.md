@@ -296,8 +296,25 @@ is reported:
 > `--accent` is set here, and `accent` is read as a binding below — those are two different custom
 > properties, so this declaration does nothing for it. Write `{{accent}}: …` to set the one you read.
 
-A plain `--name` you both set and read is ordinary CSS and is left alone; so is one that comes from a
-stylesheet outside your app.
+A plain `--name` you both set and read is ordinary CSS and is left alone.
+
+**And a plain name you read by a typo of one you set is reported too**, which is the version of the
+same mistake that needs no bindings at all:
+
+```tsx expect-report:variable-read-by-another-name
+const card = @@(
+  --accent: #10b981;
+  background: var(--ackcent);
+);
+```
+
+> `--ackcent` is read here and this block sets `--accent` — did you mean `--accent`?
+
+It speaks only about a name the block itself sets, and that limit is deliberate rather than a gap. A
+custom property inherits, so `var(--brand)` reading something a global stylesheet or an ancestor
+element set is correct CSS — and a block can see neither. A rule that named every variable it could
+not find would report code that works, so it says nothing about a name it has no evidence about, and
+`var(--nothing-sets-this)` is left alone.
 
 ### A font, and a property you can animate
 

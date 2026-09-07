@@ -2,11 +2,9 @@ import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
 import { positionOf } from "./compiler/errors";
-import { readBlock } from "./compiler/read";
-import { checkBlock, checkText } from "./compiler/rules";
-import { findBlocks, mayHoldABlock } from "./compiler/scan";
+import { mayHoldABlock } from "./compiler/scan";
+import { checkSource } from "./compiler/source";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
-import { namedSites } from "./compiler/references";
 
 /**
  * Type-checking a whole project whose source TypeScript cannot parse.
@@ -145,7 +143,12 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
 const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.column}`;
 
 /**
- * What the CSS rules say about one file's blocks.
+ * What the CSS rules say about one file's blocks, in this reporter's own shape.
+ *
+ * The sequence itself is {@link checkSource} and is deliberately not written out here: the
+ * documentation gate needs the same answer, and this used to be the only place that knew it — so the
+ * gate ran the framework's checker and no CSS rule at all, and a doc example could carry a CSS fault
+ * and pass.
  *
  * A second parse of the same file, and it is worth it: the rules read a `Block`, the virtual file
  * emits TSX from one, and threading the parse through both would tie the two together for a saving
@@ -155,20 +158,12 @@ const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.colu
  * reported as a refusal and the run has stopped.
  */
 function cssFindings(fileName: string, source: string): Finding[] {
-  const out: Finding[] = [];
-  // The same map the transform uses, so a reference to a named site reads here as it compiles: as
-  // the name it stands for, and not as a hole. See `namedSites`.
-  const references = namedSites(source);
-
-  for (const site of findBlocks(source)) {
-    const read = readBlock(source, site.open, fileName, { resolve: (name) => references.get(name) });
-    // The text and the parse, because one of them has no name for a `//` — see `checkText`.
-    for (const finding of [...checkText(source, site.open, read.end), ...checkBlock(read.block, site.at, references)]) {
-      out.push({ file: fileName, ...positionOf(source, finding.at), code: finding.rule, message: finding.message });
-    }
-  }
-
-  return out;
+  return checkSource(source, fileName).map((finding) => ({
+    file: fileName,
+    ...positionOf(source, finding.at),
+    code: finding.rule,
+    message: finding.message,
+  }));
 }
 
 /**

@@ -1267,3 +1267,100 @@ describe("a reference to a named site is checked as the text it became", () => {
     expect(findings(source).map((one) => one.rule)).toContain("unknown-value");
   });
 });
+
+/**
+ * A `var()` reading a name that is nearly one the same block SETS.
+ *
+ * **The fault the whole `@ramonda/css` variable discussion started from.** The user's own words:
+ * *"background: var(--ackcent); ovo me brine"* — and measured, three ways, nothing reported it:
+ *
+ * | written | reported before this |
+ * |---|---|
+ * | `--accent: #10b981; background: var(--ackcent);` | nothing |
+ * | `--accent: {{accent}}; background: var(--ackcent);` | nothing |
+ * | `background: var(--nothing-sets-this);` | nothing |
+ *
+ * ## Why only a NEAR MISS, and why the third row must stay silent
+ *
+ * A custom property inherits, so `var(--brand)` reading something a stylesheet or an ancestor set is
+ * ordinary, correct CSS — and a block cannot see either. **A rule that spoke about every unknown name
+ * would report correct CSS**, which is how a checker earns being switched off. So it speaks only when
+ * the block itself sets a name this one is within an edit or two of: then the author demonstrably
+ * meant that name, and the evidence is in the same few lines.
+ *
+ * This is the deny-list-not-allow-list discipline track Y chose for at-rules, and the same
+ * `nearest()` bound the unit rule uses — both for the same reason, that being quiet about something
+ * new costs a missed report while being loud about it costs correct code.
+ *
+ * A name that matches EXACTLY is the working case and says nothing, at any nesting: the set may be
+ * at the top of the block and the read inside `&:hover`, which is the normal shape.
+ */
+describe("a variable read by a name the block does not set", () => {
+  const of = (source: string): Finding[] => checkBlock(readBlock(source, 2, "C.tsx").block);
+  const rules = (source: string) => of(source).map((one) => one.rule);
+
+  test("a near miss on a name the block sets", () => {
+    const findings = of(`@@(\n  --accent: #10b981;\n  background: var(--ackcent);\n)`);
+
+    expect(findings.map((one) => one.rule)).toEqual(["variable-read-by-another-name"]);
+    expect(findings[0].message).toContain("--accent");
+  });
+
+  test("the squiggle covers the name that was read, not the declaration", () => {
+    const source = `@@(\n  --accent: #10b981;\n  background: var(--ackcent);\n)`;
+    const [finding] = of(source);
+
+    expect(source.slice(finding.at, finding.at + finding.length)).toBe("--ackcent");
+  });
+
+  test("a name set by a hole is still a name the block sets", () => {
+    expect(rules(`@@(\n  --accent: {{accent}};\n  background: var(--ackcent);\n)`)).toEqual([
+      "variable-read-by-another-name",
+    ]);
+  });
+
+  test("set at the top and read inside a nested rule", () => {
+    expect(rules(`@@(\n  --accent: red;\n  &:hover {\n    color: var(--acent);\n  }\n)`)).toEqual([
+      "variable-read-by-another-name",
+    ]);
+  });
+
+  test("and the other way round, because a block has one scope for these", () => {
+    expect(rules(`@@(\n  &:hover {\n    --accent: red;\n  }\n  color: var(--acent);\n)`)).toEqual([
+      "variable-read-by-another-name",
+    ]);
+  });
+
+  test("a fallback's own `var()` is read too", () => {
+    expect(rules(`@@(\n  --accent: red;\n  color: var(--brand, var(--ackcent));\n)`)).toEqual([
+      "variable-read-by-another-name",
+    ]);
+  });
+
+  describe("what it must not report, because the CSS is correct", () => {
+    test("the exact name, which is the working case", () => {
+      expect(rules(`@@(\n  --accent: red;\n  background: var(--accent);\n)`)).toEqual([]);
+    });
+
+    test("the exact name across a nesting", () => {
+      expect(rules(`@@(\n  --accent: red;\n  &:hover {\n    color: var(--accent);\n  }\n)`)).toEqual([]);
+    });
+
+    /** The third row of the table above, and the reason the rule is a near miss and not a lookup. */
+    test("a name nothing here sets — it inherits, and this block cannot see where from", () => {
+      expect(rules(`@@(\n  background: var(--nothing-sets-this);\n)`)).toEqual([]);
+    });
+
+    test("nor one that is merely unlike anything set", () => {
+      expect(rules(`@@(\n  --accent: red;\n  background: var(--page-gutter);\n)`)).toEqual([]);
+    });
+
+    test("a block that sets nothing reports nothing, whatever it reads", () => {
+      expect(rules(`@@(\n  color: var(--a);\n  background: var(--b);\n)`)).toEqual([]);
+    });
+
+    test("a `var()` with a fallback that is the name it set", () => {
+      expect(rules(`@@(\n  --accent: red;\n  color: var(--accent, blue);\n)`)).toEqual([]);
+    });
+  });
+});
