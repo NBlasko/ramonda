@@ -35,11 +35,19 @@ const CARET = "/*|*/";
  * A language service over one file, with the plugin's proxy in front of it — which is exactly the
  * arrangement `tsserver` builds.
  */
-function editor(marked: string, config: { properties?: string } = { properties: join(PACKAGE, "src", "properties") }) {
+function editor(
+  marked: string,
+  config: { properties?: string; as?: string } = { properties: join(PACKAGE, "src", "properties") },
+) {
   const source = marked.replace(CARET, "");
   const caret = marked.indexOf(CARET);
-
+  /**
+   * The file is in the program under its NORMALISED path — which is the only way a program works —
+   * and also answers to the spelling the editor uses, exactly as a filesystem does: both paths open
+   * one file. `config.as` is that second spelling, and the questions are asked under it.
+   */
   const files: Record<string, string> = { [FILE]: source, [JSX_FILE]: JSX_TYPES };
+  if (config.as !== undefined) files[config.as] = source;
 
   /**
    * A host, built fresh each time it is asked for.
@@ -1007,6 +1015,57 @@ describe("hovering a declaration", () => {
  * whether the mapping is off by a boundary. The assertion is on the character the span lands on,
  * which says which of the three it is in one run.
  */
+/**
+ * The same file, asked for under a path spelled a different way — which is what broke it.
+ *
+ * **Reported by the user twice**, and the first investigation could not reproduce it because it
+ * always asked under the identical string. The mapping back to the author's file is skipped for a
+ * definition in ANOTHER file, and "another" was decided by `!==` on two paths. TypeScript normalises
+ * the path it puts in a definition entry; an editor does not always ask under the normalised one —
+ * a symlinked checkout, a differently-cased drive, a `./` left in a project reference — and then the
+ * two strings differ, the entry comes back untouched, and a VIRTUAL offset is used as an author
+ * offset.
+ *
+ * The symptom is what makes it hard to place: the position is wrong by exactly the length of the
+ * virtual file's preamble, so it lands mid-word in whatever happens to sit there — for the user, in
+ * the middle of the paragraph of JSDoc above the declaration. It does it from the block AND from the
+ * declaration itself, which is the clue that says it is not about blocks at all.
+ */
+describe("a file asked for under a differently spelled path", () => {
+  const SOURCE =
+    `/**\n * A comment long enough that landing inside it is unmistakable, and then some more of it.\n */\n` +
+    `const CONTROL = @@( color: red; );\n\nconst card = @@(\n  ...{CONTROL};\n  padding: 8px;\n);\n`;
+
+  // Built by concatenation, not by `join` — which normalises, and normalising is the whole point.
+  const DIRECTORY = join(PACKAGE, "src", "__tests__");
+
+  test.each([
+    ["a `.` segment in the middle", `${DIRECTORY}/./Card.tsx`],
+    ["a doubled separator", `${DIRECTORY}//Card.tsx`],
+  ])("%s still maps the definition home", (_what, spelled) => {
+    const { service, source } = editor(SOURCE, { properties: join(PACKAGE, "src", "properties"), as: spelled });
+    const at = source.lastIndexOf("...{CONTROL}") + 4;
+
+    const [only] = service.getDefinitionAtPosition(spelled, at) ?? [];
+    if (only === undefined) throw new Error("no definition");
+
+    expect(source.slice(only.textSpan.start, only.textSpan.start + only.textSpan.length)).toBe("CONTROL");
+  });
+
+  test("and so does a document highlight", () => {
+    const spelled = `${join(PACKAGE, "src", "__tests__")}/./Card.tsx`;
+    const { service, source } = editor(SOURCE, { properties: join(PACKAGE, "src", "properties"), as: spelled });
+    const at = source.lastIndexOf("...{CONTROL}") + 4;
+
+    const [group] = service.getDocumentHighlights(spelled, at, [spelled]) ?? [];
+    if (group === undefined) throw new Error("no highlights");
+
+    for (const span of group.highlightSpans) {
+      expect(source.slice(span.textSpan.start, span.textSpan.start + span.textSpan.length)).toBe("CONTROL");
+    }
+  });
+});
+
 describe("going to a binding a block reads", () => {
   const source =
     `/**\n * A paragraph of comment, long enough that landing on it is unmistakable.\n *\n * A second one, for the same reason.\n */\nconst CONTROL = @@( color: red; );\n\n` +

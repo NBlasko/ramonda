@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type ts from "typescript";
 import type { BlockItem } from "./compiler/ast";
 import {
@@ -84,6 +85,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
     create(info) {
       const host = info.languageServiceHost;
       const service = info.languageService;
+      /** Whether two paths name one file — see `sameFileAs`, and the report that made it necessary. */
+      const sameFile = sameFileAs(host, tsModule);
 
       /**
        * File → its virtual copy, kept until the file's version changes.
@@ -563,7 +566,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           const at = file.virtualOf(position);
           if (at === undefined) return undefined;
           const got = run(fileName, at);
-          return got === undefined ? undefined : elsewhere(file, fileName, got);
+          return got === undefined ? undefined : elsewhere(file, fileName, got, sameFile);
         };
 
       proxy.getDefinitionAtPosition = goingTo((name, at) => service.getDefinitionAtPosition(name, at));
@@ -584,7 +587,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         if (textSpan === undefined) return undefined;
         return {
           textSpan,
-          definitions: got.definitions === undefined ? undefined : elsewhere(file, fileName, got.definitions),
+          definitions: got.definitions === undefined ? undefined : elsewhere(file, fileName, got.definitions, sameFile),
         };
       };
 
@@ -598,7 +601,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         if (got === undefined) return undefined;
 
         return got.map((one) =>
-          one.fileName !== fileName
+          !sameFile(one.fileName, fileName)
             ? one
             : {
                 ...one,
@@ -1054,14 +1057,43 @@ function elsewhere<T extends { fileName: string; textSpan: ts.TextSpan; contextS
   file: VirtualFile,
   fileName: string,
   entries: readonly T[],
+  same: (a: string, b: string) => boolean,
 ): T[] {
   return entries.flatMap((entry) => {
-    if (entry.fileName !== fileName) return [entry];
+    if (!same(entry.fileName, fileName)) return [entry];
 
     const textSpan = back(file, entry.textSpan);
     if (textSpan === undefined) return [];
     return [{ ...entry, textSpan, contextSpan: back(file, entry.contextSpan) }];
   });
+}
+
+/**
+ * Whether two paths name the same file — and `!==` was not good enough, twice.
+ *
+ * **Reported by the user twice, and the first look could not reproduce it**, because a test asks
+ * under the identical string every time. A definition in ANOTHER file must be left alone; one in
+ * THIS file must be mapped back out of the virtual coordinates. Deciding that with `!==` on two raw
+ * paths gets it wrong the moment the editor's spelling differs from TypeScript's normalised one — a
+ * symlinked checkout, a `./` that survived a project reference, a doubled separator, or a case that
+ * differs on a case-insensitive volume.
+ *
+ * The failure is silent and reads like nonsense: the entry passes through unmapped, so a VIRTUAL
+ * offset is used as an author offset and go-to-definition lands mid-word, wrong by exactly the
+ * length of the preamble. The user saw it land inside the paragraph of comment above the
+ * declaration — from the block and from the declaration alike, which is what says it was never
+ * about blocks at all.
+ *
+ * `resolve` settles the separators and the segments; the HOST says whether case matters, and is
+ * believed rather than guessed at from the platform.
+ */
+function sameFileAs(host: ts.LanguageServiceHost, typescript: typeof ts): (a: string, b: string) => boolean {
+  const cased = host.useCaseSensitiveFileNames?.() ?? typescript.sys?.useCaseSensitiveFileNames ?? true;
+  return (a, b) => {
+    const one = resolve(a);
+    const other = resolve(b);
+    return cased ? one === other : one.toLowerCase() === other.toLowerCase();
+  };
 }
 
 /**
