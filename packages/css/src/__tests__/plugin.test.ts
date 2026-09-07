@@ -1053,3 +1053,135 @@ describe("going to a binding a block reads", () => {
     expect(source.slice(got.textSpan.start, got.textSpan.start + got.textSpan.length)).toBe("CONTROL");
   });
 });
+
+/**
+ * `optionalReplacementSpan`, which is the span an editor REPLACES when a completion is accepted.
+ *
+ * **Reported by a user as "no completion inside an `@@if` group", and it took eleven measurements to
+ * find because the entries were always right.** The list came back with all 551 properties and the
+ * one they wanted among them; what was wrong was the span beside it.
+ *
+ * Every other span this proxy returns is mapped back out of the virtual file — `entry.replacementSpan`
+ * on the line below, `textSpan` in `getDefinitionAndBoundSpan`, and so on. This one arrived through
+ * `...got` and was handed on with the VIRTUAL file's coordinates, which point at unrelated characters
+ * in the author's:
+ *
+ *     inside an `@@if` group, typing `op`     the span covered `dd`
+ *     at the top of a block, typing `dis`     the span covered `ip}>flip the tone<`
+ *
+ * The caret is outside a span like that, so an editor is entitled to drop the list — and VS Code
+ * did, in the group, while recovering at the top of a block. That difference is why it looked like
+ * groups were special when nothing about the group was involved.
+ */
+describe("the span a completion replaces", () => {
+  test.each([
+    ["at the top of a block", `const a = <div css=@@(\n  dis${CARET}\n)>x</div>;\n`, "dis"],
+    ["after a declaration", `const a = <div css=@@(\n  display: flex;\n  op${CARET}\n)>x</div>;\n`, "op"],
+    ["inside an `@@if` group", `const a = <div css=@@(\n  @@if ({on}) {\n    op${CARET}\n  }\n)>x</div>;\n`, "op"],
+    [
+      "second in an `@@if` group",
+      `const a = <div css=@@(\n  @@if ({on}) {\n    opacity: 0.5;\n    cu${CARET}\n  }\n)>x</div>;\n`,
+      "cu",
+    ],
+    ["inside a nested rule", `const a = <div css=@@(\n  &:hover {\n    cu${CARET}\n  }\n)>x</div>;\n`, "cu"],
+  ])("%s covers what was typed", (_what, marked, typed) => {
+    const { service, source, caret } = editor(marked);
+    const got = service.getCompletionsAtPosition(FILE, caret, undefined);
+    if (got === undefined) throw new Error("no completions");
+
+    const span = got.optionalReplacementSpan;
+    if (span === undefined) throw new Error("no optionalReplacementSpan");
+
+    // The characters the editor would replace are the ones the author is typing over.
+    expect(source.slice(span.start, span.start + span.length)).toBe(typed);
+    // And the caret is inside it, which is what an editor checks before it shows the list at all.
+    expect(span.start + span.length).toBe(caret);
+  });
+});
+
+/**
+ * And no span may reach past the line the caret is on.
+ *
+ * **Found while fixing the one above, and it is the worse of the two**: a span that is merely absent
+ * costs a completion, and a span that is too LONG deletes code. Measured on the real file, typing
+ * `dis` at the top of a block came back with a span of seventeen characters — `dis`, the newline, and
+ * the `...` of the spread below it. Accepting `display` would have left:
+ *
+ *     display{CONTROL};
+ *
+ * with the spread's own line gone. The cause is the tolerant reading: a declaration with no colon
+ * becomes a quoted key, and the quote runs to the end of what it can take.
+ *
+ * A property name never contains a newline, so a span that does is not a name and is dropped —
+ * the editor then replaces the word under the caret, which is what it does with no span at all.
+ */
+describe("a span that would eat the line below", () => {
+  test.each([
+    ["at the top of a block, above a spread", `const a = <div css=@@(\n  dis${CARET}\n  ...{base};\n)>x</div>;\n`],
+    ["above another declaration", `const a = <div css=@@(\n  dis${CARET}\n  color: red;\n)>x</div>;\n`],
+    ["above a nested rule", `const a = <div css=@@(\n  dis${CARET}\n  &:hover { color: red; }\n)>x</div>;\n`],
+    ["above the block's own close", `const a = <div css=@@(\n  dis${CARET}\n)>x</div>;\n`],
+  ])("%s", (_what, marked) => {
+    const { service, source, caret } = editor(marked);
+    const got = service.getCompletionsAtPosition(FILE, caret, undefined);
+    if (got === undefined) throw new Error("no completions");
+
+    for (const span of [got.optionalReplacementSpan, got.entries.find((e) => e.name === "display")?.replacementSpan]) {
+      if (span === undefined) continue;
+      expect(source.slice(span.start, span.start + span.length)).not.toContain("\n");
+    }
+  });
+
+  /** And what the editor would be left with, which is the fault stated as a fault. */
+  test("accepting a completion does not take the line below with it", () => {
+    const marked = `const a = <div css=@@(\n  dis${CARET}\n  ...{base};\n)>x</div>;\n`;
+    const { service, source, caret } = editor(marked);
+    const got = service.getCompletionsAtPosition(FILE, caret, undefined);
+    const entry = got?.entries.find((one) => one.name === "display");
+    if (entry === undefined) throw new Error("no `display`");
+
+    const span = entry.replacementSpan ?? got?.optionalReplacementSpan;
+    const applied =
+      span === undefined
+        ? source
+        : source.slice(0, span.start) + (entry.insertText ?? entry.name) + source.slice(span.start + span.length);
+
+    expect(applied).toContain("...{base};");
+  });
+});
+
+/**
+ * A caret on a blank line at the END of a block, or of a group inside one.
+ *
+ * **The user's actual fault, and it took thirteen measurements to corner** because every reduced
+ * fixture put the blank line BETWEEN two declarations, where it works. At the end of a group it does
+ * not: the virtual file closed `__block([…])` before the author's trailing newlines and emitted them
+ * after it, so a caret there was outside the call — in the JSX — and TypeScript answered with its
+ * globals instead of the properties.
+ *
+ * Measured on the user's own file: 81 completions with no `cursor` and no `display` among them, where
+ * the line above gave 551 with both.
+ *
+ * The blank line a person is about to type on is exactly where completion is wanted, so this is not
+ * an edge: it is what pressing Enter does.
+ */
+describe("a caret on a blank line at the end", () => {
+  test.each([
+    ["of a block", `const a = <div css=@@(\n  display: flex;\n  ${CARET}\n)>x</div>;\n`],
+    ["of a block, with nothing on the line", `const a = <div css=@@(\n  display: flex;\n${CARET}\n)>x</div>;\n`],
+    [
+      "of an `@@if` group",
+      `const a = <div css=@@(\n  @@if ({on}) {\n    opacity: 0.5;\n    ${CARET}\n  }\n)>x</div>;\n`,
+    ],
+    [
+      "of a group, two blank lines and stray spaces",
+      `const a = <div css=@@(\n  @@if ({on}) {\n    opacity: 0.5;\n\n      ${CARET}\n\n  }\n)>x</div>;\n`,
+    ],
+    ["of a nested rule", `const a = <div css=@@(\n  &:hover {\n    color: red;\n    ${CARET}\n  }\n)>x</div>;\n`],
+  ])("%s offers the property names", (_what, marked) => {
+    const offered = names(marked);
+
+    expect(offered.length).toBeGreaterThan(400);
+    for (const property of SOME_PROPERTIES) expect(offered).toContain(property);
+  });
+});

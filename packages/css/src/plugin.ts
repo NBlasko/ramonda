@@ -359,13 +359,55 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         const where = cache.get(fileName)?.where ?? EMPTY_REGIONS;
         const css = isCss(where, position);
 
+        /**
+         * A replacement span, mapped home and REFUSED if it reaches past the caret's own line.
+         *
+         * **The second of two faults in the same field, and the worse one.** A span that is missing
+         * costs a completion; a span that is too long DELETES CODE. Measured on the real file, `dis`
+         * at the top of a block came back covering seventeen characters — `dis`, the newline, and the
+         * `...` of the spread below — so accepting `display` would have left `display{CONTROL};` with
+         * the spread's own line gone.
+         *
+         * The cause is the tolerant reading, which is right to do what it does: a declaration with
+         * no colon becomes a quoted key, and the quote runs to the end of what it can take. What is
+         * wrong is offering that as something to replace.
+         *
+         * A property name never contains a newline, so a span that does is not a name. Dropped, the
+         * editor replaces the word under the caret — which is what it does when there is no span at
+         * all, and is right in every case measured.
+         */
+        const authored = readSnapshot(fileName);
+        const source = authored?.getText(0, authored.getLength()) ?? "";
+
+        const replaces = (span: ts.TextSpan | undefined): ts.TextSpan | undefined => {
+          const home = back(file, span);
+          if (home === undefined) return undefined;
+          return source.slice(home.start, home.start + home.length).includes("\n") ? undefined : home;
+        };
+
         return {
           ...got,
+          /**
+           * The span the editor REPLACES when a completion is accepted, mapped like every other.
+           *
+           * **It arrived through `...got` in the virtual file's coordinates**, and pointed at
+           * unrelated characters in the author's — measured, `op` in an `@@if` group came back as a
+           * span over `dd`, and `dis` at the top of a block as a span over `ip}>flip the tone<`. A
+           * caret outside its own replacement span is something an editor is entitled to drop, and
+           * VS Code did: no completions inside a group, while recovering at the top of a block. That
+           * asymmetry is why it looked as though groups were special when nothing about the group was
+           * involved.
+           *
+           * `undefined` rather than the unmapped span when it cannot be mapped: no span at all means
+           * the editor uses the word under the caret, which is right, and a wrong one is what this
+           * bug was.
+           */
+          optionalReplacementSpan: replaces(got.optionalReplacementSpan),
           entries: got.entries.map((entry) => ({
             ...entry,
             name: css ? unquoted(entry.name) : entry.name,
             insertText: css && entry.insertText === undefined ? unquoted(entry.name) : entry.insertText,
-            replacementSpan: back(file, entry.replacementSpan),
+            replacementSpan: replaces(entry.replacementSpan),
           })),
         };
       };
