@@ -84,6 +84,16 @@ function editor(
   const host = makeHost();
 
   const plain = ts.createLanguageService(host);
+  /**
+   * What `tsserver`'s own `Project` provides, and a bare host does not.
+   *
+   * `toLineColumnOffset` asks the host for a source file and falls back to `readFile` when there is
+   * none — so a plain harness reads the AUTHOR's text and cannot see the fault this exists for. The
+   * real editor hands over the PROGRAM's file, which holds the virtual text. Without this line the
+   * assertions below pass whether or not the proxy does anything.
+   */
+  (host as { getSourceFileLike?: (name: string) => ts.SourceFile | undefined }).getSourceFileLike = (name) =>
+    plain.getProgram()?.getSourceFile(name);
   const service = init({ typescript: ts }).create({ languageService: plain, languageServiceHost: host, config });
 
   /** What a service with no plugin at all says — see `makeHost` for why it needs its own. */
@@ -1031,6 +1041,59 @@ describe("hovering a declaration", () => {
  * the middle of the paragraph of JSDoc above the declaration. It does it from the block AND from the
  * declaration itself, which is the clue that says it is not about blocks at all.
  */
+/**
+ * Turning an offset into a line and a column — the one method nothing proxied, and the whole reason
+ * go-to-definition landed in the wrong place.
+ *
+ * **Reported by the user three times.** Two investigations looked at whether the SPAN was mapped, and
+ * it was: measured against their own file through a real `tsserver`, the plugin answered
+ * `virtual 10081 → author 9799`, which is exactly right. The span was never the problem.
+ *
+ * `tsserver` then converts that offset to a line and a column, and `toFileSpan` does it with
+ * **`languageService.toLineColumnOffset`** rather than with the editor's own line map. That method
+ * reads the program's source file — the VIRTUAL text — so a correct author offset came back as a
+ * position in a file nobody wrote. Measured, and it matches the report to the character:
+ *
+ *     offset 9799   in the author's text  -> 307:7     the declaration
+ *                   in the virtual text   -> 302:55    inside the comment above it
+ *
+ * `navtree` was the control that made it findable: it reports the same declaration at 307:7, because
+ * it converts through the editor's `ScriptInfo` instead. One question, two answers, and only one of
+ * them went through this method.
+ */
+describe("an offset turned into a line and a column", () => {
+  const SOURCE =
+    `/**\n * A comment long enough that landing inside it is unmistakable, and then some more of it.\n */\n` +
+    `const CONTROL = @@( color: red; );\n\nconst card = @@(\n  ...{CONTROL};\n  padding: 8px;\n);\n`;
+
+  /** Where a position really is, counted in the author's own text. */
+  const trueLine = (source: string, at: number) => {
+    const before = source.slice(0, at);
+    return { line: before.split("\n").length - 1, character: at - (before.lastIndexOf("\n") + 1) };
+  };
+
+  test("is counted in the author's text, not in the virtual one", () => {
+    const { service, source } = editor(SOURCE);
+    const at = source.indexOf("const CONTROL") + "const ".length;
+
+    expect(service.toLineColumnOffset?.(FILE, at)).toEqual(trueLine(source, at));
+  });
+
+  test("and above a block too, where the two texts still agree", () => {
+    const { service, source } = editor(SOURCE);
+    const at = source.indexOf("A comment long");
+
+    expect(service.toLineColumnOffset?.(FILE, at)).toEqual(trueLine(source, at));
+  });
+
+  test("a file with no block at all is left to the service", () => {
+    const plain = `export const a = 1;\n`;
+    const { service } = editor(plain);
+
+    expect(service.toLineColumnOffset?.(FILE, plain.indexOf("a = 1"))).toEqual(trueLine(plain, plain.indexOf("a = 1")));
+  });
+});
+
 describe("a file asked for under a differently spelled path", () => {
   const SOURCE =
     `/**\n * A comment long enough that landing inside it is unmistakable, and then some more of it.\n */\n` +

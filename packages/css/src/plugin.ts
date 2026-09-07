@@ -574,6 +574,35 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
       proxy.getImplementationAtPosition = goingTo((name, at) => service.getImplementationAtPosition(name, at));
       proxy.getReferencesAtPosition = goingTo((name, at) => service.getReferencesAtPosition(name, at));
 
+      /**
+       * An OFFSET turned into a line and a column — the one method nothing proxied, and the whole
+       * reason go-to-definition landed in the wrong place. Reported three times.
+       *
+       * Two investigations checked whether the SPAN was mapped, and it was: measured through a real
+       * `tsserver` against the user's own file, this plugin answered `virtual 10081 → author 9799`,
+       * which is exactly the declaration. The span was never the problem.
+       *
+       * `tsserver` then converts that offset with `toFileSpan`, which calls
+       * `languageService.toLineColumnOffset` rather than using the editor's own line map — and that
+       * reads the program's source file, which is the VIRTUAL text. So a correct author offset came
+       * back as a position in a file nobody wrote, wrong by however much the two texts differ above
+       * it. Measured, and it matched the report to the character: offset 9799 is 307:7 in the
+       * author's text and 302:55 in the virtual one, which is inside the comment above.
+       *
+       * `navtree` was the control that made this findable — it reports the same declaration
+       * correctly, because it converts through the editor's `ScriptInfo` instead. One question, two
+       * answers, and only one of them came through here.
+       *
+       * Every position this proxy hands out is in the AUTHOR's coordinates, so this counts lines in
+       * the author's text. That is what the parsed copy beside the virtual one is for.
+       */
+      proxy.toLineColumnOffset = (fileName, position) => {
+        overlay(fileName, readSnapshot);
+        const author = cache.get(fileName)?.author;
+        if (author === undefined) return service.toLineColumnOffset?.(fileName, position) ?? { line: 0, character: 0 };
+        return author.getLineAndCharacterOfPosition(position);
+      };
+
       proxy.getDefinitionAndBoundSpan = (fileName, position) => {
         const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getDefinitionAndBoundSpan(fileName, position);
