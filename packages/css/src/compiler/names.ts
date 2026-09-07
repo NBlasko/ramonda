@@ -159,6 +159,16 @@ const SAFE_VALUE = /^[a-zA-Z0-9#.,%()/_+*=<>:;!&|~^$?@[\]{}-]+$/;
  *
  * The same argument covers CONTEXT: every context form starts with a character an abbreviation
  * cannot — `:`, `.`, `_`, `@`, `[` — so a name carrying one can never be read as a name without.
+ *
+ * ## Why a resolved reference keeps its hash in the name
+ *
+ * `color: var({accent})` names itself `r-c-var(--r-6lbmZbNkr)`, which is a written name with a hash
+ * inside it, and the binding is right there — so `r-c-accent` looks free. It is not: a class must be
+ * a function of the RULE, and a binding name is not one. Two files that each declare a `@@property`
+ * called `accent`, with different descriptors, generate different custom properties — and both would
+ * then want `r-c-accent` for two different rules. The collision assertion fails the build rather than
+ * corrupting a page, but a build that fails is not an improvement. The hash in that name IS the
+ * identity.
  */
 export function nameFor(declaration: {
   property: string;

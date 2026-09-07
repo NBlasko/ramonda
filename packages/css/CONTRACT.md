@@ -216,10 +216,30 @@ reasons it was.
 
 ## 3. The names
 
+A class name says what its rule DOES, and falls back to a hash only when it cannot.
+
 | | |
 |---|---|
-| class | `r-` + **16** lowercase hex characters of `sha256(normalised)` |
+| class, written | `r-`, a short spelling of the property, `-`, and the value as written — spaces as `_`, the context in front |
+| class, hashed | `r-` + **9** base62 characters of `sha256(normalised)` |
 | custom property | `--<class>-<n>`, `n` being the hole's 0-based index in source order |
+
+```
+padding: 12px                            r-p-12px
+display: flex                            r-disp-flex
+&:hover { color: red }                   r-:hover-c-red
+color: {accent}                          r-OsXzXT1Qd     a hole
+grid-template-columns: repeat(auto-…)    r-cb29PN6m0     over budget
+@media (min-width: 40rem) { gap: 8px }   r-e1HIiLE0b     an unspellable context
+```
+
+**The hash is the FLOOR, not the norm**, and there are four ways to reach it: the declaration holds a
+hole, the name would exceed its budget, the value holds a character a class name may not, or the
+context cannot be spelled. Measured on this repository's own blocks, 82% are written rather than
+hashed, at a median of 14 characters.
+
+**Written names are SMALLER gzipped** — 1469 B → 1430 B on the measured corpus — because they share
+substrings with each other and hashes share none. Readability was not bought with bytes.
 
 **The prefix is fixed, not configurable.** A configurable prefix means two packages emitting
 different names for the same block, and identical blocks deduplicating to one rule with no registry
@@ -233,8 +253,10 @@ is wrong — only the pairing is, and no test of either alone would find it.
 
 **The length guarantees nothing.** Two different blocks landing on the same name is a birthday
 problem and probability is not a promise. The guarantee is the assertion made where the sheet is
-assembled, which sees every block at once; 16 hex only makes that assertion a tripwire that never
-trips, and measured, the extra characters gzip to nothing.
+assembled, which sees every block at once; the hash's length only makes that assertion a tripwire
+that never trips. Nine base62 characters is about 53.6 bits, and a written name collides only if two
+different declarations spell the same — which they cannot, because the first `-` after the
+abbreviation is the boundary and no abbreviation holds one, so the spelling is injective.
 
 ## 4. Normalisation, which is the definition of identity
 

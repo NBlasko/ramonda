@@ -244,14 +244,25 @@ export class StyleBlock extends Component {
   }
 
   render() {
+    /**
+     * Named, rather than written into the block.
+     *
+     * A hole carries its own unit, because `{n}px` compiles to `var(--…)px` and computes to nothing
+     * — so the template literal is not decoration. Written inline it was the densest line in this
+     * repository, and the density was the expression sitting inside the declaration rather than the
+     * braces around it. This is the same shape the block below uses for `accent`.
+     */
+    const border = `${this.weight}px`;
+    const inset = `${this.weight + 8}px`;
+
     return (
       <div className="panel" css={@@(
         display: flex;
         flex-direction: column;
         gap: 8px;
         padding: 4px 0;
-        border-left: {`${this.weight}px`} solid #ff0055;
-        padding-left: {`${this.weight + 8}px`};
+        border-left: {border} solid #ff0055;
+        padding-left: {inset};
         transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
         &:hover {
           border-left-color: #00b37e;
