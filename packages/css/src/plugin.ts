@@ -6,6 +6,7 @@ import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 import { type Config, findConfig, readConfig } from "./config";
+import { warnIfStale } from "./stale";
 import { type Imported, namedSites, syntaxesIn } from "./compiler/references";
 
 /**
@@ -52,6 +53,14 @@ export interface PluginCreateInfo {
   languageService: ts.LanguageService;
   languageServiceHost: ts.LanguageServiceHost;
   config?: { properties?: string };
+  /**
+   * tsserver's own log, when there is one — the only place a plugin can say anything.
+   *
+   * Declared rather than imported, like every other piece of tsserver's shape here, and declared
+   * OPTIONAL at every level: a test builds this object by hand, and a plugin that needed a logger to
+   * exist would refuse to start under one.
+   */
+  project?: { projectService?: { logger?: { info?: (message: string) => void } } };
 }
 
 export interface PluginModule {
@@ -134,6 +143,17 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         getDirectories: (name) => host.getDirectories?.(name) ?? tsModule.sys.getDirectories(name),
         realpath: host.realpath?.bind(host),
       };
+
+      /**
+       * Said once per server, when the built package is behind its sources.
+       *
+       * Through `info.project.projectService.logger` rather than a console: a tsserver plugin has no
+       * terminal, and the log is where somebody looks when the editor is not doing what the source
+       * says it should. That is exactly the question this answers — see `warnIfStale`.
+       */
+      warnIfStale(__filename, (message) => {
+        info.project?.projectService?.logger?.info?.(message);
+      });
 
       /** The list the current `overlay` pass is filling — see the note on the cache's `read`. */
       let reading: { name: string; version: string }[] | undefined;

@@ -289,13 +289,25 @@ describe("the CSS inside a block", () => {
 
   test.each([
     ["a string", `  grid-template-areas: "a   a" "b   b";`],
-    ["a hole", `  color: { a  ?  "red"  :  "blue" };`],
     ["a hole holding an object", `  color: { {a: {b: 1}}.a.b };`],
-    ["a hole holding a `}}` in a string", `  color: {{ x["}}"] }};`],
+    ["a hole whose expression ends in a brace", `  color: {{ x["}"] }};`],
     ["a comment", `  /* two  spaces */`],
   ])("%s keeps its own spacing", (_what, written) => {
     expect(laid(`const a = <div css={@@(\n${written}\n)}>x</div>;\n`)).toBe(
       `const a = <div css={@@(\n${written}\n)}>x</div>;\n`,
+    );
+  });
+
+  /**
+   * A hole's own spacing is its expression's, and the BRACES are not part of the expression.
+   *
+   * The whitespace inside `a  ?  "red"` is the author's and stays; the whitespace between `{` and
+   * `a` is a delimiter's and is closed up, because a hole is the escape JSX already uses in the same
+   * place and JSX writes it tight. See `tightened`, and the one shape that keeps its space above.
+   */
+  test("a hole keeps the spacing inside its expression, and loses it at the braces", () => {
+    expect(laid(`const a = <div css={@@(\n  color: { a  ?  "red"  :  "blue" };\n)}>x</div>;\n`)).toBe(
+      `const a = <div css={@@(\n  color: {a  ?  "red"  :  "blue"};\n)}>x</div>;\n`,
     );
   });
 
@@ -419,5 +431,63 @@ describe("line endings the author's checkout uses", () => {
     // Every newline is still a CRLF, and the over-indented line was brought back into line.
     expect(formatted).not.toMatch(/[^\r]\n/);
     expect(formatted).toContain("\r\n  display:flex;\r\n");
+  });
+});
+
+/**
+ * A hole's braces sit against its expression, whatever was typed.
+ *
+ * **Reported by a user**: the formatter left `@@if ({ this.roomy})` exactly as written, so the same
+ * condition appeared four ways in one file. Measured, all four survived a format unchanged.
+ *
+ * ## Why against, and not `{ … }`
+ *
+ * A hole is the escape JSX already uses in the same place — `css={@@( … )}`, `{this.tone}` — and
+ * JSX writes it against the braces. An object literal's spacing is a different convention for a
+ * different thing; this is a delimiter, not a literal.
+ *
+ * The whitespace immediately inside the braces is not part of the expression, so trimming it changes
+ * nothing about what runs. **Except in one shape, which is why the rule has a condition**: an
+ * expression that itself begins with `{` — `{ {a: 1}.a }` — would become `{{a: 1}.a}`, and a reader
+ * meeting `{{` in a language that spelled holes `{{ }}` until this morning deserves better. The
+ * space stays there.
+ */
+describe("the space inside a hole's braces", () => {
+  /** The block's own lines, without the `const s = @@(` around them. */
+  const formatted = (block: string) => {
+    const out = formatText(`const s = @@(\n${block}\n);\n`, "C.tsx", (text) => text);
+    const lines = out.split("\n");
+    return lines.slice(1, lines.indexOf(");")).join("\n");
+  };
+
+  test.each([
+    ["a condition", "  @@if ({ this.roomy }) {\n    color: red;\n  }", "  @@if ({this.roomy}) {\n    color: red;\n  }"],
+    [
+      "one space, on the left only",
+      "  @@if ({ this.roomy }) {\n    color: red;\n  }",
+      "  @@if ({this.roomy}) {\n    color: red;\n  }",
+    ],
+    ["a value", "  color: { this.accent };", "  color: {this.accent};"],
+    ["a spread", "  ...{ base };", "  ...{base};"],
+    ["a property name", "  { accent }: red;", "  {accent}: red;"],
+    ["already tight, left alone", "  color: {this.accent};", "  color: {this.accent};"],
+  ])("%s", (_what, written, expected) => {
+    expect(formatted(written)).toBe(expected);
+  });
+
+  test("an expression that starts with a brace keeps its space", () => {
+    expect(formatted("  color: { {a: 1}.a };")).toBe("  color: { {a: 1}.a };");
+  });
+
+  test("and a template literal inside is untouched", () => {
+    expect(formatted("  padding: { `${n}px` };")).toBe("  padding: {`${n}px`};");
+  });
+
+  /** Formatting is idempotent, which is the property a formatter is only ever trusted for once. */
+  test("running it twice changes nothing more", () => {
+    const once = formatted("  @@if ({ this.roomy }) {\n    color: red;\n  }");
+    const twice = formatted(once);
+
+    expect(twice).toBe(once);
   });
 });

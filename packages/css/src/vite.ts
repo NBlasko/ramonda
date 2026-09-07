@@ -2,6 +2,7 @@ import { CssBlockError } from "./compiler/errors";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { findConfig, readConfig } from "./config";
+import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
 import { mayHoldABlock } from "./compiler/scan";
@@ -116,6 +117,9 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    * cannot use it, and two readers of one file is this repository's recurring fault.
    */
   const config = readConfig(findConfig(process.cwd()), ts);
+
+  // Said once, when the built package is behind its sources — see `warnIfStale` for the day it cost.
+  warnIfStale(import.meta.url.replace("file://", ""), (message) => console.warn(message));
 
   const sheet = new Sheet();
   /** Files that currently contribute rules, so a file losing its last block is noticed. */

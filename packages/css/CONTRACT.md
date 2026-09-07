@@ -2,8 +2,19 @@
 
 `DESIGN.md` says why this feature exists and `PLAN.md` says in what order it gets built. **This file
 is the part both halves have to agree on before either can be written**, and it is deliberately
-short: four decisions, each one implemented and tested in `src/`, so nothing here is a description of
-code that might drift from it.
+short: five decisions, each one implemented and tested in `src/`.
+
+**It can drift, and it had — read on 2026-09-07 against the code it describes, five claims were
+wrong.** §1's own example gave two different declarations the same class, which is impossible; §1b
+showed a block compiling to a bare object rather than a merge, and a key carrying an `&` that is
+dropped; the normalisation table said a pseudo-class folds when nothing folds a prelude; §3 described
+sixteen hex characters after nine base62 had shipped; and four things listed as undecided were
+decided.
+
+`scripts/check-css-contract.mjs` is what keeps the two halves' SHAPES in step across a package
+boundary neither may import — the fields of a compiled block, and both copies of the one rule a
+consumer must implement. It cannot check prose. So the prose is worth reading against the code
+whenever the code moves, and this paragraph is here so the next reader knows it is not automatic.
 
 Read this and you can write the transform, the framework's `css` prop, the property types, the
 stylesheet assembler or a wrapper for another JSX library **without reading the other side**.
@@ -25,17 +36,23 @@ One hoisted descriptor at module scope, one call at the site.
 import { merge as _merge } from "@ramonda/css";
 
 <div css={_merge({
-  "display": "r-p-12px",
-  "border-left": ["r-p-12px", isOnline ? "4px solid #10b981" : "4px solid #64748b"],
+  "display": "r-disp-flex",
+  "border-left": ["r-wRCRfm4OS", isOnline ? "4px solid #10b981" : "4px solid #64748b"],
+  "~border-left": ["border-left-color", "border-left-style", "border-left-width"],
 })}>
 ```
 
 and the stylesheet gains one rule per declaration
 
 ```css
-.r-p-12px { display: flex; }
-.r-p-12px { border-left: var(--r-p-12px-0); }
+.r-disp-flex { display: flex; }
+.r-wRCRfm4OS { border-left: var(--r-wRCRfm4OS-0); }
 ```
+
+The `~border-left` entry is the shorthand's clear-list — see *the merge* in §1b. And the two classes
+differ because the two declarations do: **a class is a function of the declaration alone**, so no two
+distinct declarations can share one. The example above said `r-p-12px` for both, which is a name for
+`padding: 12px` and could not have been either.
 
 **A block with NO holes is hoisted, and this was measured rather than assumed.** Its merged value
 cannot change, so it becomes `const _s0 = _merge({ … });` at module scope and the site reads
@@ -60,10 +77,10 @@ Three properties of this shape are load-bearing:
 
 ## 1b. What a block compiles to under COMPOSITION — frozen 2026-09-05, built as AC0–AC8
 
-The shape above is one class for a whole block, and it cannot express composition: measured, the
+An earlier shape gave one class to a whole block, and it cannot express composition: measured, the
 order of classes in a `class` attribute decides nothing, so two whole-block classes cannot say which
-one wins. The next build is atomic — one rule per DECLARATION — and this is the part both halves
-have to agree on.
+one wins. The build is atomic — one rule per DECLARATION — and this is the part both halves have to
+agree on.
 
 **The cross-package contract does not change, and that was measured rather than hoped.** A merge
 produces exactly the `StyleValue` in §2: a class string, property names, values. The only difference
@@ -92,11 +109,28 @@ const panel = @@(
 );
 
                                        emitted
-const panel = { "display": "r-1111…", "color": ["r-2222…", accent], "&:hover|color": "r-3333…" };
+const panel = _merge({
+  "display": "r-disp-flex",
+  "color": ["r-OsXzXT1Qd", accent],
+  ":hover|color": "r-:hover-c-#0e9f6e",
+});
 ```
 
-and the stylesheet gains one rule per entry — `.r-1111…{display:flex}`,
-`.r-2222…{color:var(--r-2222…-0)}`, `.r-3333…:hover{color:#0e9f6e}`.
+and the stylesheet gains one rule per entry:
+
+```css
+.r-disp-flex { display: flex }
+.r-OsXzXT1Qd { color: var(--r-OsXzXT1Qd-0) }
+.r-\:hover-c-\#0e9f6e:hover { color: #0e9f6e }
+```
+
+**The map is an ARGUMENT to `merge`, not the value itself.** Written as a bare object it would have
+none of the things a `css` prop needs — see §2 — and a merge is what turns one map, or several, into
+a value. The characters a class name may not hold are escaped in the STYLESHEET and left alone in the
+map, because a class attribute holds the name and a selector holds its escaping.
+
+Note the key: `:hover|color`, with no `&`. The `&` is CSS nesting's way of saying "this element", and
+the key is what a selector composes to — so it is dropped rather than carried.
 
 ### The key, and it is canonical rather than as-written
 
@@ -122,10 +156,22 @@ table generated out of mdn-data. That second half is not a nicety: a shorthand a
 different properties, so without it both classes land and the SHEET breaks the tie, possibly against
 the call site. Measured, it agrees with CSS in both directions for `padding`, `border-left` and `gap`.
 
-**The merge is associative** — 50,309 random groupings, zero disagreements — which is what makes a
-nested `@@if` mean the same as a flattened one.
+**The merge is associative** — 50,309 random groupings, zero disagreements — which is what lets a
+nested `@@if` be COMPILED as a nested merge:
 
-### The sheet's emission order, which is now a rule rather than an accident
+```
+@@if ({a}) { color: red; @@if ({b}) { color: blue; } }
+->  _merge(a && _merge({ "color": "r-c-red" }, b && { "color": "r-c-blue" }))
+```
+
+**Associativity is what makes that shape correct; it was never a guarantee that the transform emitted
+it.** Measured on 2026-09-07, it did not: the outer guard was dropped, so the inner group applied on
+its own. A guard can be written into the output exactly once — an expression stays where the author
+put it, which is what keeps the map exact — so a nested segment needs a merge of its own rather than
+a repeated guard. It opens one only when more than one thing sits under it, and a group with a single
+member is still the shorter `a && b && { … }`.
+
+### The sheet's emission order, which is a rule rather than an accident
 
 Shorthands before their longhands, and unconditional rules before conditional ones. Measured: a
 `@media` rule beats a base rule for the same property **only if it is emitted after it**, and a
@@ -160,14 +206,14 @@ type StyleBlock<P extends readonly string[]> = StyleValue & ((...values: HoleVal
   comparator reads. A compiled block is not — the class is compared like any other class, and the
   values are applied after the attribute pass. Silent and repaired is the better half of the two
   directions the design measured; the one that was reported was the one that was NOT repaired.
-- **A hole may be a number** because plenty of properties take one. It is the per-property types
-  (track C) that refuse `padding: 24`, not this.
+- **A hole may be a number** because plenty of properties take one. It is the per-property types that
+  refuse `padding: 24`, not this.
 - **The arity is checked.** `block()` takes the property names as a tuple, so a call with the wrong
   number of arguments is a type error. The compiler writes both halves, so this is the compiler
   checking itself.
 - **One function turns a value into `{ className, style }`** — `toStyleObject`. That is the entire
   adapter surface a wrapper on another JSX library needs; Ramonda applies it natively instead.
-- **There is no brand.** A runtime diagnostic (track L) can tell a compiled value from a hand-written
+- **There is no brand.** A runtime diagnostic — `RMD064` — tells a compiled value from a hand-written
   object by its shape, and a hand-written object that matches the shape exactly is a working value.
 - **A value that is not a string or a finite number is not written, and neither is one containing a
   `;`.** See below — this is a requirement on every consumer of a value, not an implementation detail
@@ -283,6 +329,12 @@ interface NestedRule {
 type ValuePart = { kind: "text"; text: string } | { kind: "hole"; index: number };
 ```
 
+**Every node also carries where it was**, left out above because normalisation never reads it: `at`
+on a declaration and its `valueAt`, `at` and `preludeEnd` on a rule, `at` and `length` on a hole, and
+`at` on a run of text. They exist for the checker's squiggles and the editor's mapping, which answer
+in the author's coordinates. A text part may also carry `resolved`, which says the text is this
+compiler's own — a reference to a named site — and so holds nothing anybody can act on.
+
 The canonical form is `property:value;` per declaration and `prelude{…}` per nested rule, joined in
 source order. **Written down as a rule, and tested as a table in
 `src/__tests__/normalise.test.ts`:**
@@ -293,7 +345,7 @@ source order. **Written down as a rule, and tested as a table in
 | the case of a property name (`COLOR`) | the case of a **custom** property (`--Accent`), which CSS reads as significant |
 | the whitespace the author put around a declaration's colon | the space before a hole, which is a token separator |
 | a trailing semicolon, present or not | the order of two declarations |
-| | the case of anything in a prelude — a pseudo-class folds, a class name does not |
+| | the case of anything in a prelude — `&:HOVER` stays, measured, because nothing here can tell a pseudo-class from a class name without a selector parser |
 | | number forms, colour forms, keyword case — see below |
 
 **The asymmetry that decides every one of those.** A missed merge costs one duplicate rule in a
@@ -322,19 +374,42 @@ the checker first:
 ```
 border-left: {…};                ✓   becomes  border-left: var(--r-…-0)
 {cond ? "display:flex" : ""}     ✗   a declaration — nothing to put a variable in
-{name}: 24px;                    ✗   a property name
+{name}: 24px;                    ✗   a property name — unless it RESOLVES, see below
 &:{state} { … }                  ✗   a selector
+@@if ({cond}) { … }              ✓   a condition, and the parentheses are the at-rule's head
+...{base};                       ✓   a spread, in a declaration's position
 ```
+
+**A hole in a property NAME is the one exception, and it is the only way to set a registered
+property.** `{accent}: #f05` where `accent` is a `@@property( … )` declared in this file — or
+imported from a module, one relative hop — resolves to that site's generated name before any rule
+sees it. Unresolved, it is refused as above.
+
+The same resolution is why `var({accent})` works and `var({runtimeValue})` cannot: `var()` takes a
+literal name, so a hole that stays a hole compiles to `var(var(--…))`, which computes to nothing —
+measured in Chromium, dropping that declaration and leaving the one beside it applied. Reported as
+`hole-as-a-variable-name`.
 
 ## What this contract does not decide
 
-Deliberately, because each belongs to a track that can settle it without changing anything above:
+One thing is left, and the four that used to be listed here have been settled — recorded because a
+contract that still calls a decided thing open is a contract nobody trusts on the parts that matter:
 
-- **the `@layer` name and where the sheet is linked** — track E, sheet assembly;
-- **which properties get a real union and which get `string | number`** — track C;
-- **how a nested rule's prelude expands against the class** — track E;
-- **splitting one sheet into several** — track J. No syntax, type or compiled value changes when it
-  lands.
+- **where the sheet is linked** is still the sheet assembly's, and no syntax, type or compiled value
+  depends on it.
+
+Settled since this was written:
+
+- **the `@layer` name is `ramonda`, and it is not configurable.** `config.ts` refuses `layer` beside
+  `prefix` and `hash`, for the same reason: two packages emitting a block into different layers give
+  it a different precedence, which is a page changing because of who imported it. The divergence
+  from plain CSS this creates is documented under its own heading on `style-blocks.md` rather than
+  presented as a convenience.
+- **123 properties get a real union**, `UNION_TYPED` in the generated table, and the rest take
+  `string | number` with the CSS rules judging the value instead.
+- **a nested rule's prelude composes in order and drops the `&`** — see §1b's key.
+- **splitting one sheet into several** is done, and `scripts/check-css-splitting.mjs` is what keeps
+  the classes in the JavaScript and the classes in the CSS the same set.
 
 ## Why the package is private
 

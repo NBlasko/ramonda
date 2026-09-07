@@ -2,6 +2,30 @@ import { closingHole, opensAHole, readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
 
 /**
+ * A hole with its braces against the expression, whatever was typed.
+ *
+ * **Reported by a user, who had the same condition four ways in one file**: `@@if ({ this.roomy})`,
+ * `@@if ({this.roomy })`, and both of the tidy spellings — because the formatter left every one of
+ * them alone. Measured before this: all four survived unchanged.
+ *
+ * Against the braces, and not `{ … }`, because a hole is the escape JSX already uses in the same
+ * place — `css={@@( … )}`, `{this.tone}` — and JSX writes it tight. An object literal's spacing is a
+ * different convention for a different thing; this is a delimiter.
+ *
+ * The whitespace immediately inside the braces is not part of the expression, so trimming it changes
+ * nothing that runs. **One shape keeps its space**: an expression that itself begins or ends with a
+ * brace, where trimming would produce `{{` or `}}` — a reader meeting that, in a language whose
+ * holes were spelled `{{ }}` until this morning, deserves better than two characters saved.
+ */
+function tightened(hole: string): string {
+  const inner = hole.slice(1, -1);
+  const trimmed = inner.trim();
+  if (trimmed === inner) return hole;
+  if (trimmed.startsWith("{") || trimmed.endsWith("}")) return hole;
+  return `{${trimmed}}`;
+}
+
+/**
  * Handing a style block to a formatter, which is a different problem from handing it to a checker.
  *
  * ## Why this is not the virtual file
@@ -245,7 +269,7 @@ function layout(body: string, indent: string, step: string): string[] {
     if (code === 123 /* { */ && opensAHole(line)) {
       const close = closingHole(body, index);
       const stop = close === -1 ? body.length : close;
-      line += body.slice(index, stop);
+      line += tightened(body.slice(index, stop));
       index = stop - 1;
       continue;
     }

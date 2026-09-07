@@ -368,6 +368,10 @@ export class StyleBlockComposed extends Component {
           @@if ({this.off}) {
             opacity: 0.5;
             cursor: none;
+
+            @@if ({this.roomy}) {
+              color: yellow;
+            }
           }
 
           @@if ({this.roomy}) {
