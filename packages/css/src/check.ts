@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
 import { positionOf } from "./compiler/errors";
+import { type Config, findConfig, readConfig } from "./config";
 import { readModule } from "./modules";
 import { mayHoldABlock } from "./compiler/scan";
 import { checkSource } from "./compiler/source";
@@ -73,6 +74,15 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   const parsed = parseConfig(configPath);
   if ("findings" in parsed) return parsed;
 
+  /**
+   * The project's own settings, read ONCE per run from beside its tsconfig.
+   *
+   * From the tsconfig's directory rather than the working one: `ramonda-check` is run from wherever
+   * somebody happens to be, and a config found relative to the shell would make the answer depend on
+   * where the command was typed.
+   */
+  const config = readConfig(findConfig(dirname(configPath)), ts);
+
   /** The overlay and the text it was built from, together — one lookup, and no half-set state. */
   const overlays = new Map<string, { virtual: VirtualFile; source: string }>();
   const refusals: Finding[] = [];
@@ -89,7 +99,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
       // a file that turns out to hold no block needs no overlay.
       if (virtual !== undefined) {
         overlays.set(fileName, { virtual, source: text });
-        css.push(...cssFindings(fileName, text));
+        css.push(...cssFindings(fileName, text, config));
       }
     } catch (error) {
       // A refusal is ours and is reported. Anything else is a bug in this package and must not be
@@ -158,8 +168,8 @@ const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.colu
  * STRICT, like everything else the build path does. A block the parser refuses has already been
  * reported as a refusal and the run has stopped.
  */
-function cssFindings(fileName: string, source: string): Finding[] {
-  return checkSource(source, fileName, readModule).map((finding) => ({
+function cssFindings(fileName: string, source: string, config: Config): Finding[] {
+  return checkSource(source, fileName, { read: readModule, config }).map((finding) => ({
     file: fileName,
     ...positionOf(source, finding.at),
     code: finding.rule,

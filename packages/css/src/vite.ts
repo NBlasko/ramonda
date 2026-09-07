@@ -1,5 +1,7 @@
 import { CssBlockError } from "./compiler/errors";
 import { readFileSync } from "node:fs";
+import ts from "typescript";
+import { findConfig, readConfig } from "./config";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
 import { mayHoldABlock } from "./compiler/scan";
@@ -105,6 +107,16 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    * One sheet per plugin instance, and the plugin is created per Vite config — so a dev server and a
    * build in the same process do not share one, and neither do two Vitest projects.
    */
+  /**
+   * The project's own settings, read once when the plugin is created.
+   *
+   * Through the same `readConfig` the editor and `ramonda-check` use, with `typescript` — a peer
+   * dependency, so a project with a tsconfig has it. Node 24 can `require` a `.ts` file directly and
+   * that would be one import less, but it would be a SECOND way to read one config: the editor
+   * cannot use it, and two readers of one file is this repository's recurring fault.
+   */
+  const config = readConfig(findConfig(process.cwd()), ts);
+
   const sheet = new Sheet();
   /** Files that currently contribute rules, so a file losing its last block is noticed. */
   const styled = new Set<string>();
@@ -189,7 +201,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
 
       let result: ReturnType<typeof transform>;
       try {
-        result = transform(code, { filename: file, runtime: options.runtime, read: readModule });
+        result = transform(code, { filename: file, runtime: options.runtime, read: readModule, config });
       } catch (error) {
         if (!(error instanceof CssBlockError)) throw error;
         /**

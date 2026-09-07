@@ -745,7 +745,7 @@ for (const group of groups.values()) {
       // No reader: a documented example is one fenced block, so it imports nothing this could
       // resolve — and a reader pointed at the repository would resolve a path the reader of
       // the page never has.
-      found = checkSource(unit.code, unit.file, (specifier) => unit.provided.get(specifier));
+      found = checkSource(unit.code, unit.file, { read: (specifier) => unit.provided.get(specifier) });
     } catch {
       // A block the parser refuses is already reported as a refusal, above.
       continue;

@@ -5,6 +5,7 @@ import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
+import { type Config, findConfig, readConfig } from "./config";
 import { type Imported, namedSites, syntaxesIn } from "./compiler/references";
 
 /**
@@ -137,6 +138,27 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
       /** The list the current `overlay` pass is filling — see the note on the cache's `read`. */
       let reading: { name: string; version: string }[] | undefined;
 
+      /**
+       * The project's own settings, transpiled with the `typescript` tsserver handed us.
+       *
+       * That is what makes a `.ts` config affordable in an editor at all — a plugin here is
+       * CommonJS with no `ts-node`, and `require(".ts")` would tie the config to whatever Node the
+       * editor embeds. See `config.ts`, where the three ways were measured.
+       *
+       * Read per pass rather than once: a config is a file somebody edits, and an editor that had
+       * to be restarted to notice would be the same staleness the module cache was fixed for. It is
+       * cheap — one `existsSync` walk and a transpile of a file measured in tens of lines.
+       */
+      const projectConfig = (): Config => {
+        try {
+          return readConfig(findConfig(host.getCurrentDirectory()), tsModule);
+        } catch {
+          // A broken config must not take the editor's completions with it. `ramonda-css lint` is
+          // where it is reported, with the file and the reason.
+          return {};
+        }
+      };
+
       const readModuleFromEditor = (specifier: string, from: string): string | undefined => {
         const resolved = tsModule.resolveModuleName(specifier, from, host.getCompilationSettings(), resolutionHost);
         const name = resolved.resolvedModule?.resolvedFileName;
@@ -201,7 +223,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
             ? undefined
             : tsModule.createSourceFile(fileName, text, tsModule.ScriptTarget.Latest, true, tsModule.ScriptKind.TSX);
 
-        const css = text === undefined ? [] : cssFindings(text, fileName, readModuleFromEditor);
+        const css = text === undefined ? [] : cssFindings(text, fileName, readModuleFromEditor, projectConfig());
         const where = regions(text ?? "", fileName, readModuleFromEditor);
         reading = undefined;
 
@@ -638,7 +660,7 @@ function properties(info: PluginCreateInfo): string | undefined {
  * TOLERANT, because an editor is the only place the hole rule can fire at all: the build refuses
  * such a block outright, so by the time a build has spoken there is nothing left to squiggle.
  */
-function cssFindings(text: string, fileName: string, read: Imported["read"]): Finding[] {
+function cssFindings(text: string, fileName: string, read: Imported["read"], config: Config): Finding[] {
   const out: Finding[] = [];
   const references = namedSites(text, { filename: fileName, read });
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
@@ -646,7 +668,10 @@ function cssFindings(text: string, fileName: string, read: Imported["read"]): Fi
   for (const site of findBlocks(text)) {
     const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     // The text and the parse, because one of them has no name for a `//` — see `checkText`.
-    out.push(...checkText(text, site.open, read.end), ...checkBlock(read.block, site.at, references, syntaxes));
+    out.push(
+      ...checkText(text, site.open, read.end),
+      ...checkBlock(read.block, { at: site.at, references, syntaxes, config }),
+    );
   }
   return out;
 }

@@ -772,7 +772,7 @@ function checkNamed(at: string, css: string): Finding[] {
   const source = `const x = @@${at}(\n${css}\n);`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
-  return checkBlock(read.block, site.at).sort((a, b) => a.at - b.at);
+  return checkBlock(read.block, { at: site.at }).sort((a, b) => a.at - b.at);
 }
 
 describe("inside `@@keyframes`", () => {
@@ -1164,7 +1164,7 @@ describe("a variable set by one name and read by another", () => {
     const sites = findBlocks(source);
     const site = sites[sites.length - 1];
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true, resolve: (one) => references.get(one) });
-    return checkBlock(read.block, site.at, references).sort((a, b) => a.at - b.at);
+    return checkBlock(read.block, { at: site.at, references: references }).sort((a, b) => a.at - b.at);
   };
 
   test("setting the literal name while reading the binding is reported", () => {
@@ -1236,7 +1236,7 @@ describe("a reference to a named site is checked as the text it became", () => {
     const sites = findBlocks(source);
     const site = sites[sites.length - 1];
     const read = readBlock(source, site.open, "C.tsx", { resolve: (name) => references.get(name) });
-    return checkBlock(read.block, site.at, references);
+    return checkBlock(read.block, { at: site.at, references: references });
   };
 
   test("a resolved name inside `var()` reports nothing, as the literal does not", () => {
@@ -1444,7 +1444,7 @@ describe("a hole where `var()` takes a name", () => {
       const site = sites[sites.length - 1];
       const read = readBlock(source, site.open, "C.tsx", { resolve: (name) => references.get(name) });
 
-      expect(checkBlock(read.block, site.at, references)).toEqual([]);
+      expect(checkBlock(read.block, { at: site.at, references: references })).toEqual([]);
     });
   });
 });
@@ -1484,7 +1484,7 @@ describe("an initial-value its own syntax does not accept", () => {
   const of = (source: string): Finding[] => {
     const sites = findBlocks(source);
     const site = sites[sites.length - 1];
-    return checkBlock(readBlock(source, site.open, "C.tsx").block, site.at);
+    return checkBlock(readBlock(source, site.open, "C.tsx").block, { at: site.at });
   };
   const rules = (source: string) => of(source).map((one) => one.rule);
   const property = (body: string) => `const t = @@property(\n  ${body}\n);`;
@@ -1661,7 +1661,7 @@ describe("a registered property set to a value its syntax refuses", () => {
     const sites = findBlocks(source);
     const site = sites[sites.length - 1];
     const read = readBlock(source, site.open, "C.tsx", { resolve: (name) => references.get(name) });
-    return checkBlock(read.block, site.at, references, syntaxesIn(source));
+    return checkBlock(read.block, { at: site.at, references: references, syntaxes: syntaxesIn(source) });
   };
   const rules = (source: string) => of(source).map((one) => one.rule);
 

@@ -1,3 +1,4 @@
+import type { Config } from "../config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
 import { type Finding, checkBlock, checkText } from "./rules";
@@ -23,7 +24,15 @@ import { findBlocks } from "./scan";
  * A block the PARSER refuses is a different thing and is not caught here — it throws, and the caller
  * decides whether that is a refusal to report or a file to skip.
  */
-export function checkSource(source: string, fileName: string, read?: Imported["read"]): Finding[] {
+export interface SourceOptions {
+  /** How to read a module a block imports a named site from — see {@link Imported}. */
+  readonly read?: Imported["read"];
+  /** The project's own settings, from `ramonda.css.ts`. */
+  readonly config?: Config;
+}
+
+export function checkSource(source: string, fileName: string, options: SourceOptions = {}): Finding[] {
+  const { read, config } = options;
   const out: Finding[] = [];
   // The same reader the build uses, or none — and none means a cross-module reference stays a hole,
   // which `hole-as-a-variable-name` reports. A checker that resolved less than the build would call
@@ -34,7 +43,10 @@ export function checkSource(source: string, fileName: string, read?: Imported["r
 
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName, { resolve: (name) => references.get(name) });
-    out.push(...checkText(source, site.open, read.end), ...checkBlock(read.block, site.at, references, syntaxes));
+    out.push(
+      ...checkText(source, site.open, read.end),
+      ...checkBlock(read.block, { at: site.at, references, syntaxes, config }),
+    );
   }
 
   return out;

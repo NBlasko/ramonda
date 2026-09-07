@@ -1,3 +1,4 @@
+import type { Config } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { conflict, covers, flatten, sheetRank } from "./flatten";
 import { holeOutOfPlace } from "./errors";
@@ -79,7 +80,8 @@ export type RuleId =
   | "hole-as-a-variable-name"
   | "initial-value-and-syntax"
   | "unknown-media-feature"
-  | "value-and-registered-syntax";
+  | "value-and-registered-syntax"
+  | "unit-not-allowed";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -215,13 +217,27 @@ export function checkText(source: string, open: number, end: number): Finding[] 
  * each at-rule's own descriptors and say *did you mean* about them. What is left here is the two
  * faults a type cannot see, because both are about shape rather than about a name.
  */
-export function checkBlock(
-  block: Block,
-  at?: string,
-  references?: ReadonlyMap<string, string>,
+/**
+ * What the rules need to know about a block beyond the block itself.
+ *
+ * An OBJECT rather than more positional parameters, and the reason is this repository's recurring
+ * fault: one rule with several consumers, one of which quietly passes less than the others. Four
+ * positional arguments across three call sites was already the shape that goes wrong — a new one is
+ * added in one place and forgotten in two, and nothing says so.
+ */
+export interface CheckOptions {
+  /** The at-rule this block IS, when it is a named site — `property`, `keyframes`, `font-face`. */
+  readonly at?: string;
+  /** Binding -> the generated name it resolves to. See {@link namedSites}. */
+  readonly references?: ReadonlyMap<string, string>;
   /** Generated name -> the `syntax` its `@@property` declared. See {@link syntaxesIn}. */
-  syntaxes?: ReadonlyMap<string, string>,
-): Finding[] {
+  readonly syntaxes?: ReadonlyMap<string, string>;
+  /** The project's own settings, which decide what is a fault HERE rather than in CSS. */
+  readonly config?: Config;
+}
+
+export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] {
+  const { at, references, syntaxes, config } = options;
   const findings: Finding[] = [];
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
@@ -229,9 +245,12 @@ export function checkBlock(
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
   if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
+  if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
-  return findings.sort((a, b) => a.at - b.at);
+  const silenced = config?.rules;
+  const kept = silenced === undefined ? findings : findings.filter((one) => silenced[one.rule] !== "off");
+  return kept.sort((a, b) => a.at - b.at);
 }
 
 /**
@@ -1236,6 +1255,49 @@ function startsWithSpace(text: string): boolean {
 
 /** Every unit CSS has, for the question below. */
 const KNOWN_UNITS = new Set(UNITS);
+
+/**
+ * A unit CSS has and this project does not.
+ *
+ * The one rule here that is not about CSS at all. `em` is valid everywhere and a team may still have
+ * decided against it — the fault is local to a project, so the list comes from `ramonda.css.ts` and
+ * there is no default: a project that says nothing gets every unit CSS has.
+ *
+ * It runs BESIDE `unknown-unit` rather than instead of it. A unit that is not a unit is a typo
+ * wherever it is written; a unit the project has banned is a different sentence, and reading both on
+ * one declaration would be two faults where there is one — so a unit CSS does not have is skipped
+ * here and left to the rule that names it.
+ */
+function unitNotAllowed(block: Block, allowed: readonly string[], findings: Finding[]): void {
+  const permitted = new Set(allowed.map((one) => one.toLowerCase()));
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+
+        for (const found of part.text.matchAll(/(?<![\w.#-])\d*\.?\d+([a-zA-Z%]+)/g)) {
+          const unit = found[1].toLowerCase();
+          if (permitted.has(unit) || !KNOWN_UNITS.has(unit)) continue;
+
+          findings.push({
+            rule: "unit-not-allowed",
+            at: part.at + found.index + found[0].length - found[1].length,
+            length: found[1].length,
+            message:
+              `\`${found[1]}\` is a CSS unit this project does not use. \`ramonda.css.ts\` allows ` +
+              `${[...permitted].sort().join(", ")}.`,
+          });
+        }
+      }
+    }
+  };
+  walkItems(block.items);
+}
 
 /**
  * A number whose unit is NEARLY one — `150oms`, `10pxx`.

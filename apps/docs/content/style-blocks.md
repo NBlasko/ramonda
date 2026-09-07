@@ -514,6 +514,49 @@ The check runs on the shape of the value, and it knows what each unit IS: `<angl
 `rad`, `grad` and `turn`, and refuses `px`. A unit CSS adds later fails this package's own build
 until it is classified, so the table cannot quietly fall behind.
 
+## Settings your project chooses
+
+Most of this package has no settings, on purpose: a class name is a hash of what the block does, and
+two projects that named one block differently would emit two rules for it with nothing to notice. So
+identity is fixed and the rest is not.
+
+**Two places, because they have different audiences.** How the build writes its output belongs to the
+bundler plugin, which already knows whether this is a production build:
+
+```ts alternatives
+export default defineConfig(({ mode }) => ({
+  plugins: [ramondaCss({ runtime: "@ramonda/css" })],
+}));
+```
+
+Rules your project agrees on belong in a `ramonda.css.ts` beside your `tsconfig.json`, because
+`ramonda-css lint`, `ramonda-css format` and your editor all have to read the same answer and none of
+them reads a bundler's config:
+
+```ts alternatives
+export default {
+  // Every unit CSS has is fine unless you say otherwise.
+  units: ["px", "rem", "%"],
+  rules: { "unknown-unit": "off" },
+};
+```
+
+`1em` is then reported — not because CSS minds, but because your project does:
+
+> `em` is a CSS unit this project does not use. `ramonda.css.ts` allows %, px, rem.
+
+**It is TypeScript rather than JSON**, and that is the point: a setting may depend on where it is
+being built, so the file may export a function instead.
+
+```ts alternatives
+export default (env: { production: boolean }) => ({
+  units: env.production ? ["px"] : ["px", "rem", "em"],
+});
+```
+
+Your editor reads it too — the language plugin transpiles it with the same TypeScript your project is
+checked with, so there is nothing to install and no build step to run first.
+
 ## The names
 
 A class name says what its rule does. It is `r-`, a short spelling of the property, a `-`, and the

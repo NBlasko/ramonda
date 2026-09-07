@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+import ts from "typescript";
+import { findConfig, readConfig } from "./config";
 import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
 import { Sheet } from "./compiler/sheet";
@@ -132,6 +134,15 @@ export function loaderFor(path: string): "tsx" | "ts" | "jsx" {
 
 export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPluginLike {
   const sheet = new Sheet();
+  /**
+   * The project's own settings, read once when the plugin is created.
+   *
+   * Through the same `readConfig` the editor and `ramonda-check` use, with `typescript` — a peer
+   * dependency, so a project with a tsconfig has it. Node 24 can `require` a `.ts` file directly and
+   * that would be one import less, but it would be a SECOND way to read one config: the editor
+   * cannot use it, and two readers of one file is this repository's recurring fault.
+   */
+  const config = readConfig(findConfig(process.cwd()), ts);
 
   return {
     name: "ramonda-css",
@@ -151,7 +162,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
 
         let result: ReturnType<typeof transform>;
         try {
-          result = transform(code, { filename: args.path, runtime: options.runtime, read: readModule });
+          result = transform(code, { filename: args.path, runtime: options.runtime, read: readModule, config });
         } catch (error) {
           if (!(error instanceof CssBlockError)) throw error;
           /**

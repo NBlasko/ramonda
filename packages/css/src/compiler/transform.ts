@@ -2,6 +2,7 @@ import MagicString from "magic-string";
 import { segments } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
 import { classNameFor, nameFor, substitute, variableNameFor } from "./names";
+import type { Config } from "../config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
 import { type Span, readBlock } from "./read";
@@ -56,6 +57,8 @@ export interface TransformOptions {
    * is what every caller that has not opted in gets, and it is the safe direction.
    */
   readonly read?: Imported["read"];
+  /** The project's own settings, from `ramonda.css.ts`. The bundler plugin reads it once. */
+  readonly config?: Config;
 }
 
 /** One rule the stylesheet now owes. Assembly (dedupe, `@layer`, the collision assertion) is track E. */
@@ -266,7 +269,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      */
     const [finding] = [
       ...checkText(source, site.open, read.end),
-      ...checkBlock(read.block, site.at, references, syntaxes),
+      ...checkBlock(read.block, { at: site.at, references, syntaxes, config: options.config }),
     ].sort((a, b) => a.at - b.at);
     if (finding !== undefined) refuse(finding.message, source, finding.at, filename);
 
