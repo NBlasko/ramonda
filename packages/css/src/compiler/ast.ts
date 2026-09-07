@@ -102,4 +102,14 @@ export interface HolePart {
   readonly kind: "hole";
   /** 0-based, in source order within the block. */
   readonly index: number;
+  /**
+   * Where the `{{` is in the author's file, and how far the `}}` is — for a squiggle over the hole
+   * itself. See {@link Declaration.at}.
+   *
+   * The EXPRESSION still never reaches here, which is the point of the note above: this is a span,
+   * the same thing {@link TextPart.at} is, and it is what lets a rule about a hole's POSITION point
+   * at the hole rather than at the declaration holding it.
+   */
+  readonly at?: number;
+  readonly length?: number;
 }

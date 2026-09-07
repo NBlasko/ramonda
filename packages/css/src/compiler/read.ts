@@ -168,6 +168,8 @@ export function readBlock(source: string, open: number, filename: string, option
    * is why this cannot be `indexOf("}}")`.
    */
   function pastHole(): ValuePart {
+    /** Where the `{{` itself is, before `at` moves past the hole. */
+    const opens = at;
     const start = at + 2;
     const close = closingHole(source, at);
 
@@ -191,7 +193,12 @@ export function readBlock(source: string, open: number, filename: string, option
 
     // Unclosed and tolerant: everything to the end of the text is the expression. Mid-typing, that
     // is what it is.
-    const part: ValuePart = { kind: "hole", index: holes.length };
+    const part: ValuePart = {
+      kind: "hole",
+      index: holes.length,
+      at: opens,
+      length: (close === -1 ? source.length : close + 2) - opens,
+    };
     holes.push({ start, end });
     at = close === -1 ? source.length : close + 2;
     return part;

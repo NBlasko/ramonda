@@ -66,7 +66,8 @@ export type RuleId =
   | "rule-out-of-place"
   | "override-out-of-order"
   | "variable-set-by-another-name"
-  | "variable-read-by-another-name";
+  | "variable-read-by-another-name"
+  | "hole-as-a-variable-name";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -200,6 +201,7 @@ export function checkBlock(block: Block, at?: string, references?: ReadonlyMap<s
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
   readByAnotherName(block, findings);
+  holeAsAVariableName(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   return findings.sort((a, b) => a.at - b.at);
 }
@@ -264,6 +266,64 @@ function setByAnotherName(block: Block, references: ReadonlyMap<string, string>,
         `\`{{${binding}}}: …\` to set the one you read.`,
     });
   }
+}
+
+/** `var(` and nothing but whitespace since — the position where a NAME belongs. */
+const OPENS_A_VAR = /var\(\s*$/i;
+
+/**
+ * A hole standing where `var()` takes a name.
+ *
+ * **Measured in Chromium 151, and it is silent:**
+ *
+ * ```
+ * .a { --name: --accent; --accent: #10b981; background: var(var(--name)); border: 4px solid red }
+ *       background -> rgba(0, 0, 0, 0)      the declaration is gone
+ *       border     -> 4px rgb(255, 0, 0)    and the one beside it survives
+ * ```
+ *
+ * `var()` resolves a literal name, not a value that happens to spell one — so a hole there compiles
+ * to `var(var(--r-…-0))` and the declaration does nothing. ONE declaration, not the rule, which is
+ * what makes it hard to see.
+ *
+ * **This package said so in `references.ts` and emitted it anyway**, because that is the shape an
+ * IMPORTED binding produces: `namedSites` reads one file, so `import { accent } from "./theme"` is
+ * not a name it can resolve and the reference stays a hole. Measured, `background: var({{accent}})`
+ * on an imported binding compiled to `background:var(var(--r-…-0))` with nothing reported at all.
+ *
+ * A reference to a site in the SAME file never reaches here: it is resolved to text before any rule
+ * runs, so there is no hole to find. That is what the named-site design is for, and it is asserted.
+ *
+ * The FALLBACK is a different position and is left alone — `var(--x, {{colour}})` is a value where a
+ * value belongs, and `var(--unset, var(--hole))` was measured resolving correctly. Only the first
+ * argument is a name.
+ */
+function holeAsAVariableName(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const [position, part] of item.value.entries()) {
+        if (part.kind !== "hole" || position === 0) continue;
+        const before = item.value[position - 1];
+        if (before.kind !== "text" || !OPENS_A_VAR.test(before.text)) continue;
+
+        findings.push({
+          rule: "hole-as-a-variable-name",
+          at: part.at ?? item.valueAt ?? item.at ?? 0,
+          length: part.length ?? 2,
+          message:
+            "`var()` takes a literal name, and a hole is a value — this compiles to " +
+            "`var(var(--\u2026))`, which resolves to nothing and drops the declaration in silence. A " +
+            "`@@property( \u2026 )` in this file is a name it can read; one imported from another module " +
+            "is not.",
+        });
+      }
+    }
+  };
+  walkItems(block.items);
 }
 
 /**

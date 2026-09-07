@@ -288,6 +288,25 @@ A misspelling is not a CSS problem here, it is an unresolved name: `var({{ackcen
 *Cannot find name 'ackcent'. Did you mean 'accent'?*, from TypeScript, with the suggestion it
 already knows how to make.
 
+**The binding has to be declared in the same file as the block that reads it.** `var()` resolves a
+literal name, and a name is written in only when the compiler can see where it came from — which it
+does by reading one file, so an `import` is not something it can follow:
+
+```tsx expect-report:hole-as-a-variable-name
+import { accent } from "./theme";
+
+const card = @@(
+  background: var({{accent}});
+);
+```
+
+> `var()` takes a literal name, and a hole is a value — this compiles to `var(var(…))`, which
+> resolves to nothing and drops the declaration in silence.
+
+Measured in Chromium: `var(var(--name))` computes to nothing and the declaration is dropped, while
+the declaration *beside* it in the same rule is applied — which is what makes it hard to see and why
+it is refused rather than left to be noticed.
+
 **Set it with the binding, not with the name it looks like.** `--accent: #f05` and
 `var({{accent}})` are two different custom properties — the block generates its own name — so the
 declaration would do nothing for the value you read, which would fall back to `initial-value`. That

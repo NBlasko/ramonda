@@ -1364,3 +1364,87 @@ describe("a variable read by a name the block does not set", () => {
     });
   });
 });
+
+/**
+ * A hole standing where `var()` takes a NAME.
+ *
+ * **Measured in Chromium 151, and it is silent:**
+ *
+ * ```
+ * .a { --name: --accent; --accent: #10b981; background: var(var(--name)); border: 4px solid red }
+ *       background -> rgba(0, 0, 0, 0)      the declaration is gone
+ *       border     -> 4px rgb(255, 0, 0)    and the one beside it is fine
+ * ```
+ *
+ * `var()` resolves a literal name, not a value that happens to spell one. So a hole there compiles to
+ * `var(var(--r-…-0))` and the declaration does nothing at all — one declaration, not the rule, which
+ * is what makes it hard to see.
+ *
+ * **This package already knew, and emitted it anyway.** `references.ts` says so in its own words,
+ * and it is the shape an IMPORTED binding produces: `namedSites` reads one file, so
+ * `import { accent } from "./theme"` is not a name it can resolve and the reference stays a hole.
+ * Measured: `background: var({{accent}})` on an imported binding compiled to
+ * `background:var(var(--r-rfpVZr3es-0))` with nothing reported.
+ *
+ * The FALLBACK is a different position and is left alone — `var(--x, {{colour}})` is a value where a
+ * value belongs, and `var(--unset, var(--hole))` was measured resolving correctly. Only the first
+ * argument is a name.
+ */
+describe("a hole where `var()` takes a name", () => {
+  const of = (source: string): Finding[] => checkBlock(readBlock(source, 2, "C.tsx").block);
+  const rules = (source: string) => of(source).map((one) => one.rule);
+
+  test("directly inside `var(`", () => {
+    expect(rules(`@@(\n  background: var({{accent}});\n)`)).toEqual(["hole-as-a-variable-name"]);
+  });
+
+  test("with whitespace between, which changes nothing", () => {
+    expect(rules(`@@(\n  background: var(  {{accent}} );\n)`)).toEqual(["hole-as-a-variable-name"]);
+  });
+
+  test("and nested in a fallback's own `var(`, which is still a name position", () => {
+    expect(rules(`@@(\n  background: var(--brand, var({{accent}}));\n)`)).toEqual(["hole-as-a-variable-name"]);
+  });
+
+  test("the squiggle covers the hole the author wrote", () => {
+    const source = `@@(\n  background: var({{accent}});\n)`;
+    const [finding] = of(source);
+
+    expect(source.slice(finding.at, finding.at + finding.length)).toBe("{{accent}}");
+  });
+
+  test("the message says what `var()` needs", () => {
+    expect(of(`@@(\n  background: var({{accent}});\n)`)[0].message).toContain("literal name");
+  });
+
+  describe("what it must not report", () => {
+    test("a hole in the FALLBACK, which is a value where a value belongs", () => {
+      expect(rules(`@@(\n  background: var(--brand, {{fallback}});\n)`)).toEqual([]);
+    });
+
+    test("an ordinary hole, which is the whole point of a hole", () => {
+      expect(rules(`@@(\n  background: {{accent}};\n)`)).toEqual([]);
+    });
+
+    test("a literal name, which is what `var()` wants", () => {
+      expect(rules(`@@(\n  --accent: red;\n  background: var(--accent);\n)`)).toEqual([]);
+    });
+
+    /**
+     * The legitimate use, and the reason this rule cannot simply refuse every `{{ }}` after `var(`:
+     * a reference to a named site in the SAME file is resolved to text before any rule sees it, so
+     * there is no hole left to report. That is the case the whole named-site design exists for.
+     */
+    test("a reference to a named site in the same file, which resolves to a literal", () => {
+      const source =
+        `const accent = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n` +
+        `const card = @@( background: var({{accent}}); );\n`;
+      const references = namedSites(source);
+      const sites = findBlocks(source);
+      const site = sites[sites.length - 1];
+      const read = readBlock(source, site.open, "C.tsx", { resolve: (name) => references.get(name) });
+
+      expect(checkBlock(read.block, site.at, references)).toEqual([]);
+    });
+  });
+});
