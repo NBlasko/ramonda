@@ -2,7 +2,7 @@ import MagicString from "magic-string";
 import { segments } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
 import { classNameFor, nameFor, substitute, variableNameFor } from "./names";
-import { type Imported, importedSites, namedSites } from "./references";
+import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
 import { type Span, readBlock } from "./read";
 import { refuse } from "./errors";
@@ -149,6 +149,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
    */
   const from = importedSites(source, { filename, read: options.read });
   const references = namedSites(source, { filename, read: options.read });
+  // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
+  const syntaxes = syntaxesIn(source);
   const resolve = (expression: string): string | undefined => references.get(expression);
 
   const magic = new MagicString(source);
@@ -262,9 +264,10 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * one would forget. The FIRST finding is what the refusal names: findings arrive sorted by
      * position, the build stops at one anyway, and `ramonda-check` is what lists them all.
      */
-    const [finding] = [...checkText(source, site.open, read.end), ...checkBlock(read.block, site.at, references)].sort(
-      (a, b) => a.at - b.at,
-    );
+    const [finding] = [
+      ...checkText(source, site.open, read.end),
+      ...checkBlock(read.block, site.at, references, syntaxes),
+    ].sort((a, b) => a.at - b.at);
     if (finding !== undefined) refuse(finding.message, source, finding.at, filename);
 
     // Normalised ONCE. It was called twice — for the name and again for the rule — and normalisation

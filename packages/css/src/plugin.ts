@@ -5,7 +5,7 @@ import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
-import { type Imported, namedSites } from "./compiler/references";
+import { type Imported, namedSites, syntaxesIn } from "./compiler/references";
 
 /**
  * The TypeScript language service plugin: what makes a block writable rather than merely correct.
@@ -569,19 +569,25 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
  * The CSS rules' findings, as diagnostics an editor can draw.
  *
  * Their positions are already the author's — the rules read the author's own text, not the virtual
- * copy — so nothing is mapped. The category is a warning rather than an error, which is the honest
- * answer for all four: a page with `display: flexx` renders, and the declaration is dropped.
+ * copy — so nothing is mapped.
  */
 function ours(
   findings: readonly Finding[],
   file: ts.SourceFile | undefined,
   /**
-   * A warning, which is the honest answer for the four that read the CSS: a page with
-   * `display: flexx` renders, and the declaration is simply dropped. `1` is `Error`, `0` is
-   * `Warning`, `2` is `Suggestion` — which is what the one about colours gets, because nothing is
-   * wrong with the code and a squiggle would be claiming otherwise.
+   * An ERROR, and it was a warning until the build began refusing these.
+   *
+   * The old reasoning was that a page with `display: flexx` renders and the declaration is simply
+   * dropped, so a warning was honest. That stopped being true the day `transform` started running
+   * the checker: every finding these rules produce now refuses the build, and a yellow squiggle
+   * under something that does not compile is the editor promising a page the build will not give.
+   *
+   * The severity is not a judgement about how bad the CSS is. It answers "will this build?", and
+   * there is one answer. `1` is `Error`, `0` is `Warning`, `2` is `Suggestion` — which is what the
+   * one about colours still gets, because nothing is wrong with that code and the build does not
+   * care about it.
    */
-  category = 0 as ts.DiagnosticCategory,
+  category = 1 as ts.DiagnosticCategory,
 ): ts.Diagnostic[] {
   return findings.map((finding) => ({
     file,
@@ -635,10 +641,12 @@ function properties(info: PluginCreateInfo): string | undefined {
 function cssFindings(text: string, fileName: string, read: Imported["read"]): Finding[] {
   const out: Finding[] = [];
   const references = namedSites(text, { filename: fileName, read });
+  // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
+  const syntaxes = syntaxesIn(text);
   for (const site of findBlocks(text)) {
     const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     // The text and the parse, because one of them has no name for a `//` — see `checkText`.
-    out.push(...checkText(text, site.open, read.end), ...checkBlock(read.block, site.at, references));
+    out.push(...checkText(text, site.open, read.end), ...checkBlock(read.block, site.at, references, syntaxes));
   }
   return out;
 }

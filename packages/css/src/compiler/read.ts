@@ -179,9 +179,19 @@ export function closingHole(source: string, at: number): number {
  */
 const A_DECLARATION = /^\s*(--)?[a-zA-Z][\w-]*\s*:(\s|$)/;
 
+/**
+ * A declaration whose property NAME is itself a hole — `{angle}: 45deg`, the way a registered
+ * property is set. The value after it is a value like any other, and may be a hole too.
+ *
+ * Without this the second `{` was read as a rule opening: the text in front of it starts with `{`,
+ * so no other clause matched. Found by a test that set a registered property to a computed value,
+ * which is a shape somebody would write on their first day with `@@property`.
+ */
+const A_HELD_NAME = /^\s*\{[^{}]*\}\s*:(\s|$)/;
+
 export function opensAHole(before: string): boolean {
   const text = before.trimEnd();
-  return text === "" || text === SPREAD || text.endsWith("(") || A_DECLARATION.test(before);
+  return text === "" || text === SPREAD || text.endsWith("(") || A_DECLARATION.test(before) || A_HELD_NAME.test(before);
 }
 
 export function readBlock(source: string, open: number, filename: string, options: ReadOptions = {}): ReadBlock {

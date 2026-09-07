@@ -90,6 +90,19 @@ function blocksIn(file) {
     // highlighting.
     // ```tsx alternatives — two ways of writing the same thing, shown side by side. As one file
     // they collide, and the collision is the point rather than a fault.
+    /**
+     * ```tsx module:./theme — this block IS that module for the rest of the page.
+     *
+     * A page that teaches a two-file shape had no way to be checked: the theme example on
+     * `style-blocks.md` was marked `alternatives` and therefore checked by nothing, which is the
+     * "docs can lie and pass" fault this gate exists for, sitting on the gate's own flagship page.
+     *
+     * The block is still checked itself. It is also written into the work directory under the name
+     * the specifier asks for, so `import { accent } from "./theme"` resolves for `tsc`, and handed
+     * to the CSS rules as text so a `@@property` in it resolves for them too.
+     */
+    const provides = /(?:^|\s)module:(\S+)/.exec(attrs)?.[1];
+
     if (attrs.includes("expect-error") || attrs.includes("alternatives")) {
       expected.push({ file, line: text.slice(0, match.index).split("\n").length + 1 });
       continue;
@@ -106,7 +119,7 @@ function blocksIn(file) {
     // later, so the first example is reported and is not wrong. Naming the rule keeps every OTHER
     // rule live on the block, which is the difference between a gate and a gate people switch off.
     // Several rules are separated by `+`.
-    out.push({ code, line, expectReport: reportsAllowedBy(attrs) });
+    out.push({ code, line, provides, expectReport: reportsAllowedBy(attrs) });
   }
   return out;
 }
@@ -539,10 +552,15 @@ if (selftest) {
   files.push("SELFTEST");
 }
 
+/** Specifier -> the page that provided it, so two pages cannot claim one. */
+const claimed = new Map();
+
 for (const file of files) {
   const blocks = file === "SELFTEST" ? [{ code: PLANTED, line: 1, expectReport: undefined }] : blocksIn(file);
   if (blocks.length === 0) continue;
   const ambient = preamblesFor(file);
+  /** Specifier -> the block's text, for the CSS rules. `tsc` reads the copy written beside them. */
+  const provided = new Map();
 
   blocks.forEach((block, index) => {
     const shaped = shape(block.code);
@@ -550,9 +568,36 @@ for (const file of files) {
       unparseable.push({ file, index, line: block.line });
       return;
     }
-    const name = `${file.replace(/[^\w]/g, "_")}__${index}.tsx`;
-    const path = join(work, name);
+    const path = join(work, `${file.replace(/[^\w]/g, "_")}__${index}.tsx`);
     writeFileSync(path, shaped.text);
+
+    /**
+     * A block that IS a module gets a second copy under the name the specifier asks for, beside the
+     * blocks that import it — so `./theme` resolves for `tsc` exactly as it would in a project.
+     *
+     * The work directory is FLAT, so a specifier belongs to whichever page claimed it. Two pages
+     * teaching a `./theme` would silently share one, and this refuses instead.
+     *
+     * **A directory per page was tried first and it broke seven routing examples** — `TS2339` on
+     * `BaseHook<undefined>`, a wrong TYPE rather than a missing name, from moving the units without
+     * moving anything else. The cause was not established, and routing around it without saying so
+     * is how a gate stops being trusted. Recorded in the TODO.
+     */
+    if (block.provides !== undefined) {
+      const already = claimed.get(block.provides);
+      if (already !== undefined && already !== file) {
+        console.error(
+          `\n[examples] two pages both provide \`${block.provides}\`:\n\n    ${already}\n    ${file}\n\n` +
+            "The examples share one work directory, so one would quietly overwrite the other. Give\n" +
+            "one of them a different specifier.\n",
+        );
+        process.exit(1);
+      }
+      claimed.set(block.provides, file);
+      writeFileSync(join(work, `${block.provides.replace(/^\.\//, "")}.tsx`), shaped.text);
+      provided.set(block.provides, block.code);
+    }
+
     units.push({
       path,
       file,
@@ -562,6 +607,8 @@ for (const file of files) {
       code: block.code,
       offset: shaped.offset,
       ambient,
+      /** What this page's `module:` fences declared, so the CSS rules can resolve an import. */
+      provided,
       expectReport: block.expectReport,
     });
   });
@@ -698,7 +745,7 @@ for (const group of groups.values()) {
       // No reader: a documented example is one fenced block, so it imports nothing this could
       // resolve — and a reader pointed at the repository would resolve a path the reader of
       // the page never has.
-      found = checkSource(unit.code, unit.file);
+      found = checkSource(unit.code, unit.file, (specifier) => unit.provided.get(specifier));
     } catch {
       // A block the parser refuses is already reported as a refusal, above.
       continue;

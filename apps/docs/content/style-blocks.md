@@ -293,7 +293,7 @@ already knows how to make.
 Put the tokens in their own file and import them. That is the whole of it — there is no `@@theme`,
 because a file of `@@property` sites already is one:
 
-```tsx
+```tsx module:./theme
 // theme.tsx
 export const accent = @@property(
   syntax: "<color>";
@@ -308,7 +308,7 @@ export const gap = @@property(
 );
 ```
 
-```tsx alternatives
+```tsx
 import { accent, gap } from "./theme";
 
 const card = @@(
@@ -443,14 +443,31 @@ Each of the three has its own vocabulary, and the check follows it:
 | `opacity: 0` outside any frame | reported — it belongs to no time, so the browser drops it |
 | `@@font-face` with no `src` | reported — the descriptor is required, and the face would load nothing |
 | `font-familly: "Brand"` | reported, with the descriptor you meant |
+| `@media (min-widht: 40rem)` | reported — the condition never matches, so the rules inside never apply |
 | `@@property` with no `inherits` | reported — measured, the browser drops the whole rule without it |
 | `initial-value` its `syntax` does not accept | reported — measured, the browser drops the whole rule for that too |
+| a registered property set to a value its `syntax` refuses | reported — measured, the browser keeps the `initial-value` and says nothing |
 | `&:hover { … }` in either | reported — a descriptor list has no element to select against |
 
 A hole may not go in one of these blocks otherwise: a hole is a custom property **on an element**, and
 these name something the whole stylesheet uses, so there is no element for the value to come from.
 
-**That fourth row is the one worth reading twice**, because a mismatched `initial-value` does not
+**The `@media` row is not about invalid CSS**, and that is what makes it worth having. Measured in
+Chromium, all of these survive a parse with their text intact — including the last, which has no
+colon:
+
+```
+@media (min-widht: 40rem)                     kept
+@media (prefers-reduced-mErrorotion: reduce)  kept
+@media (nonsense)                             kept
+@media (min-width 40rem)                      kept
+```
+
+An unknown feature is legal CSS that simply never matches, so a typo does not fail — it gives you a
+block that silently never applies. Only a near miss is reported, because a feature invented after
+this was written is valid and must stay silent.
+
+**That `initial-value` row is the other one worth reading twice**, because a mismatched `initial-value` does not
 half-work — it takes the registration away entirely:
 
 ```tsx expect-report:initial-value-and-syntax
@@ -468,9 +485,31 @@ Measured in Chromium: with `initial-value: #10b981` the rule is in `cssRules` an
 back to the colour. With `12px` the rule is **absent**, and the name accepts junk verbatim — so every
 reason to register it is gone, from one line, and nothing else would have said so.
 
-The check runs on the shape of the value and is deliberately incomplete in one direction: it accepts a
-number with any unit wherever a dimension belongs, so `syntax: "<length>"` with `3s` is **not**
-reported. A missed report costs a registration; a wrong one costs your trust in the checker.
+The same check runs wherever that property is SET, which is the row below it:
+
+```tsx expect-report:value-and-registered-syntax
+const angle = @@property(
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+);
+
+const dial = @@(
+  {angle}: 12px;
+);
+```
+
+> this property is registered as `<angle>` and does not accept `12px` — measured, the browser keeps
+> the `initial-value` instead and says nothing, so the element shows the default.
+
+That one is worth the page it takes. Measured in Chromium, `--angle: 12px` on a property registered
+`<angle>` computes to `0deg` — the value is discarded, nothing is dropped, and the element shows the
+default as though you had meant it. A `@keyframes` frame set to the wrong type does the same, which
+is an animation that silently does not move.
+
+The check runs on the shape of the value, and it knows what each unit IS: `<angle>` accepts `deg`,
+`rad`, `grad` and `turn`, and refuses `px`. A unit CSS adds later fails this package's own build
+until it is classified, so the table cannot quietly fall behind.
 
 ## The names
 

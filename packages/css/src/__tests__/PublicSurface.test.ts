@@ -26,6 +26,7 @@ const COMPILER = [
   "checkText",
   "HASH_LENGTH",
   "HOLE",
+  "MEDIA_FEATURES",
   "classNameFor",
   "findBlocks",
   "mayHoldABlock",

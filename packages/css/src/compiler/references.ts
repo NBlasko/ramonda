@@ -128,6 +128,42 @@ export function importedSites(source: string, options: Imported): { names: Map<s
   return { names, texts };
 }
 
+/**
+ * Every registered property's generated NAME, and the `syntax` its site declared.
+ *
+ * The other half of {@link namedSites}: that answers "what is this reference called", this answers
+ * "what may it hold". Both are needed to see a registered property set to a value it refuses —
+ * measured in Chromium, `--angle: 12px` on a `<angle>` property computes to the `initial-value` and
+ * says nothing, so the element shows the default and looks deliberate.
+ *
+ * Local sites only. A token from another module is declared where its own file is compiled, and
+ * that file is where a value it refuses would be written — so following the import buys nothing
+ * here and would make this a second place that resolves modules.
+ */
+export function syntaxesIn(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!NAMED_OPENING.test(source)) return out;
+
+  for (const site of findBlocks(source)) {
+    if (site.at !== "property") continue;
+    const read = readBlock(source, site.open, "", { tolerant: true });
+
+    for (const item of read.block.items) {
+      if (item.kind !== "declaration" || item.property !== "syntax") continue;
+      // A syntax written with a hole cannot be read, and neither can one this loop did not reach.
+      if (!item.value.every((part) => part.kind === "text")) continue;
+      const text = item.value
+        .map((part) => (part.kind === "text" ? part.text : ""))
+        .join("")
+        .trim()
+        .replace(/^["']|["']$/g, "");
+      out.set(`--${classNameFor(normalise(read.block))}`, text);
+    }
+  }
+
+  return out;
+}
+
 export function namedSites(source: string, options: Imported = {}): Map<string, string> {
   // What another module declares, first — so a site declared HERE overwrites it, which is what a
   // local binding does to an imported one in TypeScript.

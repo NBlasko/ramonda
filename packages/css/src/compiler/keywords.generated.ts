@@ -397,6 +397,29 @@ export const PROPERTY_NAMED: Readonly<Record<string, string>> = {
 export const UNITS: readonly string[] = ["%","cap","ch","cm","cqb","cqh","cqi","cqmax","cqmin","cqw","deg","dpcm","dpi","dppx","dvb","dvh","dvi","dvmax","dvmin","dvw","em","ex","fr","grad","hz","ic","in","khz","lh","lvb","lvh","lvi","lvmax","lvmin","lvw","mm","ms","pc","pt","px","q","rad","rcap","rch","rem","rex","ric","rlh","s","svb","svh","svi","svmax","svmin","svw","turn","vb","vh","vi","vmax","vmin","vw","x"];
 
 /**
+ * Each unit's value TYPE, so a rule can ask whether `<angle>` accepts `12px`.
+ *
+ * `units.json` groups by the spec that defines a unit, not by what it is — `deg`, `px` and `s` are
+ * all "CSS Values and Units" — so this is written down. Every unit in `UNITS` lands in exactly one
+ * family and the generator refuses to run otherwise, which is what makes a hand-written table safe
+ * here: a unit CSS adds fails the build until somebody says what it is.
+ */
+export const UNIT_TYPE: Readonly<Record<string, string>> = {"cap":"length","ch":"length","cm":"length","cqb":"length","cqh":"length","cqi":"length","cqmax":"length","cqmin":"length","cqw":"length","dvb":"length","dvh":"length","dvi":"length","dvmax":"length","dvmin":"length","dvw":"length","em":"length","ex":"length","ic":"length","in":"length","lh":"length","lvb":"length","lvh":"length","lvi":"length","lvmax":"length","lvmin":"length","lvw":"length","mm":"length","pc":"length","pt":"length","px":"length","q":"length","rcap":"length","rch":"length","rem":"length","rex":"length","ric":"length","rlh":"length","svb":"length","svh":"length","svi":"length","svmax":"length","svmin":"length","svw":"length","vb":"length","vh":"length","vi":"length","vmax":"length","vmin":"length","vw":"length","deg":"angle","grad":"angle","rad":"angle","turn":"angle","ms":"time","s":"time","dpcm":"resolution","dpi":"resolution","dppx":"resolution","x":"resolution","hz":"frequency","khz":"frequency","%":"percentage","fr":"flex"};
+
+/**
+ * Every `@media` feature name, including the `min-`/`max-` forms of the range ones.
+ *
+ * Written down rather than derived: `@media` has no descriptors in `mdn-data` and its grammar
+ * bottoms out at `mf-name: <ident>`. Measured, the browser cannot be asked either — an unknown
+ * feature is `<general-enclosed>`, legal CSS that never matches, so `@media (nonsense)` survives
+ * a parse intact. The rule reading this therefore reports only a NEAR MISS, and a feature invented
+ * later stays silent.
+ *
+ * Verified against a real browser in `apps/playground-core/browser`.
+ */
+export const MEDIA_FEATURES: readonly string[] = ["any-hover","any-pointer","aspect-ratio","color","color-gamut","color-index","device-aspect-ratio","device-height","device-width","display-mode","dynamic-range","forced-colors","grid","height","hover","inverted-colors","max-aspect-ratio","max-color","max-color-index","max-device-aspect-ratio","max-device-height","max-device-width","max-height","max-monochrome","max-resolution","max-width","min-aspect-ratio","min-color","min-color-index","min-device-aspect-ratio","min-device-height","min-device-width","min-height","min-monochrome","min-resolution","min-width","monochrome","orientation","overflow-block","overflow-inline","pointer","prefers-color-scheme","prefers-contrast","prefers-reduced-data","prefers-reduced-motion","prefers-reduced-transparency","resolution","scripting","update","video-dynamic-range","width"];
+
+/**
  * The at-rules that are not part of an element's rule, so a style block may not hold one.
  *
  * A deny-list rather than an allow-list: the at-rules that DO nest are a growing set — `@scope` and

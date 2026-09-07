@@ -1,7 +1,16 @@
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { conflict, covers, flatten, sheetRank } from "./flatten";
 import { holeOutOfPlace } from "./errors";
-import { DESCRIPTORS, KEYWORDS, NOT_IN_A_RULE, PROPERTIES, PROPERTY_NAMED, UNITS } from "./keywords.generated";
+import {
+  DESCRIPTORS,
+  KEYWORDS,
+  NOT_IN_A_RULE,
+  PROPERTIES,
+  PROPERTY_NAMED,
+  UNITS,
+  MEDIA_FEATURES,
+  UNIT_TYPE,
+} from "./keywords.generated";
 import { closingHole, opensAHole } from "./read";
 import type { BlockSite } from "./scan";
 
@@ -68,7 +77,9 @@ export type RuleId =
   | "variable-set-by-another-name"
   | "variable-read-by-another-name"
   | "hole-as-a-variable-name"
-  | "initial-value-and-syntax";
+  | "initial-value-and-syntax"
+  | "unknown-media-feature"
+  | "value-and-registered-syntax";
 
 /** Accepted by every property, whatever else it accepts. */
 const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
@@ -204,12 +215,20 @@ export function checkText(source: string, open: number, end: number): Finding[] 
  * each at-rule's own descriptors and say *did you mean* about them. What is left here is the two
  * faults a type cannot see, because both are about shape rather than about a name.
  */
-export function checkBlock(block: Block, at?: string, references?: ReadonlyMap<string, string>): Finding[] {
+export function checkBlock(
+  block: Block,
+  at?: string,
+  references?: ReadonlyMap<string, string>,
+  /** Generated name -> the `syntax` its `@@property` declared. See {@link syntaxesIn}. */
+  syntaxes?: ReadonlyMap<string, string>,
+): Finding[] {
   const findings: Finding[] = [];
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
   readByAnotherName(block, findings);
   holeAsAVariableName(block, findings);
+  mediaFeatures(block, findings);
+  if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   return findings.sort((a, b) => a.at - b.at);
@@ -297,20 +316,41 @@ function setByAnotherName(block: Block, references: ReadonlyMap<string, string>,
  * What survives all of that is the case that actually happens: a value of visibly the wrong SHAPE.
  */
 const A_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)$/;
-const A_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)[a-z%]+$/i;
+const A_DIMENSION = /^[+-]?((?:\d+\.?\d*|\.\d+))([a-z%]+)$/i;
 const A_HEX = /^#[0-9a-f]{3,8}$/i;
 const AN_IDENT = /^-?[a-z_][\w-]*$/i;
 const A_CALL = /^[a-z-]+\(/i;
 
-const dimensional = (value: string) => A_DIMENSION.test(value) || value === "0" || A_CALL.test(value);
+/**
+ * A number with a unit of the RIGHT family, or a bare `0`, or a call.
+ *
+ * The first version accepted a number with any unit at all, because `units.json` groups units by the
+ * spec that defines them rather than by what they are — so `<angle>` accepted `12px`, and the rule
+ * that matters most here could not fire. `UNIT_TYPE` is the partition, written down in the generator
+ * with an assertion that every unit lands in exactly one family, so a unit CSS adds fails the build
+ * until somebody says what it is.
+ *
+ * A bare `0` is a length and an angle and a time — CSS lets it be dimensionless — and a call is any
+ * type at all, because `calc()`, `min()` and `var()` are.
+ */
+const dimensional = (family: string) => (value: string) => {
+  if (value === "0" || A_CALL.test(value)) return true;
+  const found = A_DIMENSION.exec(value);
+  if (found === null) return false;
+
+  const type = UNIT_TYPE[found[2].toLowerCase()];
+  // A unit that is not a unit has no type, and `unknown-unit` owns it — it names the unit, which is
+  // the more useful sentence. Two rules on one fault reads as two faults.
+  return type === undefined || type === family;
+};
 
 const ACCEPTS: Readonly<Record<string, (value: string) => boolean>> = {
-  "<length>": dimensional,
-  "<percentage>": dimensional,
-  "<length-percentage>": dimensional,
-  "<angle>": dimensional,
-  "<time>": dimensional,
-  "<resolution>": dimensional,
+  "<length>": dimensional("length"),
+  "<percentage>": dimensional("percentage"),
+  "<length-percentage>": (value) => dimensional("length")(value) || dimensional("percentage")(value),
+  "<angle>": dimensional("angle"),
+  "<time>": dimensional("time"),
+  "<resolution>": dimensional("resolution"),
   "<number>": (value) => A_NUMBER.test(value) || A_CALL.test(value),
   "<integer>": (value) => /^[+-]?\d+$/.test(value) || A_CALL.test(value),
   "<color>": (value) => A_HEX.test(value) || AN_IDENT.test(value) || A_CALL.test(value),
@@ -373,6 +413,147 @@ function initialValueAndSyntax(block: Block, findings: Finding[]): void {
       `registration — measured, the name then holds any value at all, with no interpolation and no ` +
       `fall back to this one. Fix whichever of the two is wrong.`,
   });
+}
+
+/**
+ * A known feature with characters typed INTO it, which edit distance cannot safely reach.
+ *
+ * `prefers-reduced-mErrorotion` is six characters from `prefers-reduced-motion`, and `nearest`'s
+ * bound is three — raising it is not the fix. Measured on this table: `prefers-reduced-data` is a
+ * REAL feature about as far from `prefers-reduced-motion` as that typo is, so any bound wide enough
+ * to catch the one reports the other, and the other was new once. Distance cannot tell them apart.
+ *
+ * Subsequence can. A known name being a subsequence of what was written means somebody typed extra
+ * characters into a real name; a genuinely new feature does not contain an old one's letters in
+ * order. The length bound is what keeps a longer relative of a real feature out — a future
+ * `prefers-reduced-motion-strength` is nine longer and stays silent, and this typo is six.
+ */
+const INSERTED = 6;
+
+function typedInto(written: string): string | undefined {
+  for (const known of MEDIA_FEATURES) {
+    const extra = written.length - known.length;
+    if (extra <= 0 || extra > INSERTED) continue;
+
+    let at = 0;
+    for (const character of written) {
+      if (character === known[at]) at++;
+    }
+    if (at === known.length) return known;
+  }
+  return undefined;
+}
+
+/**
+ * A registered property set to a value its own `syntax` refuses.
+ *
+ * **Measured in Chromium 151, and it fails without failing:**
+ *
+ *     @property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg }
+ *     .set { --angle: 12px }        ->  --angle computes to 0deg
+ *
+ * The value is discarded and the `initial-value` stands. Nothing is dropped and nothing is said, so
+ * the element shows the default and looks deliberate — and a `@keyframes` frame set to the wrong
+ * type behaves the same way, which is an animation that silently does not move.
+ *
+ * Both halves are here to be read: the reference has resolved to the site's generated name, and that
+ * site's `syntax` came from its own block. It reuses {@link ACCEPTS}, so it gives up exactly the same
+ * reports for exactly the same reason — a component with no matcher, or a multiplier, says nothing.
+ *
+ * A value holding a hole or a `var()` is not judged: what it will be is not known here.
+ */
+function againstRegisteredSyntax(block: Block, syntaxes: ReadonlyMap<string, string>, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const syntax = syntaxes.get(item.property);
+      if (syntax === undefined || syntax === "*") continue;
+      if (!item.value.every((part) => part.kind === "text")) continue;
+
+      const value = item.value
+        .map((part) => (part.kind === "text" ? part.text : ""))
+        .join("")
+        .trim();
+      // A `var()` is a value this cannot see, and a CSS-wide keyword every property takes.
+      if (value === "" || GLOBAL.has(value) || /(^|[^\w-])var\(/.test(value)) continue;
+
+      const components = syntax.split("|").map((one) => one.trim());
+      if (components.some((one) => /[+#]$/.test(one) || (one.startsWith("<") && ACCEPTS[one] === undefined))) continue;
+
+      const accepted = components.some((one) => (one.startsWith("<") ? ACCEPTS[one](value) : one === value));
+      if (accepted) continue;
+
+      findings.push({
+        rule: "value-and-registered-syntax",
+        at: item.valueAt ?? item.at ?? 0,
+        length: value.length,
+        message:
+          `this property is registered as \`${syntax}\` and does not accept \`${value}\` — measured, the ` +
+          `browser keeps the \`initial-value\` instead and says nothing, so the element shows the default.`,
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/** A feature's name, wherever it sits inside a `@media` condition. */
+const A_FEATURE = /\(\s*([a-zA-Z][\w-]*)\s*[:)<>=]/g;
+const KNOWN_FEATURES = new Set(MEDIA_FEATURES);
+
+/**
+ * A `@media` feature that is nearly one CSS has.
+ *
+ * **Nothing checked a media condition at all**, and the fault it leaves is the quiet kind: measured
+ * in Chromium 151, every one of these survives a parse with its text intact, `cssRules` and all —
+ *
+ *     @media (min-widht: 40rem)                    kept
+ *     @media (prefers-reduced-mErrorotion: reduce) kept
+ *     @media (nonsense)                            kept
+ *     @media (min-width 40rem)                     kept, and it has no colon
+ *
+ * — because an unknown feature is `<general-enclosed>` in the grammar, which is **legal CSS that
+ * never matches**. So a typo is not invalid; it is a block that silently never applies, and nothing
+ * anywhere would say so.
+ *
+ * A NEAR MISS only, for the reason every table-backed rule here says the same thing: the list is a
+ * snapshot, a feature invented after it is valid, and reporting valid CSS is how a checker earns
+ * being switched off. `@supports` and `@container` are left alone — their conditions are a different
+ * grammar with different names.
+ *
+ * The table is written down because nothing can supply it, and it is verified against a real browser
+ * in `apps/playground-core/browser`: for a name Chromium knows, exactly one of `(f)` and `not (f)`
+ * holds; for one it does not, both are false. That is the oracle a stylesheet parse is not.
+ */
+function mediaFeatures(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      walkItems(item.items);
+      if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
+
+      for (const found of item.prelude.matchAll(A_FEATURE)) {
+        const name = found[1];
+        // A browser's own feature is not in CSS's list and is not a typo of anything in it.
+        if (name.startsWith("-") || KNOWN_FEATURES.has(name)) continue;
+
+        const meant = nearest(name, MEDIA_FEATURES as string[]) ?? typedInto(name);
+        if (meant === undefined) continue;
+
+        findings.push({
+          rule: "unknown-media-feature",
+          at: item.at + (found.index ?? 0) + found[0].indexOf(name),
+          length: name.length,
+          message:
+            `\`${name}\` is not a media feature, so this condition never matches and the rules inside ` +
+            `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
+        });
+      }
+    }
+  };
+  walkItems(block.items);
 }
 
 /** `var(` and nothing but whitespace since — the position where a NAME belongs. */

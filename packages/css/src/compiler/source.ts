@@ -1,4 +1,4 @@
-import { type Imported, namedSites } from "./references";
+import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
 import { type Finding, checkBlock, checkText } from "./rules";
 import { findBlocks } from "./scan";
@@ -29,10 +29,12 @@ export function checkSource(source: string, fileName: string, read?: Imported["r
   // which `hole-as-a-variable-name` reports. A checker that resolved less than the build would call
   // a working theme a fault; one that resolved more would miss one. Both consumers pass the same.
   const references = namedSites(source, { filename: fileName, read });
+  // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
+  const syntaxes = syntaxesIn(source);
 
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName, { resolve: (name) => references.get(name) });
-    out.push(...checkText(source, site.open, read.end), ...checkBlock(read.block, site.at, references));
+    out.push(...checkText(source, site.open, read.end), ...checkBlock(read.block, site.at, references, syntaxes));
   }
 
   return out;

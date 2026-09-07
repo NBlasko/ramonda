@@ -222,15 +222,55 @@ describe("the CSS rules, as squiggles", () => {
    * cannot go — there is no correct compilation — so the only place it can be SAID rather than
    * enforced is here, under the character, while it is being typed.
    */
-  test("a hole where a custom property cannot go is a warning under the `{`", () => {
+  test("a hole where a custom property cannot go is an error under the `{`", () => {
     const marked = `const a = (\n  <div css=@@(\n    {name}: 24px;\n  )>x</div>\n);\n`;
     const { service, source } = editor(marked);
 
     const [only] = service.getSemanticDiagnostics(FILE);
     expect(only.start).toBe(source.indexOf("{", source.indexOf("@@(") + 3));
     expect(only.length).toBe(1);
-    expect(only.category).toBe(ts.DiagnosticCategory.Warning);
+    expect(only.category).toBe(ts.DiagnosticCategory.Error);
     expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("hole-out-of-place");
+  });
+
+  /**
+   * **An error, and it was a warning until the build began refusing these.**
+   *
+   * The old note said a warning was the honest answer because a page with `display: flexx` renders
+   * and the declaration is simply dropped. That stopped being true the day `transform` started
+   * running the checker: every finding these rules produce now REFUSES the build, so a yellow
+   * squiggle sat under something that does not compile — the editor promising a page the build will
+   * not give.
+   *
+   * The severity is not a judgement about how bad the CSS is. It is the answer to "will this
+   * build?", and there is one answer.
+   */
+  test.each([
+    ["an unknown value", `const a = <div css=@@( position: statikk; )>x</div>;\n`],
+    ["a `//` comment", `const a = <div css=@@(\n  // why\n  color: red;\n)>x</div>;\n`],
+    ["a dashed property near a real one", `const a = <div css=@@( padding-lft: 8px; )>x</div>;\n`],
+  ])("%s is an error, because the build refuses it", (_what, marked) => {
+    const { service } = editor(marked);
+    const [only] = service.getSemanticDiagnostics(FILE);
+
+    expect(only.category).toBe(ts.DiagnosticCategory.Error);
+  });
+
+  /**
+   * And the one that is NOT the build's business keeps its own severity: nothing is wrong with a
+   * block an editor cannot colour, so it stays a suggestion. If this ever became an error the
+   * editor would be failing a file over a grammar nobody can see.
+   */
+  test("but an uncolourable block stays a suggestion", () => {
+    const marked = `const a = <div id="x" css=@@( color: red; )>x</div>;\n`;
+    const { service } = editor(marked);
+
+    const hints = service
+      .getSemanticDiagnostics(FILE)
+      .filter((one) => ts.flattenDiagnosticMessageText(one.messageText, " ").includes("uncolourable-block"));
+
+    expect(hints).toHaveLength(1);
+    expect(hints[0].category).toBe(ts.DiagnosticCategory.Suggestion);
   });
 
   /**

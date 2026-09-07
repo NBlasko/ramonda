@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ABBREVIATIONS, KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
-import { namedSites } from "../compiler/references";
+import { namedSites, syntaxesIn } from "../compiler/references";
 import { type Finding, checkBlock, checkText } from "../compiler/rules";
 import { findBlocks } from "../compiler/scan";
 
@@ -1545,6 +1545,163 @@ describe("an initial-value its own syntax does not accept", () => {
 
     test("an ordinary block, where neither descriptor means this", () => {
       expect(rules(`const s = @@( color: red; );`)).toEqual([]);
+    });
+  });
+});
+
+/**
+ * A `@media` feature that is nearly one CSS has.
+ *
+ * **Nothing checked a media condition at all, and the user reported it from their own typing** —
+ * `@media (prefers-reduced-motion: rekErrorduce)` compiled, and so did
+ * `@media (prefers-reduced-mErrorotion: reduce)`.
+ *
+ * ## Why the browser cannot be asked, which took three measurements to establish
+ *
+ * There is no oracle in the CSSOM. Measured in Chromium 151, every one of these survives in
+ * `cssRules` with its `conditionText` intact — including the last, which has no colon at all:
+ *
+ *     @media (min-widht: 40rem)                    kept
+ *     @media (prefers-reduced-mErrorotion: reduce) kept
+ *     @media (nonsense)                            kept
+ *     @media (min-width 40rem)                     kept
+ *
+ * That is not a browser being lax: an unknown feature is `<general-enclosed>` in the grammar, which
+ * is **legal CSS that never matches**. So a typo here is not invalid — it is a block that silently
+ * never applies, which is the worse fault and the reason to report it.
+ *
+ * `mdn-data` cannot supply the names either: `@media` has no `descriptors`, and its grammar bottoms
+ * out at `mf-name: <ident>`. The table is written down, and a browser test verifies it — see
+ * `apps/playground-core/browser`, where `(f)` and `not (f)` are both false for a name Chromium does
+ * not know, which IS an oracle even though the CSSOM is not.
+ *
+ * ## So: a near miss, and silence otherwise
+ *
+ * A feature invented after this was written must not be reported, because it is valid and the table
+ * is a snapshot. Same shape as `unknown-property`, same `nearest()` bound as the units.
+ */
+describe("a `@media` feature that is nearly a real one", () => {
+  const of = (condition: string): Finding[] =>
+    checkBlock(readBlock(`@@(\n  ${condition} {\n    color: red;\n  }\n)`, 2, "C.tsx").block);
+  const rules = (condition: string) => of(condition).map((one) => one.rule);
+
+  test("a misspelled feature name", () => {
+    expect(rules("@media (prefers-reduced-mErrorotion: reduce)")).toEqual(["unknown-media-feature"]);
+  });
+
+  test("the message names what was meant", () => {
+    expect(of("@media (min-widht: 40rem)")[0].message).toContain("min-width");
+  });
+
+  test("the squiggle covers the feature name", () => {
+    const condition = "@media (min-widht: 40rem)";
+    const source = `@@(\n  ${condition} {\n    color: red;\n  }\n)`;
+    const [finding] = checkBlock(readBlock(source, 2, "C.tsx").block);
+
+    expect(source.slice(finding.at, finding.at + finding.length)).toBe("min-widht");
+  });
+
+  test("a boolean feature written without a value", () => {
+    expect(rules("@media (hoverr)")).toEqual(["unknown-media-feature"]);
+  });
+
+  test("one inside a longer condition", () => {
+    expect(rules("@media screen and (min-widht: 40rem)")).toEqual(["unknown-media-feature"]);
+  });
+
+  describe("what it must not report", () => {
+    test.each([
+      ["a real feature with a value", "@media (min-width: 40rem)"],
+      ["a real boolean feature", "@media (hover)"],
+      ["a range syntax", "@media (width >= 40rem)"],
+      ["a media type with no feature", "@media screen"],
+      ["a type and a feature", "@media screen and (prefers-reduced-motion: reduce)"],
+      ["`not`", "@media not all and (monochrome)"],
+      ["a prefixed feature, which is a browser's own", "@media (-webkit-min-device-pixel-ratio: 2)"],
+      ["a name unlike anything known, which may simply be new", "@media (quantum-entanglement: high)"],
+      [
+        "a longer relative of a real feature, which is how a new one arrives",
+        "@media (prefers-reduced-motion-strength: 2)",
+      ],
+      ["and a real feature that is nearly another one", "@media (prefers-reduced-data: reduce)"],
+      ["`@supports`, which is a different grammar", "@supports (display: grid)"],
+      ["`@container`, whose features are its own", "@container (min-width: 20rem)"],
+      ["a plain selector", "&:hover"],
+    ])("%s", (_what, condition) => {
+      expect(rules(condition)).toEqual([]);
+    });
+  });
+});
+
+/**
+ * A registered property set to a value its own `syntax` does not accept.
+ *
+ * **Measured in Chromium 151, and it is the quiet kind of failure:**
+ *
+ *     @property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg }
+ *     .set { --angle: 12px; transform: rotate(var(--angle)) }
+ *
+ *     --angle computes to `0deg`
+ *
+ * The value is discarded and the `initial-value` stands. Nothing is dropped, nothing is reported,
+ * and the element simply shows the default — which is worse than a broken rule, because it looks
+ * deliberate. A `@keyframes` frame set to the wrong type behaves the same way, so an animation
+ * silently does not move.
+ *
+ * The compiler can see both halves: the reference resolves to a `@@property` site in this file, and
+ * that site's `syntax` is a descriptor in its own block. Same matchers as
+ * `initial-value-and-syntax`, so the same reports are deliberately given up — see {@link ACCEPTS}.
+ */
+describe("a registered property set to a value its syntax refuses", () => {
+  const angle = `const angle = @@property( syntax: "<angle>"; inherits: false; initial-value: 0deg; );\n`;
+  const colour = `const accent = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n`;
+
+  const of = (source: string): Finding[] => {
+    const references = namedSites(source);
+    const sites = findBlocks(source);
+    const site = sites[sites.length - 1];
+    const read = readBlock(source, site.open, "C.tsx", { resolve: (name) => references.get(name) });
+    return checkBlock(read.block, site.at, references, syntaxesIn(source));
+  };
+  const rules = (source: string) => of(source).map((one) => one.rule);
+
+  test("a length where an angle was registered", () => {
+    expect(rules(`${angle}const s = @@( {angle}: 12px; );\n`)).toEqual(["value-and-registered-syntax"]);
+  });
+
+  test("a word where a colour was registered", () => {
+    expect(rules(`${colour}const s = @@( {accent}: 12px; );\n`)).toEqual(["value-and-registered-syntax"]);
+  });
+
+  test("the message names the syntax and the value", () => {
+    const [finding] = of(`${angle}const s = @@( {angle}: 12px; );\n`);
+
+    expect(finding.message).toContain("<angle>");
+    expect(finding.message).toContain("12px");
+  });
+
+  test("inside a `@@keyframes` frame, which is where an animation stops moving", () => {
+    const source = `${angle}const spin = @@keyframes( from { {angle}: 0deg; } to { {angle}: 12px; } );\n`;
+
+    expect(rules(source)).toEqual(["value-and-registered-syntax"]);
+  });
+
+  describe("what it must not report", () => {
+    test.each([
+      ["the right type", `${angle}const s = @@( {angle}: 45deg; );\n`],
+      ["a colour for a colour", `${colour}const s = @@( {accent}: #f05; );\n`],
+      ["a hole, whose value is not known here", `${angle}const s = @@( {angle}: {turn}; );\n`],
+      ["a plain custom property nothing registered", `const s = @@( --angle: 12px; );\n`],
+      ["a CSS-wide keyword, which every property takes", `${angle}const s = @@( {angle}: inherit; );\n`],
+      ["a `var()`, whose value is not known here", `${angle}const s = @@( {angle}: var(--x); );\n`],
+    ])("%s", (_what, source) => {
+      expect(rules(source)).toEqual([]);
+    });
+
+    test("a syntax with no matcher silences it, as it does for `initial-value`", () => {
+      const list = `const t = @@property( syntax: "<transform-list>"; inherits: false; initial-value: none; );\n`;
+
+      expect(rules(`${list}const s = @@( {t}: 12px; );\n`)).toEqual([]);
     });
   });
 });

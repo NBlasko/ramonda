@@ -324,6 +324,141 @@ const NOT_IN_A_RULE = [
   "@view-transition",
 ];
 
+/**
+ * Every `@media` feature name, written down — because nothing can supply them.
+ *
+ * `mdn-data`'s `@media` entry has no `descriptors`, and the grammar bottoms out at
+ * `mf-name: <ident>`. The CSSOM is no help either: measured in Chromium 151, `@media (nonsense)`
+ * and even `@media (min-width 40rem)` survive in `cssRules` with their text intact — an unknown
+ * feature is `<general-enclosed>`, which is legal CSS that simply never matches.
+ *
+ * So this is a snapshot, and the rule that reads it reports only a NEAR MISS: a feature invented
+ * after this was written is valid and must stay silent. **`apps/playground-core/browser` verifies
+ * every name here against a real browser** — for a name Chromium knows, exactly one of `(f)` and
+ * `not (f)` holds; for one it does not, both are false. That is the oracle the CSSOM is not.
+ *
+ * Range features are listed bare; the rule accepts `min-` and `max-` in front of them, which is
+ * CSS's own prefixing rule and not a guess.
+ */
+/**
+ * Every unit, by the value TYPE it makes — which nothing can supply either.
+ *
+ * `units.json` groups units by the SPEC that defines them, not by what they are: `deg`, `px` and `s`
+ * are all "CSS Values and Units". So a rule asking "does `<angle>` accept `12px`" has nothing to read
+ * and, without this, accepted a number with any unit at all.
+ *
+ * **The assertion below is what makes a written-down table safe here**: every unit in `UNITS` must
+ * land in exactly one family, so a unit added to CSS fails this build until somebody classifies it.
+ * That is the guarantee the media-feature table has to get from a browser instead.
+ */
+const UNIT_FAMILIES = {
+  length: [
+    "cap",
+    "ch",
+    "cm",
+    "cqb",
+    "cqh",
+    "cqi",
+    "cqmax",
+    "cqmin",
+    "cqw",
+    "dvb",
+    "dvh",
+    "dvi",
+    "dvmax",
+    "dvmin",
+    "dvw",
+    "em",
+    "ex",
+    "ic",
+    "in",
+    "lh",
+    "lvb",
+    "lvh",
+    "lvi",
+    "lvmax",
+    "lvmin",
+    "lvw",
+    "mm",
+    "pc",
+    "pt",
+    "px",
+    "q",
+    "rcap",
+    "rch",
+    "rem",
+    "rex",
+    "ric",
+    "rlh",
+    "svb",
+    "svh",
+    "svi",
+    "svmax",
+    "svmin",
+    "svw",
+    "vb",
+    "vh",
+    "vi",
+    "vmax",
+    "vmin",
+    "vw",
+  ],
+  angle: ["deg", "grad", "rad", "turn"],
+  time: ["ms", "s"],
+  resolution: ["dpcm", "dpi", "dppx", "x"],
+  frequency: ["hz", "khz"],
+  percentage: ["%"],
+  flex: ["fr"],
+};
+
+const MEDIA_FEATURES = [
+  "any-hover",
+  "any-pointer",
+  "aspect-ratio",
+  "color",
+  "color-gamut",
+  "color-index",
+  "device-aspect-ratio",
+  "device-height",
+  "device-width",
+  "display-mode",
+  "dynamic-range",
+  "forced-colors",
+  "grid",
+  "height",
+  "hover",
+  "inverted-colors",
+  "monochrome",
+  "orientation",
+  "overflow-block",
+  "overflow-inline",
+  "pointer",
+  "prefers-color-scheme",
+  "prefers-contrast",
+  "prefers-reduced-data",
+  "prefers-reduced-motion",
+  "prefers-reduced-transparency",
+  "resolution",
+  "scripting",
+  "update",
+  "video-dynamic-range",
+  "width",
+];
+
+/** The ones `min-` and `max-` may be written in front of — CSS's own rule, not a guess. */
+const RANGE_FEATURES = [
+  "aspect-ratio",
+  "color",
+  "color-index",
+  "device-aspect-ratio",
+  "device-height",
+  "device-width",
+  "height",
+  "monochrome",
+  "resolution",
+  "width",
+];
+
 const MORE_UNITS = [
   "%",
   // Line height: CSS Values 4.
@@ -741,7 +876,45 @@ if (unknownAtRule !== undefined) {
 }
 
 const unitsData = JSON.parse(readFileSync(join(root, "node_modules/mdn-data/css/units.json"), "utf8"));
+const classified = new Map();
+for (const [family, units] of Object.entries(UNIT_FAMILIES)) {
+  for (const unit of units) {
+    const already = classified.get(unit);
+    if (already !== undefined) {
+      console.error(`[css-properties] \`${unit}\` is in both \`${already}\` and \`${family}\`.`);
+      process.exit(1);
+    }
+    classified.set(unit, family);
+  }
+}
+
+const mediaFeatures = [
+  ...new Set([...MEDIA_FEATURES, ...RANGE_FEATURES.flatMap((one) => [`min-${one}`, `max-${one}`])]),
+].sort();
+
+const notARange = RANGE_FEATURES.find((one) => !MEDIA_FEATURES.includes(one));
+if (notARange !== undefined) {
+  console.error(`[css-properties] \`${notARange}\` is listed as a range feature and is not a feature.`);
+  process.exit(1);
+}
+
 const allUnits = [...new Set([...Object.keys(unitsData), ...MORE_UNITS].map((unit) => unit.toLowerCase()))].sort();
+
+const unclassified = allUnits.filter((one) => !classified.has(one));
+if (unclassified.length > 0) {
+  console.error(
+    `[css-properties] ${unclassified.length} unit(s) with no value type: ${unclassified.join(", ")}.\n` +
+      `  Add each to UNIT_FAMILIES in this script. A rule asks what a unit IS, and an unclassified\n` +
+      `  one would be accepted everywhere — which is the false report this table exists to prevent.`,
+  );
+  process.exit(1);
+}
+
+const invented = [...classified.keys()].filter((one) => !allUnits.includes(one));
+if (invented.length > 0) {
+  console.error(`[css-properties] classified unit(s) CSS does not have: ${invented.join(", ")}.`);
+  process.exit(1);
+}
 
 const types = `// Generated by scripts/build-css-properties.mjs from mdn-data (CC0-1.0). Do not edit.
 //
@@ -820,6 +993,29 @@ ${propertyNamedRows.join("\n")}
  * thirty alone would report \`height: 100dvh\` as a fault.
  */
 export const UNITS: readonly string[] = ${JSON.stringify(allUnits)};
+
+/**
+ * Each unit's value TYPE, so a rule can ask whether \`<angle>\` accepts \`12px\`.
+ *
+ * \`units.json\` groups by the spec that defines a unit, not by what it is — \`deg\`, \`px\` and \`s\` are
+ * all "CSS Values and Units" — so this is written down. Every unit in \`UNITS\` lands in exactly one
+ * family and the generator refuses to run otherwise, which is what makes a hand-written table safe
+ * here: a unit CSS adds fails the build until somebody says what it is.
+ */
+export const UNIT_TYPE: Readonly<Record<string, string>> = ${JSON.stringify(Object.fromEntries(classified))};
+
+/**
+ * Every \`@media\` feature name, including the \`min-\`/\`max-\` forms of the range ones.
+ *
+ * Written down rather than derived: \`@media\` has no descriptors in \`mdn-data\` and its grammar
+ * bottoms out at \`mf-name: <ident>\`. Measured, the browser cannot be asked either — an unknown
+ * feature is \`<general-enclosed>\`, legal CSS that never matches, so \`@media (nonsense)\` survives
+ * a parse intact. The rule reading this therefore reports only a NEAR MISS, and a feature invented
+ * later stays silent.
+ *
+ * Verified against a real browser in \`apps/playground-core/browser\`.
+ */
+export const MEDIA_FEATURES: readonly string[] = ${JSON.stringify(mediaFeatures)};
 
 /**
  * The at-rules that are not part of an element's rule, so a style block may not hold one.
