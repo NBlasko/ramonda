@@ -288,12 +288,74 @@ A misspelling is not a CSS problem here, it is an unresolved name: `var({ackcent
 *Cannot find name 'ackcent'. Did you mean 'accent'?*, from TypeScript, with the suggestion it
 already knows how to make.
 
-**The binding has to be declared in the same file as the block that reads it.** `var()` resolves a
-literal name, and a name is written in only when the compiler can see where it came from — which it
-does by reading one file, so an `import` is not something it can follow:
+### A theme is a module of these
+
+Put the tokens in their own file and import them. That is the whole of it — there is no `@@theme`,
+because a file of `@@property` sites already is one:
+
+```tsx
+// theme.tsx
+export const accent = @@property(
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #10b981;
+);
+
+export const gap = @@property(
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 12px;
+);
+```
+
+```tsx alternatives
+import { accent, gap } from "./theme";
+
+const card = @@(
+  color: var({accent});
+  border-color: var({accent});
+  padding: var({gap});
+);
+```
+
+**One variable per token, and none on the element.** Measured through a production build, those three
+declarations became three classes reading two custom properties — `color` and `border-color` share
+`accent`'s — and the element carries no inline style at all. Every block in the app that reads
+`accent` gets the same class, so the rules are shared too.
+
+The rule that registers a token travels with whoever reads it, so a theme module needs no other
+reason to be in your bundle: the name is derived from the module's text, so every reader emits the
+same registration and the stylesheet keeps one.
+
+**A theme swap is then CSS, not a render.** The value is an ordinary custom property, so setting it
+again on an ancestor changes everything below:
+
+```tsx
+const accent = @@property(
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #10b981;
+);
+
+const root = @@(
+  {accent}: #10b981;
+  &[data-theme="dark"] { {accent}: #34d399; }
+);
+```
+
+Put `data-theme` on `<html>` and nothing re-renders — the browser recomputes styles, which is what it
+does anyway. `@media (prefers-color-scheme: dark) { {accent}: … }` works the same way and needs no
+attribute at all.
+
+**Two limits, and both are deliberate.** Only a relative specifier is followed — `./theme`,
+`../tokens` — because a package specifier needs a resolver, and the build, the checker and the editor
+would each have to bring the same one. And only one hop: if `./theme` itself imports its tokens from
+a third file, that file's own compile is where it is resolved.
+
+Anything unresolved stays a hole, and a hole where `var()` takes a name is reported:
 
 ```tsx expect-report:hole-as-a-variable-name
-import { accent } from "./theme";
+import { accent } from "@acme/theme";
 
 const card = @@(
   background: var({accent});

@@ -38,12 +38,106 @@ import { findBlocks } from "./scan";
 /** `@@` and then a name character, which only a named site has. See the note inside. */
 const NAMED_OPENING = /@@[A-Za-z0-9_-]/;
 
-export function namedSites(source: string): Map<string, string> {
-  const found = new Map<string, string>();
+/**
+ * A named import of a relative module, at the start of a line.
+ *
+ * Line-anchored rather than parsed, because this runs beside every read of every file and a TS
+ * program per file is not a cost it can carry. An `import` declaration is a statement, so it starts
+ * a line in every formatter anybody uses — and the failure mode of a false positive is a module that
+ * does not exist, which resolves to nothing. Reading is the only thing at stake and it fails closed.
+ *
+ * `from "./x"` only: a package specifier needs a resolver, and the four consumers of this function
+ * would each have to bring the same one — see the note on {@link Imported}.
+ */
+const AN_IMPORT = /^[ \t]*import\s+\{([^}]*)\}\s+from\s+["'](\.[^"']*)["']/gm;
+
+export interface Imported {
+  /** For resolving a relative specifier. The importing file's own path. */
+  readonly filename?: string;
+  /**
+   * The text of a module a specifier resolves to, or `undefined` for one that cannot be read.
+   *
+   * **Injected rather than `fs`, and that is the whole reason this is a parameter.** A build reads
+   * the disk; the editor must read its own buffer, which holds what the author has typed and not
+   * yet saved. A name here is a hash of the module's TEXT, so two consumers reading two different
+   * texts would generate two different names for one token — and the editor would then report a
+   * fault the build does not have, or miss one it does.
+   */
+  readonly read?: (specifier: string, from: string) => string | undefined;
+}
+
+/**
+ * The sites another module declares, under the names this file imports them by.
+ *
+ * ONE HOP, deliberately: a site in the imported file that itself reads a third file is not resolved
+ * here, and that third file's own compile is where it is reported. Following the chain makes this a
+ * module graph, and a module graph inside a per-file transform is a cycle waiting to be found by
+ * somebody's build rather than by a test.
+ */
+function imported(source: string, options: Imported, texts?: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const read = options.read;
+  if (read === undefined) return out;
+
+  for (const found of source.matchAll(AN_IMPORT)) {
+    const [, clause, specifier] = found;
+    // Read once per specifier, and only when the clause names something.
+    const names = clause
+      .split(",")
+      .map((one) => one.trim())
+      .filter((one) => one !== "");
+    if (names.length === 0) continue;
+
+    const text = read(specifier, options.filename ?? "");
+    if (text === undefined || !NAMED_OPENING.test(text)) continue;
+
+    // No `read` passed on: the hop stops here, so the imported file's own imports stay unresolved.
+    const theirs = namedSites(text);
+    let used = false;
+    for (const one of names) {
+      const [exported, local] = one.split(/\s+as\s+/);
+      const name = theirs.get(exported.trim());
+      if (name !== undefined) {
+        out.set((local ?? exported).trim(), name);
+        used = true;
+      }
+    }
+    if (used) texts?.push(text);
+  }
+
+  return out;
+}
+
+/**
+ * The sites another module declares, AND the text of every module that contributed one.
+ *
+ * **The texts are not a convenience, they are the fix for a trap the design walked into.** A
+ * reference resolves to TEXT, so after the transform the imported binding is not referenced by the
+ * emitted code at all — the import goes unused, the bundler drops the module, and the `@property`
+ * rule it declared never reaches the stylesheet. Measured in a real Vite build: the reading classes
+ * were right and the registration was simply absent.
+ *
+ * So the file that READS a token emits that token's rule itself. It costs nothing to do twice: the
+ * name is a hash of the module's own text, so every file that reads the same token emits the same
+ * rule under the same name, and the sheet keeps one. The theme module need not be in the JavaScript
+ * graph at all.
+ */
+export function importedSites(source: string, options: Imported): { names: Map<string, string>; texts: string[] } {
+  const texts: string[] = [];
+  const names = source.includes("import") ? imported(source, options, texts) : new Map<string, string>();
+  return { names, texts };
+}
+
+export function namedSites(source: string, options: Imported = {}): Map<string, string> {
+  // What another module declares, first — so a site declared HERE overwrites it, which is what a
+  // local binding does to an imported one in TypeScript.
+  const found = source.includes("import") ? imported(source, options) : new Map<string, string>();
   // The same bargain as `mayHoldABlock`, and for the same reason: this runs beside every read of
   // every file, and a NAMED site needs a name character after the two `@`. Measured on a 40-block
   // file with none, the full walk was 0.029 ms against the virtual file's 0.35 — real, and avoidable
   // without asking the expensive question. An ordinary block reaches `@@(` and stops here.
+  //
+  // What was imported is kept: a file may declare no site of its own and still read one.
   if (!NAMED_OPENING.test(source)) return found;
 
   for (const site of findBlocks(source)) {

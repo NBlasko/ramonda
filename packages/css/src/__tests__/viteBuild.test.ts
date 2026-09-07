@@ -309,3 +309,47 @@ test("a `@property` ships as a top-level at-rule holding its descriptors", () =>
   // Chromium drop the whole at-rule.
   expect(css).not.toMatch(/@property[^{]*\{\s*[.#]/);
 });
+
+/**
+ * A theme module, all the way through a production build.
+ *
+ * This is what cross-module resolution is FOR, and the shape a person writes: tokens in one file,
+ * read from another. Before it existed the import compiled to `var(var(--…))`, which computes to
+ * nothing in Chromium and drops the declaration in silence.
+ *
+ * Two claims, and the second is the one that pays for the feature: the `@property` registration
+ * reaches the sheet, and the reading declarations are STATIC atoms — no custom property on the
+ * element at all, so a theme costs nothing per element and a swap needs no render.
+ */
+test("a token declared in one module and read in another", () => {
+  const result = build(
+    project(
+      `import { accent, gap } from "./theme";\n` +
+        `export const card = (\n  <div className="lead" css=@@(\n    color: var({accent});\n    border-color: var({accent});\n    padding: var({gap});\n  )>x</div>\n);\n`,
+      `import { card } from "./Card";\nconsole.log(card);\n`,
+      {
+        "theme.tsx":
+          `export const accent = @@property(\n  syntax: "<color>";\n  inherits: true;\n  initial-value: #10b981;\n);\n` +
+          `export const gap = @@property(\n  syntax: "<length>";\n  inherits: true;\n  initial-value: 12px;\n);\n`,
+      },
+    ),
+  );
+
+  expect(result.ok, result.output).toBe(true);
+
+  const css = of(result.files, ".css");
+  const js = of(result.files, ".js");
+
+  // The registrations travelled from the module that declared them.
+  expect(css).toContain('syntax:"<color>"');
+  expect(css).toContain('syntax:"<length>"');
+
+  // One variable per TOKEN, not per declaration: `color` and `border-color` read the same name.
+  const names = [...css.matchAll(/var\((--r-[^)]+)\)/g)].map((one) => one[1]);
+  expect(names).toHaveLength(3);
+  expect(new Set(names).size).toBe(2);
+
+  // And nothing is carried on the element — every entry is a bare class, never `[class, value]`.
+  expect(js).not.toContain("var(var(");
+  expect(js).not.toMatch(/\["r-[^"]*",\s*\w/);
+});

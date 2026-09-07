@@ -5,7 +5,7 @@ import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
-import { namedSites } from "./compiler/references";
+import { type Imported, namedSites } from "./compiler/references";
 
 /**
  * The TypeScript language service plugin: what makes a block writable rather than merely correct.
@@ -91,6 +91,31 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
       /** The host's own reader, kept before it is replaced — or the overlay would ask itself. */
       const readSnapshot = host.getScriptSnapshot.bind(host);
 
+      /**
+       * A module a block imports a named site from, read out of the EDITOR rather than off the disk.
+       *
+       * This is the whole reason {@link Imported.read} is injected. A generated name is a hash of the
+       * declaring module's text, so a build reading the saved file and an editor reading the same
+       * path would agree only while the file is saved — and the moment somebody edits a token
+       * without saving, the editor would name it one thing and the build another, and every
+       * squiggle about it would be about a file that does not exist.
+       *
+       * `resolveModuleName` rather than a path guess, because the host has the project's real
+       * settings; the build guesses extensions only because it has no host to ask.
+       *
+       * **Known limit, and it is the cache rather than this**: an overlay is keyed by ITS file's
+       * version, so editing the theme does not invalidate a file that reads it until that file is
+       * touched. The names stay correct — they are recomputed whenever the reading file changes —
+       * but a stale one can survive a keystroke in another window.
+       */
+      const readModuleFromEditor = (specifier: string, from: string): string | undefined => {
+        const resolved = tsModule.resolveModuleName(specifier, from, host.getCompilationSettings(), tsModule.sys);
+        const name = resolved.resolvedModule?.resolvedFileName;
+        if (name === undefined) return undefined;
+        const snapshot = readSnapshot(name);
+        return snapshot?.getText(0, snapshot.getLength());
+      };
+
       const overlay = (
         fileName: string,
         read: (name: string) => ts.IScriptSnapshot | undefined,
@@ -131,9 +156,9 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           version,
           file,
           author,
-          css: text === undefined ? [] : cssFindings(text),
+          css: text === undefined ? [] : cssFindings(text, fileName, readModuleFromEditor),
           hints: text === undefined ? [] : siteFindings(text),
-          where: regions(text ?? ""),
+          where: regions(text ?? "", fileName, readModuleFromEditor),
         });
         return file;
       };
@@ -553,9 +578,9 @@ function properties(info: PluginCreateInfo): string | undefined {
  * TOLERANT, because an editor is the only place the hole rule can fire at all: the build refuses
  * such a block outright, so by the time a build has spoken there is nothing left to squiggle.
  */
-function cssFindings(text: string): Finding[] {
+function cssFindings(text: string, fileName: string, read: Imported["read"]): Finding[] {
   const out: Finding[] = [];
-  const references = namedSites(text);
+  const references = namedSites(text, { filename: fileName, read });
   for (const site of findBlocks(text)) {
     const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     // The text and the parse, because one of them has no name for a `//` — see `checkText`.
@@ -576,13 +601,14 @@ function siteFindings(text: string): Finding[] {
  * the hole is why the block's own range is not enough: a hole IS TypeScript, and `this.weight`
  * inside one has to read the way it reads anywhere else.
  */
-function regions(text: string): Regions {
+function regions(text: string, fileName: string, readModule: Imported["read"]): Regions {
   const blocks: Span[] = [];
   const holes: Span[] = [];
   const values: ValueSpan[] = [];
   // A resolved reference is not a hole, so it is not a region TypeScript owns — an editor must not
-  // colour `{{slide}}` as an expression in a place the build writes a name into.
-  const references = namedSites(text);
+  // colour `{slide}` as an expression in a place the build writes a name into. Imports included:
+  // a token from another module is resolved here exactly as the build resolves it.
+  const references = namedSites(text, { filename: fileName, read: readModule });
   for (const site of findBlocks(text)) {
     const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     blocks.push({ start: site.open, end: read.end });

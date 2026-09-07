@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
 import { Sheet } from "./compiler/sheet";
 import { transform } from "./compiler/transform";
@@ -150,7 +151,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
 
         let result: ReturnType<typeof transform>;
         try {
-          result = transform(code, { filename: args.path, runtime: options.runtime });
+          result = transform(code, { filename: args.path, runtime: options.runtime, read: readModule });
         } catch (error) {
           if (!(error instanceof CssBlockError)) throw error;
           /**

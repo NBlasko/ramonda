@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
 import { positionOf } from "./compiler/errors";
+import { readModule } from "./modules";
 import { mayHoldABlock } from "./compiler/scan";
 import { checkSource } from "./compiler/source";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
@@ -158,7 +159,7 @@ const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.colu
  * reported as a refusal and the run has stopped.
  */
 function cssFindings(fileName: string, source: string): Finding[] {
-  return checkSource(source, fileName).map((finding) => ({
+  return checkSource(source, fileName, readModule).map((finding) => ({
     file: fileName,
     ...positionOf(source, finding.at),
     code: finding.rule,

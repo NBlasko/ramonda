@@ -1,5 +1,6 @@
 import { CssBlockError } from "./compiler/errors";
 import { readFileSync } from "node:fs";
+import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
 import { mayHoldABlock } from "./compiler/scan";
 import { Sheet } from "./compiler/sheet";
@@ -143,7 +144,11 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
                     if (!mayHoldABlock(source)) return null;
 
                     try {
-                      const result = transform(source, { filename: args.path, runtime: options.runtime });
+                      const result = transform(source, {
+                        filename: args.path,
+                        runtime: options.runtime,
+                        read: readModule,
+                      });
                       return result === undefined ? null : { contents: result.code, loader: loaderFor(args.path) };
                     } catch {
                       // The real transform reports it, at the author's own line. Twice is worse.
@@ -184,7 +189,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
 
       let result: ReturnType<typeof transform>;
       try {
-        result = transform(code, { filename: file, runtime: options.runtime });
+        result = transform(code, { filename: file, runtime: options.runtime, read: readModule });
       } catch (error) {
         if (!(error instanceof CssBlockError)) throw error;
         /**

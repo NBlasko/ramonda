@@ -2,7 +2,7 @@ import MagicString from "magic-string";
 import { segments } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
 import { classNameFor, nameFor, substitute, variableNameFor } from "./names";
-import { namedSites } from "./references";
+import { type Imported, importedSites, namedSites } from "./references";
 import { normalise } from "./normalise";
 import { type Span, readBlock } from "./read";
 import { refuse } from "./errors";
@@ -44,6 +44,18 @@ export interface TransformOptions {
   readonly filename?: string;
   /** Where `block` is imported from. A wrapper for another JSX library points this at itself. */
   readonly runtime?: string;
+  /**
+   * How to read a module this file imports a named site from — see {@link Imported}.
+   *
+   * Injected rather than `fs`, and not only to keep the compiler free of Node: the editor must read
+   * its own unsaved buffer, and a name here is a hash of the module's TEXT. Two consumers reading
+   * two different texts would generate two different names for one token, and the editor would then
+   * report a fault the build does not have.
+   *
+   * Omitted, a cross-module reference stays a hole and `hole-as-a-variable-name` reports it — which
+   * is what every caller that has not opted in gets, and it is the safe direction.
+   */
+  readonly read?: Imported["read"];
 }
 
 /** One rule the stylesheet now owes. Assembly (dedupe, `@layer`, the collision assertion) is track E. */
@@ -135,7 +147,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
    * on an element — see {@link namedSites} for why that is not an optimisation but the only thing
    * that works.
    */
-  const references = namedSites(source);
+  const from = importedSites(source, { filename, read: options.read });
+  const references = namedSites(source, { filename, read: options.read });
   const resolve = (expression: string): string | undefined => references.get(expression);
 
   const magic = new MagicString(source);
@@ -151,6 +164,32 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   const emittedNamed: EmittedBlock[] = [];
   /** The end of the block read last, so a `name=@@(` found INSIDE one is not read as another. */
   let consumed = 0;
+
+  /**
+   * The rules of every named site this file IMPORTED — see {@link importedSites}.
+   *
+   * A reference resolves to text, so after this transform the imported binding is referenced by
+   * nothing the emitted code holds. The import goes unused, the bundler drops the module, and the
+   * `@property` it declared never reaches the stylesheet. **Measured through a real Vite build: the
+   * reading classes were right and the registration was simply absent.**
+   *
+   * So the file that READS a token emits that token's rule. Twice costs nothing — the name is a hash
+   * of the declaring module's own text, so every reader emits the same rule under the same name and
+   * the sheet keeps one. The theme module need not be in the JavaScript graph at all.
+   */
+  for (const text of from.texts) {
+    for (const site of findBlocks(text)) {
+      if (site.at === undefined) continue;
+      const read = readBlock(text, site.open, filename, { tolerant: true });
+      const canonical = normalise(read.block);
+      const className = site.at === "property" ? `--${classNameFor(canonical)}` : classNameFor(canonical);
+      if (named.has(className)) continue;
+      // Its own file is where a fault in it is reported; this is only carrying the rule across.
+      const emitted: EmittedBlock = { className, css: substitute(canonical, className), properties: [], at: site.at };
+      named.set(className, emitted);
+      emittedNamed.push(emitted);
+    }
+  }
 
   for (const site of sites) {
     if (site.start < consumed) {

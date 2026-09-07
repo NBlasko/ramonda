@@ -1,4 +1,4 @@
-import { namedSites } from "./references";
+import { type Imported, namedSites } from "./references";
 import { readBlock } from "./read";
 import { type Finding, checkBlock, checkText } from "./rules";
 import { findBlocks } from "./scan";
@@ -23,9 +23,12 @@ import { findBlocks } from "./scan";
  * A block the PARSER refuses is a different thing and is not caught here — it throws, and the caller
  * decides whether that is a refusal to report or a file to skip.
  */
-export function checkSource(source: string, fileName: string): Finding[] {
+export function checkSource(source: string, fileName: string, read?: Imported["read"]): Finding[] {
   const out: Finding[] = [];
-  const references = namedSites(source);
+  // The same reader the build uses, or none — and none means a cross-module reference stays a hole,
+  // which `hole-as-a-variable-name` reports. A checker that resolved less than the build would call
+  // a working theme a fault; one that resolved more would miss one. Both consumers pass the same.
+  const references = namedSites(source, { filename: fileName, read });
 
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName, { resolve: (name) => references.get(name) });

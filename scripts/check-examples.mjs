@@ -695,6 +695,9 @@ for (const group of groups.values()) {
     if (!mayHoldABlock(unit.code)) continue;
     let found;
     try {
+      // No reader: a documented example is one fenced block, so it imports nothing this could
+      // resolve — and a reader pointed at the repository would resolve a path the reader of
+      // the page never has.
       found = checkSource(unit.code, unit.file);
     } catch {
       // A block the parser refuses is already reported as a refusal, above.
