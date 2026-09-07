@@ -176,7 +176,25 @@ function walk(
     if (item.kind === "rule") {
       const condition = holeIn(item.prelude, CONDITION);
       if (condition !== undefined) {
+        const before = out.length;
         walk(item.items, selector, conditions, [...guards, condition], out);
+        /**
+         * A group that produced NOTHING still emits its guard, as an empty run.
+         *
+         * `@media print { }` is legal CSS that does nothing, so `@@if ({x}) { }` is legal here that
+         * does nothing — and commenting a group's body out is how somebody reaches it. But the
+         * emission counts on one segment per recorded hole: `readBlock` records the condition's
+         * `{expr}` whatever the group holds, and without this the guard had a hole and no segment,
+         * so every following piece of text slid one place left.
+         *
+         * Measured before this line existed: `@@if ({variant}) { }` alone compiled to
+         * `_merge(variant)`, which parses, runs, and ships `class="l g"` for `variant = "lg"` —
+         * two class names that never existed, with nothing downstream able to notice.
+         *
+         * An empty run contributes no declaration, so the guard is evaluated and applies nothing,
+         * which is what the browser does with the empty at-rule this mirrors.
+         */
+        if (out.length === before) out.push({ kind: "declarations", guards: [...guards, condition], items: [] });
         continue;
       }
       if (item.prelude.trimStart().startsWith("@")) {

@@ -494,6 +494,25 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     const head = wrap ? `${one.site.name}={` : "";
     const tail = wrap ? "}" : "";
 
+    /**
+     * The invariant the whole rewrite below rests on: one piece of surrounding text per hole, plus
+     * a tail. It was never stated, and breaking it was silent.
+     *
+     * A `@@if` group with nothing in it recorded a hole and produced no segment, so every piece slid
+     * one place left: one block emitted its map twice, another put a guard where a value belonged,
+     * and `@@if ({variant}) { }` alone compiled to `_merge(variant)` — which parses, runs, and ships
+     * two class names made out of the letters of a string. `flatten.ts` no longer produces that
+     * shape; this is the belt, because a mismatch here means an author's expression is about to be
+     * written somewhere it was not written, and that must never be something to discover at runtime.
+     */
+    if (one.pieces.length !== one.holes.length + 1) {
+      throw new Error(
+        `[@ramonda/css] internal: a block in ${filename} produced ${one.pieces.length} piece(s) for ` +
+          `${one.holes.length} hole(s), and every expression after the mismatch would be emitted in ` +
+          `the wrong place. This is a bug in the compiler, not in the block. Please report it.`,
+      );
+    }
+
     if (one.holes.length === 0) {
       magic.overwrite(one.site.start, one.end + 1, `${head}${hoisted.get(one.pieces[0])}${tail}`);
       continue;

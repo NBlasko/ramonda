@@ -11,13 +11,13 @@ import { transform } from "../compiler/transform";
  *
  * Two spellings, and both compile to an argument of the same merge:
  *
- * - `...{{expr}};` merges another block's map at that point;
- * - `@@if {{expr}} { … }` merges a group only when the condition holds.
+ * - `...{expr};` merges another block's map at that point;
+ * - `@@if ({expr}) { … }` merges a group only when the condition holds.
  *
  * `@@if` rather than `@if` because **`@@anything` is structurally impossible in CSS** — an
  * at-keyword is `@` followed by an ident-token and an ident cannot begin with `@` — so it is a
- * grammar guarantee rather than a bet on what CSS will not take. And the condition is inside `{{ }}`
- * because that is this language's one standing rule: TypeScript appears there and nowhere else.
+ * grammar guarantee rather than a bet on what CSS will not take. And the condition is inside `( { } )`
+ * because that is this language's one standing rule: TypeScript appears inside braces and nowhere else.
  */
 const emit = (source: string) => transform(source, { filename: "Card.tsx" })?.code ?? "";
 
@@ -200,6 +200,142 @@ describe("a condition head with something extra in it", () => {
  * nested segment needs its outer guard a second time. `PLAN.md` promised `a && b && { … }`, which
  * that rule cannot produce.
  */
+/**
+ * A group that produces no declaration — and CSS is what decides what it means.
+ *
+ * `@media print { }` is legal CSS that does nothing, so `@@if ({x}) { }` is legal here that does
+ * nothing. **It is also how somebody debugs**: commenting out a group's body is the everyday way to
+ * reach this shape, and it must not turn into a different program.
+ *
+ * It was a real fault, and a silent one. The emission rests on `pieces.length === holes.length + 1`
+ * — one piece of surrounding text per hole, plus the tail — and a group with nothing in it recorded
+ * a hole while producing no segment. Every piece then slid one place left. Measured, four ways:
+ *
+ *     color: red; @@if ({c}) { }        the map was emitted TWICE, and the guard became loose text
+ *     @@if ({a}) { } color: {v};        `a` became the VALUE of `color`, and `v` was loose text
+ *     @@if ({variant}) { }              `_merge(variant)` — parses, and ships `class="l g"`
+ *     color: red; @@if({a}){@@if({b}){}}  a TypeError out of magic-string, with no author position
+ *
+ * The third is the one that decided the shape of the fix: it compiles, it runs, and it invents two
+ * class names out of the letters of a string. Nothing downstream can notice.
+ */
+/**
+ * The shapes the nesting machinery has, and had no test for.
+ *
+ * A review counted them: `transform.test.ts` holds no `@@if` at all, and the deepest shape tested
+ * anywhere opened exactly ONE nested merge. Six branches of the emission had nothing exercising
+ * them — and the empty group below is the one that turned out to be broken, so this is the gap that
+ * let it ship rather than a second bug.
+ *
+ * Each of these asserts what the emitted structure IS, because the failure they guard against is a
+ * structure that still compiles.
+ */
+describe("the nesting shapes nothing reached", () => {
+  test("two nested merges live at once", () => {
+    const out = emit(
+      `const card = @@(\n  color: red;\n  @@if ({a}) {\n    opacity: 0.5;\n    @@if ({b}) {\n      gap: 8px;\n      @@if ({c}) { padding: 4px; }\n    }\n  }\n);\n`,
+    );
+
+    // Counted in GUARD POSITION, because a bare `\bc\b` also matches the `c` in the class name
+    // `r-c-red` — the abbreviation for `color`. The claim is that each guard is emitted once.
+    for (const guard of ["a", "b", "c"]) {
+      expect(out.match(new RegExp(`(^|[^\\w])${guard}\\s*&&`, "g"))).toHaveLength(1);
+    }
+    expect(out).toMatch(/a\s*&&\s*_merge\(/);
+    expect(out).toMatch(/b\s*&&\s*_merge\(/);
+    expect(out).toMatch(/c\s*&&\s*\{"padding"/);
+  });
+
+  test("and two of them close on one segment", () => {
+    const out = emit(`const card = @@(\n  @@if ({a}) {\n    @@if ({b}) { gap: 8px; }\n  }\n  color: red;\n);\n`);
+
+    expect(out).toMatch(/,\s*\{"color":"r-[^"]*",\}\)/);
+  });
+
+  test("a run resumed after a nested group, still inside a guard", () => {
+    const out = emit(
+      `const card = @@(\n  @@if ({a}) {\n    color: red;\n    @@if ({b}) { gap: 8px; }\n    opacity: 0.5;\n  }\n);\n`,
+    );
+
+    expect(out).toMatch(/b\s*&&\s*\{"gap"[^}]*\}\s*,\s*\{"opacity"/);
+    expect(out.match(/\ba\b/g)).toHaveLength(1);
+    expect(out.match(/\bb\b/g)).toHaveLength(1);
+  });
+
+  test("a spread beside declarations inside a guard", () => {
+    const out = emit(`const card = @@(\n  @@if ({a}) {\n    ...{base};\n    color: red;\n  }\n);\n`);
+
+    expect(out).toMatch(/a\s*&&\s*_merge\(\s*base\s*,\s*\{"color"/);
+  });
+
+  test("a spread alone under a guard opens no merge", () => {
+    const out = emit(`const card = @@(\n  @@if ({a}) { ...{base}; }\n);\n`);
+
+    expect(out).toMatch(/_merge\(\s*a\s*&&\s*base\s*\)/);
+  });
+
+  /**
+   * The contextual clear-key, through the transform rather than against a hand-written map.
+   *
+   * A shorthand written under a selector clears its longhands under THAT selector and no other, so
+   * the key carries the context. `transform.ts` makes this exact claim in a comment and only
+   * `merge.test.ts` checked it, against a map somebody typed by hand.
+   */
+  test("a shorthand under a selector clears its longhands under that selector only", () => {
+    const out = emit(`const card = @@(\n  &:hover { padding: 8px; }\n);\n`);
+
+    expect(out).toContain('"~:hover|padding"');
+    expect(out).toContain('":hover|padding-left"');
+    expect(out).not.toContain('"~padding"');
+  });
+});
+
+describe("a group with nothing in it", () => {
+  test("is legal, like the empty at-rule it is, and applies nothing", () => {
+    const out = emit(`const card = @@(\n  color: red;\n  @@if ({this.compact}) { }\n);\n`);
+
+    // The guard is still evaluated — a browser evaluates `@media print` too — and contributes
+    // nothing. What must never happen is the map appearing twice.
+    expect(out.match(/"color"/g)).toHaveLength(1);
+    expect(out).toContain("this.compact");
+  });
+
+  test("and the expressions on either side of it stay where they were written", () => {
+    const out = emit(`const card = @@( @@if ({a}) { } color: {v}; );\n`);
+
+    expect(out).toMatch(/\["r-[0-9a-zA-Z][^"\s\]]*",\s*v\]/);
+    expect(out).toContain("a");
+  });
+
+  test("a block that is nothing but an empty group does not become its own condition", () => {
+    const out = emit(`const card = @@( @@if ({variant}) { } );\n`);
+
+    // `_merge(variant)` was what it emitted. For `variant = "lg"` the runtime walked the string and
+    // produced `class="l g"` — two class names that never existed, with nothing to report it.
+    expect(out).not.toMatch(/_merge\(\s*variant\s*\)/);
+    expect(out).toContain("variant");
+  });
+
+  test("and a group whose only content is an empty group is compiled, not thrown from", () => {
+    const out = emit(`const card = @@(\n  color: red;\n  @@if ({a}) { @@if ({b}) { } }\n);\n`);
+
+    expect(out.match(/"color"/g)).toHaveLength(1);
+    expect(out).toContain("a");
+    expect(out).toContain("b");
+  });
+
+  test.each([
+    ["a comment", "/* padding: 4px; */"],
+    ["a stray semicolon", ";"],
+    ["an empty nested rule", "&:hover { }"],
+    ["an empty at-rule", "@media print { }"],
+  ])("%s counts as nothing, and is still legal", (_what, body) => {
+    const out = emit(`const card = @@(\n  color: red;\n  @@if ({c}) { ${body} }\n);\n`);
+
+    expect(out.match(/"color"/g)).toHaveLength(1);
+  });
+});
+
 describe("a group inside a group", () => {
   /** The emitted code with the hoisted prologue dropped — `emit` here already returns the text. */
   const emitted = (source: string) => {
