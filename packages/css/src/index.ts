@@ -8,6 +8,21 @@
  * rule `@ramonda/lens` follows, and for the same reason: a wrapper can put a `css` prop on another
  * JSX library without dragging a framework in behind it.
  */
+/**
+ * The narrow types, for the declaration that MAKES a value rather than for the block.
+ *
+ * Types only — generated from the same unit table the checker measures a typo against, so the
+ * two cannot drift, and nothing here reaches the runtime.
+ */
+export type {
+  CssAngleUnit,
+  CssDimension,
+  CssFrequencyUnit,
+  CssLengthUnit,
+  CssResolutionUnit,
+  CssTimeUnit,
+  CssUnit,
+} from "./units.generated";
 export type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
 export { block, toStyleObject } from "./value";
 export type { StyleEntry, StyleMap } from "./merge";

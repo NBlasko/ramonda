@@ -250,6 +250,50 @@ Invalid at computed-value time is worse than invalid at parse time: the property
 initial value **and takes any earlier declaration of it with it**. So text written against a hole is
 reported, on either side and whatever it is — a unit, a suffix, a `#` in front.
 
+### And the value carrying that unit can be typed
+
+A hole's value is `string | number`, and it has to be: **349 of 551 properties are composite**.
+`border-left` is `<line-width> || <line-style> || <color>`, so `4px solid red` in any order — a type
+narrow enough to refuse `4px sollid red` would refuse `red 4px solid`, which is correct CSS.
+
+So the type goes where the value is **made**, and that is the better place: the error lands on the
+line somebody wrote.
+
+```
+const border: CssDimension = `${weight}px`;      ✓
+const border: CssDimension = `${weight}pddx`;    ✗  TS2322, on this line
+```
+
+No `as const` is needed — the annotation is the context — and it works in a getter, which is where a
+value like this usually comes from:
+
+```tsx
+import type { CssDimension } from "@ramonda/css";
+
+class Card {
+  weight = 4;
+
+  get border(): CssDimension {
+    return `${this.weight}px`;
+  }
+}
+```
+
+**The unit set is a parameter**, so an app that has settled on one says so:
+
+```
+const gap: CssDimension<"px"> = `${n}rem`;       ✗  TS2322 — this app writes px
+```
+
+There is a union per family — `CssLengthUnit`, `CssAngleUnit`, `CssTimeUnit`, `CssResolutionUnit`
+and `CssFrequencyUnit` — so `CssDimension<CssLengthUnit>` is a length and refuses `12deg`. All of
+them are generated from the same unit table the checker measures a typo against, so the two cannot
+disagree.
+
+One looseness, on purpose: **any call is admitted**. `calc()`, `min()`, `clamp()` and `var()` can
+each produce any dimension and nothing in a type can read inside one, so `calc(1rem + 2px)` passes
+`CssDimension<"px">`. Refusing calls would make the type useless in the one place you reach for it.
+
 ## Comments
 
 A block is CSS, so its comment is CSS's:

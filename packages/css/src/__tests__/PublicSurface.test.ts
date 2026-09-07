@@ -1,3 +1,6 @@
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import * as compiler from "../compiler/index";
 import * as api from "../index";
@@ -17,6 +20,46 @@ import * as api from "../index";
  * the boundary and produces the value the framework already takes.
  */
 const RUNTIME = ["block", "compose", "merge", "toStyleObject"];
+
+/**
+ * The TYPES the runtime entry exports, which `Object.keys` cannot see.
+ *
+ * That blindness was real: seven types were added to this entry and every assertion above stayed
+ * green, because a type is gone by the time there is an object to ask. A published type is a promise
+ * exactly as a published function is — it is what somebody writes in their own annotation — so it
+ * needs the same tripwire, and it needs it read from the SOURCE rather than from a runtime object.
+ */
+const TYPES = [
+  "CssAngleUnit",
+  "CssDimension",
+  "CssFrequencyUnit",
+  "CssLengthUnit",
+  "CssResolutionUnit",
+  "CssTimeUnit",
+  "CssUnit",
+  "HoleValues",
+  "StyleBlock",
+  "StyleEntry",
+  "StyleMap",
+  "StyleValue",
+  "StyleVarValue",
+];
+
+/** Everything one module exports, values and types alike, through a real program. */
+function exportsOf(entry: string): string[] {
+  const program = ts.createProgram([entry], { strict: true, target: ts.ScriptTarget.ES2022, noEmit: true });
+  const file = program.getSourceFile(entry);
+  if (file === undefined) throw new Error(`no source file for ${entry}`);
+
+  const checker = program.getTypeChecker();
+  const symbol = checker.getSymbolAtLocation(file);
+  if (symbol === undefined) throw new Error(`${entry} is not a module`);
+
+  return checker
+    .getExportsOfModule(symbol)
+    .map((one) => one.name)
+    .sort();
+}
 
 const COMPILER = [
   "CssBlockError",
@@ -48,6 +91,12 @@ describe("public API surface", () => {
 
   test("the compiler entry exports exactly what it means to", () => {
     expect(Object.keys(compiler).sort()).toEqual([...COMPILER].sort());
+  });
+
+  test("and exactly the types it means to, which `Object.keys` cannot see", () => {
+    const entry = join(dirname(fileURLToPath(import.meta.url)), "..", "index.ts");
+
+    expect(exportsOf(entry)).toEqual([...RUNTIME, ...TYPES].sort());
   });
 
   test("the runtime entry does not re-export the compiler", () => {
