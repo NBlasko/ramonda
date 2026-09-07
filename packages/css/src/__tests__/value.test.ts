@@ -108,6 +108,28 @@ describe("the value as any other JSX library would spread it", () => {
     expect(style).toEqual({ "--r-cccccccccccccccc-1": "8px" });
   });
 
+  /**
+   * The same rule asked of a value that is not a string yet — the framework's own path had this
+   * backwards and a measurement found it: `typeof value === "string"` was asked BEFORE the value
+   * became text, so `{ toString: () => "red; position: fixed; …" }` went out unexamined and came
+   * back off a server render as applied declarations. This path stringified first and so was never
+   * exposed to that one, but it wrote every other kind through — and the kinds a hole is given by
+   * mistake are text no property can parse.
+   *
+   * Both paths now answer it the same way: a string or a finite number, and nothing else.
+   */
+  test("a kind a custom property cannot hold is refused, semicolon or not", () => {
+    const one = block("r-ffffffffffffffff", ["--r-ffffffffffffffff-0"]);
+    const call = (value: unknown) => toStyleObject(one(value as string)).style;
+
+    expect(call({ toString: () => "red; position: fixed" })).toEqual({});
+    expect(call(true)).toEqual({});
+    expect(call({})).toEqual({});
+    expect(call(() => 1)).toEqual({});
+    expect(call(Number.NaN)).toEqual({});
+    expect(call(Number.POSITIVE_INFINITY)).toEqual({});
+  });
+
   test("a descriptor read without a call has no values, so it contributes no declarations", () => {
     const bordered = block("r-dddddddddddddddd", ["--r-dddddddddddddddd-0"]);
 

@@ -28,14 +28,16 @@ import ts from "typescript";
  * the framework. Names and types both, because a field that quietly changed from `string` to
  * `string | number` is exactly as wrong as one that disappeared.
  *
- * **And one RULE, which is duplicated for the same reason the shape is.** `holdsOneDeclaration`
- * decides whether a hole's value may be written at all — the answer to a hostile value that would
- * become a second declaration — and it is written in both packages because neither may import the
- * other. Two copies of a security decision is a place to drift where the symptom is an overlay
- * somebody's record asked for, so the bodies are compared as text. A related decision, that no value
- * means the property is left UNSET rather than written as `"null"`, is asserted by tests on both
- * sides: it lives in different structures here and cannot be compared this way. It had already
- * drifted once, and the adapter was the side that was wrong.
+ * **And one RULE, which is duplicated for the same reason the shape is.** `textFor` decides whether a
+ * hole's value may be written at all, and as what text — the answer to a hostile value that would
+ * become a second declaration, and to the kinds a custom property cannot hold — and it is written in
+ * both packages because neither may import the other. Two copies of a security decision is a place
+ * to drift where the symptom is an overlay somebody's record asked for, so the bodies are compared
+ * as text. Both sides have drifted here once already, in opposite directions: the adapter wrote
+ * `"null"` where the framework left the property unset, and the framework asked whether the value
+ * was a string BEFORE it became text, which let an object with a `toString` past the semicolon rule.
+ * A related decision, that no value means the property is left UNSET, is asserted by tests on both
+ * sides: it lives in different structures here and cannot be compared this way.
  */
 
 const root = join(import.meta.dirname, "..");
@@ -110,7 +112,7 @@ function bodyOf(file, functionName) {
 }
 
 /** The rule written on both sides, and where each copy lives. */
-const RULE = "holdsOneDeclaration";
+const RULE = "textFor";
 const RULE_SIDES = [
   { label: "@ramonda/css", file: join(root, "packages/css/src/value.ts") },
   { label: "@ramonda/core", file: join(root, "packages/core/src/core/cssBlock.ts") },

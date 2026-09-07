@@ -219,3 +219,62 @@ describe("a value carrying characters that mean something in markup", () => {
     ).toContain("script");
   });
 });
+
+/**
+ * The `;` rule applied to a value that is not a string yet.
+ *
+ * `holdsOneDeclaration` reads text, and a value only becomes text when it is written — so asking
+ * `typeof value === "string"` first is asking about the wrong thing. Every other kind of value went
+ * to `String(value)` unexamined, and `toString` is a method an object can have.
+ *
+ * **Measured, and it was a real hole rather than a hypothetical**: the same value that is refused as
+ * a string came through markup as `position: fixed; width: 100vw; z-index: 9999` — applied, on the
+ * page — when it arrived as `{ toString: () => … }`. The type refuses everything but a string and a
+ * number, so it takes unchecked JavaScript to get here; `isCompiledBlock` exists because unchecked
+ * JavaScript does get here.
+ */
+describe("a value that is not a string", () => {
+  beforeEach(() => {
+    resetDiagnostics();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const HOSTILE = "red; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999";
+
+  test("an object whose text is a second declaration is refused too", async () => {
+    const Panel = panelWith({ toString: () => HOSTILE } as unknown as string);
+    const container = document.createElement("div");
+    container.innerHTML = await renderToString(<Panel />);
+
+    const element = container.querySelector(".lead") as HTMLElement;
+    expect({ position: element.style.position, width: element.style.width, zIndex: element.style.zIndex }).toEqual({
+      position: "",
+      width: "",
+      zIndex: "",
+    });
+  });
+
+  /** An array joins with `,`, so its own text can carry a `;` from any one of its members. */
+  test("an array carrying one in a member is refused", async () => {
+    const Panel = panelWith(["red", " position: fixed; width: 100vw"] as unknown as string);
+    const container = document.createElement("div");
+    container.innerHTML = await renderToString(<Panel />);
+
+    expect((container.querySelector(".lead") as HTMLElement).style.width).toBe("");
+  });
+
+  /**
+   * And the kinds that carry no `;` are refused as well, which is the other half of the same rule: a
+   * custom property holds text, so `String(value)` always produces SOMETHING, and `true`,
+   * `[object Object]` and `() => 1` are all text no property can parse. Writing them leaves the
+   * declaration to fall back in silence; refusing them says so.
+   */
+  test("the kinds a custom property cannot hold are not written", async () => {
+    for (const value of [true, {}, () => 1, Number.NaN]) {
+      const Panel = panelWith(value as unknown as string);
+      const html = await renderToString(<Panel />);
+      expect(html).not.toContain("--r-8e271c6c1f3a4b02-0:");
+    }
+  });
+});

@@ -75,16 +75,16 @@ export function toStyleObject(value: CalledStyleValue): { className: string; sty
      * the framework's own path until it was measured; they answer it the same way now.
      */
     if (raw === undefined || raw === null) continue;
-    // A custom property holds text. A number reaching here is a property that takes one — the
-    // per-property types are what refuse the ones that do not.
-    const text = typeof raw === "string" ? raw : String(raw);
-    if (holdsOneDeclaration(text)) style[value.properties[index]] = text;
+    const text = textFor(raw);
+    if (text !== undefined) style[value.properties[index]] = text;
   }
   return { className: value.className, style };
 }
 
 /**
- * Whether a hole's value is one custom property value and cannot become a second declaration.
+ * The text one hole's value is written as, or `undefined` for a value that is not written at all.
+ *
+ * ## The semicolon
  *
  * A hole's value is whatever the author's expression evaluated to, and an expression can read a
  * record — so "the author wrote it" is not a defence. `setProperty` refuses to create a second
@@ -98,9 +98,22 @@ export function toStyleObject(value: CalledStyleValue): { className: string; sty
  * Refusing every semicolon rather than only the top-level ones costs a value like `content: "a;b"`
  * and buys a rule that needs no CSS parser to apply.
  *
- * The declaration is dropped rather than sanitised, so the element is left unstyled in that one
- * respect: a missing border beats an overlay somebody's record asked for.
+ * ## The kind
+ *
+ * A custom property holds text, so `String(value)` produces something for anything — and the kinds a
+ * hole is given by mistake all produce text no property can parse: `true`, `[object Object]`,
+ * `() => 1`, `NaN`. Written, they leave the declaration to fall back in silence. `StyleVarValue` is
+ * a string or a number, so nothing else arrives from checked source; this function is the adapter
+ * surface, which is precisely where unchecked JavaScript arrives.
+ *
+ * The framework's own path asked the string question BEFORE the value became text, which let an
+ * object with a `toString` through — the semicolon rule is about text, so both paths ask it of the
+ * text now, and both refuse the same kinds. This package has no diagnostics to report it with; the
+ * declaration is dropped rather than sanitised, so the element is left unstyled in that one respect:
+ * a missing border beats an overlay somebody's record asked for.
  */
-function holdsOneDeclaration(value: string): boolean {
-  return !value.includes(";");
+function textFor(value: StyleVarValue): string | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
+  if (typeof value !== "string") return undefined;
+  return value.includes(";") ? undefined : value;
 }

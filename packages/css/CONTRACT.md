@@ -169,8 +169,9 @@ type StyleBlock<P extends readonly string[]> = StyleValue & ((...values: HoleVal
   adapter surface a wrapper on another JSX library needs; Ramonda applies it natively instead.
 - **There is no brand.** A runtime diagnostic (track L) can tell a compiled value from a hand-written
   object by its shape, and a hand-written object that matches the shape exactly is a working value.
-- **A value containing a `;` is refused, and the declaration is dropped.** See below — this is a
-  requirement on every consumer of a value, not an implementation detail of one.
+- **A value that is not a string or a finite number is not written, and neither is one containing a
+  `;`.** See below — this is a requirement on every consumer of a value, not an implementation detail
+  of one.
 
 Applying it, on the framework side, is: add `className`, then `setProperty(name, value)` per hole.
 
@@ -199,8 +200,19 @@ contain one at the top level; refusing every semicolon rather than only the top-
 value like `content: "a;b"` and buys a rule that needs no CSS parser to apply. The declaration is
 dropped rather than sanitised — a missing border beats an overlay somebody's record asked for.
 
+**The rule is about TEXT, so it is asked of the text, and the kind is asked first.** A custom
+property holds text, so `String(value)` produces something for anything — which means a consumer that
+asks `typeof value === "string"` before the value becomes text has not asked the question at all.
+Measured: `{ toString: () => "red; position: fixed; …" }` went past exactly that check and came back
+off a server render as applied declarations. And the kinds a hole is given by mistake — `true`, `{}`,
+a function, `NaN` — all produce text no property can parse, so writing them leaves the declaration to
+fall back with nothing said. A hole's value is **a string, or a number `Number.isFinite` accepts**,
+and nothing else is written.
+
 Implemented in both consumers that exist: `toStyleObject` here, and `applyCssBlock` in the framework.
-Saying it out loud to the author is the runtime diagnostic, which is deliberately last.
+Both are named `textFor` and `scripts/check-css-contract.mjs` compares the two bodies as text.
+Saying it out loud to the author is the runtime diagnostic — `RMD063`, which names which of the two
+reasons it was.
 
 ## 3. The names
 

@@ -1931,6 +1931,15 @@ of the round trip as real, applied declarations, on a page nothing else would ha
 value is not written at all and the declaration is dropped, which is the right way round — a missing
 border beats a full-viewport overlay somebody's record asked for.
 
+The rule is asked of the TEXT, and that had to be measured to be got right: the check used to ask
+whether the value was a string before it became one, so `{ toString: () => "red; position: fixed" }`
+went past it and came back off a server render as applied declarations.
+
+The same code reports the other half of the rule — a hole takes **a string or a finite number**, and
+nothing else is written. `true`, `{}`, a function and `NaN` all become text a property cannot parse,
+so writing them would leave the declaration to fall back with nothing said. The types refuse them, so
+one arriving means the value reached the runtime through JavaScript that was not checked.
+
 The value came from an expression, so it is fixed where that expression reads its data, not at the
 block. A hole is for a value the page computes; text that arrives from a record, a query string or a
 form belongs behind whatever validates it first.

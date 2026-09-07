@@ -30,7 +30,7 @@ import type { EnhancedHTMLNode } from "../types/vdom";
  * guarantee never touched. See `__tests__/hydration/CssBlockSsr.test.tsx`.
  *
  * So the value is checked here instead of relying on the DOM to refuse it, which only one of the two
- * paths does. {@link holdsOneDeclaration} is the whole of it.
+ * paths does. {@link textFor} is the whole of it.
  *
  * ## Why it runs after the attribute loop rather than inside it
  *
@@ -89,27 +89,6 @@ export function applyCssBlock(enhancedNode: EnhancedHTMLNode, next: CssBlockValu
     const value = next.values[index];
 
     /**
-     * A value that would not be one declaration is not written at all.
-     *
-     * The declaration then has no value, so it is dropped and the element is left unstyled in that
-     * one respect — visible, and the right way round: a missing border beats a full-viewport overlay
-     * somebody's record asked for. Saying so out loud is the runtime diagnostic, which `PLAN.md`
-     * puts last so it is written against a feature that has stopped moving.
-     */
-    if (typeof value === "string" && !holdsOneDeclaration(value)) {
-      if (__DEV__) {
-        diagnose(
-          "RMD063",
-          `${next.className}:${names[index]}`,
-          `${names[index]} was not set: its value holds a \`;\`, which would be a second declaration ` +
-            `rather than a value. The declaration is dropped instead.`,
-          { className: next.className, property: names[index], value },
-        );
-      }
-      enhancedNode.style.removeProperty(names[index]);
-      continue;
-    }
-    /**
      * A property name with no value beside it. The types refuse it, so what reaches here is a
      * descriptor read without being called — `css={_s0}` where `_s0(…)` was meant, on a block that
      * has holes.
@@ -122,7 +101,28 @@ export function applyCssBlock(enhancedNode: EnhancedHTMLNode, next: CssBlockValu
       enhancedNode.style.removeProperty(names[index]);
       continue;
     }
-    enhancedNode.style.setProperty(names[index], typeof value === "string" ? value : String(value));
+
+    /**
+     * A value that would not be one declaration is not written at all.
+     *
+     * The declaration then has no value, so it is dropped and the element is left unstyled in that
+     * one respect — visible, and the right way round: a missing border beats a full-viewport overlay
+     * somebody's record asked for. Saying so out loud is the runtime diagnostic, which `PLAN.md`
+     * puts last so it is written against a feature that has stopped moving.
+     */
+    const text = textFor(value);
+    if (text === undefined) {
+      if (__DEV__) {
+        diagnose("RMD063", `${next.className}:${names[index]}`, refusal(value, names[index]), {
+          className: next.className,
+          property: names[index],
+          value,
+        });
+      }
+      enhancedNode.style.removeProperty(names[index]);
+      continue;
+    }
+    enhancedNode.style.setProperty(names[index], text);
   }
 
   enhancedNode[CSS_SYM] = names;
@@ -173,15 +173,50 @@ function describe(value: CssBlockValue): string {
 }
 
 /**
- * Whether a hole's value is one custom property value and cannot become a second declaration.
+ * The text one hole's value is written as, or `undefined` for a value that is not written at all.
+ *
+ * ## Why the kind is checked and not only the semicolon
+ *
+ * A custom property holds text, so `String(value)` produces something for anything — and the four
+ * kinds a hole can be given by mistake all produce text no property can parse: `true`,
+ * `[object Object]`, `() => 1`, `NaN`. Written, they leave the declaration to fall back in silence.
+ * The type says a hole is a string or a number, so nothing else can arrive from checked source; what
+ * arrives is unchecked JavaScript, which is the same reason {@link isCompiledBlock} exists.
+ *
+ * ## Why the text is produced before it is judged
+ *
+ * **Measured, and it found a real hole rather than confirming there was none.** The check used to ask
+ * `typeof value === "string"` and let every other kind through to `String(value)` unexamined — and
+ * `toString` is a method an object can have. `{ toString: () => "red; position: fixed; …" }` came
+ * back out of a server render as `position: fixed; width: 100vw; z-index: 9999`, applied, on the
+ * page, by way of the one path `setProperty` does not cover. The semicolon rule is about TEXT, so it
+ * is asked of the text.
  *
  * A semicolon is what separates declarations in a style attribute, and CSS says a custom property's
  * value may not contain one at the top level. Refusing every semicolon rather than only the top-level
  * ones costs a value like `content: "a;b"`, which no compiled hole has yet had, and buys a rule that
  * needs no CSS parser to apply — on the server, where there is no engine to refuse it for us.
  */
-function holdsOneDeclaration(value: string): boolean {
-  return !value.includes(";");
+function textFor(value: string | number): string | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
+  if (typeof value !== "string") return undefined;
+  return value.includes(";") ? undefined : value;
+}
+
+/** Which of the two reasons it was, in the words that say what to change. */
+function refusal(value: string | number, property: string): string {
+  if (typeof value === "string") {
+    return (
+      `${property} was not set: its value holds a \`;\`, which would be a second declaration ` +
+      `rather than a value. The declaration is dropped instead.`
+    );
+  }
+  const kind = typeof value === "number" ? String(value) : typeof value;
+  return (
+    `${property} was not set: a hole takes a string or a finite number, and this one was given ` +
+    `${kind}. A custom property holds text, so writing it would leave the declaration to fall back ` +
+    `in silence. The declaration is dropped instead.`
+  );
 }
 
 /**
