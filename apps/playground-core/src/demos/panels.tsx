@@ -224,7 +224,7 @@ export class LifecycleDemo extends Component {
  *
  * The three things it does that a `className` cannot are all here. **The static declarations become
  * one class in the stylesheet** — however many of these are on the page, and however many pages —
- * because the class name is the hash of the block. **Each `{{ … }}` becomes a CSS custom property on
+ * because the class name is the hash of the block. **Each `{ … }` becomes a CSS custom property on
  * this element**, so a value that differs per instance costs a property rather than a rule. And the
  * whole thing is checked: a property that does not exist, and a value the property does not take,
  * are build errors with the same *did you mean* TypeScript gives any other typo.
@@ -286,17 +286,17 @@ export class StyleBlock extends Component {
  * 8 rules and 353 B for one root block with descendant selectors. So per-element is not a
  * concession, it is the cheaper and clearer one, and this panel is written that way.
  *
- * **`...{{ … }}` merges another block here.** It works across files, because what it merges is a
+ * **`...{ … }` merges another block here.** It works across files, because what it merges is a
  * value — importable, storable in an object, pickable out of one.
  *
- * **`@@if {{ … }} { … }` merges a group only when the condition holds**, and both are arguments of
+ * **`@@if ({ … }) { … }` merges a group only when the condition holds**, and both are arguments of
  * the same merge in the order they were written, so **what comes later wins**. That is the rule a
  * reader of CSS already has, and it is the thing whole-block classes could never express: the order
  * of names in a `class` attribute means nothing in CSS, so precedence has to be decided where the
  * author wrote it.
  *
  * **There is no `@else`, and the replacement is stronger.** Spreading a lookup —
- * `...{{TONES[this.tone]}}` — is exhaustive: add a tone to the union and forget the map, and
+ * `...{TONES[this.tone]}` — is exhaustive: add a tone to the union and forget the map, and
  * TypeScript reports it. `@else` never could.
  *
  * **Watch `padding` when "roomy" is on.** The base sets `padding-left` and the group sets the
@@ -413,12 +413,12 @@ export class StyleBlockComposed extends Component {
  * both compile, which is what lets a hover style and its reduced-motion answer sit beside each other
  * instead of in two places.
  *
- * **The hole is still one value.** `{{ … }}` is a custom property, so it works the same inside a
+ * **The hole is still one value.** `{ … }` is a custom property, so it works the same inside a
  * nested rule as at the top — the property is set on the ELEMENT and the nested rule reads it, which
  * is why one value can drive a colour that only appears on hover.
  *
  * **And one hole drives four declarations here, deliberately.** A hole belongs to the declaration it
- * is written in: each one becomes its own rule reading its own `--r-…` name, so writing `{{accent}}`
+ * is written in: each one becomes its own rule reading its own `--r-…` name, so writing `{accent}`
  * four times puts four custom properties on the element, all holding the same colour. Measured, and
  * it has to be that way — a rule is shared by every element that names it, so its variable cannot be
  * named after anything but itself.

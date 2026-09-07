@@ -1,7 +1,7 @@
 /**
  * What the `css` prop accepts: a style block that has already been compiled.
  *
- * A block is written in real CSS beside the markup, with `{{expr}}` holes, and compiled before the
+ * A block is written in real CSS beside the markup, with `{expr}` holes, and compiled before the
  * build into a class that already exists in a stylesheet plus one custom property per hole. By the
  * time a value reaches the framework there is nothing left to parse — a class name, the property
  * names, and this render's values for them.

@@ -993,3 +993,63 @@ describe("hovering a declaration", () => {
     expect(signature).toContain("accent");
   });
 });
+
+/**
+ * Going to a binding a block READS, from inside the block.
+ *
+ * **Reported by a user**: ctrl+click on `CONTROL` or `TONES` inside a `...{ … }` landed on the JSDoc
+ * above the declaration rather than on the declaration, and they could see no pattern in it. The
+ * pattern is length: a span that starts a few characters early is invisible until the thing above it
+ * is long, and both of those carry a paragraph of comment.
+ *
+ * Three things could produce it and they are fixed differently, so this measures rather than guesses:
+ * whether the span TypeScript returns already covers the comment, whether the plugin maps it, and
+ * whether the mapping is off by a boundary. The assertion is on the character the span lands on,
+ * which says which of the three it is in one run.
+ */
+describe("going to a binding a block reads", () => {
+  const source =
+    `/**\n * A paragraph of comment, long enough that landing on it is unmistakable.\n *\n * A second one, for the same reason.\n */\nconst CONTROL = @@( color: red; );\n\n` +
+    `const card = @@(\n  ...{CONTROL};\n  padding: 8px;\n);\n`;
+
+  test("lands on the declaration, not on the comment above it", () => {
+    const { service } = editor(source);
+    const at = source.indexOf("...{CONTROL}") + 4;
+
+    const [only] = service.getDefinitionAtPosition(FILE, at) ?? [];
+    if (only === undefined) throw new Error("no definition");
+
+    expect(source.slice(only.textSpan.start, only.textSpan.start + only.textSpan.length)).toBe("CONTROL");
+  });
+
+  /**
+   * The same, with the comment above it holding text that LOOKS like a block.
+   *
+   * This is the shape the user actually had: `panels.tsx` explains the syntax in its own JSDoc, so
+   * the paragraph above the declaration contains `...{ … }` and `@@if ({ … }) { … }` as prose. If
+   * any scanner reads a comment as a site, every position after it shifts — and the symptom is a
+   * definition landing a few characters early, which is exactly what was reported.
+   */
+  test("even when the comment above it explains the syntax", () => {
+    const explained =
+      `/**\n * A block, explained.\n *\n * \`...{ … }\` merges another block here, and \`@@if ({ … }) { … }\` merges a group.\n *\n * Spreading a lookup — \`...{TONES[this.tone]}\` — is exhaustive.\n */\nconst CONTROL = @@( color: red; );\n\n` +
+      `const card = @@(\n  ...{CONTROL};\n  padding: 8px;\n);\n`;
+    const { service } = editor(explained);
+    const at = explained.lastIndexOf("...{CONTROL}") + 4;
+
+    const [only] = service.getDefinitionAtPosition(FILE, at) ?? [];
+    if (only === undefined) throw new Error("no definition");
+
+    expect(explained.slice(only.textSpan.start, only.textSpan.start + only.textSpan.length)).toBe("CONTROL");
+  });
+
+  test("and the bound span covers the name under the cursor", () => {
+    const { service } = editor(source);
+    const at = source.indexOf("...{CONTROL}") + 4;
+
+    const got = service.getDefinitionAndBoundSpan(FILE, at);
+    if (got === undefined) throw new Error("no bound span");
+
+    expect(source.slice(got.textSpan.start, got.textSpan.start + got.textSpan.length)).toBe("CONTROL");
+  });
+});
