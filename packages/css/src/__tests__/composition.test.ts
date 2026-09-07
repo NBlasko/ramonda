@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { merge } from "../merge";
 import { transform } from "../compiler/transform";
 
 /**
@@ -178,5 +179,96 @@ describe("a condition head with something extra in it", () => {
     ["an expression with braces in it", "@@if ({ f({a: 1}) }) { opacity: .5; }"],
   ])("%s is fine", (_what, body) => {
     expect(() => emit(`const c = @@(\n  ${body}\n);\n`)).not.toThrow();
+  });
+});
+
+/**
+ * A group inside a group, which must hold only when BOTH conditions do.
+ *
+ * **Reported by a user, and it was silently wrong**: the outer condition was dropped, so the inner
+ * group applied on its own. Measured before the fix:
+ *
+ *     @@if ({this.off}) { cursor: none; @@if ({this.roomy}) { color: yellow; } }
+ *
+ *     _merge({…}, this.off && {"cursor":…}, this.roomy && {"color":…})
+ *                                          ^^^^^^^^^^^ the outer guard is gone
+ *
+ * so `color: yellow` landed whenever `roomy` was on, whatever `off` was.
+ *
+ * The cause is the rule that makes the source map exact: an expression is left where the author
+ * wrote it and the map's text is cut around it, so a guard can be emitted exactly once — and a
+ * nested segment needs its outer guard a second time. `PLAN.md` promised `a && b && { … }`, which
+ * that rule cannot produce.
+ */
+describe("a group inside a group", () => {
+  /** The emitted code with the hoisted prologue dropped — `emit` here already returns the text. */
+  const emitted = (source: string) => {
+    const code = emit(source);
+    if (code === "") throw new Error("the transform found no block");
+    return code.slice(code.indexOf("\n\n") + 2);
+  };
+
+  test("holds only when both conditions do", () => {
+    const code = emitted(
+      `const s = @@(\n  opacity: 0.5;\n  @@if ({this.off}) {\n    cursor: none;\n    @@if ({this.roomy}) {\n      color: yellow;\n    }\n  }\n);\n`,
+    );
+
+    // Whatever the shape, `this.off` must gate the inner group as well as the outer one.
+    const inner = code.slice(code.indexOf("r-c-yellow") - 80, code.indexOf("r-c-yellow"));
+    expect(inner).toContain("this.off");
+    expect(inner).toContain("this.roomy");
+  });
+
+  test("three deep", () => {
+    const code = emitted(
+      `const s = @@(\n  @@if ({a}) {\n    @@if ({b}) {\n      @@if ({c}) {\n        color: red;\n      }\n    }\n  }\n);\n`,
+    );
+    const inner = code.slice(0, code.indexOf("r-c-red"));
+
+    for (const guard of ["a", "b", "c"]) expect(inner).toContain(guard);
+  });
+
+  test("and a declaration in the outer group keeps only the outer guard", () => {
+    const code = emitted(
+      `const s = @@(\n  @@if ({this.off}) {\n    cursor: none;\n    @@if ({this.roomy}) {\n      color: yellow;\n    }\n  }\n);\n`,
+    );
+    const outer = code.slice(0, code.indexOf("r-cur-none"));
+
+    expect(outer).toContain("this.off");
+    expect(outer).not.toContain("this.roomy");
+  });
+});
+
+/**
+ * The nested guard, RUN rather than read.
+ *
+ * The tests above assert the shape the transform emits. This asserts what that shape does, because
+ * the fault the user reported was behavioural: `color: yellow` landed with only the inner checkbox
+ * ticked, and the compiled text alone would not have shown it.
+ */
+describe("a nested guard, evaluated", () => {
+  /** The four states of two conditions, through the real `merge`. */
+  const classes = (off: boolean, roomy: boolean) => {
+    // Exactly the shape the transform emits for a nested group — see the tests above.
+    const inner = roomy && { color: "r-c-yellow" };
+    const outer = off && merge({ cursor: "r-cur-none" }, inner);
+    return merge({ opacity: "r-o-0.5" }, outer).className.split(" ");
+  };
+
+  test.each([
+    [false, false, false],
+    [true, false, false],
+    [false, true, false],
+    [true, true, true],
+  ])("off=%s roomy=%s -> yellow=%s", (off, roomy, yellow) => {
+    expect(classes(off, roomy).includes("r-c-yellow")).toBe(yellow);
+  });
+
+  /** And the outer group's own declaration follows the outer condition alone. */
+  test.each([
+    [false, false],
+    [true, true],
+  ])("off=%s -> cursor=%s", (off, cursor) => {
+    expect(classes(off, false).includes("r-cur-none")).toBe(cursor);
   });
 });

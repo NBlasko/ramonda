@@ -317,15 +317,77 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       piece = "";
     };
 
+    /**
+     * A group inside a group opens a NESTED merge rather than repeating the outer guard.
+     *
+     * **The obvious shape is `a && b && { … }` and this transform cannot produce it.** An expression
+     * is left exactly where the author wrote it — that is what makes the source map exact — so a
+     * guard can be emitted once, and a nested segment would need its outer guard a second time.
+     * Measured before this existed, the outer guard was simply dropped:
+     *
+     *     @@if ({off}) { cursor: none; @@if ({roomy}) { color: yellow } }
+     *     -> _merge({…}, off && {cursor}, roomy && {color})
+     *
+     * and `color` landed whenever `roomy` was on, whatever `off` was.
+     *
+     * Nesting the merge says the same thing with each guard written once:
+     *
+     *     _merge({…}, off && _merge({cursor}, roomy && {color}))
+     *
+     * and the holes still appear in source order, which is the rule the whole emission rests on. It
+     * is only correct because merging is associative and later still wins — the property `compose`
+     * is built around.
+     */
+    const all = [...segments(read.block)];
+
+    /**
+     * Whether a guard needs a merge of its own, or may simply join the conjunction.
+     *
+     * A guard that holds ONE thing is a conjunction — `a && b && { … }` — and that is both shorter
+     * and the shape this transform emitted before nesting was fixed. A guard that holds more than
+     * one needs a merge, because its own guard can be written only once and the second thing under
+     * it would otherwise lose it.
+     */
+    const holdsMoreThanOne = (guards: readonly number[], upto: number): boolean =>
+      all.filter(
+        (other) =>
+          other.guards.length >= upto && guards.slice(0, upto).every((one, index) => other.guards[index] === one),
+      ).length > 1;
+
+    /** The guard levels that opened a merge, innermost last — so leaving one closes the right ones. */
+    const open: number[] = [];
+    let previous: readonly number[] = [];
+
     let first = true;
-    for (const segment of segments(read.block)) {
+    for (const segment of all) {
+      /** How many guards this segment shares with the one before it. */
+      let shared = 0;
+      while (
+        shared < previous.length &&
+        shared < segment.guards.length &&
+        previous[shared] === segment.guards[shared]
+      ) {
+        shared++;
+      }
+      // Leaving a group closes its merge; the comma then separates siblings at the right level.
+      while (open.length > 0 && open[open.length - 1] >= shared) {
+        piece += ")";
+        open.pop();
+      }
+      previous = segment.guards;
+
       if (!first) piece += ",";
       first = false;
 
-      // `guard && ` for each condition it sits under. Nesting is a conjunction — see `segments`.
-      for (let index = 0; index < segment.guards.length; index++) {
+      // Each guard this segment does not already sit under, from the deepest one still open.
+      const from = open.length === 0 ? 0 : open[open.length - 1] + 1;
+      for (let index = from; index < segment.guards.length; index++) {
         expression();
         piece += " && ";
+        if (holdsMoreThanOne(segment.guards, index + 1)) {
+          piece += `${block}(`;
+          open.push(index);
+        }
       }
 
       if (segment.kind === "spread") {
@@ -396,6 +458,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         }
       }
       piece += "}";
+    }
+    // Every nested merge still open at the end of the block.
+    while (open.length > 0) {
+      piece += ")";
+      open.pop();
     }
     pieces.push(piece);
 
