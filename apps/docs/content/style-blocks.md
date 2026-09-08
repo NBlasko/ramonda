@@ -158,6 +158,11 @@ JSX is usable because somebody wrote the parser for it. What that buys is the ch
   `cursor: url(a.cur), pointerr` is still reported on `pointerr`.
 - **A hole is checked against the type the property accepts**, in the scope where it was written —
   `this.weight` resolves to the field beside it, because the expression stays where you put it.
+- **A quoted value on a property that has no place for a string** is reported. Your editor completes
+  a value from a real union the way it completes any string literal, so `color: "yellow"` is an easy
+  thing to end up with — and it compiles, ships `color:"yellow"`, and is dropped by every browser.
+  `content: "hi"` and `font-family: "Brand"` are correct CSS and stay silent, because the question is
+  asked of each property's own grammar.
 
 ## Where a hole may go
 

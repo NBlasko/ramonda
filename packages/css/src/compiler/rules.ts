@@ -8,6 +8,7 @@ import {
   NOT_IN_A_RULE,
   PROPERTIES,
   PROPERTY_NAMED,
+  STRING_ALLOWED,
   UNITS,
   MEDIA_FEATURES,
   UNIT_TYPE,
@@ -89,6 +90,7 @@ export const RULE_IDS = [
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
+  "string-not-allowed",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -98,6 +100,9 @@ const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]
 
 /** The same list as a set, for the "does this exist" question rather than the "what was meant" one. */
 const KNOWN = new Set(PROPERTIES);
+
+/** The same question as {@link STRING_ALLOWED}, asked once — see `stringNotAllowed`. */
+const STRINGS_FIT = new Set(STRING_ALLOWED);
 
 /**
  * What an editor will not colour, which is the one thing here a BUILD has no business failing over.
@@ -869,6 +874,7 @@ function walk(items: readonly BlockItem[], findings: Finding[], body?: string): 
     const before = findings.length;
     runOn(item, findings);
     if (findings.length === before && body === undefined) unknownValue(item, findings);
+    stringNotAllowed(item, findings);
     unknownUnit(item, findings);
     gluedHole(item, findings);
     repeated(item, seen, findings);
@@ -1415,6 +1421,70 @@ function holeInHead(
 interface Word {
   readonly text: string;
   readonly at: number | undefined;
+}
+
+/**
+ * A quoted string where the property's grammar has no place for one.
+ *
+ * **Reported by a user**, and how they arrived at it is the reason this rule exists rather than a
+ * note in the documentation. A block's value is a TypeScript string literal in the file the editor
+ * type-checks — `display: flex` is `{display:"flex"}` there — so the editor has every reason to
+ * offer the word with quotes round it. Accepting that offer compiles, ships `color:"yellow"`, and
+ * every browser drops the declaration. Nothing anywhere said so.
+ *
+ * **"No strings" is not the rule, because two of these four are correct CSS:**
+ *
+ *     color: "yellow";        invalid — the quotes are part of a CSS string
+ *     display: "flex";        invalid, the same way
+ *     content: "hi";          correct — a `<string>` is what belongs there
+ *     font-family: "Brand";   correct
+ *
+ * So it is asked of the grammar, out of the same sweep that answers every other value question:
+ * `STRING_ALLOWED` holds the properties reaching `<string>` anywhere, and the ones whose grammar
+ * nothing here can decide. A property this cannot judge is one it says nothing about.
+ *
+ * **Only at the top level.** `url("a.png")`, `local("Brand")` and a `var()` fallback put a string
+ * inside a call, where it belongs to that function's grammar. Measured with the depth ignored:
+ * `background-image: url("a.png")` — as ordinary as CSS gets — is reported, which is how a checker
+ * earns being switched off.
+ *
+ * One report per declaration. Two quoted words are one mistake.
+ */
+function stringNotAllowed(item: Declaration, findings: Finding[]): void {
+  if (!KNOWN.has(item.property) || STRINGS_FIT.has(item.property)) return;
+
+  let depth = 0;
+  for (const part of item.value) {
+    // The compiler's own text, not the author's — it has no position and is nobody's typo.
+    if (part.kind !== "text" || part.resolved) continue;
+    const text = part.text;
+
+    for (let index = 0; index < text.length; index++) {
+      const code = text.charCodeAt(index);
+      if (code === 40 /* ( */) depth++;
+      else if (code === 41 /* ) */ && depth > 0) depth--;
+      else if (code === 34 || code === 39) {
+        const closing = endOfString(text, index);
+        if (depth > 0) {
+          index = closing;
+          continue;
+        }
+
+        const written = text.slice(index, Math.min(closing + 1, text.length));
+        const inside = text.slice(index + 1, closing);
+        findings.push({
+          rule: "string-not-allowed",
+          at: (part.at ?? item.valueAt ?? item.at ?? 0) + index,
+          length: written.length,
+          message:
+            `\`${item.property}\` does not take a quoted string` +
+            (inside === "" ? "." : `. Write \`${item.property}: ${inside};\`.`) +
+            ` The quotes are part of a CSS string, so a browser drops the declaration.`,
+        });
+        return;
+      }
+    }
+  }
 }
 
 /**

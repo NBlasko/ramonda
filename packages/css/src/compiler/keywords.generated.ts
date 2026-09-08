@@ -439,6 +439,22 @@ export const PROPERTY_NAMED: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The properties a quoted string may appear in.
+ *
+ * 42 of 551, and the rest is what `string-not-allowed` reports: a value like
+ * `color: "yellow"` compiles, ships `color:"yellow"` and is dropped by every browser, because the
+ * quotes are part of a CSS string and `color` has no place for one. Reported by a user, who was
+ * offered the word by the editor and wrote the quotes themselves.
+ *
+ * A property is here when its grammar reaches `<string>` anywhere — `content`, `font-family`,
+ * `quotes`, `grid-template-areas`, and every property admitting a `<url>`, since `url("a.png")`
+ * holds one — or when its grammar reaches something nothing here can judge. The second half is not a
+ * nicety: this rule reports what the author wrote, so being wrong means telling somebody to delete
+ * quotes that belonged there.
+ */
+export const STRING_ALLOWED: readonly string[] = ["animation","animation-name","color-scheme","container","container-name","content","counter-increment","counter-reset","counter-set","d","font","font-family","font-feature-settings","font-language-override","font-variant","font-variant-alternates","font-variation-settings","grid","grid-area","grid-column","grid-column-end","grid-column-start","grid-row","grid-row-end","grid-row-start","grid-template","grid-template-areas","grid-template-columns","grid-template-rows","hyphenate-character","list-style","list-style-type","page","quotes","text-emphasis","text-emphasis-style","text-overflow","transition","transition-property","view-transition-class","view-transition-name","will-change"];
+
+/**
  * Every unit CSS has, lower-cased — `mdn-data`'s own, plus the families it does not list.
  *
  * The supplement is not a nicety: measured, `units.json` holds thirty and is missing `%`, the

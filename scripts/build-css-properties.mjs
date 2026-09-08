@@ -209,6 +209,15 @@ function scan(name, from) {
    */
   let numeric = false;
   let free = false;
+  /**
+   * Whether the grammar reaches `<string>` ANYWHERE, including inside a function it admits.
+   *
+   * The question `string-not-allowed` asks, and it has to be asked of the whole walk rather than of
+   * the top level: `background-image` takes no string of its own and `url("a.png")` is one, so a
+   * property whose grammar reaches a `<url>` reaches a string. Answering it any more narrowly would
+   * be reporting correct CSS, which is the one outcome that rule may not produce.
+   */
+  let stringy = false;
   const seen = new Set();
 
   const walk = (syntax, depth) => {
@@ -233,6 +242,7 @@ function scan(name, from) {
 
     rest = rest.replace(/<([a-zA-Z0-9-]+)(?:\s*\[[^\]]*\])?>/g, (_whole, referenced) => {
       if (NUMERIC.has(referenced)) numeric = true;
+      if (referenced === "string") stringy = true;
       if (FREE.has(referenced)) free = true;
       else if (syntaxes[referenced] !== undefined && !seen.has(`s:${referenced}`)) {
         seen.add(`s:${referenced}`);
@@ -249,7 +259,7 @@ function scan(name, from) {
 
   walk(from ?? properties[name].syntax, 0);
   if (numeric) for (const one of MATHS) calls.add(one);
-  return { words: [...words].sort(), calls: [...calls].sort(), free };
+  return { words: [...words].sort(), calls: [...calls].sort(), free, stringy };
 }
 
 /**
@@ -673,6 +683,22 @@ for (const name of named) {
   checkable++;
   keywordRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(scanned.words.join(" "))},`);
 }
+
+/**
+ * The properties a quoted string may appear in, which is asked of EVERY property.
+ *
+ * Not part of the loop above, because that one leaves early twice — for a union-typed property and
+ * for a free one — and this question has to be answered for those too. `display` is union-typed and
+ * `display: "flex"` is exactly the fault this is for.
+ *
+ * A property whose grammar this cannot decide is listed as allowing one. Silence is the safe
+ * direction here more than anywhere: the rule reports a value the author WROTE, on a property whose
+ * grammar is the reason, so a wrong report is a person deleting quotes that belonged there.
+ */
+const stringAllowed = named.filter((name) => {
+  const scanned = scan(name);
+  return scanned.stringy || scanned.free;
+});
 
 /** The same, for the ones whose remaining identifier is a property name — see the two sets above. */
 const propertyNamedRows = [];
@@ -1136,6 +1162,22 @@ ${keywordRows.join("\n")}
 export const PROPERTY_NAMED: Readonly<Record<string, string>> = {
 ${propertyNamedRows.join("\n")}
 };
+
+/**
+ * The properties a quoted string may appear in.
+ *
+ * ${stringAllowed.length} of ${named.length}, and the rest is what \`string-not-allowed\` reports: a value like
+ * \`color: "yellow"\` compiles, ships \`color:"yellow"\` and is dropped by every browser, because the
+ * quotes are part of a CSS string and \`color\` has no place for one. Reported by a user, who was
+ * offered the word by the editor and wrote the quotes themselves.
+ *
+ * A property is here when its grammar reaches \`<string>\` anywhere — \`content\`, \`font-family\`,
+ * \`quotes\`, \`grid-template-areas\`, and every property admitting a \`<url>\`, since \`url("a.png")\`
+ * holds one — or when its grammar reaches something nothing here can judge. The second half is not a
+ * nicety: this rule reports what the author wrote, so being wrong means telling somebody to delete
+ * quotes that belonged there.
+ */
+export const STRING_ALLOWED: readonly string[] = ${JSON.stringify(stringAllowed)};
 
 /**
  * Every unit CSS has, lower-cased — \`mdn-data\`'s own, plus the families it does not list.

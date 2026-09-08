@@ -123,16 +123,25 @@ describe("a bare word a property does not accept", () => {
   });
 
   test.each([
-    ["a string where the grammar allows none", `  display: "flexx";`],
     ["a function with a string in it", `  transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1);`],
     ["a nested function", "  transform: translate(calc(100% - 4px), 0);"],
-    ["an escaped quote inside a string", `  display: "a\\"b";`],
-    ["a string that is never closed", `  display: "flexx`],
     ["a string inside a function", `  display: nonsense("flexx");`],
   ])("%s is silent", (_what, css) => {
     // Each of these is a shape the word reader has to STEP OVER rather than judge: a string's
     // contents and a function's arguments are their own grammars.
     expect(rules(css)).toEqual([]);
+  });
+
+  /**
+   * The word reader still steps over a string's contents, and something else reads the QUOTES —
+   * see `string-not-allowed`. What is inside them was never this rule's business and is not now.
+   */
+  test.each([
+    ["a string where the grammar allows none", `  display: "flexx";`],
+    ["an escaped quote inside one", `  display: "a\\"b";`],
+    ["one that is never closed", `  display: "flexx`],
+  ])("%s is not a word, and is reported as a string", (_what, css) => {
+    expect(rules(css)).toEqual(["string-not-allowed"]);
   });
 
   /**
@@ -1751,5 +1760,95 @@ describe("a registered property set to a value its syntax refuses", () => {
 
       expect(rules(`${list}const s = @@( {t}: 12px; );\n`)).toEqual([]);
     });
+  });
+});
+
+/**
+ * A QUOTED value on a property that has no place for a string.
+ *
+ * **Reported by a user, and the way they hit it is the point:**
+ *
+ * > "kako me lako prevari intelisense i da napišem `color: "yellow";` a onda ne radi jer ne sme da
+ * > se piše "yellow" sa navodnicima"
+ *
+ * A block's value is a TypeScript string literal in the file the editor type-checks, so the editor
+ * has every reason to offer the word with quotes round it. Accepting that offer compiles, ships
+ * `color:"yellow"`, and every browser drops the declaration — with nothing reported anywhere.
+ * Every layer behaved reasonably and the outcome was invalid CSS.
+ *
+ * ## Why "no strings" is not the rule
+ *
+ * Two of these four are correct CSS, and a rule that could not tell them apart would be a rule that
+ * reports what an author wrote:
+ *
+ *     color: "yellow";        invalid — the quotes are part of a CSS string
+ *     display: "flex";        invalid, the same way
+ *     content: "hi";          correct — a `<string>` is exactly what belongs there
+ *     font-family: "Brand";   correct
+ *
+ * So the question is asked of the grammar: does this property reach `<string>` anywhere. That comes
+ * out of the same sweep that answers every other value question — `STRING_ALLOWED`, generated, 42
+ * properties of 551 — rather than a hand-kept list beside it.
+ *
+ * ## And why only at the top level
+ *
+ * `url("a.png")`, `var(--x, "…")` and `local("Brand")` put a string inside a call, where it is that
+ * function's own grammar and none of this rule's business. Measured against the alternative: with
+ * the depth ignored, `background-image: url("a.png")` — as ordinary as CSS gets — is reported.
+ */
+describe("a quoted string where the property has no place for one", () => {
+  test("the user's own line", () => {
+    expect(rules(`  color: "yellow";`)).toEqual(["string-not-allowed"]);
+  });
+
+  test("and the message says what to write instead", () => {
+    const [only] = messages(`  color: "yellow";`);
+
+    expect(only).toContain("color: yellow");
+    expect(only).toContain("does not take a quoted string");
+  });
+
+  test("the whole string is what is underlined, quotes included", () => {
+    const source = `<div css=@@(\n  color: "yellow";\n)>x</div>`;
+    const [site] = findBlocks(source);
+    const [only] = checkBlock(readBlock(source, site.open, "Card.tsx", { tolerant: true }).block);
+
+    expect(source.slice(only.at, only.at + only.length)).toBe(`"yellow"`);
+  });
+
+  test.each([
+    ["a property whose value is a string", `  content: "hi";`],
+    ["a font family, which is a name in quotes", `  font-family: "Brand", sans-serif;`],
+    ["the areas of a grid, which are strings by design", `  grid-template-areas: "head head";`],
+    ["what a truncation is drawn with", `  text-overflow: "…";`],
+    ["a url, whose string is the function's own grammar", `  background-image: url("a.png");`],
+    ["a fallback inside var()", `  color: var(--brand, "x");`],
+    ["a custom property, whose value is anything at all", `  --brand: "whatever";`],
+    ["a property nothing here knows", `  -moz-osx-font-smoothing: "grayscale";`],
+    ["a value that is entirely a hole", "  color: {brand};"],
+    ["no string at all", "  color: yellow;"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).toEqual([]);
+  });
+
+  test("a single-quoted one is the same mistake", () => {
+    expect(rules(`  color: 'yellow';`)).toEqual(["string-not-allowed"]);
+  });
+
+  test("inside a nested rule too", () => {
+    expect(rules(`  &:hover {\n    color: "yellow";\n  }`)).toEqual(["string-not-allowed"]);
+  });
+
+  test("one report for one declaration, however many strings are in it", () => {
+    expect(rules(`  color: "a" "b";`)).toEqual(["string-not-allowed"]);
+  });
+
+  /** A project that means it can turn it off, the same as any other rule. */
+  test("silenced by the project's own config", () => {
+    const source = `<div css=@@(\n  color: "yellow";\n)>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+
+    expect(checkBlock(read.block, { config: { rules: { "string-not-allowed": "off" } } })).toEqual([]);
   });
 });
