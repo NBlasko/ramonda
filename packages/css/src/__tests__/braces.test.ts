@@ -126,3 +126,118 @@ describe("a condition is parenthesised", () => {
     expect(out?.code).toContain("base");
   });
 });
+
+/**
+ * A CSS COMMENT anywhere in the head, which the lookahead did not read as one.
+ *
+ * `looksLikeARule` decides whether an item is a nested rule or a declaration by which of `{` and `;`
+ * comes first at depth zero. It stepped over strings, parens and holes, and **not comments** — while
+ * `skipTrivia`, `readHead` and `readValue` all handle them. Three faults came out of that one gap,
+ * and a review found them:
+ *
+ * A commented-out `focus;` in a prelude was read as a DECLARATION, and it EMITTED. A commented-out
+ * brace in a value made strict REFUSE valid CSS. And a comment between a property and its colon
+ * made the two readers DISAGREE, so a legal declaration was refused as a hole in a selector.
+ *
+ * The first is the loud one: the block compiled and the module it emitted was a syntax error, so a
+ * bundler reported a parse failure in generated code at no line the author had written.
+ *
+ * The third is this repository's recurring fault in one function: the lookahead asked `opensAHole`
+ * with the RAW source slice and the head reader asked it with the text it had already built, in
+ * which every comment is one space. The comment above the call claimed they could not disagree.
+ */
+describe("a comment in the head", () => {
+  const items = (source: string) => readBlock(source, 2, "C.tsx").block.items.map((one) => one.kind);
+  const prelude = (source: string) => {
+    const [item] = readBlock(source, 2, "C.tsx").block.items;
+    return item.kind === "rule" ? item.prelude : "(not a rule)";
+  };
+
+  /** Each of these characters ended the lookahead's scan while it sat inside a comment. */
+  test.each([
+    ["a semicolon", `@@(\n  &:hover /* was focus; */ {\n    color: blue;\n  }\n)`],
+    ["a closing paren", `@@(\n  &:hover /* ) */ {\n    color: blue;\n  }\n)`],
+    ["an opening paren", `@@(\n  &:hover /* ( */ {\n    color: blue;\n  }\n)`],
+    ["a brace", `@@(\n  &:hover /* { */ {\n    color: blue;\n  }\n)`],
+    ["nothing special", `@@(\n  &:hover /* see #12 */ {\n    color: blue;\n  }\n)`],
+  ])("%s in a rule's prelude leaves it a rule", (_what, source) => {
+    expect(items(source)).toEqual(["rule"]);
+    expect(prelude(source)).toBe("&:hover");
+  });
+
+  test("and the rule's body is the body, not a hole's expression", () => {
+    const [item] = readBlock(`@@(\n  &:hover /* was focus; */ {\n    color: blue;\n  }\n)`, 2, "C.tsx").block.items;
+
+    expect(item.kind === "rule" && normalise({ items: item.items })).toBe("color:blue;");
+  });
+
+  /** The other direction: a `{` inside a comment is not a hole opening, and strict must not refuse. */
+  test.each([
+    ["a brace in a value's comment", `@@(\n  color: red /* { */;\n)`, "color:red;"],
+    ["a brace and its partner", `@@(\n  color: red /* {} */;\n)`, "color:red;"],
+    ["before the colon", `@@(\n  color/*x*/: red;\n)`, "color:red;"],
+  ])("%s is read, not refused", (_what, source, expected) => {
+    expect(normalise(readBlock(source, 2, "C.tsx").block)).toBe(expected);
+  });
+
+  /**
+   * The two readers agreeing, which is the finding under the other two. A comment beside the colon
+   * made the lookahead say "rule" and the head reader say "hole", so a legal declaration was
+   * refused as a hole in a selector.
+   */
+  test.each([
+    ["after the property name", `@@(\n  color/*x*/: {accent};\n)`],
+    ["after the colon", `@@(\n  color:/*x*/ {accent};\n)`],
+    ["both sides", `@@(\n  color/*a*/:/*b*/ {accent};\n)`],
+  ])("a hole in a value with a comment %s", (_what, source) => {
+    expect(canonical(source)).toBe("color:@0@;");
+  });
+});
+
+/**
+ * A property NAME the regex refused, which made the hole after it a nested rule.
+ *
+ * `A_DECLARATION` required an ASCII letter first, or `--` and then a letter. So a vendor-prefixed
+ * property carrying a hole was read as a rule whose prelude was the declaration — and a vendor
+ * prefix in a property is ordinary CSS, not an exotic case. A review found it; `-webkit-mask: none`
+ * with no hole in it always parsed, which is why nothing noticed.
+ */
+describe("a property name that does not start with a letter", () => {
+  test.each([
+    ["a vendor prefix", `@@(\n  -webkit-mask: {m};\n)`, "-webkit-mask:@0@;"],
+    ["another", `@@(\n  -moz-appearance: {a};\n)`, "-moz-appearance:@0@;"],
+    ["a custom property starting with a digit", `@@(\n  --2x: {v};\n)`, "--2x:@0@;"],
+    ["a custom property starting with an underscore", `@@(\n  --_x: {v};\n)`, "--_x:@0@;"],
+    ["a custom property with a letter CSS allows and ASCII does not", `@@(\n  --héllo: {v};\n)`, "--héllo:@0@;"],
+  ])("%s takes a hole for its value", (_what, source, expected) => {
+    expect(canonical(source)).toBe(expected);
+  });
+
+  /** And the same names with no hole, which is what worked all along. */
+  test("a vendor-prefixed property with an ordinary value, which never broke", () => {
+    expect(normalise(readBlock(`@@(\n  -webkit-mask: none;\n)`, 2, "C.tsx").block)).toBe("-webkit-mask:none;");
+  });
+});
+
+/**
+ * `@@if` with more than one space before its parenthesis.
+ *
+ * The head reader compared the text to `"@@if ("` and `"@@if("` by EQUALITY, while the hole reader
+ * allows whitespace on both sides of everything else. So two spaces, a tab or a newline turned a
+ * condition into *a hole cannot stand in a selector* — a refusal naming the wrong thing, on code
+ * whose only fault was its spacing. A review found it.
+ */
+describe("whitespace before a condition's parenthesis", () => {
+  test.each([
+    ["one space, which always worked", `@@(\n  @@if ({this.roomy}) {\n    color: red;\n  }\n)`],
+    ["none, which also worked", `@@(\n  @@if({this.roomy}) {\n    color: red;\n  }\n)`],
+    ["two spaces", `@@(\n  @@if  ({this.roomy}) {\n    color: red;\n  }\n)`],
+    ["a tab", `@@(\n  @@if\t({this.roomy}) {\n    color: red;\n  }\n)`],
+    ["a newline", `@@(\n  @@if\n  ({this.roomy}) {\n    color: red;\n  }\n)`],
+  ])("%s", (_what, source) => {
+    const [item] = readBlock(source, 2, "C.tsx").block.items;
+
+    expect(item.kind).toBe("rule");
+    expect(item.kind === "rule" && normalise({ items: item.items })).toBe("color:red;");
+  });
+});

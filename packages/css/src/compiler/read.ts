@@ -28,6 +28,9 @@ import { holeOutOfPlace, refuse } from "./errors";
 /** What opens a conditional group — see the note in `readHead`. */
 export const CONDITION = "@@if";
 
+/** `@@if` and its opening paren, with any whitespace between them — see where it is used. */
+const CONDITION_HEAD = new RegExp(`^${CONDITION}\\s*\\($`);
+
 /** What opens a spread of another block's map. */
 export const SPREAD = "...";
 
@@ -99,6 +102,11 @@ const BRACE = 125; /* } */
  * hole is JavaScript, so `{{ pick({ on: "}}" }) }}` ends at the LAST `}}` and not the first, and
  * `{{ {a: {b: 1}}.a.b }}` has one in the middle of an object literal. Braces, parens, brackets,
  * strings, templates and comments are all counted.
+ *
+ * **A REGEX LITERAL is not**, and a review measured it: `{s.replace(/}/g, "")}` is reported as a
+ * hole that never closes. Telling a regex from a division needs the preceding token, which needs a
+ * JavaScript lexer — and this is a CSS parser deciding where an expression ends. Said out loud
+ * rather than left to be discovered, because the paragraph above used to claim otherwise.
  *
  * Exported because three scanners ask the same question — the parser, the formatter's layout, and
  * the rule that looks for a `//` — and two of them used to ask it with `indexOf`, which is how a
@@ -176,8 +184,19 @@ export function closingHole(source: string, at: number): number {
  * So `a:hover` is a selector, `color:{accent}` is a value, and `border: 4px solid {accent}` is a
  * value. Measured against every prelude in this repository and against the four bare-type-selector
  * shapes the parser accepts.
+ *
+ * **The NAME is every name CSS allows, which it was not.** A review found that requiring an ASCII
+ * letter first read `-webkit-mask: {m}` as a nested rule whose prelude was the declaration — and a
+ * vendor prefix on a property is ordinary CSS. So: a custom property is `--` and then anything a
+ * name may hold, and any other property is an optional single dash, then a letter, an underscore or
+ * a non-ASCII character, then name characters. `--2x`, `--_x` and `--héllo` are all legal custom
+ * properties and all three were refused.
+ *
+ * Nothing noticed because the same names parse correctly with an ordinary value: this regex is only
+ * consulted where a `{` follows, so a property that never carried a hole never met it.
  */
-const A_DECLARATION = /^\s*(--)?[a-zA-Z][\w-]*\s*:(\s|$)/;
+const A_DECLARATION =
+  /^\s*(?:--(?:[\w-]|[\u0080-\uFFFF])+|-?(?:[a-zA-Z_]|[\u0080-\uFFFF])(?:[\w-]|[\u0080-\uFFFF])*)\s*:(\s|$)/;
 
 /**
  * A declaration whose property NAME is itself a hole — `{angle}: 45deg`, the way a registered
@@ -293,6 +312,16 @@ export function readBlock(source: string, open: number, filename: string, option
   function looksLikeARule(closer: number): boolean {
     let index = at;
     let depth = 0;
+    /**
+     * The head as the READ will see it, built as the scan goes.
+     *
+     * Not `source.slice(at, index)`, which is what this passed to `opensAHole` until a review looked
+     * at it. `readHead` collapses every comment to one space before asking the same question, so the
+     * two disagreed wherever a comment sat near a colon: one between a property and its colon was a rule to the
+     * lookahead and a hole to the reader, and a legal declaration was refused as a hole in a
+     * selector. The comment that used to be here claimed they could not disagree.
+     */
+    let head = "";
 
     while (index < source.length) {
       const code = source.charCodeAt(index);
@@ -301,17 +330,36 @@ export function readBlock(source: string, open: number, filename: string, option
         const mark = at;
         at = index;
         pastString();
+        head += source.slice(index, at);
         index = at;
         at = mark;
         continue;
       }
+      /**
+       * A comment, which this did not read at all — while `skipTrivia`, `readHead` and `readValue`
+       * all do. Three faults came out of that one gap, and the loud one EMITTED: a `;`, a `(` or a
+       * `)` inside a prelude's comment ended this scan, so a prelude carrying a commented-out
+       * `focus;` was read
+       * as a declaration whose value was the rule's body, and the module that came out was a syntax
+       * error at no line the author had written.
+       *
+       * One space, for the reason `readHead` gives: a comment separates tokens, and joining `1px` to
+       * `2px` would make one value out of two.
+       */
+      if (code === 47 /* / */ && source.charCodeAt(index + 1) === 42) {
+        const close = source.indexOf("*/", index + 2);
+        index = close === -1 ? source.length : close + 2;
+        head += " ";
+        continue;
+      }
       if (code === 123 /* { */) {
-        // The one question CSS's grammar cannot answer — see {@link opensAHole}, which the head
-        // reader asks in the same words so the lookahead and the read cannot disagree.
-        if (opensAHole(source.slice(at, index))) {
+        // The one question CSS's grammar cannot answer — see {@link opensAHole}, asked with the text
+        // the head reader will have built rather than with the raw source.
+        if (opensAHole(head)) {
           const mark = at;
           at = index;
           pastHoleWithoutRecording();
+          head += source.slice(index, at);
           index = at;
           at = mark;
           continue;
@@ -326,16 +374,19 @@ export function readBlock(source: string, open: number, filename: string, option
        */
       if (code === 40) {
         depth++;
+        head += "(";
         index++;
         continue;
       }
       if (code === PAREN) {
         if (depth === 0) return false;
         depth--;
+        head += ")";
         index++;
         continue;
       }
       if (depth === 0 && (code === 59 /* ; */ || code === closer)) return false;
+      head += source[index];
       index++;
     }
     return false;
@@ -402,8 +453,16 @@ export function readBlock(source: string, open: number, filename: string, option
          * other hole, so the transform leaves the author's expression exactly where they wrote it,
          * and marked in the text with the same placeholder a value uses.
          */
+        /**
+         * The marker, with whatever whitespace was typed between it and its parenthesis.
+         *
+         * Compared by equality against `"@@if ("` and `"@@if("` until a review found it: two spaces,
+         * a tab or a newline turned a condition into *a hole cannot stand in a selector* — a refusal
+         * naming the wrong thing, on code whose only fault was its spacing. Every other whitespace
+         * in a block is free, and `holeIn` allows it on both sides of everything else.
+         */
         const head = text.trimEnd();
-        if (head === `${CONDITION} (` || head === `${CONDITION}(` || head === SPREAD) {
+        if (CONDITION_HEAD.test(head) || head === SPREAD) {
           const part = pastHole();
           // A part that came back as TEXT is a reference to a named site, resolved at build time —
           // a `@@keyframes` name, which is a string and not a condition or a block. It falls
@@ -572,7 +631,10 @@ export function readBlock(source: string, open: number, filename: string, option
           refuse(
             `\`${property.trim()}\` is not a declaration — a block holds \`property: value;\` and nested rules, nothing else.`,
             source,
-            at - property.length,
+            // `from`, not `at - property.length`: the name is trimmed, so measuring its length back
+            // from a position past the whitespace pointed one column further right for every space
+            // after it. `disp ` reported column 6 for a word beginning at 5.
+            from,
             filename,
           );
         }

@@ -141,3 +141,32 @@ describe("a reading that has to end", () => {
     expect(() => readBlock(source, site.open, "Card.tsx", { tolerant: true })).not.toThrow();
   });
 });
+
+/**
+ * WHERE a refusal points, which was one column further right for every space after the word.
+ *
+ * `at - property.length` measured the TRIMMED name's length back from a position already past the
+ * whitespace after it. A review found it. A diagnostic's column is the character an author has to
+ * move to, so being right about it is the rule's whole value.
+ */
+describe("the column a refusal names", () => {
+  const columnOf = (source: string) => {
+    try {
+      readBlock(source, 2, "C.tsx");
+    } catch (error) {
+      return (error as { column?: number }).column;
+    }
+    return undefined;
+  };
+
+  test.each([
+    ["with nothing after it", `@@( disp)`],
+    ["with a space after it", `@@( disp )`],
+    ["with several", `@@( disp   )`],
+    ["with a space and a semicolon", `@@( disp ;)`],
+    ["with a newline after it", `@@( disp\n)`],
+  ])("a property that is not a declaration, %s", (_what, source) => {
+    // Column 5 in every one of them: `@@( ` is four characters, and 1-based counting puts `disp` at 5.
+    expect(columnOf(source)).toBe(5);
+  });
+});
