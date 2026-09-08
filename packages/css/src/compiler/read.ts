@@ -103,10 +103,23 @@ const BRACE = 125; /* } */
  * `{{ {a: {b: 1}}.a.b }}` has one in the middle of an object literal. Braces, parens, brackets,
  * strings, templates and comments are all counted.
  *
- * **A REGEX LITERAL is not**, and a review measured it: `{s.replace(/}/g, "")}` is reported as a
- * hole that never closes. Telling a regex from a division needs the preceding token, which needs a
- * JavaScript lexer — and this is a CSS parser deciding where an expression ends. Said out loud
- * rather than left to be discovered, because the paragraph above used to claim otherwise.
+ * **A REGEX LITERAL is counted too**, which it was not until a review measured
+ * `{s.replace(/}/g, "")}` coming back as a hole that never closes.
+ *
+ * Telling a regex from a division looked like it needed a JavaScript lexer, and it does not: it needs
+ * the PREVIOUS SIGNIFICANT TOKEN, which is a closed question. After a name, a number, `)`, `]`, `}`
+ * or a `++`/`--`, a `/` divides. After anything else — an operator, `(`, `[`, `,`, `:`, the start, or
+ * one of the keywords in {@link A_REGEX_FOLLOWS} — it opens a regex. Whitespace and comments change
+ * nothing, so they are stepped over without touching the answer.
+ *
+ * **A `}` is read as dividing**, and that is the one genuinely ambiguous case: `({a: 1}).a / 2`
+ * divides, while a block statement followed by `/re/` does not. Inside a hole the object literal is
+ * the form that occurs and its `)` decides anyway, so the ambiguity is resolved towards the shape
+ * this language actually holds.
+ *
+ * **And a `/` with no closer on its own line is division**, whatever came before it — a regex
+ * literal cannot span lines, so an unterminated one is not a regex at all. That is what keeps a
+ * misjudged slash from swallowing the rest of the block.
  *
  * Exported because three scanners ask the same question — the parser, the formatter's layout, and
  * the rule that looks for a `//` — and two of them used to ask it with `indexOf`, which is how a
@@ -115,12 +128,15 @@ const BRACE = 125; /* } */
 export function closingHole(source: string, at: number): number {
   let index = at + 1;
   let depth = 0;
+  /** Whether a `/` at the current position would DIVIDE rather than open a regex — see above. */
+  let divides = false;
 
   while (index < source.length) {
     const code = source.charCodeAt(index);
 
     if (code === 34 /* " */ || code === 39 /* ' */ || code === 96 /* ` */) {
       index = pastExpressionString(source, index);
+      divides = true;
       continue;
     }
     if (code === 47 /* / */) {
@@ -135,19 +151,138 @@ export function closingHole(source: string, at: number): number {
         index = close === -1 ? source.length : close + 2;
         continue;
       }
+      if (!divides) {
+        const past = pastRegex(source, index);
+        if (past !== -1) {
+          index = past;
+          divides = true;
+          continue;
+        }
+      }
+      // Division, or a slash with no closer on its line, which is the same decision.
+      divides = false;
+      index++;
+      continue;
     }
-    if (code === 123 /* { */ || code === 40 /* ( */ || code === 91 /* [ */) depth++;
-    else if (code === 41 /* ) */ || code === 93 /* ] */) depth--;
-    else if (code === BRACE) {
+    if (isSpace(code)) {
+      index++;
+      continue;
+    }
+    // A name or a number, and a KEYWORD is the case that flips the answer back.
+    if (isWordCharacter(code)) {
+      const start = index;
+      while (index < source.length && isWordCharacter(source.charCodeAt(index))) index++;
+      divides = !A_REGEX_FOLLOWS.has(source.slice(start, index));
+      continue;
+    }
+
+    if (code === 123 /* { */ || code === 40 /* ( */ || code === 91 /* [ */) {
+      depth++;
+      divides = false;
+    } else if (code === 41 /* ) */ || code === 93 /* ] */) {
+      depth--;
+      divides = true;
+    } else if (code === BRACE) {
       // Just PAST the closer, so no caller has to know how long the closer is. It used to return the
       // first of `}}` and every one of the four call sites added 2.
       if (depth === 0) return index + 1;
       depth--;
+      divides = true;
+    } else {
+      // An operator, and `a++ / b` is the one that would otherwise read as a regex.
+      const twice = code === 43 /* + */ || code === 45 /* - */;
+      divides = twice && source.charCodeAt(index + 1) === code;
     }
     index++;
   }
 
   return -1;
+}
+
+/**
+ * The keywords after which a `/` opens a REGEX, though they are spelled like names.
+ *
+ * Everything else that reads as a word — an identifier, a number, `true`, `this` — is a value, and a
+ * `/` after a value divides. These are the operators and statement heads that are written with
+ * letters, so the character test cannot tell them apart from a name.
+ */
+const A_REGEX_FOLLOWS = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "case",
+  "do",
+  "else",
+  "yield",
+  "await",
+  "throw",
+]);
+
+/**
+ * Where the regex literal opening at `at` ends, past its flags — or -1 when it is not one.
+ *
+ * A `[ … ]` class holds a `/` without ending the literal, which is the case that makes this more
+ * than an `indexOf`. A `\` escapes whatever follows it, delimiter included.
+ *
+ * **A newline means it was never a regex.** A regex literal cannot span lines, so a `/` with no
+ * closer on its own line is division however it looked — and answering -1 there is what stops a
+ * misjudged slash from swallowing the rest of the block.
+ */
+function pastRegex(source: string, at: number): number {
+  let index = at + 1;
+  let inClass = false;
+
+  while (index < source.length) {
+    const code = source.charCodeAt(index);
+
+    if (code === 92 /* \ */) {
+      index += 2;
+      continue;
+    }
+    if (code === 10 || code === 13) return -1;
+    if (code === 91 /* [ */) inClass = true;
+    else if (code === 93 /* ] */) inClass = false;
+    else if (code === 47 /* / */ && !inClass) {
+      index++;
+      // The flags, which are letters and nothing else.
+      while (index < source.length && isFlagLetter(source.charCodeAt(index))) index++;
+      return index;
+    }
+    index++;
+  }
+
+  return -1;
+}
+
+/** A regex flag: `d g i m s u v y`, and any letter, because a wrong one is TypeScript's to report. */
+function isFlagLetter(code: number): boolean {
+  return (code >= 97 && code <= 122) || (code >= 65 && code <= 90);
+}
+
+/**
+ * A character a JAVASCRIPT name or number is made of, which is not what CSS means by one.
+ *
+ * `rules.ts` has a helper of this name that includes `-`, because a CSS property holds one. Here a
+ * `-` is subtraction, and reading it as part of a name would make `a-b` end in a value and turn the
+ * `/` after it into a division when it is one — right by accident — while `x /re/` after a minus
+ * would go the other way. Its own function rather than the shared one, and this is the note that
+ * says the difference was chosen.
+ *
+ * `$` and `_` are name characters; a digit is not a name START but this is only ever asked of a run.
+ */
+function isWordCharacter(code: number): boolean {
+  return (
+    (code >= 97 && code <= 122) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 48 && code <= 57) ||
+    code === 95 /* _ */ ||
+    code === 36 /* $ */
+  );
 }
 
 /**

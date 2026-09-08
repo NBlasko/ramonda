@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { HOLE, normalise } from "../compiler/normalise";
-import { readBlock } from "../compiler/read";
+import { closingHole, readBlock } from "../compiler/read";
 import { transform } from "../compiler/transform";
 
 /**
@@ -239,5 +239,98 @@ describe("whitespace before a condition's parenthesis", () => {
 
     expect(item.kind).toBe("rule");
     expect(item.kind === "rule" && normalise({ items: item.items })).toBe("color:red;");
+  });
+});
+
+/**
+ * A REGEX LITERAL inside a hole, whose delimiters `closingHole` counted.
+ *
+ * The function counts braces, parens, brackets, strings, template literals and both comment forms.
+ * It did not know a regex, so a `}` or a `{` inside `/…/` closed the hole early:
+ *
+ *     css=@@( content: {s.replace(/}/g, "")}; )   ->  this hole is never closed
+ *
+ * A review found it and the doc comment was corrected to admit it. This is the code catching up.
+ *
+ * **It is not a JavaScript lexer, and it does not need to be.** Whether a `/` divides or opens a
+ * regex is decided by the PREVIOUS significant token, which is a small closed question: after an
+ * identifier, a number, `)`, `]`, `}` or a `++`/`--` it divides; after anything else — `(`, `,`,
+ * `=`, `:`, `[`, an operator, a keyword like `return`, or the very start — it opens one. The three
+ * shapes worth planting a test for are an escaped delimiter, a delimiter inside a character class,
+ * and division right after a `)`, which must NOT be read as a regex.
+ */
+describe("a regex literal in a hole", () => {
+  const value = canonical;
+  /** The expression the hole recorded, which is what the transform will emit verbatim. */
+  const expression = (block: string) => {
+    const [span] = readBlock(block, 2, "C.tsx").holes;
+    return block.slice(span.start, span.end);
+  };
+
+  test.each([
+    ["a closing brace as the pattern", `@@(\n  content: {s.replace(/}/g, "")};\n)`],
+    ["an opening brace", `@@(\n  content: {s.replace(/{/g, "")};\n)`],
+    ["both, unbalanced", `@@(\n  content: {s.replace(/}{/g, "")};\n)`],
+    ["inside a character class", `@@(\n  content: {s.split(/[}]/)[0]};\n)`],
+    ["an escaped delimiter before one", `@@(\n  content: {s.replace(/\\/}/g, "")};\n)`],
+    ["a paren, which is counted the same way", `@@(\n  content: {s.replace(/)/g, "")};\n)`],
+    ["a bracket", `@@(\n  content: {s.replace(/]/g, "")};\n)`],
+    ["flags after it", `@@(\n  content: {s.replace(/}/gimsuy, "")};\n)`],
+    ["a regex holding a quote, which is not a string", `@@(\n  content: {s.replace(/"}/g, "")};\n)`],
+    ["one holding what looks like a comment", `@@(\n  content: {s.replace(/\\/*}/g, "")};\n)`],
+  ])("%s is part of the expression, not the end of the hole", (_what, block) => {
+    expect(value(block)).toBe("content:@0@;");
+  });
+
+  test("the expression recorded is the whole of it", () => {
+    expect(expression(`@@(\n  content: {s.replace(/}/g, "")};\n)`)).toBe(`s.replace(/}/g, "")`);
+  });
+
+  /**
+   * DIVISION, which must keep working — and each of these would become a regex under a rule that
+   * only looked at the slash.
+   */
+  test.each([
+    ["after a paren", `@@(\n  width: {(a + b) / c};\n)`],
+    ["after an identifier", `@@(\n  width: {a / b};\n)`],
+    ["after a number", `@@(\n  width: {1 / 2};\n)`],
+    ["after a bracket", `@@(\n  width: {xs[0] / 2};\n)`],
+    ["twice", `@@(\n  width: {a / b / c};\n)`],
+    ["after a property access", `@@(\n  width: {this.w / 2};\n)`],
+  ])("division %s is still division", (_what, block) => {
+    expect(value(block)).toBe("width:@0@;");
+  });
+
+  test("and a division whose operands hold braces is not a regex either", () => {
+    const block = `@@(\n  width: {({ a: 1 }).a / 2};\n)`;
+
+    expect(value(block)).toBe("width:@0@;");
+    expect(expression(block)).toBe("({ a: 1 }).a / 2");
+  });
+
+  /**
+   * A STRAY slash, which is what a half-written expression looks like — and the shape that made the
+   * newline rule visible.
+   *
+   * `{a + /}` has a `/` where a regex may begin and no closer on that line. The next `/` anywhere is
+   * the division two lines below, so without the rule that a regex cannot span lines the scan finds
+   * it and the hole swallows its own `}`, the declaration after it, and part of the next hole.
+   * Measured, with the guard removed: the hole came back as `{a + /};\n  width: {b / 2}`.
+   *
+   * Written as a direct call rather than through a block, because a block wraps this in delimiters
+   * that go unbalanced first and return -1 for a different reason — three shapes were tried before
+   * this one isolated the rule. An assertion that cannot fail for the reason it exists is not one.
+   */
+  test("a stray slash does not let a hole run past its own brace", () => {
+    const text = `{a + /};\n  width: {b / 2};`;
+
+    expect(closingHole(text, 0)).toBe("{a + /}".length);
+  });
+
+  /** A keyword before the slash opens a regex, which an identifier would not. */
+  test("a regex after `return`, inside an arrow body", () => {
+    const block = `@@(\n  content: {(() => { return /}/.test(s) ? "a" : "b"; })()};\n)`;
+
+    expect(value(block)).toBe("content:@0@;");
   });
 });
