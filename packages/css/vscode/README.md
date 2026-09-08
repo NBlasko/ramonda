@@ -34,19 +34,41 @@ nothing to configure, and nothing to add to a project.
 
 **Colours** work on their own, in `.ts`, `.tsx`, `.js` and `.jsx`.
 
-**Formatting, diagnostics and completions** need [`@ramonda/css`](https://ramonda.dev/style-blocks)
-in the project. That package is not on npm yet, so today this extension is the colours.
+**Diagnostics, completions and formatting** come from
+[`@ramonda/css`](https://www.npmjs.com/package/@ramonda/css) in the project, which is where the
+compiler lives. Install it and turn the language plugin on in `tsconfig.json`:
 
-## Two settings
+```json
+{ "compilerOptions": { "plugins": [{ "name": "@ramonda/css/plugin" }] } }
+```
 
-**One the editor needs.** VS Code runs two TypeScript servers, and only one of them loads language
-plugins; the other reads your file as plain TypeScript, which a style block is not. Turn it off:
+A plugin only loads when the editor is running the workspace's own TypeScript: **TypeScript: Select
+TypeScript Version → Use Workspace Version**.
+
+## The setting the editor needs
+
+VS Code runs two TypeScript servers, and only one of them loads language plugins. The other reads
+your file as plain TypeScript, which a style block is not, so turn it off:
 
 ```json
 { "typescript.tsserver.useSyntaxServer": "never" }
 ```
 
-**One for formatting**, once the project has `@ramonda/css`:
+## Format on save
+
+**Using Prettier, keep Prettier.** `@ramonda/css` ships a Prettier plugin, so your editor's usual
+formatter handles these files with nothing else to configure:
+
+```json
+{ "plugins": ["@ramonda/css/prettier"] }
+```
+
+Leave `editor.defaultFormatter` alone. Prettier formats the whole file, blocks and all.
+
+**Using biome, this extension is the formatter.** biome has no plugin surface for a syntax it cannot
+parse, so the formatting goes through `ramonda-css`, which runs your biome with your configuration.
+Put this in the project's own `.vscode/settings.json` rather than in your global settings — it is a
+choice about this project, and a workspace setting is what other people on the project get too:
 
 ```json
 {
@@ -55,11 +77,8 @@ plugins; the other reads your file as plain TypeScript, which a style block is n
 }
 ```
 
-Safe to set for a whole language: a file with no block goes straight through your own formatter, and
-a project without `@ramonda/css` is left alone.
-
-Formatting runs the project's own `ramonda-css`, with the project's own biome or prettier
-configuration — so saving a file produces what `pnpm format` produces.
+Safe to set for a whole language rather than a folder: a file with no block is passed straight to
+biome, and a project without `@ramonda/css` is left untouched.
 
 ## Where the colours apply
 
@@ -103,5 +122,5 @@ for the holes.
 
 ## Read next
 
-**[Style blocks](https://ramonda.dev/style-blocks)** is the one page to read: the syntax, what a
-block compiles to, and how to set up a build. Start there if you have not written one yet.
+**[Style blocks](https://ramonda.dev/style-blocks)** — the syntax in full, what a block compiles to,
+and how to set up a build. Start there if you have not written one yet.

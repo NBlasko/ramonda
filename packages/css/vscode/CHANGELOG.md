@@ -2,8 +2,12 @@
 
 ## 0.1.1
 
-- Rewrote the readme. It now says up front what works without anything else installed, and what
-  needs `@ramonda/css` in the project.
+- Rewrote the readme. It says up front what works with nothing else installed, and what needs
+  `@ramonda/css` in the project.
+- Documented the two formatter routes separately. A project on Prettier adds
+  `@ramonda/css/prettier` to its Prettier config and leaves `editor.defaultFormatter` alone; only a
+  project on biome points the setting at this extension, and in the project's own
+  `.vscode/settings.json`.
 
 ## 0.1.0
 
