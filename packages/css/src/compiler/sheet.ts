@@ -190,18 +190,46 @@ export class Sheet {
   }
 
   /**
-   * The CSS one file needs: every rule it names, in the sheet's own order.
+   * The CSS one file needs: every rule it names, in THAT FILE's own order.
    *
    * **Every** rule, including one another file also writes — see the note at the top. A stylesheet
    * that leaves out a class its own JavaScript names is a stylesheet that is only correct when some
    * other chunk happens to have loaded, and a bundler makes no such promise.
+   *
+   * **The order is the file's, and it used to be the sheet's.** This walked the whole rule map and
+   * filtered it, so what came out was global first-claim order — whichever file the bundler happened
+   * to transform first. A review measured it: two files writing the same two conditional
+   * declarations in opposite orders, and the second one's stylesheet came out in the FIRST one's
+   * order, while compiled alone it came out in its own.
+   *
+   * `sheetRank` cannot rescue that. It separates conditional from unconditional and broad from
+   * narrow; it says nothing about one condition against another, so the two ranks are equal, the
+   * stable sort kept an order belonging to another file, and `override-out-of-order` had nothing to
+   * report because nothing about the RANKS was wrong. The declaration that lost was silently the
+   * wrong one, and which one it was depended on build order.
+   *
+   * `byFile` has kept each file's claims in source order since it was written, for a different
+   * reason — knowing what to withdraw on a save. That is the order the author wrote, so it is the
+   * order to emit, with the rank sorting within it as it always did.
    */
   cssFor(file: string): string {
     let out = "";
-    for (const [className, rule] of ordered(this.rules)) {
-      if (rule.files.has(file)) out += write(className, rule.block);
+    for (const [className, rule] of this.ownOrder(file)) {
+      out += write(className, rule.block);
     }
     return out === "" ? "" : `@layer ramonda {\n${out}}\n`;
+  }
+
+  /** This file's own claims, in the order it wrote them, sorted by {@link sheetRank} within that. */
+  private ownOrder(file: string): [string, { block: EmittedBlock; files: Set<string> }][] {
+    const mine: [string, { block: EmittedBlock; files: Set<string> }][] = [];
+    for (const className of this.byFile.get(file) ?? []) {
+      const rule = this.rules.get(className);
+      // A class this file claimed that nothing names any more — `add` deletes such a rule, and this
+      // is read between edits. Skipped rather than trusted to be there.
+      if (rule !== undefined) mine.push([className, rule]);
+    }
+    return ordered(mine);
   }
 
   /**

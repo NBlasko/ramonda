@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { EmittedBlock } from "../compiler/transform";
+import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
 import { Sheet } from "../compiler/sheet";
 
@@ -515,5 +515,99 @@ describe("verifying a readable class", () => {
     sheet.add("a.tsx", [{ className: "r-c-#fff", css: "color:#fff;", properties: [], property: "color" }]);
 
     expect(() => sheet.verify(".a1{color:#fff}")).toThrow(CssBlockError);
+  });
+});
+
+/**
+ * A FILE'S OWN ORDER, which its stylesheet did not have.
+ *
+ * `cssFor` walked the whole rule map and filtered it to the classes this file names — so the order
+ * was the sheet's GLOBAL first-claim order, which is whichever file the bundler happened to
+ * transform first. A review found it, and it is measurable end to end.
+ *
+ * Two files writing the same two conditional declarations in opposite orders: the second one's
+ * stylesheet came out in the FIRST one's order, and compiled alone it came out in its own. Both
+ * ranks are equal — `sheetRank` separates conditional from unconditional and broad from narrow, not
+ * one condition from another — so the stable sort kept an order that belonged to another file, and
+ * `override-out-of-order` could not report it because there was nothing about the ranks to report.
+ *
+ * The declaration that loses is silently the wrong one, and which one it is depends on build order.
+ *
+ * `byFile` has kept each file's claims in source order since it was written, for a different reason
+ * — knowing what to withdraw on a save. It is the order the author wrote, so it is the order to
+ * emit, and the rank still sorts within it because that part was never in doubt.
+ */
+describe("the order one file's stylesheet comes out in", () => {
+  const CONDITIONS = (first: "width" | "height") => {
+    const w = `  @media (min-width: 40rem) { color: red; }\n`;
+    const h = `  @media (min-height: 40rem) { color: blue; }\n`;
+    return `const a = <div css=@@(\n${first === "width" ? w + h : h + w})>x</div>;\n`;
+  };
+
+  const blocksOf = (code: string, file: string) => transform(code, { filename: file })?.blocks ?? [];
+  const conditionsIn = (css: string) => [...css.matchAll(/min-(width|height)/g)].map((found) => found[1]);
+
+  test("its own, whatever another file claimed the same classes first", () => {
+    const sheet = new Sheet();
+    sheet.add("/a.tsx", blocksOf(CONDITIONS("width"), "/a.tsx"));
+    sheet.add("/b.tsx", blocksOf(CONDITIONS("height"), "/b.tsx"));
+
+    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["width", "height"]);
+    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["height", "width"]);
+  });
+
+  test("and the same as it would be compiled alone, which is the point", () => {
+    const together = new Sheet();
+    together.add("/a.tsx", blocksOf(CONDITIONS("width"), "/a.tsx"));
+    together.add("/b.tsx", blocksOf(CONDITIONS("height"), "/b.tsx"));
+
+    const alone = new Sheet();
+    alone.add("/b.tsx", blocksOf(CONDITIONS("height"), "/b.tsx"));
+
+    expect(together.cssFor("/b.tsx")).toBe(alone.cssFor("/b.tsx"));
+  });
+
+  test("in the other build order too, so neither file is the privileged one", () => {
+    const sheet = new Sheet();
+    sheet.add("/b.tsx", blocksOf(CONDITIONS("height"), "/b.tsx"));
+    sheet.add("/a.tsx", blocksOf(CONDITIONS("width"), "/a.tsx"));
+
+    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["width", "height"]);
+    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["height", "width"]);
+  });
+
+  /**
+   * **Why emitting in the author's order is safe, and it is not a trade.**
+   *
+   * Within one file the author's order and the rank cannot disagree, because
+   * `override-out-of-order` refuses the block where they would — which is what that rule is FOR.
+   * Found by writing the fixture that would have tested the two against each other and watching the
+   * compiler refuse it.
+   *
+   * So the rank is not being overruled here. It orders what the author's order leaves undecided,
+   * across files and within one; the change is only about which file's order that is.
+   */
+  test("a file whose own order contradicts the rank does not compile at all", () => {
+    const source =
+      `const a = <div css=@@(\n` +
+      `  @media (min-width: 40rem) { color: blue; }\n` +
+      `  color: red;\n` +
+      `)>x</div>;\n`;
+
+    expect(() => blocksOf(source, "/a.tsx")).toThrow(/will not/);
+  });
+
+  /** And written the way it compiles, the two agree — which is the same claim from the other side. */
+  test("and written the way it compiles, the emitted order is both at once", () => {
+    const source =
+      `const a = <div css=@@(\n` +
+      `  color: red;\n` +
+      `  @media (min-width: 40rem) { color: blue; }\n` +
+      `)>x</div>;\n`;
+    const sheet = new Sheet();
+    sheet.add("/a.tsx", blocksOf(source, "/a.tsx"));
+
+    const css = sheet.cssFor("/a.tsx");
+    expect(css.indexOf("color: red")).toBeLessThan(css.indexOf("@media"));
   });
 });
