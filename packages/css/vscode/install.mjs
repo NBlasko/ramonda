@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +22,14 @@ import { fileURLToPath } from "node:url";
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const NAME = "ramonda.ramonda-css-vscode-0.0.0";
+
+/**
+ * `publisher.name-version`, which is how an editor names an extension folder — read from the
+ * manifest rather than written out again. It was written out, as `ramonda.ramonda-css-vscode-0.0.0`,
+ * and the first version bump would have left this linking a folder no editor looks at, silently.
+ */
+const manifest = JSON.parse(readFileSync(join(here, "package.json"), "utf8"));
+const NAME = `${manifest.publisher}.${manifest.name}-${manifest.version}`;
 
 /** Every editor that reads VS Code extensions in the usual place. */
 const EDITORS = [

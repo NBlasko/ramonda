@@ -55,6 +55,10 @@ apps/docs/dist/
 apps/docs/.build/
 apps/docs/src/generated/
 
+# The packaged editor extension. Built from the folder it sits in, on the way to a marketplace or an
+# editor, and never a source of anything — a committed one is a binary nobody can review or diff.
+*.vsix
+
 # Internal working notes — kept local, not for the public repo
 notes/
 

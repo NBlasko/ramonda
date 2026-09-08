@@ -18,13 +18,29 @@ something a repository can hold — so this is the list, in the order it has to 
    page has a blank square without one. It is deliberately not committed as a placeholder: a
    placeholder icon ships as the real icon the first time somebody forgets.
 
+5. **Open VSX, if the extension should reach Cursor, Windsurf or VSCodium** — none of them can
+   install from the Microsoft marketplace. A separate registry, a separate account (GitHub sign-in
+   plus the Eclipse publisher agreement) and a separate token: `ovsx create-namespace ramonda` once,
+   then `ovsx publish ramonda-css.vsix`. Nothing in this folder depends on it.
+
 ## Every release
 
-    pnpm --filter ramonda-css-vscode package     # writes ramonda-css.vsix
-    pnpm --filter ramonda-css-vscode publish     # needs VSCE_PAT in the environment
+Both are run **from this folder**, and neither is a `pnpm --filter` away. `packages/css/vscode` is
+deliberately not a workspace package — it is installed by linking and nothing in it goes to npm — so
+a filter matched no project and said so; and `pnpm publish` is a BUILT-IN command, which is why the
+second script is not called `publish`.
+
+    cd packages/css/vscode
+    pnpm run package               # writes ramonda-css.vsix
+    pnpm run publish-marketplace   # needs VSCE_PAT in the environment
+
+`vsce` is fetched by `pnpm dlx`, pinned to its major, rather than installed: it is a tool used twice
+a year, and every contributor would otherwise carry it in every install.
 
 **`version` is `0.0.0` and has to move before the first publish.** The marketplace refuses a version
-it has already seen, and unlike npm there is no unpublish.
+it has already seen, and unlike npm there is no unpublish. It is the manifest's version that moves
+and nothing else: `install.mjs` reads the name and version out of the manifest, so the linked folder
+follows a bump on its own.
 
 ## What is deliberately NOT automated
 

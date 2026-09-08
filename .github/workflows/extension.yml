@@ -41,8 +41,13 @@ jobs:
       - name: The grammar tests
         run: pnpm exec turbo run test --filter=@ramonda/css
 
+      # From the folder, not through a filter: `packages/css/vscode` is deliberately NOT a workspace
+      # package — it is installed by linking, and nothing in it is published to npm — so
+      # `pnpm --filter ramonda-css-vscode …` matched no project at all and both of these steps
+      # failed before they ran. Measured, on the day the publisher was being created.
       - name: Package
-        run: pnpm --filter ramonda-css-vscode package
+        working-directory: packages/css/vscode
+        run: pnpm run package
 
       # Kept whether or not it is published, so a build can be installed by hand from a run.
       - uses: actions/upload-artifact@v4
@@ -51,8 +56,12 @@ jobs:
           path: packages/css/vscode/ramonda-css.vsix
           if-no-files-found: error
 
+      # `publish-marketplace`, and the name matters: `pnpm publish` is a BUILT-IN command, so
+      # `pnpm --filter … publish` would have asked pnpm to publish this folder to npm rather than
+      # running the script beside it.
       - name: Publish
         if: ${{ inputs.publish }}
-        run: pnpm --filter ramonda-css-vscode publish
+        working-directory: packages/css/vscode
+        run: pnpm run publish-marketplace
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
