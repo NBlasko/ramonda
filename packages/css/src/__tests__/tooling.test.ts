@@ -580,9 +580,20 @@ describe("the one spelling a prelude may have", () => {
     ["a layer name", "  @layer Base {\n    color: red;\n  }"],
     ["an attribute value", '  &[data-x="Y"] {\n    color: red;\n  }'],
     ["a url holding a colon", "  @supports (background: url(http://x)) {\n    color: red;\n  }"],
-    ["spaces nothing here canonicalises", "  &:nth-child(2n + 1) {\n    color: red;\n  }"],
   ])("%s is left exactly as written", (_what, written) => {
     expect(formatted(written)).toBe(written);
+  });
+
+  /** And the two that used to be left alone, now that the canonicaliser reaches them. */
+  test.each([
+    ["an `An+B`", "  &:nth-child(2n + 1) {\n    color: red;\n  }", "  &:nth-child(2n+1) {\n    color: red;\n  }"],
+    [
+      "a redundant pair of parens",
+      "  @supports ((display: grid)) {\n    color: red;\n  }",
+      "  @supports (display: grid) {\n    color: red;\n  }",
+    ],
+  ])("%s is written tight", (_what, written, expected) => {
+    expect(formatted(written)).toBe(expected);
   });
 
   /** Formatting twice changes nothing the second time, which is what makes it a canonical form. */

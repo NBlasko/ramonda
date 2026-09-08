@@ -94,6 +94,7 @@ export const RULE_IDS = [
   "string-not-allowed",
   "property-not-a-name",
   "non-canonical-spelling",
+  "layer-in-a-block",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -263,6 +264,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
   spelling(block, findings);
+  layerInABlock(block, findings);
   if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
   if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
@@ -665,6 +667,53 @@ function mediaFeatures(block: Block, findings: Finding[]): void {
  * which need real parsing to rewrite — is a shape this says nothing about. An error with no fix is
  * worse than a spelling, and one function asked two ways cannot drift from the other consumer.
  */
+/**
+ * `@layer` written INSIDE a block, which looks like a cascade control and cannot be one.
+ *
+ * **The stylesheet is already one layer.** Everything this compiler emits is wrapped in
+ * `@layer ramonda { … }`, which is what puts it beneath an author's own unlayered CSS whatever order
+ * the files load in.
+ *
+ * So a `@layer a` inside a block makes a SUBLAYER, `ramonda.a` — and whether that beats `ramonda.b`
+ * is decided by which of the two the sheet writes first, because CSS orders layers it was given no
+ * explicit order for by first appearance. The sheet writes per file, in each file's own source
+ * order, so the answer is a property of the BUILD. The author gets a lever whose other end is not in
+ * their hands.
+ *
+ * **Layers themselves are not refused, and the message has to say so** — this is the one refusal
+ * here that an author will read as a missing feature. `@layer` belongs in their own stylesheet,
+ * where the order can be declared, and `ramonda` can be ordered among their layers from there.
+ * Measured: `@layer app, ramonda;` at the top of an authored sheet orders both.
+ *
+ * The place this would become real is a declared order — somewhere for `@layer a, b;` to be written
+ * inside our own layer. There is nowhere in a block to write it, so it is a feature rather than a
+ * fix, and it is not pretended at here.
+ */
+function layerInABlock(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      walkItems(item.items);
+
+      const prelude = item.prelude.trim();
+      if (item.at === undefined || !/^@layer\b/i.test(prelude)) continue;
+
+      findings.push({
+        rule: "layer-in-a-block",
+        at: item.at,
+        length: item.prelude.length,
+        message:
+          "a style block cannot hold `@layer`. Everything compiled here is already emitted inside " +
+          "`@layer ramonda`, so a layer written in a block is a sublayer of it — and which sublayer " +
+          "wins is decided by the order the stylesheet happens to write them in, not by anything " +
+          "written here. Declare your layers in your own stylesheet, where the order can be given: " +
+          "`@layer app, ramonda;` puts this package's output wherever you want it among them.",
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
 function spelling(block: Block, findings: Finding[]): void {
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {

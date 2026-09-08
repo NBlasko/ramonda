@@ -178,18 +178,76 @@ describe("one spelling for a condition and a selector", () => {
   });
 
   /**
-   * What the canonicaliser deliberately does NOT touch, so the rule does not report it either.
+   * What the canonicaliser does not touch, so the rule says nothing about it either.
    *
-   * `:nth-child(2n + 1)` and `@supports ((display:grid))` are both the same CSS as their tighter
-   * spellings, and both need real parsing to rewrite: `:nth-child(2n of .a)` has whitespace that
-   * matters, and telling a redundant paren from a grouping one is the `@supports` grammar. They are
-   * left as written, which costs a second class and reports nothing.
+   * Everything that is an author's own text: a class, an id, an attribute value, a `@layer` name, a
+   * `@container` name, a `@scope` selector. Also a name nothing generated — a browser's pseudo-class
+   * or a typo — because rewriting one would be guessing at what it meant.
    */
   test.each([
-    ["spaces inside a functional pseudo-class", "&:nth-child(2n + 1)"],
-    ["redundant parens in a supports condition", "@supports ((display: grid))"],
+    ["a pseudo-class nobody generated", "&:NOT-A-THING"],
+    ["a feature name nobody generated", "@media (NOT-A-FEATURE: 1)"],
   ])("%s is left as written", (_what, written) => {
-    expect(canonicalSelector(written)).toBe(written);
+    expect(written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written)).toBe(written);
+  });
+
+  /**
+   * A VENDOR pseudo-element is lowered, because it is still the language's word rather than the
+   * author's — a browser defined it, and the generated table holds it like any other.
+   */
+  test("a vendor pseudo-element is lowered, because the table has it", () => {
+    expect(canonicalSelector("&::-WEBKIT-SLIDER-THUMB")).toBe("&::-webkit-slider-thumb");
+  });
+});
+
+/**
+ * The two spellings that used to be left alone, because each looked like it needed a real parse.
+ *
+ * It does for the general case and not for what people write. `:nth-child`'s `An+B` is a small
+ * closed syntax, and one redundant pair of parens is one balanced group inside another. Both are
+ * mechanical, so both are canonicalised — an author writes CSS one way, which is the point.
+ */
+describe("the two that looked like they needed a parser", () => {
+  test.each([
+    ["spaces around the sign", "&:nth-child(2n + 1)", "&:nth-child(2n+1)"],
+    ["a minus", "&:nth-child(2n - 1)", "&:nth-child(2n-1)"],
+    ["a leading sign", "&:nth-child(-n + 3)", "&:nth-child(-n+3)"],
+    ["already tight", "&:nth-child(2n+1)", "&:nth-child(2n+1)"],
+    ["a bare number", "&:nth-child( 3 )", "&:nth-child(3)"],
+    ["a keyword", "&:nth-child( ODD )", "&:nth-child(odd)"],
+    ["a capital N", "&:nth-child(2N+1)", "&:nth-child(2n+1)"],
+    ["nth-last-child", "&:nth-last-child(2n + 1)", "&:nth-last-child(2n+1)"],
+    ["nth-of-type", "&:nth-of-type(2n + 1)", "&:nth-of-type(2n+1)"],
+    ["nth-last-of-type", "&:nth-last-of-type(2n + 1)", "&:nth-last-of-type(2n+1)"],
+  ])("%s", (_what, written, expected) => {
+    expect(canonicalSelector(written)).toBe(expected);
+  });
+
+  /** `of <selector>` holds a selector, whose whitespace is the author's and means something. */
+  test.each([
+    ["a selector after `of`", "&:nth-child(2n + 1 of .a b)", "&:nth-child(2n+1 of .a b)"],
+    ["with no An+B to tighten", "&:nth-child(2n of .a b)", "&:nth-child(2n of .a b)"],
+    ["a capitalised class after `of`", "&:nth-child(2n+1 of .Card)", "&:nth-child(2n+1 of .Card)"],
+  ])("%s keeps what is after it", (_what, written, expected) => {
+    expect(canonicalSelector(written)).toBe(expected);
+  });
+
+  test.each([
+    ["one redundant pair", "@supports ((display: grid))", "@supports (display: grid)"],
+    ["two", "@supports (((display: grid)))", "@supports (display: grid)"],
+    ["already one pair", "@supports (display: grid)", "@supports (display: grid)"],
+    ["and the colon is spaced inside it", "@supports ((display:grid))", "@supports (display: grid)"],
+  ])("%s", (_what, written, expected) => {
+    expect(canonicalCondition(written)).toBe(expected);
+  });
+
+  /** A paren that GROUPS is not redundant, and telling them apart is the whole care here. */
+  test.each([
+    ["an `and`", "@supports ((display: grid) and (gap: 1px))"],
+    ["an `or`", "@supports ((display: grid) or (display: flex))"],
+    ["a `not`", "@supports (not (display: grid))"],
+    ["a selector query", "@supports selector(&:hover)"],
+  ])("%s is left alone", (_what, written) => {
     expect(canonicalCondition(written)).toBe(written);
   });
 });

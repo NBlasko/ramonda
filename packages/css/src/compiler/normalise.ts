@@ -176,6 +176,40 @@ function string(text: string, start: number, write: (chunk: string) => void): nu
  * written, which costs a second class and reports nothing.
  */
 export function canonicalSelector(selector: string): string {
+  return tightenedCounts(lowered(selector));
+}
+
+/**
+ * `An+B` written the one way — `2n+1`, not `2n + 1`.
+ *
+ * A small closed syntax: an optional sign, an optional integer, an optional `n`, an optional sign
+ * and an optional integer, or one of the keywords. So the spaces around the sign carry nothing and
+ * come out, and `N` and `ODD` are the language's words and come down.
+ *
+ * **Everything from ` of ` onward is a SELECTOR and is left exactly as written.** Its whitespace is
+ * a combinator and its capitals are the author's classes. That boundary is why this looked like it
+ * needed a parser: the argument is two languages, and only the first one is closed.
+ */
+function tightenedCounts(selector: string): string {
+  return selector.replace(A_COUNT, (whole, name: string, argument: string) => {
+    const at = argument.search(/\sof\s/i);
+    const counted = at === -1 ? argument : argument.slice(0, at);
+    const rest = at === -1 ? "" : argument.slice(at);
+    if (!AN_B.test(counted.trim())) return whole;
+    return `:${name}(${counted
+      .trim()
+      .replace(/\s*([+-])\s*/g, "$1")
+      .toLowerCase()}${rest})`;
+  });
+}
+
+/** Every pseudo-class whose argument is an `An+B`. */
+const A_COUNT = /:(nth-(?:last-)?(?:child|of-type|col))\(([^)]*)\)/gi;
+
+/** `An+B` and the two keywords, which is the whole of what may be tightened. */
+const AN_B = /^[+-]?(?:\d+)?[nN]?\s*(?:[+-]\s*\d+)?$|^(?:odd|even)$/i;
+
+function lowered(selector: string): string {
   return selector.replace(A_PSEUDO, (whole, colons: string, name: string) => {
     const lowered = name.toLowerCase();
     // A name nobody generated is a browser's or a typo's, and neither is this function's to rewrite.
@@ -187,6 +221,44 @@ export function canonicalSelector(selector: string): string {
 }
 
 export function canonicalCondition(condition: string): string {
+  return unwrapped(spelled(condition));
+}
+
+/**
+ * One redundant pair of parens taken off a `@supports` condition, however many there are.
+ *
+ * Redundant means the whole condition is one balanced group, and its contents are one balanced group
+ * again — `((display: grid))`. A paren that GROUPS is not that: in `((a) and (b))` the first group
+ * closes before the end, so the outer pair is doing work and stays.
+ *
+ * That test is the whole reason this is possible without the `@supports` grammar. It answers the one
+ * shape a person writes and says nothing about the rest.
+ */
+function unwrapped(condition: string): string {
+  if (!condition.startsWith("@supports ")) return condition;
+
+  let rest = condition.slice("@supports ".length).trim();
+  while (isOneGroup(rest) && isOneGroup(rest.slice(1, -1).trim())) rest = rest.slice(1, -1).trim();
+  return `@supports ${rest}`;
+}
+
+/** Whether the text is `(` … `)` with the opening paren's own match at the very end. */
+function isOneGroup(text: string): boolean {
+  if (!text.startsWith("(") || !text.endsWith(")")) return false;
+
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 40) depth++;
+    else if (code === 41) {
+      depth--;
+      if (depth === 0) return index === text.length - 1;
+    }
+  }
+  return false;
+}
+
+function spelled(condition: string): string {
   const space = condition.indexOf(" ");
   const name = space === -1 ? condition : condition.slice(0, space);
   if (!AT_RULES.has(name.toLowerCase())) return condition;

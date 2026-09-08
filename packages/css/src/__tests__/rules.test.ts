@@ -2057,14 +2057,72 @@ describe("a spelling that is the same CSS and a different class", () => {
     ["a class, which is the author's own", "  &.Open { color: red; }"],
     ["an id", "  &#Main { color: red; }"],
     ["an attribute value", '  &[data-x="Y"] { color: red; }'],
-    ["a layer name, which is the author's", "  @layer Base { color: red; }"],
     ["a container name", "  @container Card (width > 40rem) { color: red; }"],
     ["a range condition, which has no colon", "  @media (width > 40rem) { color: red; }"],
     ["a boolean condition", "  @media (prefers-reduced-motion) { color: red; }"],
     ["a url holding a colon", "  @supports (background: url(http://x)) { color: red; }"],
-    ["spaces this cannot canonicalise", "  &:nth-child(2n + 1) { color: red; }"],
-    ["parens this cannot canonicalise", "  @supports ((display: grid)) { color: red; }"],
   ])("%s says nothing", (_what, css) => {
+    expect(rules(css)).toEqual([]);
+  });
+
+  /** The two that used to be left alone because each looked like it needed a parser. */
+  test.each([
+    ["spaces in an `An+B`", "  &:nth-child(2n + 1) { color: red; }", "&:nth-child(2n+1)"],
+    ["a redundant pair of parens", "  @supports ((display: grid)) { color: red; }", "@supports (display: grid)"],
+  ])("%s is reported too, now that it can be fixed", (_what, css, expected) => {
+    expect(rules(css)).toEqual(["non-canonical-spelling"]);
+    expect(messages(css)[0]).toContain(expected);
+  });
+});
+
+/**
+ * `@layer` INSIDE a block, which looks like a cascade control and is not one.
+ *
+ * The stylesheet is already one layer. Everything this compiler emits is wrapped in
+ * `@layer ramonda { … }`, so it sits beneath an author's own unlayered CSS whatever order the files
+ * load in — that is the whole reason the wrapper exists.
+ *
+ * A `@layer a` written inside a block therefore makes a SUBLAYER, `ramonda.a`. Measured:
+ *
+ *     @layer ramonda {
+ *     @layer a { .r-…-c-red  { color:red; } }
+ *     @layer b { .r-…-c-blue { color:blue; } }
+ *     }
+ *
+ * And whether `ramonda.a` beats `ramonda.b` is decided by which of them the sheet writes FIRST,
+ * because that is how CSS orders layers it was not given an explicit order for. The sheet writes
+ * per file, in each file's own source order — so the answer is a property of the build, not of
+ * anything the author wrote. They get a lever whose other end is not in their hands.
+ *
+ * Refused rather than sorted or renamed. There is no spelling of it that means what it looks like.
+ */
+describe("`@layer` inside a block", () => {
+  test("is refused", () => {
+    expect(rules("  @layer a { color: red; }")).toEqual(["layer-in-a-block"]);
+  });
+
+  test("and the message says why, not just that", () => {
+    const [only] = messages("  @layer a { color: red; }");
+
+    expect(only).toContain("already emitted inside");
+    expect(only).toContain("order");
+  });
+
+  test.each([
+    ["nested in a condition", "  @media print {\n    @layer a { color: red; }\n  }"],
+    ["nested in a selector", "  &:hover {\n    @layer a { color: red; }\n  }"],
+    ["nested inside another layer", "  @layer a {\n    @layer b { color: red; }\n  }"],
+    ["with no name", "  @layer { color: red; }"],
+  ])("%s is refused too", (_what, css) => {
+    expect(rules(css)).toContain("layer-in-a-block");
+  });
+
+  test.each([
+    ["@media", "  @media print { color: red; }"],
+    ["@supports", "  @supports (display: grid) { color: red; }"],
+    ["@container", "  @container (width > 40rem) { color: red; }"],
+    ["@scope, which works on its own", "  @scope (.p) { color: red; }"],
+  ])("%s is fine", (_what, css) => {
     expect(rules(css)).toEqual([]);
   });
 });
