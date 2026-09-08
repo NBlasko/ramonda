@@ -170,3 +170,84 @@ describe("the column a refusal names", () => {
     expect(columnOf(source)).toBe(5);
   });
 });
+
+/**
+ * TWO THINGS THE STRICT READ REFUSES AND THE TOLERANT ONE DOES NOT.
+ *
+ * The split matters more than either: an editor reads on every keystroke, so `color: ` with nothing
+ * typed after it is the state it is in most and must stay quiet. A BUILD has the finished text and
+ * can say what a browser will do with it.
+ */
+describe("what only the strict read refuses", () => {
+  const strict = (css: string) => {
+    const source = `const x = <div css=@@(\n${css}\n)>y</div>;`;
+    const [site] = findBlocks(source);
+    return () => readBlock(source, site.open, "C.tsx");
+  };
+  const tolerant = (css: string) => {
+    const source = `const x = <div css=@@(\n${css}\n)>y</div>;`;
+    const [site] = findBlocks(source);
+    return readBlock(source, site.open, "C.tsx", { tolerant: true });
+  };
+  /** A literal U+0000, written by code point so no source file has to carry one. */
+  const NUL = String.fromCharCode(0);
+
+  /**
+   * A declaration with a colon and nothing after it. A review found it compiling: it emitted
+   * `.r-x { color:; }`, which no browser accepts, on a class still written into the markup — so the
+   * element carried a class whose rule did nothing.
+   */
+  describe("a value that is empty", () => {
+    test.each([
+      ["nothing after the colon", "  color: ;"],
+      ["not even a space", "  color:;"],
+      ["only whitespace", "  color:   \t ;"],
+      ["inside a nested rule", "  &:hover {\n    color: ;\n  }"],
+      ["at the end of a block", "  color: "],
+    ])("%s is refused", (_what, css) => {
+      expect(strict(css)).toThrow(/has no value/);
+    });
+
+    test("and the tolerant read keeps it, because that is a value being typed", () => {
+      const [item] = tolerant("  color: ;").block.items;
+
+      expect(item.kind).toBe("declaration");
+      expect(item.kind === "declaration" && item.value).toEqual([]);
+    });
+
+    test.each([
+      ["an ordinary value", "  color: red;"],
+      ["a hole", "  color: {accent};"],
+      ["a spread, which has no value by design", "  ...{base};"],
+      ["a zero", "  opacity: 0;"],
+    ])("%s is fine", (_what, css) => {
+      expect(strict(css)).not.toThrow();
+    });
+  });
+
+  /**
+   * A literal `U+0000`, which the hole placeholder is made of.
+   *
+   * `normalise`'s note used to say an author could not write one, because CSS preprocessing turns it
+   * into U+FFFD — and a block is read out of a TypeScript file, where nothing preprocesses it as
+   * CSS. Measured before this: a block carrying two of them shared an identity, and a class, with a
+   * block carrying a real hole.
+   *
+   * Refused rather than escaped: it is a control character with no meaning in CSS, so there is
+   * nothing to preserve, and refusing keeps the placeholder unforgeable by construction.
+   */
+  describe("a literal NUL", () => {
+    test.each([
+      ["in a value", `  --x: ${NUL}0${NUL};`],
+      ["in a property name", `  co${NUL}lor: red;`],
+      ["inside a string", `  content: "a${NUL}b";`],
+      ["in a selector", `  &:hov${NUL}er { color: red; }`],
+    ])("%s is refused", (_what, css) => {
+      expect(strict(css)).toThrow(/NUL/);
+    });
+
+    test("and an ordinary block is untouched", () => {
+      expect(strict("  color: red;")).not.toThrow();
+    });
+  });
+});

@@ -22,8 +22,13 @@ import type { Block, BlockItem, ValuePart } from "./ast";
 /**
  * The delimiter around a hole's index in the canonical text.
  *
- * U+0000 becomes U+FFFD during CSS preprocessing, so no author can write one into a block — a
- * placeholder made of it cannot be forged by the source it is protecting.
+ * U+0000 has no meaning in CSS, and `readBlock` REFUSES a block that holds one — so a placeholder
+ * made of it cannot be forged by the source it is protecting.
+ *
+ * **The refusal is what guarantees that, and it was not always there.** This note used to argue
+ * from CSS preprocessing turning a NUL into U+FFFD, which does not apply: a block is read out of a
+ * TypeScript file and nothing preprocesses it as CSS. A review measured a block carrying two of them
+ * sharing an identity, and a class, with a block carrying a real hole.
  *
  * A placeholder is needed at all because the names are circular: the variable name is derived from
  * the class, the class from the hash, and the hash from this text. Something has to stand in for the

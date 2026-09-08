@@ -352,6 +352,28 @@ export function readBlock(source: string, open: number, filename: string, option
   const tolerant = options.tolerant === true;
   const resolve = options.resolve;
   const holes: Span[] = [];
+  /**
+   * A literal `U+0000`, refused before anything is read.
+   *
+   * `normalise` builds the hole placeholder out of this character, and its note used to say an
+   * author could not write one — because CSS preprocessing turns a NUL into U+FFFD. A block is read
+   * out of a TYPESCRIPT file, where nothing preprocesses it as CSS, so the premise never held: a
+   * review measured a block carrying two of them sharing an identity, and a class, with a block
+   * carrying a real hole. Refused rather than escaped, because it is a control character with no
+   * meaning in CSS — there is nothing to preserve, and refusing keeps the placeholder unforgeable
+   * by construction rather than by an argument that turned out to be wrong.
+   *
+   * In both modes. An editor cannot want this either, and a keystroke does not produce it.
+   */
+  const nul = source.indexOf("\u0000", open);
+  if (nul !== -1) {
+    refuse(
+      "a NUL character cannot be written in a style block — it is what marks a hole in the compiler's own text.",
+      source,
+      nul,
+      filename,
+    );
+  }
   /** Where we are. Every function below moves it and none of them backtrack. */
   let at = open + 1;
 
@@ -805,6 +827,19 @@ export function readBlock(source: string, open: number, filename: string, option
       const valueAt = at;
       const value = readValue(closer);
       const end = at;
+      /**
+       * A colon with nothing after it, which a BUILD may not accept and an editor must.
+       *
+       * `.r-x { color:; }` is what it emitted — a declaration no browser accepts, on a class still
+       * written into the markup, so the element carried a rule that did nothing. A review found it.
+       *
+       * Refused only in the strict read, because a value with nothing typed yet is the state an
+       * editor is in most: the tolerant read keeps the declaration so the caret has a value position
+       * to complete in.
+       */
+      if (!tolerant && value.length === 0) {
+        refuse(`\`${property.trim()}\` has no value — a declaration is \`property: value;\`.`, source, from, filename);
+      }
       if (at < source.length && source.charCodeAt(at) === 59) at++;
       items.push({ kind: "declaration", at: from, valueAt, end, property, value });
     }
