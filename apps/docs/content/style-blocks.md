@@ -158,6 +158,9 @@ JSX is usable because somebody wrote the parser for it. What that buys is the ch
   `cursor: url(a.cur), pointerr` is still reported on `pointerr`.
 - **A hole is checked against the type the property accepts**, in the scope where it was written —
   `this.weight` resolves to the field beside it, because the expression stays where you put it.
+- **A condition or a selector spelled two ways** is reported, with the spelling to use.
+  `@media (min-width:40rem)` and `@media (min-width: 40rem)` are the same CSS, so writing both is
+  writing two of what should be one thing — see [One spelling](#one-spelling).
 - **A quoted value on a property that has no place for a string** is reported. Your editor completes
   a value from a real union the way it completes any string literal, so `color: "yellow"` is an easy
   thing to end up with — and it compiles, ships `color:"yellow"`, and is dropped by every browser.
@@ -830,6 +833,73 @@ The other direction leaves both standing, also as CSS does.
 merges a whole block, and a block carries the context each of its own declarations was written in,
 so there is nothing sensible for a nested one to mean. A `@@if` is fine: it changes no declaration,
 it only decides whether the whole thing lands.
+
+## One spelling
+
+CSS lets you write the same thing several ways. These are the same rule to a browser:
+
+```
+@media (min-width:40rem)     @media (min-width: 40rem)
+&:HOVER                      &:hover
+&:before                     &::before
+&:nth-child(2n + 1)          &:nth-child(2n+1)
+@supports ((display: grid))  @supports (display: grid)
+```
+
+**Here they have to be written one way, and that is a rule you can rely on rather than a
+preference.** A declaration is looked up by the context it sits in, so a base and a modifier only
+meet when their contexts are spelled alike. Written two ways they are two things: both classes land
+on the element, neither overrides the other, and which one wins comes down to the order your bundler
+happened to build in.
+
+The canonical form is the right-hand column above: lower case for the words CSS defines, one space
+after a condition's colon, `::` for a pseudo-element, no spaces inside an `An+B`, and no parentheses
+that are not doing anything.
+
+You do not have to remember it. `ramonda-css format` writes it, and the error names it:
+
+> write this as `@media (min-width: 40rem)` — the two are the same CSS, and one spelling is what lets
+> a declaration here override the same one written elsewhere. `ramonda-css format` fixes it.
+
+**Your own names are untouched.** A class, an id, an attribute value, a `@layer` name, a
+`@container` name and a `@scope` selector are yours, and CSS treats their case as significant —
+`.Card` and `.card` are two different classes. Only the language's own words are folded.
+
+## Cascade layers
+
+Everything compiled here is emitted inside one layer:
+
+```css
+@layer ramonda { … }
+```
+
+A layer sits beneath all unlayered CSS, so your own `.card { display: block }` wins over a generated
+rule whatever order the files load in. Nobody has to reason about specificity against generated
+output.
+
+**You choose where that layer sits among yours.** Declare the order at the top of your own
+stylesheet:
+
+```css
+@layer app, ramonda;
+```
+
+**What a block cannot hold is `@layer` itself**, and it is reported:
+
+```tsx expect-report:layer-in-a-block
+const a = <div css=@@(
+  @layer buttons {
+    color: red;
+  }
+)>…</div>;
+```
+
+A layer written in a block would be a sublayer of `ramonda`, and CSS orders layers it was given no
+explicit order for by first appearance. The stylesheet writes one file at a time, so which sublayer
+wins would be decided by which file your bundler reached first — and there is nowhere inside a block
+to write the `@layer a, b;` that would settle it. It looks like a cascade control and cannot be one.
+
+`@media`, `@supports`, `@container` and `@scope` are all fine inside a block.
 
 ### The one place the stylesheet decides instead of you
 
