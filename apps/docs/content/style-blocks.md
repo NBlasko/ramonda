@@ -988,7 +988,7 @@ get one. The extension is not published yet; from a checkout it is
 
 ```json
 {
-  "[typescriptreact]": { "editor.defaultFormatter": "ramonda.ramonda-css-vscode" },
+  "[typescriptreact]": { "editor.defaultFormatter": "ramonda.css" },
   "editor.formatOnSave": true
 }
 ```

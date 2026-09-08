@@ -5,8 +5,11 @@ something a repository can hold — so this is the list, in the order it has to 
 
 ## Once, by a person
 
-1. **A publisher on the Visual Studio Marketplace.** `package.json` says `"publisher": "ramonda"`;
-   whatever name is created has to match it, or `vsce` refuses.
+1. **A publisher on the Visual Studio Marketplace.** DONE — `ramonda`, created 2026-09-08. The full
+   identifier of this extension is therefore `ramonda.css`, which mirrors the npm package it serves
+   (`@ramonda/css`); a second extension would be `ramonda.check`, on the same axis. **Neither half of
+   that identifier can be changed after the first publish** — a rename is a new extension, with none
+   of the installs or ratings of the old one.
    <https://marketplace.visualstudio.com/manage>
 
 2. **A Personal Access Token** from Azure DevOps, in the same organisation as the publisher, scoped
@@ -14,9 +17,20 @@ something a repository can hold — so this is the list, in the order it has to 
 
 3. **A repository secret** — `VSCE_PAT` — holding it. The workflow below reads that name.
 
-4. **`icon`** — 128×128 PNG, referenced from `package.json` as `"icon": "icon.png"`. The marketplace
-   page has a blank square without one. It is deliberately not committed as a placeholder: a
-   placeholder icon ships as the real icon the first time somebody forgets.
+4. **`icon`** — DONE, and where it comes from matters more than the file. `icon.png` is the project's
+   own mark, downscaled from the one the documentation site serves, which is itself generated from
+   `@ramonda/theme`:
+
+       sips -z 128 128 apps/docs/public/apple-touch-icon.png --out packages/css/vscode/icon.png
+
+   Regenerate it that way rather than drawing a second flower. 128×128 is the minimum the marketplace
+   takes, and the light plate is deliberate: a transparent mark sits on white in one place and on
+   near-black in another.
+
+   **If a second extension is ever published — a checker, say — the axis that tells them apart is the
+   colour of the flower's CENTRE**, not a letter and not a badge. The icon is drawn at 16px in the
+   list of installed extensions, where three letters are a smudge and a colour is not. CSS keeps the
+   canonical gold centre because it is the first one; the next one changes it.
 
 5. **Open VSX, if the extension should reach Cursor, Windsurf or VSCodium** — none of them can
    install from the Microsoft marketplace. A separate registry, a separate account (GitHub sign-in

@@ -1,11 +1,12 @@
 {
-  "name": "ramonda-css-vscode",
-  "displayName": "Ramonda CSS blocks",
+  "name": "css",
+  "displayName": "Ramonda CSS",
   "description": "Real CSS beside your markup: syntax colouring, formatting and diagnostics for @@( … ) style blocks.",
   "version": "0.1.0",
   "private": true,
   "publisher": "ramonda",
   "license": "MIT",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -77,6 +78,8 @@
   "author": "Nikola Blagojević",
   "keywords": [
     "css",
+    "eteti",
+    "style blocks",
     "css-in-js",
     "atomic-css",
     "syntax-highlighting",

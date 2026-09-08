@@ -63,7 +63,7 @@ Set it as the formatter for the languages you write blocks in:
 
 ```json
 {
-  "[typescriptreact]": { "editor.defaultFormatter": "ramonda.ramonda-css-vscode" },
+  "[typescriptreact]": { "editor.defaultFormatter": "ramonda.css" },
   "editor.formatOnSave": true
 }
 ```
