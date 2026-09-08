@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
+import { escapeClass } from "../compiler/names";
 import { Sheet } from "../compiler/sheet";
 
 /**
@@ -294,7 +295,9 @@ describe("an atomic rule", () => {
 
   test("a nested selector is written onto the class, not inside the rule", () => {
     const sheet = new Sheet();
-    sheet.add("a.tsx", [atom("r-2222222222222222", "background:red;", { property: "background", selector: ":hover" })]);
+    sheet.add("a.tsx", [
+      atom("r-2222222222222222", "background:red;", { property: "background", selector: "&:hover" }),
+    ]);
 
     expect(sheet.css()).toContain(".r-2222222222222222:hover { background:red; }");
     expect(sheet.css()).not.toContain("&");
@@ -302,7 +305,7 @@ describe("an atomic rule", () => {
 
   test("a descendant selector keeps its space, because that is what it means", () => {
     const sheet = new Sheet();
-    sheet.add("a.tsx", [atom("r-3333333333333333", "color:red;", { property: "color", selector: " .title" })]);
+    sheet.add("a.tsx", [atom("r-3333333333333333", "color:red;", { property: "color", selector: "& .title" })]);
 
     expect(sheet.css()).toContain(".r-3333333333333333 .title { color:red; }");
   });
@@ -321,7 +324,7 @@ describe("an atomic rule", () => {
     sheet.add("a.tsx", [
       atom("r-5555555555555555", "padding:24px;", {
         property: "padding",
-        selector: ":hover",
+        selector: "&:hover",
         conditions: ["@media (min-width: 40rem)", "@supports (display: grid)"],
       }),
     ]);
@@ -381,7 +384,9 @@ describe("an atomic rule", () => {
 
   test("the round trip asks for it by its class, like any other rule", () => {
     const sheet = new Sheet();
-    sheet.add("a.tsx", [atom("r-bbbbbbbbbbbbbbbb", "background:red;", { property: "background", selector: ":hover" })]);
+    sheet.add("a.tsx", [
+      atom("r-bbbbbbbbbbbbbbbb", "background:red;", { property: "background", selector: "&:hover" }),
+    ]);
 
     expect(() => sheet.verify(".r-bbbbbbbbbbbbbbbb:hover{background:red}")).not.toThrow();
     expect(() => sheet.verify(".r-cccccccccccccccc:hover{background:red}")).toThrow(CssBlockError);
@@ -405,7 +410,7 @@ describe("two rules under one name that differ only in context", () => {
 
     expect(() =>
       sheet.add("b.tsx", [
-        { className: NAME, css: "color:red;", properties: [], property: "color", selector: ":hover" },
+        { className: NAME, css: "color:red;", properties: [], property: "color", selector: "&:hover" },
       ]),
     ).toThrow(CssBlockError);
   });
@@ -423,7 +428,7 @@ describe("two rules under one name that differ only in context", () => {
 
   test("but the same rule twice is still one rule", () => {
     const sheet = new Sheet();
-    const rule = { className: NAME, css: "color:red;", properties: [], property: "color", selector: ":hover" };
+    const rule = { className: NAME, css: "color:red;", properties: [], property: "color", selector: "&:hover" };
 
     sheet.add("a.tsx", [rule]);
     expect(() => sheet.add("b.tsx", [rule])).not.toThrow();
@@ -488,7 +493,7 @@ describe("a readable class in a selector", () => {
 
   test("and the selector suffix keeps its own punctuation, which is CSS's own", () => {
     const sheet = new Sheet();
-    sheet.add("a.tsx", [rule("r-c-#fff", "color:#fff;", { property: "color", selector: ":hover" })]);
+    sheet.add("a.tsx", [rule("r-c-#fff", "color:#fff;", { property: "color", selector: "&:hover" })]);
 
     // The class is escaped; the `:hover` after it is a pseudo-class and must not be.
     expect(sheet.css()).toContain(".r-c-\\#fff:hover { color:#fff; }");
@@ -609,5 +614,66 @@ describe("the order one file's stylesheet comes out in", () => {
 
     const css = sheet.cssFor("/a.tsx");
     expect(css.indexOf("color: red")).toBeLessThan(css.indexOf("@media"));
+  });
+});
+
+/**
+ * WHERE THE `&` GOES, and it is wherever the author put it.
+ *
+ * The emitted rule puts the class where the block's `&` stood. That worked for a `&` at the start of
+ * a prelude and nowhere else: a review found the rest of the prelude copied through verbatim, so any
+ * further `&` reached the stylesheet as an `&` — and in an emitted rule there is no nesting parent,
+ * so `&` behaves as `:scope` and resolves against the root element instead of the styled one.
+ *
+ *     &:hover, &:focus   ->  .r-x:hover, &:focus     the second half hit the ROOT
+ *     .parent &          ->  .r-x .parent &          matched nothing the author meant
+ *
+ * Both were accepted by the checker, so the fault was a wrong stylesheet rather than a refusal.
+ *
+ * A prelude with no `&` at all is a DESCENDANT, which is CSS nesting's own rule: `div { … }` inside
+ * a block styles the `div`s inside the element, not the element.
+ */
+describe("where the class goes in a nested selector", () => {
+  const ruleFor = (css: string) => {
+    const source = `const a = <div css=@@(\n${css}\n)>x</div>;\n`;
+    const sheet = new Sheet();
+    const blocks = transform(source, { filename: "/a.tsx" })?.blocks ?? [];
+    sheet.add("/a.tsx", blocks);
+    const emitted = sheet.cssFor("/a.tsx");
+    const name = blocks[0]?.className ?? "";
+    // The class name back out of the rule, so a test reads the SHAPE rather than a hash.
+    return emitted.replace(new RegExp(escapeClass(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "CLASS").trim();
+  };
+
+  test.each([
+    ["a pseudo-class", "  &:hover { color: red; }", ".CLASS:hover { color:red; }"],
+    ["a selector LIST, both halves", "  &:hover, &:focus { color: red; }", ".CLASS:hover, .CLASS:focus { color:red; }"],
+    [
+      "three in a list",
+      "  &:hover, &:focus, &:active { color: red; }",
+      ".CLASS:hover, .CLASS:focus, .CLASS:active { color:red; }",
+    ],
+    ["a descendant, written with `&`", "  & .title { color: red; }", ".CLASS .title { color:red; }"],
+    ["a descendant, written without one", "  .title { color: red; }", ".CLASS .title { color:red; }"],
+    ["a type selector with no `&`", "  div { color: red; }", ".CLASS div { color:red; }"],
+    ["an ANCESTOR, where the `&` is last", "  .parent & { color: red; }", ".parent .CLASS { color:red; }"],
+    ["an ancestor and a state", "  .parent &:hover { color: red; }", ".parent .CLASS:hover { color:red; }"],
+    ["a compound, where `&` binds to the element itself", "  &.open { color: red; }", ".CLASS.open { color:red; }"],
+    ["twice in one compound selector", "  & + & { color: red; }", ".CLASS + .CLASS { color:red; }"],
+    ["inside `:has()`", "  &:has(> img) { color: red; }", ".CLASS:has(> img) { color:red; }"],
+  ])("%s", (_what, css, expected) => {
+    expect(ruleFor(css)).toContain(expected);
+  });
+
+  /** An `&` inside a quoted attribute value is text, not the parent. */
+  test("a `&` inside a string is left alone", () => {
+    expect(ruleFor(`  &[data-x="a&b"] { color: red; }`)).toContain(`.CLASS[data-x="a&b"] { color:red; }`);
+  });
+
+  /** And a conditional wraps whatever the selector turned out to be. */
+  test("a condition still wraps it", () => {
+    const rule = ruleFor("  @media print {\n    .parent & { color: red; }\n  }");
+
+    expect(rule).toContain("@media print { .parent .CLASS { color:red; } }");
   });
 });

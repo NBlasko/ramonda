@@ -207,11 +207,22 @@ export function nameFor(declaration: {
   // From the canonical text rather than from anywhere else, so the name and the rule cannot disagree
   // about what the value is.
   const colon = declaration.canonical.indexOf(":");
-  const value = declaration.canonical
-    .slice(colon + 1)
-    .replace(/;$/, "")
-    .replace(/ /g, "_");
+  const spelled = declaration.canonical.slice(colon + 1).replace(/;$/, "");
+  const value = spelled.replace(/ /g, "_");
   if (value === "" || !SAFE_VALUE.test(value)) return hash();
+  /**
+   * A `_` the AUTHOR wrote, refused for the same reason `contextOf` refuses one: the space became a
+   * `_` on the line above, and `_` is a character a value may already hold — so the encoding is not
+   * injective and two different values can claim one class.
+   *
+   * Found by fuzzing the name against the identity rather than by reading. `font-family: My_Font`
+   * and `font-family: My Font` are two different families and came out one class; so did
+   * `grid-area: a_b` against `grid-area: a b`. The context has the same fault in its own text, and a
+   * review that counted three root causes while naming two was counting this one.
+   *
+   * Tested BEFORE the spaces are folded, so it is the author's underscore being asked about.
+   */
+  if (spelled.includes("_")) return hash();
 
   const written = ABBREVIATIONS[declaration.property] ?? declaration.property;
   if (!SAFE_PROPERTY.test(written)) return hash();
@@ -270,9 +281,27 @@ function contextOf(selector: string, conditions: readonly string[]): string | un
    * compound form too, and `@media print` with `.title` would have become the same name as
    * `@media print` with ` .title` — two different rules, one class.
    */
-  const written = `${conditions.join(" ")}${selector}`.replace(/\s+/g, " ").replace(/^ (?=[^.[:])/, "");
+  /**
+   * The selector's own text, with the leading `&` taken off — that `&` is where the class goes, and
+   * the class is what the name is being built for. A `&` ANYWHERE ELSE cannot be written literally
+   * (`.parent &` would have to name the class inside itself), so those fall to the hash.
+   */
+  const own = selector.startsWith("&") ? selector.slice(1) : selector;
+  if (own.includes("&")) return undefined;
+
+  const written = `${conditions.join(" ")}${own}`.replace(/\s+/g, " ");
   if (written === "") return "";
   if (A_LIST.test(written) || !SAFE_CONTEXT.test(written)) return undefined;
+  /**
+   * A `_` the AUTHOR wrote, which is what the space becomes below — so a text already holding one
+   * cannot be written and hashes instead.
+   *
+   * A review measured the collision: `& .a b` and `& .a_b` are different selectors and both came out
+   * `r-_.a_b-c-red`, so two different rules claimed one class. The encoding is not injective and no
+   * escaping makes it so while `_` stands for a space and is also a character a selector may hold.
+   * Refusing costs one readable name; the alternative costs a rule.
+   */
+  if (written.includes("_")) return undefined;
 
   // A leading space is a DESCENDANT and is what `_` stands for; every other space is inside the
   // text the author wrote and becomes one too, so nothing about the shape is lost.

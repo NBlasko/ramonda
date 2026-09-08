@@ -18,14 +18,20 @@ something a repository can hold — so this is the list, in the order it has to 
 3. **A repository secret** — `VSCE_PAT` — holding it. The workflow below reads that name.
 
 4. **`icon`** — DONE, and where it comes from matters more than the file. `icon.png` is the project's
-   own mark, downscaled from the one the documentation site serves, which is itself generated from
+   own mark, rendered from the SVG the documentation site serves, which is itself generated from
    `@ramonda/theme`:
 
-       sips -z 128 128 apps/docs/public/apple-touch-icon.png --out packages/css/vscode/icon.png
+       qlmanage -t -s 1024 -o <tmp> apps/docs/public/apple-icon.svg
+       sips -z 512 512 <tmp>/apple-icon.svg.png --out packages/css/vscode/icon.png
 
-   Regenerate it that way rather than drawing a second flower. 128×128 is the minimum the marketplace
-   takes, and the light plate is deliberate: a transparent mark sits on white in one place and on
-   near-black in another.
+   **512×512, and from the SVG rather than from a PNG.** 128×128 is the marketplace MINIMUM, not the
+   size it displays: the item page draws the icon far larger than a list row does, and the first
+   version of this file was a 180×180 PNG scaled down to 128 — which looked soft beside extensions
+   shipping vectors. The user noticed before anybody else could. Render from the vector at a
+   multiple, then scale down once; never scale a small raster up.
+
+   The light plate is deliberate: a transparent mark sits on white in one place and on near-black in
+   another.
 
    **If a second extension is ever published — a checker, say — the axis that tells them apart is the
    colour of the flower's CENTRE**, not a letter and not a badge. The icon is drawn at 16px in the

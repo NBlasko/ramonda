@@ -201,7 +201,7 @@ function walk(
         walk(item.items, selector, [...conditions, collapse(item.prelude)], guards, out);
         continue;
       }
-      walk(item.items, selector + suffixOf(item), conditions, guards, out);
+      walk(item.items, nested(selector, selectorOf(item)), conditions, guards, out);
       continue;
     }
 
@@ -260,9 +260,89 @@ const same = (a: readonly number[], b: readonly number[]) =>
  * follows it is the suffix. A prelude with no `&` is a DESCENDANT, which is what CSS nesting says a
  * bare selector means inside a rule, so it gets the space CSS would have added.
  */
-function suffixOf(rule: NestedRule): string {
+/**
+ * A nested rule's selector inside its parent's.
+ *
+ * The inner selector names its parent with `&`, and the parent is the outer selector — so this is
+ * `withParent` again rather than a concatenation. Concatenation was right only while every selector
+ * began with the parent: `.parent &` inside `&:hover` would have joined to `&:hover.parent &`, with
+ * two parents and neither where the author put one.
+ *
+ * At the top there is no outer selector, and the inner one is already written against the element.
+ */
+function nested(outer: string, inner: string): string {
+  return outer === "" ? inner : withParent(inner, outer);
+}
+
+function selectorOf(rule: NestedRule): string {
   const prelude = collapse(rule.prelude);
-  return prelude.startsWith("&") ? prelude.slice(1) : ` ${prelude}`;
+  return holdsParent(prelude) ? prelude : `& ${prelude}`;
+}
+
+/**
+ * Whether a prelude names the parent at all, ignoring any `&` inside a string.
+ *
+ * `&[data-x="a&b"]` names it once; the second `&` is text in an attribute value. Nothing else in a
+ * selector can quote, so the two quote characters are the whole scan.
+ */
+function holdsParent(prelude: string): boolean {
+  for (let index = 0; index < prelude.length; index++) {
+    const code = prelude.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfSelectorString(prelude, index);
+      continue;
+    }
+    if (code === 38 /* & */) return true;
+  }
+  return false;
+}
+
+/**
+ * The selector with every `&` replaced by `self`, which is what makes the emitted rule mean what the
+ * author wrote — and what the suffix model could not express.
+ *
+ * The two share this function because they are one question: `selectorOf` decides where the parent
+ * is written and this decides what is written there. It used to be a SUFFIX appended after the class,
+ * which is only correct while a prelude names the parent once and at the start. A review measured
+ * what else happens: `&:hover, &:focus` emitted `.r-x:hover, &:focus`, and `.parent &` emitted
+ * `.r-x .parent &`. In an emitted rule there is no nesting parent, so a surviving `&` behaves as
+ * `:scope` — it resolves against the ROOT element, not the styled one — and both were accepted by
+ * the checker, so the fault was a wrong stylesheet rather than a refusal.
+ */
+export function withParent(selector: string, self: string): string {
+  // A selector naming no parent is a DESCENDANT of it, which is CSS nesting's own rule for a
+  // relative selector with no combinator — `selectorOf` writes the `&` in for that case, and this
+  // says the same thing so a hand-built declaration cannot emit a rule with no class in it at all.
+  if (!holdsParent(selector)) return `${self} ${selector}`;
+
+  let out = "";
+
+  for (let index = 0; index < selector.length; index++) {
+    const code = selector.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      const closed = endOfSelectorString(selector, index);
+      out += selector.slice(index, closed + 1);
+      index = closed;
+      continue;
+    }
+    out += code === 38 /* & */ ? self : selector[index];
+  }
+
+  return out;
+}
+
+/** Past the closing quote, or the last character when a selector's string is never closed. */
+function endOfSelectorString(text: string, start: number): number {
+  const quote = text.charCodeAt(start);
+  for (let index = start + 1; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 92 /* \\ */) {
+      index++;
+      continue;
+    }
+    if (code === quote) return index;
+  }
+  return text.length - 1;
 }
 
 /** `COLOR` and `color` are one property; `--Accent` and `--accent` are two. See `normalise`. */

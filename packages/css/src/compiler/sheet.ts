@@ -1,5 +1,5 @@
 import { CssBlockError } from "./errors";
-import { sheetRank } from "./flatten";
+import { sheetRank, withParent } from "./flatten";
 import { escapeClass } from "./names";
 import type { EmittedBlock } from "./transform";
 
@@ -25,9 +25,16 @@ function write(className: string, block: EmittedBlock): string {
     return `@${block.at} ${className} { ${block.css} }\n`;
   }
 
-  // The class ESCAPED, the selector after it not — `:hover` is CSS's own punctuation and means what
-  // it says, while a `#` inside the class name is a character the name happens to hold.
-  let rule = `.${escapeClass(className)}${block.selector ?? ""} { ${block.css} }`;
+  /**
+   * The class ESCAPED, and written where the block's `&` stood — see `withParent`, which is also
+   * what decides where that is. `:hover` is CSS's own punctuation and means what it says, while a
+   * `#` inside the class name is a character the name happens to hold.
+   *
+   * An empty selector is the element itself, with no nested rule around it.
+   */
+  const self = `.${escapeClass(className)}`;
+  const selector = block.selector === undefined || block.selector === "" ? self : withParent(block.selector, self);
+  let rule = `${selector} { ${block.css} }`;
   // Outermost first, so they are written from the inside out.
   for (const condition of [...(block.conditions ?? [])].reverse()) rule = `${condition} { ${rule} }`;
   return `${rule}\n`;

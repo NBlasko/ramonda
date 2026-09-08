@@ -84,7 +84,7 @@ describe("a conditional group", () => {
 
     // The class is readable now, and a readable one carries the selector — so the pattern has to
     // stop at the closing quote rather than at the first `)` or `:`.
-    expect(out).toMatch(/c && \{":hover\|color":"r-[^"]+",\}/);
+    expect(out).toMatch(/c && \{"&:hover\|color":"r-[^"]+",\}/);
   });
 
   test("and a group inside a selector means the same thing", () => {
@@ -284,8 +284,8 @@ describe("the nesting shapes nothing reached", () => {
   test("a shorthand under a selector clears its longhands under that selector only", () => {
     const out = emit(`const card = @@(\n  &:hover { padding: 8px; }\n);\n`);
 
-    expect(out).toContain('"~:hover|padding"');
-    expect(out).toContain('":hover|padding-left"');
+    expect(out).toContain('"~&:hover|padding"');
+    expect(out).toContain('"&:hover|padding-left"');
     expect(out).not.toContain('"~padding"');
   });
 });

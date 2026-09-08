@@ -44,21 +44,21 @@ describe("a nested selector", () => {
   test("becomes a suffix on the class", () => {
     const [one] = of("&:hover { background: red; }");
 
-    expect(one.selector).toBe(":hover");
-    expect(one.key).toBe(":hover|background");
+    expect(one.selector).toBe("&:hover");
+    expect(one.key).toBe("&:hover|background");
   });
 
   test("a descendant keeps its space, because that is what it means", () => {
-    expect(of("& .title { color: red; }")[0].selector).toBe(" .title");
+    expect(of("& .title { color: red; }")[0].selector).toBe("& .title");
   });
 
   test("and a bare selector is a descendant too, which is what CSS nesting says", () => {
-    expect(of(".title { color: red; }")[0].selector).toBe(" .title");
+    expect(of(".title { color: red; }")[0].selector).toBe("& .title");
   });
 
   test("nested twice composes, in order", () => {
-    expect(of("& .title { &:hover { color: red; } }")[0].selector).toBe(" .title:hover");
-    expect(of("&:hover { & .title { color: red; } }")[0].selector).toBe(":hover .title");
+    expect(of("& .title { &:hover { color: red; } }")[0].selector).toBe("& .title:hover");
+    expect(of("&:hover { & .title { color: red; } }")[0].selector).toBe("&:hover .title");
   });
 });
 
@@ -144,13 +144,13 @@ describe("a realistic block", () => {
       "display",
       "gap",
       "background",
-      ":hover|background",
-      ":hover|color",
-      " .title|font-weight",
-      ":hover .title|text-decoration",
+      "&:hover|background",
+      "&:hover|color",
+      "& .title|font-weight",
+      "&:hover .title|text-decoration",
       "@media (min-width: 40rem)|padding",
       "@media (min-width: 40rem)|gap",
-      "@media (min-width: 40rem)|:hover|background",
+      "@media (min-width: 40rem)|&:hover|background",
     ]);
   });
 

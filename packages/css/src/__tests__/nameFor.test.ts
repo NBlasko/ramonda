@@ -266,3 +266,120 @@ describe("a property name that cannot be written", () => {
     expect(name(css)).toBe(expected);
   });
 });
+
+/**
+ * A READABLE NAME IS INJECTIVE, which is the claim the whole readable half rests on.
+ *
+ * `nameFor`'s own note says two readable names differ whenever their declarations do. A review found
+ * that false, and this is the assertion that would have caught it — asked of the pair rather than of
+ * one name, because that is the only shape the fault has.
+ *
+ * **The encoding is why.** A space becomes `_`, and `_` is a character CSS already allows, so the
+ * two are indistinguishable afterwards:
+ *
+ *     & .a b   and  & .a_b     two selectors, one name
+ *     My Font  and  My_Font    two font families, one name
+ *
+ * No escaping fixes it while `_` means both things, so a text that already holds one falls to the
+ * hash — which is what the hash is for. Three root causes were found this way. Two were the encoding
+ * above, in the context and again in the VALUE; the third was a leading space being stripped, so
+ * `& div` and `&div` — a descendant and a compound — came out the same.
+ *
+ * A hashed name is injective by construction, so only readable ones are compared. The corpus is
+ * deliberately full of near misses rather than large.
+ */
+describe("a readable name is injective over identities", () => {
+  const PRELUDES = [
+    "&:hover",
+    "&.open",
+    "& .title",
+    ".title",
+    "& .a b",
+    "& .a_b",
+    "&div",
+    "& div",
+    "&::before",
+    "& > .a",
+    "&+&",
+    ".parent &",
+    "&:has(> img)",
+    '&[data-x="a b"]',
+    "& .a  b",
+    "& _b",
+    "&_b",
+    "& .a-b",
+  ];
+  const CONDITIONS = ["", "@media print", "@media (min-width: 40rem)", "@supports (display:grid)"];
+  const DECLARATIONS = [
+    "color: red;",
+    "padding: 8px;",
+    "--a_b: 1;",
+    "grid-area: a_b;",
+    "grid-area: a b;",
+    'content: "a b";',
+    'content: "a  b";',
+    "font-family: My_Font;",
+    "font-family: My Font;",
+  ];
+
+  /** Every readable name in the corpus, with the identities that claimed it. */
+  const claimed = () => {
+    const byName = new Map<string, Set<string>>();
+
+    for (const prelude of PRELUDES) {
+      for (const condition of CONDITIONS) {
+        for (const declaration of DECLARATIONS) {
+          const inner = `${prelude} { ${declaration} }`;
+          const css = condition === "" ? inner : `${condition} { ${inner} }`;
+          let atoms: ReturnType<typeof flatten>;
+          try {
+            atoms = declarationsOf(css);
+          } catch {
+            continue;
+          }
+          for (const one of atoms) {
+            const name = nameFor(one);
+            if (hashed(name)) continue;
+            byName.set(name, (byName.get(name) ?? new Set()).add(one.identity));
+          }
+        }
+      }
+    }
+
+    return byName;
+  };
+
+  test("no two identities claim one readable name", () => {
+    const clashes = [...claimed()]
+      .filter(([, identities]) => identities.size > 1)
+      .map(([name, identities]) => `${name}: ${[...identities].join("  vs  ")}`);
+
+    expect(clashes).toEqual([]);
+  });
+
+  /** And the corpus really does produce readable names, or the test above asserts nothing. */
+  test("and the corpus is mostly readable, so the assertion has something to check", () => {
+    const names = claimed();
+
+    // 73 today. The number is a floor rather than a fact: it says the corpus is mostly readable, so
+    // the assertion above has something to check, and it moves whenever the name budget does.
+    expect(names.size).toBeGreaterThan(60);
+  });
+
+  /** The three shapes that used to collide, named so a regression says which one came back. */
+  test.each([
+    ["a space against an underscore, in a selector", "& .a b { color: red; }", "& .a_b { color: red; }"],
+    [
+      "a space against an underscore, in a value",
+      "&:hover { font-family: My Font; }",
+      "&:hover { font-family: My_Font; }",
+    ],
+    ["a descendant against a compound", "& div { color: red; }", "&div { color: red; }"],
+  ])("%s", (_what, one, other) => {
+    const [a] = declarationsOf(one);
+    const [b] = declarationsOf(other);
+
+    expect(a.identity).not.toBe(b.identity);
+    expect(nameFor(a)).not.toBe(nameFor(b));
+  });
+});

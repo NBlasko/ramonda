@@ -146,7 +146,7 @@ describe("the blocks it found", () => {
     expect(plain.css).toBe("color:red;");
     expect(plain.selector).toBe("");
     expect(hovered.css).toBe("color:blue;");
-    expect(hovered.selector).toBe(":hover");
+    expect(hovered.selector).toBe("&:hover");
   });
 
   test("an at-rule becomes a condition around it", () => {
@@ -162,7 +162,7 @@ describe("the blocks it found", () => {
     const [only] = result?.blocks ?? [];
 
     expect(only.css).toBe(`color:var(--${only.className}-0);`);
-    expect(only.selector).toBe(":hover");
+    expect(only.selector).toBe("&:hover");
   });
 
   test("a comment in the block is not part of it", () => {
@@ -341,7 +341,7 @@ describe("what the block's own text may contain", () => {
 
     // The comment leaves a space behind, because a comment separates tokens — so the selector is a
     // DESCENDANT of the class rather than a pseudo-class on it, which is what the author wrote.
-    expect(result?.blocks[0].selector).toBe(" :hover");
+    expect(result?.blocks[0].selector).toBe("& :hover");
     expect(result?.blocks[0].css).toBe("color:red;");
   });
 
@@ -366,7 +366,7 @@ describe("what the block's own text may contain", () => {
   test("a selector may contain a string, spaces and all", () => {
     const result = emit(`const a = <div css=@@( &[data-x="a b"] { color: red; } )>x</div>;\n`);
 
-    expect(result?.blocks[0].selector).toBe(`[data-x="a b"]`);
+    expect(result?.blocks[0].selector).toBe(`&[data-x="a b"]`);
     expect(result?.blocks[0].css).toBe("color:red;");
   });
 
@@ -639,7 +639,7 @@ describe("the same declaration in two contexts", () => {
 
     expect(out?.blocks).toHaveLength(2);
     expect(out?.blocks[0].className).not.toBe(out?.blocks[1].className);
-    expect(out?.blocks.map((one) => one.selector).sort()).toEqual(["", ":hover"]);
+    expect(out?.blocks.map((one) => one.selector).sort()).toEqual(["", "&:hover"]);
   });
 
   test("a condition does too", () => {
