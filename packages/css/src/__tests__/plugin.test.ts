@@ -1514,3 +1514,203 @@ describe("which config the editor measures a file against", () => {
     expect(said.join("\n")).not.toContain("CSS unit");
   });
 });
+
+/**
+ * WHAT A COMPLETION REPLACES, in the two shapes a review found it wrong in.
+ *
+ * A span that is missing costs a completion; a span that is too long DELETES the author's code, and
+ * that has already happened once here. Two more ways it could:
+ *
+ * **A rewritten run's span is the WHOLE run**, which is the right answer for a diagnostic — a *did
+ * you mean* about `dsiplay` underlines `dsiplay` whatever quoting the virtual file needed — and never
+ * the right answer for something an editor is about to overwrite. Measured: a caret inside
+ * `@media (min-width: 40rem)` came back with a span over the entire prelude and the space before the
+ * `{`, on all 551 entries, so accepting the first would have left `accent-color{ color: red; }`.
+ *
+ * **And a rewritten run was mistaken for a copied one whenever the two lengths coincided.** `spanOf`
+ * asked `to - from === sourceLength`, which is an inference and not a fact: a value is emitted
+ * quoted and whitespace-folded, so the lengths are equal exactly when folding drops two characters —
+ * ordinary aligned CSS. Every span in such a value then shifted by one, the opening quote's worth,
+ * and accepting `solid` over `sol   id` produced `ssolidd`: the author's own `s` and `d` left behind.
+ *
+ * The answer to both is the same, and it is the one this file already reaches for elsewhere:
+ * **an editor with no span replaces the word under the caret, which is right, so a span that is not
+ * exactly the author's text is not offered at all.**
+ */
+describe("what a completion is allowed to replace", () => {
+  /** The span every entry agrees on, or `undefined` when none is offered — see `replaces`. */
+  const replaced = (marked: string) => {
+    const { service, caret, source } = editor(marked);
+    const got = service.getCompletionsAtPosition(FILE, caret, undefined);
+    const spans = new Set(
+      [got?.optionalReplacementSpan, ...(got?.entries ?? []).map((entry) => entry.replacementSpan)].map((span) =>
+        span === undefined ? "—" : JSON.stringify(source.slice(span.start, span.start + span.length)),
+      ),
+    );
+    return [...spans].sort();
+  };
+
+  test.each([
+    [
+      "a nested rule's prelude",
+      `const a = <div css=@@(\n  @media (min-width: 40${CARET}rem) { color: red; }\n)>x</div>;\n`,
+    ],
+    ["a selector list", `const a = <div css=@@(\n  &:hov${CARET}er, &:focus-visible { color: red; }\n)>x</div>;\n`],
+    ["a short prelude", `const a = <div css=@@(\n  &:ho${CARET} { color: red; }\n)>x</div>;\n`],
+  ])("nothing in %s, because the run stands for all of it", (_what, marked) => {
+    expect(replaced(marked)).toEqual(["—"]);
+  });
+
+  /**
+   * The value whose lengths coincide. `sol   id` folds to `sol id` and gains two quotes, so the
+   * rewritten run measures exactly as long as the author's text and was read as a copied one.
+   */
+  test.each([
+    ["three interior spaces", `const a = <div css=@@( border-left-style: sol${CARET}   id; )>x</div>;\n`],
+    ["two trailing spaces", `const a = <div css=@@( flex-direction: col${CARET}  ; )>x</div>;\n`],
+    [
+      "one trailing space, the control that always worked",
+      `const a = <div css=@@( flex-direction: col${CARET} ; )>x</div>;\n`,
+    ],
+  ])("nothing in a value, %s", (_what, marked) => {
+    expect(replaced(marked)).toEqual(["—"]);
+  });
+
+  /**
+   * And what still works, which is the reason this is a filter and not a blanket refusal: a property
+   * name is a COPIED run, so its own word is exactly replaceable and is still offered. Some entries
+   * carry no span of their own and never did — hence both answers here.
+   */
+  test("the word being typed, where the run really is the author's own text", () => {
+    const marked = `const a = <div css=@@(\n  disp${CARET}\n)>x</div>;\n`;
+
+    expect(replaced(marked)).toContain('"disp"');
+  });
+});
+
+/**
+ * A DEFINITION IN ANOTHER FILE THAT ALSO HOLDS A BLOCK.
+ *
+ * `elsewhere` mapped an entry only when it was in the file being asked about, and its comment said
+ * an entry in another file "already holds the position it should". A review measured that false: the
+ * host is patched program-wide, so EVERY file the program sees is virtual. A definition in a second
+ * styled file came back in that file's virtual coordinates — past the end of the author's text, by
+ * the length of the preamble.
+ *
+ * Reached by go-to-definition, go-to-type-definition, go-to-implementation, find-references,
+ * definition-and-bound-span and document highlights.
+ */
+describe("a definition in another file that also holds a block", () => {
+  const THEME = join(PACKAGE, "src", "__tests__", "Theme.tsx");
+  const THEME_SOURCE = `export const tone = "#10b981";\nexport const box = <i css=@@( color: {tone}; )>x</i>;\n`;
+  const CARD_SOURCE = `import { tone } from "./Theme";\nconst a = <div css=@@( color: {tone}; )>x</div>;\n`;
+
+  /** Both files in one program, both holding a block, so both are overlaid. */
+  const twoFiles = () => {
+    const files: Record<string, string> = { [FILE]: CARD_SOURCE, [THEME]: THEME_SOURCE, [JSX_FILE]: JSX_TYPES };
+    const host: ts.LanguageServiceHost = {
+      getScriptFileNames: () => [FILE, THEME, JSX_FILE],
+      getScriptVersion: () => "1",
+      getScriptSnapshot: (name) => {
+        const text = files[name] ?? ts.sys.readFile(name);
+        return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
+      },
+      getCurrentDirectory: () => PACKAGE,
+      getCompilationSettings: () => ({
+        jsx: ts.JsxEmit.Preserve,
+        strict: true,
+        target: ts.ScriptTarget.ES2022,
+        types: [],
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
+      }),
+      getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+      fileExists: (name) => files[name] !== undefined || ts.sys.fileExists(name),
+      readFile: (name) => files[name] ?? ts.sys.readFile(name),
+      readDirectory: ts.sys.readDirectory,
+      directoryExists: ts.sys.directoryExists,
+      getDirectories: ts.sys.getDirectories,
+    };
+    const inner = ts.createLanguageService(host);
+    const service = init({ typescript: ts }).create({
+      languageService: inner,
+      languageServiceHost: host,
+      config: { properties: join(PACKAGE, "src", "properties") },
+    });
+    return { service, sources: { [FILE]: CARD_SOURCE, [THEME]: THEME_SOURCE } as Record<string, string> };
+  };
+
+  /** The caret on `tone` inside this file's block — the import's own binding. */
+  const caretOnTone = CARD_SOURCE.lastIndexOf("{tone}") + 1;
+
+  test("the span lands on the declaration, in the author's own text", () => {
+    const { service, sources } = twoFiles();
+
+    const [found] = service.getDefinitionAtPosition(FILE, caretOnTone) ?? [];
+
+    expect(found?.fileName).toBe(THEME);
+    const text = sources[THEME];
+    expect(found.textSpan.start + found.textSpan.length).toBeLessThanOrEqual(text.length);
+    expect(text.slice(found.textSpan.start, found.textSpan.start + found.textSpan.length)).toBe("tone");
+  });
+
+  test("and so does every reference to it", () => {
+    const { service, sources } = twoFiles();
+
+    const found = service.getReferencesAtPosition(FILE, caretOnTone) ?? [];
+
+    expect(found.length).toBeGreaterThan(1);
+    for (const one of found) {
+      const text = sources[one.fileName];
+      if (text === undefined) continue;
+      expect(text.slice(one.textSpan.start, one.textSpan.start + one.textSpan.length)).toBe("tone");
+    }
+  });
+});
+
+/**
+ * RENAME, and everything else that hands an editor an EDIT.
+ *
+ * `findRenameLocations` had no proxy at all, and a rename WRITES at the spans it returns. Measured by
+ * a review, on a file whose blocks read a binding: renaming it produced
+ * `const tone = "redaccentt a = <div css=@@( … ` — the author's own source, corrupted, from one
+ * keystroke. The position went in unmapped too, so the wrong symbol was found to begin with.
+ *
+ * This file already answers this question for formatting edits, code fixes and refactors: **the one
+ * place refusing beats answering.** An edit computed against the virtual text has a range nobody
+ * wrote and can carry the scaffolding as its new text. So every remaining surface that returns
+ * something an editor applies, or a position it selects, declines on a file we overlay.
+ *
+ * A rename that cannot be offered is a feature missing. A rename that is offered and wrong is the
+ * author's file destroyed, and there is no version of this trade where the second is better.
+ */
+describe("an edit an editor would apply", () => {
+  const BLOCK = `const tone = "red";\nconst a = <div css=@@( color: {tone}; )>x</div>;\n`;
+  const caretOnTone = BLOCK.indexOf("tone");
+
+  test("rename is declined on a file with a block", () => {
+    const { service } = editor(BLOCK);
+
+    expect(service.findRenameLocations(FILE, caretOnTone, false, false, {})).toBeUndefined();
+  });
+
+  test("and so is the rename it would have been asked about first", () => {
+    const { service } = editor(BLOCK);
+
+    expect(service.getRenameInfo(FILE, caretOnTone, {}).canRename).toBe(false);
+  });
+
+  test("expanding a selection is declined too, because typing then overwrites it", () => {
+    const { service } = editor(BLOCK);
+
+    expect(service.getSmartSelectionRange(FILE, caretOnTone)).toEqual({ textSpan: { start: 0, length: 0 } });
+  });
+
+  /** A file with no block is nobody's business here and keeps everything it had. */
+  test("a file with no block renames normally", () => {
+    const { service } = editor(`const tone = "red";\nexport const b = tone;\n`);
+
+    const found = service.findRenameLocations(FILE, `const `.length, false, false, {});
+
+    expect(found?.length).toBe(2);
+  });
+});

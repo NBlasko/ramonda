@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import type ts from "typescript";
 import type { BlockItem } from "./compiler/ast";
 import {
@@ -85,8 +84,6 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
     create(info) {
       const host = info.languageServiceHost;
       const service = info.languageService;
-      /** Whether two paths name one file — see `sameFileAs`, and the report that made it necessary. */
-      const sameFile = sameFileAs(host, tsModule);
 
       /**
        * File → its virtual copy, kept until the file's version changes.
@@ -417,7 +414,25 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         const replaces = (span: ts.TextSpan | undefined): ts.TextSpan | undefined => {
           const home = back(file, span);
           if (home === undefined) return undefined;
-          return source.slice(home.start, home.start + home.length).includes("\n") ? undefined : home;
+          /**
+           * **No WHITESPACE in it**, which was a newline only, and a review found the wider rule.
+           *
+           * A completion replaces a token, and no token a block offers holds whitespace: not a
+           * property name, not a keyword, not a unit. So a span that has any is a span standing for
+           * more than the word under the caret — and this file's own answer to that is already
+           * written down two paragraphs up.
+           *
+           * Measured, three shapes it stood for too much. A caret inside `@media (min-width: 40rem)`
+           * came back with a span over the ENTIRE prelude and the space before the `{`, on all 551
+           * entries, so accepting the first left `accent-color{ color: red; }`. A selector list the
+           * same. And a value's span reached past the word to the `;`, so accepting `column` over
+           * `col  ;` deleted the spaces the author had aligned with.
+           *
+           * Refusing costs nothing, which is what makes it the answer rather than a compromise: an
+           * editor with no span replaces the word under the caret, and that is right in every case
+           * measured — including the one still offered here, a property name being typed.
+           */
+          return /\s/.test(source.slice(home.start, home.start + home.length)) ? undefined : home;
         };
 
         return {
@@ -478,7 +493,16 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         if (got === undefined) return undefined;
 
         const read = asCss(got);
-        return { ...read, textSpan: back(file, read.textSpan) ?? read.textSpan };
+        /**
+         * The span DROPPED when it cannot be mapped, the way every other span here is.
+         *
+         * It used to fall through to the virtual one — an offset in a file nobody wrote, handed to
+         * an editor to highlight. A review found it by reading, and could find no caret that reaches
+         * it; that is an argument for closing the path rather than for leaving it open, since the
+         * cost of being right here is one `?? read.textSpan` not written.
+         */
+        const home = back(file, read.textSpan);
+        return home === undefined ? undefined : { ...read, textSpan: home };
       };
 
       proxy.getSemanticDiagnostics = (fileName) => {
@@ -570,7 +594,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           const at = file.virtualOf(position);
           if (at === undefined) return undefined;
           const got = run(fileName, at);
-          return got === undefined ? undefined : elsewhere(file, fileName, got, sameFile);
+          return got === undefined ? undefined : elsewhere(overlayFor, got);
         };
 
       proxy.getDefinitionAtPosition = goingTo((name, at) => service.getDefinitionAtPosition(name, at));
@@ -620,7 +644,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         if (textSpan === undefined) return undefined;
         return {
           textSpan,
-          definitions: got.definitions === undefined ? undefined : elsewhere(file, fileName, got.definitions, sameFile),
+          definitions: got.definitions === undefined ? undefined : elsewhere(overlayFor, got.definitions),
         };
       };
 
@@ -633,17 +657,18 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         const got = service.getDocumentHighlights(fileName, at, filesToSearch);
         if (got === undefined) return undefined;
 
-        return got.map((one) =>
-          !sameFile(one.fileName, fileName)
-            ? one
-            : {
-                ...one,
-                highlightSpans: one.highlightSpans.flatMap((span) => {
-                  const textSpan = back(file, span.textSpan);
-                  return textSpan === undefined ? [] : [{ ...span, textSpan }];
-                }),
-              },
-        );
+        // Each file's own overlay, not this one's — see `elsewhere` for the review that found it.
+        return got.map((one) => {
+          const its = overlayFor(one.fileName);
+          if (its === undefined) return one;
+          return {
+            ...one,
+            highlightSpans: one.highlightSpans.flatMap((span) => {
+              const textSpan = back(its, span.textSpan);
+              return textSpan === undefined ? [] : [{ ...span, textSpan }];
+            }),
+          };
+        });
       };
 
       proxy.getSignatureHelpItems = (fileName, position, options) => {
@@ -670,6 +695,12 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
       /** True when this file is one we overlay, and so one whose offsets are not the author's. */
       const overlaid = (fileName: string) => overlay(fileName, readSnapshot) !== undefined;
 
+      /**
+       * Any file's overlay, because an answer may name a file other than the one that was asked
+       * about — and every file the program sees is virtual, not only this one. See `elsewhere`.
+       */
+      const overlayFor = (fileName: string) => overlay(fileName, readSnapshot);
+
       proxy.getFormattingEditsForDocument = (fileName, options) =>
         overlaid(fileName) ? [] : service.getFormattingEditsForDocument(fileName, options);
 
@@ -686,6 +717,57 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         overlaid(fileName)
           ? []
           : service.getApplicableRefactors(fileName, position, preferences, reason, kind, interactive);
+
+      /**
+       * RENAME, which had no proxy at all — and a rename WRITES at every span it returns.
+       *
+       * A review measured it on a file whose block reads a binding: the position went in unmapped,
+       * so the wrong symbol was found, and the locations came back in virtual coordinates. Applied,
+       * they produced `const tone = "redaccentt a = <div css=@@( … ` — the author's own source
+       * destroyed, from one keystroke.
+       *
+       * Declined rather than mapped, for the reason written above the formatting edits: **this is the
+       * one place refusing beats answering.** A rename that cannot be offered is a feature missing; a
+       * rename that is offered and wrong is the file gone. `getRenameInfo` refuses too, so an editor
+       * says so up front instead of failing at the end.
+       *
+       * Mapping it properly is possible — every location would need its own file's overlay, the way
+       * `elsewhere` does it now — and it is deliberately not attempted here: the spans an editor
+       * writes at are the last place to find out a mapping was one character out.
+       */
+      proxy.findRenameLocations = ((
+        fileName: string,
+        position: number,
+        findInStrings: boolean,
+        findInComments: boolean,
+        preferences?: ts.UserPreferences | boolean,
+      ) =>
+        overlaid(fileName)
+          ? undefined
+          : (
+              service.findRenameLocations as (
+                fileName: string,
+                position: number,
+                findInStrings: boolean,
+                findInComments: boolean,
+                preferences?: ts.UserPreferences | boolean,
+              ) => readonly ts.RenameLocation[] | undefined
+            )(fileName, position, findInStrings, findInComments, preferences)) as typeof service.findRenameLocations;
+
+      proxy.getRenameInfo = (fileName, position, preferences) =>
+        overlaid(fileName)
+          ? { canRename: false, localizedErrorMessage: RENAME_REFUSED }
+          : service.getRenameInfo(fileName, position, preferences);
+
+      /**
+       * Expanding a selection, which is not an edit and becomes one the moment somebody types.
+       *
+       * Measured by the same review: a caret on a binding a block reads came back with a range over
+       * `const t` — seven characters of unrelated code, selected. The next keystroke overwrites them.
+       * An empty range is what an editor does nothing with.
+       */
+      proxy.getSmartSelectionRange = (fileName, position) =>
+        overlaid(fileName) ? { textSpan: { start: 0, length: 0 } } : service.getSmartSelectionRange(fileName, position);
 
       /**
        * Syntactic diagnostics come from the virtual file too, and they have to: the author's file does
@@ -1034,6 +1116,16 @@ interface Regions {
   readonly preludes: readonly PreludeSpan[];
 }
 
+/**
+ * What an editor shows when a rename is declined.
+ *
+ * Named rather than a bare string, because it is the only sentence an author ever sees about this
+ * and it has to say what to do instead — a refusal with no way forward reads as a broken editor.
+ */
+const RENAME_REFUSED =
+  "A style block is not TypeScript, so renaming across one would write at positions in a file " +
+  "nobody wrote. Rename from a file without a block, or edit the name by hand.";
+
 /** True when the position belongs to the CSS itself — inside a block, outside every hole. */
 function isCss({ blocks, holes }: { blocks: readonly Span[]; holes: readonly Span[] }, at: number): boolean {
   const inBlock = blocks.some((span) => span.start <= at && at < span.end);
@@ -1081,19 +1173,25 @@ function spansHome(file: VirtualFile, spans: readonly ts.TextSpan[]): ts.TextSpa
 }
 
 /**
- * Entries that may live in any file, with only the overlaid one's positions moved.
+ * Entries that may live in any file, each moved home out of ITS OWN file's coordinates.
  *
- * An entry in another file already holds the position it should — mapping it would relocate a
- * reference that was never virtual.
+ * **Not just the file that was asked about**, and the comment here used to say otherwise: *"an entry
+ * in another file already holds the position it should"*. A review measured that false. The host is
+ * patched program-wide, so EVERY file the program sees is virtual — a definition in a second styled
+ * file came back in that file's virtual coordinates, past the end of the author's text by the length
+ * of the preamble. Reached by go-to-definition, go-to-type-definition, go-to-implementation,
+ * find-references, definition-and-bound-span and document highlights.
+ *
+ * A file with no block has no overlay and is returned untouched, which is what the old branch was
+ * really for.
  */
 function elsewhere<T extends { fileName: string; textSpan: ts.TextSpan; contextSpan?: ts.TextSpan }>(
-  file: VirtualFile,
-  fileName: string,
+  overlayOf: (fileName: string) => VirtualFile | undefined,
   entries: readonly T[],
-  same: (a: string, b: string) => boolean,
 ): T[] {
   return entries.flatMap((entry) => {
-    if (!same(entry.fileName, fileName)) return [entry];
+    const file = overlayOf(entry.fileName);
+    if (file === undefined) return [entry];
 
     const textSpan = back(file, entry.textSpan);
     if (textSpan === undefined) return [];
@@ -1102,32 +1200,24 @@ function elsewhere<T extends { fileName: string; textSpan: ts.TextSpan; contextS
 }
 
 /**
- * Whether two paths name the same file — and `!==` was not good enough, twice.
+ * **`sameFileAs` used to live here, and it is gone because the question it answered is.**
  *
- * **Reported by the user twice, and the first look could not reproduce it**, because a test asks
- * under the identical string every time. A definition in ANOTHER file must be left alone; one in
- * THIS file must be mapped back out of the virtual coordinates. Deciding that with `!==` on two raw
- * paths gets it wrong the moment the editor's spelling differs from TypeScript's normalised one — a
- * symlinked checkout, a `./` that survived a project reference, a doubled separator, or a case that
- * differs on a case-insensitive volume.
+ * It compared two paths — an entry's file name against the file being asked about — so a definition
+ * in ANOTHER file could be left alone while one in THIS file was mapped home. `!==` got that wrong
+ * whenever the editor's spelling differed from TypeScript's normalised one, which the user reported
+ * twice, and resolving both paths and asking the host about case was the fix.
  *
- * The failure is silent and reads like nonsense: the entry passes through unmapped, so a VIRTUAL
- * offset is used as an author offset and go-to-definition lands mid-word, wrong by exactly the
- * length of the preamble. The user saw it land inside the paragraph of comment above the
- * declaration — from the block and from the declaration alike, which is what says it was never
- * about blocks at all.
+ * Then a review found the premise wrong: an entry in another file does NOT already hold the position
+ * it should, because the host is patched program-wide and every file the program sees is virtual. So
+ * `elsewhere` looks each entry's OWN file up in the overlay cache instead of comparing it to
+ * anything — and a lookup that misses because a path is spelled differently simply builds that
+ * file's overlay under the other spelling, which maps correctly either way.
  *
- * `resolve` settles the separators and the segments; the HOST says whether case matters, and is
- * believed rather than guessed at from the platform.
+ * The three tests written for the spelling bug still pass, asking under a `.` segment and a doubled
+ * separator. Kept as a note rather than as a function nothing calls: a dead helper with a story
+ * attached is worse than the story on its own.
  */
-function sameFileAs(host: ts.LanguageServiceHost, typescript: typeof ts): (a: string, b: string) => boolean {
-  const cased = host.useCaseSensitiveFileNames?.() ?? typescript.sys?.useCaseSensitiveFileNames ?? true;
-  return (a, b) => {
-    const one = resolve(a);
-    const other = resolve(b);
-    return cased ? one === other : one.toLowerCase() === other.toLowerCase();
-  };
-}
+
 
 /**
  * Encoded classification triples — `[start, length, kind]` — moved back to the author's file.

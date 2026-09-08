@@ -485,3 +485,51 @@ describe("through tsc, and back to the author's own file", () => {
     expect(check(source)).toEqual([]);
   });
 });
+
+/**
+ * WHICH RUNS ARE THE AUTHOR'S OWN BYTES — a fact the file records, and used to INFER.
+ *
+ * A segment maps offset for offset when it is a copy of the author's text, and maps to where it
+ * started when it was rewritten. Which of the two it is was decided by asking whether the virtual
+ * length equalled the author length — and that is a guess. A review measured it wrong.
+ *
+ * A value is emitted quoted and whitespace-folded, so the two lengths coincide exactly when folding
+ * drops two characters. `sol   id` is eight characters and becomes `"sol id"`, which is also eight.
+ * Every span inside such a value was then read as a copied one and came back shifted by the opening
+ * quote's worth — one character — so a completion accepted over it left the author's own first and
+ * last letters behind: `ssolidd`.
+ *
+ * `copy` and `derived` now write the answer down. Nothing measures anything.
+ */
+describe("a rewritten run whose length happens to match the author's", () => {
+  const spanOver = (source: string, word: string) => {
+    const file = virtualFile(source, { tolerant: true });
+    if (file === undefined) throw new Error("no block in the fixture");
+    const at = file.code.indexOf(word);
+    if (at === -1) throw new Error(`\`${word}\` is not in the virtual text`);
+    const span = file.spanOf(at, word.length);
+    return span === undefined ? "—" : source.slice(span.start, span.start + span.length);
+  };
+
+  /**
+   * Three interior spaces fold to one, so `"sol id"` measures as long as `sol   id` did. The whole
+   * run is the only honest answer for a rewritten one, and it is what comes back.
+   */
+  test("a value with three interior spaces, which folds to exactly its own length", () => {
+    expect(spanOver(`const a = <div css=@@( border-left-style: sol   id; )>x</div>;\n`, "sol")).toBe("sol   id");
+  });
+
+  test("and two trailing spaces, which does the same", () => {
+    expect(spanOver(`const a = <div css=@@( flex-direction: col  ; )>x</div>;\n`, "col")).toBe("col  ");
+  });
+
+  /** One trailing space: the lengths differ, so this always took the rewritten branch. The control. */
+  test("one trailing space, which the inference happened to get right", () => {
+    expect(spanOver(`const a = <div css=@@( flex-direction: col ; )>x</div>;\n`, "col")).toBe("col ");
+  });
+
+  /** And a genuinely copied run still maps both ends — a hole's contents are the author's own text. */
+  test("a hole's expression is copied, and maps offset for offset", () => {
+    expect(spanOver(`const a = <div css=@@( color: {this.tone}; )>x</div>;\n`, "this.tone")).toBe("this.tone");
+  });
+});

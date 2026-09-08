@@ -144,6 +144,14 @@ export interface VirtualFile {
    * nowhere and the caller is left clamping to an empty span. Measured — a `dsiplay` diagnostic
    * highlighting nothing. The run knows how much of the author's text it stands for, so this asks it.
    */
+  /**
+   * The author's span for a virtual one.
+   *
+   * A copied run maps both ends. A rewritten one has no interior correspondence, so the answer is
+   * the whole of the author's text it stands for — which is the right HIGHLIGHT (a *did you mean*
+   * about `dsiplay` underlines `dsiplay`, whatever quoting the virtual file needed) and is not
+   * always a safe thing to OVERWRITE. See `replaces` in the plugin, which decides that separately.
+   */
   spanOf(start: number, length: number): { start: number; length: number } | undefined;
 }
 
@@ -165,6 +173,20 @@ interface Segment {
    * were wanted.
    */
   readonly sourceLength: number;
+  /**
+   * Whether this run is the author's own bytes, so an offset inside it maps offset for offset.
+   *
+   * **Recorded, because it was being INFERRED** — from `to - from === sourceLength`, in two places.
+   * That is a guess, and a review measured it wrong: a value is emitted quoted and its whitespace
+   * folded, so the two lengths coincide exactly when folding drops two characters, which is
+   * ordinary aligned CSS. `border-left-style: sol   id` then had every span in it shifted by one —
+   * the opening quote's worth — and accepting `solid` produced `ssolidd`, the author's own `s` and
+   * `d` left behind.
+   *
+   * One question, answered once by the code that knows: `copy` writes true and `derived` writes
+   * false, and neither has to measure anything.
+   */
+  readonly copied: boolean;
 }
 
 /** `undefined` when the file holds no block — there is then nothing a virtual copy would add. */
@@ -187,7 +209,13 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 
   /** The author's own bytes, so an offset inside maps offset for offset. */
   const copy = (start: number, end: number): void => {
-    segments.push({ from: code.length, to: code.length + (end - start), source: start, sourceLength: end - start });
+    segments.push({
+      from: code.length,
+      to: code.length + (end - start),
+      source: start,
+      sourceLength: end - start,
+      copied: true,
+    });
     code += source.slice(start, end);
   };
 
@@ -197,7 +225,13 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    */
   const derived = (text: string, at: number | undefined, length = text.length): void => {
     if (at !== undefined) {
-      segments.push({ from: code.length, to: code.length + text.length, source: at, sourceLength: length });
+      segments.push({
+        from: code.length,
+        to: code.length + text.length,
+        source: at,
+        sourceLength: length,
+        copied: false,
+      });
     }
     code += text;
   };
@@ -599,13 +633,7 @@ function virtualOf(bySource: readonly Segment[], offset: number): number | undef
   return found.from + Math.min(Math.max(delta, 1), Math.max(length - 1, 1));
 }
 
-/**
- * The author's span for a virtual one.
- *
- * A copied run maps both ends. A rewritten one has no interior correspondence, so the whole of the
- * author's text it stands for is the answer — which is the right highlight anyway: a *did you mean*
- * about `dsiplay` underlines `dsiplay`, whatever quoting the virtual file needed.
- */
+/** The author's span for a virtual one — see the declaration on {@link VirtualFile}. */
 function spanOf(
   segments: readonly Segment[],
   start: number,
@@ -616,9 +644,9 @@ function spanOf(
 
   const from = segment.source + (start - segment.from);
 
-  if (segment.to - segment.from === segment.sourceLength) {
-    // Copied: both ends are real. A span running past this run is clamped to it rather than guessed
-    // at — a highlight that is too short is readable, one that covers invented text is not.
+  if (segment.copied) {
+    // Both ends are real. A span running past this run is clamped to it rather than guessed at — a
+    // highlight that is too short is readable, one that covers invented text is not.
     return { start: from, length: Math.min(length, segment.source + segment.sourceLength - from) };
   }
 
@@ -675,10 +703,7 @@ function homeOf(segments: readonly Segment[], offset: number): number | undefine
     else if (offset >= segment.to) low = middle + 1;
     // A copied run maps offset for offset; a rewritten one maps to where it started, which is the
     // position a reader needs anyway — a *did you mean* about `dsiplay` belongs on `dsiplay`.
-    else
-      return segment.to - segment.from === segment.sourceLength
-        ? segment.source + (offset - segment.from)
-        : segment.source;
+    else return segment.copied ? segment.source + (offset - segment.from) : segment.source;
   }
   return undefined;
 }
