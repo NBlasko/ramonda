@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -80,6 +80,54 @@ describe("the stale-dist warning", () => {
     writeFileSync(join(root, "src", "index.ts"), "//\n");
 
     expect(said(join(root, "dist", "index.js"))).toEqual([]);
+  });
+
+  /**
+   * One `try` around both scans, which a review found: a failure ANYWHERE in either walk abandoned
+   * the whole comparison and said nothing — and silence is the exact thing this warning exists to
+   * stop. A directory somebody cannot read, or a file that vanishes mid-walk (a build writing into
+   * `dist` while this reads it, which is when it runs), was enough.
+   *
+   * Each walk now stands on its own, and an entry that cannot be read is skipped rather than
+   * ending it. Being wrong by one file is a warning that is one minute out; being silent is the day
+   * this was written for.
+   */
+  test("an unreadable directory inside src does not silence it", () => {
+    const from = built(now, now - 20 * 60_000);
+    const locked = join(from, "..", "..", "src", "locked");
+    mkdirSync(locked, { recursive: true });
+    chmodSync(locked, 0o000);
+
+    try {
+      expect(said(from)[0]).toContain("previous version");
+    } finally {
+      chmodSync(locked, 0o755);
+    }
+  });
+
+  test("and one inside dist does not either", () => {
+    const from = built(now, now - 20 * 60_000);
+    const locked = join(from, "..", "locked");
+    mkdirSync(locked, { recursive: true });
+    chmodSync(locked, 0o000);
+
+    try {
+      expect(said(from)[0]).toContain("previous version");
+    } finally {
+      chmodSync(locked, 0o755);
+    }
+  });
+
+  /**
+   * The other half of the same walk: a listed entry that cannot be STATTED. A link pointing at
+   * nothing is the reproducible version of the case this is really for — a build deleting a file
+   * between the listing and the stat, which is what is happening while this runs.
+   */
+  test("a dangling link inside src is skipped, not fatal", () => {
+    const from = built(now, now - 20 * 60_000);
+    symlinkSync(join(from, "..", "..", "nowhere"), join(from, "..", "..", "src", "link.js"));
+
+    expect(said(from)[0]).toContain("previous version");
   });
 
   /** A test file changing is not a reason to rebuild — `dist` never held them. */

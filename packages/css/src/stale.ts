@@ -33,11 +33,27 @@ import { dirname, join } from "node:path";
  * for the same decision.
  */
 function newest(directory: string): number {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch {
+    // Absent, or not ours to read. `0` is "nothing to compare", which the caller is already silent
+    // about — and it is a per-DIRECTORY answer now, so it cannot take the other walk down with it.
+    return 0;
+  }
+
   let latest = 0;
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+  for (const entry of entries) {
     if (entry.name === "node_modules" || entry.name === "__tests__") continue;
     const path = join(directory, entry.name);
-    const at = entry.isDirectory() ? newest(path) : statSync(path).mtimeMs;
+    let at: number;
+    try {
+      at = entry.isDirectory() ? newest(path) : statSync(path).mtimeMs;
+    } catch {
+      // A file that vanished between the listing and the stat, which is a build writing into the
+      // directory this is reading — exactly when it runs. One entry skipped, not the whole answer.
+      continue;
+    }
     if (at > latest) latest = at;
   }
   return latest;
@@ -51,16 +67,18 @@ function newest(directory: string): number {
  * never have.
  */
 export function warnIfStale(from: string, say: (message: string) => void): void {
-  let source: number;
-  let built: number;
-  try {
-    const root = dirname(dirname(from));
-    source = newest(join(root, "src"));
-    built = newest(join(root, "dist"));
-  } catch {
-    // No `src` is a published package; no `dist` is a checkout about to be built. Neither is a fault.
-    return;
-  }
+  const root = dirname(dirname(from));
+  /**
+   * Each walk answers for itself, and a review is the reason. Both used to sit inside ONE `try`, so
+   * anything thrown anywhere in either — a directory nobody may read, a file a running build deletes
+   * between the listing and the stat — abandoned the comparison and said nothing. Silence is what
+   * this warning exists to stop, so it is the one outcome a fault here must not produce.
+   *
+   * `0` is "nothing to compare with", which is also what an absent directory gives: no `src` is a
+   * published package, no `dist` is a checkout about to be built, and neither is a fault.
+   */
+  const source = newest(join(root, "src"));
+  const built = newest(join(root, "dist"));
 
   if (source === 0 || built === 0 || built >= source) return;
 
