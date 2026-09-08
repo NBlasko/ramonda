@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -1432,5 +1434,83 @@ describe("hover", () => {
 
   test("and so does a value, through the declaration it belongs to", () => {
     expect(hovered(BLOCK, "flex").signature).toContain("display:");
+  });
+});
+
+/**
+ * WHICH config the editor measures a file against — the fourth answer to one question.
+ *
+ * A review found this walking up from `host.getCurrentDirectory()`, which for a monorepo opened at
+ * its root is one config for files that have their own. So the squiggles an author sees need not be
+ * the units the build enforces, and nothing says which of the two is in force. The file is the
+ * anchor now, the same as in `check.ts`, `vite.ts` and `esbuild.ts`; see `configReader`.
+ */
+describe("which config the editor measures a file against", () => {
+  const monorepo = () => {
+    const repo = mkdtempSync(join(tmpdir(), "ramonda-editor-which-"));
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
+    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px", "em"] };\n`);
+    const source = `const a = <div css=@@(\n  padding: 1em;\n)>x</div>;\nexport default a;\n`;
+    for (const name of ["web", "admin"]) writeFileSync(join(repo, "packages", name, "Card.tsx"), source);
+    writeFileSync(join(repo, "jsx.d.ts"), JSX_TYPES);
+    return repo;
+  };
+
+  /** An editor opened at `cwd`, holding both packages' files. */
+  const opened = (repo: string, cwd: string) => {
+    const files = [join(repo, "packages", "web", "Card.tsx"), join(repo, "packages", "admin", "Card.tsx")];
+    const host: ts.LanguageServiceHost = {
+      getScriptFileNames: () => [...files, join(repo, "jsx.d.ts")],
+      getScriptVersion: () => "1",
+      getScriptSnapshot: (name) => {
+        const text = ts.sys.readFile(name);
+        return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
+      },
+      getCurrentDirectory: () => cwd,
+      getCompilationSettings: () => ({
+        jsx: ts.JsxEmit.Preserve,
+        strict: true,
+        target: ts.ScriptTarget.ES2022,
+        types: [],
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
+      }),
+      getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+      fileExists: ts.sys.fileExists,
+      readFile: ts.sys.readFile,
+      readDirectory: ts.sys.readDirectory,
+      directoryExists: ts.sys.directoryExists,
+      getDirectories: ts.sys.getDirectories,
+    };
+    const inner = ts.createLanguageService(host);
+    return init({ typescript: ts }).create({
+      languageService: inner,
+      languageServiceHost: host,
+      config: { properties: join(PACKAGE, "src", "properties") },
+    });
+  };
+
+  test("the file's own package, not the folder the editor was opened at", () => {
+    const repo = monorepo();
+    // Opened at the repository root, where there is no config at all.
+    const service = opened(repo, repo);
+
+    const said = service
+      .getSemanticDiagnostics(join(repo, "packages", "web", "Card.tsx"))
+      .map((one) => ts.flattenDiagnosticMessageText(one.messageText, " "));
+
+    expect(said.join("\n")).toContain("`em` is a CSS unit this project does not use");
+  });
+
+  test("and the package next door keeps its own answer, in the same session", () => {
+    const repo = monorepo();
+    const service = opened(repo, repo);
+
+    const said = service
+      .getSemanticDiagnostics(join(repo, "packages", "admin", "Card.tsx"))
+      .map((one) => ts.flattenDiagnosticMessageText(one.messageText, " "));
+
+    expect(said.join("\n")).not.toContain("CSS unit");
   });
 });

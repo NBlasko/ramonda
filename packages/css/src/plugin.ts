@@ -13,7 +13,7 @@ import { type Span, readBlock } from "./compiler/read";
 import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
-import { type Config, environmentOf, findConfig, readConfig } from "./config";
+import { type Config, configReader, environmentOf } from "./config";
 import { warnIfStale } from "./stale";
 import { type Imported, namedSites, syntaxesIn } from "./compiler/references";
 
@@ -175,14 +175,17 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        * CommonJS with no `ts-node`, and `require(".ts")` would tie the config to whatever Node the
        * editor embeds. See `config.ts`, where the three ways were measured.
        *
-       * Read per pass rather than once: a config is a file somebody edits, and an editor that had
-       * to be restarted to notice would be the same staleness the module cache was fixed for. It is
-       * cheap — one `existsSync` walk and a transpile of a file measured in tens of lines.
+       * Asked per file rather than once per project. A review found this walking up from
+       * `host.getCurrentDirectory()`, which in a monorepo opened at its root is one config for
+       * files that have their own — so the editor squiggled against settings the build did not use.
+       * The reader re-reads whenever the file's text changes, which keeps what the config is edited
+       * for: an editor that had to be restarted to notice would be the same staleness the module
+       * cache was fixed for. An editor session is a development session — see `environmentOf`.
        */
-      const projectConfig = (): Config => {
+      const readProjectConfig = configReader(tsModule, environmentOf(false));
+      const projectConfig = (fileName: string): Config => {
         try {
-          // An editor session is a development session — see `environmentOf`.
-          return readConfig(findConfig(host.getCurrentDirectory()), tsModule, environmentOf(false));
+          return readProjectConfig(fileName);
         } catch {
           // A broken config must not take the editor's completions with it. `ramonda-css lint` is
           // where it is reported, with the file and the reason.
@@ -254,7 +257,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
             ? undefined
             : tsModule.createSourceFile(fileName, text, tsModule.ScriptTarget.Latest, true, tsModule.ScriptKind.TSX);
 
-        const css = text === undefined ? [] : cssFindings(text, fileName, readModuleFromEditor, projectConfig());
+        const css =
+          text === undefined ? [] : cssFindings(text, fileName, readModuleFromEditor, projectConfig(fileName));
         const where = regions(text ?? "", fileName, readModuleFromEditor);
         reading = undefined;
 

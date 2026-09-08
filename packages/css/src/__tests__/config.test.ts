@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../config";
-import { environmentOf, findConfig, readConfig } from "../config";
+import { configReader, environmentOf, findConfig, readConfig } from "../config";
 import { readBlock } from "../compiler/read";
 import { checkBlock } from "../compiler/rules";
 
@@ -232,7 +232,6 @@ describe("the project's config", () => {
       ["rules as an array", `{ rules: ["unknown-unit"] }`, /rules/],
       ["a rule set to a boolean", `{ rules: { "unknown-unit": false } }`, /unknown-unit/],
       ["a rule set to a word that is not a severity", `{ rules: { "unknown-unit": "quiet" } }`, /quiet/],
-      ["format as a string", `{ format: "wide" }`, /format/],
     ])("%s is refused, naming what is wrong", (_what, body, says) => {
       expect(refused(body)).toThrow(says);
     });
@@ -242,13 +241,25 @@ describe("the project's config", () => {
       expect(refused(`{ rules: { "unkown-unit": "off" } }`)).toThrow(/unknown-unit/);
     });
 
+    /**
+     * `format: { indent }` was accepted, validated and documented in its own type, and NOTHING read
+     * it: a person could set it, be told nothing, and get two spaces. A review found it.
+     *
+     * It is refused rather than wired up, because the formatter now reads the step off the file it
+     * has just laid out — the project has already told biome or prettier how wide a level is, and a
+     * second place to say it can only disagree with the first. The refusal says that, since
+     * somebody who wrote it needs to know where the answer comes from instead.
+     */
+    test("`format` is refused, and the message says who decides indentation now", () => {
+      expect(refused(`{ format: { indent: 4 } }`)).toThrow(/formatter/);
+    });
+
     test.each([
       ["one unit", `{ units: ["px"] }`],
       ["several", `{ units: ["px", "rem", "%"] }`],
       ["a rule silenced", `{ rules: { "unknown-unit": "off" } }`],
       ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],
       ["an empty object", `{}`],
-      ["format with its one setting", `{ format: { indent: 4 } }`],
     ])("%s is accepted", (_what, body) => {
       expect(refused(body)).not.toThrow();
     });
@@ -303,5 +314,213 @@ describe("what the config does to the rules", () => {
 
     expect(rules).not.toContain("unknown-unit");
     expect(rules).toContain("unknown-property");
+  });
+});
+
+/**
+ * WHICH config governs a file — the question three consumers answered three different ways.
+ *
+ * A review found one setting read from three roots: `check.ts` walked up from the tsconfig's
+ * directory, `vite.ts` and `esbuild.ts` from `process.cwd()`, and the editor from
+ * `host.getCurrentDirectory()`. In a monorepo those are three different answers for one file, and
+ * the one the author sees squiggled in the editor is not the one the build enforces.
+ *
+ * The file being compiled is the only anchor that cannot depend on where a command was typed, so it
+ * is the anchor. The ninth occurrence of the repository's recurring fault: one rule, many consumers.
+ *
+ * The cache is keyed on the config's own TEXT rather than on a timestamp or on nothing at all.
+ * That is what makes the second half of the review's finding go away by construction: a dev server
+ * that read the file once at startup kept compiling yesterday's settings while the editor had
+ * already moved on, and there is no hook to forget here because there is nothing stale to forget.
+ */
+describe("which config governs a file", () => {
+  const monorepo = () => {
+    const repo = mkdtempSync(join(tmpdir(), "ramonda-reader-"));
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
+    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["rem"] };\n`);
+    return repo;
+  };
+
+  const inside = <T>(dir: string, run: () => T): T => {
+    const before = process.cwd();
+    process.chdir(dir);
+    try {
+      return run();
+    } finally {
+      process.chdir(before);
+    }
+  };
+
+  test("the file's own package, not the one a command was typed in", () => {
+    const repo = monorepo();
+    const read = configReader(ts);
+
+    inside(join(repo, "packages", "web"), () => {
+      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: ["px"] });
+      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: ["rem"] });
+    });
+  });
+
+  test("and the same two answers from the other package's directory", () => {
+    const repo = monorepo();
+    const read = configReader(ts);
+
+    inside(join(repo, "packages", "admin"), () => {
+      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: ["px"] });
+      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: ["rem"] });
+    });
+  });
+
+  test("a file with no config above it is the empty config", () => {
+    const repo = monorepo();
+    mkdirSync(join(repo, "packages", "bare"), { recursive: true });
+
+    expect(configReader(ts)(join(repo, "packages", "bare", "Card.tsx"))).toEqual({});
+  });
+
+  /**
+   * The half a long-running process gets wrong: read once at startup, never again. A dev server
+   * kept the settings it booted with while the author edited the file the editor was already
+   * reading fresh — two tools, one file, two answers.
+   */
+  test("a config edited while the process runs is read again", () => {
+    const repo = monorepo();
+    const file = join(repo, "packages", "web", "Card.tsx");
+    const read = configReader(ts);
+
+    expect(read(file)).toEqual({ units: ["px"] });
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["ch"] };\n`);
+
+    expect(read(file)).toEqual({ units: ["ch"] });
+  });
+
+  test("and a config WRITTEN while it runs is found", () => {
+    const repo = monorepo();
+    mkdirSync(join(repo, "packages", "late"), { recursive: true });
+    const file = join(repo, "packages", "late", "Card.tsx");
+    const read = configReader(ts);
+
+    expect(read(file)).toEqual({});
+    writeFileSync(join(repo, "packages", "late", "ramonda.css.ts"), `export default { units: ["vh"] };\n`);
+
+    expect(read(file)).toEqual({ units: ["vh"] });
+  });
+
+  /**
+   * Reading fresh is only affordable because what it re-reads is a file measured in tens of lines.
+   * The transpile and the `new Function` are what cost, and they happen once per thing the file
+   * says — not once per file compiled against it.
+   */
+  test("one config, transpiled once however many files ask", () => {
+    const repo = monorepo();
+    const counting = join(repo, "packages", "web", "ramonda.css.ts");
+    writeFileSync(counting, `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: ["px"] };\n`);
+    (globalThis as unknown as { runs: number }).runs = 0;
+    const read = configReader(ts);
+
+    for (let i = 0; i < 50; i++) read(join(repo, "packages", "web", `Card${i}.tsx`));
+
+    expect((globalThis as unknown as { runs: number }).runs).toBe(1);
+  });
+
+  test("and once more after it changes, not once per file after it", () => {
+    const repo = monorepo();
+    const counting = join(repo, "packages", "web", "ramonda.css.ts");
+    const body = (unit: string) =>
+      `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: ["${unit}"] };\n`;
+    writeFileSync(counting, body("px"));
+    (globalThis as unknown as { runs: number }).runs = 0;
+    const read = configReader(ts);
+
+    for (let i = 0; i < 10; i++) read(join(repo, "packages", "web", `Card${i}.tsx`));
+    writeFileSync(counting, body("ch"));
+    for (let i = 0; i < 10; i++) read(join(repo, "packages", "web", `Card${i}.tsx`));
+
+    expect((globalThis as unknown as { runs: number }).runs).toBe(2);
+  });
+
+  /**
+   * The environment arrives LATER than the reader does. Vite constructs a plugin before any hook
+   * runs and only tells it which build this is in `config`, so a reader that captured the answer at
+   * construction would capture the one nobody had yet.
+   */
+  test("the environment is asked for when a config is read, not when the reader is made", () => {
+    const repo = monorepo();
+    writeFileSync(
+      join(repo, "packages", "web", "ramonda.css.ts"),
+      `export default (env: { production: boolean }) => ({ units: env.production ? ["px"] : ["px", "em"] });\n`,
+    );
+    let production: boolean | undefined;
+    const read = configReader(ts, () => environmentOf(production));
+    const file = join(repo, "packages", "web", "Card.tsx");
+
+    production = true;
+    expect(read(file)).toEqual({ units: ["px"] });
+    production = false;
+    expect(read(file)).toEqual({ units: ["px", "em"] });
+  });
+
+  test("a config that throws is reported, and reported again on the next file", () => {
+    const repo = monorepo();
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: "px" };\n`);
+    const read = configReader(ts);
+
+    expect(() => read(join(repo, "packages", "web", "A.tsx"))).toThrow(/It takes a list/);
+    expect(() => read(join(repo, "packages", "web", "B.tsx"))).toThrow(/It takes a list/);
+  });
+});
+
+/**
+ * What a config may WRITE in it, which is a smaller set than "TypeScript" until it is said out loud.
+ *
+ * The file is transpiled to CommonJS and run through `new Function`, so two ordinary things a
+ * `.ts` file does were broken here and nowhere else — a review found both, and each failed as
+ * *could not be read* with a message about the symptom rather than the cause.
+ */
+describe("what a config is allowed to use", () => {
+  const project = (body: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-config-uses-"));
+    writeFileSync(join(dir, "ramonda.css.ts"), body);
+    return dir;
+  };
+
+  /**
+   * `import path from "node:path"` is how a default import is written and how every editor
+   * completes it. Without `esModuleInterop` the transpiler emits `path_1.default`, which a CommonJS
+   * module does not have, so the config died on `Cannot read properties of undefined`.
+   */
+  test("a default import of a CommonJS module", () => {
+    const dir = project(
+      `import path from "node:path";\nexport default { units: [path.sep === "/" ? "px" : "rem"] };\n`,
+    );
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+  });
+
+  test("and a named import, which always worked", () => {
+    const dir = project(`import { sep } from "node:path";\nexport default { units: [sep === "/" ? "px" : "rem"] };\n`);
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+  });
+
+  /**
+   * `__dirname` is what a CommonJS file resolves a path with, and this one IS CommonJS by the time
+   * it runs — but `new Function` supplies only what it is handed, so it was not defined at all.
+   * A config that read a token list from beside itself threw `__dirname is not defined`.
+   */
+  test("`__dirname`, which is the config's own directory", () => {
+    const dir = project(
+      `export default { units: [__dirname.split("/").pop()!.startsWith("ramonda") ? "px" : "rem"] };\n`,
+    );
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+  });
+
+  test("and `__filename`, which is the config itself", () => {
+    const dir = project(`export default { units: [__filename.endsWith("ramonda.css.ts") ? "px" : "rem"] };\n`);
+
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
   });
 });

@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
 import { positionOf } from "./compiler/errors";
-import { type Config, environmentOf, findConfig, readConfig } from "./config";
+import { type Config, configReader, environmentOf } from "./config";
 import { readModule } from "./modules";
 import { mayHoldABlock } from "./compiler/scan";
 import { checkSource } from "./compiler/source";
@@ -75,13 +75,15 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   if ("findings" in parsed) return parsed;
 
   /**
-   * The project's own settings, read ONCE per run from beside its tsconfig.
+   * The project's own settings, found from EACH FILE rather than once from beside the tsconfig.
    *
-   * From the tsconfig's directory rather than the working one: `ramonda-check` is run from wherever
-   * somebody happens to be, and a config found relative to the shell would make the answer depend on
-   * where the command was typed.
+   * Not from the working directory — `ramonda-check` is run from wherever somebody happens to be,
+   * and a config found relative to the shell would make the answer depend on where the command was
+   * typed. But the tsconfig's directory is not right either: one tsconfig in a monorepo names files
+   * in several packages, and a package's own `ramonda.css.ts` is the file the editor reads for
+   * them. Anchored on the file, this tool and the editor cannot disagree. See {@link configReader}.
    */
-  const config = readConfig(findConfig(dirname(configPath)), ts, environmentOf());
+  const configFor = configReader(ts, environmentOf());
 
   /** The overlay and the text it was built from, together — one lookup, and no half-set state. */
   const overlays = new Map<string, { virtual: VirtualFile; source: string }>();
@@ -99,7 +101,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
       // a file that turns out to hold no block needs no overlay.
       if (virtual !== undefined) {
         overlays.set(fileName, { virtual, source: text });
-        css.push(...cssFindings(fileName, text, config));
+        css.push(...cssFindings(fileName, text, configFor(fileName)));
       }
     } catch (error) {
       // A refusal is ours and is reported. Anything else is a bug in this package and must not be

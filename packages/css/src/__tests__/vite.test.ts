@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { ramondaCss } from "../vite";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -519,5 +519,90 @@ describe("the dependency scan", () => {
     const { load } = scanner();
 
     expect(load?.({ path: "/nowhere/at/all.tsx" })).toBeNull();
+  });
+});
+
+/**
+ * WHICH config the build enforces, which a review found was the one above the working directory.
+ *
+ * In a monorepo that is a different file from the one the editor reads for the same source file, so
+ * an author could be squiggled against settings the build never applied, or the other way round —
+ * and which of the two they met depended on where they typed `pnpm dev`. The file being transformed
+ * is the anchor now; see `configReader`.
+ */
+describe("which config a transform is measured against", () => {
+  const monorepo = () => {
+    const repo = mkdtempSync(join(tmpdir(), "ramonda-vite-which-"));
+    roots.push(repo);
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
+    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px", "em"] };\n`);
+    return repo;
+  };
+
+  const inside = <T>(dir: string, run: () => T): T => {
+    const before = process.cwd();
+    process.chdir(dir);
+    try {
+      return run();
+    } finally {
+      process.chdir(before);
+    }
+  };
+
+  const transforming = (file: string, source = `const a = <div css=@@( padding: 1em; )>x</div>;\n`) => {
+    const plugin = ramondaCss();
+    plugin.config({}, { mode: "development" });
+    const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+    try {
+      transform.call({}, source, file);
+      return "accepted";
+    } catch (error) {
+      return (error as Error).message;
+    }
+  };
+
+  test("the file's own package, and not the directory the command was run in", () => {
+    const repo = monorepo();
+
+    // Run from `admin`, which allows `em`. The file is `web`'s, which does not.
+    const said = inside(join(repo, "packages", "admin"), () => transforming(join(repo, "packages", "web", "Card.tsx")));
+
+    expect(said).toContain("px");
+  });
+
+  test("and the other package's file is accepted in the same process", () => {
+    const repo = monorepo();
+
+    const said = inside(join(repo, "packages", "web"), () => transforming(join(repo, "packages", "admin", "Card.tsx")));
+
+    expect(said).toBe("accepted");
+  });
+
+  /**
+   * The second half of the same finding: the settings were read once when the plugin was
+   * constructed, so a dev server kept enforcing what it booted with while the editor — which
+   * re-reads — had already moved on. One file, two tools, two answers.
+   */
+  test("a config edited while the dev server runs is picked up", () => {
+    const repo = monorepo();
+    const file = join(repo, "packages", "admin", "Card.tsx");
+    const plugin = ramondaCss();
+    plugin.config({}, { mode: "development" });
+    const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
+    const run = () => {
+      try {
+        transform.call({}, `const a = <div css=@@( padding: 1em; )>x</div>;\n`, file);
+        return "accepted";
+      } catch (error) {
+        return (error as Error).message;
+      }
+    };
+
+    expect(run()).toBe("accepted");
+    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
+
+    expect(run()).toContain("px");
   });
 });

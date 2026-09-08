@@ -657,6 +657,13 @@ export default (env: { production: boolean }) => ({
 Your editor reads it too — the language plugin transpiles it with the same TypeScript your project is
 checked with, so there is nothing to install and no build step to run first.
 
+**Which file governs a source file is decided by the source file**, not by where you ran the command:
+the nearest `ramonda.css.ts` above it wins, and the search stops at your repository's root. So a
+monorepo can keep one config at the root for everybody, and a package that wants stricter units puts
+its own beside its `package.json` — the editor, `ramonda-css lint` and your build all read the same
+one for the same file. Editing it takes effect on the next compile; a dev server does not need
+restarting.
+
 ## The names
 
 A class name says what its rule does. It is `r-`, a short spelling of the property, a `-`, and the

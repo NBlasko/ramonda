@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { RULE_IDS, nearest } from "./compiler/rules";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { dirname, join, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import type ts from "typescript";
 
 /**
@@ -33,11 +33,6 @@ export interface Config {
   readonly units?: readonly string[];
   /** A rule's severity, by id. `"off"` silences it; `"error"` is the default for every rule. */
   readonly rules?: Readonly<Record<string, "error" | "off">>;
-  /** How the formatter lays a block out. */
-  readonly format?: {
-    /** Spaces per level inside a block. Defaults to 2. */
-    readonly indent?: number;
-  };
 }
 
 /** What a config may be given, when it is a function rather than an object. */
@@ -78,7 +73,27 @@ export function environmentOf(production?: boolean): ConfigEnvironment {
 const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "layer"]);
 
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
-const KNOWN = new Set(["units", "rules", "format"]);
+const KNOWN = new Set(["units", "rules"]);
+
+/**
+ * Keys that were a setting and are not, with the sentence that says where the answer comes from now.
+ *
+ * `format: { indent }` was accepted, validated, and read by NOBODY — a review found it wired to
+ * nothing, so a project that set it was told nothing and got two spaces. Wiring it up would have
+ * been the wrong repair: `ramonda-css format` runs the project's own formatter and puts the block
+ * back at the indentation that tool chose, and how wide a level is has already been said to that
+ * tool. A second place to say it could only ever disagree with the first.
+ *
+ * Named rather than merely unknown, because somebody who wrote it was told it was a setting.
+ */
+const DECIDED_ELSEWHERE = new Map([
+  [
+    "format",
+    "how a block is laid out is your formatter's decision, not a setting here — `ramonda-css format` " +
+      "runs your own biome or prettier and puts the block back at the indentation it chose, one level " +
+      "in being as wide as it is everywhere else in the file",
+  ],
+]);
 
 /**
  * Walks up from `from` looking for the file. `undefined` when a project has none, which is fine.
@@ -140,20 +155,123 @@ export function readConfig(
   environment: ConfigEnvironment = {},
 ): Config {
   if (path === undefined) return {};
+  return load(path, textOf(path), typescript, environment);
+}
 
+/** A config that cannot be READ says so with its own name in the message, the same as one that throws. */
+function textOf(path: string): string {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    throw new Error(`${path} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * The settings that govern a FILE — one answer to the question three consumers each answered their
+ * own way.
+ *
+ * ## Why the file, and not a directory
+ *
+ * A review found one setting read from three roots: `check.ts` walked up from the tsconfig's
+ * directory, `vite.ts` and `esbuild.ts` from `process.cwd()`, and the editor from
+ * `host.getCurrentDirectory()`. In a monorepo those are three different files for one source file —
+ * so the units the editor squiggles against need not be the units the build enforces, and which one
+ * an author meets depends on where they typed a command. The ninth occurrence of the repository's
+ * recurring fault: one rule, many consumers, and nothing making them agree.
+ *
+ * The file being compiled is the only anchor that is a property of the work rather than of the
+ * shell, so it is the anchor. Every consumer passes the file it is holding.
+ *
+ * ## Why the cache is keyed on the config's own text
+ *
+ * The other half of the same finding: `vite.ts` and `esbuild.ts` read the config once when the
+ * plugin was constructed and never again, so a dev server kept compiling the settings it booted
+ * with while the editor — which re-reads per pass — had already moved on. One file, two tools, two
+ * answers, and the author is told the build agrees with the editor.
+ *
+ * Keyed on the TEXT, that cannot happen and there is no hook to remember to call: a changed config
+ * is a changed key, a config written after the process started is found by the same walk as any
+ * other, and a deleted one goes back to the empty config. What is paid per file is an `existsSync`
+ * walk and a read of a file measured in tens of lines; the transpile and the `new Function` — which
+ * are the cost — happen once per thing the config says.
+ *
+ * Measured, five directories deep, 2000 files: **39 µs a file** against **253 µs** for reading it
+ * afresh each time, and of those 39 the walk is 20 and the read 13. So the cache pays for itself six
+ * times over, and what is left is stat calls. Caching the WALK too would take most of the rest, and
+ * it is deliberately not done: a directory already asked about would never notice a config written
+ * into it, which is precisely the staleness this exists to remove.
+ *
+ * The environment is a FUNCTION for the same reason the read is lazy. Vite constructs a plugin
+ * before any hook runs and only says which build this is in `config`, so a reader that captured the
+ * answer when it was made would capture the one nobody had yet.
+ */
+export function configReader(
+  typescript: typeof ts,
+  environment: ConfigEnvironment | (() => ConfigEnvironment) = {},
+): (file: string) => Config {
+  /** By the config's path, holding what it said and the exact text and environment it said it for. */
+  const cache = new Map<string, { source: string; asked: string; config: Config }>();
+
+  return (file: string): Config => {
+    const path = findConfig(dirname(resolve(file)));
+    if (path === undefined) return EMPTY;
+
+    const source = textOf(path);
+    const environmentNow = typeof environment === "function" ? environment() : environment;
+    const asked = JSON.stringify(environmentNow);
+
+    const had = cache.get(path);
+    if (had !== undefined && had.source === source && had.asked === asked) return had.config;
+
+    // Not cached: a config that throws must throw for every file, not for the first one only.
+    const config = load(path, source, typescript, environmentNow);
+    cache.set(path, { source, asked, config });
+    return config;
+  };
+}
+
+/** One frozen object for every file with no config above it, so nobody can write into a shared answer. */
+const EMPTY: Config = Object.freeze({});
+
+/**
+ * The same read, given the text rather than fetching it — which is what lets {@link configReader}
+ * decide whether anything has changed before paying for a transpile.
+ */
+function load(path: string, source: string, typescript: typeof ts, environment: ConfigEnvironment): Config {
   let exported: unknown;
   try {
-    const javascript = typescript.transpileModule(readFileSync(path, "utf8"), {
+    const javascript = typescript.transpileModule(source, {
       compilerOptions: {
         module: typescript.ModuleKind.CommonJS,
         target: typescript.ScriptTarget.ES2022,
+        /**
+         * Without it, `import path from "node:path"` — which is how a default import is written and
+         * how every editor completes one — becomes `path_1.default` against a module that has no
+         * `default`, and the config dies on `Cannot read properties of undefined`. A review found
+         * it. The interop helper is emitted into the transpiled text, so nothing has to be
+         * available at runtime for it to work.
+         */
+        esModuleInterop: true,
       },
       fileName: path,
     }).outputText;
 
     const holder: { exports: Record<string, unknown> } = { exports: {} };
     const require = createRequire(path);
-    new Function("module", "exports", "require", javascript)(holder, holder.exports, require);
+    /**
+     * `__dirname` and `__filename` are handed over because this text IS CommonJS by the time it
+     * runs, and `new Function` supplies only what it is given. A config resolving a path against
+     * its own directory — a token list beside it, say — threw `__dirname is not defined`, which
+     * names the symptom and not one thing an author could act on.
+     */
+    new Function("module", "exports", "require", "__dirname", "__filename", javascript)(
+      holder,
+      holder.exports,
+      require,
+      dirname(path),
+      path,
+    );
     exported = holder.exports.default;
   } catch (error) {
     throw new Error(`${path} could not be read: ${error instanceof Error ? error.message : String(error)}`);
@@ -176,6 +294,10 @@ export function readConfig(
           `Two packages naming one block differently would emit two rules for it, with nothing to ` +
           `notice — see CONTRACT.md §3. Class names are chosen by the bundler plugin, per build.`,
       );
+    }
+    const elsewhere = DECIDED_ELSEWHERE.get(key);
+    if (elsewhere !== undefined) {
+      throw new Error(`${path} sets \`${key}\`, and ${elsewhere}.`);
     }
     if (!KNOWN.has(key)) {
       throw new Error(`${path} sets \`${key}\`, which is not a setting. It holds ${[...KNOWN].join(", ")}.`);
@@ -228,11 +350,6 @@ function validate(config: Record<string, unknown>, path: string): void {
         refuse(`sets \`${id}\` to ${describe(severity)}. A rule is "error" or "off".`);
       }
     }
-  }
-
-  const format = config.format;
-  if (format !== undefined && (typeof format !== "object" || format === null || Array.isArray(format))) {
-    refuse(`sets \`format\` to ${describe(format)}. It takes an object, like { indent: 2 }.`);
   }
 }
 

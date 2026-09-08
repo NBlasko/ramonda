@@ -235,3 +235,39 @@ describe("the filter", () => {
     expect(js).toBe(without);
   });
 });
+
+/**
+ * WHICH config the build enforces. A review found it read from `process.cwd()`, which is where a
+ * command was typed rather than where the source file lives — so in a monorepo the build and the
+ * editor could hold two different files for one source file. The file being loaded is the anchor
+ * now; see `configReader`.
+ */
+describe("which config a file is measured against", () => {
+  const monorepo = () => {
+    const repo = mkdtempSync(join(tmpdir(), "ramonda-esbuild-which-"));
+    roots.push(repo);
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
+    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px", "em"] };\n`);
+    const app = `const a = <div css=@@(\n  padding: 1em;\n)>x</div>;\nexport default a;\n`;
+    for (const name of ["web", "admin"]) writeFileSync(join(repo, "packages", name, "index.tsx"), app);
+    return repo;
+  };
+
+  test("the package the file is in, whatever the working directory holds", async () => {
+    const repo = monorepo();
+
+    await expect(build(repo, { entryPoints: [join(repo, "packages", "web", "index.tsx")] })).rejects.toMatchObject({
+      errors: [expect.objectContaining({ text: expect.stringContaining("px") })],
+    });
+  });
+
+  test("and the package next door, in the same run, is allowed its own units", async () => {
+    const repo = monorepo();
+
+    const { css } = outputs(await build(repo, { entryPoints: [join(repo, "packages", "admin", "index.tsx")] }));
+
+    expect(css).toContain("padding: 1em");
+  });
+});

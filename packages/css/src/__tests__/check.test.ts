@@ -695,3 +695,40 @@ describe("the type a block has", () => {
     expect(report.findings[0].message).toMatch(/style block/);
   });
 });
+
+/**
+ * WHICH config a file is checked against, which was one answer for a whole tsconfig.
+ *
+ * Reading it from beside the tsconfig was already better than reading it from the shell's
+ * directory, and it is still the wrong unit: one tsconfig in a monorepo names files in several
+ * packages, and a package's own `ramonda.css.ts` is the file the EDITOR reads for those files. Two
+ * tools, one source file, two sets of units — with the author told the build agrees. Anchored on
+ * the file, they cannot disagree. See `configReader`.
+ */
+describe("which config a file is checked against", () => {
+  const SOURCE = `const a = <div css=@@(\n  padding: 1em;\n)>x</div>;\nexport default a;\n`;
+
+  test("each package's own, inside one project", () => {
+    const report = check({
+      "web/ramonda.css.ts": `export default { units: ["px"] };\n`,
+      "web/Card.tsx": SOURCE,
+      "admin/ramonda.css.ts": `export default { units: ["px", "em"] };\n`,
+      "admin/Card.tsx": SOURCE,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].file).toMatch(/web[/\\]Card\.tsx$/);
+    expect(report.findings[0].message).toContain("px");
+  });
+
+  /** And the shared one above them still governs a package that has none of its own. */
+  test("the root's config, for a package that does not have one", () => {
+    const report = check({
+      "ramonda.css.ts": `export default { units: ["px"] };\n`,
+      "web/Card.tsx": SOURCE,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toContain("px");
+  });
+});

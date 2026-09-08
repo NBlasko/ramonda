@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
-import { environmentOf, findConfig, readConfig } from "./config";
+import { configReader, environmentOf } from "./config";
 import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
 import { Sheet } from "./compiler/sheet";
@@ -135,14 +135,18 @@ export function loaderFor(path: string): "tsx" | "ts" | "jsx" {
 export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPluginLike {
   const sheet = new Sheet();
   /**
-   * The project's own settings, read once when the plugin is created.
+   * The project's own settings, through the same reader the editor and `ramonda-check` use, with
+   * `typescript` — a peer dependency, so a project with a tsconfig has it. Node 24 can `require` a
+   * `.ts` file directly and that would be one import less, but it would be a SECOND way to read one
+   * config: the editor cannot use it, and two readers of one file is this repository's recurring
+   * fault.
    *
-   * Through the same `readConfig` the editor and `ramonda-check` use, with `typescript` — a peer
-   * dependency, so a project with a tsconfig has it. Node 24 can `require` a `.ts` file directly and
-   * that would be one import less, but it would be a SECOND way to read one config: the editor
-   * cannot use it, and two readers of one file is this repository's recurring fault.
+   * Anchored on the file being loaded rather than on `process.cwd()`, and re-read when its text
+   * changes rather than once here — both a review's findings, and both explained on
+   * {@link configReader}. esbuild is not told which build this is, so the environment is
+   * `NODE_ENV`'s answer, which is the convention its own users already set.
    */
-  const config = readConfig(findConfig(process.cwd()), ts, environmentOf());
+  const configFor = configReader(ts, environmentOf());
 
   return {
     name: "ramonda-css",
@@ -162,7 +166,12 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
 
         let result: ReturnType<typeof transform>;
         try {
-          result = transform(code, { filename: args.path, runtime: options.runtime, read: readModule, config });
+          result = transform(code, {
+            filename: args.path,
+            runtime: options.runtime,
+            read: readModule,
+            config: configFor(args.path),
+          });
         } catch (error) {
           if (!(error instanceof CssBlockError)) throw error;
           /**
