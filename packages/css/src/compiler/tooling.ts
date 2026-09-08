@@ -130,6 +130,9 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
 
 function restore(formatted: string, blocks: readonly { text: string; wrap: boolean }[], marker: string): string {
   let out = formatted;
+  // From the text as the FORMATTER left it, before any block goes back into it — a restored block's
+  // own body would otherwise be read as evidence of what the formatter chose.
+  const spaces = stepOf(formatted);
 
   for (const [index, block] of blocks.entries()) {
     const stands = `/\\*${marker}${index}\\*/ 0`;
@@ -145,12 +148,36 @@ function restore(formatted: string, blocks: readonly { text: string; wrap: boole
      */
     const lineStart = out.lastIndexOf("\n", found.index) + 1;
     const outer = /^[\t ]*/.exec(out.slice(lineStart, found.index))?.[0] ?? "";
-    const inner = outer + (outer.includes("\t") ? "\t" : "  ");
+    const inner = outer + (outer.includes("\t") ? "\t" : spaces);
 
     out = out.slice(0, found.index) + relaid(block.text, outer, inner) + out.slice(found.index + found[0].length);
   }
 
   return out;
+}
+
+/**
+ * How wide one level is, read off the file the formatter has just laid out.
+ *
+ * The narrowest indentation in it, because the shallowest indented line in a file is one level in.
+ * Two spaces when there is nothing to read — a file with no indented line at all, which is a block
+ * at the left margin.
+ *
+ * **The config used to have a `format: { indent }` for this, and nothing read it.** Wiring it up
+ * would have been the wrong repair: the project has already told biome or prettier how wide a level
+ * is, and a second place to say it can only disagree with the first. This asks the answer that is
+ * already in the file.
+ *
+ * A single space is not a level anywhere, and it is what a line inside a template literal or a
+ * wrapped comment can easily start with, so it is not read as one.
+ */
+function stepOf(text: string): string {
+  let narrowest = 0;
+  for (const line of text.split("\n")) {
+    const width = /^ +/.exec(line)?.[0].length ?? 0;
+    if (width >= 2 && (narrowest === 0 || width < narrowest)) narrowest = width;
+  }
+  return " ".repeat(narrowest === 0 ? 2 : narrowest);
 }
 
 /**

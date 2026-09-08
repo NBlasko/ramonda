@@ -491,3 +491,52 @@ describe("the space inside a hole's braces", () => {
     expect(twice).toBe(once);
   });
 });
+
+/**
+ * How far one level in is, which was a constant two spaces whatever the file did.
+ *
+ * The config had a `format: { indent }` for this and NOBODY READ IT — accepted, validated,
+ * documented in its own type, and wired to nothing. A review found it. Removing it is the fix
+ * rather than wiring it up, because this page's promise is that a block comes back "at the
+ * indentation the tool chose": the project already tells biome or prettier how wide a level is, and
+ * a second place to say it can only ever disagree with the first.
+ *
+ * So the step is read off the formatter's own output — the narrowest indentation in the file it
+ * just laid out — instead of being either guessed at or asked for twice.
+ */
+describe("how wide a level inside a block is", () => {
+  const identity = (text: string) => text;
+
+  test("four, in a file the formatter indents by four", () => {
+    const source =
+      "function a() {\n    const p = @@(\n    display: flex;\n    &:hover {\n    color: red;\n    }\n    );\n}\n";
+
+    expect(formatText(source, "X.tsx", identity)).toBe(
+      "function a() {\n    const p = @@(\n        display: flex;\n        &:hover {\n            color: red;\n        }\n    );\n}\n",
+    );
+  });
+
+  test("two, in a file it indents by two", () => {
+    const source = "function a() {\n  const p = @@(\n  display: flex;\n  &:hover {\n  color: red;\n  }\n  );\n}\n";
+
+    expect(formatText(source, "X.tsx", identity)).toBe(
+      "function a() {\n  const p = @@(\n    display: flex;\n    &:hover {\n      color: red;\n    }\n  );\n}\n",
+    );
+  });
+
+  /** A tabbed file keeps tabs — a block re-laid with spaces inside one is an edit that never settles. */
+  test("a tab, in a tabbed file", () => {
+    const source = "function a() {\n\tconst p = @@(\n\tdisplay: flex;\n\t);\n}\n";
+
+    expect(formatText(source, "X.tsx", identity)).toBe(
+      "function a() {\n\tconst p = @@(\n\t\tdisplay: flex;\n\t);\n}\n",
+    );
+  });
+
+  /** Nothing to read it off — a block at the left margin in a file with no indentation at all. */
+  test("two, when the file says nothing either way", () => {
+    const source = "const p = @@(\ndisplay: flex;\n);\n";
+
+    expect(formatText(source, "X.tsx", identity)).toBe("const p = @@(\n  display: flex;\n);\n");
+  });
+});
