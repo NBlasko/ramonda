@@ -1218,7 +1218,6 @@ function elsewhere<T extends { fileName: string; textSpan: ts.TextSpan; contextS
  * attached is worse than the story on its own.
  */
 
-
 /**
  * Encoded classification triples — `[start, length, kind]` — moved back to the author's file.
  *

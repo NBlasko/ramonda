@@ -1751,6 +1751,19 @@ describe("a registered property set to a value its syntax refuses", () => {
       ["a plain custom property nothing registered", `const s = @@( --angle: 12px; );\n`],
       ["a CSS-wide keyword, which every property takes", `${angle}const s = @@( {angle}: inherit; );\n`],
       ["a `var()`, whose value is not known here", `${angle}const s = @@( {angle}: var(--x); );\n`],
+      /**
+       * Five a review measured as FALSE REPORTS, which is the one outcome this rule may not produce.
+       */
+      // `!important` on a custom property is valid CSS and is how a variable is made to win.
+      ["a value with `!important`", `${angle}const s = @@( {angle}: 90deg !important; );\n`],
+      ["and a colour with it", `${colour}const s = @@( {accent}: red !important; );\n`],
+      // CSS keywords are ASCII case-insensitive; the escape set was matched by exact case.
+      ["a CSS-wide keyword in capitals", `${angle}const s = @@( {angle}: INHERIT; );\n`],
+      ["one in mixed case", `${angle}const s = @@( {angle}: Inherit; );\n`],
+      ["a `VAR()` in capitals, for the same reason", `${angle}const s = @@( {angle}: VAR(--x); );\n`],
+      // A `<number-token>` may carry an exponent — css-syntax-3 §4.3.12. `1e2px` is 100px.
+      ["a dimension in scientific notation", `${angle}const s = @@( {angle}: 1e2deg; );\n`],
+      ["a negative exponent", `${angle}const s = @@( {angle}: 1.5e-2deg; );\n`],
     ])("%s", (_what, source) => {
       expect(rules(source)).toEqual([]);
     });
@@ -1902,5 +1915,106 @@ describe("a property name holding whitespace", () => {
   /** One report for one fault: the name is not also run through the near-miss search. */
   test("and it is the only thing reported for that declaration", () => {
     expect(rules(`  font size: 12px;`)).toEqual(["property-not-a-name"]);
+  });
+});
+
+/**
+ * FIVE FALSE REPORTS a review measured, each on CSS that is valid.
+ *
+ * A missed fault here is a gap; a report on correct CSS is how a checker earns being switched off.
+ * So these are assertions of SILENCE, and each one failed before it was written.
+ */
+describe("valid CSS these rules must not report", () => {
+  /**
+   * A relative of a real media feature, not a typo of one.
+   *
+   * `typedInto` says a known name being a SUBSEQUENCE of what was written means somebody typed extra
+   * characters into it. True for `prefers-reduced-mErrorotion`; false for a whole dash-delimited
+   * segment, which is how CSS names a family. `video-` is exactly the six characters the length
+   * bound allowed, so the entire `video-*` family of Media Queries 5 came back as typos of the
+   * unprefixed features — and `min-video-width` as a typo of `min-width`.
+   *
+   * The bound cannot be tuned out of this: the extra text IS six characters. What separates them is
+   * that a family relative inserts whole segments and a typo does not.
+   */
+  test.each([
+    ["video-color-gamut", "  @media (video-color-gamut: p3) { color: red; }"],
+    ["video-width", "  @media (video-width: 500px) { color: red; }"],
+    ["video-height", "  @media (video-height: 500px) { color: red; }"],
+    ["video-resolution", "  @media (video-resolution: 2dppx) { color: red; }"],
+    ["min-video-width", "  @media (min-video-width: 500px) { color: red; }"],
+    ["max-video-width", "  @media (max-video-width: 500px) { color: red; }"],
+    ["a suffix, which is the same argument", "  @media (prefers-reduced-motion-strength: 1) { color: red; }"],
+    ["a prefix CSS has not invented yet", "  @media (foo-width: 500px) { color: red; }"],
+  ])("%s is a relative of a feature, not a typo of one", (_what, css) => {
+    expect(rules(css)).toEqual([]);
+  });
+
+  /** And a real typo is still reported, which is what makes the narrowing a narrowing. */
+  test.each([
+    ["characters typed into the middle", "  @media (prefers-reduced-mErrorotion: reduce) { color: red; }"],
+    ["a near miss", "  @media (min-widht: 40rem) { color: red; }"],
+    ["another", "  @media (prefers-color-schme: dark) { color: red; }"],
+  ])("%s is still reported", (_what, css) => {
+    expect(rules(css)).toEqual(["unknown-media-feature"]);
+  });
+
+  /**
+   * A unit inside a STRING or inside `url()`, where there is no unit at all.
+   *
+   * `words()` steps over both and has since it was written; these two rules walked the raw text.
+   * There is no config an author could write to make `content: "100%"` correct — the text is a CSS
+   * string, and `url(icons/16em.svg)` is a filename.
+   */
+  describe("a unit that is not a unit because it is inside something", () => {
+    const withUnits = (css: string) => {
+      const source = `<div css=@@(\n${css}\n)>x</div>`;
+      const [site] = findBlocks(source);
+      const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+      return checkBlock(read.block, { config: { units: ["px", "rem"] } }).map((one) => one.rule);
+    };
+
+    test.each([
+      ["a percentage in a string", `  content: "100%";`],
+      ["a length in a sentence", `  content: "≈ 50em wide";`],
+      ["a font name holding one", `  font-family: "Foo 12pt", sans-serif;`],
+      ["a custom property holding a string", `  --label: "12em";`],
+      ["a filename in an unquoted url", `  background-image: url(icons/16em.svg);`],
+      ["a filename in a quoted one", `  background-image: url("photos/2in-wide.jpg");`],
+      ["a single-quoted string", `  content: '3rd';`],
+      ["a font format", `  --src: url(a.woff2) format("woff2");`],
+    ])("%s is silent", (_what, css) => {
+      expect(withUnits(css)).toEqual([]);
+    });
+
+    /** And a real one beside a string is still read, so the skip is a skip and not a bail-out. */
+    test("a banned unit after a string is still reported", () => {
+      expect(withUnits(`  --a: "12em" 4em;`)).toEqual(["unit-not-allowed"]);
+    });
+
+    test("and a unit inside an ordinary call still is too", () => {
+      expect(withUnits(`  width: calc(100% - 4em);`)).toEqual(["unit-not-allowed", "unit-not-allowed"]);
+    });
+
+    test("`unknown-unit` has the same blind spot and the same fix", () => {
+      expect(rules(`  content: "3rd";`)).toEqual([]);
+      expect(rules(`  background-image: url(a-16pxx.svg);`)).toEqual([]);
+      expect(rules(`  padding: 10pxx;`)).toEqual(["unknown-unit"]);
+    });
+  });
+
+  /**
+   * `<custom-ident>` refusing a dashed ident. Per css-values-4 a `<dashed-ident>` IS a
+   * `<custom-ident>`, with the extra restriction that it starts with two dashes — so `--x` is one.
+   * The generator's own comment reasons correctly about exactly this; the checker's matcher did not.
+   */
+  test("a dashed ident where a custom ident was registered", () => {
+    const source =
+      `const t = @@property( syntax: "<custom-ident>"; inherits: false; initial-value: --x; );\n` +
+      `const s = @@( color: red; );\n`;
+    const sites = findBlocks(source);
+    const read = readBlock(source, sites[0].open, "C.tsx", { tolerant: true });
+
+    expect(checkBlock(read.block, { at: sites[0].at }).map((one) => one.rule)).toEqual([]);
   });
 });

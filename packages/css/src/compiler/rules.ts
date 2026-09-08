@@ -350,10 +350,23 @@ function setByAnotherName(block: Block, references: ReadonlyMap<string, string>,
  *
  * What survives all of that is the case that actually happens: a value of visibly the wrong SHAPE.
  */
-const A_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)$/;
-const A_DIMENSION = /^[+-]?((?:\d+\.?\d*|\.\d+))([a-z%]+)$/i;
+/**
+ * A number, and it may carry an EXPONENT — css-syntax-3 §4.3.12, so `1e3` is a `<number>` and
+ * `1e2px` is `100px`. A review found both reported: the matchers could not express the form at all,
+ * and `unknown-unit` said `e` was not a unit on top of it.
+ */
+const DIGITS = "[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?";
+const A_NUMBER = new RegExp(`^${DIGITS}$`);
+const A_DIMENSION = new RegExp(`^(${DIGITS})([a-z%]+)$`, "i");
 const A_HEX = /^#[0-9a-f]{3,8}$/i;
-const AN_IDENT = /^-?[a-z_][\w-]*$/i;
+/**
+ * An identifier, and a `<dashed-ident>` is one.
+ *
+ * Per css-values-4 a `<dashed-ident>` IS a `<custom-ident>` with the extra restriction that it starts
+ * with two dashes — so `--x` is a valid `<custom-ident>` and was reported as not being one. The
+ * generator reasons correctly about exactly this production; this matcher did not.
+ */
+const AN_IDENT = /^--?[a-z_][\w-]*$|^-?[a-z_][\w-]*$/i;
 const A_CALL = /^[a-z-]+\(/i;
 
 /**
@@ -450,6 +463,15 @@ function initialValueAndSyntax(block: Block, findings: Finding[]): void {
   });
 }
 
+/** Whether `known`'s dash-delimited segments appear, in order, among `parts`. */
+function segmentsOf(known: string, parts: readonly string[]): boolean {
+  let at = 0;
+  for (const part of parts) {
+    if (part === known.split("-")[at]) at++;
+  }
+  return at === known.split("-").length;
+}
+
 /**
  * A known feature with characters typed INTO it, which edit distance cannot safely reach.
  *
@@ -460,15 +482,36 @@ function initialValueAndSyntax(block: Block, findings: Finding[]): void {
  *
  * Subsequence can. A known name being a subsequence of what was written means somebody typed extra
  * characters into a real name; a genuinely new feature does not contain an old one's letters in
- * order. The length bound is what keeps a longer relative of a real feature out — a future
- * `prefers-reduced-motion-strength` is nine longer and stays silent, and this typo is six.
+ * order. The length bound keeps a longer relative out — a future `prefers-reduced-motion-strength`
+ * is nine longer and stays silent, and this typo is six.
+ *
+ * **And the length bound was not enough, which a review measured.** `video-` is exactly six, and
+ * every `video-`-prefixed feature Media Queries 5 defines is its unprefixed relative with a whole
+ * segment in front — so the entire family came back as typos, `min-video-width` as a typo of
+ * `min-width` among them. No bound can separate those: the extra text really is six characters.
+ *
+ * What separates them is WHERE the extra characters are. CSS names a family by adding whole
+ * dash-delimited segments — `device-width`, `min-width`, `video-width`, `prefers-reduced-motion` —
+ * and a typo does not land on segment boundaries. So the subsequence is asked of the SEGMENTS as
+ * well: if the known name's segments are a subsequence of the written name's, this is a relative and
+ * nothing is said. `prefers-reduced-mErrorotion` still reports, because its last segment is a typo
+ * of a segment rather than an extra one.
+ *
+ * That is also the safer direction for a feature CSS invents after this list was generated: an
+ * unknown feature is `<general-enclosed>`, legal CSS that never matches, and reporting one as a typo
+ * is the false report this rule is shaped to avoid.
  */
 const INSERTED = 6;
 
 function typedInto(written: string): string | undefined {
+  const parts = written.split("-");
+
   for (const known of MEDIA_FEATURES) {
     const extra = written.length - known.length;
     if (extra <= 0 || extra > INSERTED) continue;
+
+    // A whole segment added is a family, not a slip — see the note above.
+    if (segmentsOf(known, parts)) continue;
 
     let at = 0;
     for (const character of written) {
@@ -512,13 +555,24 @@ function againstRegisteredSyntax(block: Block, syntaxes: ReadonlyMap<string, str
         .map((part) => (part.kind === "text" ? part.text : ""))
         .join("")
         .trim();
-      // A `var()` is a value this cannot see, and a CSS-wide keyword every property takes.
-      if (value === "" || GLOBAL.has(value) || /(^|[^\w-])var\(/.test(value)) continue;
+      /**
+       * `!important` is not part of the value, and on a custom property it is ordinary CSS — it is
+       * how a variable is made to win. A review measured `{angle}: 90deg !important` reported as a
+       * value `<angle>` does not accept, because the flag went into the matcher with the value.
+       */
+      const written = value.replace(/\s*!\s*important\s*$/i, "");
+      /**
+       * A CSS-wide keyword and `var()`, both asked CASE-INSENSITIVELY, because CSS keywords and
+       * function names are — css-values-4 §Textual Data Types. `INHERIT` was reported, and the
+       * `var(` escape was matched with no `i` while `variableReads` beside it explains at length why
+       * it matches `var` case-insensitively. One question, two answers, in one file.
+       */
+      if (written === "" || GLOBAL.has(written.toLowerCase()) || /(^|[^\w-])var\(/i.test(written)) continue;
 
       const components = syntax.split("|").map((one) => one.trim());
       if (components.some((one) => /[+#]$/.test(one) || (one.startsWith("<") && ACCEPTS[one] === undefined))) continue;
 
-      const accepted = components.some((one) => (one.startsWith("<") ? ACCEPTS[one](value) : one === value));
+      const accepted = components.some((one) => (one.startsWith("<") ? ACCEPTS[one](written) : one === written));
       if (accepted) continue;
 
       findings.push({
@@ -526,7 +580,7 @@ function againstRegisteredSyntax(block: Block, syntaxes: ReadonlyMap<string, str
         at: item.valueAt ?? item.at ?? 0,
         length: value.length,
         message:
-          `this property is registered as \`${syntax}\` and does not accept \`${value}\` — measured, the ` +
+          `this property is registered as \`${syntax}\` and does not accept \`${written}\` — measured, the ` +
           `browser keeps the \`initial-value\` instead and says nothing, so the element shows the default.`,
       });
     }
@@ -1346,6 +1400,74 @@ function startsWithSpace(text: string): boolean {
 const KNOWN_UNITS = new Set(UNITS);
 
 /**
+ * A number and the letters against it, which is the shape both unit rules look for.
+ *
+ * The EXPONENT is part of the number — `1e2px` is `100px`, css-syntax-3 §4.3.12 — and without it
+ * the letters matched were `e`, so a review measured *`e` is not a CSS unit* on valid CSS.
+ *
+ * And the unit may not be followed by a word character, which is what keeps a bare `2e3` out: with
+ * the exponent optional, the engine would otherwise back off to a unit of `e` and leave the `3`.
+ */
+const A_UNIT = /(?<![\w.#-])\d*\.?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/g;
+
+/**
+ * Every unit written in a value, with the two places one is not a unit stepped over.
+ *
+ * **One walk, because there were two and a review found the same fault in both.** `unit-not-allowed`
+ * and `unknown-unit` each read a text part raw, so:
+ *
+ *     content: "100%"                  ->  `%` is a CSS unit this project does not use
+ *     content: "3rd"                   ->  `rd` is not a CSS unit. Did you mean `rad`?
+ *     background-image: url(16em.svg)  ->  `em` is a CSS unit this project does not use
+ *
+ * None of those holds a unit, and there is no config an author could write to make them correct —
+ * the text is a CSS string or a filename. `words()` has stepped over both since it was written; this
+ * is the same knowledge, in the one place both rules now ask.
+ *
+ * A STRING is its own grammar: a `<string-token>`'s contents are text, not values. A `<url-token>`
+ * is too — `url(a-16em.svg)` is a path, and CSS does not parse values inside one. An ordinary call
+ * is NOT skipped, because `calc(100% - 4em)` and `rgb(0 0 0 / 50%)` hold real units in real value
+ * positions.
+ */
+function* unitsIn(text: string, at: number): Generator<{ unit: string; at: number; length: number }> {
+  /** The stretches that are value text — outside every string and every `url( … )`. */
+  const stretches: { text: string; at: number }[] = [];
+  let from = 0;
+  let index = 0;
+
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+
+    if (code === 34 || code === 39) {
+      stretches.push({ text: text.slice(from, index), at: from });
+      index = endOfString(text, index) + 1;
+      from = index;
+      continue;
+    }
+    // `url(`, matched case-insensitively because CSS function names are — and the closing paren is
+    // found by the same scanner a value's own calls use.
+    if ((code === 117 || code === 85) && /^url\s*\(/i.test(text.slice(index))) {
+      stretches.push({ text: text.slice(from, index), at: from });
+      index = endOfCall(text, text.indexOf("(", index)) + 1;
+      from = index;
+      continue;
+    }
+    index++;
+  }
+  stretches.push({ text: text.slice(from), at: from });
+
+  for (const stretch of stretches) {
+    for (const found of stretch.text.matchAll(A_UNIT)) {
+      yield {
+        unit: found[1],
+        at: at + stretch.at + found.index + found[0].length - found[1].length,
+        length: found[1].length,
+      };
+    }
+  }
+}
+
+/**
  * A unit CSS has and this project does not.
  *
  * The one rule here that is not about CSS at all. `em` is valid everywhere and a team may still have
@@ -1369,16 +1491,16 @@ function unitNotAllowed(block: Block, allowed: readonly string[], findings: Find
       for (const part of item.value) {
         if (part.kind !== "text" || part.at === undefined) continue;
 
-        for (const found of part.text.matchAll(/(?<![\w.#-])\d*\.?\d+([a-zA-Z%]+)/g)) {
-          const unit = found[1].toLowerCase();
+        for (const found of unitsIn(part.text, part.at)) {
+          const unit = found.unit.toLowerCase();
           if (permitted.has(unit) || !KNOWN_UNITS.has(unit)) continue;
 
           findings.push({
             rule: "unit-not-allowed",
-            at: part.at + found.index + found[0].length - found[1].length,
-            length: found[1].length,
+            at: found.at,
+            length: found.length,
             message:
-              `\`${found[1]}\` is a CSS unit this project does not use. \`ramonda.css.ts\` allows ` +
+              `\`${found.unit}\` is a CSS unit this project does not use. \`ramonda.css.ts\` allows ` +
               `${[...permitted].sort().join(", ")}.`,
           });
         }
@@ -1406,17 +1528,16 @@ function unknownUnit(item: Declaration, findings: Finding[]): void {
   for (const part of item.value) {
     if (part.kind !== "text" || part.at === undefined) continue;
 
-    for (const found of part.text.matchAll(/(?<![\w.#-])\d*\.?\d+([a-zA-Z%]+)/g)) {
-      const unit = found[1].toLowerCase();
+    for (const found of unitsIn(part.text, part.at)) {
+      const unit = found.unit.toLowerCase();
       if (KNOWN_UNITS.has(unit)) continue;
 
       const meant = nearest(unit, UNITS as string[]);
-      const at = part.at + found.index + found[0].length - found[1].length;
       findings.push({
         rule: "unknown-unit",
-        at,
-        length: found[1].length,
-        message: `\`${found[1]}\` is not a CSS unit.` + (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
+        at: found.at,
+        length: found.length,
+        message: `\`${found.unit}\` is not a CSS unit.` + (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
       });
     }
   }
@@ -1504,10 +1625,13 @@ interface Word {
  * `STRING_ALLOWED` holds the properties reaching `<string>` anywhere, and the ones whose grammar
  * nothing here can decide. A property this cannot judge is one it says nothing about.
  *
- * **Only at the top level.** `url("a.png")`, `local("Brand")` and a `var()` fallback put a string
- * inside a call, where it belongs to that function's grammar. Measured with the depth ignored:
- * `background-image: url("a.png")` — as ordinary as CSS gets — is reported, which is how a checker
- * earns being switched off.
+ * **Only at the top level, and that guard is the ONLY thing holding `url()` up.** A review measured
+ * what the comment here used to imply: `STRING_ALLOWED` does NOT contain the `<url>` properties.
+ * `mdn-data` gives `<url>` no grammar and the generator's walk cannot follow a functional reference
+ * like `<image-set()>`, so `background-image` and about twenty relatives are absent from the set.
+ * Measured with the depth ignored, `background-image: url("a.png")` — as ordinary as CSS gets — is
+ * reported, which is how a checker earns being switched off. So this is not the second of two
+ * defences; it is the one.
  *
  * One report per declaration. Two quoted words are one mistake.
  */

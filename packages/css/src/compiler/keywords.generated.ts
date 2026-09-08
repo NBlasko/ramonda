@@ -447,10 +447,15 @@ export const PROPERTY_NAMED: Readonly<Record<string, string>> = {
  * offered the word by the editor and wrote the quotes themselves.
  *
  * A property is here when its grammar reaches `<string>` anywhere — `content`, `font-family`,
- * `quotes`, `grid-template-areas`, and every property admitting a `<url>`, since `url("a.png")`
- * holds one — or when its grammar reaches something nothing here can judge. The second half is not a
- * nicety: this rule reports what the author wrote, so being wrong means telling somebody to delete
- * quotes that belonged there.
+ * `quotes`, `grid-template-areas` — or when its grammar reaches something nothing here can judge.
+ * The second half is not a nicety: this rule reports what the author wrote, so being wrong means
+ * telling somebody to delete quotes that belonged there.
+ *
+ * **The `<url>` properties are NOT here**, which a review measured and which matters to anybody
+ * touching the rule: `mdn-data` gives `<url>` no grammar and the walk cannot follow a functional
+ * reference like `<image-set()>`, so `background-image` and about twenty relatives are absent. What
+ * keeps `url("a.png")` from being reported is the rule's DEPTH GUARD, and nothing else. Checked
+ * rather than assumed: none of the types this walk drops can hold a top-level string.
  */
 export const STRING_ALLOWED: readonly string[] = ["animation","animation-name","color-scheme","container","container-name","content","counter-increment","counter-reset","counter-set","d","font","font-family","font-feature-settings","font-language-override","font-variant","font-variant-alternates","font-variation-settings","grid","grid-area","grid-column","grid-column-end","grid-column-start","grid-row","grid-row-end","grid-row-start","grid-template","grid-template-areas","grid-template-columns","grid-template-rows","hyphenate-character","list-style","list-style-type","page","quotes","text-emphasis","text-emphasis-style","text-overflow","transition","transition-property","view-transition-class","view-transition-name","will-change"];
 

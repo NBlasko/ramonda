@@ -212,10 +212,19 @@ function scan(name, from) {
   /**
    * Whether the grammar reaches `<string>` ANYWHERE, including inside a function it admits.
    *
-   * The question `string-not-allowed` asks, and it has to be asked of the whole walk rather than of
-   * the top level: `background-image` takes no string of its own and `url("a.png")` is one, so a
-   * property whose grammar reaches a `<url>` reaches a string. Answering it any more narrowly would
-   * be reporting correct CSS, which is the one outcome that rule may not produce.
+   * The question `string-not-allowed` asks: does this property's grammar reach a `<string>` anywhere.
+   *
+   * **It does NOT reach the `<url>` properties, and a review measured that.** `<url>` has no entry
+   * in `syntaxes.json`, so the walk drops it silently, and a functional reference like
+   * `<image-set()>` cannot be matched by the reference regex at all — which is the one path that
+   * would have made `background-image` stringy, through `<image-set-option>`. So
+   * `background-image`, `background`, `cursor`, `mask-image` and about twenty more are absent here.
+   *
+   * That is not a false report waiting to happen, and it was checked rather than assumed: every type
+   * this walk drops across all 509 non-allowed properties is either parenthesised by definition or
+   * not textual, so none of them can hold a TOP-LEVEL string. What protects `url("a.png")` is the
+   * rule's own depth guard, and it is the ONLY thing that protects it. Anybody relaxing that guard on
+   * the strength of this list reintroduces the exact report the rule was measured against.
    */
   let stringy = false;
   const seen = new Set();
@@ -1172,10 +1181,15 @@ ${propertyNamedRows.join("\n")}
  * offered the word by the editor and wrote the quotes themselves.
  *
  * A property is here when its grammar reaches \`<string>\` anywhere — \`content\`, \`font-family\`,
- * \`quotes\`, \`grid-template-areas\`, and every property admitting a \`<url>\`, since \`url("a.png")\`
- * holds one — or when its grammar reaches something nothing here can judge. The second half is not a
- * nicety: this rule reports what the author wrote, so being wrong means telling somebody to delete
- * quotes that belonged there.
+ * \`quotes\`, \`grid-template-areas\` — or when its grammar reaches something nothing here can judge.
+ * The second half is not a nicety: this rule reports what the author wrote, so being wrong means
+ * telling somebody to delete quotes that belonged there.
+ *
+ * **The \`<url>\` properties are NOT here**, which a review measured and which matters to anybody
+ * touching the rule: \`mdn-data\` gives \`<url>\` no grammar and the walk cannot follow a functional
+ * reference like \`<image-set()>\`, so \`background-image\` and about twenty relatives are absent. What
+ * keeps \`url("a.png")\` from being reported is the rule's DEPTH GUARD, and nothing else. Checked
+ * rather than assumed: none of the types this walk drops can hold a top-level string.
  */
 export const STRING_ALLOWED: readonly string[] = ${JSON.stringify(stringAllowed)};
 
