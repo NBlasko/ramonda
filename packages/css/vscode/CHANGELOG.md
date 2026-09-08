@@ -1,19 +1,20 @@
-# Ramonda CSS blocks
+# Ramonda CSS
 
 ## 0.1.1
 
-- The readme said *not published yet* on the page of a published extension, and pointed at a package
-  that is not on npm without saying so. What works on its own — the colours — is now said plainly,
-  and so is what waits for `@ramonda/css`.
+- Rewrote the readme. It now says up front what works without anything else installed, and what
+  needs `@ramonda/css` in the project.
 
 ## 0.1.0
 
-The first published version. Everything below has been in the repository and installed by hand.
+First release.
 
-- **Syntax colouring** for `@@( … )` blocks, in every position one can be written: a bare JSX
+- **Syntax colouring** for `@@( … )` style blocks, in each position one can be written: a bare JSX
   attribute, `css={@@( … )}`, and a plain value. CSS is coloured as CSS, a `{ … }` hole as
-  TypeScript, and `@@if ({ … })` and `...{ … }` as this language's own.
-- **Diagnostics** from `@ramonda/css`'s own rules, under the character rather than at the block —
-  the same rules the build runs, so the editor and the build never disagree.
-- **Formatting** of the CSS inside a block, through the package's formatter.
+  TypeScript, and `@@if ({ … })` and `...{ … }` as the block language's own.
+- **Formatting** of the CSS inside a block, through the project's own `ramonda-css`.
+- **Diagnostics** from the same rules the build runs, reported under the character rather than on
+  the whole block.
 - **Completions** for property names and values inside a block, and TypeScript's own inside a hole.
+
+Formatting, diagnostics and completions need `@ramonda/css` in the project.
