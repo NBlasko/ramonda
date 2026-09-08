@@ -62,14 +62,15 @@ export interface Placeheld {
 
 export interface PlaceholdOptions {
   /**
-   * What stands in for a block, given its number. The default is a comment and a zero, which is what
-   * a formatter run over the whole file needs: it parses, it survives, and `restore` finds it again.
+   * What stands in for a block, given its number and whether the block spans lines. The default is
+   * a comment and a zero for a one-line block, and a template literal holding a newline for one
+   * that spans lines — see `placehold` for why the shape has to carry that much.
    *
    * A caller that puts the block back ITSELF wants something else. Prettier is the one that does —
    * it has no hook that sees the printed text, so its plugin recognises the placeholder as a NODE
    * and prints the block in its place, which needs a node rather than a comment on one.
    */
-  stands?(index: number): string;
+  stands?(index: number, multiline: boolean): string;
   /**
    * Whether a bare JSX attribute keeps the braces the placeholder needs.
    *
@@ -91,8 +92,30 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
   if (sites.length === 0) return undefined;
 
   const marker = markerFor(source);
-  const stands = options.stands ?? ((index: number) => `/*${marker}${index}*/ 0`);
-  const blocks: { text: string; block: string; wrap: boolean }[] = [];
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  /**
+   * A placeholder has to carry the block's SHAPE, not only its place.
+   *
+   * **Reported by a user**: `className="panel"` and `css={@@( … )}` could not be kept one per line —
+   * "kao da nas eteti tera ostale da idu inline". They were right, and it was ours. The formatter
+   * never sees a block, it sees this; and a comment and a zero is fourteen characters, so an opening
+   * element that is multi-line in the author's file measured as fitting on one. biome joined the
+   * attributes exactly as it should have, and the block was expanded again afterwards, past a width
+   * nobody re-measured. An element carrying a block and one other attribute is the ordinary case.
+   *
+   * So a block that spans lines is placeheld by something that spans lines. A template literal,
+   * because its contents are the one thing a formatter will not re-lay: measured against the two
+   * alternatives, a multi-line comment and a padded one both make biome break the braces open —
+   * `css={` on its own line, which the author did not write either.
+   *
+   * A ONE-LINE block keeps the short placeholder. `css=@@( display: flex; )` beside another
+   * attribute is a line the author chose, and whether it still fits is the formatter's own call.
+   */
+  const stands =
+    options.stands ??
+    ((index: number, multiline: boolean) =>
+      multiline ? `\`${marker}${index}${newline}\`` : `/*${marker}${index}*/ 0`);
+  const blocks: { text: string; block: string; wrap: boolean; held: string }[] = [];
   let text = "";
   let cursor = 0;
 
@@ -111,11 +134,12 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
      */
     const wrap = site.wrap && options.braces !== false;
     const from = site.start;
-    const held = stands(blocks.length);
+    const block = source.slice(site.opening, end);
+    const held = stands(blocks.length, block.includes("\n"));
 
     text += source.slice(cursor, from);
     text += wrap ? `${site.name}={${held}}` : held;
-    blocks.push({ text: source.slice(from, end), block: source.slice(site.opening, end), wrap });
+    blocks.push({ text: source.slice(from, end), block, wrap, held });
     cursor = end;
   }
 
@@ -124,18 +148,24 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
   return {
     text,
     blocks: blocks.map((held) => held.block),
-    restore: (formatted) => restore(formatted, blocks, marker),
+    restore: (formatted) => restore(formatted, blocks),
   };
 }
 
-function restore(formatted: string, blocks: readonly { text: string; wrap: boolean }[], marker: string): string {
+function restore(formatted: string, blocks: readonly { text: string; wrap: boolean; held: string }[]): string {
   let out = formatted;
   // From the text as the FORMATTER left it, before any block goes back into it — a restored block's
   // own body would otherwise be read as evidence of what the formatter chose.
   const spaces = stepOf(formatted);
 
-  for (const [index, block] of blocks.entries()) {
-    const stands = `/\\*${marker}${index}\\*/ 0`;
+  for (const block of blocks) {
+    /**
+     * Built from what was actually emitted rather than from a second spelling of it — the caller may
+     * have supplied its own `stands`, and two descriptions of one placeholder is this repository's
+     * recurring fault in miniature. A newline is matched either way it survives the formatter, which
+     * may have written the file back with the other ending.
+     */
+    const stands = block.held.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\r?\n/g, "\\r?\\n");
     const placeholder = new RegExp(block.wrap ? `[\\w:$-]+=\\{${stands}\\}` : stands);
     const found = placeholder.exec(out);
     if (found === null) continue;

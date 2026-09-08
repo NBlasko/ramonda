@@ -132,15 +132,23 @@ describe("--stdin-file-path", () => {
     }
   };
 
+  /**
+   * **The element opens out, and that is the fix rather than a cost of it.** A block that spans
+   * lines is placeheld by something that spans lines — see `compiler/tooling.ts` — so biome measures
+   * the opening element as the multi-line thing it is, instead of as fourteen characters.
+   *
+   * Measured against the reference: `prettier`, with this package's own plugin, prints this exact
+   * file exactly this way, character for character. The two formatters agreed on nothing here
+   * before, and the file they disagreed about was the ordinary one.
+   */
   test("formats the text it was given and writes nothing else", () => {
     const source = `const a = <div   css={@@(\n  display: flex;\n)}>x</div>;\nexport default a;\n`;
     const { output, status } = through(source);
 
     expect(status).toBe(0);
-    // biome's own work on the JavaScript around the block.
-    expect(output).toContain(`<div css={@@(`);
-    // And the block came back whole, at the indentation it went in with.
-    expect(output).toContain(`  display: flex;\n)}`);
+    expect(output).toBe(
+      `const a = (\n  <div\n    css={@@(\n      display: flex;\n    )}\n  >\n    x\n  </div>\n);\nexport default a;\n`,
+    );
   });
 
   test("a file with no block goes straight through the tool", () => {

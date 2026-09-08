@@ -104,7 +104,12 @@ describe("formatting", () => {
   test("a formatter that dropped the placeholder does not take the block with it", () => {
     const path = file("Card.tsx", STYLED);
 
-    const { text } = formatFile(path, (t) => t.replace(/\w+=\{\/\*[^*]*\*\/ 0\}/, ""), { write: false });
+    // Either placeholder shape: a comment and a zero for a one-line block, a template literal for
+    // one that spans lines. A test that knew only the first stopped dropping anything the day the
+    // second arrived, and passed by having nothing to recover from.
+    const drop = (t: string) => t.replace(/\w+=\{(?:\/\*[^*]*\*\/ 0|`[^`]*`)\}/, "");
+
+    const { text } = formatFile(path, drop, { write: false });
 
     expect(text).not.toContain("@(");
     expect(text).toContain("const after = 2;");

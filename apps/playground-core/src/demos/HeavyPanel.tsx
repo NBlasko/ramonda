@@ -19,10 +19,13 @@ export default class HeavyPanel extends Component<{ title?: string }> {
   render() {
     return (
       <div>
-        <div className="heavy" css={@@(
-          outline: 2px dashed #7c3aed;
-          outline-offset: 4px;
-        )}>
+        <div
+          className="heavy"
+          css={@@(
+            outline: 2px dashed #7c3aed;
+            outline-offset: 4px;
+          )}
+        >
           <p className="label">loaded module</p>
           <strong>{this.props.title ?? "HeavyPanel"}</strong>
           <p className="muted small">A real component with its own state — it was not part of the initial bundle.</p>

@@ -256,18 +256,21 @@ export class StyleBlock extends Component {
     const inset = `${this.weight + 8}px`;
 
     return (
-      <div className="panel" css={@@(
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding: 4px 0;
-        border-left: {border} solid #ff0055;
-        padding-left: {inset};
-        transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
-        &:hover {
-          border-left-color: #00b37e;
-        }
-      )}>
+      <div
+        className="panel"
+        css={@@(
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 4px 0;
+          border-left: {border} solid #ff0055;
+          padding-left: {inset};
+          transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
+          &:hover {
+            border-left-color: #00b37e;
+          }
+        )}
+      >
         <p className="label">one class, one custom property per hole</p>
         <button onclick={this.thicker}>border {this.weight}px — thicker</button>
       </div>
@@ -347,37 +350,47 @@ export class StyleBlockComposed extends Component {
 
   render() {
     return (
-      <div className="panel" css={@@(
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        padding: 4px 0;
-      )}>
-        <p className="label" css={@@(
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: #9a9a9a;
-        )}>
+      <div
+        className="panel"
+        css={@@(
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 4px 0;
+        )}
+      >
+        <p
+          className="label"
+          css={@@(
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #9a9a9a;
+          )}
+        >
           composition — every tag has its own block
         </p>
 
-        <div css={@@(
-          ...{CONTROL};
-          ...{TONES[this.tone]};
+        <div
+          css={@@(
+            ...{CONTROL};
+            ...{TONES[this.tone]};
 
-          @@if ({this.off}) {
-            opacity: 0.5;
-            cursor: none;
+            @@if ({this.off}) {
+              opacity: 0.5;
+              cursor: none;
+
+              @@if ({this.roomy}) {
+                color: yellow;
+              }
+            }
 
             @@if ({this.roomy}) {
-              color: yellow;
+              padding: 14px 20px;
             }
-          }
-
-          @@if ({this.roomy}) {
-            padding: 14px 20px;
-          }
-        )}>tone: {this.tone}</div>
+          )}
+        >
+          tone: {this.tone}
+        </div>
 
         <button onclick={this.flip}>flip the tone</button>
 
@@ -443,69 +456,73 @@ export class StyleBlockNested extends Component {
     const accent = this.urgent ? "#ff0055" : "#10b981";
 
     return (
-      <div className="panel" data-urgent={String(this.urgent)} css={@@(
-        /* One hole, read four times below — see the note above. */
-        --accent: {accent};
+      <div
+        className="panel"
+        data-urgent={String(this.urgent)}
+        css={@@(
+          /* One hole, read four times below — see the note above. */
+          --accent: {accent};
 
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 4px 12px;
-        align-items: center;
-        padding: 12px;
-        border: 1px solid #2a2a2a;
-        border-radius: 8px;
-        border-left: 4px solid var(--accent);
-        transition: border-color 150ms ease-in-out, transform 150ms ease-in-out;
-
-        & .title {
-          font-weight: 600;
-          color: #e6e6e6;
-        }
-
-        & .body {
-          grid-column: 2;
-          color: #9a9a9a;
-        }
-
-        &::after {
-          content: "";
-          grid-row: 1;
-          grid-column: 1;
-          width: 10px;
-          height: 10px;
-          border-radius: 50%;
-          background: var(--accent);
-        }
-
-        &[data-urgent="true"] {
-          border-color: var(--accent);
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 4px 12px;
+          align-items: center;
+          padding: 12px;
+          border: 1px solid #2a2a2a;
+          border-radius: 8px;
+          border-left: 4px solid var(--accent);
+          transition: border-color 150ms ease-in-out, transform 150ms ease-in-out;
 
           & .title {
-            color: var(--accent);
+            font-weight: 600;
+            color: #e6e6e6;
           }
-        }
 
-        &:hover, &:focus-within {
-          transform: translateY(-1px);
-
-          & .title {
-            text-decoration: underline;
+          & .body {
+            grid-column: 2;
+            color: #9a9a9a;
           }
-        }
 
-        @media (min-width: 40rem) {
-          padding: 16px 20px;
-          gap: 6px 16px;
-        }
+          &::after {
+            content: "";
+            grid-row: 1;
+            grid-column: 1;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent);
+          }
 
-        @media (prefers-reduced-motion: reduce) {
-          transition: none;
+          &[data-urgent="true"] {
+            border-color: var(--accent);
+
+            & .title {
+              color: var(--accent);
+            }
+          }
 
           &:hover, &:focus-within {
-            transform: none;
+            transform: translateY(-1px);
+
+            & .title {
+              text-decoration: underline;
+            }
           }
-        }
-      )}>
+
+          @media (min-width: 40rem) {
+            padding: 16px 20px;
+            gap: 6px 16px;
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            transition: none;
+
+            &:hover, &:focus-within {
+              transform: none;
+            }
+          }
+        )}
+      >
         <p className="title" style="grid-column: 2">
           Deploy finished
         </p>

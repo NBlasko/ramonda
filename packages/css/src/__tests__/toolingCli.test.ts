@@ -347,3 +347,74 @@ describe("a tool that says more than a megabyte", () => {
     expect(oxlintLinter(path, REPO)(join(REPO, "Probe.tsx"))).toHaveLength(6000);
   });
 });
+
+/**
+ * TWO attributes, one of them a block, kept one per line.
+ *
+ * **Reported by a user:**
+ *
+ * > "className="panel" css={@@( — ne mogu nikako dva propa da formatiram jedan ispod drugog, kao da
+ * > nas eteti tera ostale da idu inline."
+ *
+ * They were right, and it is ours rather than biome's. The formatter never sees the block: it sees
+ * a PLACEHOLDER, and the placeholder was a comment and a zero — about fourteen characters. So the
+ * opening element measured as fitting on one line, biome joined the attributes exactly as it should
+ * have, and the block was expanded again afterwards, past a width nobody re-measured.
+ *
+ * An element carrying a block and any other attribute is the ordinary case, so this bit everybody.
+ *
+ * The repair is to make the placeholder tell the truth about the block's shape: a multi-line block
+ * is placeheld by something multi-line, so the element cannot fit on one line and biome breaks the
+ * attributes itself. A ONE-LINE block keeps the short placeholder, because `css=@@( display: flex; )`
+ * beside another attribute is a line the author chose and the formatter should be free to keep.
+ */
+describe("a block beside another attribute", () => {
+  const TWO = `export const Card = () => (
+  <div
+    className="panel"
+    css={@@(
+      display: flex;
+      gap: 8px;
+    )}
+  >
+    <span>x</span>
+  </div>
+);
+`;
+
+  const lineWith = (text: string, needle: string) => text.split("\n").find((line) => line.includes(needle));
+
+  test("stays one per line, and the block is still the author's", () => {
+    const root = project({ "Card.tsx": TWO });
+
+    const { status } = run(root, ["format", "src/Card.tsx"]);
+    const out = readFileSync(join(root, "src", "Card.tsx"), "utf8");
+
+    expect(status).toBe(0);
+    expect(lineWith(out, "className=")).not.toContain("css=");
+    expect(out).toContain("display: flex;");
+    expect(out).toContain("gap: 8px;");
+  });
+
+  test("and formatting it twice changes nothing the second time", () => {
+    const root = project({ "Card.tsx": TWO });
+
+    run(root, ["format", "src/Card.tsx"]);
+    const once = readFileSync(join(root, "src", "Card.tsx"), "utf8");
+    run(root, ["format", "src/Card.tsx"]);
+
+    expect(readFileSync(join(root, "src", "Card.tsx"), "utf8")).toBe(once);
+  });
+
+  /** A one-line block is a shape the author chose, and joining those attributes is biome's call. */
+  test("a one-line block is left to the formatter's own judgement", () => {
+    const root = project({
+      "Card.tsx": `export const Card = () => (\n  <div\n    id="x"\n    css={@@( display: flex; )}\n  >\n    y\n  </div>\n);\n`,
+    });
+
+    run(root, ["format", "src/Card.tsx"]);
+    const out = readFileSync(join(root, "src", "Card.tsx"), "utf8");
+
+    expect(lineWith(out, "id=")).toContain("css=");
+  });
+});
