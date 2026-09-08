@@ -69,7 +69,8 @@ Set it as the formatter for the languages you write blocks in:
 ```
 
 A file with no block goes straight through the same tool, so this is safe to set for the language
-rather than for a folder.
+rather than for a folder. In a project that does not have `ramonda-css`, this does nothing at all
+rather than failing — a formatter that complained on every save would be worse than one that waits.
 
 ## One setting the editor needs
 
@@ -93,7 +94,7 @@ internal assertion. Nothing in a plugin can reach it; the setting is what stops 
 ## What it does NOT do
 
 Completion, hover, and the red squiggles are not here. They come from the language service plugin in
-`@ramonda/css`, which a project turns on in its own `tsconfig.json`:
+`@ramonda/css` — **not yet on npm** — which a project turns on in its own `tsconfig.json`:
 
 ```json
 { "compilerOptions": { "plugins": [{ "name": "@ramonda/css/plugin" }] } }
@@ -107,17 +108,29 @@ needs the compiler, and a project that has not asked for the plugin should not g
 
 ## Installing it
 
-Not published yet. From the repository:
+```bash
+code --install-extension ramonda.css
+```
+
+or search **Ramonda CSS** in the Extensions panel. The colours work as soon as the window reloads,
+with nothing to configure and nothing to add to a project.
+
+**The other three halves need `@ramonda/css` in the project, and it is not on npm yet.** Formatting
+shells out to the project's own `ramonda-css`; the squiggles and the completions come from the
+language-service plugin that package ships. Until it is published, this extension is the colours —
+which is the half that is worth having on its own, because without it a block is drawn as an error
+and the error runs to the end of the file.
+
+Working in this repository instead:
 
 ```bash
 node packages/css/vscode/install.mjs
 ```
 
-That links this folder into every editor on the machine that reads VS Code extensions — VS Code,
-Insiders, Cursor, Windsurf, VSCodium. Reload the window (**Developer: Reload Window**) afterwards.
-
-A link rather than a copy, so a change to a grammar reaches the editor on the next reload and there
-is only ever one file to be wrong. `pnpm dlx @vscode/vsce package` makes a `.vsix` for anyone else.
+That links the folder into every editor on the machine that reads VS Code extensions — VS Code,
+Insiders, Cursor, Windsurf, VSCodium. Reload the window (**Developer: Reload Window**) afterwards. A
+link rather than a copy, so a change to a grammar reaches the editor on the next reload and there is
+only ever one file to be wrong.
 
 ## Other editors
 

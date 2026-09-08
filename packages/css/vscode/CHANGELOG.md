@@ -1,5 +1,11 @@
 # Ramonda CSS blocks
 
+## 0.1.1
+
+- The readme said *not published yet* on the page of a published extension, and pointed at a package
+  that is not on npm without saying so. What works on its own — the colours — is now said plainly,
+  and so is what waits for `@ramonda/css`.
+
 ## 0.1.0
 
 The first published version. Everything below has been in the repository and installed by hand.
