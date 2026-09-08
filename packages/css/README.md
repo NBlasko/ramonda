@@ -10,17 +10,24 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 )>
 ```
 
-> **Partly built.** This package is private and its version is `0.0.0`. **A block renders, is
-> writable, and nothing in this repository goes quiet on it**: the parser, the transform, the compiled
-> value, the virtual file, the property types, the check command, the Vite plugin, the stylesheet and
-> the editor plugin and the CSS checker all exist, and both tools that read source — `ramonda-check`
-> and the docs example gate — read it through the virtual file, and the formatter and the linter go
-> through wrappers over the project's own tools. Per-route splitting is not built yet. Read
-> `DESIGN.md` for why, `CONTRACT.md` for the shape both halves are written against, and `PLAN.md`
-> for what is done and what is next.
+[readme:start]: #
 
-> **Setting up an editor, a formatter or a linter**: the whole of it is on one page —
-> [Style blocks](https://ramonda.dev/style-blocks). What is below is the package.
+[![npm](https://img.shields.io/npm/v/%40ramonda%2Fcss)](https://www.npmjs.com/package/@ramonda/css)
+[![license](https://img.shields.io/npm/l/%40ramonda%2Fcss)](https://github.com/NBlasko/ramonda/blob/main/LICENSE)
+
+> **Status: `0.x`.** The API changes freely between releases while the design is
+> being explored; from `1.0` the interfaces hold. A breaking change ships as a
+> **minor** until then — see [Upgrading](https://ramonda.dev/reference/upgrading)
+> for what that means for a version range, and the
+> [root README](https://github.com/NBlasko/ramonda#readme).
+
+```sh
+npm install @ramonda/css typescript
+```
+
+Documentation: **[ramonda.dev/style-blocks](https://ramonda.dev/style-blocks)**
+
+[readme:end]: #
 
 ## Three ways to write one
 
@@ -56,13 +63,13 @@ export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
 
 Both compile the same blocks to the same classes, and both check what post-processing handed back
 against what the sheet promised. The esbuild one reads every source file it is asked about, because
-esbuild gives a plugin a path rather than the code — measured at 17 µs a file, which is what
-`filter` narrows.
+esbuild gives a plugin a path rather than the code, at about 17 µs a file. `filter` narrows which
+files it reads.
 
 ## Formatters
 
 The syntax is not TypeScript, so no formatter can parse a file holding a block until it is taught.
-Measured: biome answers *"Code formatting aborted due to parsing errors"*, Prettier answers
+biome answers *"Code formatting aborted due to parsing errors"* and Prettier answers
 *"SyntaxError: ')' expected."* Both refuse rather than mangle, which is the safe half — and both are
 handled:
 
@@ -195,8 +202,7 @@ Two identical blocks agree on one CLASS, so the markup is identical and the brow
 Each file still serves that rule in its own stylesheet — a chunk has to stand on its own wherever the
 bundler puts it, and a route whose class lives only in another route's sheet renders unstyled. Where
 the duplicate is identical, Vite dedupes the asset by content and it costs nothing; where it cannot,
-measured on a corpus built to duplicate every rule three times, the sheet is 3.5x the bytes and
-**1.1x gzipped**.
+a sheet holding every rule three times is 3.5x the bytes and **1.1x gzipped**.
 
 ## In an editor
 
@@ -236,8 +242,8 @@ back to the character the author typed:
 run plain `tsc`, so this is its `tsc`. Meant to sit in a `build` script — until it runs somewhere
 that fails, the type safety is a claim about editors rather than about CI.
 
-Beside them are four rules for the faults a type cannot reach, each with its boundary measured
-against the compiler first so no fault is reported twice:
+Beside them are rules for the faults a type cannot reach, each bounded so that no fault is reported
+twice:
 
 ```
 src/Card.tsx:6:18   unknown-value: `display` does not accept `flexx`. Did you mean `flex`?
@@ -266,6 +272,6 @@ linter is given the same virtual file `tsc` gets and its diagnostics are mapped 
 is given a copy with the blocks replaced by something that parses, and they go back at whatever
 indentation it chose.
 
-## Licence
+## License
 
-MIT
+[MIT](../../LICENSE) © Nikola Blagojević
