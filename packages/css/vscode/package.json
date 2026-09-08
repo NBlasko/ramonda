@@ -2,7 +2,7 @@
   "name": "ramonda-css-vscode",
   "displayName": "Ramonda CSS blocks",
   "description": "Real CSS beside your markup: syntax colouring, formatting and diagnostics for @@( … ) style blocks.",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "publisher": "ramonda",
   "license": "MIT",

@@ -1,6 +1,6 @@
 # Ramonda CSS blocks
 
-## Unreleased
+## 0.1.0
 
 The first published version. Everything below has been in the repository and installed by hand.
 
