@@ -222,3 +222,47 @@ describe("a descendant under a condition", () => {
     expect(compound).toBe("r-@media_print.title-c-red");
   });
 });
+
+/**
+ * A PROPERTY NAME that cannot be written into a class name.
+ *
+ * The value is gated by `SAFE_VALUE` and the context by `SAFE_CONTEXT`; the property was
+ * interpolated unchecked. A review found what that costs, and it is not cosmetic.
+ *
+ * `readHead` keeps a name's interior whitespace, and nothing refused it, so `--brand` wrapped across
+ * two lines — a plausible accident, and what a missing `;` looks like — produced the class
+ * `r---brand\n  -color-red`. Emitted as a selector that is `\` followed by a newline, which is **not
+ * a valid escape**: css-tree, lightningcss and jsdom all refuse it, so a browser drops the rule and a
+ * lightningcss step in the pipeline throws on the whole stylesheet. A space or a tab is milder and
+ * still broken: the selector names one class containing whitespace, while the markup's `class`
+ * attribute tokenises into two, so the rule can never match anything.
+ *
+ * The hash answers for it, which is what the hash is for — see `nameFor`: it is the FLOOR, and a
+ * form not yet covered is always correct and merely less pretty.
+ */
+describe("a property name that cannot be written", () => {
+  const isHash = (className: string) => /^r-[0-9a-zA-Z]+$/.test(className);
+
+  test.each([
+    ["a space", `--a b: red;`],
+    ["a tab", "--a\tb: red;"],
+    ["a newline, which makes an invalid escape", "--brand\n  -color: red;"],
+    ["a carriage return", "--a\rb: red;"],
+    ["a form feed", "--a\fb: red;"],
+    ["a non-breaking space, which no ident may hold either", "--a\u00a0b: red;"],
+    ["a two-word typo", `font size: 12px;`],
+  ])("%s falls to the hash", (_what, css) => {
+    expect(isHash(name(css))).toBe(true);
+  });
+
+  /** And what a property name legitimately holds is still written out. */
+  test.each([
+    ["a plain property", `color: red;`, "r-c-red"],
+    ["a custom property", `--brand: red;`, "r---brand-red"],
+    ["a vendor prefix", `-webkit-mask: none;`, "r--webkit-mask-none"],
+    ["an underscore", `--a_b: red;`, "r---a_b-red"],
+    ["a digit", `--2x: red;`, "r---2x-red"],
+  ])("%s is still readable", (_what, css, expected) => {
+    expect(name(css)).toBe(expected);
+  });
+});

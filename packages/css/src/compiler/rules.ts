@@ -91,6 +91,7 @@ export const RULE_IDS = [
   "value-and-registered-syntax",
   "unit-not-allowed",
   "string-not-allowed",
+  "property-not-a-name",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -857,7 +858,23 @@ function walk(items: readonly BlockItem[], findings: Finding[], body?: string): 
      * custom property cannot go. `{{name}}: 24px` puts it in the name; a hole standing alone with no
      * colon after it puts the whole declaration there.
      */
+    const named = findings.length;
     holeInHead(item.property, item.at, item.value.length === 0 ? "a declaration" : "a property name", findings);
+    /**
+     * A name that is not a name, which silences the near-miss search below it: one fault, one report,
+     * and `font size` is not a typo of a property — it is two words where one belongs.
+     *
+     * Not asked at all when the name held a HOLE, which the line above has just reported. A hole
+     * kept as text by the tolerant reading is an expression, and an expression has spaces in it —
+     * so this would say *`{cond ? "display:flex" : ""}` is not a property name* underneath a
+     * diagnostic that already said something truer.
+     */
+    if (findings.length === named && propertyNotAName(item, findings)) {
+      unknownUnit(item, findings);
+      gluedHole(item, findings);
+      repeated(item, seen, findings);
+      continue;
+    }
     // Against the right vocabulary: the properties in an ordinary block, that at-rule's descriptors
     // in a named one. The types report WHETHER a name exists either way; this is the suggestion,
     // which a quoted key never gets from them.
@@ -994,6 +1011,50 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
         ? `\`${name}\` is not a CSS property. Did you mean \`${meant}\`?`
         : `\`${name}\` is not a \`@${body}\` descriptor. Did you mean \`${meant}\`?`,
   });
+}
+
+/**
+ * A property name holding whitespace, which no CSS identifier may.
+ *
+ * **The class name survives it and the DECLARATION does not.** `nameFor` falls to the hash for such
+ * a name, so the stylesheet parses — but the rule it emits still says `--a b: red`, which no browser
+ * accepts, so an element carrying the class gets nothing. A review found the naming half; this is the
+ * half that tells the author.
+ *
+ * Nothing reported it before. `unknown-property` returns early for a name starting with `-` and for
+ * one with no `-` at all, so both of the shapes an author actually writes walked past it: two words
+ * where one belongs, and a name wrapped across lines — which is also what a missing `;` looks like
+ * from here.
+ *
+ * The dashed form is suggested only when it IS a property, because a suggestion that is not one
+ * would be a guess dressed as an answer.
+ */
+function propertyNotAName(item: Declaration, findings: Finding[]): boolean {
+  const name = item.property;
+  if (item.at === undefined || !/\s/.test(name)) return false;
+  // A spread is not a property and carries no name — see `isSpread`, and the parser's own note.
+  if (name.startsWith("...")) return false;
+  /**
+   * A `//` comment, which CSS does not have and `line-comment` reports from the TEXT pass. The
+   * parser reads one as a property name, and it is a name full of whitespace — so this would say
+   * *`// why color` is not a property name* beside a diagnostic that already explains the real
+   * fault. The two passes cannot see each other's findings, so the skip is here.
+   */
+  if (name.trimStart().startsWith("//")) return false;
+
+  const dashed = name.trim().replace(/\s+/g, "-");
+  const real = KNOWN.has(dashed) || dashed.startsWith("--");
+
+  findings.push({
+    rule: "property-not-a-name",
+    at: item.at,
+    length: name.length,
+    message:
+      `\`${name.trim().replace(/\s+/g, " ")}\` is not a property name — a CSS name holds no whitespace, so ` +
+      `the browser drops the declaration.` +
+      (real ? ` Did you mean \`${dashed}\`?` : " A `-` between the words, or a `;` missing above this line."),
+  });
+  return true;
 }
 
 /**

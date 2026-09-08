@@ -139,6 +139,25 @@ export const NAME_BUDGET = 32;
 const SAFE_VALUE = /^[a-zA-Z0-9#.,%()/_+*=<>:;!&|~^$?@[\]{}-]+$/;
 
 /**
+ * The characters a PROPERTY NAME may hold and still be written into a class name.
+ *
+ * The value has been gated since this was written and the property was interpolated unchecked, which
+ * a review found. What it costs is not cosmetic. `readHead` keeps a name's interior whitespace, and
+ * nothing above here refuses it, so `--brand` wrapped across two lines — which is what a missing `;`
+ * looks like — produced a class name holding a newline. Emitted as a selector that is a `\` followed
+ * by a newline, which is **not a valid escape**: measured, css-tree, lightningcss and jsdom all
+ * refuse it, so a browser drops the rule and a lightningcss step throws on the whole stylesheet.
+ *
+ * A space or a tab is milder and still broken. The selector then names one class containing
+ * whitespace, while the markup's `class` attribute tokenises into two — so the rule matches nothing
+ * that exists.
+ *
+ * Exactly what a CSS identifier may hold, and no more: letters, digits, `-`, `_`, and anything
+ * outside ASCII. Everything else falls to the hash, which is always correct.
+ */
+const SAFE_PROPERTY = /^[a-zA-Z0-9_\u00a1-\uffff-]+$/;
+
+/**
  * A class name a person can read, or the hash when one cannot be written.
  *
  * `r-<abbreviation>-<value>`, with the value **verbatim** and spaces as `_`. Verbatim is what makes
@@ -147,8 +166,8 @@ const SAFE_VALUE = /^[a-zA-Z0-9#.,%()/_+*=<>:;!&|~^$?@[\]{}-]+$/;
  * failure this package has.
  *
  * **The hash is the FLOOR, not the default.** It answers for a declaration carrying a hole, a name
- * over {@link NAME_BUDGET}, and anything — a value or a context — holding a character that cannot be
- * written. So a form not yet covered is always correct and merely less pretty, which is what lets
+ * over {@link NAME_BUDGET}, and anything — a property, a value or a context — holding a character
+ * that cannot be written. So a form not yet covered is always correct and merely less pretty, which is what lets
  * the readable half grow one context at a time rather than in one commit.
  *
  * **The two forms can never collide, structurally rather than by luck.** A hash is base62, which has
@@ -194,7 +213,10 @@ export function nameFor(declaration: {
     .replace(/ /g, "_");
   if (value === "" || !SAFE_VALUE.test(value)) return hash();
 
-  const name = `r-${context}${ABBREVIATIONS[declaration.property] ?? declaration.property}-${value}`;
+  const written = ABBREVIATIONS[declaration.property] ?? declaration.property;
+  if (!SAFE_PROPERTY.test(written)) return hash();
+
+  const name = `r-${context}${written}-${value}`;
   return name.length > NAME_BUDGET ? hash() : name;
 }
 

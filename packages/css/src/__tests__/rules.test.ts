@@ -1852,3 +1852,55 @@ describe("a quoted string where the property has no place for one", () => {
     expect(checkBlock(read.block, { config: { rules: { "string-not-allowed": "off" } } })).toEqual([]);
   });
 });
+
+/**
+ * A PROPERTY NAME WITH WHITESPACE IN IT, which is never a CSS name.
+ *
+ * A review found what it does to the class name — see `nameFor`, which falls to the hash for it now
+ * — and the hash only makes the STYLESHEET parse. The declaration inside the rule is still
+ * `--a b: red`, which no browser accepts, so the rule matches an element that carries the class and
+ * then applies nothing. Silently, which is this package's whole reason to exist.
+ *
+ * Nothing reported it. `unknown-property` returns early for a name starting with `-`, and for one
+ * with no `-` at all, so `font size` and `--a b` both walked past it.
+ *
+ * The two causes worth naming, because they are what an author actually did: a missing `-` between
+ * two words, and a name wrapped across lines — which is also what a missing `;` looks like from here.
+ */
+describe("a property name holding whitespace", () => {
+  test("a two-word name is reported", () => {
+    expect(rules(`  font size: 12px;`)).toEqual(["property-not-a-name"]);
+  });
+
+  test("and the message suggests the name with a dash, when that is a real property", () => {
+    expect(messages(`  font size: 12px;`)[0]).toContain("`font-size`");
+  });
+
+  test.each([
+    ["a tab", "  font\tsize: 12px;"],
+    ["a newline, which is what a wrapped name looks like", "  --brand\n  -color: red;"],
+    ["a custom property with a space", "  --a b: red;"],
+    ["several spaces", "  font  size: 12px;"],
+  ])("%s is reported too", (_what, css) => {
+    expect(rules(css)).toContain("property-not-a-name");
+  });
+
+  test("the message says a name holds no whitespace, whatever the author meant", () => {
+    expect(messages("  --a b: red;")[0]).toMatch(/whitespace/);
+  });
+
+  test.each([
+    ["a plain property", "  color: red;"],
+    ["a custom property", "  --brand: red;"],
+    ["a vendor prefix", "  -webkit-mask: none;"],
+    ["a value with spaces in it, which is ordinary", "  border-left: 1px solid red;"],
+    ["a spread, which is not a property at all", "  ...{base};"],
+  ])("%s says nothing", (_what, css) => {
+    expect(rules(css)).not.toContain("property-not-a-name");
+  });
+
+  /** One report for one fault: the name is not also run through the near-miss search. */
+  test("and it is the only thing reported for that declaration", () => {
+    expect(rules(`  font size: 12px;`)).toEqual(["property-not-a-name"]);
+  });
+});
