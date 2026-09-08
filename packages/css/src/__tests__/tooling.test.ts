@@ -540,3 +540,55 @@ describe("how wide a level inside a block is", () => {
     expect(formatText(source, "X.tsx", identity)).toBe("const p = @@(\n  display: flex;\n);\n");
   });
 });
+
+/**
+ * ONE SPELLING, written by the formatter — the other half of `non-canonical-spelling`.
+ *
+ * The rule reports a prelude that is the same CSS as its canonical form and a different class; this
+ * writes that form. **Both ask the same two functions**, so the rule reports exactly what the
+ * formatter fixes: a rule reporting a spelling nothing would fix is an error with no fix, and a
+ * formatter rewriting something no rule asked for is a diff nobody wanted.
+ */
+describe("the one spelling a prelude may have", () => {
+  const formatted = (block: string) => {
+    const out = formatText(`const s = @@(\n${block}\n);\n`, "C.tsx", (text) => text);
+    const lines = out.split("\n");
+    return lines.slice(1, lines.indexOf(");")).join("\n");
+  };
+
+  test.each([
+    ["a pseudo-class in capitals", "  &:HOVER {\n    color: red;\n  }", "  &:hover {\n    color: red;\n  }"],
+    ["a legacy pseudo-element", "  &:before {\n    color: red;\n  }", "  &::before {\n    color: red;\n  }"],
+    ["an at-rule in capitals", "  @MEDIA print {\n    color: red;\n  }", "  @media print {\n    color: red;\n  }"],
+    [
+      "a feature name and its colon",
+      "  @media (MIN-WIDTH:40rem) {\n    color: red;\n  }",
+      "  @media (min-width: 40rem) {\n    color: red;\n  }",
+    ],
+    ["a media type", "  @media PRINT {\n    color: red;\n  }", "  @media print {\n    color: red;\n  }"],
+    [
+      "a supports declaration",
+      "  @supports (display:grid) {\n    color: red;\n  }",
+      "  @supports (display: grid) {\n    color: red;\n  }",
+    ],
+  ])("%s", (_what, written, expected) => {
+    expect(formatted(written)).toBe(expected);
+  });
+
+  test.each([
+    ["a class the author capitalised", "  &.Open {\n    color: red;\n  }"],
+    ["a layer name", "  @layer Base {\n    color: red;\n  }"],
+    ["an attribute value", '  &[data-x="Y"] {\n    color: red;\n  }'],
+    ["a url holding a colon", "  @supports (background: url(http://x)) {\n    color: red;\n  }"],
+    ["spaces nothing here canonicalises", "  &:nth-child(2n + 1) {\n    color: red;\n  }"],
+  ])("%s is left exactly as written", (_what, written) => {
+    expect(formatted(written)).toBe(written);
+  });
+
+  /** Formatting twice changes nothing the second time, which is what makes it a canonical form. */
+  test("and it settles after one pass", () => {
+    const once = formatted("  @MEDIA (MIN-WIDTH:40rem) {\n    color: red;\n  }");
+
+    expect(formatted(once)).toBe(once);
+  });
+});

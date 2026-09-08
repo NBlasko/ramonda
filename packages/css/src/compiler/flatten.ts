@@ -235,7 +235,7 @@ function declarationOf(
   }
 
   const canonical = `${property}:${collapse(value)};`;
-  const sorted = [...conditions].sort();
+  const sorted = mayBeSorted(conditions) ? [...conditions].sort() : [...conditions];
 
   return {
     key: [...sorted, ...(selector === "" ? [] : [selector]), property].join("|"),
@@ -272,6 +272,48 @@ const same = (a: readonly number[], b: readonly number[]) =>
  */
 function nested(outer: string, inner: string): string {
   return outer === "" ? inner : withParent(inner, outer);
+}
+
+/**
+ * The at-rules whose NESTING ORDER does not matter, so their conditions may be sorted.
+ *
+ * A CONDITIONAL at-rule asks a question — `@media A { @supports B { … } }` is "A and B", and `and`
+ * commutes — so sorting lets two authors who wrote the same two conditions in either order share
+ * one class, which is the whole win of atomic CSS.
+ *
+ * **A STRUCTURAL at-rule does not ask, it places, and nesting COMPOSES it.** A review measured two:
+ * `@layer a { @layer b { … } }` is layer `a.b` while the reverse is `b.a` — two different cascade
+ * layers at different priorities, which is exactly what layers are for — and
+ * `@scope (.p) { @scope (.q) { … } }` matches an element inside a `.q` inside a `.p` while the
+ * reverse matches inside a `.p` inside a `.q`, so on one document one of them matches and the other
+ * does not. Sorted, both authors got one rule and one of them silently lost their own.
+ *
+ * **An ALLOW-LIST, and that is the point.** The justification for sorting measured exactly one pair
+ * — `@media` against `@supports` — and every prelude starting with `@` inherited the conclusion. So
+ * the unknown case has to fail SAFE: an at-rule CSS invents after this is written keeps the order it
+ * was written in, which is never wrong and at worst spends a second class where one would do. A
+ * deny-list would silently mis-sort the next structural at-rule instead.
+ *
+ * `@starting-style` is deliberately absent: it is not a condition either, and nothing here has
+ * measured whether its nesting commutes. Absent costs a class; present and wrong costs a rule.
+ */
+const SORTABLE = new Set(["@media", "@supports", "@container"]);
+
+/**
+ * Whether EVERY condition here may be sorted, which is the only form the question takes.
+ *
+ * Sorting the sortable ones among themselves would move them past a structural one, and that is the
+ * thing that may not happen — so a set holding one structural condition keeps its whole order. One
+ * rule rather than an argument about each position.
+ */
+function mayBeSorted(conditions: readonly string[]): boolean {
+  return conditions.every((condition) => SORTABLE.has(atRuleName(condition)));
+}
+
+/** `@media` out of `@media (min-width: 40rem)` — the name, without whatever follows it. */
+function atRuleName(condition: string): string {
+  const space = condition.indexOf(" ");
+  return space === -1 ? condition : condition.slice(0, space);
 }
 
 function selectorOf(rule: NestedRule): string {

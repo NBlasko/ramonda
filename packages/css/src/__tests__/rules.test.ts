@@ -2018,3 +2018,53 @@ describe("valid CSS these rules must not report", () => {
     expect(checkBlock(read.block, { at: sites[0].at }).map((one) => one.rule)).toEqual([]);
   });
 });
+
+/**
+ * A CONDITION or a SELECTOR spelled a way that is the same CSS and a different key.
+ *
+ * `:hover` and `:HOVER` are one rule to a browser, measured with lightningcss — and two keys here,
+ * because a declaration's key is its own text. A review measured the cost: a base and a modifier one
+ * space apart kept BOTH classes, so the modifier did not override and the winner was decided by
+ * whichever file the bundler reached first.
+ *
+ * The project's answer is one spelling in the SOURCE. This says so, and `ramonda-css format` writes
+ * it — the message names the canonical form, so it is actionable either way.
+ *
+ * **It reports exactly what the canonicaliser changes**, no more: a shape `canonicalSelector` and
+ * `canonicalCondition` leave alone is a shape this says nothing about, because an error with no fix
+ * is worse than a spelling. One function asked two ways, so the rule and the formatter cannot drift.
+ */
+describe("a spelling that is the same CSS and a different class", () => {
+  test.each([
+    ["a pseudo-class in capitals", "  &:HOVER { color: red; }", "&:hover"],
+    ["a legacy pseudo-element", '  &:before { content: ""; }', "&::before"],
+    ["an at-rule name in capitals", "  @MEDIA print { color: red; }", "@media print"],
+    ["a feature name in capitals", "  @media (MIN-WIDTH: 40rem) { color: red; }", "min-width"],
+    ["no space after a feature's colon", "  @media (min-width:40rem) { color: red; }", "min-width: 40rem"],
+    ["a media type in capitals", "  @media PRINT { color: red; }", "@media print"],
+    ["a supports declaration", "  @supports (display:grid) { color: red; }", "display: grid"],
+  ])("%s is reported, with the spelling to use", (_what, css, expected) => {
+    const found = rules(css);
+
+    expect(found).toEqual(["non-canonical-spelling"]);
+    expect(messages(css)[0]).toContain(expected);
+  });
+
+  test.each([
+    ["a canonical pseudo-class", "  &:hover { color: red; }"],
+    ["a canonical pseudo-element", '  &::before { content: ""; }'],
+    ["a canonical condition", "  @media (min-width: 40rem) { color: red; }"],
+    ["a class, which is the author's own", "  &.Open { color: red; }"],
+    ["an id", "  &#Main { color: red; }"],
+    ["an attribute value", '  &[data-x="Y"] { color: red; }'],
+    ["a layer name, which is the author's", "  @layer Base { color: red; }"],
+    ["a container name", "  @container Card (width > 40rem) { color: red; }"],
+    ["a range condition, which has no colon", "  @media (width > 40rem) { color: red; }"],
+    ["a boolean condition", "  @media (prefers-reduced-motion) { color: red; }"],
+    ["a url holding a colon", "  @supports (background: url(http://x)) { color: red; }"],
+    ["spaces this cannot canonicalise", "  &:nth-child(2n + 1) { color: red; }"],
+    ["parens this cannot canonicalise", "  @supports ((display: grid)) { color: red; }"],
+  ])("%s says nothing", (_what, css) => {
+    expect(rules(css)).toEqual([]);
+  });
+});

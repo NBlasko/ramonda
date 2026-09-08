@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Block, BlockItem } from "../compiler/ast";
-import { HOLE, normalise } from "../compiler/normalise";
+import { HOLE, canonicalCondition, canonicalSelector, normalise } from "../compiler/normalise";
 
 /**
  * Normalisation IS identity, so this file is what decides which blocks share a class.
@@ -114,5 +114,82 @@ describe("the canonical form itself", () => {
 
   test("an escaped quote does not end the string it is in", () => {
     expect(normalise(block(decl("content", '"a\\"  b"')))).toBe('content:"a\\"  b";');
+  });
+});
+
+/**
+ * ONE SPELLING for a condition and a selector, which is what keeps two files from disagreeing.
+ *
+ * CSS is case-insensitive about the words of the LANGUAGE — an at-rule's name, a media feature's
+ * name, a pseudo-class's name — and case-sensitive about an author's own identifiers: a class, an
+ * id, an attribute value, a custom ident. Measured with lightningcss, `:hover` and `:HOVER` are one
+ * rule while `.a` and `.A` are two.
+ *
+ * **So the compiler cannot fold a selector's case**, and a review measured what happens when it does
+ * not fold at all: the `key` a declaration is overridden by is its own TEXT, so a base written
+ * `@media (min-width:40rem)` and a modifier written `@media (min-width: 40rem)` — the same CSS, one
+ * space apart — became two keys, the merge kept both classes, and which one won was decided by
+ * whichever file the bundler reached first.
+ *
+ * The answer chosen with the user is to make the SOURCE canonical instead: there is one way to write
+ * each of these, the checker says so, and the formatter writes it for you. The invariant becomes
+ * "there is only one spelling" rather than "the compiler normalises every spelling", which is far
+ * cheaper to be right about — and it leaves an author's own identifiers untouched.
+ *
+ * **The rule reports exactly what the canonicaliser changes.** One function, asked two ways: the
+ * checker asks whether it would change the text, the formatter applies it. So a shape it cannot
+ * canonicalise is never reported — an error with no fix is worse than a spelling — and the two can
+ * never drift, which is the fault this repository keeps finding.
+ */
+describe("one spelling for a condition and a selector", () => {
+  test.each([
+    ["a pseudo-class in capitals", "&:HOVER", "&:hover"],
+    ["mixed case", "&:Focus-Visible", "&:focus-visible"],
+    ["a legacy pseudo-element", "&:before", "&::before"],
+    ["another", "&:after", "&::after"],
+    ["a legacy first-line", "&:first-line", "&::first-line"],
+    ["a pseudo-element already written with two colons", "&::before", "&::before"],
+    ["a functional pseudo-class", "&:NOT(.a)", "&:not(.a)"],
+    ["a class, which is the author's own and is LEFT ALONE", "&.Open", "&.Open"],
+    ["an id", "&#Main", "&#Main"],
+    ["an attribute value", '&[data-x="Y"]', '&[data-x="Y"]'],
+    ["an attribute NAME, which HTML folds but the text does not", "&[HREF]", "&[HREF]"],
+    ["a type selector", "DIV", "DIV"],
+    ["a custom ident in a functional pseudo-class", "&:has(.Card)", "&:has(.Card)"],
+  ])("%s", (_what, written, expected) => {
+    expect(canonicalSelector(written)).toBe(expected);
+  });
+
+  test.each([
+    ["an at-rule name in capitals", "@MEDIA print", "@media print"],
+    ["a feature name in capitals", "@media (MIN-WIDTH: 40rem)", "@media (min-width: 40rem)"],
+    ["no space after the colon", "@media (min-width:40rem)", "@media (min-width: 40rem)"],
+    ["several spaces after it", "@media (min-width:   40rem)", "@media (min-width: 40rem)"],
+    ["both at once", "@MEDIA (MIN-WIDTH:40rem)", "@media (min-width: 40rem)"],
+    ["already canonical", "@media (min-width: 40rem)", "@media (min-width: 40rem)"],
+    ["a supports condition", "@SUPPORTS (display:grid)", "@supports (display: grid)"],
+    ["a container query", "@CONTAINER (width > 40rem)", "@container (width > 40rem)"],
+    ["a layer, whose name is the AUTHOR'S", "@LAYER Base", "@layer Base"],
+    ["a scope, whose selector is the author's", "@SCOPE (.Card)", "@scope (.Card)"],
+    ["a keyword condition", "@media PRINT", "@media print"],
+    ["an at-rule nobody here knows is left alone", "@invented X", "@invented X"],
+  ])("%s", (_what, written, expected) => {
+    expect(canonicalCondition(written)).toBe(expected);
+  });
+
+  /**
+   * What the canonicaliser deliberately does NOT touch, so the rule does not report it either.
+   *
+   * `:nth-child(2n + 1)` and `@supports ((display:grid))` are both the same CSS as their tighter
+   * spellings, and both need real parsing to rewrite: `:nth-child(2n of .a)` has whitespace that
+   * matters, and telling a redundant paren from a grouping one is the `@supports` grammar. They are
+   * left as written, which costs a second class and reports nothing.
+   */
+  test.each([
+    ["spaces inside a functional pseudo-class", "&:nth-child(2n + 1)"],
+    ["redundant parens in a supports condition", "@supports ((display: grid))"],
+  ])("%s is left as written", (_what, written) => {
+    expect(canonicalSelector(written)).toBe(written);
+    expect(canonicalCondition(written)).toBe(written);
   });
 });

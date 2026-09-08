@@ -1,4 +1,5 @@
 import type { Block, BlockItem, ValuePart } from "./ast";
+import { AT_RULE_LINKS, MEDIA_FEATURES, PROPERTIES, SELECTORS } from "./keywords.generated";
 
 /**
  * The canonical text of a block, which is the definition of its identity.
@@ -141,3 +142,157 @@ function string(text: string, start: number, write: (chunk: string) => void): nu
   write(text.slice(start, end + 1));
   return end;
 }
+
+/**
+ * ONE SPELLING for a condition, and one for a selector.
+ *
+ * ## The fault these exist for
+ *
+ * A declaration's `key` — what decides whether one declaration OVERRIDES another — is derived from
+ * its own text. A review measured what that costs when two files spell one condition differently: a
+ * base written `@media (min-width:40rem)` and a modifier written `@media (min-width: 40rem)` are the
+ * same CSS and became two keys, so the merge kept BOTH classes and which one won was decided by
+ * whichever file the bundler transformed first.
+ *
+ * ## Why the source is canonicalised rather than the key
+ *
+ * CSS is case-insensitive about the words of the LANGUAGE — an at-rule's name, a media feature's
+ * name, a pseudo-class's name — and case-sensitive about an author's own identifiers. Measured with
+ * lightningcss: `:hover` and `:HOVER` are one rule, `.a` and `.A` are two. So a key cannot simply be
+ * lower-cased; folding a class name would introduce, deliberately, the exact collision the review
+ * was looking for.
+ *
+ * Making the SOURCE canonical moves the invariant from "the compiler normalises every spelling" to
+ * "there is only one spelling", which is far cheaper to be right about and leaves an author's own
+ * identifiers alone. The checker reports a text these would change and the formatter writes what
+ * they return, so **the rule reports exactly what the canonicaliser can fix** — an error with no fix
+ * is worse than a spelling, and one function asked two ways cannot drift from itself.
+ *
+ * ## What they deliberately leave alone
+ *
+ * `:nth-child(2n + 1)` and `@supports ((display: grid))` are each the same CSS as their tighter
+ * spelling and each needs real parsing to rewrite: `:nth-child(2n of .a)` has whitespace that
+ * matters, and telling a redundant paren from a grouping one is the `@supports` grammar. Left as
+ * written, which costs a second class and reports nothing.
+ */
+export function canonicalSelector(selector: string): string {
+  return selector.replace(A_PSEUDO, (whole, colons: string, name: string) => {
+    const lowered = name.toLowerCase();
+    // A name nobody generated is a browser's or a typo's, and neither is this function's to rewrite.
+    if (!PSEUDO_CLASSES.has(`:${lowered}`) && !PSEUDO_ELEMENTS.has(`::${lowered}`)) return whole;
+    // A pseudo-ELEMENT written with one colon is CSS's own legacy spelling for four of them.
+    const written = colons === ":" && PSEUDO_ELEMENTS.has(`::${lowered}`) ? "::" : colons;
+    return `${written}${lowered}`;
+  });
+}
+
+export function canonicalCondition(condition: string): string {
+  const space = condition.indexOf(" ");
+  const name = space === -1 ? condition : condition.slice(0, space);
+  if (!AT_RULES.has(name.toLowerCase())) return condition;
+
+  const rest = space === -1 ? "" : condition.slice(space + 1);
+  /**
+   * A `@layer`'s name and a `@scope`'s selector are the AUTHOR'S, so only the at-rule's own name is
+   * lowered for those. Everything else here takes a condition, whose feature names are the
+   * language's.
+   */
+  const lowered = `@${name.slice(1).toLowerCase()}`;
+  if (!CONDITIONAL.has(lowered)) return rest === "" ? lowered : `${lowered} ${rest}`;
+
+  return `${lowered} ${canonicalFeatures(rest)}`;
+}
+
+/**
+ * A condition's feature names lowered and its colons spaced, and nothing else touched.
+ *
+ * One space after the colon, which is the convention a declaration already uses and the one the user
+ * chose. The value after it is left exactly as written — it may be an author's own custom property,
+ * and it is not this function's to fold.
+ */
+function canonicalFeatures(rest: string): string {
+  const spaced = rest.replace(A_FEATURE, (whole, open: string, name: string, gap: string) => {
+    const lowered = name.toLowerCase();
+    /**
+     * A name the language owns: a media feature, or — inside `@supports` — a property, because what
+     * that at-rule holds between parens is a DECLARATION rather than a query.
+     *
+     * The colon is spaced only for a KNOWN name, and that is not caution for its own sake: a value
+     * may hold a colon of its own, and `@supports (background: url(http://x))` spaced blindly comes
+     * back as `url(http: //x)`.
+     */
+    if (!MEDIA_FEATURE_NAMES.has(lowered) && !PROPERTY_NAMES.has(lowered)) return whole;
+    return `${open}${lowered}${gap === undefined ? "" : ": "}`;
+  });
+
+  /**
+   * A media TYPE and the logical keywords, which are the language's words and carry no parens —
+   * `@media PRINT`, `@media NOT print`, `@media screen AND (min-width: 40rem)`.
+   */
+  return spaced.replace(A_BARE_WORD, (whole, word: string) =>
+    MEDIA_WORDS.has(word.toLowerCase()) ? word.toLowerCase() : whole,
+  );
+}
+
+/** `:name` or `::name`, and nothing about what follows a `(` — that is the author's own text. */
+const A_PSEUDO = /(::?)([a-zA-Z-]+)/g;
+
+/**
+ * A feature name after a `(`, with the colon and the whitespace after it when there is one.
+ *
+ * A range condition — `(width > 40rem)` — has no colon, and the group comes back empty so nothing is
+ * inserted. A `(prefers-reduced-motion)` with no value is the same case.
+ */
+const A_FEATURE = /(\()([a-zA-Z-]+)(\s*:\s*)?/g;
+
+/** The at-rules whose CONDITION is the language's own vocabulary, so its feature names are lowered. */
+const CONDITIONAL = new Set(["@media", "@supports", "@container"]);
+
+/** Every at-rule name CSS has, lowered — a name outside it is not this function's to rewrite. */
+const AT_RULES = new Set(Object.keys(AT_RULE_LINKS).map((one) => one.toLowerCase()));
+
+/** Every pseudo-class and pseudo-element, without the `()` a functional one is listed with. */
+const PSEUDO_CLASSES = new Set(
+  Object.keys(SELECTORS)
+    .filter((one) => one.startsWith(":") && !one.startsWith("::"))
+    .map((one) => one.replace(/\(\)$/, "")),
+);
+const PSEUDO_ELEMENTS = new Set(
+  Object.keys(SELECTORS)
+    .filter((one) => one.startsWith("::"))
+    .map((one) => one.replace(/\(\)$/, "")),
+);
+
+/** Every media feature, so a name outside the list — a browser's, or a typo — is left as written. */
+const MEDIA_FEATURE_NAMES = new Set(MEDIA_FEATURES.map((one) => one.toLowerCase()));
+
+/** Every property, for `@supports`, whose parens hold a declaration rather than a query. */
+const PROPERTY_NAMES = new Set(PROPERTIES.map((one) => one.toLowerCase()));
+
+/**
+ * The media types and the logical keywords — the words a condition holds OUTSIDE its parens.
+ *
+ * A closed list, and short: the four types anybody writes plus the deprecated ones CSS still parses,
+ * and `and`, `or`, `not`, `only`. A word outside it is an author's own — a `@layer` name reaches here
+ * through no path, but a `@container`'s name does, and that is theirs.
+ */
+const MEDIA_WORDS = new Set([
+  "all",
+  "print",
+  "screen",
+  "speech",
+  "aural",
+  "braille",
+  "embossed",
+  "handheld",
+  "projection",
+  "tty",
+  "tv",
+  "and",
+  "or",
+  "not",
+  "only",
+]);
+
+/** A bare word, outside any parens — see `MEDIA_WORDS`. */
+const A_BARE_WORD = /(?<![\w(-])([a-zA-Z-]+)(?![\w(-])/g;

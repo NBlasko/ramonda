@@ -1,3 +1,4 @@
+import { canonicalCondition, canonicalSelector } from "./normalise";
 import { closingHole, opensAHole, readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
 
@@ -343,7 +344,17 @@ function layout(body: string, indent: string, step: string): string[] {
     }
 
     if (parens === 0 && code === 123 /* { */) {
-      line = `${line.trim()} {`;
+      /**
+       * A prelude, written the one way it may be written — see `canonicalCondition`.
+       *
+       * The same functions the `non-canonical-spelling` rule asks, so the rule reports exactly what
+       * this writes and the two cannot disagree about what canonical means. That matters more than
+       * either half: a rule reporting a spelling the formatter would not fix is an error with no
+       * fix, and a formatter rewriting something no rule asked for is a diff nobody wanted.
+       */
+      const written = line.trim();
+      const canonical = written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written);
+      line = `${canonical} {`;
       emit();
       depth++;
       continue;

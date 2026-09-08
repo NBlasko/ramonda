@@ -165,3 +165,83 @@ describe("a realistic block", () => {
     expect(gaps[1].conditions).toEqual(["@media (min-width: 40rem)"]);
   });
 });
+
+/**
+ * WHICH at-rules may be SORTED, and it is not all of them.
+ *
+ * Conditions are sorted so that two authors writing the same two of them in either order share one
+ * class — which is the whole win of atomic CSS, and correct for a CONDITIONAL at-rule:
+ * `@media A { @supports B { … } }` asks "A and B", and `and` commutes.
+ *
+ * **A STRUCTURAL at-rule does not ask a question, it places the rule**, and nesting composes it. A
+ * review measured both:
+ *
+ * - `@layer a { @layer b { … } }` is layer `a.b` and the reverse is `b.a` — two different cascade
+ *   layers at different priorities, which is what layers are for. Sorted, both authors got one rule
+ *   in `a.b`, so the second one's declaration silently lived in the first one's layer.
+ * - `@scope (.p) { @scope (.q) { … } }` matches an element inside a `.q` inside a `.p`, and the
+ *   reverse matches inside a `.p` inside a `.q`. On one document one of them matches and the other
+ *   does not.
+ *
+ * **An ALLOW-LIST rather than a deny-list**, because the unknown case has to fail safe: an at-rule
+ * CSS invents after this is written keeps the order it was written in, which is never wrong and at
+ * worst spends a second class where one would do. A deny-list would silently mis-sort it.
+ */
+describe("which conditions may be sorted", () => {
+  const conditionsOf = (css: string) => of(css)[0]?.conditions ?? [];
+
+  test.each([
+    ["two @media", "@media print", "@media (min-width: 40rem)"],
+    ["@media and @supports", "@media print", "@supports (display: grid)"],
+    ["@supports and @container", "@supports (display: grid)", "@container (width > 40rem)"],
+  ])("%s sort, so either nesting order is one identity", (_what, outer, inner) => {
+    const one = of(`${outer} { ${inner} { color: red; } }`)[0];
+    const other = of(`${inner} { ${outer} { color: red; } }`)[0];
+
+    expect(one.conditions).toEqual(other.conditions);
+    expect(one.identity).toBe(other.identity);
+  });
+
+  test.each([
+    ["@layer, where nesting names a child layer", "@layer a { @layer b { color: red; } }", ["@layer a", "@layer b"]],
+    ["and the other way round", "@layer b { @layer a { color: red; } }", ["@layer b", "@layer a"]],
+    [
+      "@scope, where nesting composes the roots",
+      "@scope (.p) { @scope (.q) { color: red; } }",
+      ["@scope (.p)", "@scope (.q)"],
+    ],
+    ["and its reverse", "@scope (.q) { @scope (.p) { color: red; } }", ["@scope (.q)", "@scope (.p)"]],
+  ])("%s keeps the order it was written in", (_what, css, expected) => {
+    expect(conditionsOf(css)).toEqual(expected);
+  });
+
+  test("so the two layer orders are two different identities", () => {
+    const one = of("@layer a { @layer b { color: red; } }")[0];
+    const other = of("@layer b { @layer a { color: red; } }")[0];
+
+    expect(one.identity).not.toBe(other.identity);
+    expect(one.key).not.toBe(other.key);
+  });
+
+  test("and so are the two scope orders", () => {
+    const one = of("@scope (.p) { @scope (.q) { color: red; } }")[0];
+    const other = of("@scope (.q) { @scope (.p) { color: red; } }")[0];
+
+    expect(one.identity).not.toBe(other.identity);
+  });
+
+  /**
+   * MIXED, and the whole set keeps its order. Sorting the sortable ones among themselves would move
+   * them past the structural one, which is the thing that may not happen — and answering "no" for
+   * the whole set is one rule rather than a per-position argument.
+   */
+  test("a sortable condition inside a structural one keeps its place", () => {
+    expect(conditionsOf("@layer a { @media print { color: red; } }")).toEqual(["@layer a", "@media print"]);
+    expect(conditionsOf("@media print { @layer a { color: red; } }")).toEqual(["@media print", "@layer a"]);
+  });
+
+  /** An at-rule nobody here has heard of keeps its order too, which is the safe direction. */
+  test("an at-rule this list does not know keeps its order", () => {
+    expect(conditionsOf("@invented x { @media print { color: red; } }")).toEqual(["@invented x", "@media print"]);
+  });
+});

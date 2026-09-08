@@ -13,6 +13,7 @@ import {
   MEDIA_FEATURES,
   UNIT_TYPE,
 } from "./keywords.generated";
+import { canonicalCondition, canonicalSelector } from "./normalise";
 import { closingHole, opensAHole } from "./read";
 import type { BlockSite } from "./scan";
 
@@ -92,6 +93,7 @@ export const RULE_IDS = [
   "unit-not-allowed",
   "string-not-allowed",
   "property-not-a-name",
+  "non-canonical-spelling",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -260,6 +262,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   readByAnotherName(block, findings);
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
+  spelling(block, findings);
   if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
   if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
@@ -640,6 +643,47 @@ function mediaFeatures(block: Block, findings: Finding[]): void {
             `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
         });
       }
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A prelude spelled a way that is the same CSS and a different class.
+ *
+ * `:hover` and `:HOVER` are one rule to a browser, and two keys here — because a declaration's key
+ * is its own text, and folding it in the compiler is not available: CSS is case-insensitive about
+ * the words of the LANGUAGE and case-sensitive about an author's identifiers, so lowering a selector
+ * would merge `.a` with `.A`. A review measured the cost of not folding at all: a base and a
+ * modifier one space apart kept both classes, so the modifier did not override and the winner was
+ * decided by whichever file the bundler reached first.
+ *
+ * So the SOURCE is canonical, and this is what says so. `ramonda-css format` writes the same answer.
+ *
+ * **It reports exactly what the canonicaliser changes.** A shape `canonicalCondition` and
+ * `canonicalSelector` leave alone — `:nth-child(2n + 1)`, `@supports ((display: grid))`, both of
+ * which need real parsing to rewrite — is a shape this says nothing about. An error with no fix is
+ * worse than a spelling, and one function asked two ways cannot drift from the other consumer.
+ */
+function spelling(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      walkItems(item.items);
+      if (item.at === undefined) continue;
+
+      const written = item.prelude.trim();
+      const canonical = written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written);
+      if (canonical === written) continue;
+
+      findings.push({
+        rule: "non-canonical-spelling",
+        at: item.at,
+        length: item.prelude.length,
+        message:
+          `write this as \`${canonical}\` — the two are the same CSS, and one spelling is what lets a ` +
+          `declaration here override the same one written elsewhere. \`ramonda-css format\` fixes it.`,
+      });
     }
   };
   walkItems(block.items);
