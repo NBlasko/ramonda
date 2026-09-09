@@ -176,7 +176,72 @@ function string(text: string, start: number, write: (chunk: string) => void): nu
  * written, which costs a second class and reports nothing.
  */
 export function canonicalSelector(selector: string): string {
-  return tightenedCounts(lowered(selector));
+  return overCode(selector, (code) => tightenedCounts(lowered(code)));
+}
+
+/**
+ * Applies `write` to the CODE of a prelude and leaves the author's own bytes alone.
+ *
+ * A string's contents and a comment's contents are the author's. A review measured what happens
+ * when they are not treated that way: `&[title="A:Hover"]` came back `&[title="A:hover"]`, and
+ * attribute matching is case-SENSITIVE — so the selector stopped matching what it had matched. The
+ * `non-canonical-spelling` rule agreed with the canonicaliser, so the build refused the correct
+ * spelling and named the broken one as the fix.
+ *
+ * The comment case only reaches here through the FORMATTER: the parser collapses a comment to one
+ * space before a rule ever sees a prelude, and the formatter hands over the line as written.
+ *
+ * An unterminated string or comment takes the rest of the prelude with it, which is what a parser
+ * would do with it too.
+ */
+function overCode(prelude: string, write: (code: string) => string): string {
+  let out = "";
+  let from = 0;
+  let index = 0;
+
+  const flush = (to: number) => {
+    if (to > from) out += write(prelude.slice(from, to));
+  };
+
+  while (index < prelude.length) {
+    const code = prelude.charCodeAt(index);
+
+    if (code === 34 || code === 39) {
+      flush(index);
+      const closed = endOfPreludeString(prelude, index);
+      out += prelude.slice(index, closed + 1);
+      index = closed + 1;
+      from = index;
+      continue;
+    }
+    if (code === 47 /* / */ && prelude.charCodeAt(index + 1) === 42 /* * */) {
+      flush(index);
+      const closed = prelude.indexOf("*/", index + 2);
+      const end = closed === -1 ? prelude.length : closed + 2;
+      out += prelude.slice(index, end);
+      index = end;
+      from = index;
+      continue;
+    }
+    index++;
+  }
+
+  flush(prelude.length);
+  return out;
+}
+
+/** Past the closing quote, or the last character when a prelude's string is never closed. */
+function endOfPreludeString(prelude: string, start: number): number {
+  const quote = prelude.charCodeAt(start);
+  for (let index = start + 1; index < prelude.length; index++) {
+    const code = prelude.charCodeAt(index);
+    if (code === 92 /* backslash */) {
+      index++;
+      continue;
+    }
+    if (code === quote) return index;
+  }
+  return prelude.length - 1;
 }
 
 /**
@@ -221,7 +286,26 @@ function lowered(selector: string): string {
 }
 
 export function canonicalCondition(condition: string): string {
-  return unwrapped(spelled(condition));
+  const written = unwrapped(condition);
+  const space = written.indexOf(" ");
+  const name = space === -1 ? written : written.slice(0, space);
+  if (!AT_RULES.has(name.toLowerCase())) return written;
+
+  const lowered = `@${name.slice(1).toLowerCase()}`;
+  const rest = space === -1 ? "" : written.slice(space + 1);
+  /**
+   * A `@layer`'s name and a `@scope`'s selector are the AUTHOR'S, so only the at-rule's own name is
+   * lowered for those. Everything else here takes a condition, whose feature names are the
+   * language's.
+   */
+  if (!CONDITIONAL.has(lowered)) return rest === "" ? lowered : `${lowered} ${rest}`;
+
+  /**
+   * The at-rule's name is taken off ONCE and the rest is walked in code runs — not the whole
+   * condition per run, which would have left a feature name after a string alone: the run
+   * `) and (MIN-WIDTH:40rem)` does not begin with an at-rule.
+   */
+  return `${lowered} ${overCode(rest, canonicalFeatures)}`;
 }
 
 /**
@@ -249,6 +333,11 @@ function isOneGroup(text: string): boolean {
   let depth = 0;
   for (let index = 0; index < text.length; index++) {
     const code = text.charCodeAt(index);
+    // A paren inside a string is text — `url("a)b")` would otherwise close the group early.
+    if (code === 34 || code === 39) {
+      index = endOfPreludeString(text, index);
+      continue;
+    }
     if (code === 40) depth++;
     else if (code === 41) {
       depth--;
@@ -256,23 +345,6 @@ function isOneGroup(text: string): boolean {
     }
   }
   return false;
-}
-
-function spelled(condition: string): string {
-  const space = condition.indexOf(" ");
-  const name = space === -1 ? condition : condition.slice(0, space);
-  if (!AT_RULES.has(name.toLowerCase())) return condition;
-
-  const rest = space === -1 ? "" : condition.slice(space + 1);
-  /**
-   * A `@layer`'s name and a `@scope`'s selector are the AUTHOR'S, so only the at-rule's own name is
-   * lowered for those. Everything else here takes a condition, whose feature names are the
-   * language's.
-   */
-  const lowered = `@${name.slice(1).toLowerCase()}`;
-  if (!CONDITIONAL.has(lowered)) return rest === "" ? lowered : `${lowered} ${rest}`;
-
-  return `${lowered} ${canonicalFeatures(rest)}`;
 }
 
 /**

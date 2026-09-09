@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { filesUnder, formatFile, lintFile, readReport, toolIn } from "../tooling";
+import { filesUnder, formatFile, formatText, lintFile, readReport, toolIn } from "../tooling";
 
 /**
  * What the wrappers DECIDE, asked with a tool that does exactly what a test says.
@@ -98,21 +98,23 @@ describe("formatting", () => {
 
   /**
    * A formatter is free to do anything, including drop the placeholder — a rule that removes an
-   * expression it thinks is dead, say. The block is then lost, and losing an author's source is the
-   * one outcome a formatter wrapper may not have. It is left where it was instead.
+   * expression it thinks is dead, say. The block is then unputbackable, and losing an author's
+   * source is the one outcome a formatter wrapper may not have. So nothing is written at all.
+   *
+   * **This test used to assert the opposite of its own comment.** It checked the block was GONE,
+   * which is what the code did: skip the placeholder and carry on. A review measured that with the
+   * real Prettier and it cost two of six files their block, silently, on disk. The comment was
+   * right and the assertion was wrong.
    */
-  test("a formatter that dropped the placeholder does not take the block with it", () => {
+  test("a formatter that dropped the placeholder writes nothing at all", () => {
     const path = file("Card.tsx", STYLED);
-
     // Either placeholder shape: a comment and a zero for a one-line block, a template literal for
-    // one that spans lines. A test that knew only the first stopped dropping anything the day the
-    // second arrived, and passed by having nothing to recover from.
+    // one that spans lines.
     const drop = (t: string) => t.replace(/\w+=\{(?:\/\*[^*]*\*\/ 0|`[^`]*`)\}/, "");
 
-    const { text } = formatFile(path, drop, { write: false });
-
-    expect(text).not.toContain("@(");
-    expect(text).toContain("const after = 2;");
+    expect(() => formatFile(path, drop, { write: false })).toThrow(/placeholder/);
+    // And the author's file is exactly as it was, which is the point of refusing.
+    expect(readFileSync(path, "utf8")).toBe(STYLED);
   });
 });
 
@@ -308,5 +310,91 @@ describe("finding the tool", () => {
     files.push(root);
 
     expect(toolIn(root, "biome")).toBeUndefined();
+  });
+});
+
+/**
+ * THE FILE'S OWN LINE ENDINGS, which the formatter chooses and the block has to follow.
+ *
+ * `relaid` took the newline from the BLOCK's text and the formatter took it for everything else, so
+ * a review measured a CRLF file coming back with LF outside every block and CRLF inside it. Stable,
+ * which is worse than random: it recurs on every save instead of healing. That is the failure
+ * `relaid` was written for, arriving from the other side — and the existing tests could not see it,
+ * because they all use an identity formatter, which by construction never disagrees with the block.
+ *
+ * So the ending comes from the text the FORMATTER handed back. It made the decision; a block is part
+ * of the file it is in.
+ */
+describe("the line ending a block comes back with", () => {
+  /** A formatter with an opinion, which is the only way to see this at all. */
+  const toLf = (text: string) => text.replace(/\r\n/g, "\n");
+  const toCrlf = (text: string) => text.replace(/\r?\n/g, "\r\n");
+
+  const CRLF = "const a = 1;\r\nconst p = @@(\r\n  color: red;\r\n  gap: 8px;\r\n);\r\n";
+  const LF = "const a = 1;\nconst p = @@(\n  color: red;\n  gap: 8px;\n);\n";
+
+  test("a CRLF file formatted by a tool that writes LF comes back all LF", () => {
+    const out = formatText(CRLF, "X.tsx", toLf);
+
+    expect(out).not.toMatch(/\r/);
+    expect(out).toContain("color: red;");
+  });
+
+  test("an LF file formatted by a tool that writes CRLF comes back all CRLF", () => {
+    const out = formatText(LF, "X.tsx", toCrlf);
+
+    expect(out).not.toMatch(/[^\r]\n/);
+    expect(out).toContain("color: red;");
+  });
+
+  test("and it settles, rather than flipping on every save", () => {
+    const once = formatText(CRLF, "X.tsx", toLf);
+
+    expect(formatText(once, "X.tsx", toLf)).toBe(once);
+  });
+
+  /** An identity formatter made no choice, so the file keeps exactly what it had. */
+  test.each([
+    ["a CRLF file", CRLF],
+    ["an LF file", LF],
+  ])("%s is untouched by a formatter that changes nothing", (_what, source) => {
+    expect(formatText(source, "X.tsx", (text) => text)).toBe(source);
+  });
+});
+
+/**
+ * A BLOCK THAT COULD NOT BE PUT BACK is refused, not dropped.
+ *
+ * `restore` skipped a placeholder it could not find and carried on. A review measured the cost with
+ * the real Prettier, which recognises the template placeholder as embedded CSS and reflows it: the
+ * block was gone from the output, the placeholder was left in its place, and `formatFile` with
+ * `write: true` put that on disk. Two of six cases.
+ *
+ * There is no correct output to fall back to, so there is no output. A formatter that fails is an
+ * inconvenience; a formatter that eats a block is unrecoverable work — and it did it silently, which
+ * is the half that makes it unrecoverable.
+ *
+ * The test that used to assert the old behaviour asserted the block was GONE while its own comment
+ * said losing an author's source is the one outcome this may not have. The comment was right.
+ */
+describe("a block the formatter moved out from under", () => {
+  const drop = (text: string) => text.replace(/\w+=\{(?:\/\*[^*]*\*\/ 0|`[^`]*`)\}/, "");
+
+  test("is refused, and says which file", () => {
+    const source = "const before = 1;\nconst a = (\n  <div css=@@(\n    color: red;\n  )>x</div>\n);\n";
+
+    expect(() => formatText(source, "Card.tsx", drop)).toThrow(/Card\.tsx/);
+  });
+
+  test("and the message says what happened, not just that it did", () => {
+    const source = "const a = <div css=@@(\n  color: red;\n)>x</div>;\n";
+
+    expect(() => formatText(source, "Card.tsx", drop)).toThrow(/placeholder/);
+  });
+
+  test("a formatter that leaves the placeholder alone is unaffected", () => {
+    const source = "const a = <div css=@@(\n  color: red;\n)>x</div>;\n";
+
+    expect(formatText(source, "Card.tsx", (text) => text)).toBe(source);
   });
 });

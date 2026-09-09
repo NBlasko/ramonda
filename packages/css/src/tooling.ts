@@ -114,7 +114,15 @@ export function formatFile(
  */
 export function formatText(source: string, file: string, format: (text: string, path: string) => string): string {
   const held = placehold(source);
-  return held === undefined ? format(source, file) : held.restore(format(held.text, file));
+  if (held === undefined) return format(source, file);
+
+  try {
+    return held.restore(format(held.text, file));
+  } catch (error) {
+    // The file's name, because a refusal with no file is a refusal nobody can act on — and the one
+    // thing `restore` refuses is a formatter it does not recognise. See its own note.
+    throw new Error(`${file}: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 /** One diagnostic as a linter reports it — the shape `oxlint --format=json` produces. */

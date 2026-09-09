@@ -251,3 +251,89 @@ describe("the two that looked like they needed a parser", () => {
     expect(canonicalCondition(written)).toBe(written);
   });
 });
+
+/**
+ * A STRING and a COMMENT in a prelude are the author's own bytes.
+ *
+ * A review measured what happens when the canonicalisers walk them: an attribute value's case was
+ * folded, and attribute matching is case-SENSITIVE — so the selector stopped matching what it had
+ * matched. And `non-canonical-spelling` agreed with the canonicaliser, so the build REFUSED the
+ * correct spelling and told the author to write the broken one.
+ *
+ *     &[title="A:Hover"]   ->   &[title="A:hover"]      matches other elements
+ *
+ * A comment goes the same way: a pseudo name written in capitals inside one comes back lowered.
+ *
+ * A pseudo-class's name is the language's. Everything between quotes, and everything between
+ * comment markers, is not.
+ */
+describe("what a prelude's own text is", () => {
+  test.each([
+    ["an attribute value holding a colon and a capital", '&[title="A:Hover"]'],
+    ["a url-ish value", '&[href^="mailto:First"]'],
+    ["single quotes", "&[title='A:Hover']"],
+    ["a value that looks like an at-rule", '&[data-q="@MEDIA print"]'],
+    ["a value holding a media word", '&[data-q="NOT screen"]'],
+  ])("%s is left exactly as written", (_what, written) => {
+    expect(canonicalSelector(written)).toBe(written);
+  });
+
+  test.each([
+    ["a feature name in a quoted value", '@media (min-width: 40rem) and (foo: "NOT")'],
+    ["a media word in a quoted value", '@supports (font-family: "SCREEN AND PRINT")'],
+  ])("%s keeps the string", (_what, written) => {
+    expect(canonicalCondition(written)).toBe(written);
+  });
+
+  test.each([
+    ["a pseudo name in a comment", "&:hover /* :HOVER note */"],
+    ["a media word in a comment", "@media print /* SCREEN and PRINT */"],
+    ["a feature name in a comment", "@media (min-width: 40rem) /* MIN-WIDTH matters */"],
+  ])("%s keeps the comment", (_what, written) => {
+    expect(written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written)).toBe(written);
+  });
+
+  /** And the code around them is still canonicalised, or the skip would be a bail-out. */
+  test.each([
+    ["beside a string", '&:HOVER[title="A:Hover"]', '&:hover[title="A:Hover"]'],
+    ["beside a comment", "&:HOVER /* :HOVER */", "&:hover /* :HOVER */"],
+    [
+      "a condition beside a string",
+      '@MEDIA (MIN-WIDTH:40rem) and (foo: "NOT")',
+      '@media (min-width: 40rem) and (foo: "NOT")',
+    ],
+    ["before and after a comment", "&:BEFORE /* x */ &:AFTER", "&::before /* x */ &::after"],
+  ])("%s", (_what, written, expected) => {
+    expect(written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written)).toBe(expected);
+  });
+
+  /**
+   * A feature name AFTER a string. The at-rule's own name is taken off once and the rest walked in
+   * runs, so a run that does not begin with an at-rule is still canonicalised — which walking the
+   * whole condition per run would have missed.
+   */
+  test.each([
+    ["after a quoted value", '@media (foo: "X") and (MIN-WIDTH:40rem)', '@media (foo: "X") and (min-width: 40rem)'],
+    ["after a comment", "@media /* x */ (MIN-WIDTH:40rem)", "@media /* x */ (min-width: 40rem)"],
+    [
+      "between two strings",
+      '@media (a: "X") and (MIN-WIDTH:40rem) and (b: "Y")',
+      '@media (a: "X") and (min-width: 40rem) and (b: "Y")',
+    ],
+  ])("%s is still canonicalised", (_what, written, expected) => {
+    expect(canonicalCondition(written)).toBe(expected);
+  });
+
+  /** And a paren inside a string does not close a `@supports` group early. */
+  test("a redundant pair is still found past a string holding a paren", () => {
+    expect(canonicalCondition('@supports ((background: url("a)b")))')).toBe('@supports (background: url("a)b"))');
+  });
+
+  /** An unterminated one takes the rest of the prelude with it, which is what a parser would do. */
+  test.each([
+    ["an unclosed string", '&[title="A:Hover'],
+    ["an unclosed comment", "&:hover /* :HOVER"],
+  ])("%s is left alone from there on", (_what, written) => {
+    expect(canonicalSelector(written)).toBe(written);
+  });
+});

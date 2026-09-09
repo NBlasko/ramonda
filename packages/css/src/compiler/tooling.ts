@@ -155,6 +155,20 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
 
 function restore(formatted: string, blocks: readonly { text: string; wrap: boolean; held: string }[]): string {
   let out = formatted;
+  /**
+   * The ending the FORMATTER chose, which is the one the whole file now uses.
+   *
+   * `relaid` used to take it from the block's own text, and a review measured what that costs: a
+   * CRLF file formatted by a tool that writes LF came back LF outside every block and CRLF inside
+   * one. Stable, which is worse than random — it recurs on every save rather than healing.
+   *
+   * The existing tests could not see it, because they all use an identity formatter, and an identity
+   * formatter never disagrees with the block. A tool with an opinion is the only way to reach it.
+   *
+   * A file with one line and no newline at all keeps whatever the block had, which is the only case
+   * where the formatter has said nothing.
+   */
+  const newline = formatted.includes("\r\n") ? "\r\n" : formatted.includes("\n") ? "\n" : undefined;
   // From the text as the FORMATTER left it, before any block goes back into it — a restored block's
   // own body would otherwise be read as evidence of what the formatter chose.
   const spaces = stepOf(formatted);
@@ -169,7 +183,27 @@ function restore(formatted: string, blocks: readonly { text: string; wrap: boole
     const stands = block.held.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\r?\n/g, "\\r?\\n");
     const placeholder = new RegExp(block.wrap ? `[\\w:$-]+=\\{${stands}\\}` : stands);
     const found = placeholder.exec(out);
-    if (found === null) continue;
+    /**
+     * A placeholder the formatter moved, rewrote or deleted. There is no correct output to fall back
+     * to, so there is no output.
+     *
+     * This used to `continue`: the block was dropped, the placeholder was left where it had been,
+     * and `formatFile` with `write: true` put that on disk. A review measured it with the real
+     * Prettier, which reads the template placeholder as embedded CSS and reflows it — two of six
+     * cases lost their block.
+     *
+     * A formatter that fails is an inconvenience. A formatter that eats a block is unrecoverable
+     * work, and it was doing it silently, which is the half that makes it unrecoverable. The test
+     * that covered the old behaviour asserted the block was gone while its own comment said losing
+     * an author's source is the one outcome this may not have; the comment was right.
+     */
+    if (found === null) {
+      throw new Error(
+        "[@ramonda/css] the formatter moved or rewrote the placeholder standing in for a style " +
+          "block, so the block cannot be put back and nothing was written. This is a formatter " +
+          "this package has not been measured against — please report it with the file.",
+      );
+    }
 
     /**
      * The formatter's own indentation, copied rather than counted.
@@ -181,7 +215,8 @@ function restore(formatted: string, blocks: readonly { text: string; wrap: boole
     const outer = /^[\t ]*/.exec(out.slice(lineStart, found.index))?.[0] ?? "";
     const inner = outer + (outer.includes("\t") ? "\t" : spaces);
 
-    out = out.slice(0, found.index) + relaid(block.text, outer, inner) + out.slice(found.index + found[0].length);
+    out =
+      out.slice(0, found.index) + relaid(block.text, outer, inner, newline) + out.slice(found.index + found[0].length);
   }
 
   return out;
@@ -226,9 +261,11 @@ function stepOf(text: string): string {
  * block, a diff on every line and a lint failure in most setups. Nothing here is a decision about
  * which ending a file should use.
  */
-function relaid(block: string, outer: string, inner: string): string {
-  const newline = block.includes("\r\n") ? "\r\n" : "\n";
-  const lines = block.split(newline);
+function relaid(block: string, outer: string, inner: string, chosen: string | undefined): string {
+  // The file's own ending — see `restore`, which reads it off what the formatter handed back. Only a
+  // file with no newline at all falls back to the block's, because there the formatter said nothing.
+  const newline = chosen ?? (block.includes("\r\n") ? "\r\n" : "\n");
+  const lines = block.split(/\r?\n/);
   if (lines.length === 1) return block;
 
   const step = inner.slice(outer.length);
