@@ -76,14 +76,70 @@ describe("a hole's value, which travels with its class", () => {
     expect(properties).toEqual([`--${CLASS}-0`]);
     expect(values).toEqual(["blue"]);
   });
+});
 
-  test("a value that is not carried at all leaves the property unset", () => {
-    // The same rule `toStyleObject` and the framework follow: no value means the declaration falls
-    // back to what the stylesheet said, rather than being written as the text `"null"`.
-    const { properties, values } = merge({ color: [CLASS, null as never] });
+/**
+ * A DECLARATION WITH NOTHING TO SET IS NOT SET, so what it would have overridden survives.
+ *
+ * `...{base}; color: {tint}` with `tint = null` used to delete the base's class for that key and
+ * leave the modifier's, whose `var()` was unset — so `color` computed to inherit rather than the
+ * base's red. **The comments in `value.ts` and `merge.ts` both promised the fall-back**, and the
+ * code did the opposite one step earlier than either of them looked.
+ *
+ * A class stands for exactly one declaration, which is what makes dropping it safe: there is nothing
+ * else on it to lose. And a declaration reading an unset `var()` is invalid at computed-value time
+ * anyway, so the class was never going to apply — it was only in the way.
+ *
+ * The same as `twMerge`, measured against 3.6.0: `twMerge("text-red-500", null)` is `"text-red-500"`.
+ *
+ * The type refuses `null` and `undefined` in a hole — see `__val` in `virtual.ts` — so this is the
+ * belt for what a type cannot hold: a cast, an `any`, a JavaScript caller, data off an API.
+ */
+describe("a hole with no value", () => {
+  const BASE = "r-3333333333333333";
 
+  test("does not take the base's declaration with it", () => {
+    const { className, properties } = merge({ color: BASE }, { color: [CLASS, null as never] });
+
+    expect(className).toBe(BASE);
     expect(properties).toEqual([]);
-    expect(values).toEqual([]);
+  });
+
+  test("undefined is the same answer", () => {
+    expect(merge({ color: BASE }, { color: [CLASS, undefined as never] }).className).toBe(BASE);
+  });
+
+  test("with no base, nothing is applied — which is the same page either way", () => {
+    expect(merge({ color: [CLASS, null as never] })).toEqual({ className: "", properties: [], values: [] });
+  });
+
+  /**
+   * ONE null among several is still nothing to set. `border-left: {w} solid {c}` with `c` missing
+   * reads an unset `var()`, and a declaration with one of those is dropped whole by the browser.
+   */
+  test("one missing value among several drops the whole declaration", () => {
+    const { className } = merge({ "border-left": BASE }, { "border-left": [CLASS, "4px", null as never] });
+
+    expect(className).toBe(BASE);
+  });
+
+  test("and a value that IS carried still wins, so this is not just 'the first one'", () => {
+    expect(merge({ color: BASE }, { color: [CLASS, "blue"] }).className).toBe(CLASS);
+  });
+
+  /** It clears nothing either: a shorthand that sets nothing cannot clear what an earlier one set. */
+  test("clears nothing, because it sets nothing", () => {
+    const { className } = merge(
+      { "padding-left": BASE },
+      { padding: [CLASS, null as never], "~padding": ["padding-left"] },
+    );
+
+    expect(className).toBe(BASE);
+  });
+
+  /** And `compose` answers the same, because it is the primitive the nested case composes with. */
+  test("compose leaves the earlier entry in place", () => {
+    expect(compose({ color: BASE }, { color: [CLASS, null as never] })).toEqual({ color: BASE });
   });
 });
 
@@ -198,6 +254,26 @@ describe("a value spread back in", () => {
 
   test("which is the same answer as merging the maps directly", () => {
     expect(merge(merge(base), roomy).className).toBe(merge(base, roomy).className);
+  });
+
+  /**
+   * THE SHAPE THE AUTHOR ACTUALLY WRITES, in the form the compiler emits it.
+   *
+   *     const base = @@( color: red; );
+   *     <div css=@@( ...{base}; color: {tint}; )>
+   *
+   *     _merge(base, {"color": ["r-OsXzXT1Qd", tint]})
+   *
+   * With `tint = null` this used to come back holding only the modifier's class, whose `var()` was
+   * unset — so the text was inherit-coloured rather than red. The base is what the author expects to
+   * see, and it is what the two files' comments already promised.
+   */
+  test("a base spread in survives a modifier whose hole is empty", () => {
+    const tinted = (tint: string | null) =>
+      merge(merge({ color: "r-c-red000000000000" }), { color: ["r-tint00000000000", tint as never] });
+
+    expect(tinted(null).className).toBe("r-c-red000000000000");
+    expect(tinted("blue").className).toBe("r-tint00000000000");
   });
 });
 

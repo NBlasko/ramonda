@@ -312,14 +312,14 @@ color: {tint};                   ✗  TS2345 — `null` is not a value
 color: {tint ?? "inherit"};      ✓
 ```
 
-This is not a style rule. A hole becomes a custom property, and a custom property set to nothing is
-not the same as one that was never set — the declaration reading it becomes invalid at
-computed-value time and falls back past everything above it. Server rendering is the other half:
-measured, a hole that is `undefined` on the server and a value on the client is repaired silently,
-while the reverse is reported as a divergence and **not** repaired, so the stale value survives on
-the page.
+An empty hole is not a declaration you can see. It is a `var()` with nothing behind it, which makes
+the whole declaration invalid at computed-value time — so the property falls back past every earlier
+declaration of it, including the one you spread in above.
 
-Write what the empty case should look like and both problems go away.
+On a server-rendered page it is worse in one direction. A hole that has a value on the server and
+none on the client is a divergence, and the page keeps showing the server's value.
+
+Write the empty case out and neither happens.
 
 ## Comments
 

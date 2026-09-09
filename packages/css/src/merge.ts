@@ -48,6 +48,35 @@ function mapOf(one: StyleMap | StyleValue): StyleMap {
 }
 
 /**
+ * A DECLARATION WITH NOTHING TO SET, which is a hole whose value never arrived.
+ *
+ * `...{base}; color: {tint}` with `tint = null` used to delete the base's class for that key and
+ * leave the modifier's, whose `var()` was then unset — so `color` computed to inherit instead of
+ * falling back to the base's red. **The comments in this file and in `value.ts` both promised the
+ * fall-back**, and each was right about its own step: the loss happened one step earlier, where the
+ * key was displaced.
+ *
+ * Dropping the whole entry is safe because a class stands for exactly ONE declaration — there is
+ * nothing else on it to lose. And it costs nothing, because a declaration reading an unset `var()`
+ * is invalid at computed-value time and is dropped by the browser anyway: the class was never going
+ * to apply, it was only in the way of the one that would have.
+ *
+ * ONE missing value among several is enough, for that same reason: `border-left: {w} solid {c}`
+ * with `c` missing is one declaration, and it is dropped whole.
+ *
+ * The type refuses `null` and `undefined` in a hole — see `__val` in `compiler/virtual.ts` — so this
+ * is the belt for what a type cannot hold: a cast, an `any`, a JavaScript caller, data off an API.
+ */
+function setsNothing(entry: StyleEntry | StyleClears | undefined): boolean {
+  if (entry === undefined || typeof entry === "string") return entry === undefined;
+  for (let index = 1; index < entry.length; index++) {
+    const value = entry[index];
+    if (value === undefined || value === null) return true;
+  }
+  return false;
+}
+
+/**
  * Compose blocks into one map — the primitive, and the one that is closed over its own output.
  *
  * `merge` returns the VALUE the framework takes, which is a different shape and cannot be composed
@@ -69,6 +98,8 @@ export function compose(...maps: readonly (StyleMap | StyleValue | false | null 
     const map = mapOf(given);
     for (const key in map) {
       if (key.startsWith(CLEARS)) continue;
+      // A declaration with nothing to set is not set, so it neither displaces nor clears anything.
+      if (setsNothing(map[key])) continue;
 
       const cleared = map[`${CLEARS}${key}`];
       if (Array.isArray(cleared)) {
@@ -133,10 +164,16 @@ export function merge(...maps: readonly (StyleMap | StyleValue | false | null | 
 
     const [name, ...carried] = entry;
     className = className === "" ? name : `${className} ${name}`;
+    /**
+     * Every value is carried, because `compose` has already dropped any entry missing one — see
+     * {@link setsNothing}.
+     *
+     * This used to skip a missing value here and keep the class, which is the answer `toStyleObject`
+     * and the framework still give for a value handed to them directly. It is the wrong answer one
+     * step in: by the time it ran, the entry it was patching up had already displaced the base it
+     * was supposed to fall back to. One question, asked where it can be answered.
+     */
     for (const [index, value] of carried.entries()) {
-      // No value is not the empty value: the property is left unset so the declaration falls back to
-      // what the stylesheet said. The same rule `toStyleObject` and the framework follow.
-      if (value === undefined || value === null) continue;
       properties.push(`--${name}-${index}`);
       values.push(value);
     }
