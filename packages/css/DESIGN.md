@@ -328,16 +328,23 @@ A block compiles to a **value**, and the expressions are transplanted verbatim i
 Nothing is concatenated, so nothing has to be escaped.
 
 ```tsx
-// static only — hoisted to module scope, built once for the life of the program
-const _s1 = block("r-94dc05ab");
+// static only — one class per declaration, hoisted to module scope and built once
+const _s1 = _merge({ "font-size": "r-fs-18px" });
 …
 <h3 css={_s1}>
 
-// with holes — the descriptor is still hoisted; only the values are per-render
-const _s2 = block("r-8e271c6c1f3a4b02", ["--r-8e271c6c1f3a4b02-0"]);
-…
-<div css={_s2(this.open ? "4px solid " + this.accent : "4px solid #64748b")}>
+// with holes — the expression is an argument, in a value position, per render
+<div css={_merge({
+  "border-left": ["r-8e271c6c1f3a4b02", this.open ? "4px solid " + this.accent : "4px solid #64748b"],
+  "~border-left": ["border-left-color", "border-left-style", "border-left-width"],
+})}>
 ```
+
+**`block()` is not what this emits, and has not been since the merge was written.** It is still a
+public export — an adapter for another JSX library builds a value with it — and four documents
+including this one showed it as the compiler's output long after it stopped being one. That is how a
+reader learned to call `merge(block(…))`, which is a value carrying no map and composes with
+nothing.
 
 The expression is an argument, copied across untouched. The custom property reaches the DOM through
 `setProperty("--r-8e271c6c1f3a4b02-0", value)`, which takes a raw string — so **the escaping problem the string form

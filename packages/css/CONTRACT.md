@@ -179,7 +179,7 @@ longhand emitted before a shorthand loses to it.
 
 ---
 
-## 2. What `block()` returns, and what the `css` prop accepts
+## 2. What a compiled value IS, and what the `css` prop accepts
 
 ```ts
 type StyleVarValue = string | number;
@@ -209,8 +209,16 @@ type StyleBlock<P extends readonly string[]> = StyleValue & ((...values: HoleVal
 - **A hole may be a number** because plenty of properties take one. It is the per-property types that
   refuse `padding: 24`, not this.
 - **The arity is checked.** `block()` takes the property names as a tuple, so a call with the wrong
-  number of arguments is a type error. The compiler writes both halves, so this is the compiler
-  checking itself.
+  number of arguments is a type error.
+- **`block()` is not what the compiler emits.** It emits `_merge({ … })`, one class per declaration,
+  which is what makes composition possible at all — see §1. `block` stays public for an adapter
+  building a value by hand. **This document, the README, `DESIGN.md` and `PLAN.md` all showed
+  `block(…)` as the compiler's output long after it stopped being one**, which is how a reader
+  learned to write `merge(block(…))`.
+- **A value carrying no map composes with nothing.** A map says what each class SETS; `block()`
+  throws that away, so such a value lands — its class and its holes — and takes part in no override.
+  Merging one used to read its own fields as declarations and put the word `undefined` into a class
+  attribute.
 - **One function turns a value into `{ className, style }`** — `toStyleObject`. That is the entire
   adapter surface a wrapper on another JSX library needs; Ramonda applies it natively instead.
 - **There is no brand.** A runtime diagnostic — `RMD064` — tells a compiled value from a hand-written

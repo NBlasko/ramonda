@@ -42,9 +42,31 @@ const CLEARS = "~";
  */
 const FROM = Symbol.for("ramonda.css.map");
 
-/** The map behind a merged value, or the map itself. */
+/**
+ * The map behind a merged value, or the map itself.
+ *
+ * **A value with NO map is the third case, and it used to be read as a map.** `block("r-x", ["--r-x-0"])("red")`
+ * is what the public `block` produces, and it carries no map — so its own fields were read as
+ * declarations: measured, `merge(block("r-def"))` came back with `className: "r-def undefined
+ * undefined"`, the word `undefined` written into an element's class attribute.
+ *
+ * It cannot compose, and that is a fact about the value rather than a limitation here: a map says
+ * what each class SETS, and a bare value has thrown that away. What it can still do is land — so it
+ * contributes its class and its holes under its own class name as the key, which no CSS property can
+ * collide with and no clear-list can name. It takes part in no override, which is the honest
+ * consequence of having no map: there is nothing to decide with.
+ *
+ * Not reachable from compiled code, which emits `_merge({ … })` — but `block` and `merge` are both
+ * public, and the README, `CONTRACT.md`, `DESIGN.md` and `PLAN.md` all showed `block(…)` as what the
+ * compiler emits, which it has not for some time. The documents pointed straight at this.
+ */
 function mapOf(one: StyleMap | StyleValue): StyleMap {
-  return (one as { [FROM]?: StyleMap })[FROM] ?? (one as StyleMap);
+  const behind = (one as { [FROM]?: StyleMap })[FROM];
+  if (behind !== undefined) return behind;
+
+  const value = one as Partial<StyleValue>;
+  if (typeof value.className !== "string" || !Array.isArray(value.values)) return one as StyleMap;
+  return { [value.className]: [value.className, ...(value.values as StyleVarValue[])] };
 }
 
 /**

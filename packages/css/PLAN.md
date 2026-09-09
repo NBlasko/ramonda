@@ -47,13 +47,14 @@ the same way JSX is usable because somebody wrote the parser for it.
 **This is the only truly sequential-first step, and it is small.** Four decisions, written down as a
 file the other tracks can code against without waiting for the parser to exist.
 
-1. **The compiled value.** A block becomes a hoisted descriptor plus a call:
+1. **The compiled value.** A block becomes a `_merge({ … })` naming one class per declaration:
    ```tsx
-   const _s0 = block("r-<16 hex>", ["--r-<16 hex>-0"]);   // module scope, once per block
-   <div css={_s0(isOnline ? "…" : "…")}>                  // expressions transplanted verbatim
+   <div css={_merge({ "color": ["r-<16 hex>", isOnline ? "…" : "…"] })}>
    ```
-   A block with no holes compiles to the bare descriptor — `css={_s0}` — and costs one allocation for
-   the life of the program.
+   The expression is transplanted verbatim into an argument position. A block with no holes is
+   hoisted to module scope — `const _s0 = _merge({ … })`, then `css={_s0}` — and costs one allocation
+   for the life of the program. **This said `block("r-…", […])` until 2026-09-09**, which is what the
+   compiler emitted before the merge was written and has not since.
 2. **What `block()` returns and what the `css` prop accepts.** One shape, and the framework and the
    compiler must agree on it before either is written. It must also be turnable into
    `{ className, style }` by a single exported function, which is what a wrapper on another JSX

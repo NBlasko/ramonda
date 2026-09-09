@@ -101,7 +101,7 @@ library without dragging one in.
 ```ts
 import { block, toStyleObject } from "@ramonda/css";
 
-// What the compiler emits at module scope. There is no reason to write this by hand.
+// One class and one custom property, by hand — for an adapter, not for a block you wrote.
 const bordered = block("r-8e271c6c1f3a4b02", ["--r-8e271c6c1f3a4b02-0"]);
 
 toStyleObject(bordered("4px solid #10b981"));
@@ -133,8 +133,16 @@ The transform is what turns
 <div css=@@( display: flex; border-left: {accent}; )>
 ```
 
-into a hoisted `const _s0 = block("r-…", ["--r-…-0"])` and a site reading `css={_s0(accent)}`, plus
-one rule for the sheet. **Only the CSS between the expressions is replaced** — every expression's own
+into a `_merge({ … })` naming one class per declaration, with the expression handed to it as an
+argument, plus one rule per declaration for the sheet:
+
+```tsx
+<div css={_merge({
+  "display": "r-disp-flex",
+  "border-left": ["r-wRCRfm4OS", accent],
+  "~border-left": ["border-left-color", "border-left-style", "border-left-width"],
+})}>
+``` **Only the CSS between the expressions is replaced** — every expression's own
 bytes stay where they were written, which is what makes the source map exact.
 
 A file that uses none of this pays one substring search: 1,290 files and 10.73 MB of this repository

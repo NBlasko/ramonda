@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { compose, merge } from "../merge";
+import { block } from "../value";
 import { SHORTHANDS } from "../compiler/keywords.generated";
 
 /**
@@ -140,6 +141,65 @@ describe("a hole with no value", () => {
   /** And `compose` answers the same, because it is the primitive the nested case composes with. */
   test("compose leaves the earlier entry in place", () => {
     expect(compose({ color: BASE }, { color: [CLASS, null as never] })).toEqual({ color: BASE });
+  });
+});
+
+/**
+ * A VALUE WITH NO MAP — what the public `block` produces, which the compiler has not emitted for
+ * some time.
+ *
+ * `mapOf` answers `one[FROM] ?? one`, so a bare value had its own FIELDS read as declarations:
+ * `className`, `properties` and `values` became things set, and their contents became class names.
+ * Measured: `merge(block("r-def"))` came back with `className: "r-def undefined undefined"` — the
+ * word `undefined` written into an element's class attribute.
+ *
+ * It cannot compose, and that is a fact about the value rather than a limitation of this: a map says
+ * what each class SETS and a bare value has thrown that away. What it can still do is LAND.
+ *
+ * Not reachable from compiled code — but `block` and `merge` are both public exports, and four
+ * documents showed `block(…)` as what the compiler emits. They pointed straight at it.
+ */
+describe("a value that carries no map", () => {
+  test("lands unchanged, class and holes and all", () => {
+    const value = block("r-abc0000000000000", ["--r-abc0000000000000-0"] as const)("red");
+
+    expect(merge(value)).toEqual({
+      className: "r-abc0000000000000",
+      properties: ["--r-abc0000000000000-0"],
+      values: ["red"],
+    });
+  });
+
+  test("a descriptor with no holes lands as its class, with no `undefined` anywhere", () => {
+    expect(merge(block("r-def0000000000000"))).toEqual({
+      className: "r-def0000000000000",
+      properties: [],
+      values: [],
+    });
+  });
+
+  test("beside a map, both land", () => {
+    const { className } = merge({ color: CLASS }, block("r-def0000000000000"));
+
+    expect(className.split(" ").sort()).toEqual([CLASS, "r-def0000000000000"].sort());
+  });
+
+  /**
+   * It takes part in no OVERRIDE, which is the honest consequence of having no map: there is nothing
+   * to decide with. A merged value keeps its own, so the two behave differently on purpose.
+   */
+  test("it overrides nothing, where a merged value does", () => {
+    const base = { color: "r-c-red000000000000" };
+    const bare = block("r-def0000000000000");
+
+    expect(merge(base, bare).className.split(" ")).toHaveLength(2);
+    expect(merge(base, merge(base)).className.split(" ")).toHaveLength(1);
+  });
+
+  test("and the same one twice is one class", () => {
+    const bare = block("r-def0000000000000");
+
+    expect(merge(bare, bare).className).toBe("r-def0000000000000");
   });
 });
 
