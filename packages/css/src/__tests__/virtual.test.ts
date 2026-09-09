@@ -571,6 +571,9 @@ describe("what the virtual file hands TypeScript", () => {
     ["a SHEBANG, which is legal only at offset 0", "#!/usr/bin/env node\nconst a = @@(\n  color: red;\n);\n"],
     ["a NAMED SITE as a bare attribute", "const a = <div css=@@keyframes(\n  from { opacity: 0; }\n)>x</div>;\n"],
     ["a BLOCK NESTED IN A HOLE", 'const a = @@(\n  color: {on ? @@( color: red; ) : "blue"};\n);\n'],
+    // A named block's body is a single object literal, and a call is not one of its members.
+    ["`@@if` inside a NAMED BLOCK", "const k = @@keyframes(\n  @@if ({on}) { from { opacity: 0; } }\n);\n"],
+    ["a SPREAD inside a named block", 'const f = @@font-face(\n  src: url("/b.woff2");\n  ...{base};\n);\n'],
   ])("%s", (_what, source) => {
     expect(parses(source)).toEqual([]);
   });
@@ -593,6 +596,22 @@ describe("what the virtual file hands TypeScript", () => {
     const virtual = build("#!/usr/bin/env node\nconst a = @@( color: red; );\n");
 
     expect(virtual?.code.startsWith("#!/usr/bin/env node\n")).toBe(true);
+  });
+
+  /**
+   * Composition is left OUT of a named block's literal rather than written into it.
+   *
+   * `composition-in-a-named-block` reports it, and writing the helper call among the literal's
+   * members produced `{__cond((on)),"& from":[…]}` — which does not parse, so nothing in the file
+   * was checked. The `single ? ")," : "),"` ternary that stood here had identical branches: the
+   * difference was seen and never made.
+   */
+  test("a guard inside a named block is not written into its literal", () => {
+    const virtual = build("const k = @@keyframes(\n  @@if ({on}) { from { opacity: 0; } }\n);\n");
+
+    expect(virtual?.code).not.toContain("__cond(");
+    // And the body it guarded is still checked, which is why this is not simply refused.
+    expect(virtual?.code).toContain('"& from"');
   });
 
   /** And the attribute the site was written as survives, so the tag still has one. */

@@ -1,7 +1,7 @@
 import type { Config } from "../config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
-import { type Finding, checkBlock, checkText } from "./rules";
+import { type Finding, checkBlock, checkNamedSite, checkText } from "./rules";
 import { findBlocks } from "./scan";
 import { type VariableRead, type Variables, variablesIn } from "./variables";
 
@@ -62,9 +62,22 @@ export function checkedSource(
 
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName, { resolve: (name) => references.get(name) });
+    /**
+     * A site whose NAME is not one this compiles gets that one finding and no more.
+     *
+     * There is no shape to check the body against, so anything said about it is a guess — and the
+     * guess was `rule-out-of-place`, which read `from { … }` as the selector `& from` and reported
+     * a nested rule. A wrong message is worse than none: it sends a person to the wrong line.
+     */
+    const named = checkNamedSite(site);
     out.push(
-      ...checkText(source, site.open, read.end),
-      ...checkBlock(read.block, { at: site.at, references, syntaxes, config }),
+      ...named,
+      ...(named.length > 0
+        ? []
+        : [
+            ...checkText(source, site.open, read.end),
+            ...checkBlock(read.block, { at: site.at, references, syntaxes, config }),
+          ]),
     );
 
     // A named site sets nothing on an element; a `@@property` registers a name, and the name it

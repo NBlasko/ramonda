@@ -4,6 +4,7 @@ import { selectorOf } from "./flatten";
 import { collapse } from "./normalise";
 import type { Span } from "./read";
 import { readBlock } from "./read";
+import { NAMED_BLOCKS } from "./rules";
 import { type BlockSite, afterShebang, findBlocks, mayHoldABlock } from "./scan";
 import { type Imported, namedSites } from "./references";
 
@@ -317,7 +318,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   const surfaces = new Map<string, string>();
   for (const site of sites) {
     if (site.at === undefined || surfaces.has(site.at)) continue;
-    const shape = SURFACES[site.at];
+    const shape = (SURFACES as Readonly<Record<string, string | undefined>>)[site.at];
     if (shape === undefined) continue;
     const name = binding(source, `__${site.at.replace(/-/g, "_")}`);
     surfaces.set(site.at, name);
@@ -496,18 +497,32 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        */
       const guard = item.kind === "rule" ? holeIn(item.prelude, CONDITION) : undefined;
       if (guard !== undefined && item.kind === "rule") {
-        write(`${condition}(`);
-        expression(holes[guard]);
-        write(single ? ")," : "),");
+        /**
+         * A named block's body is a SINGLE object literal, and a call is not one of its members.
+         *
+         * Composition belongs to an element and a named block is not one, so `@@if` cannot go in one
+         * — `composition-in-a-named-block` reports it. Written here anyway, it produced
+         * `{__cond((on)),"& from":[…]}`, which does not parse, and a file that does not parse has
+         * nothing checked in it at all. The `single ? ")," : "),"` ternary that used to stand here
+         * had identical branches: the difference was seen and never made.
+         */
+        if (!single) {
+          write(`${condition}(`);
+          expression(holes[guard]);
+          write("),");
+        }
         items(item.items, holes, keepLine, single);
         continue;
       }
 
       const spreading = item.kind === "declaration" ? holeIn(item.property, SPREAD) : undefined;
       if (spreading !== undefined && item.kind === "declaration") {
-        write(`${spread}(`);
-        expression(holes[spreading]);
-        write("),");
+        // The same reason, and the same rule reports it.
+        if (!single) {
+          write(`${spread}(`);
+          expression(holes[spreading]);
+          write("),");
+        }
         keepLine(item.end);
         continue;
       }
@@ -673,11 +688,16 @@ function afterLeadingTrivia(source: string): number {
  * Which type a named site's body is checked against.
  *
  * Written here rather than derived, because there is nothing to derive it from: `@keyframes` holds
- * frames, and the other two hold descriptors that only their own at-rule accepts. A site whose name
- * is not in this table gets no surface and no check — the transform refuses it separately, and the
- * order between the two is not something this can rely on.
+ * frames, and the other two hold descriptors that only their own at-rule accepts.
+ *
+ * **Keyed on `NAMED_BLOCKS`**, which is the one list of what a `@@name( … )` may be. It used to be
+ * its own set of three, beside the transform's own set of three — so a name in neither got no
+ * surface and no NAMED check, and the ORDINARY check took over: `@@keyfrmes( … )` was read as a
+ * block, `from { … }` as the selector `& from`, and the report talked about a nested rule. A wrong
+ * message is worse than none. `unknown-named-block` reports the name now, and the type makes the
+ * table impossible to drift from the list.
  */
-const SURFACES: Readonly<Record<string, string>> = {
+const SURFACES: Readonly<Record<(typeof NAMED_BLOCKS)[number], string>> = {
   keyframes: "CssKeyframesShape",
   "font-face": "CssFontFaceDescriptors",
   property: "CssPropertyDescriptors",

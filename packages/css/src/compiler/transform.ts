@@ -8,7 +8,7 @@ import { normalise } from "./normalise";
 import { type VariableRead, type Variables, variablesIn } from "./variables";
 import { type Span, readBlock } from "./read";
 import { refuse } from "./errors";
-import { checkBlock, checkText } from "./rules";
+import { checkBlock, checkNamedSite, checkText } from "./rules";
 import { type BlockSite, afterShebang, findBlocks, mayHoldABlock } from "./scan";
 
 /**
@@ -63,14 +63,6 @@ export interface TransformOptions {
 }
 
 /** One rule the stylesheet now owes. Assembly (dedupe, `@layer`, the collision assertion) is track E. */
-/**
- * The at-rules a named site may declare.
- *
- * Each names something the whole stylesheet uses, which is exactly why it cannot live inside a block
- * — measured, `@keyframes` written in one compiles to a rule no browser resolves. Written here it
- * goes to the sheet under a generated name, and the site becomes that name as a value a block reads.
- */
-const NAMED = new Set(["keyframes", "font-face", "property"]);
 
 export interface EmittedBlock {
   /** `r-` plus 16 hex — see CONTRACT.md. */
@@ -222,16 +214,6 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       );
     }
 
-    if (site.at !== undefined && !NAMED.has(site.at)) {
-      refuse(
-        `\`@@${site.at}( … )\` is not something this compiles — the named forms are ` +
-          `${[...NAMED].map((one) => `\`@@${one}( … )\``).join(", ")}.`,
-        source,
-        site.start,
-        filename,
-      );
-    }
-
     /**
      * A named site is a VALUE — a name the stylesheet uses — so it cannot be an attribute.
      *
@@ -268,10 +250,17 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * one would forget. The FIRST finding is what the refusal names: findings arrive sorted by
      * position, the build stops at one anyway, and `ramonda-check` is what lists them all.
      */
-    const [finding] = [
-      ...checkText(source, site.open, read.end),
-      ...checkBlock(read.block, { at: site.at, references, syntaxes, config: options.config }),
-    ].sort((a, b) => a.at - b.at);
+    // A site whose NAME is not one this compiles gets that one finding and no more — there is no
+    // shape to check its body against, so anything else said about it is a guess. See `checkedSource`.
+    const siteFindings = checkNamedSite(site);
+    const [finding] = (
+      siteFindings.length > 0
+        ? siteFindings
+        : [
+            ...checkText(source, site.open, read.end),
+            ...checkBlock(read.block, { at: site.at, references, syntaxes, config: options.config }),
+          ]
+    ).sort((a, b) => a.at - b.at);
     if (finding !== undefined) refuse(finding.message, source, finding.at, filename);
 
     /**

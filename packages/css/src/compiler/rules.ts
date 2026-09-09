@@ -96,6 +96,8 @@ export const RULE_IDS = [
   "layer-in-a-block",
   "spread-out-of-place",
   "hole-in-a-named-block",
+  "unknown-named-block",
+  "composition-in-a-named-block",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -267,6 +269,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   layerInABlock(block, findings);
   spreadOutOfPlace(block, findings);
   if (at !== undefined) holeInANamedBlock(block, at, findings);
+  if (at !== undefined) compositionInANamedBlock(block, at, findings);
   if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
   if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
@@ -780,6 +783,78 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
           `this names something the whole stylesheet uses.`,
       });
       return;
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * The three forms a `@@name( … )` may take, and the one place they are written down.
+ *
+ * `transform` kept its own set and `virtual.ts` kept its own table, which is how a misspelt name
+ * came to be type-checked as an ORDINARY block: no surface meant no named check, and the ordinary
+ * one took over. `SURFACES` reads this, and so does the rule below.
+ */
+export const NAMED_BLOCKS = ["keyframes", "font-face", "property"] as const;
+
+/**
+ * A `@@name( … )` whose name is not one this compiles.
+ *
+ * **Refused by the build and by nothing else**, so the editor and `ramonda-check` were both green —
+ * and worse than green: with no surface for it, `@@keyfrmes( … )` was checked as an ordinary block,
+ * so `from { … }` was read as the selector `& from` and the report talked about a nested rule. A
+ * wrong message is worse than none, because it sends a person to the wrong line.
+ */
+export function checkNamedSite(site: BlockSite): Finding[] {
+  if (site.at === undefined || (NAMED_BLOCKS as readonly string[]).includes(site.at)) return [];
+
+  const meant = nearest(site.at, NAMED_BLOCKS as readonly string[]);
+  return [
+    {
+      rule: "unknown-named-block",
+      at: site.opening,
+      length: site.open + 1 - site.opening,
+      message:
+        `\`@@${site.at}( … )\` is not something this compiles — the named forms are ` +
+        `${NAMED_BLOCKS.map((one) => `\`@@${one}( … )\``).join(", ")}.` +
+        (meant === undefined ? "" : ` Did you mean \`@@${meant}( … )\`?`),
+    },
+  ];
+}
+
+/**
+ * `@@if` or a spread inside `@@keyframes( … )` and the other named blocks.
+ *
+ * Composition decides what lands on an ELEMENT: a guard switches a map on and off, a spread merges
+ * one into another. A named block is not an element — it is a rule the whole stylesheet uses — so
+ * neither has anything to act on.
+ *
+ * **Both were reported as something else.** `@@if ({on}) { from { … } }` came back as *`@@if ( 0 )`
+ * is not a keyframe*, which names the guard as a frame; and the virtual file wrote the helper call
+ * among the object literal's members, where a call is not a member, so the file did not parse and
+ * nothing else in it was checked either.
+ */
+function compositionInANamedBlock(block: Block, at: string, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      const found =
+        item.kind === "rule"
+          ? holeIn(item.prelude, CONDITION) !== undefined
+          : holeIn(item.property, SPREAD) !== undefined;
+
+      if (found) {
+        findings.push({
+          rule: "composition-in-a-named-block",
+          at: item.at ?? 0,
+          length: item.kind === "rule" ? item.prelude.length : item.property.length,
+          message:
+            `\`@@${at}( … )\` cannot hold ${item.kind === "rule" ? "`@@if`" : "a spread"} — composition ` +
+            `decides what lands on an ELEMENT, and this names a rule the whole stylesheet uses. ` +
+            `Compose where the block is used instead.`,
+        });
+        return;
+      }
+      if (item.kind === "rule") walkItems(item.items);
     }
   };
   walkItems(block.items);
@@ -1337,6 +1412,10 @@ const PERCENTAGE = /^([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)%$/;
  * everyone who writes it.
  */
 function unknownFrame(rule: NestedRule, findings: Finding[]): void {
+  // A GUARD is not a frame and is not spelled like one. `composition-in-a-named-block` owns it, and
+  // saying `@@if ( 0 ) is not a keyframe` beside that names the wrong thing as the fault.
+  if (holeIn(rule.prelude, CONDITION) !== undefined) return;
+
   for (const part of rule.prelude.split(",")) {
     const frame = part.trim().toLowerCase();
     if (frame === "" || frame === "from" || frame === "to") continue;

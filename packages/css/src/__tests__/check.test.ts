@@ -802,6 +802,41 @@ describe("the editor and the build, on the same file", () => {
     expect(report.findings).toEqual([]);
   });
 
+  /**
+   * A `@@name( … )` whose name is not one this compiles, and a named block holding composition.
+   *
+   * Both were refused by the build and by nothing else, and both came back as SOMETHING ELSE. A
+   * misspelt name had no surface, so the ordinary block check took over and reported `from { … }` as
+   * a nested rule; and `@@if` inside `@@keyframes` was reported as *`@@if ( 0 )` is not a keyframe*.
+   * A wrong message is worse than none — it sends a person to the wrong line.
+   */
+  test.each([
+    [
+      "a misspelt at-name",
+      "const k = @@keyfrmes(\n  from { opacity: 0; }\n);\nexport default k;\n",
+      "unknown-named-block",
+      "Did you mean `@@keyframes( … )`?",
+    ],
+    [
+      "`@@if` inside a named block",
+      "declare const on: boolean;\nconst k = @@keyframes(\n  @@if ({on}) { from { opacity: 0; } }\n);\nexport default k;\n",
+      "composition-in-a-named-block",
+      "cannot hold `@@if`",
+    ],
+    [
+      "a spread inside a named block",
+      'declare const base: never;\nconst f = @@font-face(\n  font-family: "Brand";\n  src: url("/b.woff2");\n  ...{base};\n);\nexport default f;\n',
+      "composition-in-a-named-block",
+      "cannot hold a spread",
+    ],
+  ])("%s is reported once, and about itself", (_what, source, rule, says) => {
+    const report = check({ "Card.tsx": source });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].code).toBe(rule);
+    expect(report.findings[0].message).toContain(says);
+  });
+
   /** And a typo inside a bare selector is still the typo it was — the key changed, not the check. */
   test("a property typo inside a bare selector is still caught", () => {
     const report = check({
