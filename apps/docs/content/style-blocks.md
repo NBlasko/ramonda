@@ -302,6 +302,25 @@ One looseness, on purpose: **any call is admitted**. `calc()`, `min()`, `clamp()
 each produce any dimension and nothing in a type can read inside one, so `calc(1rem + 2px)` passes
 `CssDimension<"px">`. Refusing calls would make the type useless in the one place you reach for it.
 
+### A hole may not be empty
+
+`string | number`, and nothing else. `undefined` and `null` are refused, so a value that might not
+be there needs a fallback written where it is used:
+
+```
+color: {tint};                   ✗  TS2345 — `null` is not a value
+color: {tint ?? "inherit"};      ✓
+```
+
+This is not a style rule. A hole becomes a custom property, and a custom property set to nothing is
+not the same as one that was never set — the declaration reading it becomes invalid at
+computed-value time and falls back past everything above it. Server rendering is the other half:
+measured, a hole that is `undefined` on the server and a value on the client is repaired silently,
+while the reverse is reported as a divergence and **not** repaired, so the stale value survives on
+the page.
+
+Write what the empty case should look like and both problems go away.
+
 ## Comments
 
 A block is CSS, so its comment is CSS's:

@@ -165,7 +165,7 @@ describe("a hole, checked against the property it stands in", () => {
     const source = `class Card {\n  wide = true;\n  render() {\n    return (\n      <div css=@@(\n        position: {this.wide};\n      )>x</div>\n    );\n  }\n}\n`;
     const file = virtualFile(source, { properties: "../properties" });
 
-    expect(file?.code).toContain("position:(this.wide)");
+    expect(file?.code).toContain("position:__val((this.wide))");
   });
 
   test("and a hole in an open property takes a string or a number", () => {

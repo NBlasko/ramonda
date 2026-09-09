@@ -277,6 +277,31 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   write(`declare function ${spread}<T>(block: import(${from}).CssSpreadable<T>): never;`);
 
   /**
+   * What a HOLE IN A VALUE is checked against.
+   *
+   * `types.ts` excludes `undefined` from a hole on purpose, measured against a real server render:
+   * one that is `undefined` on the server and a value on the client is repaired silently, and the
+   * other direction is reported as a divergence and **not** repaired. Two paths let it back in
+   * anyway. `CssBlockShape` is a `Partial`, and optionality puts `| undefined` back on every
+   * property — so `color: {maybe}` passed. And a value that is TEXT AND HOLES is written as a
+   * TEMPLATE LITERAL, which accepts anything at all: measured, `border-left: {obj} solid red` with
+   * an object passed, and so did `null`, and so did a function's `void`. That second half was
+   * checked by nothing whatsoever.
+   *
+   * **A function rather than `satisfies`, and the reason is POSITION rather than taste.** Both
+   * report the same faults; `satisfies` reports them better, naming the expression's own type where
+   * this one falls back to the constraint. But TypeScript puts a `TS1360` on the `satisfies` clause
+   * — text this file wrote — so `homeOf` maps it nowhere and `check.ts` drops it: measured, the
+   * diagnostic existed and the author never saw it. An argument is the author's own bytes, so the
+   * `TS2345` lands where they can act on it.
+   *
+   * The property's own check survives either way, which was the thing to protect: an object in a
+   * `color` is still a `TS2322` about `color`, and `display: flexx` still gets its *did you mean*.
+   */
+  const hole = binding(source, "__val");
+  write(`declare function ${hole}<T extends import(${from}).CssValue>(value: T): T;`);
+
+  /**
    * One more declaration per KIND of named site the file holds, and only the kinds it holds.
    *
    * A named site is a different vocabulary — frames, or descriptors — so it cannot go through the
@@ -506,7 +531,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   ): void {
     const length = at === undefined || end === undefined ? undefined : end - at;
     if (parts.length === 1 && parts[0].kind === "hole") {
-      expression(holes[parts[0].index]);
+      valueHole(holes[parts[0].index]);
       return;
     }
 
@@ -522,7 +547,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         continue;
       }
       write("${");
-      expression(holes[part.index]);
+      valueHole(holes[part.index]);
       write("}");
     }
     write("`");
@@ -537,6 +562,20 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   function expression(span: Span): void {
     write("(");
     copy(span.start, span.end);
+    write(")");
+  }
+
+  /**
+   * A hole standing for a VALUE, which is the only kind that has to be one.
+   *
+   * A guard's hole and a spread's operand each have a helper of their own with a type of its own, so
+   * neither comes through here — a condition is any expression at all, and a spread takes a block.
+   */
+  function valueHole(span: Span): void {
+    write(`${hole}(`);
+    // `expression` and not `copy`: its parens are what keep a comma inside the hole from becoming a
+    // SECOND ARGUMENT here, which would silently make the check ask about the wrong expression.
+    expression(span);
     write(")");
   }
 }

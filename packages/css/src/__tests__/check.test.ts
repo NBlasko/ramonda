@@ -129,14 +129,42 @@ describe("a project that is not", () => {
     expect(only.message).toContain("Did you mean to write 'display'?");
   });
 
-  test("a hole whose type the property cannot take is reported", () => {
+  /**
+   * TWO findings, and the second one is the price of checking the hole itself — see `__val` in
+   * `virtual.ts`.
+   *
+   * `position` is one of the 127 properties whose grammar is a closed keyword set, so its own type
+   * was already refusing a boolean. Wrapping the hole adds a `TS2345` naming the real type, on the
+   * hole; and because inference then fails, `T` falls back to its constraint and the property's own
+   * `TS2322` comes back saying `CssValue` rather than `boolean`.
+   *
+   * **Measured before choosing this shape.** `<T>(v: T & CssValue): T` keeps the real type in the
+   * second message — and gives two findings for the other 424 properties too, where this gives one,
+   * because the fallback to `CssValue` is exactly what satisfies an open property and stays quiet.
+   * One confusing message on a quarter of properties beat a second message on all of them.
+   */
+  test("a hole whose type the property cannot take is reported, on the hole and on the property", () => {
     const report = check({
       "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div css=@@( position: {this.wide}; )>x</div>;\n  }\n}\n`,
     });
 
+    expect(report.findings).toHaveLength(2);
+    expect(report.findings.every((one) => one.line === 4)).toBe(true);
+    const [onTheHole] = report.findings.filter((one) => one.code === 2345);
+    expect(onTheHole.message).toContain("boolean");
+    expect(report.findings.some((one) => one.code === 2322)).toBe(true);
+  });
+
+  /** And an OPEN property — 424 of the 551 — reports the hole once, with the type the author wrote. */
+  test("a hole in an open property is reported once", () => {
+    const report = check({
+      "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div css=@@( color: {this.wide}; )>x</div>;\n  }\n}\n`,
+    });
+
     expect(report.findings).toHaveLength(1);
-    expect(report.findings[0].code).toBe(2322);
+    expect(report.findings[0].code).toBe(2345);
     expect(report.findings[0].line).toBe(4);
+    expect(report.findings[0].message).toContain("boolean");
   });
 
   /**
@@ -293,9 +321,10 @@ describe("a setup that would otherwise pass silently", () => {
       ),
     );
 
-    // Four, because the virtual file names four types from that module — the block's shape, what a
-    // block IS, and composition's two. Each missing one is its own setup fault, and each is reported.
-    expect(report.findings).toHaveLength(4);
+    // Five, because the virtual file names five types from that module — the block's shape, what a
+    // block IS, composition's two, and what a hole in a value must be. Each missing one is its own
+    // setup fault, and each is reported.
+    expect(report.findings).toHaveLength(5);
     expect(report.findings.map((one) => one.message).join(" ")).toContain("CssBlockShape");
   });
 
@@ -664,6 +693,62 @@ describe("a spread", () => {
  * compiled block. It has no map behind it, so spreading one would compose nothing — quietly, which
  * is the failure this package keeps finding.
  */
+/**
+ * WHAT A HOLE MAY EVALUATE TO, asked of the hole rather than of the property it sits in.
+ *
+ * `types.ts` excludes `undefined` on purpose and says why: measured against a real server render, a
+ * hole that is `undefined` on the server and a value on the client is repaired silently, and the
+ * other direction is reported as a divergence and **not** repaired. Two paths let it back in.
+ *
+ * - `CssBlockShape` is a `Partial`, and optionality puts `| undefined` back on every property. So
+ *   `color: {maybe}` passed — for the 424 properties whose type is `CssValue`. The 127 closed ones
+ *   caught it by accident, because they refuse a bare `string` too.
+ * - A value that is TEXT AND HOLES is written as a template literal, which accepts anything at all.
+ *   Nothing here was checked: not `undefined`, not `null`, not an object, not a function's `void`.
+ *
+ * The user asked for this in as many words: a hole may not be nullable, so a fallback has to be
+ * written. `exactOptionalPropertyTypes` was measured first and refused — it also reports the
+ * author's own ordinary code, which would be a false report under their own settings.
+ */
+describe("what a hole may evaluate to", () => {
+  const held = (declaration: string, head: string) =>
+    check({ "Card.tsx": `${head}const a = <div css=@@(\n  ${declaration}\n)>x</div>;\nexport default a;\n` });
+
+  test.each([
+    ["undefined", "  color: {maybe};", "declare const maybe: string | undefined;\n"],
+    ["null", "  color: {nul};", "declare const nul: string | null;\n"],
+    ["an object", "  color: {obj};", "declare const obj: { a: number };\n"],
+    ["a function's void", "  color: {f()};", "declare function f(): void;\n"],
+    ["undefined, inside a value", "  border-left: {maybe} solid red;", "declare const maybe: string | undefined;\n"],
+    ["an object, inside a value", "  border-left: {obj} solid red;", "declare const obj: { a: number };\n"],
+  ])("%s is refused", (_what, declaration, head) => {
+    const report = held(declaration, head);
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].code).toBe(2345);
+    // On the author's own expression, which is what makes it actionable — and what settled the
+    // shape: `satisfies` reports the same faults on the `satisfies` clause, text this file wrote,
+    // so `homeOf` maps it nowhere and the author never sees it. Measured, both ways.
+    expect(report.findings[0].line).toBe(3);
+    expect(report.findings[0].column).toBeGreaterThan(9);
+  });
+
+  test.each([
+    ["a fallback is written", '  color: {maybe ?? "red"};', "declare const maybe: string | undefined;\n"],
+    ["a plain string", "  color: {s};", "declare const s: string;\n"],
+    ["a number", "  opacity: {n};", "declare const n: number;\n"],
+    ["a closed property's own keyword", "  position: {k};", 'declare const k: "absolute";\n'],
+    ["a string inside a value", "  border-left: {s} solid red;", "declare const s: string;\n"],
+  ])("%s is accepted", (_what, declaration, head) => {
+    expect(held(declaration, head).findings).toEqual([]);
+  });
+
+  /** A guard and a spread are not values, so neither goes through it — each has a type of its own. */
+  test("a hole in a condition is still any expression at all", () => {
+    expect(held("  @@if ({on}) { color: red; }", "declare const on: boolean;\n").findings).toEqual([]);
+  });
+});
+
 describe("the type a block has", () => {
   test("a binding holding a block is a block, not `never`", () => {
     const report = check({

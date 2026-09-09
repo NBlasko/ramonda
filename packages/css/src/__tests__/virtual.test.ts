@@ -88,11 +88,11 @@ describe("what a block becomes", () => {
   });
 
   test("a value that is entirely one hole is the expression itself, so its own type is checked", () => {
-    expect(body(`const a = <div css=@@( padding: {size}; )>x</div>;\n`)).toContain(`{padding:(size)}`);
+    expect(body(`const a = <div css=@@( padding: {size}; )>x</div>;\n`)).toContain(`{padding:__val((size))}`);
   });
 
   test("text and a hole together become a template literal, which keeps the pattern", () => {
-    expect(body(`const a = <div css=@@( padding: {n}px; )>x</div>;\n`)).toContain("{padding:`${(n)}px`}");
+    expect(body(`const a = <div css=@@( padding: {n}px; )>x</div>;\n`)).toContain("{padding:`${__val((n))}px`}");
   });
 
   test("a nested rule holds an array of its own, so its declarations are checked one by one too", () => {
@@ -110,7 +110,7 @@ describe("what a block becomes", () => {
   });
 
   test("the expression is parenthesised, so a comma inside cannot change the call", () => {
-    expect(body(`const a = <div css=@@( color: {(a, b)}; )>x</div>;\n`)).toContain(`{color:((a, b))}`);
+    expect(body(`const a = <div css=@@( color: {(a, b)}; )>x</div>;\n`)).toContain(`{color:__val(((a, b)))}`);
   });
 
   test("a backtick in the CSS cannot end the template literal it lands in", () => {
@@ -118,10 +118,10 @@ describe("what a block becomes", () => {
   });
 
   /**
-   * Three declarations now — the block's shape and composition's two — and the claim is about all of
-   * them: `declare`, never `import`. An import statement would turn a file that is a SCRIPT into a
-   * module, which changes what the author's own code means; an import TYPE in a type position does
-   * not.
+   * Four declarations now — the block's shape, composition's two, and what a hole in a value must be
+   * — and the claim is about all of them: `declare`, never `import`. An import statement would turn
+   * a file that is a SCRIPT into a module, which changes what the author's own code means; an import
+   * TYPE in a type position does not.
    */
   test("the preamble is declarations, not imports, so a script does not become a module", () => {
     const file = build(`const a = <div css=@@( display: flex; )>x</div>;\n`);
@@ -134,7 +134,8 @@ describe("what a block becomes", () => {
     );
     expect(preamble).toContain(`__cond<T>(condition: import("./properties").CssCondition<T>): never;`);
     expect(preamble).toContain(`__from<T>(block: import("./properties").CssSpreadable<T>): never;`);
-    expect(preamble.split("declare function")).toHaveLength(4);
+    expect(preamble).toContain(`__val<T extends import("./properties").CssValue>(value: T): T;`);
+    expect(preamble.split("declare function")).toHaveLength(5);
     expect(preamble).not.toMatch(/^\s*import /m);
   });
 
