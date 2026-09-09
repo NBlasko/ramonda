@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { ToolFailed } from "../tools";
 import { filesUnder, formatFile, formatText, lintFile, readReport, toolIn } from "../tooling";
 
 /**
@@ -396,5 +397,26 @@ describe("a block the formatter moved out from under", () => {
     const source = "const a = <div css=@@(\n  color: red;\n)>x</div>;\n";
 
     expect(formatText(source, "Card.tsx", (text) => text)).toBe(source);
+  });
+
+  /**
+   * THE TOOL'S OWN REFUSAL IS NOT THIS REFUSAL, and the caller tells them apart by type.
+   *
+   * The guard above was first written around the formatter call as well, which rewrapped a
+   * `ToolFailed` as a plain `Error`. The CLI catches that class by name and prints the tool's
+   * sentence; anything else it rethrows, so a broken `biome.json` came back as our own call stack —
+   * `toolingCli.test.ts` says in as many words that it may not.
+   *
+   * That test runs `bin.mjs`, which reads `dist`, so it went green against a stale build and the
+   * fault reached the gate. This asks the same thing of the source.
+   */
+  test("a tool that refuses keeps its own class on the way out", () => {
+    const source = "const a = <div css=@@(\n  color: red;\n)>x</div>;\n";
+    const refuse = () => {
+      throw new ToolFailed("the formatter's own sentence");
+    };
+
+    expect(() => formatText(source, "Card.tsx", refuse)).toThrow(ToolFailed);
+    expect(() => formatText(source, "Card.tsx", refuse)).toThrow("the formatter's own sentence");
   });
 });

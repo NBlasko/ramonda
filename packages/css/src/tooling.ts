@@ -116,8 +116,18 @@ export function formatText(source: string, file: string, format: (text: string, 
   const held = placehold(source);
   if (held === undefined) return format(source, file);
 
+  /**
+   * The formatter runs OUTSIDE the guard, and that is the whole point of the two statements.
+   *
+   * A `ToolFailed` is the tool's own sentence, and the caller knows it by its type — the CLI catches
+   * that class and prints the message on its own. Wrapping the call rewrapped it as a plain `Error`,
+   * so the CLI stopped recognising it and answered a broken `biome.json` with our call stack, which
+   * is the one thing `toolingCli.test.ts` says it may not do.
+   */
+  const formatted = format(held.text, file);
+
   try {
-    return held.restore(format(held.text, file));
+    return held.restore(formatted);
   } catch (error) {
     // The file's name, because a refusal with no file is a refusal nobody can act on — and the one
     // thing `restore` refuses is a formatter it does not recognise. See its own note.

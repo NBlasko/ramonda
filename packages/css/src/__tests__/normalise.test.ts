@@ -336,4 +336,32 @@ describe("what a prelude's own text is", () => {
   ])("%s is left alone from there on", (_what, written) => {
     expect(canonicalSelector(written)).toBe(written);
   });
+
+  /**
+   * AN ESCAPED QUOTE does not end the string, and the escape is how a value holds its own quote —
+   * `[title="say \"hi\""]`. Reading it as the close would have canonicalised the rest of the value
+   * as if it were code, which is the fault this whole section is about.
+   */
+  test.each([
+    ["an escaped double quote", '&[title="A\\"B:Hover"]'],
+    ["an escaped single quote", "&[title='A\\':Hover']"],
+    ["a backslash before the close", '&[title="A:Hover\\\\"]'],
+  ])("%s keeps the whole value", (_what, written) => {
+    expect(canonicalSelector(written)).toBe(written);
+  });
+
+  /**
+   * A CONDITION WHOSE PARENS DO NOT BALANCE keeps its own text.
+   *
+   * `((display: grid)` opens with `(` and ends with `)`, which is the cheap test for a redundant
+   * pair — so the group has to be walked to know the opening paren's match is not the last
+   * character. It is not one group, nothing is unwrapped, and the author's text goes to the rule
+   * that reports it.
+   */
+  test.each([
+    ["one paren too many", "@supports ((display: grid)"],
+    ["one paren too few", "@supports (display: grid))"],
+  ])("%s is not unwrapped", (_what, written) => {
+    expect(canonicalCondition(written)).toBe(written);
+  });
 });

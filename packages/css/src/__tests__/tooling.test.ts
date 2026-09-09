@@ -258,6 +258,12 @@ describe("the CSS inside a block", () => {
     ["a url with a semicolon", `  background: url("a;b.png");`],
     ["a quoted brace", `  content: "}";`],
     ["a function", `  width: calc(100% - 8px);`],
+    // An escaped quote does not end the string, so the `;` and the `}` after it are still text.
+    ["an escaped quote holding a semicolon", `  content: "a\\";}b";`],
+    ["a backslash before the close", `  content: "a\\\\";`],
+    // A quote that is never closed takes the rest of the block, so the layout stops opining and
+    // hands back what the author wrote. The compiler is the one that reports it.
+    ["an unclosed string", `  content: "a;\n  color: red;`],
   ])("%s is not structure", (_what, declaration) => {
     const out = laid(`const a = <div css={@@(\n${declaration}\n)}>x</div>;\n`);
 
