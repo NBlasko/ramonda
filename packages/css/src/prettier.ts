@@ -3,7 +3,7 @@ import * as babel from "prettier/plugins/babel";
 import * as estree from "prettier/plugins/estree";
 import * as typescript from "prettier/plugins/typescript";
 import type { AstPath, Doc, Options, Parser, Plugin, Printer } from "prettier";
-import { placehold } from "./compiler/tooling";
+import { markerFor, placehold } from "./compiler/tooling";
 
 /**
  * Prettier, taught the syntax — the third tool that cannot parse a file holding a block.
@@ -44,10 +44,13 @@ import { placehold } from "./compiler/tooling";
  */
 const STANDS = "@ramonda-css-block:";
 
+/** The marker this run settled on, hung beside the blocks — see {@link markerFor}. */
+const MARKER = Symbol.for("ramonda.css.marker");
+
 /** Each file's blocks, hung on the options object Prettier threads from the parser to the printer. */
 const BLOCKS = Symbol.for("ramonda.css.blocks");
 
-type Carried = Options & { [BLOCKS]?: readonly string[] };
+type Carried = Options & { [BLOCKS]?: readonly string[]; [MARKER]?: string };
 
 /** Every parser that can be pointed at a file holding a block. */
 const PARSERS: Record<string, Parser> = {
@@ -69,12 +72,15 @@ const plugin: Plugin = {
          * substring search first, as everywhere else, so a codebase using none of this pays for one.
          */
         preprocess(text: string, options: Options) {
+          // Grown against THIS file, so a marker the author happened to write is not one of ours.
+          const marker = markerFor(text, STANDS);
           const placeheld = placehold(text, {
-            stands: (index) => `\`${STANDS}${index}\``,
+            stands: (index) => `\`${marker}${index}\``,
           });
           if (placeheld === undefined) return text;
 
           (options as Carried)[BLOCKS] = placeheld.blocks;
+          (options as Carried)[MARKER] = marker;
           return placeheld.text;
         },
       },
@@ -98,10 +104,11 @@ function blockAt(path: AstPath, options: Carried): string | undefined {
   const node = path.node as { type?: string; quasis?: { value?: { raw?: string } }[] };
   if (node.type !== "TemplateLiteral" || node.quasis?.length !== 1) return undefined;
 
+  const marker = options[MARKER];
   const raw = node.quasis[0].value?.raw;
-  if (raw === undefined || !raw.startsWith(STANDS)) return undefined;
+  if (marker === undefined || raw === undefined || !raw.startsWith(marker)) return undefined;
 
-  return options[BLOCKS]?.[Number(raw.slice(STANDS.length))];
+  return options[BLOCKS]?.[Number(raw.slice(marker.length))];
 }
 
 /**

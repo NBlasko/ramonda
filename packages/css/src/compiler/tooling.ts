@@ -493,9 +493,14 @@ function endOfString(text: string, at: number): number {
  * It goes into the text the FORMATTER sees, so an author who happened to write the same characters
  * would get somebody else's block back where theirs was. Growing it until the file does not hold it
  * costs one search and removes the question.
+ *
+ * **Exported because the Prettier plugin supplies its own `stands` and used a CONSTANT.** Measured:
+ * a file with a block in it and `` const note = `@ramonda-css-block:0` `` anywhere else came back
+ * with that string replaced by a copy of the block — the author's own text, gone. The guarantee was
+ * written for the default and covered only the default.
  */
-function markerFor(source: string): string {
-  let marker = "@ramonda-css:";
+export function markerFor(source: string, base = "@ramonda-css:"): string {
+  let marker = base;
   while (source.includes(marker)) marker += "!";
   return marker;
 }

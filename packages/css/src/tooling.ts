@@ -135,7 +135,14 @@ export function formatText(source: string, file: string, format: (text: string, 
   }
 }
 
-/** One diagnostic as a linter reports it — the shape `oxlint --format=json` produces. */
+/**
+ * One diagnostic as a linter reports it — the shape `oxlint --format=json` produces.
+ *
+ * `filename` is oxlint's and is read by nothing here: the linter is pointed at one file at a time,
+ * so the name is already known and the one it reports is the TEMPORARY probe's rather than the
+ * author's. Kept because this describes the shape that arrives, not the fields that are used —
+ * dropping it would make the type a claim about oxlint that is false.
+ */
 export interface Reported {
   message: string;
   code?: string;

@@ -80,4 +80,37 @@ describe("with it", () => {
 
     expect(await format(source)).toBe(await prettier.format(source, { parser: "typescript" }));
   });
+
+  /**
+   * THE AUTHOR'S OWN TEXT is not a placeholder, however much it looks like one.
+   *
+   * This plugin supplies its own `stands`, and it used a CONSTANT — while `markerFor`, which exists
+   * to make a marker the file does not already contain, covered only the default. Measured: a file
+   * with a block in it and `` `@ramonda-css-block:0` `` anywhere else came back with that string
+   * REPLACED by a copy of the block. The author's text, gone, from a formatter run.
+   */
+  test("a template literal that looks like the placeholder is left alone", async () => {
+    const source = "const a = <div css=@@( color: red; )>x</div>;\nconst note = `@ramonda-css-block:0`;\n";
+
+    expect(await format(source)).toContain("`@ramonda-css-block:0`");
+  });
+
+  test("and the block beside it is still formatted", async () => {
+    const source = "const a = <div css=@@(\ncolor: red;\n)>x</div>;\nconst note = `@ramonda-css-block:0`;\n";
+    const out = await format(source);
+
+    expect(out).toContain("  color: red;");
+    expect(out).toContain("`@ramonda-css-block:0`");
+  });
+
+  /** Two of them, so the grown marker has to clear the file rather than the first occurrence. */
+  test("several of them are all left alone", async () => {
+    const source =
+      "const a = <div css=@@( color: red; )>x</div>;\n" +
+      "const one = `@ramonda-css-block:0`;\nconst two = `@ramonda-css-block:1`;\n";
+    const out = await format(source);
+
+    expect(out).toContain("`@ramonda-css-block:0`");
+    expect(out).toContain("`@ramonda-css-block:1`");
+  });
 });

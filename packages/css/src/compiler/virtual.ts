@@ -150,13 +150,11 @@ export interface VirtualFile {
   /**
    * A virtual SPAN in the author's coordinates — start and length, not two lookups.
    *
-   * Two lookups do not work and the failure is quiet: a span over a rewritten run ends exactly at
-   * that run's edge, where the next virtual text is punctuation this file invented, so the end maps
-   * nowhere and the caller is left clamping to an empty span. Measured — a `dsiplay` diagnostic
-   * highlighting nothing. The run knows how much of the author's text it stands for, so this asks it.
-   */
-  /**
-   * The author's span for a virtual one.
+   * **Two lookups do not work, and the failure is quiet.** A span over a rewritten run ends exactly
+   * at that run's edge, where the next virtual text is punctuation this file invented — so the end
+   * maps nowhere and the caller is left clamping to an empty span. Measured: a `dsiplay` diagnostic
+   * highlighting nothing. The run knows how much of the author's text it stands for, so this asks it
+   * rather than asking about two offsets that do not know about each other.
    *
    * A copied run maps both ends. A rewritten one has no interior correspondence, so the answer is
    * the whole of the author's text it stands for — which is the right HIGHLIGHT (a *did you mean*
