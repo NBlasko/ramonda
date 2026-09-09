@@ -9,12 +9,13 @@ import {
   AT_RULE_LINKS,
 } from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
-import { type Finding, checkBlock, checkSite, checkText } from "./compiler/rules";
+import { type Finding, checkSite } from "./compiler/rules";
+import { checkedSource } from "./compiler/source";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 import { type Config, configReader, environmentOf } from "./config";
 import { warnIfStale } from "./stale";
-import { type Imported, namedSites, syntaxesIn } from "./compiler/references";
+import { type Imported, namedSites } from "./compiler/references";
 
 /**
  * The TypeScript language service plugin: what makes a block writable rather than merely correct.
@@ -856,23 +857,17 @@ function properties(info: PluginCreateInfo): string | undefined {
 /**
  * What the CSS rules say about a file, read from the author's own text.
  *
- * TOLERANT, because an editor is the only place the hole rule can fire at all: the build refuses
- * such a block outright, so by the time a build has spoken there is nothing left to squiggle.
+ * `checkedSource` is the sequence, and this used to be a THIRD copy of it — beside that one and the
+ * build's. It then missed every rule added to the other two: a misspelt `@@name( … )` was reported
+ * by `ramonda-css check` and by the build and not by the editor, which is the arrangement this
+ * package keeps finding a fault in.
+ *
+ * TOLERANT, which is the one thing an editor needs differently and is now a parameter: the build
+ * refuses a half-written block outright, so by the time a build has spoken there is nothing left to
+ * squiggle.
  */
 function cssFindings(text: string, fileName: string, read: Imported["read"], config: Config): Finding[] {
-  const out: Finding[] = [];
-  const references = namedSites(text, { filename: fileName, read });
-  // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
-  const syntaxes = syntaxesIn(text);
-  for (const site of findBlocks(text)) {
-    const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
-    // The text and the parse, because one of them has no name for a `//` — see `checkText`.
-    out.push(
-      ...checkText(text, site.open, read.end),
-      ...checkBlock(read.block, { at: site.at, references, syntaxes, config }),
-    );
-  }
-  return out;
+  return checkedSource(text, fileName, { read, config, tolerant: true }).findings;
 }
 
 /** What is true of the SITE rather than of the CSS in it — see `checkSite`. */

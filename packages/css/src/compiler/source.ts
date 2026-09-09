@@ -30,6 +30,18 @@ export interface SourceOptions {
   readonly read?: Imported["read"];
   /** The project's own settings, from `ramonda.css.ts`. */
   readonly config?: Config;
+  /**
+   * Read a half-written block instead of refusing it — for an EDITOR, which sees nothing else.
+   *
+   * The build path is strict: a block the parser refuses has already been reported as a refusal and
+   * the run has stopped. An editor is the only place `hole-out-of-place` and its neighbours can fire
+   * at all, because by the time a build has spoken there is nothing left to squiggle.
+   *
+   * **A parameter, because the plugin used to keep its own copy of this whole sequence** — and that
+   * copy did not gain the site rules added to this one, so a misspelt `@@name( … )` was reported by
+   * `ramonda-css check` and by the build, and not by the editor. Third copy of one question.
+   */
+  readonly tolerant?: boolean;
 }
 
 export function checkSource(source: string, fileName: string, options: SourceOptions = {}): Finding[] {
@@ -49,7 +61,7 @@ export function checkedSource(
   fileName: string,
   options: SourceOptions = {},
 ): { findings: Finding[]; variables: Variables } {
-  const { read, config } = options;
+  const { read, config, tolerant } = options;
   const out: Finding[] = [];
   const set: string[] = [];
   const reads: VariableRead[] = [];
@@ -61,7 +73,7 @@ export function checkedSource(
   const syntaxes = syntaxesIn(source);
 
   for (const site of findBlocks(source)) {
-    const read = readBlock(source, site.open, fileName, { resolve: (name) => references.get(name) });
+    const read = readBlock(source, site.open, fileName, { tolerant, resolve: (name) => references.get(name) });
     /**
      * A site whose NAME is not one this compiles gets that one finding and no more.
      *
