@@ -76,7 +76,30 @@ class Row extends Component {
 }
 ```
 
-The nested `&:hover` is CSS's own nesting, resolved by the browser rather than by the compiler.
+### `&` is CSS, not ours
+
+`&` means **the thing this rule is nested in**. It is CSS Nesting, standardised in 2023 and in every
+current browser, and the browser resolves it — nothing here rewrites it.
+
+```
+&:hover { … }        this element, hovered
+&.active { … }       this element, when it also has `active`
+& .title { … }       a `.title` inside this element
+```
+
+**A prelude that names no parent gets one.** `div { … }` inside a block means `& div` — a descendant,
+which is what CSS Nesting says a bare selector means. The two compile to the same class.
+
+Two things worth knowing, because both are CSS's rules and both surprise people:
+
+- **The space matters.** `& .title` is a descendant; `&.title` is the same element carrying both
+  classes. One character, two different rules.
+- **`&` may be written more than once**, and each one is the parent again — so `&&:hover` compiles
+  to `.r-….r-…:hover`, one class named twice. That is how a rule outranks another *in the same
+  layer*, and you are unlikely to need it here: everything this compiles goes into `@layer ramonda`,
+  a layer is ranked before specificity is looked at, and inside the layer a merge decides which
+  classes land rather than leaving a tie to break. Measured in Chromium either way — see the section
+  below.
 
 ### The one place this is not plain CSS
 

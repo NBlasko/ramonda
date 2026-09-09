@@ -204,10 +204,75 @@ describe("a block that is not an attribute", () => {
     for (const site of sites) expect(site.wrap).toBe(true);
   });
 
+  /**
+   * THE BACKWARDS WALK SEES WHAT THE FORWARD ONE SAW, and it used to see raw text.
+   *
+   * `isAttribute` reads backwards over the values written before a name, and it knew nothing about
+   * comments or strings — so a `<` inside a LINE COMMENT above an assignment made it reach a tag
+   * opening that is not there. Measured, `const panel = @@( … )` under `// the <div wrapper` came
+   * out `const panel = {_s0};`: an object literal, not the merged style, with nothing reported.
+   *
+   * **That is the direction this must never answer.** A wrong NO is a syntax error the build stops
+   * on; a wrong YES is valid code that means the wrong thing. A block comment and a string never
+   * leaked, and both were accidents rather than rules — a comment close ends the scan on a character
+   * it does not know, and a quote is stepped over by a branch meant for attribute values. All four are one
+   * answer now, taken from the walk that computed it going forward.
+   */
+  test.each([
+    ["a `<` in a line comment", "// the <div wrapper for the card\nconst panel = @@( display: flex; );\n"],
+    ["a tag name in one", "// see <Card for the props\nconst panel = @@( color: red; );\n"],
+    ["a `<` in a block comment", "/* the <div wrapper */\nconst panel = @@( color: red; );\n"],
+    ["a `<` in a string", 'const tag = "<div";\nconst panel = @@( color: red; );\n'],
+    ["a `<` in a template", "const tag = `<div`;\nconst panel = @@( color: red; );\n"],
+    // A comparison with no semicolon after it: `const` is neither an attribute's name nor a tag's,
+    // so meeting one settles the question the safe way.
+    ["a comparison, semicolon-free", "const small = a<b\nconst panel = @@( color: red; );\n"],
+    ["and with `let`", "let small = a<b\nlet panel = @@( color: red; );\n"],
+  ])("%s does not make an assignment an attribute", (_what, source) => {
+    expect(findBlocks(source).at(-1)?.wrap).toBe(false);
+  });
+
+  /**
+   * A COMMENT BETWEEN ATTRIBUTES is stepped over, and used to end the walk on the character it met.
+   *
+   * The wrong direction the other way: a real attribute read as an assignment, emitting `css=_s0`.
+   * The build stops on it, so it is the safe half — but it is the same missing knowledge as the
+   * comment above an assignment, and one answer settles both.
+   */
+  test.each([
+    ["a block comment between attributes", 'const a = <div id="x" /* note */ css=@@( color: red; )>x</div>;\n'],
+    ["one right after the tag name", "const a = <div /* note */ css=@@( color: red; )>x</div>;\n"],
+    [
+      "a line comment on its own line",
+      'const a = (\n  <div\n    id="x"\n    // a note\n    css=@@( color: red; )\n  >x</div>\n);\n',
+    ],
+  ])("%s keeps the attribute an attribute", (_what, source) => {
+    expect(findBlocks(source).at(-1)?.wrap).toBe(true);
+  });
+
+  /**
+   * A BRACE inside a string is text, and `beforeOpening` counted it — so a real attribute was read
+   * as an assignment and emitted `css=_s0`, a JSX attribute holding a bare identifier. The safe
+   * direction, so the build stops; but the message names neither the brace nor the string it is in.
+   */
+  test.each([
+    ["a brace in a string", 'const a = <div title={"}"} css=@@( color: red; )>x</div>;\n'],
+    ["a brace in a call's argument", 'const a = <div title={t("a } b")} css=@@( color: red; )>x</div>;\n'],
+    ["an opening brace in a string", 'const a = <div onclick={() => { f("{") }} css=@@( color: red; )>x</div>;\n'],
+    ["a brace in a regex", 'const a = <div onclick={() => s.replace(/}/g, "")} css=@@( color: red; )>x</div>;\n'],
+    ["a brace in a comment", "const a = <div onclick={() => {} /* } */} css=@@( color: red; )>x</div>;\n"],
+  ])("%s still leaves the attribute an attribute", (_what, source) => {
+    expect(findBlocks(source).at(-1)?.wrap).toBe(true);
+  });
+
   /** And a `)` that opens nothing still falls the safe way — an assignment, not an attribute. */
   test.each([
     ["a stray closing paren", `) panel = @@( display: flex; );\n`],
     ["a call before it", `f(1);\nconst panel = @@( display: flex; );\n`],
+    // A `)` inside a tag, closing something that is not a block — the count lands on a `(` with no
+    // `@@` in front of it, and the walk gives up rather than guessing what the parens were.
+    ["a call as an attribute value", `const a = <div onclick=f() css=@@( color: red; )>x</div>;\n`],
+    ["one with an argument", `const a = <div onclick=f(1) css=@@( color: red; )>x</div>;\n`],
   ])("%s is a value", (_what, source) => {
     expect(findBlocks(source).at(-1)?.wrap).toBe(false);
   });

@@ -79,14 +79,36 @@ export function mayHoldABlock(source: string): boolean {
   return source.includes("@@");
 }
 
+/** The words a block can be assigned after, none of which can name a JSX attribute or a tag. */
+const DECLARES = new Set(["const", "let", "var", "return", "yield", "await", "default", "of", "in"]);
+
+/** A span the forward walk stepped over — a comment, a string, a template, a regex. */
+interface Quiet {
+  readonly from: number;
+  readonly to: number;
+}
+
 export function findBlocks(source: string): BlockSite[] {
   const found: BlockSite[] = [];
   const length = source.length;
   // A shebang is not JavaScript and is not a comment either — nothing in the language skips it, so
   // `@@(` written in one would be read as a block on a line the engine never parses.
   let index = afterShebang(source);
-  /** The last character that was not whitespace, so a `/` can be told from a `/`. */
+  /** The last character that was not whitespace, so a `/` can be told from a division. */
   let previous = 0;
+  /**
+   * Every span this walk STEPPED OVER — a comment, a string, a template, a regex.
+   *
+   * Recorded because `isAttribute` walks BACKWARDS and cannot answer the same question: it sees raw
+   * text, so a `<` inside a line comment above an assignment made it read the assignment as a JSX
+   * attribute. Measured, and it is the direction that function says must never happen —
+   * `const panel = @@( … )` under `// the <div wrapper` compiled to `const panel = {_s0};`, an
+   * object literal rather than the merged style, with nothing reported.
+   *
+   * The forward walk already knows, and by the time a site is reached everything behind it has been
+   * scanned. So the backwards walk asks rather than guessing.
+   */
+  const quiet: { from: number; to: number }[] = [];
 
   while (index < length) {
     const code = source.charCodeAt(index);
@@ -96,6 +118,7 @@ export function findBlocks(source: string): BlockSite[] {
       if (next === 47) {
         const end = source.indexOf("\n", index);
         if (end === -1) break;
+        quiet.push({ from: index, to: end + 1 });
         index = end + 1;
         previous = 10;
         continue;
@@ -103,6 +126,7 @@ export function findBlocks(source: string): BlockSite[] {
       if (next === 42) {
         const end = source.indexOf("*/", index + 2);
         if (end === -1) break;
+        quiet.push({ from: index, to: end + 2 });
         index = end + 2;
         continue;
       }
@@ -117,7 +141,9 @@ export function findBlocks(source: string): BlockSite[] {
        * when something that can END an expression is behind it, and a regex otherwise.
        */
       if (startsARegex(previous)) {
-        index = endOfRegex(source, index);
+        const end = endOfRegex(source, index);
+        quiet.push({ from: index, to: end });
+        index = end;
         previous = 47;
         continue;
       }
@@ -127,12 +153,18 @@ export function findBlocks(source: string): BlockSite[] {
     }
 
     if (code === 34 /* " */ || code === 39 /* ' */) {
-      index = endOfQuoted(source, index);
+      const end = endOfQuoted(source, index);
+      quiet.push({ from: index, to: end });
+      index = end;
+      previous = code;
       continue;
     }
 
     if (code === 96 /* ` */) {
-      index = endOfTemplate(source, index);
+      const end = endOfTemplate(source, index);
+      quiet.push({ from: index, to: end });
+      index = end;
+      previous = 96;
       continue;
     }
 
@@ -146,7 +178,7 @@ export function findBlocks(source: string): BlockSite[] {
       while (after < length && isNameCharacter(source.charCodeAt(after))) after++;
 
       if (source.charCodeAt(after) === 40 /* ( */) {
-        const site = siteBefore(source, index);
+        const site = siteBefore(source, index, quiet);
         if (site !== undefined) {
           const named = source.slice(index + 2, after);
           found.push({ ...site, open: after, opening: index, at: named === "" ? undefined : named.toLowerCase() });
@@ -293,7 +325,11 @@ function endOfSubstitution(source: string, start: number): number {
  * the name — which is what separates one attribute from the tag or from the attribute before it.
  * Everything the walk cannot reach this way is left alone.
  */
-function siteBefore(source: string, at: number): { start: number; name: string; wrap: boolean } | undefined {
+function siteBefore(
+  source: string,
+  at: number,
+  quiet: readonly Quiet[],
+): { start: number; name: string; wrap: boolean } | undefined {
   let index = at - 1;
   while (index >= 0 && isSpace(source.charCodeAt(index))) index--;
 
@@ -339,7 +375,7 @@ function siteBefore(source: string, at: number): { start: number; name: string; 
    * itself, because to its left is the author's own text.
    */
   const name = source.slice(start, end);
-  const wrap = !braced && isAttribute(source, start);
+  const wrap = !braced && isAttribute(source, start, quiet);
   return { start: wrap ? start : at, name, wrap };
 }
 
@@ -355,12 +391,31 @@ function siteBefore(source: string, at: number): { start: number; name: string; 
  * mistaken for an assignment emits `css=_s0`, which is a syntax error the build reports at once. The
  * other way round emits an object literal, which is valid code that means the wrong thing.
  */
-function isAttribute(source: string, start: number): boolean {
+function isAttribute(source: string, start: number, quiet: readonly Quiet[]): boolean {
   let index = start - 1;
 
   for (;;) {
     while (index >= 0 && isSpace(source.charCodeAt(index))) index--;
     if (index < 0) return false;
+
+    /**
+     * Anything the FORWARD walk stepped over is stepped over here too.
+     *
+     * This walk sees raw text, so it read the characters inside a comment as code: a `<` in a line
+     * comment above an assignment made it reach a tag opening that is not there, and answer YES —
+     * measured, `const panel = @@( … )` under `// the <div wrapper` compiled to
+     * `const panel = {_s0};`, an object literal rather than the merged style, with nothing reported.
+     * That is the direction this function's own note says must never happen.
+     *
+     * A block comment and a string never leaked, for reasons that were accidents rather than rules:
+     * `*\/` ends the backwards scan on a character it does not know, and a quote is stepped over by
+     * the branch below. Now all four are one answer, from the walk that computed it going forward.
+     */
+    const stepped = quiet.find((one) => index >= one.from && index < one.to);
+    if (stepped !== undefined) {
+      index = stepped.from - 1;
+      continue;
+    }
 
     const code = source.charCodeAt(index);
 
@@ -370,11 +425,18 @@ function isAttribute(source: string, start: number): boolean {
       continue;
     }
 
-    // A value written before this one: `name={…}`, `{...spread}`, or `name="…"`. Stepping over it
-    // needs no `return`: an opener that is not there leaves the walk before the start of the file,
-    // which the top of the loop already answers.
-    if (code === 125 /* } */ || code === 34 /* " */ || code === 39 /* ' */) {
-      index = beforeOpening(source, index);
+    /**
+     * A braced value written before this one: `name={…}`, or `{...spread}`.
+     *
+     * Stepping over it needs no `return`: an opener that is not there leaves the walk before the
+     * start of the file, which the top of the loop already answers.
+     *
+     * A QUOTED one is not handled here any more — it is a span the forward walk stepped over, so the
+     * check above has already jumped past it. Two answers for one question was how a brace inside a
+     * string came to be counted as structure.
+     */
+    if (code === 125 /* } */) {
+      index = beforeOpening(source, index, quiet);
       continue;
     }
 
@@ -404,7 +466,20 @@ function isAttribute(source: string, start: number): boolean {
      * A name: the tag's own, which ends the search, or an attribute written before this one —
      * a bare `disabled`, or the name belonging to a value already stepped over.
      */
+    const from = index;
     while (index >= 0 && (isNameCharacter(source.charCodeAt(index)) || source.charCodeAt(index) === 46)) index--;
+
+    /**
+     * A DECLARATION KEYWORD is neither, so the walk stops rather than reading past it.
+     *
+     * `const small = a<b` on the line above left a `<` for the walk to reach, and it reached it
+     * through the word `const` — read as an attribute written before this one. Measured:
+     * `const panel = @@( … )` came out `const panel = {_s0};`, an object literal rather than the
+     * merged style. A keyword cannot be an attribute's name and cannot be a tag's, so meeting one
+     * settles the question in the direction this function answers when it cannot prove otherwise.
+     */
+    if (DECLARES.has(source.slice(index + 1, from + 1))) return false;
+
     if (index >= 0 && source.charCodeAt(index) === 60 /* < */) return true;
   }
 }
@@ -435,25 +510,35 @@ function beforeBlockOpening(source: string, at: number): number | undefined {
 }
 
 /**
- * The offset just before whatever opened the value ending at `at`, or -1 when nothing did.
+ * The offset just before the `{` that opened the value ending at `at`, or -1 when nothing did.
  *
- * One function for both shapes, because both are the same question and the answer for "there is no
- * opener" has to be the same: braces are counted, since an attribute's expression holds its own, and
- * a quote closes itself.
+ * Braces are COUNTED, because an attribute's expression holds its own. It used to answer for quotes
+ * too; a quoted value is a span the forward walk steps over, so the caller never reaches this with
+ * one and that half was dead.
  */
-function beforeOpening(source: string, at: number): number {
-  const code = source.charCodeAt(at);
-
-  if (code === 123 /* { */ || code === 125 /* } */) {
+function beforeOpening(source: string, at: number, quiet: readonly Quiet[]): number {
+  {
     let depth = 0;
     for (let index = at; index >= 0; index--) {
+      /**
+       * A brace inside a STRING, a comment or a regex is text, and this counted it.
+       *
+       * Measured, four shapes that made a real attribute read as an assignment and emit `css=_s0`, a
+       * JSX attribute holding a bare identifier: `title={"}"}`, `title={t("a } b")}`,
+       * `onclick={() => { f("{") }}`, `onclick={() => s.replace(/}/g, "")}`. The safe direction — the
+       * build stops at once — but the message names neither the brace nor the string it is in.
+       *
+       * The forward walk knows which spans are text; see {@link findBlocks}.
+       */
+      const stepped = quiet.find((one) => index >= one.from && index < one.to);
+      if (stepped !== undefined) {
+        index = stepped.from;
+        continue;
+      }
+
       const here = source.charCodeAt(index);
       if (here === 125 /* } */) depth++;
       else if (here === 123 /* { */ && --depth === 0) return index - 1;
-    }
-  } else {
-    for (let index = at - 1; index >= 0; index--) {
-      if (source.charCodeAt(index) === code && source.charCodeAt(index - 1) !== 92 /* \\ */) return index - 1;
     }
   }
 
