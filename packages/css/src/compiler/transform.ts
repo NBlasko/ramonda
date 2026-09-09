@@ -239,21 +239,6 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     consumed = read.end + 1;
 
     /**
-     * A hole is a custom property ON AN ELEMENT, and a named site has no element — an animation is
-     * applied to whatever names it, and a font face to nothing at all. Compiling one would read a
-     * value from wherever the rule happened to land, which is not a thing anybody meant.
-     */
-    if (site.at !== undefined && read.holes.length > 0) {
-      refuse(
-        `a hole cannot go in \`@@${site.at}( … )\` — a hole is a custom property on an ELEMENT, and ` +
-          `this names something the whole stylesheet uses.`,
-        source,
-        read.holes[0].start,
-        filename,
-      );
-    }
-
-    /**
      * Everything the checker knows, applied to the artefact.
      *
      * **This seam was missing and it is the fault behind the `@property` report.** `checkBlock` was
@@ -402,15 +387,10 @@ export function transform(source: string, options: TransformOptions = {}): Trans
          * always. A GUARD is fine and is allowed: `@@if` changes no key, it only decides whether the
          * whole map lands.
          */
+        // Reported by `spread-out-of-place`, which the refusal above already stopped the build on.
+        // Asserted rather than repeated, so the two answers cannot drift into being two answers.
         if (segment.selector !== "" || segment.conditions.length > 0) {
-          refuse(
-            "a spread merges a whole block, and a block carries the context its own declarations " +
-              "were written in — so it cannot go inside a selector or a `@media`. Write it at the " +
-              "top level of the block, or inside `@@if { … }`, which changes no declaration.",
-            source,
-            segment.at ?? site.start,
-            filename,
-          );
+          throw new Error(`a spread inside \`${segment.selector || segment.conditions.join(" ")}\` reached emission`);
         }
         expression();
         continue;

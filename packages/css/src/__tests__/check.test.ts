@@ -263,10 +263,10 @@ describe("the CSS rules, beside the type errors", () => {
   });
 
   test("a TS2353 about something no rule named is still reported", () => {
-    // A nested rule's key that matches none of the shape's index signatures — nothing to do with a
-    // property name, so nothing of ours claims it.
+    // A `@font-face` descriptor that is not one. `DESCRIPTORS` is a near-miss search, and `nope`
+    // is near nothing, so no rule of ours claims it and the compiler's word is all there is.
     const report = check({
-      "Card.tsx": `const a = (\n  <div css=@@(\n    nope { color: red; }\n  )>x</div>\n);\nexport default a;\n`,
+      "Face.tsx": `const f = @@font-face(\n  src: url(a.woff2);\n  nope: 1;\n);\nexport default f;\n`,
     });
 
     expect(report.findings.some((finding) => finding.code === 2353)).toBe(true);
@@ -746,6 +746,70 @@ describe("what a hole may evaluate to", () => {
   /** A guard and a spread are not values, so neither goes through it — each has a type of its own. */
   test("a hole in a condition is still any expression at all", () => {
     expect(held("  @@if ({on}) { color: red; }", "declare const on: boolean;\n").findings).toEqual([]);
+  });
+});
+
+/**
+ * WHAT THE EDITOR AND THE BUILD MUST AGREE ABOUT.
+ *
+ * Three shapes were green here and refused by `transform`, which is the worst arrangement of the
+ * two: the check a person runs says yes and the build that runs later says no.
+ *
+ * Two were refusals the transform made on its own, where `checkBlock` is the seam both paths read —
+ * the same gap, one rule earlier, that let a `@property` inside a block reach a real Vite build. The
+ * third was the reverse: `div { … }` is legal CSS the build compiles, and the editor called it a
+ * `TS2353`, because the virtual file wrote the author's prelude as the object key while `flatten`
+ * had already decided a prelude naming no parent means `& div`.
+ */
+describe("the editor and the build, on the same file", () => {
+  test.each([
+    [
+      "a spread inside a selector",
+      "const base = @@( color: red; );\nconst a = <div css=@@(\n  &:hover { ...{base}; }\n)>x</div>;\nexport default a;\n",
+      "spread-out-of-place",
+    ],
+    [
+      "a spread inside a `@media`",
+      "const base = @@( color: red; );\nconst a = <div css=@@(\n  @media print { ...{base}; }\n)>x</div>;\nexport default a;\n",
+      "spread-out-of-place",
+    ],
+    [
+      "a hole inside `@@keyframes`",
+      "declare const w: number;\nconst k = @@keyframes(\n  from { opacity: {w}; }\n);\nexport default k;\n",
+      "hole-in-a-named-block",
+    ],
+  ])("%s is reported here too, not only at build", (_what, source, rule) => {
+    const report = check({ "Card.tsx": source });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].code).toBe(rule);
+  });
+
+  test.each([
+    ["a bare element selector", "  div { color: red; }"],
+    ["a class selector", "  .title { color: red; }"],
+    ["a descendant of a pseudo", "  &:hover div { color: red; }"],
+    ["a spread at the top level", "  ...{base};"],
+    ["a spread inside `@@if`, which changes no key", "  @@if ({on}) { ...{base}; }"],
+    ["a hole in an ordinary block", "  opacity: {w};"],
+  ])("%s is accepted here, as the build accepts it", (_what, body) => {
+    const report = check({
+      "Card.tsx":
+        `const base = @@( color: red; );\ndeclare const on: boolean;\ndeclare const w: number;\n` +
+        `const a = <div css=@@(\n${body}\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  /** And a typo inside a bare selector is still the typo it was — the key changed, not the check. */
+  test("a property typo inside a bare selector is still caught", () => {
+    const report = check({
+      "Card.tsx": `const a = <div css=@@(\n  div { colr: red; }\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toContain("color");
   });
 });
 

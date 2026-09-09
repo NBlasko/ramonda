@@ -1642,8 +1642,16 @@ describe("an initial-value its own syntax does not accept", () => {
       expect(rules(property(body))).toEqual([]);
     });
 
+    /**
+     * A hole in a named block IS reported now, by `hole-in-a-named-block` — the build has always
+     * refused it and the checker had no rule for it. What this test is about is the OTHER rule
+     * staying quiet: a syntax it cannot read is not a syntax it may judge.
+     */
     test("a syntax written as a hole, which cannot be read", () => {
-      expect(rules(property(`syntax: {shape}; inherits: false; initial-value: 12px;`))).toEqual([]);
+      const found = rules(property(`syntax: {shape}; inherits: false; initial-value: 12px;`));
+
+      expect(found).not.toContain("initial-value-and-syntax");
+      expect(found).toEqual(["hole-in-a-named-block"]);
     });
 
     test("an ordinary block, where neither descriptor means this", () => {

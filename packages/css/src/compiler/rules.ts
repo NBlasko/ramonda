@@ -14,7 +14,7 @@ import {
   UNIT_TYPE,
 } from "./keywords.generated";
 import { canonicalCondition, canonicalSelector } from "./normalise";
-import { closingHole, opensAHole } from "./read";
+import { CONDITION, SPREAD, closingHole, holeIn, opensAHole } from "./read";
 import type { BlockSite } from "./scan";
 
 /**
@@ -95,6 +95,8 @@ export const RULE_IDS = [
   "property-not-a-name",
   "non-canonical-spelling",
   "layer-in-a-block",
+  "spread-out-of-place",
+  "hole-in-a-named-block",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -265,6 +267,8 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   mediaFeatures(block, findings);
   spelling(block, findings);
   layerInABlock(block, findings);
+  spreadOutOfPlace(block, findings);
+  if (at !== undefined) holeInANamedBlock(block, at, findings);
   if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
   if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
@@ -709,6 +713,75 @@ function layerInABlock(block: Block, findings: Finding[]): void {
           "written here. Declare your layers in your own stylesheet, where the order can be given: " +
           "`@layer app, ramonda;` puts this package's output wherever you want it among them.",
       });
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A SPREAD inside a selector or a conditional at-rule, which cannot mean anything.
+ *
+ * A spread merges a whole block, and a block's map carries the context each of its declarations was
+ * written in. Inside `&:hover` it would have to re-scope every key it holds — `background` becoming
+ * `:hover|background` — which a merge cannot do at runtime. A GUARD is fine: `@@if` changes no key,
+ * it only decides whether the whole map lands.
+ *
+ * **Refused by the build already, and by nothing else.** The refusal lived in `transform`, so the
+ * editor and `ramonda-check` were both green on a file the build stops on — see `checkBlock`'s own
+ * note about `@property`, which was this fault one rule earlier. The transform still refuses; it
+ * refuses because this reports, which is what makes the two answers one answer.
+ */
+function spreadOutOfPlace(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[], scoped: boolean): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        // A guard is not a scope: `@@if` decides whether the map lands, and changes no key in it.
+        const guard = holeIn(item.prelude, CONDITION) !== undefined;
+        walkItems(item.items, scoped || !guard);
+        continue;
+      }
+      if (!scoped || holeIn(item.property, SPREAD) === undefined) continue;
+
+      findings.push({
+        rule: "spread-out-of-place",
+        at: item.at ?? 0,
+        length: item.property.length,
+        message:
+          "a spread merges a whole block, and a block carries the context its own declarations " +
+          "were written in — so it cannot go inside a selector or a `@media`. Write it at the " +
+          "top level of the block, or inside `@@if { … }`, which changes no declaration.",
+      });
+    }
+  };
+  walkItems(block.items, false);
+}
+
+/**
+ * A HOLE inside `@@keyframes( … )` and the other named sites, which have no element to hold one.
+ *
+ * A hole becomes a custom property ON AN ELEMENT. A named site has none — an animation is applied by
+ * whatever names it, a font face by nothing at all — so the value would be read from wherever the
+ * rule happened to land. Refused by the build for that reason, and reported here for the same one.
+ */
+function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const hole = item.value.find((part) => part.kind === "hole");
+      if (hole === undefined) continue;
+
+      findings.push({
+        rule: "hole-in-a-named-block",
+        at: item.valueAt ?? item.at ?? 0,
+        length: 1,
+        message:
+          `a hole cannot go in \`@@${at}( … )\` — a hole is a custom property on an ELEMENT, and ` +
+          `this names something the whole stylesheet uses.`,
+      });
+      return;
     }
   };
   walkItems(block.items);

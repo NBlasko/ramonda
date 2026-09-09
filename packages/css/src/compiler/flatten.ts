@@ -1,4 +1,4 @@
-import type { Block, BlockItem, NestedRule } from "./ast";
+import type { Block, BlockItem } from "./ast";
 import { HOLE, collapse } from "./normalise";
 import { MAY_CLEAR, SHORTHANDS } from "./keywords.generated";
 import { CONDITION, SPREAD, holeIn } from "./read";
@@ -220,7 +220,7 @@ function walk(
         walk(item.items, selector, [...conditions, collapse(item.prelude)], guards, out);
         continue;
       }
-      walk(item.items, nested(selector, selectorOf(item)), conditions, guards, out);
+      walk(item.items, nested(selector, selectorOf(item.prelude)), conditions, guards, out);
       continue;
     }
 
@@ -335,9 +335,22 @@ function atRuleName(condition: string): string {
   return space === -1 ? condition : condition.slice(0, space);
 }
 
-function selectorOf(rule: NestedRule): string {
-  const prelude = collapse(rule.prelude);
-  return holdsParent(prelude) ? prelude : `& ${prelude}`;
+/**
+ * The key a nested rule's prelude stands for, with the parent named explicitly.
+ *
+ * `div { … }` inside a block means `& div` — a descendant, which is what CSS nesting says a prelude
+ * naming no parent means. Written that way rather than left as the author typed it, so a selector
+ * is one string wherever it is read.
+ *
+ * **Exported because the VIRTUAL FILE has to ask the same question.** It wrote the raw prelude as
+ * the object key, and `CssBlockShape` admits a nested rule only under a key beginning with `&` or
+ * `@` — so `div { color: red; }` was a `TS2353` in the editor while the build compiled and shipped
+ * it. The type is right that a bare word is not a property; it was reading a selector the compiler
+ * had already decided about.
+ */
+export function selectorOf(prelude: string): string {
+  const written = collapse(prelude);
+  return holdsParent(written) ? written : `& ${written}`;
 }
 
 /**

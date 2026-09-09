@@ -1,5 +1,6 @@
 import type { BlockItem, ValuePart } from "./ast";
 import { CONDITION, SPREAD, holeIn } from "./read";
+import { selectorOf } from "./flatten";
 import { collapse } from "./normalise";
 import type { Span } from "./read";
 import { readBlock } from "./read";
@@ -496,7 +497,20 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         if (item.at !== undefined) {
           heads.push({ from: item.at, to: item.preludeEnd ?? item.at, at: code.length + 1 });
         }
-        derived(quoted(item.prelude), item.at, (item.preludeEnd ?? item.at ?? 0) - (item.at ?? 0));
+        /**
+         * The SAME question `flatten` asks, asked by the same function.
+         *
+         * A prelude naming no parent is a descendant of it — `div { … }` is `& div` — and this file
+         * used to write the author's bytes as the key instead. `CssBlockShape` admits a nested rule
+         * only under a key beginning with `&` or `@`, so `div { color: red; }` was a `TS2353` in the
+         * editor on code the build compiles and ships. An at-rule's prelude is not a selector and is
+         * left alone, which is the split `flatten` makes one line further down.
+         */
+        const key =
+          item.prelude.trimStart().startsWith("@") || holeIn(item.prelude, CONDITION) !== undefined
+            ? item.prelude
+            : selectorOf(item.prelude);
+        derived(quoted(key), item.at, (item.preludeEnd ?? item.at ?? 0) - (item.at ?? 0));
         write(":[");
         items(item.items, holes, keepLine);
         write("]");
