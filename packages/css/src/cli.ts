@@ -78,6 +78,19 @@ if (!tsconfig.endsWith(".json")) {
 
 const report = checkProject(tsconfig);
 
+/**
+ * Every exemption, on every run, whether or not anything failed.
+ *
+ * A `ramonda-css-ignore` is a decision, and a decision nobody can see is a silence — which is the
+ * thing this package refuses to be. Printed here so a reason that has stopped being true is one
+ * somebody meets rather than one they would have to go looking for.
+ */
+if (report.exempted.length > 0) {
+  console.log(`\n${TAG} ${report.exempted.length} \`ramonda-css-ignore\`, honoured:\n`);
+  for (const one of report.exempted) console.log(`  ${where(one.file)}:${one.line}  ${one.reason}`);
+  console.log("");
+}
+
 if (report.findings.length === 0) {
   console.log(`${TAG} ${report.files} file(s) type-check, ${report.styled} of them carrying a style block`);
   process.exit(0);

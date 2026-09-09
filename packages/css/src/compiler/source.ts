@@ -2,6 +2,7 @@ import type { Config } from "../config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
 import { type Finding, checkBlock, checkNamedSite, checkText } from "./rules";
+import { type Ignored, ignoredIn, isIgnored } from "./ignore";
 import { findBlocks } from "./scan";
 import { type VariableRead, type Variables, variablesIn } from "./variables";
 
@@ -60,7 +61,7 @@ export function checkedSource(
   source: string,
   fileName: string,
   options: SourceOptions = {},
-): { findings: Finding[]; variables: Variables } {
+): { findings: Finding[]; variables: Variables; ignored: readonly Ignored[] } {
   const { read, config, tolerant } = options;
   const out: Finding[] = [];
   const set: string[] = [];
@@ -105,5 +106,17 @@ export function checkedSource(
     }
   }
 
-  return { findings: out, variables: { set, read: reads } };
+  /**
+   * What the author took responsibility for, taken out — and RETURNED, so a run can print it.
+   *
+   * Every rule here fails a build and nothing could stop one, which is only bearable while no rule
+   * is ever wrong. See {@link ignoredIn}: line scoped, an empty reason refused, and every annotated
+   * site handed back rather than swallowed.
+   */
+  const { ignored, findings } = ignoredIn(source);
+  return {
+    findings: [...findings, ...out.filter((finding) => !isIgnored(source, ignored, finding))],
+    variables: { set, read: reads },
+    ignored,
+  };
 }

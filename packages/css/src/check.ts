@@ -68,6 +68,14 @@ export interface Report {
   readonly findings: readonly Finding[];
   /** A block could not be read, so nothing was type-checked. */
   readonly refused: boolean;
+  /**
+   * Every `ramonda-css-ignore` the run honoured, with the reason the author gave.
+   *
+   * Returned rather than swallowed, and printed on every run: an exemption is a decision, and a
+   * decision nobody can see is a silence. A reason that stops being true is then one somebody meets
+   * rather than one they would have to grep for.
+   */
+  readonly exempted: readonly { file: string; line: number; reason: string }[];
 }
 
 export function checkProject(tsconfig: string, options: CheckOptions = {}): Report {
@@ -94,6 +102,8 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   /** Only the variables are wanted from it — see below. */
   const sheet = new Sheet();
   const sources = new Map<string, string>();
+  /** What the author took responsibility for — see {@link Report.exempted}. */
+  const exempted: { file: string; line: number; reason: string }[] = [];
 
   for (const fileName of parsed.fileNames) {
     const text = ts.sys.readFile(fileName);
@@ -117,6 +127,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
         );
         sheet.add(fileName, [], { ...walked.variables, known: config.variables });
         sources.set(fileName, text);
+        for (const one of walked.ignored) exempted.push({ file: fileName, line: one.line, reason: one.reason });
       }
     } catch (error) {
       // A refusal is ours and is reported. Anything else is a bug in this package and must not be
@@ -146,7 +157,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   }
 
   if (refusals.length > 0) {
-    return { files: parsed.fileNames.length, styled: overlays.size, findings: refusals, refused: true };
+    return { files: parsed.fileNames.length, styled: overlays.size, findings: refusals, refused: true, exempted };
   }
 
   const program = ts.createProgram(parsed.fileNames, { ...parsed.options, noEmit: true }, overlaying(parsed, overlays));
@@ -165,6 +176,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     styled: overlays.size,
     findings: [...setup.values(), ...inOrder(css, findings)],
     refused: false,
+    exempted,
   };
 }
 
@@ -264,6 +276,7 @@ function parseConfig(configPath: string): ts.ParsedCommandLine | Report {
       files: 0,
       styled: 0,
       refused: true,
+      exempted: [],
       findings: [{ file: configPath, line: 1, column: 1, code: read.error.code, message }],
     };
   }
@@ -274,6 +287,7 @@ function parseConfig(configPath: string): ts.ParsedCommandLine | Report {
       files: 0,
       styled: 0,
       refused: true,
+      exempted: [],
       findings: parsed.errors.map((error) => ({
         file: configPath,
         line: 1,

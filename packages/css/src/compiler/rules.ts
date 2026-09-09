@@ -98,6 +98,7 @@ export const RULE_IDS = [
   "hole-in-a-named-block",
   "unknown-named-block",
   "composition-in-a-named-block",
+  "ignore-without-a-reason",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];

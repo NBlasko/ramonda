@@ -8,6 +8,7 @@ import { normalise } from "./normalise";
 import { type VariableRead, type Variables, variablesIn } from "./variables";
 import { type Span, readBlock } from "./read";
 import { refuse } from "./errors";
+import { ignoredIn, isIgnored } from "./ignore";
 import { checkBlock, checkNamedSite, checkText } from "./rules";
 import { type BlockSite, afterShebang, findBlocks, mayHoldABlock } from "./scan";
 
@@ -161,6 +162,18 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   const variablesSet: string[] = [];
   const variablesRead: VariableRead[] = [];
 
+  /**
+   * What the author took responsibility for, so the BUILD honours it too.
+   *
+   * A directive that silenced the checker and left the build failing would be no escape at all — the
+   * person would meet the same finding one command later, with nothing to do about it. Its own
+   * refusals ride the same list: `ignoredIn` reports a directive with no reason, and that finding
+   * cannot itself be ignored, because it is on the directive's own line rather than the line below.
+   */
+  const { ignored, findings: aboutDirectives } = ignoredIn(source);
+  const [wrongDirective] = aboutDirectives;
+  if (wrongDirective !== undefined) refuse(wrongDirective.message, source, wrongDirective.at, filename);
+
   const magic = new MagicString(source);
   const block = binding(source, "_merge");
   const prefix = identifierPrefix(source);
@@ -260,7 +273,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
             ...checkText(source, site.open, read.end),
             ...checkBlock(read.block, { at: site.at, references, syntaxes, config: options.config }),
           ]
-    ).sort((a, b) => a.at - b.at);
+    )
+      .filter((one) => !isIgnored(source, ignored, one))
+      .sort((a, b) => a.at - b.at);
     if (finding !== undefined) refuse(finding.message, source, finding.at, filename);
 
     /**

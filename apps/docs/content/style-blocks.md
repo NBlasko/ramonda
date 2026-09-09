@@ -321,6 +321,37 @@ none on the client is a divergence, and the page keeps showing the server's valu
 
 Write the empty case out and neither happens.
 
+## When a rule is wrong
+
+Every rule here fails a build. There is no warning level, and that is deliberate — a warning nobody
+must act on is a warning nobody reads.
+
+So there is one way to say *I looked at this and it stays*:
+
+```
+/* ramonda-css-ignore a vendor stylesheet defines this one */
+display: flexx;
+```
+
+It covers **the next line only**, so it cannot creep past what you looked at. It works in a `//`
+comment too, for a finding about the block itself rather than about a line in it.
+
+**A reason is required.** A directive with nothing after it is refused, and does not exempt the line
+below it either:
+
+> a `ramonda-css-ignore` with no reason after it is a silence, not a record.
+
+And every one of them is printed on every run, whether or not anything failed:
+
+```
+[ramonda-css] 1 `ramonda-css-ignore`, honoured:
+
+  src/Card.tsx:12  a vendor stylesheet defines this one
+```
+
+That is what makes it a record. A reason that has stopped being true is one somebody meets, rather
+than one they would have to go looking for.
+
 ## Comments
 
 A block is CSS, so its comment is CSS's:
