@@ -1,7 +1,7 @@
 import type { BlockItem, ValuePart } from "./ast";
 import { CONDITION, SPREAD, holeIn } from "./read";
 import { selectorOf } from "./flatten";
-import { collapse } from "./normalise";
+import { collapse, propertyName } from "./normalise";
 import type { Span } from "./read";
 import { readBlock } from "./read";
 import { NAMED_BLOCKS } from "./rules";
@@ -877,16 +877,6 @@ function homeOf(segments: readonly Segment[], offset: number): number | undefine
     else return segment.copied ? segment.source + (offset - segment.from) : segment.source;
   }
   return undefined;
-}
-
-/**
- * `COLOR` and `color` are one property to CSS, so they are one key here too.
- *
- * Without the fold, valid CSS would be reported as a property that does not exist — a *did you mean*
- * about the author's own capitals. A custom property keeps its case, because CSS keeps it.
- */
-function propertyName(property: string): string {
-  return property.startsWith("--") ? property : property.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 function quoted(text: string): string {

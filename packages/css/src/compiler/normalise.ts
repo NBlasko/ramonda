@@ -59,8 +59,14 @@ function rule(item: Extract<BlockItem, { kind: "rule" }>): string {
  * Only A–Z is folded, so the result never depends on the machine's locale — `toLowerCase` maps `I`
  * differently under a Turkish locale, and a class name that differs by locale would break the one
  * thing the name has to do.
+ *
+ * **Exported because THREE files had this, byte for byte, reasoning included.** The key a block is
+ * looked up by, the key the virtual file writes, and the key the merge composes on all have to be
+ * the same string — three copies that agreed today and had nothing making them agree tomorrow. A
+ * custom property keeps its case, because CSS keeps it: without the fold, valid CSS would be
+ * reported as a property that does not exist, a *did you mean* about the author's own capitals.
  */
-function propertyName(property: string): string {
+export function propertyName(property: string): string {
   return property.startsWith("--") ? property : property.replace(/[A-Z]/g, (c) => c.toLowerCase());
 }
 

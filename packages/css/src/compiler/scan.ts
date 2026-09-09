@@ -378,6 +378,26 @@ function isAttribute(source: string, start: number): boolean {
       continue;
     }
 
+    /**
+     * A BARE BLOCK written as the attribute before this one — `css=@@( … ) sx=@@( … )`.
+     *
+     * Nothing stepped over it, so the walk met the `)` and gave up: the SECOND bare block on a tag
+     * was read as an assignment. Measured, and it breaks two things at once — the build emitted
+     * `sx=_s1`, a JSX attribute holding a bare identifier, and the formatter was handed
+     * `sx=/*…*\/ 0`, which biome cannot parse either. One scan fault, two victims.
+     *
+     * Counted backwards, which cannot be exact: a `)` inside a string in the block's own CSS would
+     * throw the depth off. That is safe HERE and only here, because a walk that fails to prove an
+     * attribute answers NO — which is what it already did for this shape, so a wrong count costs
+     * nothing that is not already lost. See this function's own note on the direction.
+     */
+    if (code === 41 /* ) */) {
+      const opening = beforeBlockOpening(source, index);
+      if (opening === undefined) return false;
+      index = opening;
+      continue;
+    }
+
     if (!isNameCharacter(code) && code !== 46 /* . */) return false;
 
     /**
@@ -387,6 +407,31 @@ function isAttribute(source: string, start: number): boolean {
     while (index >= 0 && (isNameCharacter(source.charCodeAt(index)) || source.charCodeAt(index) === 46)) index--;
     if (index >= 0 && source.charCodeAt(index) === 60 /* < */) return true;
   }
+}
+
+/**
+ * The offset just before the `@@` that opened the block whose `)` is at `at`, or nothing.
+ *
+ * The parens are counted rather than parsed, and the walk gives up unless it lands on a real
+ * opening: `@@(`, or `@@` and a name and `(`. Anything else leaves the caller answering NO, which
+ * is the direction it answers when it cannot prove an attribute.
+ */
+function beforeBlockOpening(source: string, at: number): number | undefined {
+  let depth = 0;
+  for (let index = at; index >= 0; index--) {
+    const code = source.charCodeAt(index);
+    if (code === 41) depth++;
+    else if (code === 40) {
+      depth--;
+      if (depth > 0) continue;
+
+      let name = index - 1;
+      while (name >= 0 && isNameCharacter(source.charCodeAt(name))) name--;
+      if (name >= 1 && source.charCodeAt(name) === 64 && source.charCodeAt(name - 1) === 64) return name - 2;
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 /**

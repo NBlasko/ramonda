@@ -147,13 +147,32 @@ describe("linting", () => {
   });
 
   /**
-   * The scaffolding the virtual file added is not the author's, so nothing about it is shown. The
-   * tests above are the control: the same wrapper does report a real position.
+   * OFFSET ZERO is the second way a linter says "about the FILE", and it used to be the one dropped.
+   *
+   * A rule about the file's own NAME labels its diagnostic at the first character —
+   * `unicorn/filename-case` does — and in a styled file the first character is the preamble, so
+   * `homeOf` answered nothing and it went. A plain file reported the same complaint. One linter, one
+   * complaint, two answers, with the styled file going quiet: the same fault the test below names,
+   * arriving in the other spelling, one branch away from where it was already handled.
+   *
+   * **The trade is deliberate and is the one `check.ts` already makes.** A preamble diagnostic that
+   * really is about this file's scaffolding now surfaces at line 1 instead of disappearing. Visible
+   * and wrong beats silent and wrong, because only one of them can be reported.
    */
-  test("a diagnostic about the scaffolding is dropped", () => {
-    const path = file("Card.tsx", STYLED);
+  test("a diagnostic at offset zero names the file, and both paths say so", () => {
+    const styled = file("Card.tsx", STYLED);
+    const plain = file("Plain.ts", "const a = 1;\n");
 
-    expect(lintFile(path, at(0))).toEqual([]);
+    expect(lintFile(styled, at(0))[0]).toMatchObject({ line: 1, column: 1 });
+    expect(lintFile(plain, at(0))[0]).toMatchObject({ line: 1, column: 1 });
+  });
+
+  /** Past the preamble and mapping nowhere is still dropped: that is punctuation this file wrote. */
+  test("a diagnostic on the scaffolding between declarations is dropped", () => {
+    const path = file("Card.tsx", STYLED);
+    const inside = (probe: string) => at(readFileSync(probe, "utf8").indexOf("__block([") + 8)();
+
+    expect(lintFile(path, inside)).toEqual([]);
   });
 
   /**

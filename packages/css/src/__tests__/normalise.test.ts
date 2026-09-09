@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Block, BlockItem } from "../compiler/ast";
-import { HOLE, canonicalCondition, canonicalSelector, normalise } from "../compiler/normalise";
+import { HOLE, canonicalCondition, canonicalSelector, normalise, propertyName } from "../compiler/normalise";
 
 /**
  * Normalisation IS identity, so this file is what decides which blocks share a class.
@@ -363,5 +363,35 @@ describe("what a prelude's own text is", () => {
     ["one paren too few", "@supports (display: grid))"],
   ])("%s is not unwrapped", (_what, written) => {
     expect(canonicalCondition(written)).toBe(written);
+  });
+});
+
+/**
+ * ONE FOLD, read by three files, and it used to be three copies of it byte for byte.
+ *
+ * The key a block is looked up by, the key the virtual file writes and the key the merge composes on
+ * all have to be the same string. Three copies agreed today and had nothing making them agree
+ * tomorrow — which is the shape this package keeps finding a fault in, found here before it cost
+ * anything.
+ */
+describe("a property name's case", () => {
+  test.each([
+    ["an ordinary property is folded", "COLOR", "color"],
+    ["mixed case too", "BackgroundColor", "backgroundcolor"],
+    ["one already folded is unchanged", "color", "color"],
+    // A custom property keeps its case, because CSS keeps it: `--Accent` and `--accent` are two.
+    ["a custom property keeps its case", "--Accent", "--Accent"],
+    ["and its capitals are not the property's", "--COLOR", "--COLOR"],
+  ])("%s", (_what, written, expected) => {
+    expect(propertyName(written)).toBe(expected);
+  });
+
+  /**
+   * Only A–Z, so the answer never depends on the machine's locale. `toLowerCase` maps `I` to a
+   * dotless `ı` under a Turkish locale, and a class name that differed by locale would break the one
+   * thing the name has to do.
+   */
+  test("a non-ASCII capital is left alone", () => {
+    expect(propertyName("İ-thing")).toBe("İ-thing");
   });
 });

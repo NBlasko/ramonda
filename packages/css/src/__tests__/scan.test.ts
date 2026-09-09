@@ -179,6 +179,40 @@ describe("a block that is not an attribute", () => {
   });
 
   /**
+   * A BARE BLOCK is a value the walk has to step over, and nothing stepped over it.
+   *
+   * The second bare block on a tag met the first one's `)` and gave up, so it was read as an
+   * assignment — and that broke two things at once: the build emitted `sx=_s1`, a JSX attribute
+   * holding a bare identifier, and the formatter was handed a placeholder biome cannot parse either.
+   * One scan fault, two victims.
+   */
+  test.each([
+    ["two bare blocks", `const a = <div css=@@( color: red; ) sx=@@( gap: 4px; )>x</div>;\n`],
+    ["three of them", `const a = <div a=@@( color: red; ) b=@@( gap: 4px; ) c=@@( top: 0; )>x</div>;\n`],
+    [
+      "a bare block then a quoted attribute",
+      `const a = <div css=@@( color: red; ) id="x" sx=@@( gap: 4px; )>x</div>;\n`,
+    ],
+    ["a named one before it", `const a = <div css=@@keyframes( from { opacity: 0; } ) sx=@@( gap: 4px; )>x</div>;\n`],
+    // A `)` in the CSS is what makes the count worth asking about, and both shapes are ordinary.
+    ["a value holding parens", `const a = <div css=@@( width: calc(100% - 8px); ) sx=@@( gap: 4px; )>x</div>;\n`],
+    ["a url with a paren", `const a = <div css=@@( background: url(a.png); ) sx=@@( gap: 4px; )>x</div>;\n`],
+  ])("%s: every one of them is wrapped", (_what, source) => {
+    const sites = findBlocks(source);
+
+    expect(sites.length).toBeGreaterThan(1);
+    for (const site of sites) expect(site.wrap).toBe(true);
+  });
+
+  /** And a `)` that opens nothing still falls the safe way — an assignment, not an attribute. */
+  test.each([
+    ["a stray closing paren", `) panel = @@( display: flex; );\n`],
+    ["a call before it", `f(1);\nconst panel = @@( display: flex; );\n`],
+  ])("%s is a value", (_what, source) => {
+    expect(findBlocks(source).at(-1)?.wrap).toBe(false);
+  });
+
+  /**
    * Which way an unprovable case falls, and it is deliberate. An attribute mistaken for a value
    * emits `css=_s0`, which is a syntax error the build reports at once; a value mistaken for an
    * attribute emits an object literal, which is valid code that means the wrong thing.

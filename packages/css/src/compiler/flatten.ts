@@ -1,5 +1,5 @@
 import type { Block, BlockItem } from "./ast";
-import { HOLE, collapse } from "./normalise";
+import { HOLE, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, SHORTHANDS } from "./keywords.generated";
 import { CONDITION, SPREAD, holeIn } from "./read";
 
@@ -417,9 +417,4 @@ function endOfSelectorString(text: string, start: number): number {
     if (code === quote) return index;
   }
   return text.length - 1;
-}
-
-/** `COLOR` and `color` are one property; `--Accent` and `--accent` are two. See `normalise`. */
-function propertyName(property: string): string {
-  return property.startsWith("--") ? property : property.replace(/[A-Z]/g, (c) => c.toLowerCase());
 }

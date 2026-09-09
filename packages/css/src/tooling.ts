@@ -157,10 +157,11 @@ export function lintFile(file: string, lint: (path: string) => Reported[]): Tool
   /**
    * No block, so the file is linted as it is and every position is already the author's.
    *
-   * `mayHoldABlock` is allowed to say maybe — a string or a comment can hold the syntax, and this is a
-   * so the second condition is not redundant. Found by a test: returning nothing there made a file
-   * that only mentions the syntax lint CLEAN, silently, which is the failure this whole package has
-   * been fixing all week.
+   * **Linted rather than skipped**, and that is what the two conditions are for. `mayHoldABlock` is
+   * allowed to say maybe — a string or a comment can hold the syntax — so a file can reach here
+   * having answered yes to the cheap question and no to the real one. Found by a test: returning
+   * nothing for such a file made it lint CLEAN, silently, which is the failure this package keeps
+   * finding.
    */
   if (virtual === undefined) {
     return lint(file).map((diagnostic) => ({
@@ -190,14 +191,22 @@ export function lintFile(file: string, lint: (path: string) => Reported[]): Tool
       const offset = diagnostic.labels?.[0]?.span?.offset;
 
       /**
-       * No position at all is a complaint about the FILE — a linter's own setup, most often — and it
-       * is reported at its top, which is what the path for a file with no block already did.
-       * Measured before they were made to agree: the same complaint came back for a plain file and
-       * vanished for a styled one, which is a styled file going quiet.
+       * A complaint about the FILE is reported at its top, and it arrives spelled two ways.
+       *
+       * With no position at all — a linter's own setup — and with a position of ZERO, which is what
+       * a rule about the file's own NAME carries: `unicorn/filename-case` labels its diagnostic at
+       * the first character. Offset zero is inside the preamble in a styled file, so `homeOf`
+       * answered nothing and it was dropped, while a plain file reported it.
+       *
+       * Both spellings were already written down here — one was honoured and one fell into the
+       * branch below it. The comment on the first says exactly what the second cost: a styled file
+       * going quiet. And `check.ts` keeps a preamble diagnostic and reports it at 1:1, so the two
+       * halves of this package disagreed as well.
        */
-      const home = offset === undefined ? 0 : virtual.homeOf(offset);
-      // Mapped nowhere is a different case: the helper the virtual file declared, the punctuation
-      // between declarations — scaffolding, which belongs to nothing the author wrote.
+      const aboutTheFile = offset === undefined || offset < virtual.preamble;
+      const home = aboutTheFile ? 0 : virtual.homeOf(offset);
+      // Mapped nowhere is a different case: the punctuation between declarations, the braces this
+      // file added — scaffolding, which belongs to nothing the author wrote.
       if (home === undefined) continue;
 
       findings.push({
