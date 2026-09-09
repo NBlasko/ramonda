@@ -470,7 +470,7 @@ export class StyleBlockNested extends Component {
           padding: 12px;
           border: 1px solid #2a2a2a;
           border-radius: 8px;
-          border-left: 4px solid var(--accentttttt);
+          border-left: 4px solid var(--accent);
           transition: border-color 150ms ease-in-out, transform 150ms ease-in-out;
 
           & .title {

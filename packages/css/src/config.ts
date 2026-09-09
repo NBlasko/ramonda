@@ -31,6 +31,20 @@ export interface Config {
    * against it. Absent, every unit CSS has is fine.
    */
   readonly units?: readonly string[];
+  /**
+   * Custom property names this compiler cannot see, so a `var()` reading one is not reported.
+   *
+   * It sees every name a block SETS, anywhere in the build — that is what makes the check exact and
+   * what makes this list short. Two things it cannot see, and both are ordinary:
+   *
+   * - a name set by a stylesheet it does not compile — a third-party theme, a hand-written
+   *   `global.css`;
+   * - a name set from JavaScript, `style={{ "--row-height": … }}`, where the name is made at runtime.
+   *
+   * A name with a FALLBACK needs no entry: `var(--brand, #10b981)` says in CSS's own words that the
+   * value may be absent, and is never reported.
+   */
+  readonly variables?: readonly string[];
   /** A rule's severity, by id. `"off"` silences it; `"error"` is the default for every rule. */
   readonly rules?: Readonly<Record<string, "error" | "off">>;
 }
@@ -73,7 +87,7 @@ export function environmentOf(production?: boolean): ConfigEnvironment {
 const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "layer"]);
 
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
-const KNOWN = new Set(["units", "rules"]);
+const KNOWN = new Set(["units", "variables", "rules"]);
 
 /**
  * Keys that were a setting and are not, with the sentence that says where the answer comes from now.
@@ -333,6 +347,21 @@ function validate(config: Record<string, unknown>, path: string): void {
     if (!Array.isArray(units)) refuse(`sets \`units\` to ${describe(units)}. It takes a list, like ["px", "rem"].`);
     for (const one of units as unknown[]) {
       if (typeof one !== "string") refuse(`lists ${describe(one)} in \`units\`. Every unit is a string, like "px".`);
+    }
+  }
+
+  const variables = config.variables;
+  if (variables !== undefined) {
+    if (!Array.isArray(variables)) {
+      refuse(`sets \`variables\` to ${describe(variables)}. It takes a list, like ["--brand"].`);
+    }
+    for (const one of variables as unknown[]) {
+      if (typeof one !== "string") {
+        refuse(`lists ${describe(one)} in \`variables\`. Every name is a string, like "--brand".`);
+      }
+      if (!(one as string).startsWith("--")) {
+        refuse(`lists \`${one}\` in \`variables\`. A custom property begins with two dashes, like "--brand".`);
+      }
     }
   }
 

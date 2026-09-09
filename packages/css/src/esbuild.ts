@@ -192,7 +192,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         // Nothing here to compile. Declined, so esbuild reads it with the loader it would have used.
         if (result === undefined) return undefined;
 
-        sheet.add(args.path, result.blocks);
+        sheet.add(args.path, result.blocks, { ...result.variables, known: configFor(args.path).variables });
         const own = sheet.cssFor(args.path);
         const contents = own === "" ? result.code : `${result.code}\nimport ${JSON.stringify(args.path + SUFFIX)};\n`;
 
@@ -206,6 +206,11 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
        * pointing at nothing.
        */
       build.onEnd((result) => {
+        // Every file is in, so the question no single file can answer is answerable now. Asked
+        // before the stylesheet is looked for, because it does not depend on one being written —
+        // an SSR build emits no CSS and still reads variables.
+        sheet.verifyVariables();
+
         const css = stylesheets(result);
         if (css === undefined) return;
 

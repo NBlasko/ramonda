@@ -1,11 +1,12 @@
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
+import { Sheet, messageFor } from "./compiler/sheet";
+import { checkedSource } from "./compiler/source";
 import { positionOf } from "./compiler/errors";
-import { type Config, configReader, environmentOf } from "./config";
+import { configReader, environmentOf } from "./config";
 import { readModule } from "./modules";
 import { mayHoldABlock } from "./compiler/scan";
-import { checkSource } from "./compiler/source";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
 /**
@@ -90,6 +91,9 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   const refusals: Finding[] = [];
   /** What the CSS rules found — the faults the types deliberately cannot catch. */
   const css: Finding[] = [];
+  /** Only the variables are wanted from it — see below. */
+  const sheet = new Sheet();
+  const sources = new Map<string, string>();
 
   for (const fileName of parsed.fileNames) {
     const text = ts.sys.readFile(fileName);
@@ -101,7 +105,18 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
       // a file that turns out to hold no block needs no overlay.
       if (virtual !== undefined) {
         overlays.set(fileName, { virtual, source: text });
-        css.push(...cssFindings(fileName, text, configFor(fileName)));
+        const config = configFor(fileName);
+        const walked = checkedSource(text, fileName, { read: readModule, config });
+        css.push(
+          ...walked.findings.map((finding) => ({
+            file: fileName,
+            ...positionOf(text, finding.at),
+            code: finding.rule,
+            message: finding.message,
+          })),
+        );
+        sheet.add(fileName, [], { ...walked.variables, known: config.variables });
+        sources.set(fileName, text);
       }
     } catch (error) {
       // A refusal is ours and is reported. Anything else is a bug in this package and must not be
@@ -109,6 +124,25 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
       if (!(error instanceof CssBlockError)) throw error;
       refusals.push({ file: fileName, line: error.line, column: error.column, code: 0, message: error.message });
     }
+  }
+
+  /**
+   * The question no single file can answer, asked where every file is in — see
+   * `Sheet.unknownVariables`. A `Sheet` with no rules in it, because only the variables are wanted:
+   * the classes are the build's business and this command does not emit one.
+   *
+   * Reported as a FINDING at the name's own position, not as a refusal. A refusal means the parser
+   * could not read a block, and saying that about a name that reads fine would send a person looking
+   * at the wrong thing.
+   */
+  for (const one of sheet.unknownVariables()) {
+    const source = sources.get(one.file);
+    css.push({
+      file: one.file,
+      ...(source === undefined ? { line: 1, column: 1 } : positionOf(source, one.read.at)),
+      code: "variable-not-set",
+      message: messageFor(one),
+    });
   }
 
   if (refusals.length > 0) {
@@ -154,30 +188,6 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
 }
 
 const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.column}`;
-
-/**
- * What the CSS rules say about one file's blocks, in this reporter's own shape.
- *
- * The sequence itself is {@link checkSource} and is deliberately not written out here: the
- * documentation gate needs the same answer, and this used to be the only place that knew it — so the
- * gate ran the framework's checker and no CSS rule at all, and a doc example could carry a CSS fault
- * and pass.
- *
- * A second parse of the same file, and it is worth it: the rules read a `Block`, the virtual file
- * emits TSX from one, and threading the parse through both would tie the two together for a saving
- * that is a fraction of the type check either way.
- *
- * STRICT, like everything else the build path does. A block the parser refuses has already been
- * reported as a refusal and the run has stopped.
- */
-function cssFindings(fileName: string, source: string, config: Config): Finding[] {
-  return checkSource(source, fileName, { read: readModule, config }).map((finding) => ({
-    file: fileName,
-    ...positionOf(source, finding.at),
-    code: finding.rule,
-    message: finding.message,
-  }));
-}
 
 /**
  * One diagnostic, in the author's own coordinates — or nothing, when it belongs to the file this

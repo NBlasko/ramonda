@@ -221,13 +221,14 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       // file whose blocks silently do not compile.
       if (!SOURCE.test(file) || file.includes("node_modules") || id.startsWith("\0")) return null;
 
+      const config = configFor(file);
       let result: ReturnType<typeof transform>;
       try {
         result = transform(code, {
           filename: file,
           runtime: options.runtime,
           read: readModule,
-          config: configFor(file),
+          config,
         });
       } catch (error) {
         if (!(error instanceof CssBlockError)) throw error;
@@ -274,7 +275,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
        * This used to tell other files too, because ownership moved rules between them; that
        * mechanism could not work and is gone with the ownership that needed it.
        */
-      sheet.add(file, result.blocks);
+      sheet.add(file, result.blocks, { ...result.variables, known: config.variables });
 
       /**
        * The import that carries this file's rules, appended rather than prepended: the CSS is applied
@@ -306,6 +307,9 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
         (output) => output.type === "asset" && typeof output.source === "string" && output.fileName?.endsWith(".css"),
       );
       if (sheets.length === 0) return;
+
+      // Every file is in, so the question no single file can answer is answerable now.
+      sheet.verifyVariables();
 
       sheet.verify(
         sheets.map((output) => output.source as string).join("\n"),

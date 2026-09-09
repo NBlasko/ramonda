@@ -1,4 +1,41 @@
 import { CssBlockError } from "./errors";
+import { nearest } from "./rules";
+import type { VariableRead, Variables } from "./variables";
+
+/**
+ * One file's custom properties, plus what its OWN config says exists outside the build.
+ *
+ * Carried per file rather than handed to the check once: a monorepo has a config per package, and a
+ * name a design-system package declares is not declared in the app that consumes it.
+ */
+export interface FileVariables extends Variables {
+  readonly known?: readonly string[];
+}
+
+/** One `var()` whose name nothing in the build sets, and the nearest name that is set. */
+export interface UnknownVariable {
+  readonly file: string;
+  readonly read: VariableRead;
+  readonly meant?: string;
+}
+
+/**
+ * What to do about it, and it names every way because which one applies is the author's to know.
+ *
+ * Four things make a name known, and each is a different thing they did or did not do: a block sets
+ * it, a `@@property` registers it, the config lists it because this compiler cannot see the
+ * stylesheet that does, or the read carries a fallback — which is CSS's own way of saying the value
+ * may be absent, and costs nothing.
+ */
+export function messageFor(one: UnknownVariable): string {
+  return (
+    `nothing in this build sets \`${one.read.name}\`.` +
+    (one.meant === undefined ? "" : ` Did you mean \`${one.meant}\`?`) +
+    `\n    Set it in a block, register it with \`@@property\`, add it to \`variables\` in ` +
+    `\`ramonda.css.ts\` if it comes from a stylesheet this does not compile, or give it a ` +
+    `fallback — \`var(${one.read.name}, <value>)\` — which says it may be absent.`
+  );
+}
 import { sheetRank, withParent } from "./flatten";
 import { escapeClass } from "./names";
 import type { EmittedBlock } from "./transform";
@@ -128,6 +165,13 @@ export class Sheet {
    * rule, because a file's stylesheet has to stand on its own wherever its chunk lands.
    */
   private readonly rules = new Map<string, { block: EmittedBlock; files: Set<string> }>();
+  /**
+   * File → the custom properties it sets and reads, for the check no single file can make.
+   *
+   * Keyed by file and replaced whole, for the same reason the rules are: on a save, a name the
+   * author deleted has to go.
+   */
+  private readonly variables = new Map<string, FileVariables>();
 
   /**
    * What one file contributes, replacing whatever it contributed before.
@@ -142,7 +186,9 @@ export class Sheet {
    * to be broken anyway, since a file owning nothing at the moment it was transformed had no
    * stylesheet import to reload.
    */
-  add(file: string, blocks: readonly EmittedBlock[]): void {
+  add(file: string, blocks: readonly EmittedBlock[], variables?: FileVariables): void {
+    if (variables !== undefined) this.variables.set(file, variables);
+
     for (const className of this.byFile.get(file) ?? []) {
       const rule = this.rules.get(className);
       if (rule === undefined) continue;
@@ -256,6 +302,65 @@ export class Sheet {
     let out = "@layer ramonda {\n";
     for (const [className, rule] of ordered(this.rules)) out += write(className, rule.block);
     return `${out}}\n`;
+  }
+
+  /**
+   * A `var()` READING a name nothing in this build sets.
+   *
+   * **The only place this question can be answered.** A name may be set by a block three components
+   * away, so no single file knows; the sheet is what has every file at once. `variable-read-by-
+   * another-name` used to guess at it from inside one block — it reported a name a few edits from
+   * one the SAME block set, which made it a typo detector that could not see a real global and
+   * reported correct CSS whenever a project's global name resembled a local one.
+   *
+   * Four things make a name known, and each is a different thing the author did:
+   *
+   * - **a block sets it**, anywhere in the build, which covers a parent setting what a child reads;
+   * - **a `@@property` registers it**, which carries an `initial-value` and so always resolves;
+   * - **the config lists it**, which is the escape for a name this compiler cannot see — a
+   *   stylesheet it does not compile, or one set from JavaScript;
+   * - **the read carries a FALLBACK**, `var(--brand, #10b981)`, which is CSS's own way of saying the
+   *   value may be absent. It costs nothing and is the CSS an author writes anyway.
+   *
+   * The message names all four, because which one applies is the author's to know and not ours to
+   * guess. A near miss among the names the build DOES set is offered beside them — from every name
+   * in the build now, rather than from one block's.
+   */
+  verifyVariables(): void {
+    const unknown = this.unknownVariables();
+    if (unknown.length === 0) return;
+
+    const [first] = unknown;
+    throw new CssBlockError(
+      messageFor(first) + (unknown.length === 1 ? "" : `\n    ${unknown.length - 1} more like it.`),
+      first.file,
+      1,
+      1,
+    );
+  }
+
+  /**
+   * The same answer as a LIST, for a caller that can put each one where it was written.
+   *
+   * `ramonda-css check` reports findings with a line and a column; a bundler has no such report and
+   * stops the build with the first. One computation, two ways of saying it.
+   */
+  unknownVariables(): UnknownVariable[] {
+    const set = new Set<string>();
+    for (const [, variables] of this.variables) for (const name of variables.set) set.add(name);
+
+    const unknown: { file: string; read: VariableRead }[] = [];
+    for (const [file, variables] of this.variables) {
+      // The config that governs THIS file, not a union of every config in the build — a monorepo has
+      // one per package, and a name declared in one package is not declared in the next.
+      const declared = variables.known ?? [];
+      for (const read of variables.read) {
+        if (read.fallback || set.has(read.name) || declared.includes(read.name)) continue;
+        unknown.push({ file, read });
+      }
+    }
+    const among = [...set];
+    return unknown.map((one) => ({ ...one, meant: nearest(one.read.name, among) }));
   }
 
   /**

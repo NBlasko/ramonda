@@ -3,6 +3,7 @@ import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
 import { type Finding, checkBlock, checkText } from "./rules";
 import { findBlocks } from "./scan";
+import { type VariableRead, type Variables, variablesIn } from "./variables";
 
 /**
  * Everything the CSS rules say about one FILE's blocks.
@@ -32,8 +33,26 @@ export interface SourceOptions {
 }
 
 export function checkSource(source: string, fileName: string, options: SourceOptions = {}): Finding[] {
+  return checkedSource(source, fileName, options).findings;
+}
+
+/**
+ * The same walk, with what the file does with CUSTOM PROPERTIES kept.
+ *
+ * A `var()` reading a name nothing sets is answerable only when every file is in — see
+ * `Sheet.verifyVariables` — so the caller that has every file collects this and asks at the end.
+ * Returned from the walk that already parses each block rather than parsed again: `check.ts` reads
+ * a file twice as it is, and a third pass for two arrays would be paid on every styled file.
+ */
+export function checkedSource(
+  source: string,
+  fileName: string,
+  options: SourceOptions = {},
+): { findings: Finding[]; variables: Variables } {
   const { read, config } = options;
   const out: Finding[] = [];
+  const set: string[] = [];
+  const reads: VariableRead[] = [];
   // The same reader the build uses, or none — and none means a cross-module reference stays a hole,
   // which `hole-as-a-variable-name` reports. A checker that resolved less than the build would call
   // a working theme a fault; one that resolved more would miss one. Both consumers pass the same.
@@ -47,7 +66,19 @@ export function checkSource(source: string, fileName: string, options: SourceOpt
       ...checkText(source, site.open, read.end),
       ...checkBlock(read.block, { at: site.at, references, syntaxes, config }),
     );
+
+    // A named site sets nothing on an element; a `@@property` registers a name, and the name it
+    // registers is what a reference to it resolves to — so both are counted where the build counts
+    // them. See `transform`.
+    if (site.at === undefined) {
+      const found = variablesIn(read.block);
+      set.push(...found.set);
+      reads.push(...found.read);
+    } else if (site.at === "property" && site.name !== "") {
+      const registered = references.get(site.name);
+      if (registered !== undefined) set.push(registered);
+    }
   }
 
-  return out;
+  return { findings: out, variables: { set, read: reads } };
 }

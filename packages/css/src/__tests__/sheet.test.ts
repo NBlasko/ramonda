@@ -677,3 +677,117 @@ describe("where the class goes in a nested selector", () => {
     expect(rule).toContain("@media print { .parent .CLASS { color:red; } }");
   });
 });
+
+/**
+ * A `var()` READING a name nothing in the build sets.
+ *
+ * The question no single file can answer: a name may be set by a block three components away, so the
+ * sheet is what has every file at once. `variable-read-by-another-name` used to guess at it from
+ * inside one block — it spoke when a read was a few edits from a name the SAME block set, which made
+ * it blind to every real global and loud whenever a project's global name resembled a local one.
+ * That is the report the user brought: `--accent` set locally, a global `--ackcent` meant, and the
+ * checker naming the wrong one as the fix.
+ *
+ * Four things make a name known, and the message names all four because which applies is the
+ * author's to know: a block sets it, a `@@property` registers it, the config lists it, or the read
+ * carries a fallback.
+ */
+describe("a variable nothing sets", () => {
+  const reads = (name: string, fallback = false) => ({
+    set: [],
+    read: [{ name, at: 0, length: name.length, fallback }],
+  });
+
+  test("is refused, and the message says every way to fix it", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [], reads("--brand"));
+
+    let message = "";
+    try {
+      sheet.verifyVariables();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("nothing in this build sets `--brand`");
+    expect(message).toContain("Set it in a block");
+    expect(message).toContain("@@property");
+    expect(message).toContain("variables");
+    expect(message).toContain("var(--brand, <value>)");
+  });
+
+  test("a name another FILE sets is known, which is the whole reason this is asked here", () => {
+    const sheet = new Sheet();
+    sheet.add("parent.tsx", [], { set: ["--gap"], read: [] });
+    sheet.add("child.tsx", [], reads("--gap"));
+
+    expect(() => sheet.verifyVariables()).not.toThrow();
+  });
+
+  test("a name the same file sets is known", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [], { set: ["--gap"], read: [{ name: "--gap", at: 0, length: 5, fallback: false }] });
+
+    expect(() => sheet.verifyVariables()).not.toThrow();
+  });
+
+  test("a fallback is enough on its own", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [], reads("--brand", true));
+
+    expect(() => sheet.verifyVariables()).not.toThrow();
+  });
+
+  test("and so is the config", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [], { ...reads("--brand"), known: ["--brand"] });
+
+    expect(() => sheet.verifyVariables()).not.toThrow();
+  });
+
+  /** Per FILE, not a union: a monorepo has one config per package. */
+  test("another package's config does not declare it for this one", () => {
+    const sheet = new Sheet();
+    sheet.add("design/a.tsx", [], { set: [], read: [], known: ["--brand"] });
+    sheet.add("app/b.tsx", [], reads("--brand"));
+
+    expect(() => sheet.verifyVariables()).toThrow(/--brand/);
+  });
+
+  /** The suggestion now comes from every name in the BUILD, which is what the old rule could not do. */
+  test("a near miss in another file is offered as the fix", () => {
+    const sheet = new Sheet();
+    sheet.add("theme.tsx", [], { set: ["--accent"], read: [] });
+    sheet.add("card.tsx", [], reads("--ackcent"));
+
+    expect(() => sheet.verifyVariables()).toThrow(/Did you mean `--accent`/);
+  });
+
+  test("with no near miss, the message simply does not offer one", () => {
+    const sheet = new Sheet();
+    sheet.add("theme.tsx", [], { set: ["--accent"], read: [] });
+    sheet.add("card.tsx", [], reads("--totally-different"));
+
+    expect(() => sheet.verifyVariables()).toThrow(/^(?!.*Did you mean)/s);
+  });
+
+  test("more than one is counted, so a build does not fix them one at a time blind", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [], {
+      set: [],
+      read: [
+        { name: "--one", at: 0, length: 5, fallback: false },
+        { name: "--two", at: 9, length: 5, fallback: false },
+      ],
+    });
+
+    expect(() => sheet.verifyVariables()).toThrow(/1 more like it/);
+  });
+
+  test("a build that reads none is silent", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [], { set: ["--gap"], read: [] });
+
+    expect(() => sheet.verifyVariables()).not.toThrow();
+  });
+});

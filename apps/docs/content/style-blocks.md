@@ -509,23 +509,50 @@ is reported:
 
 A plain `--name` you both set and read is ordinary CSS and is left alone.
 
-**And a plain name you read by a typo of one you set is reported too**, which is the version of the
-same mistake that needs no bindings at all:
+### A name nothing sets
 
-```tsx expect-report:variable-read-by-another-name
-const card = @@(
-  --accent: #10b981;
-  background: var(--ackcent);
-);
+A plain `var(--name)` is checked against every name the whole build sets — not just the block it is
+written in, so a parent setting what a child reads is fine and needs no ceremony:
+
+```tsx
+// Table.tsx
+const table = @@( --row-height: 32px; );
+
+// Row.tsx
+const row = @@( height: var(--row-height); );
 ```
 
-> `--ackcent` is read here and this block sets `--accent` — did you mean `--accent`?
+A name nothing sets is reported, with the four things that would make it exist:
 
-It speaks only about a name the block itself sets, and that limit is deliberate rather than a gap. A
-custom property inherits, so `var(--brand)` reading something a global stylesheet or an ancestor
-element set is correct CSS — and a block can see neither. A rule that named every variable it could
-not find would report code that works, so it says nothing about a name it has no evidence about, and
-`var(--nothing-sets-this)` is left alone.
+```
+color: var(--brnad);
+```
+
+> nothing in this build sets `--brnad`. Did you mean `--brand`?
+> Set it in a block, register it with `@@property`, add it to `variables` in `ramonda.css.ts` if it
+> comes from a stylesheet this does not compile, or give it a fallback — `var(--brnad, <value>)` —
+> which says it may be absent.
+
+**A fallback is the answer most of the time**, and it is CSS you would write anyway:
+
+```
+padding: var(--gap, 8px);
+```
+
+That says the value may be absent and gives what to use instead. Nothing is reported, and the page
+has an answer when the variable is not there.
+
+**A name from a stylesheet this does not compile** — a third-party theme, a hand-written
+`global.css` — or one set from JavaScript as `style={{ "--row-height": … }}` cannot be seen from
+here. List those once:
+
+```ts
+// ramonda.css.ts
+export default { variables: ["--brand", "--surface"] };
+```
+
+This check runs where the whole build is visible: `ramonda-css check`, and a production build. Your
+editor sees one file at a time and says nothing about it.
 
 ### A font, and a property you can animate
 

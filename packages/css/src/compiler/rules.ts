@@ -85,7 +85,6 @@ export const RULE_IDS = [
   "rule-out-of-place",
   "override-out-of-order",
   "variable-set-by-another-name",
-  "variable-read-by-another-name",
   "hole-as-a-variable-name",
   "initial-value-and-syntax",
   "unknown-media-feature",
@@ -262,7 +261,6 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   const findings: Finding[] = [];
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
-  readByAnotherName(block, findings);
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
   spelling(block, findings);
@@ -867,116 +865,6 @@ function holeAsAVariableName(block: Block, findings: Finding[]): void {
     }
   };
   walkItems(block.items);
-}
-
-/**
- * A `var()` reading a name that is nearly one this block SETS.
- *
- * The fault the whole variable discussion started from — `background: var(--ackcent)` where
- * `--accent` is set three lines above. Measured before this existed, nothing reported it: not with
- * the name set literally, not with it set by a hole, and not when nothing set it at all.
- *
- * ## Why a NEAR MISS and not a lookup, which is the whole design of it
- *
- * **A custom property inherits.** `var(--brand)` reading something a global stylesheet or an
- * ancestor element set is ordinary, correct CSS, and a block can see neither. So a rule that spoke
- * about every name it could not find would report correct code — which is how a checker earns being
- * switched off, and the one thing this package will not do.
- *
- * It speaks only when the block itself sets a name the read is within an edit or two of. Then the
- * author demonstrably meant that name and the evidence is in the same few lines; everything else is
- * left alone. Same discipline as the at-rule deny-list, same `nearest()` bound as the unit rule, and
- * for the same reason both ways: being quiet about something new costs a missed report, being loud
- * about it costs correct code.
- *
- * ## One scope, both directions
- *
- * A block's custom properties land on ONE element, so nesting does not divide them: set at the top
- * and read inside `&:hover`, or set inside it and read at the top, are the same variable either way.
- * Both are asserted.
- *
- * A resolved part is skipped like everywhere else — see {@link TextPart.resolved}. The name in it is
- * this compiler's own, and {@link setByAnotherName} is the rule that owns that case.
- */
-function readByAnotherName(block: Block, findings: Finding[]): void {
-  const set = new Set<string>();
-  const reads: { name: string; at: number; length: number }[] = [];
-
-  const walkItems = (items: readonly BlockItem[]): void => {
-    for (const item of items) {
-      if (item.kind === "rule") {
-        walkItems(item.items);
-        continue;
-      }
-      if (item.property.startsWith("--")) set.add(item.property);
-      variableReads(item.value, reads);
-    }
-  };
-  walkItems(block.items);
-
-  // Nothing set is nothing to be a near miss OF, and it is also the common shape of a block that
-  // reads a theme — so it leaves early rather than walking the reads to conclude the same thing.
-  if (set.size === 0) return;
-
-  const among = [...set];
-  for (const read of reads) {
-    if (set.has(read.name)) continue;
-
-    const meant = nearest(read.name, among);
-    if (meant === undefined) continue;
-
-    findings.push({
-      rule: "variable-read-by-another-name",
-      at: read.at,
-      length: read.length,
-      message: `\`${read.name}\` is read here and this block sets \`${meant}\` — did you mean \`${meant}\`?`,
-    });
-  }
-}
-
-/**
- * Every `var(--name)` in one value, with the name's own position.
- *
- * A fallback holds a value, so it holds `var()` too — `var(--brand, var(--accent))` reads both, and
- * scanning for every occurrence rather than parsing the call gets the nested one for free.
- *
- * `var` is matched case-insensitively because CSS function names are, and a `var(` inside a string is
- * stepped over: `content: "var(--x)"` is text, and reporting it would be reporting a quotation.
- */
-function variableReads(parts: readonly ValuePart[], into: { name: string; at: number; length: number }[]): void {
-  for (const part of parts) {
-    if (part.kind !== "text" || part.resolved || part.at === undefined) continue;
-    const text = part.text;
-
-    for (let index = 0; index < text.length; index++) {
-      const code = text.charCodeAt(index);
-      if (code === 34 || code === 39) {
-        index = endOfString(text, index);
-        continue;
-      }
-      if (code !== 118 && code !== 86 /* v V */) continue;
-
-      let after = index + 1;
-      if ((text.charCodeAt(after) | 32) !== 97 /* a */) continue;
-      if ((text.charCodeAt(after + 1) | 32) !== 114 /* r */) continue;
-      after += 2;
-      while (after < text.length && isSpace(text.charCodeAt(after))) after++;
-      if (text.charCodeAt(after) !== 40 /* ( */) continue;
-
-      let start = after + 1;
-      while (start < text.length && isSpace(text.charCodeAt(start))) start++;
-      if (text.charCodeAt(start) !== 45 || text.charCodeAt(start + 1) !== 45) {
-        // Not a custom property — `var(SomeIdent)` is not valid CSS and is nothing this rule owns.
-        index = after;
-        continue;
-      }
-
-      let end = start + 2;
-      while (end < text.length && isWordCharacter(text.charCodeAt(end))) end++;
-      into.push({ name: text.slice(start, end), at: part.at + start, length: end - start });
-      index = end - 1;
-    }
-  }
 }
 
 /**

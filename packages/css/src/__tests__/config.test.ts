@@ -232,6 +232,11 @@ describe("the project's config", () => {
       ["rules as an array", `{ rules: ["unknown-unit"] }`, /rules/],
       ["a rule set to a boolean", `{ rules: { "unknown-unit": false } }`, /unknown-unit/],
       ["a rule set to a word that is not a severity", `{ rules: { "unknown-unit": "quiet" } }`, /quiet/],
+      ["variables as a bare string", `{ variables: "--brand" }`, /variables/],
+      ["variables holding a number", `{ variables: [1] }`, /variables/],
+      // A custom property begins with two dashes. `brand` is a property name, and a list of those
+      // would silence a rule about names it was never given.
+      ["a variable with no dashes", `{ variables: ["brand"] }`, /two dashes/],
     ])("%s is refused, naming what is wrong", (_what, body, says) => {
       expect(refused(body)).toThrow(says);
     });
@@ -256,6 +261,7 @@ describe("the project's config", () => {
 
     test.each([
       ["one unit", `{ units: ["px"] }`],
+      ["a variable this compiler cannot see", `{ variables: ["--brand"] }`],
       ["several", `{ units: ["px", "rem", "%"] }`],
       ["a rule silenced", `{ rules: { "unknown-unit": "off" } }`],
       ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],

@@ -5,6 +5,7 @@ import { classNameFor, nameFor, substitute, variableNameFor } from "./names";
 import type { Config } from "../config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
+import { type VariableRead, type Variables, variablesIn } from "./variables";
 import { type Span, readBlock } from "./read";
 import { refuse } from "./errors";
 import { checkBlock, checkText } from "./rules";
@@ -129,6 +130,14 @@ export interface TransformResult {
   readonly code: string;
   readonly map: SourceMap;
   readonly blocks: readonly EmittedBlock[];
+  /**
+   * What this file does with custom properties, for the check that only the WHOLE build can make.
+   *
+   * A `var(--x)` is answerable when every name the build sets is known, and no single file knows
+   * that — the name may be set by a block three components away. So the transform collects and the
+   * `Sheet` decides, at the moment it has everything. See `Sheet.verifyVariables`.
+   */
+  readonly variables: Variables;
 }
 
 /**
@@ -155,6 +164,10 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
   const syntaxes = syntaxesIn(source);
   const resolve = (expression: string): string | undefined => references.get(expression);
+
+  /** What every block in this file sets and reads, in one list each — see {@link TransformResult}. */
+  const variablesSet: string[] = [];
+  const variablesRead: VariableRead[] = [];
 
   const magic = new MagicString(source);
   const block = binding(source, "_merge");
@@ -188,6 +201,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       const read = readBlock(text, site.open, filename, { tolerant: true });
       const canonical = normalise(read.block);
       const className = site.at === "property" ? `--${classNameFor(canonical)}` : classNameFor(canonical);
+      // A `@@property` SETS the name it registers: the registration carries an `initial-value`, so a
+      // `var()` reading it always resolves. Recorded here because the generated name is only known now.
+      if (site.at === "property") variablesSet.push(className);
       if (named.has(className)) continue;
       // Its own file is where a fault in it is reported; this is only carrying the rule across.
       const emitted: EmittedBlock = { className, css: substitute(canonical, className), properties: [], at: site.at };
@@ -258,6 +274,19 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     ].sort((a, b) => a.at - b.at);
     if (finding !== undefined) refuse(finding.message, source, finding.at, filename);
 
+    /**
+     * Every custom property this block sets and reads, kept for the whole-build check.
+     *
+     * A named site is skipped: `@@keyframes` and `@@font-face` set nothing on an element, and a
+     * `@@property` REGISTERS a name rather than reading one — that name is recorded below, where the
+     * class it generates is known.
+     */
+    if (site.at === undefined) {
+      const found = variablesIn(read.block);
+      variablesSet.push(...found.set);
+      variablesRead.push(...found.read);
+    }
+
     // Normalised ONCE. It was called twice — for the name and again for the rule — and normalisation
     // walks the whole block, so that was a second full pass per block for a string already in hand.
     const canonical = normalise(read.block);
@@ -267,6 +296,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * in the stylesheet, and in the string the site compiles to.
      */
     const className = site.at === "property" ? `--${classNameFor(canonical)}` : classNameFor(canonical);
+    // A `@@property` SETS the name it registers: the registration carries an `initial-value`, so a
+    // `var()` reading it always resolves. Recorded here because the generated name is only known now.
+    if (site.at === "property") variablesSet.push(className);
     const properties = read.holes.map((_hole, index) => variableNameFor(className, index));
 
     /**
@@ -521,6 +553,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     code: magic.toString(),
     map: magic.generateMap({ source: filename, includeContent: true, hires: "boundary" }) as unknown as SourceMap,
     blocks: [...emittedNamed, ...atoms.values()],
+    variables: { set: variablesSet, read: variablesRead },
   };
 }
 

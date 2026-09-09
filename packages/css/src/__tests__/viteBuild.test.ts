@@ -294,7 +294,7 @@ test("a `@property` ships as a top-level at-rule holding its descriptors", () =>
   const result = build(
     project(
       `export const ANGLE = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `export const card = (\n  <div className="lead" css=@@(\n    transform: rotate(var(--r-angle));\n  )>x</div>\n);\n`,
+        `export const card = (\n  <div className="lead" css=@@(\n    transform: rotate(var({ANGLE}));\n  )>x</div>\n);\n`,
       `import { card, ANGLE } from "./Card";\nconsole.log(card, ANGLE);\n`,
     ),
   );

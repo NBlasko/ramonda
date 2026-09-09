@@ -813,6 +813,68 @@ describe("the editor and the build, on the same file", () => {
   });
 });
 
+/**
+ * A `var()` reading a name nothing in the PROJECT sets, which only this command and a build can see.
+ *
+ * `variable-read-by-another-name` guesses at it from inside one block: it speaks when a read is a
+ * few edits from a name the SAME block sets. That made it blind to a name set three components away
+ * and loud whenever a project's global name resembled a local one — the report this came from.
+ *
+ * Reported as a finding at the name's own position, not as a refusal: a refusal means the parser
+ * could not read a block, and saying that about a name that reads perfectly well sends a person
+ * looking at the wrong thing.
+ */
+describe("a variable nothing in the project sets", () => {
+  test("is reported, at the name and with every way to fix it", () => {
+    const report = check({
+      "Card.tsx": `const a = <div css=@@(\n  color: var(--brand);\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].code).toBe("variable-not-set");
+    expect(report.findings[0].line).toBe(2);
+    expect(report.findings[0].column).toBe(14);
+    expect(report.findings[0].message).toContain("nothing in this build sets `--brand`");
+    expect(report.findings[0].message).toContain("fallback");
+  });
+
+  test("a name ANOTHER file sets is fine, which is why this is asked here at all", () => {
+    const report = check({
+      "Theme.tsx": `const t = <div css=@@(\n  --brand: #10b981;\n)>x</div>;\nexport default t;\n`,
+      "Card.tsx": `const a = <div css=@@(\n  color: var(--brand);\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test.each([
+    ["the same block sets it", "  --brand: #10b981;\n  color: var(--brand);"],
+    ["a fallback says it may be absent", "  color: var(--brand, #10b981);"],
+    ["a `@@property` registers it", ""],
+  ])("%s", (_what, body) => {
+    const report = check({
+      "Card.tsx":
+        body === ""
+          ? `const brand = @@property(\n  syntax: "<color>";\n  inherits: true;\n  initial-value: #10b981;\n);\n` +
+            `const a = <div css=@@(\n  color: var({brand});\n)>x</div>;\nexport default [brand, a];\n`
+          : `const a = <div css=@@(\n${body}\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  /** The suggestion comes from every name in the project now, not from the one block's own. */
+  test("a near miss in another file is offered", () => {
+    const report = check({
+      "Theme.tsx": `const t = <div css=@@(\n  --accent: #10b981;\n)>x</div>;\nexport default t;\n`,
+      "Card.tsx": `const a = <div css=@@(\n  color: var(--ackcent);\n)>x</div>;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].message).toContain("Did you mean `--accent`?");
+  });
+});
+
 describe("the type a block has", () => {
   test("a binding holding a block is a block, not `never`", () => {
     const report = check({
