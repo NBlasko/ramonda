@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { compose, merge } from "../merge";
+import { SHORTHANDS } from "../compiler/keywords.generated";
 
 /**
  * Composition, which happens at the CALL SITE and nowhere else.
@@ -197,5 +198,78 @@ describe("a value spread back in", () => {
 
   test("which is the same answer as merging the maps directly", () => {
     expect(merge(merge(base), roomy).className).toBe(merge(base, roomy).className);
+  });
+});
+
+/**
+ * A LOGICAL shorthand clears its own side, and four of them cleared somebody else's.
+ *
+ * The table the merge reads is derived from `mdn-data`'s `initial` field, which lists a shorthand's
+ * longhands by convention — and for four logical border shorthands that field names something else
+ * entirely. A review of this file measured what it cost, and it is not subtle:
+ *
+ *     color: red; border-block-start: 1px solid blue;    `color: red` silently gone
+ *     border-top: …; border-block-end: …;                `border-top` silently gone
+ *
+ * `border-block-start`, `border-inline-start` and `border-inline-end` were all given
+ * `["border-width", "border-style", "color"]` — two shorthands covering every PHYSICAL border
+ * longhand, plus `color`, which is an unrelated property. `border-block-end` was given the
+ * `border-top-*` longhands, which is the wrong side.
+ *
+ * Corrected in the generator, with an assertion that fails the build when the next logical
+ * shorthand's leaves fall outside its own name — and again when a correction stops being needed.
+ */
+describe("a logical shorthand clears its own side and nothing else", () => {
+  /** The list the merge actually reads, straight out of the generated table. */
+  const clears = (shorthand: string) => SHORTHANDS[shorthand] ?? [];
+
+  test.each(["border-block-start", "border-block-end", "border-inline-start", "border-inline-end"])(
+    "%s does not name `color`",
+    (shorthand) => {
+      expect(clears(shorthand)).not.toContain("color");
+    },
+  );
+
+  test.each(["border-block-start", "border-block-end", "border-inline-start", "border-inline-end"])(
+    "%s names only its own side",
+    (shorthand) => {
+      expect([...clears(shorthand)].sort()).toEqual(
+        [`${shorthand}-color`, `${shorthand}-style`, `${shorthand}-width`].sort(),
+      );
+    },
+  );
+
+  /** The physical side, which was never wrong, and the corner family, whose names are its own. */
+  test("`border-top` is unchanged, and a corner still names the corners it sets", () => {
+    expect([...clears("border-top")].sort()).toEqual(
+      ["border-top-color", "border-top-style", "border-top-width"].sort(),
+    );
+    expect([...clears("corner-block-end-shape")].sort()).toEqual(
+      ["corner-end-end-shape", "corner-end-start-shape"].sort(),
+    );
+  });
+
+  /**
+   * And the same fact through the runtime, which is where it was costing something: the map a
+   * compiled block hands `merge` carries the list under `~`, so a wrong list is a class deleted.
+   */
+  test("`color` survives a `border-block-start` beside it", () => {
+    const withColor = { color: "r-c-red" };
+    const withBorder = {
+      "border-block-start": "r-bbs-1px",
+      "~border-block-start": [...clears("border-block-start")],
+    };
+
+    expect(merge(withColor, withBorder).className.split(" ").sort()).toEqual(["r-bbs-1px", "r-c-red"]);
+  });
+
+  test("and its own longhand does not", () => {
+    const withLonghand = { "border-block-start-width": "r-bbsw-1px" };
+    const withBorder = {
+      "border-block-start": "r-bbs-2px",
+      "~border-block-start": [...clears("border-block-start")],
+    };
+
+    expect(merge(withLonghand, withBorder).className).toBe("r-bbs-2px");
   });
 });

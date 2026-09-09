@@ -768,11 +768,91 @@ function longhandsOf(name, properties, seen = new Set()) {
   return out;
 }
 
+/**
+ * The four logical shorthands `mdn-data`'s own `initial` field gets WRONG, corrected here.
+ *
+ * Found by a review of the runtime merge, which measured what it costs — and it is not subtle:
+ *
+ *     color: red; border-block-start: 1px solid blue;   ->  `color: red` silently gone
+ *     border-top: 1px solid red; border-block-end: …;   ->  `border-top` silently gone
+ *
+ * `initial` is a shorthand's list of longhands by convention, and for these four it names something
+ * else entirely:
+ *
+ *     border-block-start   ["border-width", "border-style", "color"]
+ *     border-inline-start  ["border-width", "border-style", "color"]
+ *     border-inline-end    ["border-width", "border-style", "color"]
+ *     border-block-end     ["border-top-width", "border-top-style", "border-top-color"]
+ *
+ * The first three name `color`, an unrelated property, and two shorthands that expand to every
+ * physical border longhand. The fourth names the wrong SIDE. Each of the correct names exists in
+ * `mdn-data`; only this field is wrong, and `assertLogicalLeaves` below fails the build if the next
+ * one is — or if this table stops being needed.
+ */
+const LOGICAL_LONGHANDS = {
+  "border-block-start": ["border-block-start-width", "border-block-start-style", "border-block-start-color"],
+  "border-block-end": ["border-block-end-width", "border-block-end-style", "border-block-end-color"],
+  "border-inline-start": ["border-inline-start-width", "border-inline-start-style", "border-inline-start-color"],
+  "border-inline-end": ["border-inline-end-width", "border-inline-end-style", "border-inline-end-color"],
+};
+
 /** Every property's leaves — itself, for a longhand. */
 const leavesOf = new Map();
 for (const name of named) {
-  const leaves = longhandsOf(name, properties);
+  const corrected = LOGICAL_LONGHANDS[name];
+  const leaves = corrected ?? longhandsOf(name, properties);
   leavesOf.set(name, new Set(leaves.length === 0 ? [name] : leaves));
+}
+
+assertLogicalLeaves();
+
+/**
+ * Every LOGICAL shorthand's leaves carry its own name, and the build fails when one does not.
+ *
+ * A physical shorthand has no such rule — `inset` sets `top`, `font` sets `line-height`, `gap` sets
+ * `row-gap` — so there is nothing general to assert. The logical family is different: a
+ * `*-block-*` or `*-inline-*` shorthand sets only its own side, by construction of the names. That
+ * makes it checkable, and it is the only reason the four wrong entries above were findable at all.
+ *
+ * It also fails when a CORRECTION is no longer needed, so the table cannot outlive the bug: a
+ * `mdn-data` release that fixes one is a build that says to delete a line.
+ */
+function assertLogicalLeaves() {
+  const wrong = [];
+  for (const [name, leaves] of leavesOf) {
+    if (!/-(?:block|inline)(?:-|$)/.test(name)) continue;
+    /**
+     * A CORNER is named by the two edges that meet in it, so `corner-block-end-shape` sets
+     * `corner-end-start-shape` and `corner-end-end-shape` — correct, and outside its own prefix.
+     * The rule below is about a shorthand setting a property on another SIDE, and this family names
+     * sides differently. Found by this assertion firing on all four of them at once, which is the
+     * assertion doing its job in the other direction.
+     */
+    if (name.startsWith("corner-")) continue;
+    for (const leaf of leaves) {
+      if (!leaf.startsWith(`${name}-`) && leaf !== name) wrong.push(`${name} -> ${leaf}`);
+    }
+  }
+  if (wrong.length > 0) {
+    console.error(
+      `\n${TAG} a logical shorthand sets a property outside its own side, which the merge would ` +
+        `clear:\n\n  ${wrong.join("\n  ")}\n\n` +
+        `  \`initial\` in mdn-data is wrong for it. Add the real longhands to LOGICAL_LONGHANDS.\n`,
+    );
+    process.exit(1);
+  }
+
+  const stale = Object.keys(LOGICAL_LONGHANDS).filter((name) => {
+    const derived = longhandsOf(name, properties);
+    return derived.length > 0 && derived.every((leaf) => leaf.startsWith(`${name}-`));
+  });
+  if (stale.length > 0) {
+    console.error(
+      `\n${TAG} mdn-data now derives ${stale.join(", ")} correctly. Delete ` +
+        `${stale.length === 1 ? "that entry" : "those entries"} from LOGICAL_LONGHANDS.\n`,
+    );
+    process.exit(1);
+  }
 }
 
 const shorthandRows = [];
