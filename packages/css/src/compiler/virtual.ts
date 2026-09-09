@@ -101,6 +101,15 @@ export interface VirtualFile {
   /** Valid TSX. */
   readonly code: string;
   /**
+   * The names this file declared for itself — the block helper, composition's two, the hole's type,
+   * and one per kind of named site the file holds.
+   *
+   * They are in scope for the whole file, so TypeScript offers them wherever it offers the author's
+   * own bindings. A consumer showing completions has to take them out; nothing of the author's is
+   * ever removed by doing so, because {@link binding} picks a name the source does not contain.
+   */
+  readonly bindings: readonly string[];
+  /**
    * Where the generated prologue ends.
    *
    * A diagnostic before this and mapping NOWHERE is about the declaration this wrote — the helper,
@@ -316,6 +325,16 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   write(`declare function ${hole}<T extends import(${from}).CssValue>(value: T): T;`);
 
   /**
+   * Every name this file DECLARED, so a consumer can tell them from the author's own.
+   *
+   * They are in scope for the whole file, which is what makes them work — and what made TypeScript
+   * offer them beside the author's bindings in ordinary completions: measured, 1005 entries where
+   * 1000 belong. `binding` already picks a name the source does not contain, so nothing of the
+   * author's is ever removed by filtering these out.
+   */
+  const bindings: string[] = [block, condition, spread, hole];
+
+  /**
    * One more declaration per KIND of named site the file holds, and only the kinds it holds.
    *
    * A named site is a different vocabulary — frames, or descriptors — so it cannot go through the
@@ -333,6 +352,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     const shape = (SURFACES as Readonly<Record<string, string | undefined>>)[site.at];
     if (shape === undefined) continue;
     const name = binding(source, `__${site.at.replace(/-/g, "_")}`);
+    bindings.push(name);
     surfaces.set(site.at, name);
     write(`declare function ${name}(body: import(${from}).${shape}): never;`);
   }
@@ -469,6 +489,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   return {
     code,
     preamble,
+    bindings,
     homeOf: (offset) => homeOf(segments, offset),
     spanOf: (start, length) => spanOf(segments, start, length),
     virtualOf: (offset) => virtualOf(bySource, offset) ?? slotFor(slots, offset),
@@ -770,9 +791,17 @@ function virtualOf(bySource: readonly Segment[], offset: number): number | undef
   // A copied run: the same characters, so the same distance.
   if (length === found.sourceLength) return found.from + delta;
 
-  // A rewritten one: inside the emitted token, never at its far edge. Measured — `{display|:` offers
-  // nothing and `{displa|y` offers every property name, so being inside is what matters.
-  return found.from + Math.min(Math.max(delta, 1), Math.max(length - 1, 1));
+  /**
+   * A rewritten one: inside the emitted token, never at its far edge. Measured — `{display|:` offers
+   * nothing and `{displa|y` offers every property name, so being inside is what matters.
+   *
+   * **A ONE-CHARACTER run has no interior, and the clamp used to leave it.** `Math.max(length - 1,
+   * 1)` is 1 for such a run, so every offset in it landed one past its only character — and the
+   * whole header of a named block is one: `derived("{", … )` stands for all twelve characters of
+   * `@@keyframes(`. A caret anywhere in that header answered from whatever came next.
+   */
+  if (length <= 1) return found.from;
+  return found.from + Math.min(Math.max(delta, 1), length - 1);
 }
 
 /** The author's span for a virtual one — see the declaration on {@link VirtualFile}. */

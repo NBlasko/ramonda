@@ -454,12 +454,22 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
            * bug was.
            */
           optionalReplacementSpan: replaces(got.optionalReplacementSpan),
-          entries: got.entries.map((entry) => ({
-            ...entry,
-            name: css ? unquoted(entry.name) : entry.name,
-            insertText: css && entry.insertText === undefined ? unquoted(entry.name) : entry.insertText,
-            replacementSpan: replaces(entry.replacementSpan),
-          })),
+          /**
+           * This file's OWN declarations are taken out, wherever the caret is.
+           *
+           * The block helper and its neighbours are declared at the top of the virtual file, so they
+           * are in scope everywhere in it and TypeScript offers them beside the author's bindings —
+           * measured, 1005 entries where 1000 belong, `__block` first among them. `binding` picks a
+           * name the author's source does not contain, so nothing of theirs is ever removed here.
+           */
+          entries: got.entries
+            .filter((entry) => !file.bindings.includes(entry.name))
+            .map((entry) => ({
+              ...entry,
+              name: css ? unquoted(entry.name) : entry.name,
+              insertText: css && entry.insertText === undefined ? unquoted(entry.name) : entry.insertText,
+              replacementSpan: replaces(entry.replacementSpan),
+            })),
         };
       };
 

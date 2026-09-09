@@ -671,6 +671,28 @@ describe("what the virtual file hands TypeScript", () => {
     expect(lost).toEqual([]);
   });
 
+  /**
+   * A ONE-CHARACTER rewritten run has no interior, and the clamp used to leave it.
+   *
+   * The whole header of a named block is one: a single `{` stands for all twelve characters of
+   * `@@keyframes(`. `Math.max(length - 1, 1)` is 1 for such a run, so every offset in the header
+   * landed one past its only character — and a caret anywhere in it answered from whatever came
+   * next, which is the first frame.
+   */
+  test("a caret anywhere in a named block's header belongs to the header", () => {
+    const source = "const k = @@keyframes( from { opacity: 0; } );\n";
+    const virtual = build(source);
+    const opening = source.indexOf("@@keyframes(");
+    const after = source.indexOf("from");
+
+    for (let at = opening; at < after - 1; at++) {
+      const spot = virtual?.virtualOf(at);
+      expect(spot === undefined ? undefined : virtual?.homeOf(spot)).toBe(opening);
+    }
+    // And the frame after it is still its own, so the run did not simply swallow everything.
+    expect(virtual?.homeOf(virtual.virtualOf(after) ?? -1)).toBe(after);
+  });
+
   /** And a caret in the FIRST run answers from the first run, not from the last. */
   test("a caret in the text before a hole belongs to that text", () => {
     const source = "const a = @@( border-left: 4px solid {tint} inset; );\n";

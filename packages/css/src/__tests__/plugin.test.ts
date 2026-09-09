@@ -148,6 +148,25 @@ describe("completion, at every caret a person passes through", () => {
     for (const property of SOME_PROPERTIES) expect(offered).toContain(property);
   });
 
+  /**
+   * THE VIRTUAL FILE'S OWN DECLARATIONS are not the author's, and were offered as if they were.
+   *
+   * The block helper, composition's two, the hole's type and one per named site are declared at the
+   * top of the file, so they are in scope everywhere in it — measured, 1005 entries where 1000
+   * belong, with `__block` sorting first. `binding` picks a name the author's source does not
+   * contain, so filtering them takes nothing of theirs.
+   */
+  test.each([
+    ["inside a block", `const a = <div css=@@( disp${CARET} )>x</div>;\n`],
+    ["inside a hole", `const tone = 1;\nconst a = <div css=@@( opacity: {to${CARET}}; )>x</div>;\n`],
+    ["in ordinary code beside a block", `const a = <div css=@@( color: red; )>x</div>;\nconst b = ${CARET}\n`],
+    ["in a file with a named site", `const k = @@keyframes( from { opacity: 0; } );\nconst b = ${CARET}\n`],
+  ])("%s offers none of this file's own declarations", (_what, marked) => {
+    const offered = names(marked);
+
+    expect(offered.filter((one) => one.startsWith("__"))).toEqual([]);
+  });
+
   test("a value being typed offers what that property accepts, and nothing else", () => {
     const offered = names(`const a = <div css=@@( position: stat${CARET} )>x</div>;\n`);
 
