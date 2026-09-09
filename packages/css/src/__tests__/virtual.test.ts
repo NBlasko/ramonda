@@ -534,3 +534,71 @@ describe("a rewritten run whose length happens to match the author's", () => {
     expect(spanOver(`const a = <div css=@@( color: {this.tone}; )>x</div>;\n`, "this.tone")).toBe("this.tone");
   });
 });
+
+/**
+ * THE VIRTUAL FILE PARSES, which nothing asked until three faults had already shipped.
+ *
+ * The tests above check what is written into it — that a declaration becomes a literal, that a hole
+ * keeps its parens. None of them ever handed the result to TypeScript, and **a file that does not
+ * parse has no semantics to ask about**: every diagnostic in it disappears, so a single unparsable
+ * construct silently switches the whole file's checking off. Three shapes did exactly that, and each
+ * came back green from every test in this file.
+ *
+ * All three are refused by the build, which is not a reason to leave the editor broken: an author is
+ * owed a working editor for the rest of the file until they run one.
+ */
+describe("what the virtual file hands TypeScript", () => {
+  const parses = (source: string): string[] => {
+    const virtual = virtualFile(source, { properties: "./properties", tolerant: true });
+    if (virtual === undefined) return [];
+    const file = ts.createSourceFile("v.tsx", virtual.code, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TSX);
+    return ((file as unknown as { parseDiagnostics: ts.Diagnostic[] }).parseDiagnostics ?? []).map((one) =>
+      ts.flattenDiagnosticMessageText(one.messageText, " "),
+    );
+  };
+
+  test.each([
+    ["an ordinary block", "const a = <div css=@@(\n  color: red;\n)>x</div>;\n"],
+    ["a braced one", "const a = <div css={@@(\n  color: red;\n)}>x</div>;\n"],
+    ["a plain value", "const a = @@(\n  color: red;\n);\n"],
+    ["a nested rule", "const a = @@(\n  &:hover { color: red; }\n);\n"],
+    ["a hole", "const a = @@(\n  color: {tint};\n);\n"],
+    ["a group", "const a = @@(\n  @@if ({on}) { color: red; }\n);\n"],
+    ["a spread", "const a = @@(\n  ...{base};\n);\n"],
+    ["a named site as a value", "const k = @@keyframes(\n  from { opacity: 0; }\n);\n"],
+    ["two blocks in one file", "const a = @@( color: red; );\nconst b = @@( color: blue; );\n"],
+    // The three that did not, each for its own reason.
+    ["a SHEBANG, which is legal only at offset 0", "#!/usr/bin/env node\nconst a = @@(\n  color: red;\n);\n"],
+    ["a NAMED SITE as a bare attribute", "const a = <div css=@@keyframes(\n  from { opacity: 0; }\n)>x</div>;\n"],
+    ["a BLOCK NESTED IN A HOLE", 'const a = @@(\n  color: {on ? @@( color: red; ) : "blue"};\n);\n'],
+  ])("%s", (_what, source) => {
+    expect(parses(source)).toEqual([]);
+  });
+
+  /**
+   * And the file around the fault is still CHECKED, which is the whole point of not simply refusing.
+   * The nested block is written as `null` — nothing of the author's is copied into it, so a caret
+   * inside gets no answer, and the declaration beside it gets its own.
+   */
+  test("a block nested in a hole leaves the rest of the file readable", () => {
+    const virtual = build('const a = @@(\n  color: {on ? @@( color: red; ) : "blue"};\n  dsiplay: flex;\n);\n');
+
+    expect(virtual?.code).toContain("(null)");
+    expect(virtual?.code).not.toContain("@@(");
+    expect(virtual?.code).toContain("dsiplay");
+  });
+
+  /** A shebang stays at offset 0, which is the only place it is legal. */
+  test("the preamble goes after a shebang, not in front of it", () => {
+    const virtual = build("#!/usr/bin/env node\nconst a = @@( color: red; );\n");
+
+    expect(virtual?.code.startsWith("#!/usr/bin/env node\n")).toBe(true);
+  });
+
+  /** And the attribute the site was written as survives, so the tag still has one. */
+  test("a named site written as a bare attribute keeps the attribute", () => {
+    const virtual = build("const a = <div css=@@keyframes(\n  from { opacity: 0; }\n)>x</div>;\n");
+
+    expect(virtual?.code).toContain("css={__keyframes(");
+  });
+});

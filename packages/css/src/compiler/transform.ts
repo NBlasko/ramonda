@@ -9,7 +9,7 @@ import { type VariableRead, type Variables, variablesIn } from "./variables";
 import { type Span, readBlock } from "./read";
 import { refuse } from "./errors";
 import { checkBlock, checkText } from "./rules";
-import { type BlockSite, findBlocks, mayHoldABlock } from "./scan";
+import { type BlockSite, afterShebang, findBlocks, mayHoldABlock } from "./scan";
 
 /**
  * An author's file in, valid TSX out, plus the rules it now owes a stylesheet.
@@ -599,7 +599,7 @@ function binding(source: string, base: string): string {
  * above one still sees its bindings.
  */
 function afterDirectives(source: string): number {
-  let at = source.startsWith("#!") ? nextLine(source, 0) : 0;
+  let at = afterShebang(source);
 
   for (;;) {
     const from = at;

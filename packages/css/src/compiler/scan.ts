@@ -84,7 +84,7 @@ export function findBlocks(source: string): BlockSite[] {
   const length = source.length;
   // A shebang is not JavaScript and is not a comment either — nothing in the language skips it, so
   // `@@(` written in one would be read as a block on a line the engine never parses.
-  let index = source.startsWith("#!") ? nextLine(source, 0) : 0;
+  let index = afterShebang(source);
   /** The last character that was not whitespace, so a `/` can be told from a `/`. */
   let previous = 0;
 
@@ -198,6 +198,19 @@ function endOfRegex(source: string, start: number): number {
     else if (code === 10) return index;
   }
   return source.length;
+}
+
+/**
+ * Past a SHEBANG, which is where every reader of this file has to start.
+ *
+ * `#!` is not JavaScript and is not a comment — nothing in the language skips it — and it is legal
+ * only at offset 0. Three places needed the same answer and two of them had it: `findBlocks`, so a
+ * `@@(` written in one is not read as a block, and `transform`'s `afterDirectives`. The virtual file
+ * did not, so a `declare` of ours went in FRONT of it and the whole file stopped parsing — with
+ * nothing in it checked, because a file that does not parse has no semantics to ask about.
+ */
+export function afterShebang(source: string): number {
+  return source.startsWith("#!") ? nextLine(source, 0) : 0;
 }
 
 /** The start of the line after the one `from` is on, or the end of the source. */

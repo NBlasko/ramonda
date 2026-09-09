@@ -4,7 +4,7 @@ import { selectorOf } from "./flatten";
 import { collapse } from "./normalise";
 import type { Span } from "./read";
 import { readBlock } from "./read";
-import { findBlocks, mayHoldABlock } from "./scan";
+import { type BlockSite, afterShebang, findBlocks, mayHoldABlock } from "./scan";
 import { type Imported, namedSites } from "./references";
 
 /**
@@ -336,6 +336,9 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    */
   const heads: { from: number; to: number; at: number }[] = [];
 
+  /** The blocks written INSIDE the site being emitted, whose text is not TypeScript. */
+  let nested: BlockSite[] = [];
+
   /** What a reference stands for, so the check reads the file the way the build compiles it. */
   const references = namedSites(source, { filename: options.filename, read: options.read });
 
@@ -349,6 +352,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       tolerant: options.tolerant,
       resolve: (name) => references.get(name),
     });
+    nested = sites.filter((other) => other !== site && other.start > site.open && other.start < read.end);
 
     /**
      * How much of the author's text stands, and it is what the transform decides too: a bare JSX
@@ -363,6 +367,22 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 
     if (surface !== undefined) {
       copy(cursor, site.start);
+      /**
+       * A named site written as a BARE ATTRIBUTE keeps the attribute, and it used to be eaten.
+       *
+       * The rewrite starts at the site's own start, which for a bare attribute is the attribute's
+       * NAME — so `css=@@keyframes( … )` came out `<div __keyframes({ … })`, with `css=` gone and the
+       * whole file failing to parse. Nothing in it was then checked at all, which is the cost that
+       * makes this worth handling rather than left to the refusal: the build refuses it, and the
+       * author is owed a working editor until they run one.
+       *
+       * The `wrap` question is the same one the ordinary branch below asks, and this branch simply
+       * did not ask it. See `BlockSite.wrap`.
+       */
+      if (site.wrap) {
+        copy(site.start, site.start + site.name.length);
+        write("={");
+      }
       write(`${surface}(`);
       /**
        * The literal's own brace stands for the block's OPENING, and it has to stand for something.
@@ -422,7 +442,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       if (surface === undefined) write("{},");
     }
 
-    write(surface !== undefined ? "})" : site.wrap ? "])}" : "])");
+    write(surface !== undefined ? (site.wrap ? "})}" : "})") : site.wrap ? "])}" : "])");
 
     // Whatever the block spanned below its last item — the closing `)` on a line of its own.
     keepLine(read.end + 1);
@@ -575,7 +595,20 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    */
   function expression(span: Span): void {
     write("(");
-    copy(span.start, span.end);
+    /**
+     * A HOLE HOLDING ANOTHER BLOCK is written as a placeholder rather than copied.
+     *
+     * `color: {cond ? @@( … ) : "blue"}` is refused by the build — a hole holds a value and a block
+     * is not one — but copying it here put `@@(` into the virtual TSX, and **a file that does not
+     * parse has no semantics to ask about**, so every other fault in it went unreported. Measured:
+     * sixteen parse errors and nothing else checked.
+     *
+     * `null` rather than nothing, because the slot has to hold an expression. Nothing is copied, so
+     * no offset inside it maps home — which is right: the expression is refused, and a caret in it
+     * has no answer that would help.
+     */
+    if (nested.some((one) => one.start >= span.start && one.start < span.end)) write("null");
+    else copy(span.start, span.end);
     write(")");
   }
 
@@ -597,13 +630,24 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
 /**
  * Where the author's leading comments end, which is where a `declare` of ours may first go.
  *
- * Only whitespace and comments are skipped — the first thing that is neither is where the file's
- * own code begins, and a directive that has to be above it stays above it. A file that is nothing
- * but comments has no code to put anything in front of, so the whole file is trivia and the answer
- * is its length.
+ * Whitespace, comments, and a SHEBANG — the first thing that is neither is where the file's own code
+ * begins, and a directive that has to be above it stays above it. A file that is nothing but
+ * comments has no code to put anything in front of, so the whole file is trivia and the answer is
+ * its length.
+ *
+ * **The shebang was missing, and the doc said so as if it were the rule**: *"only whitespace and
+ * comments are skipped"*. `#!` is not JavaScript and is not a comment, and it is legal ONLY at
+ * offset 0 — so a `declare` written in front of it moved it, and TypeScript answered `'#!' can only
+ * be used at the start of a file`. Measured: a `bin.ts` with one block came back with two parse
+ * errors and **nothing in the file was checked at all**, because a file that does not parse has no
+ * semantics to ask about.
+ *
+ * `transform` has always skipped it, in `afterDirectives`, and so has `findBlocks`. One question,
+ * three askers, two answers — and the one that was wrong is the one an author reads in an editor.
+ * `afterShebang` is the one answer now.
  */
 function afterLeadingTrivia(source: string): number {
-  let at = 0;
+  let at = afterShebang(source);
   while (at < source.length) {
     const code = source.charCodeAt(at);
     if (code === 32 || code === 9 || code === 10 || code === 13 || code === 12) {
