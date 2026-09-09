@@ -1,6 +1,6 @@
 import type { Config } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
-import { conflict, covers, flatten, sheetRank } from "./flatten";
+import { conflict, covers, flatten, onlyTheModeDecides, sheetRank } from "./flatten";
 import { holeOutOfPlace } from "./errors";
 import {
   DESCRIPTORS,
@@ -951,6 +951,31 @@ function overrideOutOfOrder(block: Block, findings: Finding[]): void {
       if (sameContext && covers(later.property, earlier.property)) continue;
 
       if (sheetRank(later) >= sheetRank(earlier)) continue;
+
+      /**
+       * A LOGICAL property meeting a PHYSICAL one, which no order can settle.
+       *
+       * `margin-inline` is left and right in a horizontal writing mode and top and bottom in a
+       * vertical one, so whether it covers `margin-left` is not known until the element is laid
+       * out. Measured in Chromium, both modes: the sheet's broadest-first order is right in one and
+       * wrong in the other, silently, and the wrong one is the mode almost every page is in.
+       *
+       * The other direction needs no message, because it needs no rule: `margin` sets all four
+       * sides whatever the mode, so it clears `margin-inline` and the merge settles it above.
+       */
+      if (onlyTheModeDecides(earlier.property, later.property)) {
+        findings.push({
+          rule: "override-out-of-order",
+          at: later.at ?? 0,
+          length: later.property.length,
+          message:
+            `\`${later.property}\` is written to override \`${earlier.property}\` above it, and whether ` +
+            `it does depends on \`writing-mode\` — a logical property names a side the layout picks, so ` +
+            `a stylesheet cannot be ordered for both. Write the two in one system: \`${earlier.property}\` ` +
+            `has a logical spelling, and \`${later.property}\` a physical one.`,
+        });
+        return;
+      }
 
       const where = earlier.conditions.length > 0 ? earlier.conditions.join(" ") : `\`${earlier.property}\``;
       findings.push({

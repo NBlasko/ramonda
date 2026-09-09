@@ -1083,6 +1083,52 @@ describe("an override the sheet's order will not honour", () => {
     );
   });
 
+  /**
+   * A LOGICAL PROPERTY BELOW A PHYSICAL ONE, which no order settles.
+   *
+   * `margin-inline` is the left and right margins in a horizontal writing mode and the top and
+   * bottom ones in a vertical one, so whether it covers `margin-left` is the layout's to decide and
+   * a stylesheet has one order for both. Measured in Chromium against plain CSS, in both modes:
+   * broadest-first is right in the vertical one and wrong in the horizontal one — silently, in the
+   * mode almost every page is in.
+   *
+   * **Fuzzed over every ordered pair in the eight families where both spellings exist**, 7,656 of
+   * them, each rendered twice and compared with plain CSS. 56 disagreed and none of them was
+   * reported; the pairs reported now are those 56 exactly — no pair that agreed became a finding,
+   * and no pair that disagreed stayed quiet.
+   */
+  test.each([
+    ["margin-left: 4px;\nmargin-inline: 8px;", "margin-inline"],
+    ["padding-left: 4px;\npadding-inline: 8px;", "padding-inline"],
+    ["margin-top: 4px;\nmargin-block: 8px;", "margin-block"],
+    ["left: 4px;\ninset-inline: 8px;", "inset-inline"],
+    ["border-left-width: 4px;\nborder-inline-width: 8px;", "border-inline-width"],
+  ])("is reported, and the message names the writing mode: %#", (written, later) => {
+    const found = checkNamedFree(written);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("override-out-of-order");
+    expect(found[0].message).toContain("writing-mode");
+    expect(found[0].message).toContain(`\`${later}\``);
+    // Not the shorthand sentence, which would be untrue here — neither is the other's longhand.
+    expect(found[0].message).not.toContain("its own longhands");
+  });
+
+  test.each([
+    ["the other order, which the sheet does honour", "margin-inline: 8px;\nmargin-left: 4px;"],
+    ["a four-side shorthand after it, which CLEARS it", "margin-inline: 8px;\nmargin: 0px;"],
+    ["a four-side shorthand before it, which the sheet orders", "margin: 0px;\nmargin-inline: 8px;"],
+    ["two logical properties on different axes, which never overlap", "margin-block-start: 4px;\nmargin-inline: 8px;"],
+    ["the two ends of one axis, which are different sides", "margin-inline-start: 4px;\nmargin-inline-end: 8px;"],
+    [
+      "a physical and a logical single side, whose order the sheet keeps",
+      "margin-left: 4px;\nmargin-inline-start: 8px;",
+    ],
+    ["an unrelated family", "margin-left: 4px;\npadding-inline: 8px;"],
+  ])("%s is not reported", (_what, written) => {
+    expect(checkNamedFree(written)).toEqual([]);
+  });
+
   test("a broader property below a narrower one under the same condition", () => {
     // The sheet emits `padding` before `padding-left` whatever their order, so the author's
     // `padding` written second cannot win the way they wrote it.

@@ -1,6 +1,6 @@
 import type { Block, BlockItem, NestedRule } from "./ast";
 import { HOLE, collapse } from "./normalise";
-import { SHORTHANDS } from "./keywords.generated";
+import { MAY_CLEAR, SHORTHANDS } from "./keywords.generated";
 import { CONDITION, SPREAD, holeIn } from "./read";
 
 /**
@@ -78,9 +78,28 @@ export function covers(shorthand: string, other: string): boolean {
   return SHORTHANDS[shorthand]?.includes(other) ?? false;
 }
 
+/**
+ * Whether one property MIGHT cover another, with the writing mode deciding whether it does.
+ *
+ * `margin-inline` is left and right in a horizontal writing mode and top and bottom in a vertical
+ * one — measured in Chromium — so `margin-left: 4px; margin-inline: 8px` has two right answers and
+ * a stylesheet has one order. It cannot be cleared, and it cannot be ordered, so it is reported.
+ *
+ * The table holds physical targets only. Two logical names on different axes never overlap in any
+ * mode, and listing them would report correct CSS.
+ */
+function mayCover(one: string, other: string): boolean {
+  return MAY_CLEAR[one]?.includes(other) ?? false;
+}
+
 /** Whether two properties fight over anything — the same one, or one covering the other. */
 export function conflict(a: string, b: string): boolean {
-  return a === b || covers(a, b) || covers(b, a);
+  return a === b || covers(a, b) || covers(b, a) || mayCover(a, b) || mayCover(b, a);
+}
+
+/** Whether the pair is the one no writing mode settles, which the report has to say out loud. */
+export function onlyTheModeDecides(a: string, b: string): boolean {
+  return !covers(a, b) && !covers(b, a) && (mayCover(a, b) || mayCover(b, a));
 }
 
 /**

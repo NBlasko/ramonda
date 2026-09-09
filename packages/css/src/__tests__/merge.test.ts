@@ -349,3 +349,68 @@ describe("a logical shorthand clears its own side and nothing else", () => {
     expect(merge(withLonghand, withBorder).className).toBe("r-bbs-2px");
   });
 });
+
+/**
+ * A FOUR-SIDE SHORTHAND CLEARS THE LOGICAL SPELLINGS TOO, and that direction alone.
+ *
+ * The two families share no longhand — one is written in `margin-left`, the other in
+ * `margin-inline-start` — so a subset of leaves saw nothing in common and the merge cleared
+ * neither. Measured in Chromium against plain CSS: `margin-inline: 8px; margin: 0px` left both
+ * classes on the element, and `margin-inline` won a declaration `margin` had replaced.
+ *
+ * **It is one-way, because only one way is true in every writing mode.** `margin` sets all four
+ * sides, so it covers whichever pair `margin-inline` turns out to be. The reverse is the writing
+ * mode's to decide — measured, `margin-left: 4px; margin-inline: 8px` is `margin-inline` on both
+ * sides in `horizontal-tb` and `margin-left` surviving in `vertical-rl` — so nothing is cleared and
+ * `override-out-of-order` reports the pair instead.
+ */
+describe("a four-side shorthand meeting a logical one", () => {
+  const clears = (name: string) => new Set(SHORTHANDS[name] ?? []);
+
+  test.each([
+    ["margin", "margin-inline"],
+    ["margin", "margin-block-start"],
+    ["padding", "padding-inline"],
+    ["inset", "inset-inline-end"],
+    ["border-width", "border-inline-width"],
+    ["border-radius", "border-start-start-radius"],
+    ["scroll-padding", "scroll-padding-block"],
+  ])("`%s` clears `%s`", (broad, logical) => {
+    expect(clears(broad).has(logical)).toBe(true);
+  });
+
+  test.each([
+    ["margin-inline", "margin-left"],
+    ["margin-block", "margin-top"],
+    ["padding-inline", "padding-left"],
+    ["inset-inline", "left"],
+  ])("`%s` does NOT clear `%s`, because only the writing mode knows", (logical, physical) => {
+    expect(clears(logical).has(physical)).toBe(false);
+  });
+
+  test("and the runtime does what the table says", () => {
+    const inline = { "margin-inline": "r-mx-8px", "~margin-inline": [...clears("margin-inline")] };
+    const all = { margin: "r-m-0px", "~margin": [...clears("margin")] };
+
+    expect(merge(inline, all).className).toBe("r-m-0px");
+    // The other order keeps both: `margin` cannot clear what is written after it, and the sheet
+    // emits it first, so `margin-inline` wins — which is what plain CSS does too.
+    expect(merge(all, inline).className.split(" ").sort()).toEqual(["r-m-0px", "r-mx-8px"]);
+  });
+
+  /**
+   * `border-inline-width` is a SHORTHAND that `mdn-data` does not know is one — its `initial` is
+   * `"medium"`, the initial value, where every other shorthand's is a list of longhands. Derived in
+   * the generator, which also fails the build if the set of six ever changes.
+   */
+  test.each([
+    "border-block-color",
+    "border-block-style",
+    "border-block-width",
+    "border-inline-color",
+    "border-inline-style",
+    "border-inline-width",
+  ])("`%s` is read as the shorthand it is", (name) => {
+    expect(clears(name).size).toBeGreaterThan(0);
+  });
+});

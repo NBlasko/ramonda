@@ -796,12 +796,66 @@ const LOGICAL_LONGHANDS = {
   "border-inline-end": ["border-inline-end-width", "border-inline-end-style", "border-inline-end-color"],
 };
 
+/**
+ * The six logical shorthands `mdn-data` does not know are shorthands at all.
+ *
+ * `border-inline-width`'s `initial` is `"medium"` — the initial VALUE, where every other shorthand's
+ * is its list of longhands. So it was read as a longhand that sets only itself, and
+ * `border-inline-width: 8px; border-width: 0px` left both classes on the element with the wrong one
+ * winning. Measured in Chromium against plain CSS, in both writing modes.
+ *
+ * DERIVED rather than listed, because the shape is the whole rule: a two-side logical name whose
+ * `-start` and `-end` siblings both exist sets exactly those two. That also makes it self-checking —
+ * a `mdn-data` release that starts listing them turns this into nothing, and `assertDerivedPairs`
+ * says so rather than letting a correction outlive its bug.
+ */
+const DERIVED_PAIRS = {};
+for (const name of named) {
+  for (const axis of ["block", "inline"]) {
+    const at = name.indexOf(`-${axis}`);
+    if (at === -1) continue;
+    const rest = name.slice(at);
+    if (rest.startsWith(`-${axis}-start`) || rest.startsWith(`-${axis}-end`)) continue;
+    const head = name.slice(0, at);
+    const tail = name.slice(at + axis.length + 1);
+    const pair = [`${head}-${axis}-start${tail}`, `${head}-${axis}-end${tail}`];
+    if (!pair.every((one) => properties[one] !== undefined)) continue;
+    if (Array.isArray(properties[name]?.initial)) continue;
+    DERIVED_PAIRS[name] = pair;
+  }
+}
+
 /** Every property's leaves — itself, for a longhand. */
 const leavesOf = new Map();
 for (const name of named) {
-  const corrected = LOGICAL_LONGHANDS[name];
+  const corrected = LOGICAL_LONGHANDS[name] ?? DERIVED_PAIRS[name];
   const leaves = corrected ?? longhandsOf(name, properties);
   leavesOf.set(name, new Set(leaves.length === 0 ? [name] : leaves));
+}
+
+assertDerivedPairs();
+
+/** The six above are exactly the ones `mdn-data` is missing, and the build says when it is not. */
+function assertDerivedPairs() {
+  const found = Object.keys(DERIVED_PAIRS).sort();
+  const expected = [
+    "border-block-color",
+    "border-block-style",
+    "border-block-width",
+    "border-inline-color",
+    "border-inline-style",
+    "border-inline-width",
+  ];
+  if (found.join(",") === expected.join(",")) return;
+  const gone = expected.filter((one) => !found.includes(one));
+  const extra = found.filter((one) => !expected.includes(one));
+  console.error(
+    `\n${TAG} the logical shorthands mdn-data does not list longhands for have changed:\n\n` +
+      (gone.length > 0 ? `  now listed, so the correction is dead: ${gone.join(", ")}\n` : "") +
+      (extra.length > 0 ? `  newly missing, so the merge would not clear them: ${extra.join(", ")}\n` : "") +
+      `\n  Update the list in \`assertDerivedPairs\`.\n`,
+  );
+  process.exit(1);
 }
 
 assertLogicalLeaves();
@@ -817,6 +871,23 @@ assertLogicalLeaves();
  * It also fails when a CORRECTION is no longer needed, so the table cannot outlive the bug: a
  * `mdn-data` release that fixes one is a build that says to delete a line.
  */
+/**
+ * Whether a logical shorthand's leaf is on the shorthand's own side.
+ *
+ * Two spellings, because the side is not always the last word in the name. `border-block-start` puts
+ * it last, so its leaves are `border-block-start-width` and the rest — a prefix. `border-block-color`
+ * puts it in the middle, so its leaves are `border-block-start-color` and `border-block-end-color` —
+ * the SAME name with `-start` or `-end` inserted.
+ *
+ * **The prefix test alone used to be the whole rule**, which was fine while the only correction was
+ * the four `border-*-start`/`-end` shorthands. Deriving the six two-side ones made it fire on all of
+ * them at once — correct names, a proxy too narrow for them. The claim it stands for is unchanged.
+ */
+function onItsOwnSide(name, leaf) {
+  if (leaf === name || leaf.startsWith(`${name}-`)) return true;
+  return leaf.replace(/-(?:start|end)(?=-|$)/, "") === name;
+}
+
 function assertLogicalLeaves() {
   const wrong = [];
   for (const [name, leaves] of leavesOf) {
@@ -829,9 +900,7 @@ function assertLogicalLeaves() {
      * assertion doing its job in the other direction.
      */
     if (name.startsWith("corner-")) continue;
-    for (const leaf of leaves) {
-      if (!leaf.startsWith(`${name}-`) && leaf !== name) wrong.push(`${name} -> ${leaf}`);
-    }
+    for (const leaf of leaves) if (!onItsOwnSide(name, leaf)) wrong.push(`${name} -> ${leaf}`);
   }
   if (wrong.length > 0) {
     console.error(
@@ -855,13 +924,109 @@ function assertLogicalLeaves() {
   }
 }
 
+/**
+ * The four PHYSICAL sides, and the four LOGICAL ones that resolve to some pair of them.
+ *
+ * Which pair is not known until the element is laid out: `margin-inline` is left and right in a
+ * horizontal writing mode and top and bottom in a vertical one. Measured in Chromium, both modes,
+ * and it is why the clearing rule below is asymmetric rather than a table of equivalences.
+ */
+const PHYSICAL_SIDES = ["top", "right", "bottom", "left"];
+/**
+ * A CORNER is named by the two edges meeting in it — `start-start`, `end-start` — and is logical for
+ * the same reason a side is: which physical corner it lands on is the writing mode's to decide.
+ */
+const LOGICAL_SIDES = [
+  "block-start",
+  "block-end",
+  "inline-start",
+  "inline-end",
+  "start-start",
+  "start-end",
+  "end-start",
+  "end-end",
+];
+
+/** Where a side is written in a longhand's name — `border-inline-start-width` is one word. */
+function sideIn(name) {
+  for (const side of LOGICAL_SIDES) {
+    const at = name.indexOf(`-${side}`);
+    if (at !== -1) return { at, side, logical: true };
+  }
+  for (const side of PHYSICAL_SIDES) {
+    const at = name.indexOf(`-${side}`);
+    if (at !== -1) return { at, side, logical: false };
+  }
+  return undefined;
+}
+
+/**
+ * Every PHYSICAL longhand one leaf may turn out to be.
+ *
+ * A physical name is itself. For a logical one the side is taken OUT of the name, which leaves the
+ * shorthand that owns the whole family — `margin-inline-start` leaves `margin`,
+ * `border-inline-start-width` leaves `border-width`, `inset-inline-start` leaves `inset` — and that
+ * shorthand's own leaves are the physical names, whatever they are called.
+ *
+ * **Substituting the four physical sides into the name instead was WRONG, and the generated table
+ * said so.** `inset-inline-start` became `inset-top`, `inset-right` … which are not properties, so
+ * the set came out empty — and an empty set is a subset of everything, which made `animation` clear
+ * `inset-block`. The physical side of that family is spelled `top`, with no prefix at all.
+ */
+function slotsOf(leaf) {
+  const found = sideIn(leaf);
+  if (found === undefined || !found.logical) return [leaf];
+  const root = leaf.slice(0, found.at) + leaf.slice(found.at + `-${found.side}`.length);
+  const family = leavesOf.get(root);
+  return family === undefined ? [] : [...family];
+}
+
+/** What a property MAY set, and what it certainly sets, both as physical longhands. */
+const mayset = new Map();
+const certainly = new Map();
+for (const name of named) {
+  const leaves = [...leavesOf.get(name)];
+  mayset.set(name, new Set(leaves.flatMap(slotsOf)));
+  certainly.set(name, new Set(leaves.filter((leaf) => !sideIn(leaf)?.logical)));
+}
+
+/**
+ * Whether `name` sets everything `other` could set, whatever the writing mode turns out to be.
+ *
+ * **The subset of leaves is not enough, and a browser said so.** `margin` and `margin-inline` share
+ * no leaf — one is written in physical longhands, the other in logical ones — so `margin` cleared
+ * nothing, and `margin-inline: 8px; margin: 0px` left both classes on the element with the wrong one
+ * winning. Measured in Chromium against plain CSS, in both writing modes.
+ *
+ * The relation is ONE-WAY on purpose. `margin` sets all four sides, so it covers whichever pair
+ * `margin-inline` turns out to be — sound in every writing mode. The reverse is not: measured,
+ * `margin-left: 4px; margin-inline: 8px` is `margin-inline` on both sides in a horizontal mode and
+ * `margin-left` surviving in a vertical one. A build cannot know which, so it clears nothing and
+ * `override-out-of-order` reports the pair instead.
+ */
+function coversWhateverTheMode(name, other) {
+  const sure = certainly.get(name);
+  const may = mayset.get(other);
+  // Neither emptiness is a covering: an empty set is a subset of everything, which is how the first
+  // version had `animation` clearing `inset-block`.
+  if (sure.size === 0 || may.size === 0) return false;
+  for (const slot of may) if (!sure.has(slot)) return false;
+  return true;
+}
+
 const shorthandRows = [];
+/** What each row above already clears, so {@link MAY_CLEAR} holds only what it does not. */
+const SHORTHAND_TARGETS = new Map();
 for (const name of named) {
   const mine = leavesOf.get(name);
   if (mine.size < 2) continue;
 
   const cleared = named
-    .filter((other) => other !== name && [...leavesOf.get(other)].every((leaf) => mine.has(leaf)))
+    .filter(
+      (other) =>
+        other !== name &&
+        ([...leavesOf.get(other)].every((leaf) => mine.has(leaf)) || coversWhateverTheMode(name, other)),
+    )
     .sort();
 
   if (cleared.includes(name)) {
@@ -869,6 +1034,24 @@ for (const name of named) {
     process.exit(1);
   }
   shorthandRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(cleared)},`);
+  SHORTHAND_TARGETS.set(name, cleared);
+}
+
+/**
+ * The rows of {@link MAY_CLEAR} — for each LOGICAL name, the physical properties it might cover.
+ *
+ * Only the names whose slots are not their own leaves, which is what makes a name logical; and only
+ * the physical targets, because a pair of logical names on different axes can never overlap in any
+ * writing mode and listing them would report correct CSS.
+ */
+const maySetRows = [];
+for (const name of named) {
+  const leaves = leavesOf.get(name);
+  const slots = [...mayset.get(name)].sort();
+  if (slots.length === leaves.size && slots.every((slot) => leaves.has(slot))) continue;
+  const already = new Set(SHORTHAND_TARGETS.get(name) ?? []);
+  const might = slots.filter((slot) => slot !== name && !already.has(slot));
+  if (might.length > 0) maySetRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(might)},`);
 }
 
 /**
@@ -1362,6 +1545,28 @@ ${descriptorRows.join("\n")}
  */
 export const SHORTHANDS: Readonly<Record<string, readonly string[]>> = {
 ${shorthandRows.join("\n")}
+};
+
+/**
+ * Logical property -> the physical properties it MIGHT cover, for the rule that reports a pair the
+ * sheet cannot order. Nothing here is cleared; {@link SHORTHANDS} holds what certainly is.
+ *
+ * Which pair a logical name lands on is the writing mode's to decide: measured in Chromium,
+ * \`margin-inline\` is left and right in \`horizontal-tb\` and top and bottom in \`vertical-rl\`. So
+ * \`margin-left: 4px; margin-inline: 8px\` has two right answers and a build has to pick one order
+ * for the stylesheet. It picks broadest-first, which is right in the vertical mode and wrong in the
+ * horizontal one — silently, in the mode almost every page is in.
+ *
+ * {@link SHORTHANDS} answers the other direction and answers it soundly: \`margin\` sets all four
+ * sides, so it covers whichever pair \`margin-inline\` becomes, and the merge clears it. This table
+ * exists only for the pairs where no such thing can be said, and nothing here CLEARS anything —
+ * \`conflict\` reads it so \`override-out-of-order\` can report the pair and let the author choose.
+ *
+ * Only rows that differ from the property's own name are written, so a lookup that misses means the
+ * property is physical and stands for itself.
+ */
+export const MAY_CLEAR: Readonly<Record<string, readonly string[]>> = {
+${maySetRows.join("\n")}
 };
 
 /**

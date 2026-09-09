@@ -848,6 +848,26 @@ longhands it covers. If a base sets `padding-left: 40px` and a modifier sets `pa
 modifier wins completely — which is what the same two declarations would do in a plain stylesheet.
 The other direction leaves both standing, also as CSS does.
 
+That holds across the logical spellings too. `margin` sets all four sides whichever way the text
+runs, so it clears `margin-inline`, `margin-block-start` and the rest.
+
+### Logical and physical, in one block
+
+`margin-inline` is the left and right margins when the text runs across, and the top and bottom ones
+when it runs down. Which it is depends on `writing-mode`, and that is not known until the page is
+laid out.
+
+So a block that writes a physical side and then a logical one that might cover it is reported:
+
+```
+margin-left: 4px;
+margin-inline: 8px;        ✗  whether this overrides the line above depends on writing-mode
+```
+
+Write both in one system — `margin-inline-start` and `margin-inline`, or `margin-left` and
+`margin` — and the question does not arise. The other order is fine, and so is a four-side
+shorthand in either position, because neither leaves anything for the layout to decide.
+
 **A spread goes at the top of a block, or inside `@@if`** — not inside a selector or a `@media`. It
 merges a whole block, and a block carries the context each of its own declarations was written in,
 so there is nothing sensible for a nested one to mean. A `@@if` is fine: it changes no declaration,
