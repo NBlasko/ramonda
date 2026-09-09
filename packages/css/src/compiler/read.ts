@@ -695,6 +695,16 @@ export function readBlock(source: string, open: number, filename: string, option
       if (code === 123) {
         flush();
         parts.push(pastHole());
+        /**
+         * The run AFTER a hole starts after the hole, and it used to start where the hole did.
+         *
+         * `flush` moves the mark to `at`, and at that moment `at` is the `{` — so the trailing run
+         * of `4px solid {w} inset` recorded the hole's own offset. Two runs claiming one position is
+         * what broke the reverse lookup: it sorts by author offset, the trailing run sorted before
+         * the hole between them, and **every author offset past the first hole in a value mapped
+         * nowhere**. Measured by sweeping every offset in a block through it and back.
+         */
+        textAt = at;
         continue;
       }
       // Handled to the end, for the reason written out in `looksLikeARule`.

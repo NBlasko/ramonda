@@ -209,6 +209,17 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     code += text;
   };
 
+  /**
+   * How far the author's text has been accounted for, in LINES — see `keepLine`.
+   *
+   * At this scope rather than the site loop's because {@link copy} has to move it: copied text
+   * carries the author's own newlines, and a `keepLine` that did not know they were already written
+   * put them in a SECOND time. Measured: a hole whose expression spanned four lines made the virtual
+   * file four lines longer than the author's, and `check-examples.mjs` maps a diagnostic home by
+   * counting lines and has no source map to fall back on.
+   */
+  let lined = 0;
+
   /** The author's own bytes, so an offset inside maps offset for offset. */
   const copy = (start: number, end: number): void => {
     segments.push({
@@ -219,6 +230,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       copied: true,
     });
     code += source.slice(start, end);
+    lined = Math.max(lined, end);
   };
 
   /**
@@ -403,8 +415,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       copy(cursor, site.start);
       write(`${block}([`);
     }
-    /** How far the author's text has been accounted for, in LINES. See `keepLine`. */
-    let lined = site.open;
+    lined = site.open;
     /**
      * The newlines the author wrote above something, put back before it is emitted.
      *
@@ -592,7 +603,21 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     write("`");
     for (const part of parts) {
       if (part.kind === "text") {
-        derived(inTemplate(collapse(part.text)), at, length);
+        /**
+         * The PART's own position, not the whole value's.
+         *
+         * Every text run in a value used to record `at = valueAt`, so a value with a hole in it had
+         * two or three runs all claiming the value's first character. The reverse lookup sorts by
+         * author offset, and a run that starts where an earlier one does sorts before the hole
+         * between them — so **every author offset past the first hole mapped nowhere**, and a caret
+         * in the first run answered from the last. Measured by sweeping every offset in a block.
+         *
+         * A run this compiler DECIDED — a resolved reference — has an `at` where the `{{` was and a
+         * different length, so it keeps the whole-value fallback: there is no position in the
+         * author's file that its characters correspond to. See `TextPart.resolved`.
+         */
+        const own = part.resolved || part.at === undefined;
+        derived(inTemplate(collapse(part.text)), own ? at : part.at, own ? length : part.text.length);
         continue;
       }
       write("${");

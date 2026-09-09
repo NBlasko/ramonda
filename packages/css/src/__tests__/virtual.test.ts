@@ -614,6 +614,72 @@ describe("what the virtual file hands TypeScript", () => {
     expect(virtual?.code).toContain('"& from"');
   });
 
+  /**
+   * THE LINE COUNT IS THE AUTHOR'S, which `check-examples.mjs` depends on and has no map for.
+   *
+   * `keepLine` writes the newlines the author left above something. A hole's expression is COPIED,
+   * newlines and all, and `keepLine` did not know they were already written — so it wrote them a
+   * second time and a four-line hole made the virtual file four lines long. `copy` moves the mark
+   * now, which is the only place the author's own newlines enter the output.
+   *
+   * Nothing mis-reported yet, because no documented example has a multi-line hole. The first one
+   * written would have been three or four lines out.
+   */
+  test.each([
+    ["no hole", "const a = @@(\n  color: red;\n);\nconst after = 1;\n"],
+    ["a one-line hole", "const a = @@(\n  color: {tint};\n);\nconst after = 1;\n"],
+    ["a hole across two lines", "const a = @@(\n  color: {cond\n    ? red\n    : blue};\n);\nconst after = 1;\n"],
+    ["a hole across four lines", "const a = @@(\n  color: {[\n    1,\n    2,\n  ].length};\n);\nconst after = 1;\n"],
+    ["a guard across lines", "const a = @@(\n  @@if ({a\n    && b}) { color: red; }\n);\nconst after = 1;\n"],
+    ["a spread across lines", "const a = @@(\n  ...{one\n    ?? two};\n);\nconst after = 1;\n"],
+    [
+      "two blocks, one with a multi-line hole",
+      "const a = @@( color: red; );\nconst b = @@(\n  color: {x\n    ?? y};\n);\n",
+    ],
+  ])("%s keeps the file's line count", (_what, source) => {
+    expect(build(source)?.code.split("\n")).toHaveLength(source.split("\n").length);
+  });
+
+  /**
+   * EVERY AUTHOR OFFSET IN A BLOCK MAPS BACK TO ITSELF, or to the run it belongs to.
+   *
+   * Two faults, one visible only by sweeping. Every text run in a value recorded the whole VALUE's
+   * offset, and the run after a hole recorded the HOLE's — so two runs claimed one position, the
+   * reverse lookup sorts by author offset, and every offset past the first hole in a value mapped
+   * nowhere at all. Definition, signature help and rename got nothing there; completions and hover
+   * were unaffected, which is why it went unseen.
+   */
+  test.each([
+    ["text, hole, text", "const a = @@( border-left: 4px solid {tint} inset; );\n"],
+    ["hole, text", "const a = @@( border-left: {w} solid red; );\n"],
+    ["two holes", "const a = @@( border-left: {w} solid {c}; );\n"],
+    ["a hole and text in a nested rule", "const a = @@( &:hover { border-left: {w} solid red; } );\n"],
+  ])("%s: every offset in the value maps home", (_what, source) => {
+    const virtual = build(source);
+    const from = source.indexOf(": ") + 2;
+    const to = source.indexOf(";", from);
+
+    const lost: number[] = [];
+    for (let at = from; at < to; at++) {
+      const spot = virtual?.virtualOf(at);
+      // A hole's own braces are this file's, so they map nowhere by design; the text either side and
+      // the expression between them are the author's.
+      if (source[at] === "{" || source[at] === "}") continue;
+      if (spot === undefined || virtual?.homeOf(spot) === undefined) lost.push(at);
+    }
+
+    expect(lost).toEqual([]);
+  });
+
+  /** And a caret in the FIRST run answers from the first run, not from the last. */
+  test("a caret in the text before a hole belongs to that text", () => {
+    const source = "const a = @@( border-left: 4px solid {tint} inset; );\n";
+    const virtual = build(source);
+    const at = source.indexOf("solid");
+
+    expect(virtual?.homeOf(virtual.virtualOf(at) ?? -1)).toBe(source.indexOf("4px"));
+  });
+
   /** And the attribute the site was written as survives, so the tag still has one. */
   test("a named site written as a bare attribute keeps the attribute", () => {
     const virtual = build("const a = <div css=@@keyframes(\n  from { opacity: 0; }\n)>x</div>;\n");

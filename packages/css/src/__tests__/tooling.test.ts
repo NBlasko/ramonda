@@ -545,6 +545,35 @@ describe("how wide a level inside a block is", () => {
 
     expect(formatText(source, "X.tsx", identity)).toBe("const p = @@(\n  display: flex;\n);\n");
   });
+
+  /**
+   * A LINE THAT IS NOT CODE does not decide it, and one used to decide it alone.
+   *
+   * The width was read as the narrowest indentation anywhere in the file, so a single two-space line
+   * inside a template literal or a wrapped comment dropped every block in a four-space file to a
+   * two-space step — permanently, and idempotently, since the file then said two. Mine, and a review
+   * found it. What one level IS is a DIFFERENCE, and the commonest one wins, so a stray line is one
+   * vote rather than the answer.
+   */
+  test.each([
+    ["a two-space line inside a template literal", "const q = `\n  select 1\n`;\n"],
+    ["a two-space line in a block comment", "/**\n  * a wrapped sentence\n  */\n"],
+    ["a long two-space query, which outnumbers the code", "const q = `\n  a\n    b\n  c\n    d\n  e\n    f\n`;\n"],
+  ])("%s does not decide it", (_what, before) => {
+    const source = `${before}function a() {\n    const p = @@(\n    display: flex;\n    );\n}\n`;
+
+    expect(formatText(source, "X.tsx", identity)).toBe(
+      `${before}function a() {\n    const p = @@(\n        display: flex;\n    );\n}\n`,
+    );
+  });
+
+  /** And a file whose only levels are deep still reads its own step, not half of it. */
+  test("a deeply nested file reads one level, not the depth", () => {
+    const source =
+      "a(\n    b(\n        c(\n            const p = @@(\n            display: flex;\n            );\n        ),\n    ),\n);\n";
+
+    expect(formatText(source, "X.tsx", identity)).toContain("                display: flex;");
+  });
 });
 
 /**

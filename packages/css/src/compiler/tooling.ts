@@ -225,25 +225,61 @@ function restore(formatted: string, blocks: readonly { text: string; wrap: boole
 /**
  * How wide one level is, read off the file the formatter has just laid out.
  *
- * The narrowest indentation in it, because the shallowest indented line in a file is one level in.
- * Two spaces when there is nothing to read — a file with no indented line at all, which is a block
- * at the left margin.
- *
  * **The config used to have a `format: { indent }` for this, and nothing read it.** Wiring it up
  * would have been the wrong repair: the project has already told biome or prettier how wide a level
  * is, and a second place to say it can only disagree with the first. This asks the answer that is
  * already in the file.
  *
- * A single space is not a level anywhere, and it is what a line inside a template literal or a
- * wrapped comment can easily start with, so it is not read as one.
+ * ## What it counts, and why it is not the narrowest line
+ *
+ * It used to take the NARROWEST indentation anywhere in the file, on the reasoning that the
+ * shallowest indented line is one level in. That is true of code and false of everything else a file
+ * holds: **one two-space line inside a template literal or a wrapped comment dropped every block in
+ * a four-space file to a two-space step**, permanently and idempotently, and the doc above it named
+ * that hazard while guarding only a single space. Mine, and a review found it.
+ *
+ * What one level IS is a DIFFERENCE — the amount a line indents past the one above it — so that is
+ * what is counted, and the commonest difference wins. A stray line is then one vote against many
+ * instead of the whole answer. Measured over ten shapes: the narrowest reading is wrong on three of
+ * them, this is wrong on none.
+ *
+ * Lines inside a template literal or a block comment are left out, which is the one case counting
+ * differences does not survive on its own — a long embedded query indented two spaces in a
+ * four-space file has more steps in it than the code around it. The scan is by line and approximate
+ * on purpose: a wrong guess costs a vote, not the answer.
+ *
+ * Two spaces when there is nothing to read at all.
  */
 function stepOf(text: string): string {
-  let narrowest = 0;
+  const counts = new Map<number, number>();
+  let previous = 0;
+  let inTemplate = false;
+  let inComment = false;
+
   for (const line of text.split("\n")) {
-    const width = /^ +/.exec(line)?.[0].length ?? 0;
-    if (width >= 2 && (narrowest === 0 || width < narrowest)) narrowest = width;
+    const quiet = inTemplate || inComment;
+    let ticks = 0;
+    for (let index = 0; index < line.length; index++) {
+      if (!inTemplate && line.startsWith("/*", index)) inComment = true;
+      else if (inComment && line.startsWith("*/", index)) inComment = false;
+      else if (!inComment && line.charCodeAt(index) === 96 /* ` */) ticks++;
+    }
+    if (ticks % 2 === 1) inTemplate = !inTemplate;
+    if (quiet || line.trim() === "") continue;
+
+    const width = /^[ ]*/.exec(line)?.[0].length ?? 0;
+    const step = width - previous;
+    if (step > 0) counts.set(step, (counts.get(step) ?? 0) + 1);
+    previous = width;
   }
-  return " ".repeat(narrowest === 0 ? 2 : narrowest);
+
+  let best = 0;
+  let most = 0;
+  // A tie goes to the NARROWER step: two levels of four look like one of eight to a counter, and
+  // the smaller reading is the one that cannot have swallowed a level.
+  for (const [step, count] of counts) if (count > most || (count === most && step < best)) [best, most] = [step, count];
+
+  return " ".repeat(best === 0 ? 2 : best);
 }
 
 /**
