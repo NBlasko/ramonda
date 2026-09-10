@@ -784,6 +784,36 @@ describe("a variable nothing sets", () => {
     expect(() => sheet.verifyVariables()).toThrow(/1 more like it/);
   });
 
+  /**
+   * The other half of "replaced whole", and it was only half true: a file's rules were replaced on
+   * every `add` and its variables only when some were handed over — so an adapter telling the sheet
+   * that a file has nothing left kept that file's last known names for the life of the process.
+   */
+  describe("a file that no longer has any", () => {
+    test("stops declaring the names it used to set", () => {
+      const sheet = new Sheet();
+      sheet.add("theme.tsx", [], { set: ["--accent"], read: [] });
+      sheet.add("card.tsx", [], reads("--accent"));
+      expect(() => sheet.verifyVariables()).not.toThrow();
+
+      // The author deletes theme.tsx's block. Nothing sets `--accent` any more.
+      sheet.add("theme.tsx", []);
+
+      expect(() => sheet.verifyVariables()).toThrow(/--accent/);
+    });
+
+    test("stops reading the names it used to read", () => {
+      const sheet = new Sheet();
+      sheet.add("card.tsx", [], reads("--ackcent"));
+      expect(() => sheet.verifyVariables()).toThrow(/--ackcent/);
+
+      // The author deletes the typo. Without this the build never came back, whatever they did.
+      sheet.add("card.tsx", []);
+
+      expect(() => sheet.verifyVariables()).not.toThrow();
+    });
+  });
+
   test("a build that reads none is silent", () => {
     const sheet = new Sheet();
     sheet.add("a.tsx", [], { set: ["--gap"], read: [] });

@@ -148,6 +148,9 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
    */
   const configFor = configReader(ts, environmentOf());
 
+  /** Files that currently contribute rules, so a file losing its last block is noticed. */
+  const styled = new Set<string>();
+
   return {
     name: "ramonda-css",
 
@@ -189,9 +192,25 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
           };
         }
 
-        // Nothing here to compile. Declined, so esbuild reads it with the loader it would have used.
-        if (result === undefined) return undefined;
+        /**
+         * Nothing here to compile. Declined, so esbuild reads it with the loader it would have used —
+         * and the sheet is told, but only if this file had blocks before.
+         *
+         * A rebuild is what makes that necessary, and it is a build FAILURE rather than a stale rule.
+         * Measured through `esbuild.context()`: an author deletes the last block from a file that is
+         * still imported, the file's stylesheet is no longer imported with it, and the rule is gone
+         * from the output — so `verify` finds a class the sheet promised missing and accuses
+         * post-processing of dropping it. *post-processing dropped 1 thing(s) the markup already
+         * names: the class `r-c-red`*, about a class nothing names any more, with nothing an author
+         * could act on. It also leaves the NAME claimed, so re-adding an edited block collides with
+         * the one it used to be.
+         */
+        if (result === undefined) {
+          if (styled.delete(args.path)) sheet.add(args.path, []);
+          return undefined;
+        }
 
+        styled.add(args.path);
         sheet.add(args.path, result.blocks, { ...result.variables, known: configFor(args.path).variables });
         const own = sheet.cssFor(args.path);
         const contents = own === "" ? result.code : `${result.code}\nimport ${JSON.stringify(args.path + SUFFIX)};\n`;

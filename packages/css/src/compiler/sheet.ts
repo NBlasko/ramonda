@@ -173,6 +173,9 @@ export class Sheet {
    */
   private readonly variables = new Map<string, FileVariables>();
 
+  /** What a file with no blocks contributes: nothing, which is a value rather than an absence. */
+  private static readonly NONE: FileVariables = Object.freeze({ set: [], read: [] });
+
   /**
    * What one file contributes, replacing whatever it contributed before.
    *
@@ -186,8 +189,16 @@ export class Sheet {
    * to be broken anyway, since a file owning nothing at the moment it was transformed had no
    * stylesheet import to reload.
    */
-  add(file: string, blocks: readonly EmittedBlock[], variables?: FileVariables): void {
-    if (variables !== undefined) this.variables.set(file, variables);
+  add(file: string, blocks: readonly EmittedBlock[], variables: FileVariables = Sheet.NONE): void {
+    /**
+     * Replaced whether or not any were handed over, and the guard that used to stand here made this
+     * half true. A file's rules were replaced on every call and its variables only when the caller
+     * had some — so an adapter saying "this file has nothing left", which is exactly what it says
+     * when the author deletes the last block, left the file's last known names in place for the life
+     * of the process. Measured both ways: a name nothing sets any more stayed known, and a typo the
+     * author had already deleted kept failing the build.
+     */
+    this.variables.set(file, variables);
 
     for (const className of this.byFile.get(file) ?? []) {
       const rule = this.rules.get(className);

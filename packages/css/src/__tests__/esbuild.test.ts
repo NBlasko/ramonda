@@ -129,6 +129,48 @@ describe("a build", () => {
  * offered it and the loader has to be named, and contents returned with no loader are parsed as
  * plain JavaScript on every file.
  */
+/**
+ * A rebuild, which is what `esbuild.context()` gives a watch or a dev server — one plugin instance,
+ * one sheet, and only the files that changed loaded again.
+ */
+describe("a rebuild", () => {
+  test("a file that loses its last block does not leave the sheet promising its class", async () => {
+    const root = project({
+      "index.tsx": `import Card from "./Card";\nconst a = <div css=@@( display: flex; )>{Card}</div>;\nexport default a;\n`,
+      "Card.tsx": `const card = <div css=@@( color: red; )>x</div>;\nexport default card;\n`,
+    });
+
+    const context = await esbuild.context({
+      entryPoints: [join(root, "index.tsx")],
+      bundle: true,
+      write: false,
+      outdir: join(root, "dist"),
+      jsx: "preserve",
+      plugins: [ramondaCss()],
+      external: ["@ramonda/css"],
+    });
+
+    try {
+      const { css } = outputs(await context.rebuild());
+      expect(css).toContain("color: red");
+
+      // The author deletes the block. The file still exists and is still imported.
+      writeFileSync(join(root, "Card.tsx"), `const card = <div>x</div>;\nexport default card;\n`);
+
+      /**
+       * The rule is gone from the output because nothing imports Card's stylesheet any more — so a
+       * sheet still holding it accuses post-processing of dropping a class the markup no longer
+       * names. Nothing an author could act on, and the build fails.
+       */
+      const again = outputs(await context.rebuild());
+      expect(again.css).not.toContain("color: red");
+      expect(again.css).toContain("display: flex");
+    } finally {
+      await context.dispose();
+    }
+  });
+});
+
 describe("what a file is loaded as", () => {
   /**
    * A block written as a VALUE can live in a `.ts` file, where there is no JSX at all — so the loader
