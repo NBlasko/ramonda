@@ -530,7 +530,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         /**
          * A named block's body is a SINGLE object literal, and a call is not one of its members.
          *
-         * Composition belongs to an element and a named block is not one, so `@@if` cannot go in one
+         * Composition belongs to an element and a named block is not one, so `if` cannot go in one
          * — `composition-in-a-named-block` reports it. Written here anyway, it produced
          * `{__cond((on)),"& from":[…]}`, which does not parse, and a file that does not parse has
          * nothing checked in it at all. The `single ? ")," : "),"` ternary that used to stand here

@@ -1,8 +1,8 @@
 {
   "name": "css",
   "displayName": "Ramonda CSS",
-  "description": "Real CSS beside your markup: syntax colouring, formatting and diagnostics for @@( … ) style blocks.",
-  "version": "0.1.1",
+  "description": "Real CSS beside your markup: syntax colouring, formatting and diagnostics for @@( \u2026 ) style blocks.",
+  "version": "0.1.2",
   "private": true,
   "publisher": "ramonda",
   "license": "MIT",
@@ -75,7 +75,7 @@
   "bugs": {
     "url": "https://github.com/NBlasko/ramonda/issues"
   },
-  "author": "Nikola Blagojević",
+  "author": "Nikola Blagojevi\u0107",
   "keywords": [
     "css",
     "eteti",

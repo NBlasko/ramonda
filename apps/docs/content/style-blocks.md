@@ -866,7 +866,7 @@ class Button extends Component {
         ...{button};
         ...{variants[this.variant]};
 
-        @@if ({this.disabled}) {
+        if ({this.disabled}) {
           opacity: 0.5;
           cursor: not-allowed;     /* wins over `cursor: pointer` above, because it is BELOW it */
         }
@@ -879,7 +879,7 @@ class Button extends Component {
 ```
 
 **`...{ … }` merges another block here**, and it works across files — what it merges is a value, so
-it can be imported, put in an object, or picked out of one. **`@@if ({ … }) { … }` merges a group only
+it can be imported, put in an object, or picked out of one. **`if ({ … }) { … }` merges a group only
 when the condition holds.** Both are arguments of the same merge, in the order you wrote them, so
 what comes later wins.
 
@@ -890,19 +890,28 @@ For a two-way choice of a *value*, a hole with a ternary is still the answer.
 ### Why the condition is inside `{ }`
 
 Because that is the one rule this syntax has: **TypeScript appears inside `{ }` and nowhere else.**
-`@@if (this.disabled)` would read more naturally and would be a second spelling for the same thing —
+`if (this.disabled)` would read more naturally and would be a second spelling for the same thing —
 a second thing to learn, and a second thing for every tool to know about.
 
-And `@@if` rather than `@if` because **`@@anything` can never become CSS**: an at-rule is `@` followed
-by a name, and a name cannot start with `@`. `@if` is free today and that is all it is.
+And `if` rather than `@if` because an at-rule is CSS's, and this is not. Every conditional CSS has
+added begins with `@` — `@media`, `@supports`, `@container`, and the drafted `@when` — so a name
+there is one CSS may take.
+
+A bare `if (` is not. Measured in Chromium: `if (x) { … }` written in a rule is **dropped**, because
+a type selector may not be followed by parentheses and a functional pseudo-class needs its colon.
+Nothing in CSS begins with a plain word and takes parens.
+
+The one thing `if` can be in CSS is a type selector — `if { … }`, for an element that cannot exist,
+since a custom element's name must contain a hyphen. That is reported rather than compiled. Write
+`& if { … }` if you ever mean it.
 
 ### What is checked
 
-Everything a block is checked for, a group is checked for the same way — a typo inside `@@if` is the
+Everything a block is checked for, a group is checked for the same way — a typo inside `if` is the
 same error, with the same *did you mean*, that it is outside one.
 
-**The condition is an ordinary expression and is not required to be a `boolean`.** `@@if` is an `if`,
-and `@@if ({items.length})` is the shape people reach for — demanding a `boolean` would refuse it for
+**The condition is an ordinary expression and is not required to be a `boolean`.** It is the same
+`if` JavaScript has, and `if ({items.length})` is the shape people reach for — demanding a `boolean` would refuse it for
 nothing. What is refused is a condition that can never be FALSE, because that is a group that can
 never be off: an object, an array, a function you forgot to call, a promise, a string or number
 *literal*. A type that holds `false`, `0`, `""`, `null` or `undefined` is a condition; one that holds
@@ -912,16 +921,16 @@ On top of that:
 
 | written | what happens |
 |---|---|
-| `@@if ({this.method})` — a method you forgot to call | reported: *a function is always truthy — call it, or test a value* |
-| `@@if ({someObject})`, `@@if ({"yes"})`, `@@if ({items})` | reported: *this is always truthy, so the group can never be off* |
-| `@@if ({maybeUndefined})` | fine — that is the shape a prop has |
-| `@@if ({items.length})`, `@@if ({name})` | fine — `0` and `""` are false, so the group can be off |
+| `if ({this.method})` — a method you forgot to call | reported: *a function is always truthy — call it, or test a value* |
+| `if ({someObject})`, `if ({"yes"})`, `if ({items})` | reported: *this is always truthy, so the group can never be off* |
+| `if ({maybeUndefined})` | fine — that is the shape a prop has |
+| `if ({items.length})`, `if ({name})` | fine — `0` and `""` are false, so the group can be off |
 | `...{notABlock}` | reported: *only a style block can be spread* |
 | `...{base}` inside `&:hover` or a `@media` | reported — see below |
 
 ### Nesting, and a shorthand meeting its longhand
 
-`@@if` nests, and a nested condition means both must hold. A selector inside a group and a group
+`if` nests, and a nested condition means both must hold. A selector inside a group and a group
 inside a selector mean the same thing, so write whichever reads better.
 
 One thing worth knowing, because CSS itself works this way: a **shorthand** written later clears the
@@ -949,9 +958,9 @@ Write both in one system — `margin-inline-start` and `margin-inline`, or `marg
 `margin` — and the question does not arise. The other order is fine, and so is a four-side
 shorthand in either position, because neither leaves anything for the layout to decide.
 
-**A spread goes at the top of a block, or inside `@@if`** — not inside a selector or a `@media`. It
+**A spread goes at the top of a block, or inside `if`** — not inside a selector or a `@media`. It
 merges a whole block, and a block carries the context each of its own declarations was written in,
-so there is nothing sensible for a nested one to mean. A `@@if` is fine: it changes no declaration,
+so there is nothing sensible for a nested one to mean. An `if` is fine: it changes no declaration,
 it only decides whether the whole thing lands.
 
 ## One spelling

@@ -563,7 +563,7 @@ describe("what the virtual file hands TypeScript", () => {
     ["a plain value", "const a = @@(\n  color: red;\n);\n"],
     ["a nested rule", "const a = @@(\n  &:hover { color: red; }\n);\n"],
     ["a hole", "const a = @@(\n  color: {tint};\n);\n"],
-    ["a group", "const a = @@(\n  @@if ({on}) { color: red; }\n);\n"],
+    ["a group", "const a = @@(\n  if ({on}) { color: red; }\n);\n"],
     ["a spread", "const a = @@(\n  ...{base};\n);\n"],
     ["a named site as a value", "const k = @@keyframes(\n  from { opacity: 0; }\n);\n"],
     ["two blocks in one file", "const a = @@( color: red; );\nconst b = @@( color: blue; );\n"],
@@ -572,7 +572,7 @@ describe("what the virtual file hands TypeScript", () => {
     ["a NAMED SITE as a bare attribute", "const a = <div css=@@keyframes(\n  from { opacity: 0; }\n)>x</div>;\n"],
     ["a BLOCK NESTED IN A HOLE", 'const a = @@(\n  color: {on ? @@( color: red; ) : "blue"};\n);\n'],
     // A named block's body is a single object literal, and a call is not one of its members.
-    ["`@@if` inside a NAMED BLOCK", "const k = @@keyframes(\n  @@if ({on}) { from { opacity: 0; } }\n);\n"],
+    ["`if` inside a NAMED BLOCK", "const k = @@keyframes(\n  if ({on}) { from { opacity: 0; } }\n);\n"],
     ["a SPREAD inside a named block", 'const f = @@font-face(\n  src: url("/b.woff2");\n  ...{base};\n);\n'],
   ])("%s", (_what, source) => {
     expect(parses(source)).toEqual([]);
@@ -607,7 +607,7 @@ describe("what the virtual file hands TypeScript", () => {
    * difference was seen and never made.
    */
   test("a guard inside a named block is not written into its literal", () => {
-    const virtual = build("const k = @@keyframes(\n  @@if ({on}) { from { opacity: 0; } }\n);\n");
+    const virtual = build("const k = @@keyframes(\n  if ({on}) { from { opacity: 0; } }\n);\n");
 
     expect(virtual?.code).not.toContain("__cond(");
     // And the body it guarded is still checked, which is why this is not simply refused.
@@ -630,7 +630,7 @@ describe("what the virtual file hands TypeScript", () => {
     ["a one-line hole", "const a = @@(\n  color: {tint};\n);\nconst after = 1;\n"],
     ["a hole across two lines", "const a = @@(\n  color: {cond\n    ? red\n    : blue};\n);\nconst after = 1;\n"],
     ["a hole across four lines", "const a = @@(\n  color: {[\n    1,\n    2,\n  ].length};\n);\nconst after = 1;\n"],
-    ["a guard across lines", "const a = @@(\n  @@if ({a\n    && b}) { color: red; }\n);\nconst after = 1;\n"],
+    ["a guard across lines", "const a = @@(\n  if ({a\n    && b}) { color: red; }\n);\nconst after = 1;\n"],
     ["a spread across lines", "const a = @@(\n  ...{one\n    ?? two};\n);\nconst after = 1;\n"],
     [
       "two blocks, one with a multi-line hole",

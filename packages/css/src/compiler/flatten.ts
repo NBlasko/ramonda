@@ -131,7 +131,7 @@ export function onlyTheModeDecides(a: string, b: string): boolean {
  * One argument of the merge a block compiles to.
  *
  * A run of declarations under the same guards is ONE map — not one each — a spread is another
- * block's map, and the guards are the conditions of the `@@if` groups it sits inside.
+ * block's map, and the guards are the conditions of the `if` groups it sits inside.
  *
  * **Nesting is a conjunction**, which is why the guards are a flat list rather than a tree. That is
  * only correct because the merge is associative, which was measured over 50,301 random groupings
@@ -200,13 +200,13 @@ function walk(
         /**
          * A group that produced NOTHING still emits its guard, as an empty run.
          *
-         * `@media print { }` is legal CSS that does nothing, so `@@if ({x}) { }` is legal here that
+         * `@media print { }` is legal CSS that does nothing, so `if ({x}) { }` is legal here that
          * does nothing — and commenting a group's body out is how somebody reaches it. But the
          * emission counts on one segment per recorded hole: `readBlock` records the condition's
          * `{expr}` whatever the group holds, and without this the guard had a hole and no segment,
          * so every following piece of text slid one place left.
          *
-         * Measured before this line existed: `@@if ({variant}) { }` alone compiled to
+         * Measured before this line existed: `if ({variant}) { }` alone compiled to
          * `_merge(variant)`, which parses, runs, and ships `class="l g"` for `variant = "lg"` —
          * two class names that never existed, with nothing downstream able to notice.
          *

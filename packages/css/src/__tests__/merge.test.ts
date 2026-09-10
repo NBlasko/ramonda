@@ -235,7 +235,7 @@ describe("a shorthand meeting its own longhand", () => {
   /**
    * `compose` is the primitive and `merge` is the boundary: one composes with itself, the other
    * produces the value the framework takes and cannot be composed again. A nested group composes, so
-   * this is the property that lets a nested `@@if` mean what a flattened one means.
+   * this is the property that lets a nested `if` mean what a flattened one means.
    */
   test("and clearing is associative, which is what lets a group nest", () => {
     const other = { "padding-top": "r-4444444444444444" };

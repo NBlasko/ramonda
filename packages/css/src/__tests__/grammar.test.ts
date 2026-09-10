@@ -544,18 +544,18 @@ describe("a block on a nested element", () => {
 /**
  * Composition, coloured as what it is rather than as CSS that happens to parse.
  *
- * `@@if {{ … }}` and `...{{ … }}` are this language's own, not CSS's — measured before this was
- * written, the CSS grammar read `@@if` as a property name and the `...` as nothing at all. Neither
+ * `if {{ … }}` and `...{{ … }}` are this language's own, not CSS's — measured before this was
+ * written, the CSS grammar read `if` as a property name and the `...` as nothing at all. Neither
  * broke anything, which is why it is a colour problem rather than a correctness one: a reader could
  * not tell a condition from a declaration.
  *
  * The condition and the operand inside `{{ }}` keep being TypeScript, which is what they are.
  */
 describe("the composition markers", () => {
-  test("`@@if` is a keyword, and its condition is still an expression", () => {
-    const code = `const c = @@(\n  @@if ({this.off}) {\n    opacity: 0.5;\n  }\n);\n`;
+  test("`if` is a keyword, and its condition is still an expression", () => {
+    const code = `const c = @@(\n  if ({this.off}) {\n    opacity: 0.5;\n  }\n);\n`;
 
-    expect(scopeOf(code, "@@if")).toBe("keyword.control.ramonda");
+    expect(scopeOf(code, "if")).toBe("keyword.control.ramonda");
     expect(scopeOf(code, "this")).toBe("variable.language.this.tsx");
     expect(scopeOf(code, "opacity")).toBe("support.type.property-name.css");
   });
@@ -569,7 +569,7 @@ describe("the composition markers", () => {
   });
 
   test("and neither takes the rest of the block with it", () => {
-    const code = `const c = @@(\n  ...{base};\n  @@if ({on}) { opacity: 0.5; }\n  color: red;\n);\nconst after = 1;\n`;
+    const code = `const c = @@(\n  ...{base};\n  if ({on}) { opacity: 0.5; }\n  color: red;\n);\nconst after = 1;\n`;
 
     expect(scopeOf(code, "color")).toBe("support.type.property-name.css");
     expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
@@ -577,18 +577,16 @@ describe("the composition markers", () => {
 });
 
 /**
- * `@@` is one colour wherever it appears, and the bracket after it is a bracket.
+ * `@@` is one colour wherever it appears, and it appears in one place: opening a block.
  *
  * **Reported by a user**: `@@(` came out as punctuation and `@@if` as a keyword, so the same two
- * characters were two colours in one block. Measured before this:
+ * characters were two colours in one block. That was answered by making the marker one scope — and
+ * answered again, better, by taking `@@` off the guard entirely. It opens a BLOCK and nothing else
+ * does; inside one, the language is the block's own and spells itself without a sigil, as `{expr}`
+ * and `...{expr}` already did.
  *
- *     @@(     punctuation.section.embedded.begin.ramonda
- *     @@if    keyword.control.ramonda
- *     ...     keyword.control.ramonda
- *
- * `@@` is this language's marker — it is what says "the next thing is not TypeScript", and CSS can
- * never produce it, since an at-keyword is `@` and then an ident and an ident cannot begin with `@`.
- * A reader should not have to learn that the same marker means two things.
+ * `@@` is what says "the next thing is not TypeScript", and CSS can never produce it, since an
+ * at-keyword is `@` and then an ident and an ident cannot begin with `@`.
  *
  * The BRACKET keeps its own scope, and that is not a detail: `punctuation.section.embedded.begin` is
  * what pairs with the `contentName` an editor reads to treat the inside as CSS. Colouring it as a
@@ -596,15 +594,21 @@ describe("the composition markers", () => {
  */
 describe("the `@@` marker's colour", () => {
   const CODE =
-    `const a = <div css={@@(\n  ...{CONTROL};\n  @@if ({on}) { opacity: 0.5; }\n)}>x</div>;\n` +
+    `const a = <div css={@@(\n  ...{CONTROL};\n  if ({on}) { opacity: 0.5; }\n)}>x</div>;\n` +
     `const b = @@keyframes( from { opacity: 0; } );\n` +
     `const c = <div css=@@( color: red; )>y</div>;\n`;
 
   test("every `@@` is the same scope", () => {
     const markers = scopesOf(CODE).filter((token) => token.text.startsWith("@@"));
 
-    expect(markers.length).toBeGreaterThan(3);
+    expect(markers.length).toBeGreaterThan(2);
     expect(new Set(markers.map((token) => token.scope))).toEqual(new Set(["keyword.control.ramonda"]));
+  });
+
+  /** And it appears in ONE place — the guard inside a block carries none. */
+  test("the guard carries no marker", () => {
+    expect(scopeOf(CODE, "if")).toBe("keyword.control.ramonda");
+    expect(CODE).not.toContain("@@if");
   });
 
   test("and so is the composition marker beside it", () => {

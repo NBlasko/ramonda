@@ -443,7 +443,7 @@ describe("line endings the author's checkout uses", () => {
 /**
  * A hole's braces sit against its expression, whatever was typed.
  *
- * **Reported by a user**: the formatter left `@@if ({ this.roomy})` exactly as written, so the same
+ * **Reported by a user**: the formatter left `if ({ this.roomy})` exactly as written, so the same
  * condition appeared four ways in one file. Measured, all four survived a format unchanged.
  *
  * ## Why against, and not `{ … }`
@@ -467,11 +467,11 @@ describe("the space inside a hole's braces", () => {
   };
 
   test.each([
-    ["a condition", "  @@if ({ this.roomy }) {\n    color: red;\n  }", "  @@if ({this.roomy}) {\n    color: red;\n  }"],
+    ["a condition", "  if ({ this.roomy }) {\n    color: red;\n  }", "  if ({this.roomy}) {\n    color: red;\n  }"],
     [
       "one space, on the left only",
-      "  @@if ({ this.roomy }) {\n    color: red;\n  }",
-      "  @@if ({this.roomy}) {\n    color: red;\n  }",
+      "  if ({ this.roomy }) {\n    color: red;\n  }",
+      "  if ({this.roomy}) {\n    color: red;\n  }",
     ],
     ["a value", "  color: { this.accent };", "  color: {this.accent};"],
     ["a spread", "  ...{ base };", "  ...{base};"],
@@ -491,7 +491,7 @@ describe("the space inside a hole's braces", () => {
 
   /** Formatting is idempotent, which is the property a formatter is only ever trusted for once. */
   test("running it twice changes nothing more", () => {
-    const once = formatted("  @@if ({ this.roomy }) {\n    color: red;\n  }");
+    const once = formatted("  if ({ this.roomy }) {\n    color: red;\n  }");
     const twice = formatted(once);
 
     expect(twice).toBe(once);

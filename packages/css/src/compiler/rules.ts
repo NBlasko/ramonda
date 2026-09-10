@@ -725,7 +725,7 @@ function layerInABlock(block: Block, findings: Finding[]): void {
  *
  * A spread merges a whole block, and a block's map carries the context each of its declarations was
  * written in. Inside `&:hover` it would have to re-scope every key it holds — `background` becoming
- * `:hover|background` — which a merge cannot do at runtime. A GUARD is fine: `@@if` changes no key,
+ * `:hover|background` — which a merge cannot do at runtime. A GUARD is fine: `if` changes no key,
  * it only decides whether the whole map lands.
  *
  * **Refused by the build already, and by nothing else.** The refusal lived in `transform`, so the
@@ -737,7 +737,7 @@ function spreadOutOfPlace(block: Block, findings: Finding[]): void {
   const walkItems = (items: readonly BlockItem[], scoped: boolean): void => {
     for (const item of items) {
       if (item.kind === "rule") {
-        // A guard is not a scope: `@@if` decides whether the map lands, and changes no key in it.
+        // A guard is not a scope: `if` decides whether the map lands, and changes no key in it.
         const guard = holeIn(item.prelude, CONDITION) !== undefined;
         walkItems(item.items, scoped || !guard);
         continue;
@@ -751,7 +751,7 @@ function spreadOutOfPlace(block: Block, findings: Finding[]): void {
         message:
           "a spread merges a whole block, and a block carries the context its own declarations " +
           "were written in — so it cannot go inside a selector or a `@media`. Write it at the " +
-          "top level of the block, or inside `@@if { … }`, which changes no declaration.",
+          "top level of the block, or inside `if { … }`, which changes no declaration.",
       });
     }
   };
@@ -824,13 +824,13 @@ export function checkNamedSite(site: BlockSite): Finding[] {
 }
 
 /**
- * `@@if` or a spread inside `@@keyframes( … )` and the other named blocks.
+ * `if` or a spread inside `@@keyframes( … )` and the other named blocks.
  *
  * Composition decides what lands on an ELEMENT: a guard switches a map on and off, a spread merges
  * one into another. A named block is not an element — it is a rule the whole stylesheet uses — so
  * neither has anything to act on.
  *
- * **Both were reported as something else.** `@@if ({on}) { from { … } }` came back as *`@@if ( 0 )`
+ * **Both were reported as something else.** `if ({on}) { from { … } }` came back as *`if ( 0 )`
  * is not a keyframe*, which names the guard as a frame; and the virtual file wrote the helper call
  * among the object literal's members, where a call is not a member, so the file did not parse and
  * nothing else in it was checked either.
@@ -849,7 +849,7 @@ function compositionInANamedBlock(block: Block, at: string, findings: Finding[])
           at: item.at ?? 0,
           length: item.kind === "rule" ? item.prelude.length : item.property.length,
           message:
-            `\`@@${at}( … )\` cannot hold ${item.kind === "rule" ? "`@@if`" : "a spread"} — composition ` +
+            `\`@@${at}( … )\` cannot hold ${item.kind === "rule" ? "`if`" : "a spread"} — composition ` +
             `decides what lands on an ELEMENT, and this names a rule the whole stylesheet uses. ` +
             `Compose where the block is used instead.`,
         });
@@ -1414,7 +1414,7 @@ const PERCENTAGE = /^([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)%$/;
  */
 function unknownFrame(rule: NestedRule, findings: Finding[]): void {
   // A GUARD is not a frame and is not spelled like one. `composition-in-a-named-block` owns it, and
-  // saying `@@if ( 0 ) is not a keyframe` beside that names the wrong thing as the fault.
+  // saying `if ( 0 ) is not a keyframe` beside that names the wrong thing as the fault.
   if (holeIn(rule.prelude, CONDITION) !== undefined) return;
 
   for (const part of rule.prelude.split(",")) {

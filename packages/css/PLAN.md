@@ -1091,7 +1091,7 @@ const variants = {
   ...button;                                 // merge another block's map, across files
   ...variants[this.variant];                 // exhaustive — TypeScript checks the key
 
-  @@if ({this.disabled}) {
+  if ({this.disabled}) {
     opacity: 0.5;
     cursor: not-allowed;                     // beats `cursor: pointer` above, because it is BELOW
   }
@@ -1111,6 +1111,24 @@ than a bet, and `@@` is already this language's own marker. `@else` is dropped b
 (Conditional Rules 5) for environment conditions; a spread of a lookup object replaces it and gives
 exhaustiveness `@else` never had.
 
+**Changed 2026-09-10 to `if ({ … })`, on the user's reading and not mine.** The argument above is
+about safety and it is correct; what it did not weigh is that `@@if` was the ONE place `@@` appeared
+inside a block, which made the sigil mean two things — an entrance, and a keyword. Inside a block the
+language is already its own and spells itself without a sigil: `{expr}` is a hole and `...{expr}` a
+spread, both borrowed from JavaScript. `if (…)` is that rule extended rather than an exception to it.
+
+Measured in Chromium 151 before the change, and this is what the paragraph above was missing: a bare
+word followed by PARENS is not a shape CSS has. `if (x) { … }` in a prelude is dropped — a type
+selector may not take parentheses and a functional pseudo-class needs its colon — and every
+conditional CSS has ever added carries an `@`. The `if()` of CSS Values 5, shipped in Chrome 137, is
+a VALUE function, after the colon, which is a different position entirely.
+
+What remains is the one meaning `if` has as CSS: a bare `if { … }`, a type selector for an element
+that cannot exist, since a custom element name must contain a hyphen. That is reported rather than
+compiled, and `& if { … }` is the escape. So the safety is not a grammar guarantee any more, and the
+cost of being wrong is a syntax change — which was weighed against the sigil meaning one thing, and
+lost.
+
 ### The compiled shape, which is the whole design
 
 A block compiles to a MAP from what a declaration SETS to the class that sets it. Static entries are
@@ -1129,8 +1147,8 @@ const _s4 = { width: ["r-h8", this.full ? "100%" : "auto"] };
 so the compiler sees all of them whether or not a branch ever runs. A block behind `variants[name]`,
 in an object, in a ternary, in a `map` — the transform never has to resolve which one is chosen.
 
-**Nesting works, and it is not a coincidence — it is measured.** `@@if` inside `@@if`, `&:hover`
-inside `@@if`, `@@if` inside `&:hover`: the parser already reads all four combinations as ordinary
+**Nesting works, and it is not a coincidence — it is measured.** `if` inside `if`, `&:hover`
+inside `if`, `if` inside `&:hover`: the parser already reads all four combinations as ordinary
 nested rules (measured, one site). A nested condition is a CONJUNCTION, so it compiles either way —
 as a nested merge or flattened into `a && b && map` — and the two agree because **the merge is
 associative**: 50,309 random groupings of random maps drawn from a pool of shorthands and their
@@ -1139,7 +1157,7 @@ the shorthand-clearing rule could have broken, and it does not. Nesting is there
 
 Three more properties fall out for free and are worth knowing before the work starts:
 
-- **`&:hover` inside `@@if` and `@@if` inside `&:hover` mean the same thing**, because the key is
+- **`&:hover` inside `if` and `if` inside `&:hover` mean the same thing**, because the key is
   `selector|property` and both flatten to it.
 - **`@media` is another key**, so it composes through the merge; which one wins is then the SHEET's
   emission order — see below.
@@ -1333,7 +1351,7 @@ rather than by the stylesheet.
 position it was written, so what is above it merges first — which is what *later wins* means.
 
 **The operand is inside `{ }` like every other expression in a block**, for the reason the user gave
-when they chose `@@if ({expr})`: TypeScript appears there and nowhere else. `...base;` would have
+when they chose `if ({expr})`: TypeScript appears there and nowhere else. `...base;` would have
 been prettier and would have been a second spelling for the same thing.
 
 **One fault it exposed, and it failed in the worst way — quietly and only sometimes.** A spread hands
@@ -1346,11 +1364,11 @@ non-enumerable symbol, and `compose` reads it back.
 
 The type for the operand is still to write — see AC7.
 
-**AC6 — `@@if ({ … }) { }`.** The parser already reads it as a nested rule with that prelude, and the
+**AC6 — `if ({ … }) { }`.** The parser already reads it as a nested rule with that prelude, and the
 scanner does NOT mistake it for a second block site (measured: one site, not two). Needs the condition
 type-checked in the author's scope, and exemption from `at-rule-out-of-place`.
 
-**The condition is written `{ … }`, decided by the user 2026-09-05**, against `@@if (expr)` which is
+**The condition is written `{ … }`, decided by the user 2026-09-05**, against `if (expr)` which is
 what everyone expects. Consistency won, and it is this language's one standing rule: **TypeScript
 appears inside `{ }` and nowhere else.** A second spelling for "here is an expression" would be a
 second thing to teach and a second thing for every tool to know.
@@ -1362,7 +1380,7 @@ a selector means: the key is canonical, so both give the same class.
 
 Two parser changes, both narrow: a head that is exactly the marker and one hole records that hole
 rather than refusing it, and a spread is a declaration with no value rather than a declaration
-missing one. Everything else about a head is unchanged, so `@@iffy {c}` is still a selector and
+missing one. Everything else about a head is unchanged, so `iffy {c}` is still a selector and
 still refused.
 
 **Measured end to end** — compiled, run, and rendered in Chromium, across a spread, two guards and a
@@ -1382,8 +1400,8 @@ position and there is no diagnostic of ours to write. Asserted through a real pr
 
 | written | answer |
 |---|---|
-| `@@if ({this.off})`, `@@if ({maybe})` where `maybe` may be `undefined` | silent |
-| `@@if ({this.method})` (not called), `@@if ({o})`, `@@if ({p})` (a promise) | *always truthy* |
+| `if ({this.off})`, `if ({maybe})` where `maybe` may be `undefined` | silent |
+| `if ({this.method})` (not called), `if ({o})`, `if ({p})` (a promise) | *always truthy* |
 | `...{base}` where `base` is a block | silent |
 | `...{plain}`, `...{text}` | *only a style block can be spread*, at the author's line |
 | a typo inside a group | the same `TS2561` and the same *did you mean* it is outside one |
@@ -1399,7 +1417,7 @@ it comes back as three findings, on lines 3, 4 and 5.
   `&:hover { ...{base}; }` came out as `_merge(base)`, so a block meant for hover applied always.
   It cannot mean anything else: a spread merges a whole block, and a block's map carries the context
   each of its own declarations was written in, so nesting one would have to re-scope every key it
-  holds. Refused now, naming the two places it may go. A GUARD is still fine — `@@if` changes no key.
+  holds. Refused now, naming the two places it may go. A GUARD is still fine — `if` changes no key.
 - **A block's binding hovered as `never`.** The helper returned it because `never` is assignable
   everywhere; a binding holding a block is exactly what an author points at to ask what a block IS.
   It is `CssBlock` now, branded so a hand-written object with the same three fields is not one.
@@ -1434,7 +1452,7 @@ emits by it and this rule reports where it contradicts the author. Two copies of
 shape this package keeps finding a fault in.
 
 **AC8 — the page. DONE 2026-09-05.** `style-blocks.md` gains *Composing blocks*: the two spellings,
-the later-wins rule, why the condition is inside `{ }` and why the keyword is `@@if`, what is
+the later-wins rule, why the condition is inside `{ }` and why the keyword is `if`, what is
 checked, and the shorthand behaviour — which is CSS's own and worth saying out loud because it is the
 one place a merge does something the reader did not literally write.
 
@@ -1475,10 +1493,10 @@ Measured, 14 conditions through `tsc`:
 | `Promise<number>` | reported: *a promise is always truthy — await it, or test a value* |
 
 **Nothing the block already had is lost, and that was the question worth asking.** Measured: a typo
-inside `@@if` reports with the SAME code and the SAME *did you mean* as the identical typo outside it
+inside `if` reports with the SAME code and the SAME *did you mean* as the identical typo outside it
 — `TS2561` for a bare property, `TS2820` for a value in a closed union, `TS2353` for a dashed one —
-and so does one inside `&:hover` inside `@@if`, inside `@@if` inside `&:hover`, and inside `@@if`
-inside `@@if`. Three faults in one group come back as three, which is the property this package fought
+and so does one inside `&:hover` inside `if`, inside `if` inside `&:hover`, and inside `if`
+inside `if`. Three faults in one group come back as three, which is the property this package fought
 for with one literal per declaration.
 
 **One encoding fails that, and it is the obvious one.** Writing the group as
@@ -1733,15 +1751,15 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | the runtime merge, 4 maps and 24 declarations | 0.64 µs per element — 0.5 ms for 800 of them |
 | 13 atomic classes per element vs one whole class | **2.5–2.8x** the style recalculation; 7.3 ms for 2000 elements |
 | atomic vs whole blocks, 800 elements | CSS 1.5 KB vs 26.8 KB, markup 157.7 KB vs 21.1 KB — **3.1 vs 3.5 KB gzipped together** |
-| `@@if` inside a block body | the scanner does not read it as a second site; the parser gives a nested rule |
-| `@@if` nested in `@@if`, and either way round with `&:hover` | all four already parse, as ordinary nested rules |
+| `if` inside a block body | the scanner does not read it as a second site; the parser gives a nested rule |
+| `if` nested in `if`, and either way round with `&:hover` | all four already parse, as ordinary nested rules |
 | the sheet's emission order, end to end | gives CSS's own answer on both sides of a `@media`, from rules added in the wrong order |
 | one block as 1 whole rule vs its 14 atomic ones | **identical computed style**, hovered, narrow and wide |
 | `merge(base, modifier)` end to end | the CALL SITE decides — `cursor` and a shorthand override both land right |
 | the shorthand-aware merge, 50,309 random groupings | **associative** — nesting and flattening never disagree |
-| an always-truthy `@@if` condition, as a TYPE | reportable — and `any`/`unknown`/`T \| undefined` stay silent |
+| an always-truthy `if` condition, as a TYPE | reportable — and `any`/`unknown`/`T \| undefined` stay silent |
 | a spread of a non-block, as a TYPE | reportable; a lookup with a union key passes |
-| a typo inside `@@if`, and in every nesting of it | same code, same *did you mean*, as outside — nothing lost |
+| a typo inside `if`, and in every nesting of it | same code, same *did you mean*, as outside — nothing lost |
 | the condition as an ARGUMENT wrapping the group | **hides every fault in the body** — so it is its own array element |
 | `var(var(--x))` | resolves to nothing — a `var()` name must be literal, so a reference cannot be a hole |
 | one rule per OWNER, through a real build | a sibling lazy route named a class **no stylesheet contained** |

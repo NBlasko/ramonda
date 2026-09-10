@@ -346,7 +346,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * guard can be emitted once, and a nested segment would need its outer guard a second time.
      * Measured before this existed, the outer guard was simply dropped:
      *
-     *     @@if ({off}) { cursor: none; @@if ({roomy}) { color: yellow } }
+     *     if ({off}) { cursor: none; if ({roomy}) { color: yellow } }
      *     -> _merge({…}, off && {cursor}, roomy && {color})
      *
      * and `color` landed whenever `roomy` was on, whatever `off` was.
@@ -420,7 +420,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
          *
          * **Measured before this refusal existed: it compiled and the selector silently vanished.**
          * `&:hover { ...{{base}}; }` came out as `_merge(base)`, so a block meant for hover applied
-         * always. A GUARD is fine and is allowed: `@@if` changes no key, it only decides whether the
+         * always. A GUARD is fine and is allowed: `if` changes no key, it only decides whether the
          * whole map lands.
          */
         // Reported by `spread-out-of-place`, which the refusal above already stopped the build on.
@@ -514,9 +514,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * The invariant the whole rewrite below rests on: one piece of surrounding text per hole, plus
      * a tail. It was never stated, and breaking it was silent.
      *
-     * A `@@if` group with nothing in it recorded a hole and produced no segment, so every piece slid
+     * An `if` group with nothing in it recorded a hole and produced no segment, so every piece slid
      * one place left: one block emitted its map twice, another put a guard where a value belonged,
-     * and `@@if ({variant}) { }` alone compiled to `_merge(variant)` — which parses, runs, and ships
+     * and `if ({variant}) { }` alone compiled to `_merge(variant)` — which parses, runs, and ships
      * two class names made out of the letters of a string. `flatten.ts` no longer produces that
      * shape; this is the belt, because a mismatch here means an author's expression is about to be
      * written somewhere it was not written, and that must never be something to discover at runtime.

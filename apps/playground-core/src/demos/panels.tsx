@@ -292,7 +292,7 @@ export class StyleBlock extends Component {
  * **`...{ … }` merges another block here.** It works across files, because what it merges is a
  * value — importable, storable in an object, pickable out of one.
  *
- * **`@@if ({ … }) { … }` merges a group only when the condition holds**, and both are arguments of
+ * **`if ({ … }) { … }` merges a group only when the condition holds**, and both are arguments of
  * the same merge in the order they were written, so **what comes later wins**. That is the rule a
  * reader of CSS already has, and it is the thing whole-block classes could never express: the order
  * of names in a `class` attribute means nothing in CSS, so precedence has to be decided where the
@@ -375,16 +375,16 @@ export class StyleBlockComposed extends Component {
             ...{CONTROL};
             ...{TONES[this.tone]};
 
-            @@if ({this.off}) {
+            if ({this.off}) {
               opacity: 0.5;
               cursor: none;
 
-              @@if ({this.roomy}) {
+              if ({this.roomy}) {
                 color: yellow;
               }
             }
 
-            @@if ({this.roomy}) {
+            if ({this.roomy}) {
               padding: 14px 20px;
             }
           )}

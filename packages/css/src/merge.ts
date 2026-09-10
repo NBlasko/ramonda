@@ -106,7 +106,7 @@ function setsNothing(entry: StyleEntry | StyleClears | undefined): boolean {
  * carried into the result for the same reason: a composed map has to behave like the maps it came
  * from, or `compose(compose(a, b), c)` would stop clearing halfway.
  *
- * **Associative**, which is what makes a nested `@@if` mean the same as a flattened one — and it is
+ * **Associative**, which is what makes a nested `if` mean the same as a flattened one — and it is
  * the property the clearing rule could have broken, since clearing removes keys rather than
  * replacing them. Measured over 50,301 random groupings drawn from one shorthand family: zero
  * disagreements.

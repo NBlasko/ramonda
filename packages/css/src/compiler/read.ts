@@ -25,11 +25,50 @@ import { holeOutOfPlace, refuse } from "./errors";
  * so nothing gets the forgiving reading by forgetting to ask for it.
  */
 
-/** What opens a conditional group — see the note in `readHead`. */
-export const CONDITION = "@@if";
+/**
+ * What opens a conditional group — see the note in `readHead`.
+ *
+ * **No `@@`, and that is the rule the sigil now has: `@@` opens a BLOCK and nothing else.** Inside a
+ * block the language is the block's own, and it already spells itself without a sigil — `{expr}` is a
+ * hole and `...{expr}` is a spread, both borrowed from JavaScript and read as JavaScript. `@@if` was
+ * the one place `@@` appeared inside a block, which made the sigil mean two things.
+ *
+ * It also collided with the named-site shape: measured, `@@if({on})` with no space was read as a
+ * site named `if` and refused as *a block cannot contain another block* — a message about the wrong
+ * thing, one keystroke away.
+ *
+ * **`if (` is safe, and it was measured rather than assumed.** In Chromium 151, `if (x) { … }` in a
+ * prelude is DROPPED: a type selector may not be followed by parentheses, and a functional
+ * pseudo-class needs its colon. Nothing in CSS starts with a bare word and takes parens — `@media`,
+ * `@supports`, `@container`, `@layer`, `@scope` and the drafted `@when` all carry an `@`. The `if()`
+ * CSS Values 5 shipped in Chrome 137 is a VALUE function, after the colon, which is a different
+ * position entirely.
+ *
+ * The one CSS meaning `if` has here is a bare `if { … }`, a type selector for an element that cannot
+ * exist: measured, `customElements.define("if", …)` is refused because a custom element name must
+ * contain a hyphen. It is reported rather than compiled — see `guard-without-a-condition`.
+ */
+export const CONDITION = "if";
 
-/** `@@if` and its opening paren, with any whitespace between them — see where it is used. */
+/** `if` and its opening paren, with any whitespace between them — see where it is used. */
 const CONDITION_HEAD = new RegExp(`^${CONDITION}\\s*\\($`);
+
+/**
+ * A prelude that is TRYING to be a condition, well formed or not.
+ *
+ * The word and a boundary, because the marker is a word now: `startsWith` was enough for `@@if`,
+ * which cannot begin a selector, and with a bare `if` it reported `iframe { … }` — valid CSS, and a
+ * false report is the one thing this file may not produce. Measured, on the first run after the
+ * rename.
+ *
+ * `if.active` and `if { … }` match too, and are refused rather than compiled: both name an element
+ * that cannot exist, because a custom element's name must contain a hyphen. Somebody who means the
+ * selector writes `& if { … }`, which names the parent and is not this shape.
+ */
+const OPENS_A_CONDITION = new RegExp(`^${CONDITION}\\b`);
+
+/** What a condition used to be spelled, so the rename says so rather than failing as something else. */
+const OLD_CONDITION_HEAD = new RegExp(`^@@${CONDITION}\\s*\\($`);
 
 /** What opens a spread of another block's map. */
 export const SPREAD = "...";
@@ -630,6 +669,23 @@ export function readBlock(source: string, open: number, filename: string, option
           }
         }
 
+        /**
+         * THE OLD SPELLING, named for what it was rather than left to fail as something else.
+         *
+         * `@@if` was the one place `@@` appeared INSIDE a block, and the sigil means one thing now: a
+         * block opens with it and nothing else does. Left to the refusal below, `@@if ({on})` came
+         * back as *a hole cannot stand in a selector* — true, and about the wrong thing.
+         */
+        if (!tolerant && OLD_CONDITION_HEAD.test(head)) {
+          refuse(
+            `\`@@${CONDITION}\` is written \`${CONDITION} ({ … })\` now — \`@@\` opens a block and ` +
+              "nothing else, and everything inside one is the block's own language.",
+            source,
+            at,
+            filename,
+          );
+        }
+
         if (!tolerant) refuse(holeOutOfPlace(at === from ? "a declaration" : what), source, at, filename);
         // Kept as text, so the rest of the block still reads. The fault is the checker's to name.
         const start = at;
@@ -766,10 +822,28 @@ export function readBlock(source: string, open: number, filename: string, option
          * The mirror case was already refused, and that asymmetry is what gave it away: the text
          * BEFORE the hole was checked and the text after it was not.
          */
-        if (prelude.startsWith(CONDITION) && holeIn(prelude, CONDITION) === undefined && !tolerant) {
+        /**
+         * THE OLD SPELLING, named for what it was rather than left to fail as something else.
+         *
+         * `@@if` was the one place `@@` appeared inside a block, and the sigil means one thing now:
+         * a block opens with it and nothing else does. Left alone, `@@if ({on})` fails as *a hole
+         * cannot stand in a selector* — true, and about the wrong thing.
+         */
+        if (prelude.startsWith(`@@${CONDITION}`) && !tolerant) {
+          refuse(
+            `\`@@${CONDITION}\` is written \`${CONDITION} ({ … })\` now — \`@@\` opens a block and ` +
+              "nothing else, and everything inside one is the block's own language.",
+            source,
+            from,
+            filename,
+          );
+        }
+
+        if (OPENS_A_CONDITION.test(prelude) && holeIn(prelude, CONDITION) === undefined && !tolerant) {
           refuse(
             `\`${CONDITION}\` takes one parenthesised \`({ … })\` and nothing else — everything the ` +
-              "condition needs goes inside the braces, where it is ordinary TypeScript.",
+              "condition needs goes inside the braces, where it is ordinary TypeScript. To select an " +
+              `element named \`${CONDITION}\` instead, name the parent: \`& ${CONDITION} { … }\`.`,
             source,
             from,
             filename,

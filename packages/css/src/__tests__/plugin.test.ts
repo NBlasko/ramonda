@@ -1169,13 +1169,13 @@ describe("going to a binding a block reads", () => {
    * The same, with the comment above it holding text that LOOKS like a block.
    *
    * This is the shape the user actually had: `panels.tsx` explains the syntax in its own JSDoc, so
-   * the paragraph above the declaration contains `...{ … }` and `@@if ({ … }) { … }` as prose. If
+   * the paragraph above the declaration contains `...{ … }` and `if ({ … }) { … }` as prose. If
    * any scanner reads a comment as a site, every position after it shifts — and the symptom is a
    * definition landing a few characters early, which is exactly what was reported.
    */
   test("even when the comment above it explains the syntax", () => {
     const explained =
-      `/**\n * A block, explained.\n *\n * \`...{ … }\` merges another block here, and \`@@if ({ … }) { … }\` merges a group.\n *\n * Spreading a lookup — \`...{TONES[this.tone]}\` — is exhaustive.\n */\nconst CONTROL = @@( color: red; );\n\n` +
+      `/**\n * A block, explained.\n *\n * \`...{ … }\` merges another block here, and \`if ({ … }) { … }\` merges a group.\n *\n * Spreading a lookup — \`...{TONES[this.tone]}\` — is exhaustive.\n */\nconst CONTROL = @@( color: red; );\n\n` +
       `const card = @@(\n  ...{CONTROL};\n  padding: 8px;\n);\n`;
     const { service } = editor(explained);
     const at = explained.lastIndexOf("...{CONTROL}") + 4;
@@ -1200,7 +1200,7 @@ describe("going to a binding a block reads", () => {
 /**
  * `optionalReplacementSpan`, which is the span an editor REPLACES when a completion is accepted.
  *
- * **Reported by a user as "no completion inside an `@@if` group", and it took eleven measurements to
+ * **Reported by a user as "no completion inside an `if` group", and it took eleven measurements to
  * find because the entries were always right.** The list came back with all 551 properties and the
  * one they wanted among them; what was wrong was the span beside it.
  *
@@ -1209,7 +1209,7 @@ describe("going to a binding a block reads", () => {
  * `...got` and was handed on with the VIRTUAL file's coordinates, which point at unrelated characters
  * in the author's:
  *
- *     inside an `@@if` group, typing `op`     the span covered `dd`
+ *     inside an `if` group, typing `op`     the span covered `dd`
  *     at the top of a block, typing `dis`     the span covered `ip}>flip the tone<`
  *
  * The caret is outside a span like that, so an editor is entitled to drop the list — and VS Code
@@ -1220,10 +1220,10 @@ describe("the span a completion replaces", () => {
   test.each([
     ["at the top of a block", `const a = <div css=@@(\n  dis${CARET}\n)>x</div>;\n`, "dis"],
     ["after a declaration", `const a = <div css=@@(\n  display: flex;\n  op${CARET}\n)>x</div>;\n`, "op"],
-    ["inside an `@@if` group", `const a = <div css=@@(\n  @@if ({on}) {\n    op${CARET}\n  }\n)>x</div>;\n`, "op"],
+    ["inside an `if` group", `const a = <div css=@@(\n  if ({on}) {\n    op${CARET}\n  }\n)>x</div>;\n`, "op"],
     [
-      "second in an `@@if` group",
-      `const a = <div css=@@(\n  @@if ({on}) {\n    opacity: 0.5;\n    cu${CARET}\n  }\n)>x</div>;\n`,
+      "second in an `if` group",
+      `const a = <div css=@@(\n  if ({on}) {\n    opacity: 0.5;\n    cu${CARET}\n  }\n)>x</div>;\n`,
       "cu",
     ],
     ["inside a nested rule", `const a = <div css=@@(\n  &:hover {\n    cu${CARET}\n  }\n)>x</div>;\n`, "cu"],
@@ -1312,13 +1312,10 @@ describe("a caret on a blank line at the end", () => {
   test.each([
     ["of a block", `const a = <div css=@@(\n  display: flex;\n  ${CARET}\n)>x</div>;\n`],
     ["of a block, with nothing on the line", `const a = <div css=@@(\n  display: flex;\n${CARET}\n)>x</div>;\n`],
-    [
-      "of an `@@if` group",
-      `const a = <div css=@@(\n  @@if ({on}) {\n    opacity: 0.5;\n    ${CARET}\n  }\n)>x</div>;\n`,
-    ],
+    ["of an `if` group", `const a = <div css=@@(\n  if ({on}) {\n    opacity: 0.5;\n    ${CARET}\n  }\n)>x</div>;\n`],
     [
       "of a group, two blank lines and stray spaces",
-      `const a = <div css=@@(\n  @@if ({on}) {\n    opacity: 0.5;\n\n      ${CARET}\n\n  }\n)>x</div>;\n`,
+      `const a = <div css=@@(\n  if ({on}) {\n    opacity: 0.5;\n\n      ${CARET}\n\n  }\n)>x</div>;\n`,
     ],
     ["of a nested rule", `const a = <div css=@@(\n  &:hover {\n    color: red;\n    ${CARET}\n  }\n)>x</div>;\n`],
   ])("%s offers the property names", (_what, marked) => {
@@ -1340,7 +1337,7 @@ describe("a caret on a blank line at the end", () => {
  *     display, content    CSS grammar plus Initial/Inherited     already right
  *     ::after, :hover     (property) "&::after": {               noise
  *     @media (…)          (property) "@media (…)": {             noise
- *     @@if, ...           nothing at all
+ *     if, ...           nothing at all
  *
  * A property already answers well because `asCss` reshapes what the generated types carry. A
  * selector, an at-rule and this language's own markers had nobody to answer for them.
@@ -1352,7 +1349,7 @@ describe("a caret on a blank line at the end", () => {
  * The generator asserts every written name exists in `mdn-data`, so a sentence cannot be attached to
  * a selector CSS does not have.
  *
- * `@@if` and `...` are this language's own and have no upstream to read; what they say is what this
+ * `if` and `...` are this language's own and have no upstream to read; what they say is what this
  * repository measured about them.
  */
 describe("hover", () => {
@@ -1370,7 +1367,7 @@ describe("hover", () => {
     `  display: flex;\n` +
     `  &::after { content: ""; }\n` +
     `  &:hover { color: red; }\n` +
-    `  @@if ({on}) { opacity: 0.5; }\n` +
+    `  if ({on}) { opacity: 0.5; }\n` +
     `  ...{base};\n` +
     `  @media (min-width: 40rem) { gap: 8px; }\n` +
     `)>x</div>;\n`;
@@ -1395,10 +1392,10 @@ describe("hover", () => {
     expect(hovered(BLOCK, "::after").documentation).toContain("developer.mozilla.org");
   });
 
-  test("`@@if` says what a group does", () => {
-    const { signature, documentation } = hovered(BLOCK, "@@if");
+  test("`if` says what a group does", () => {
+    const { signature, documentation } = hovered(BLOCK, "if");
 
-    expect(signature).toContain("@@if");
+    expect(signature).toContain("if");
     expect(documentation).toContain("later");
   });
 

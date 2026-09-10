@@ -992,7 +992,7 @@ describe("the shorthand table", () => {
   });
 
   /**
-   * **The merge built on this table is associative**, which is what makes a nested `@@if` mean the
+   * **The merge built on this table is associative**, which is what makes a nested `if` mean the
    * same as a flattened one — and it is the property the clearing rule could have broken, since
    * clearing removes keys rather than replacing them.
    *

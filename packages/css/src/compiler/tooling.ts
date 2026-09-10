@@ -5,8 +5,8 @@ import { findBlocks, mayHoldABlock } from "./scan";
 /**
  * A hole with its braces against the expression, whatever was typed.
  *
- * **Reported by a user, who had the same condition four ways in one file**: `@@if ({ this.roomy})`,
- * `@@if ({this.roomy })`, and both of the tidy spellings — because the formatter left every one of
+ * **Reported by a user, who had the same condition four ways in one file**: `if ({ this.roomy})`,
+ * `if ({this.roomy })`, and both of the tidy spellings — because the formatter left every one of
  * them alone. Measured before this: all four survived unchanged.
  *
  * Against the braces, and not `{ … }`, because a hole is the escape JSX already uses in the same

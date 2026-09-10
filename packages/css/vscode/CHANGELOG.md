@@ -1,5 +1,11 @@
 # Ramonda CSS
 
+## 0.1.2
+
+- A conditional group is written `if ({ … })`. It was `@@if`, and `@@` now opens a style block and
+  nothing else — inside one, the language is the block's own and spells itself without a sigil, as
+  `{ … }` and `...{ … }` already did.
+
 ## 0.1.1
 
 - Rewrote the readme. It says up front what works with nothing else installed, and what needs

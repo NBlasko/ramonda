@@ -12,12 +12,12 @@ import { transform } from "../compiler/transform";
  *
  * ## Why the condition gains parentheses rather than losing braces
  *
- * `@@if {this.off} {` puts two brackets of different kinds one space apart, and `} {` reads as a
- * close and an open at the same level. `@@if ({this.off}) {` separates them with the `)`, which is
+ * `if {this.off} {` puts two brackets of different kinds one space apart, and `} {` reads as a
+ * close and an open at the same level. `if ({this.off}) {` separates them with the `)`, which is
  * the shape every conditional at-rule in CSS already has — `@media (…) {`, `@supports (…) {`. And it
- * costs nothing: `@@if {{this.off}}` and `@@if ({this.off})` are both 17 characters.
+ * costs nothing: `if {{this.off}}` and `if ({this.off})` are both 17 characters.
  *
- * It also keeps the language's one standing rule, which is the reason `@@if (expr)` was refused when
+ * It also keeps the language's one standing rule, which is the reason `if (expr)` was refused when
  * this was first decided: **TypeScript appears inside braces and nowhere else.** The parentheses are
  * the at-rule's head, not the expression.
  *
@@ -102,6 +102,69 @@ describe("and a nested rule is still a nested rule", () => {
   });
 });
 
+/**
+ * THE SPELLING, and why it is a word rather than a sigil.
+ *
+ * `@@if` was the one place `@@` appeared INSIDE a block, which made the marker mean two things — an
+ * entrance and a keyword. Inside a block the language is already its own and spells itself without a
+ * sigil: `{expr}` is a hole and `...{expr}` a spread, both borrowed from JavaScript. `if (…)` is that
+ * rule extended rather than an exception to it.
+ *
+ * **Measured in Chromium 151 before the change.** A bare word followed by PARENS is not a shape CSS
+ * has: `if (x) { … }` in a prelude is dropped, because a type selector may not take parentheses and
+ * a functional pseudo-class needs its colon — and every conditional CSS ever added carries an `@`.
+ * The `if()` of CSS Values 5 is a VALUE function, after the colon, a different position entirely.
+ *
+ * It also removes a collision the old spelling had: `@@if({on})` with no space was read as a named
+ * SITE called `if`, and refused as *a block cannot contain another block* — a message about the
+ * wrong thing, one keystroke away.
+ */
+describe("the conditional group's spelling", () => {
+  const of = (css: string) => {
+    try {
+      transform(`const s = @@(\n${css}\n);\n`, { filename: "C.tsx" });
+      return "compiled";
+    } catch (error) {
+      return (error as Error).message.split("  ")[1] ?? "";
+    }
+  };
+
+  test.each([
+    ["a space before the paren", "  if ({on}) { color: red; }"],
+    ["none at all", "  if({on}) { color: red; }"],
+  ])("%s compiles", (_what, css) => {
+    expect(of(css)).toBe("compiled");
+  });
+
+  /**
+   * A prelude the parser must NOT read as a guard. `iframe` starts with the marker's letters, and the
+   * first version of this tested `startsWith` — which reported valid CSS. A false report is the one
+   * thing the reader may not produce.
+   */
+  test.each([
+    ["a selector that starts with the same letters", "  iframe { color: red; }"],
+    ["one that only contains them", "  .notify { color: red; }"],
+    ["the element named explicitly", "  & if { color: red; }"],
+  ])("%s is a selector", (_what, css) => {
+    expect(of(css)).toBe("compiled");
+  });
+
+  test.each([
+    ["a condition that is not a hole", "  if (dark) { color: red; }", "parenthesised"],
+    ["no condition at all", "  if { color: red; }", "parenthesised"],
+    // An element named `if` cannot exist — a custom element's name must contain a hyphen — so this
+    // costs nobody anything, and it catches the parens somebody forgot.
+    ["a class on it", "  if.active { color: red; }", "parenthesised"],
+  ])("%s is refused", (_what, css, says) => {
+    expect(of(css)).toContain(says);
+  });
+
+  /** And the OLD spelling says what it became, rather than failing as something else. */
+  test("`@@if` names itself", () => {
+    expect(of("  @@if ({on}) { color: red; }")).toContain("is written `if ({ … })` now");
+  });
+});
+
 describe("a condition is parenthesised", () => {
   const prelude = (source: string) => {
     const [item] = readBlock(source, 2, "C.tsx").block.items;
@@ -109,11 +172,11 @@ describe("a condition is parenthesised", () => {
   };
 
   test("the head is read as a condition", () => {
-    expect(prelude(`@@(\n  @@if ({this.off}) {\n    opacity: 0.5;\n  }\n)`)).toContain("@@if");
+    expect(prelude(`@@(\n  if ({this.off}) {\n    opacity: 0.5;\n  }\n)`)).toContain("if");
   });
 
   test("it compiles to a guarded group", () => {
-    const out = transform(`const s = @@(\n  @@if ({this.off}) {\n    opacity: 0.5;\n  }\n);\n`, {
+    const out = transform(`const s = @@(\n  if ({this.off}) {\n    opacity: 0.5;\n  }\n);\n`, {
       filename: "C.tsx",
     });
 
@@ -220,20 +283,20 @@ describe("a property name that does not start with a letter", () => {
 });
 
 /**
- * `@@if` with more than one space before its parenthesis.
+ * `if` with more than one space before its parenthesis.
  *
- * The head reader compared the text to `"@@if ("` and `"@@if("` by EQUALITY, while the hole reader
+ * The head reader compared the text to `"if ("` and `"if("` by EQUALITY, while the hole reader
  * allows whitespace on both sides of everything else. So two spaces, a tab or a newline turned a
  * condition into *a hole cannot stand in a selector* — a refusal naming the wrong thing, on code
  * whose only fault was its spacing. A review found it.
  */
 describe("whitespace before a condition's parenthesis", () => {
   test.each([
-    ["one space, which always worked", `@@(\n  @@if ({this.roomy}) {\n    color: red;\n  }\n)`],
-    ["none, which also worked", `@@(\n  @@if({this.roomy}) {\n    color: red;\n  }\n)`],
-    ["two spaces", `@@(\n  @@if  ({this.roomy}) {\n    color: red;\n  }\n)`],
-    ["a tab", `@@(\n  @@if\t({this.roomy}) {\n    color: red;\n  }\n)`],
-    ["a newline", `@@(\n  @@if\n  ({this.roomy}) {\n    color: red;\n  }\n)`],
+    ["one space, which always worked", `@@(\n  if ({this.roomy}) {\n    color: red;\n  }\n)`],
+    ["none, which also worked", `@@(\n  if({this.roomy}) {\n    color: red;\n  }\n)`],
+    ["two spaces", `@@(\n  if  ({this.roomy}) {\n    color: red;\n  }\n)`],
+    ["a tab", `@@(\n  if\t({this.roomy}) {\n    color: red;\n  }\n)`],
+    ["a newline", `@@(\n  if\n  ({this.roomy}) {\n    color: red;\n  }\n)`],
   ])("%s", (_what, source) => {
     const [item] = readBlock(source, 2, "C.tsx").block.items;
 

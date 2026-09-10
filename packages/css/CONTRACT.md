@@ -157,10 +157,10 @@ different properties, so without it both classes land and the SHEET breaks the t
 the call site. Measured, it agrees with CSS in both directions for `padding`, `border-left` and `gap`.
 
 **The merge is associative** — 50,309 random groupings, zero disagreements — which is what lets a
-nested `@@if` be COMPILED as a nested merge:
+nested `if` be COMPILED as a nested merge:
 
 ```
-@@if ({a}) { color: red; @@if ({b}) { color: blue; } }
+if ({a}) { color: red; if ({b}) { color: blue; } }
 ->  _merge(a && _merge({ "color": "r-c-red" }, b && { "color": "r-c-blue" }))
 ```
 
@@ -384,7 +384,7 @@ border-left: {…};                ✓   becomes  border-left: var(--r-…-0)
 {cond ? "display:flex" : ""}     ✗   a declaration — nothing to put a variable in
 {name}: 24px;                    ✗   a property name — unless it RESOLVES, see below
 &:{state} { … }                  ✗   a selector
-@@if ({cond}) { … }              ✓   a condition, and the parentheses are the at-rule's head
+if ({cond}) { … }              ✓   a condition, and the parentheses are the at-rule's head
 ...{base};                       ✓   a spread, in a declaration's position
 ```
 

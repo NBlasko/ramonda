@@ -12,9 +12,9 @@ import { transform } from "../compiler/transform";
  * Two spellings, and both compile to an argument of the same merge:
  *
  * - `...{expr};` merges another block's map at that point;
- * - `@@if ({expr}) { … }` merges a group only when the condition holds.
+ * - `if ({expr}) { … }` merges a group only when the condition holds.
  *
- * `@@if` rather than `@if` because **`@@anything` is structurally impossible in CSS** — an
+ * `if` rather than `@if` because **`@@anything` is structurally impossible in CSS** — an
  * at-keyword is `@` followed by an ident-token and an ident cannot begin with `@` — so it is a
  * grammar guarantee rather than a bet on what CSS will not take. And the condition is inside `( { } )`
  * because that is this language's one standing rule: TypeScript appears inside braces and nowhere else.
@@ -49,9 +49,7 @@ describe("a spread", () => {
 
 describe("a conditional group", () => {
   test("becomes an argument guarded by its condition", () => {
-    const out = emit(
-      `const card = @@(\n  cursor: pointer;\n  @@if ({this.off}) {\n    cursor: not-allowed;\n  }\n);\n`,
-    );
+    const out = emit(`const card = @@(\n  cursor: pointer;\n  if ({this.off}) {\n    cursor: not-allowed;\n  }\n);\n`);
 
     expect(out).toMatch(
       /_merge\(\{"cursor":"r-[0-9a-zA-Z][^"\s)]*",\},\s*this\.off && \{"cursor":"r-[0-9a-zA-Z][^"\s)]*",\}\)/,
@@ -59,20 +57,20 @@ describe("a conditional group", () => {
   });
 
   test("the two `cursor` entries are different classes, so the merge has something to choose", () => {
-    const out = emit(`const card = @@(\n  cursor: pointer;\n  @@if ({this.off}) { cursor: not-allowed; }\n);\n`);
+    const out = emit(`const card = @@(\n  cursor: pointer;\n  if ({this.off}) { cursor: not-allowed; }\n);\n`);
     const found = out.match(/r-[0-9a-zA-Z][^"\s)]*/g) ?? [];
 
     expect(new Set(found).size).toBe(2);
   });
 
   test("a nested group is a conjunction, because that is what nesting means", () => {
-    const out = emit(`const card = @@(\n  @@if ({a}) {\n    @@if ({b}) { opacity: 0.5; }\n  }\n);\n`);
+    const out = emit(`const card = @@(\n  if ({a}) {\n    if ({b}) { opacity: 0.5; }\n  }\n);\n`);
 
     expect(out).toMatch(/_merge\(a && b && \{"opacity":"r-[0-9a-zA-Z][^"\s)]*",\}\)/);
   });
 
   test("declarations around a group keep their place", () => {
-    const out = emit(`const card = @@(\n  color: red;\n  @@if ({c}) { color: blue; }\n  background: white;\n);\n`);
+    const out = emit(`const card = @@(\n  color: red;\n  if ({c}) { color: blue; }\n  background: white;\n);\n`);
     const args = out.slice(out.indexOf("_merge("));
 
     expect(args.indexOf('"color"')).toBeLessThan(args.indexOf("c &&"));
@@ -80,7 +78,7 @@ describe("a conditional group", () => {
   });
 
   test("a selector inside a group is still a selector on its own rule", () => {
-    const out = emit(`const card = @@(\n  @@if ({c}) {\n    &:hover { color: red; }\n  }\n);\n`);
+    const out = emit(`const card = @@(\n  if ({c}) {\n    &:hover { color: red; }\n  }\n);\n`);
 
     // The class is readable now, and a readable one carries the selector — so the pattern has to
     // stop at the closing quote rather than at the first `)` or `:`.
@@ -88,8 +86,8 @@ describe("a conditional group", () => {
   });
 
   test("and a group inside a selector means the same thing", () => {
-    const inside = emit(`const card = @@(\n  &:hover {\n    @@if ({c}) { color: red; }\n  }\n);\n`);
-    const around = emit(`const card = @@(\n  @@if ({c}) {\n    &:hover { color: red; }\n  }\n);\n`);
+    const inside = emit(`const card = @@(\n  &:hover {\n    if ({c}) { color: red; }\n  }\n);\n`);
+    const around = emit(`const card = @@(\n  if ({c}) {\n    &:hover { color: red; }\n  }\n);\n`);
 
     expect(inside.match(/r-[0-9a-zA-Z][^"\s)]*/)?.[0]).toBe(around.match(/r-[0-9a-zA-Z][^"\s)]*/)?.[0]);
   });
@@ -97,7 +95,7 @@ describe("a conditional group", () => {
 
 describe("the two together", () => {
   test("compose in the order they were written", () => {
-    const out = emit(`const card = @@(\n  ...{base};\n  @@if ({this.off}) { opacity: 0.5; }\n  width: 100%;\n);\n`);
+    const out = emit(`const card = @@(\n  ...{base};\n  if ({this.off}) { opacity: 0.5; }\n  width: 100%;\n);\n`);
     const args = out.slice(out.indexOf("_merge("));
 
     expect(args.indexOf("base")).toBeLessThan(args.indexOf("this.off &&"));
@@ -116,7 +114,7 @@ describe("the two together", () => {
  * **Measured before this was written: it compiled, and the selector silently vanished.**
  * `&:hover { ...{{base}}; }` came out as `_merge(base)`, so a block meant for hover applied always.
  *
- * A GUARD is different and is allowed: `@@if` does not change any key, it only decides whether the
+ * A GUARD is different and is allowed: `if` does not change any key, it only decides whether the
  * whole map lands.
  */
 describe("a spread that cannot mean anything", () => {
@@ -130,34 +128,34 @@ describe("a spread that cannot mean anything", () => {
   });
 
   test("but inside a conditional group it is fine, because a guard changes no key", () => {
-    const out = emit(`const c = @@( @@if ({on}) { ...{base}; } );\n`);
+    const out = emit(`const c = @@( if ({on}) { ...{base}; } );\n`);
 
     expect(out).toMatch(/_merge\(on && base\)/);
   });
 
   test("and the refusal says where it may go", () => {
-    expect(() => emit(`const c = @@( &:hover { ...{base}; } );\n`)).toThrow(/top level|@@if/);
+    expect(() => emit(`const c = @@( &:hover { ...{base}; } );\n`)).toThrow(/top level|if/);
   });
 });
 
 /**
  * A condition is the marker and ONE hole, and nothing else.
  *
- * **Measured before this was written: `@@if {{on}}Error { … }` compiled.** The parser lets a hole
- * into a prelude only when the text so far is exactly `@@if`, records it, and carries on reading —
+ * **Measured before this was written: `if {{on}}Error { … }` compiled.** The parser lets a hole
+ * into a prelude only when the text so far is exactly `if`, records it, and carries on reading —
  * so anything after the hole joined the prelude as ordinary text and nobody asked about it. The
  * group still worked, which is why it was silent: `Error` meant nothing and did nothing.
  *
- * The mirror case was already refused, and that asymmetry is what gave it away: `@@if Error{{on}}`
+ * The mirror case was already refused, and that asymmetry is what gave it away: `if Error{{on}}`
  * fails because the text before the hole is not the marker.
  */
 describe("a condition head with something extra in it", () => {
   test.each([
-    ["text after the hole", "@@if ({on})Error { opacity: .5; }"],
-    ["a word", "@@if ({on}) and { opacity: .5; }"],
-    ["a selector after it", "@@if ({on}):hover { opacity: .5; }"],
+    ["text after the hole", "if ({on})Error { opacity: .5; }"],
+    ["a word", "if ({on}) and { opacity: .5; }"],
+    ["a selector after it", "if ({on}):hover { opacity: .5; }"],
   ])("%s is refused", (_what, body) => {
-    expect(() => emit(`const c = @@(\n  ${body}\n);\n`)).toThrow(/@@if/);
+    expect(() => emit(`const c = @@(\n  ${body}\n);\n`)).toThrow(/if/);
   });
 
   /**
@@ -165,18 +163,18 @@ describe("a condition head with something extra in it", () => {
    * marker, so it is the same fault as a hole written anywhere else a hole cannot go.
    */
   test("a second hole is refused as a hole in a selector", () => {
-    expect(() => emit("const c = @@(\n  @@if ({on}){off} { opacity: .5; }\n);\n")).toThrow(/is not a declaration/);
+    expect(() => emit("const c = @@(\n  if ({on}){off} { opacity: .5; }\n);\n")).toThrow(/is not a declaration/);
   });
 
   test("and the refusal says what a condition is", () => {
-    expect(() => emit("const c = @@(\n  @@if ({on})Error { opacity: .5; }\n);\n")).toThrow(/takes one parenthesised/);
+    expect(() => emit("const c = @@(\n  if ({on})Error { opacity: .5; }\n);\n")).toThrow(/takes one parenthesised/);
   });
 
   test.each([
-    ["the ordinary shape", "@@if ({on}) { opacity: .5; }"],
-    ["no space before the hole", "@@if ({on}) { opacity: .5; }"],
-    ["space either side", "@@if ({on})  { opacity: .5; }"],
-    ["an expression with braces in it", "@@if ({ f({a: 1}) }) { opacity: .5; }"],
+    ["the ordinary shape", "if ({on}) { opacity: .5; }"],
+    ["no space before the hole", "if ({on}) { opacity: .5; }"],
+    ["space either side", "if ({on})  { opacity: .5; }"],
+    ["an expression with braces in it", "if ({ f({a: 1}) }) { opacity: .5; }"],
   ])("%s is fine", (_what, body) => {
     expect(() => emit(`const c = @@(\n  ${body}\n);\n`)).not.toThrow();
   });
@@ -188,7 +186,7 @@ describe("a condition head with something extra in it", () => {
  * **Reported by a user, and it was silently wrong**: the outer condition was dropped, so the inner
  * group applied on its own. Measured before the fix:
  *
- *     @@if ({this.off}) { cursor: none; @@if ({this.roomy}) { color: yellow; } }
+ *     if ({this.off}) { cursor: none; if ({this.roomy}) { color: yellow; } }
  *
  *     _merge({…}, this.off && {"cursor":…}, this.roomy && {"color":…})
  *                                          ^^^^^^^^^^^ the outer guard is gone
@@ -203,7 +201,7 @@ describe("a condition head with something extra in it", () => {
 /**
  * A group that produces no declaration — and CSS is what decides what it means.
  *
- * `@media print { }` is legal CSS that does nothing, so `@@if ({x}) { }` is legal here that does
+ * `@media print { }` is legal CSS that does nothing, so `if ({x}) { }` is legal here that does
  * nothing. **It is also how somebody debugs**: commenting out a group's body is the everyday way to
  * reach this shape, and it must not turn into a different program.
  *
@@ -211,10 +209,10 @@ describe("a condition head with something extra in it", () => {
  * — one piece of surrounding text per hole, plus the tail — and a group with nothing in it recorded
  * a hole while producing no segment. Every piece then slid one place left. Measured, four ways:
  *
- *     color: red; @@if ({c}) { }        the map was emitted TWICE, and the guard became loose text
- *     @@if ({a}) { } color: {v};        `a` became the VALUE of `color`, and `v` was loose text
- *     @@if ({variant}) { }              `_merge(variant)` — parses, and ships `class="l g"`
- *     color: red; @@if({a}){@@if({b}){}}  a TypeError out of magic-string, with no author position
+ *     color: red; if ({c}) { }        the map was emitted TWICE, and the guard became loose text
+ *     if ({a}) { } color: {v};        `a` became the VALUE of `color`, and `v` was loose text
+ *     if ({variant}) { }              `_merge(variant)` — parses, and ships `class="l g"`
+ *     color: red; if({a}){if({b}){}}  a TypeError out of magic-string, with no author position
  *
  * The third is the one that decided the shape of the fix: it compiles, it runs, and it invents two
  * class names out of the letters of a string. Nothing downstream can notice.
@@ -222,7 +220,7 @@ describe("a condition head with something extra in it", () => {
 /**
  * The shapes the nesting machinery has, and had no test for.
  *
- * A review counted them: `transform.test.ts` holds no `@@if` at all, and the deepest shape tested
+ * A review counted them: `transform.test.ts` holds no `if` at all, and the deepest shape tested
  * anywhere opened exactly ONE nested merge. Six branches of the emission had nothing exercising
  * them — and the empty group below is the one that turned out to be broken, so this is the gap that
  * let it ship rather than a second bug.
@@ -233,7 +231,7 @@ describe("a condition head with something extra in it", () => {
 describe("the nesting shapes nothing reached", () => {
   test("two nested merges live at once", () => {
     const out = emit(
-      `const card = @@(\n  color: red;\n  @@if ({a}) {\n    opacity: 0.5;\n    @@if ({b}) {\n      gap: 8px;\n      @@if ({c}) { padding: 4px; }\n    }\n  }\n);\n`,
+      `const card = @@(\n  color: red;\n  if ({a}) {\n    opacity: 0.5;\n    if ({b}) {\n      gap: 8px;\n      if ({c}) { padding: 4px; }\n    }\n  }\n);\n`,
     );
 
     // Counted in GUARD POSITION, because a bare `\bc\b` also matches the `c` in the class name
@@ -247,14 +245,14 @@ describe("the nesting shapes nothing reached", () => {
   });
 
   test("and two of them close on one segment", () => {
-    const out = emit(`const card = @@(\n  @@if ({a}) {\n    @@if ({b}) { gap: 8px; }\n  }\n  color: red;\n);\n`);
+    const out = emit(`const card = @@(\n  if ({a}) {\n    if ({b}) { gap: 8px; }\n  }\n  color: red;\n);\n`);
 
     expect(out).toMatch(/,\s*\{"color":"r-[^"]*",\}\)/);
   });
 
   test("a run resumed after a nested group, still inside a guard", () => {
     const out = emit(
-      `const card = @@(\n  @@if ({a}) {\n    color: red;\n    @@if ({b}) { gap: 8px; }\n    opacity: 0.5;\n  }\n);\n`,
+      `const card = @@(\n  if ({a}) {\n    color: red;\n    if ({b}) { gap: 8px; }\n    opacity: 0.5;\n  }\n);\n`,
     );
 
     expect(out).toMatch(/b\s*&&\s*\{"gap"[^}]*\}\s*,\s*\{"opacity"/);
@@ -263,13 +261,13 @@ describe("the nesting shapes nothing reached", () => {
   });
 
   test("a spread beside declarations inside a guard", () => {
-    const out = emit(`const card = @@(\n  @@if ({a}) {\n    ...{base};\n    color: red;\n  }\n);\n`);
+    const out = emit(`const card = @@(\n  if ({a}) {\n    ...{base};\n    color: red;\n  }\n);\n`);
 
     expect(out).toMatch(/a\s*&&\s*_merge\(\s*base\s*,\s*\{"color"/);
   });
 
   test("a spread alone under a guard opens no merge", () => {
-    const out = emit(`const card = @@(\n  @@if ({a}) { ...{base}; }\n);\n`);
+    const out = emit(`const card = @@(\n  if ({a}) { ...{base}; }\n);\n`);
 
     expect(out).toMatch(/_merge\(\s*a\s*&&\s*base\s*\)/);
   });
@@ -292,7 +290,7 @@ describe("the nesting shapes nothing reached", () => {
 
 describe("a group with nothing in it", () => {
   test("is legal, like the empty at-rule it is, and applies nothing", () => {
-    const out = emit(`const card = @@(\n  color: red;\n  @@if ({this.compact}) { }\n);\n`);
+    const out = emit(`const card = @@(\n  color: red;\n  if ({this.compact}) { }\n);\n`);
 
     // The guard is still evaluated — a browser evaluates `@media print` too — and contributes
     // nothing. What must never happen is the map appearing twice.
@@ -301,14 +299,14 @@ describe("a group with nothing in it", () => {
   });
 
   test("and the expressions on either side of it stay where they were written", () => {
-    const out = emit(`const card = @@( @@if ({a}) { } color: {v}; );\n`);
+    const out = emit(`const card = @@( if ({a}) { } color: {v}; );\n`);
 
     expect(out).toMatch(/\["r-[0-9a-zA-Z][^"\s\]]*",\s*v\]/);
     expect(out).toContain("a");
   });
 
   test("a block that is nothing but an empty group does not become its own condition", () => {
-    const out = emit(`const card = @@( @@if ({variant}) { } );\n`);
+    const out = emit(`const card = @@( if ({variant}) { } );\n`);
 
     // `_merge(variant)` was what it emitted. For `variant = "lg"` the runtime walked the string and
     // produced `class="l g"` — two class names that never existed, with nothing to report it.
@@ -317,7 +315,7 @@ describe("a group with nothing in it", () => {
   });
 
   test("and a group whose only content is an empty group is compiled, not thrown from", () => {
-    const out = emit(`const card = @@(\n  color: red;\n  @@if ({a}) { @@if ({b}) { } }\n);\n`);
+    const out = emit(`const card = @@(\n  color: red;\n  if ({a}) { if ({b}) { } }\n);\n`);
 
     expect(out.match(/"color"/g)).toHaveLength(1);
     expect(out).toContain("a");
@@ -330,7 +328,7 @@ describe("a group with nothing in it", () => {
     ["an empty nested rule", "&:hover { }"],
     ["an empty at-rule", "@media print { }"],
   ])("%s counts as nothing, and is still legal", (_what, body) => {
-    const out = emit(`const card = @@(\n  color: red;\n  @@if ({c}) { ${body} }\n);\n`);
+    const out = emit(`const card = @@(\n  color: red;\n  if ({c}) { ${body} }\n);\n`);
 
     expect(out.match(/"color"/g)).toHaveLength(1);
   });
@@ -346,7 +344,7 @@ describe("a group inside a group", () => {
 
   test("holds only when both conditions do", () => {
     const code = emitted(
-      `const s = @@(\n  opacity: 0.5;\n  @@if ({this.off}) {\n    cursor: none;\n    @@if ({this.roomy}) {\n      color: yellow;\n    }\n  }\n);\n`,
+      `const s = @@(\n  opacity: 0.5;\n  if ({this.off}) {\n    cursor: none;\n    if ({this.roomy}) {\n      color: yellow;\n    }\n  }\n);\n`,
     );
 
     // Whatever the shape, `this.off` must gate the inner group as well as the outer one.
@@ -357,7 +355,7 @@ describe("a group inside a group", () => {
 
   test("three deep", () => {
     const code = emitted(
-      `const s = @@(\n  @@if ({a}) {\n    @@if ({b}) {\n      @@if ({c}) {\n        color: red;\n      }\n    }\n  }\n);\n`,
+      `const s = @@(\n  if ({a}) {\n    if ({b}) {\n      if ({c}) {\n        color: red;\n      }\n    }\n  }\n);\n`,
     );
     const inner = code.slice(0, code.indexOf("r-c-red"));
 
@@ -366,7 +364,7 @@ describe("a group inside a group", () => {
 
   test("and a declaration in the outer group keeps only the outer guard", () => {
     const code = emitted(
-      `const s = @@(\n  @@if ({this.off}) {\n    cursor: none;\n    @@if ({this.roomy}) {\n      color: yellow;\n    }\n  }\n);\n`,
+      `const s = @@(\n  if ({this.off}) {\n    cursor: none;\n    if ({this.roomy}) {\n      color: yellow;\n    }\n  }\n);\n`,
     );
     const outer = code.slice(0, code.indexOf("r-cur-none"));
 
