@@ -70,7 +70,6 @@ export interface CssPluginOptions {
   readonly runtime?: string;
 }
 
-/** What Vite is handed. Only the hooks this uses are declared. */
 /** The bit of esbuild's plugin API the dependency scan hands us. Declared, never imported. */
 interface ScanBuild {
   onLoad(
@@ -85,6 +84,7 @@ export interface HotUpdate {
   read(): string | Promise<string>;
 }
 
+/** What Vite is handed. Only the hooks this uses are declared. */
 export interface CssPluginLike {
   name: string;
   enforce: "pre";
@@ -386,15 +386,21 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
      * check is against the concatenation. And a build that emitted no stylesheet at all is not
      * evidence of anything — an SSR build is the ordinary case, where the client build is what writes
      * the CSS — so there is nothing to check rather than everything to report.
+     *
+     * **The variables are asked about first, and that is not the same question.** It is about what
+     * the source READS, so it holds whether or not an asset was emitted; this hook used to ask it
+     * after the return above, so a build with no stylesheet skipped it and the two adapters answered
+     * one question differently. The esbuild adapter had it the right way round, with the reason
+     * written beside it.
      */
     generateBundle(_options, bundle) {
+      // Every file is in, so the question no single file can answer is answerable now.
+      sheet.verifyVariables();
+
       const sheets = Object.values(bundle).filter(
         (output) => output.type === "asset" && typeof output.source === "string" && output.fileName?.endsWith(".css"),
       );
       if (sheets.length === 0) return;
-
-      // Every file is in, so the question no single file can answer is answerable now.
-      sheet.verifyVariables();
 
       sheet.verify(
         sheets.map((output) => output.source as string).join("\n"),

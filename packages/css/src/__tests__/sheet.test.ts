@@ -353,6 +353,72 @@ describe("verifying rules that have no name", () => {
 
     expect(() => sheet.verify("@font-face{font-family:A}")).toThrow(/1 of the 2/);
   });
+
+  /**
+   * SHARED BY TWO FILES, which is where counting occurrences stops working.
+   *
+   * Every file that names a rule serves it, so the shipped text holds one copy per SERVING and not
+   * one per rule — and neither esbuild nor lightningcss merges identical `@font-face` blocks
+   * (measured, all three copies survive both). So two rules across three servings shipped three
+   * occurrences, `expected` was 2, and dropping one of the two rules still left 2 >= 2. The hole the
+   * counting was written to close came back the moment a nameless rule was shared.
+   *
+   * What is asked instead is how many DISTINCT bodies came back. Servings collapse into one, so
+   * duplication cannot inflate it; a rule that was dropped takes its body with it.
+   */
+  describe("and one shared by two files, which is what defeated the count", () => {
+    const shipped = (...bodies: string[]) => bodies.map((one) => `@font-face{${one}}`).join("");
+
+    test("three servings of two rules is not three rules", () => {
+      const sheet = new Sheet();
+      sheet.add("a.tsx", [A, B]);
+      sheet.add("b.tsx", [A]);
+
+      // What a build ships: A, B, and A again — and then B is dropped.
+      expect(() => sheet.verify(shipped("font-family:A", "font-family:A"))).toThrow(CssBlockError);
+    });
+
+    test("and all of them coming back is a pass, however many times each is served", () => {
+      const sheet = new Sheet();
+      sheet.add("a.tsx", [A, B]);
+      sheet.add("b.tsx", [A]);
+
+      expect(() => sheet.verify(shipped("font-family:A", "font-family:B", "font-family:A"))).not.toThrow();
+    });
+
+    /**
+     * A bundler may emit ONE asset for two chunks whose CSS is identical — measured on a real build,
+     * two routes writing the same block ended up pointing at one stylesheet. So the shipped text can
+     * hold FEWER copies than there are servings, and expecting one per serving would refuse a
+     * correct build.
+     */
+    test("and fewer copies than servings is not a failure", () => {
+      const sheet = new Sheet();
+      sheet.add("a.tsx", [A]);
+      sheet.add("b.tsx", [A]);
+
+      expect(() => sheet.verify(shipped("font-family:A"))).not.toThrow();
+    });
+
+    /** An at-rule with no body came back as no rule, whatever the word `@font-face` is doing there. */
+    test("the at-rule's name with no body after it is not a rule that came back", () => {
+      const sheet = new Sheet();
+      sheet.add("a.tsx", [A]);
+
+      expect(() => sheet.verify("@font-face")).toThrow(/1 of the 1/);
+    });
+
+    /**
+     * The body is not compared, because a minifier rewrites it: measured, lightningcss turned
+     * `unicode-range: U+0000-00FF` into `U+??`. Only how many distinct ones came back is asked.
+     */
+    test("a body the minifier rewrote is still a body", () => {
+      const sheet = new Sheet();
+      sheet.add("a.tsx", [A, B]);
+
+      expect(() => sheet.verify(shipped("font-family:A;unicode-range:U+??", "font-family:B"))).not.toThrow();
+    });
+  });
 });
 
 /**

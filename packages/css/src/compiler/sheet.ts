@@ -78,6 +78,53 @@ function write(className: string, block: EmittedBlock): string {
 }
 
 /**
+ * How many DIFFERENT rules of one nameless at-rule came back, by their bodies.
+ *
+ * **Counting occurrences was the first answer and it does not survive sharing.** Every file that
+ * names a rule serves it, so the shipped text holds one copy per SERVING — and neither esbuild nor
+ * lightningcss merges identical `@font-face` blocks (measured, all three copies of two rules
+ * survived both). So two rules across three servings shipped three occurrences against an expected
+ * two, and dropping one of the two rules still left `2 >= 2`. The hole the count was written to
+ * close came straight back the moment a nameless rule was shared by two files.
+ *
+ * Bodies rather than a count, and DISTINCT bodies rather than all of them, because both of the ways
+ * the shipped number is not the rule count point the same way: servings collapse into one, so
+ * duplication cannot inflate it, and a bundler emitting one asset for two chunks with identical CSS
+ * — measured on a real build — cannot deflate it either.
+ *
+ * The bodies are not compared with what the sheet wrote, only counted. A minifier rewrites them:
+ * measured, lightningcss turned `unicode-range: U+0000-00FF` into `U+??`. What it does not do is
+ * make one rule into two, or two into one — and the second of those is a rule that went missing,
+ * which is what this reports.
+ */
+function distinctBodies(processed: string, at: string): Set<string> {
+  const found = new Set<string>();
+  const opener = `@${at}`;
+
+  for (let index = processed.indexOf(opener); index !== -1; index = processed.indexOf(opener, index + 1)) {
+    const open = processed.indexOf("{", index);
+    // The at-rule came back with no body at all, which is the rule having gone missing and is
+    // reported by the count rather than counted as a body.
+    if (open === -1) continue;
+
+    /**
+     * Read to the first `}`, which is the whole body — a nameless at-rule's body holds DESCRIPTORS
+     * and nothing else, and `DESCRIPTORS` in `keywords.generated.ts` is what says so.
+     *
+     * Brace matching was written first and removed: `NAMELESS` holds `font-face` alone, no font-face
+     * descriptor takes a block, and the branch could not be reached. **If `NAMELESS` ever grows to
+     * an at-rule whose body can hold one — `@page` holds `@top-center { … }` — this has to grow
+     * with it**, which is why the assumption is written down here rather than left in the shape of
+     * the code.
+     */
+    const close = processed.indexOf("}", open);
+    // Whitespace is the one difference between two servings of one rule that is certain to happen.
+    found.add(processed.slice(open + 1, close === -1 ? undefined : close).replace(/\s+/g, ""));
+  }
+  return found;
+}
+
+/**
  * The rules of one sheet, in the order they are written out.
  *
  * Generic over what a rule carries beside its block, so nothing about the caller's shape is dropped
@@ -174,7 +221,7 @@ function nameIn(className: string, block: EmittedBlock): string {
  *
  * The transform is deliberately local: it reads one file and knows nothing about any other, which is
  * what makes it cacheable, incremental and parallel. **Every question that needs the whole picture
- * therefore lives here**, and there are exactly three of them:
+ * therefore lives here**, and there are four of them:
  *
  * 1. **Dedupe.** Identical blocks are one rule. Global and coordination-free, because agreeing on
  *    the same answer is what a hash is for — two people who never spoke write the same declarations
@@ -183,6 +230,10 @@ function nameIn(className: string, block: EmittedBlock): string {
  *    collision unlikely, not impossible, and probability is not a promise — this is the promise.
  * 3. **The round trip.** After post-processing, every class the transform emitted must still be
  *    present and every `var(--…)` still referenced.
+ * 4. **A `var()` reading a name nothing sets.** A name may be set by a block three components away,
+ *    so no single file knows — see {@link Sheet.verifyVariables}, which says the same thing from its
+ *    own side. It was the third for a while and this list said "exactly three"; a review found the
+ *    two halves disagreeing about how many there were.
  *
  * ## Why it is keyed by file, and why each file gets its own CSS
  *
@@ -458,7 +509,7 @@ export class Sheet {
     }
 
     for (const [at, expected] of nameless) {
-      const found = processed.split(`@${at}`).length - 1;
+      const found = distinctBodies(processed, at).size;
       if (found >= expected) continue;
       missing.push(`${expected - found} of the ${expected} \`@${at}\` rule(s) — ${found} came back`);
     }

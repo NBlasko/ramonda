@@ -385,6 +385,26 @@ describe("the assembled stylesheet", () => {
       plugin.generateBundle?.call({}, {}, { "index.js": { type: "chunk", fileName: "index.js" } }),
     ).not.toThrow();
   });
+
+  /**
+   * A NAME nothing sets is still a name nothing sets, whether or not a stylesheet was emitted.
+   *
+   * That check is about what the source READS, so it does not depend on an asset existing — the
+   * esbuild adapter runs it before looking for one, with the reason written down beside it. This
+   * hook ran it after the "no stylesheet, nothing to check" return, so a build with no CSS asset
+   * skipped it entirely, and the two adapters answered one question differently. Latent when a
+   * review found it, because a real Vite SSR build still carries the CSS asset here (7.3.6) — and a
+   * difference between two files that otherwise mirror each other is a fault whether or not it is
+   * reachable today.
+   */
+  test("but a variable nothing sets is refused even then", () => {
+    const plugin = ramondaCss();
+    plugin.transform.call({}, `const a = <div css=@@( color: var(--nothing-sets-this); )>x</div>;\n`, "/src/Card.tsx");
+
+    expect(() => plugin.generateBundle?.call({}, {}, { "index.js": { type: "chunk", fileName: "index.js" } })).toThrow(
+      /--nothing-sets-this/,
+    );
+  });
 });
 
 /**
