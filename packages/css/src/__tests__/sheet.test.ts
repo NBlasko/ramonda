@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
+import { LAYER_ORDER, SHEET_RANKS } from "../compiler/flatten";
 import { escapeClass } from "../compiler/names";
 import { Sheet } from "../compiler/sheet";
 
@@ -28,7 +29,7 @@ describe("dedupe", () => {
     sheet.add("a.tsx", [FLEX]);
     sheet.add("b.tsx", [FLEX]);
 
-    expect(sheet.css()).toBe(`@layer ramonda {\n.r-1111111111111111 { display:flex; }\n}\n`);
+    expect(sheet.css()).toBe(`${LAYER_ORDER}\n@layer ramonda.r11 {\n.r-1111111111111111 { display:flex; }\n}\n`);
   });
 
   test("and the same block twice in one file is too", () => {
@@ -159,20 +160,70 @@ describe("after a collision has already failed the build", () => {
   });
 });
 
-describe("the layer", () => {
+describe("the layers", () => {
   /**
-   * One named layer, beneath everything unlayered — which is every hand-written stylesheet. So an
-   * author's own `.card { display: block }` wins over a generated rule whatever the order of the
-   * files, and they never have to reason about specificity against generated output.
+   * Layers UNDER `ramonda`, which is still one name to an app: everything generated is beneath
+   * everything unlayered — which is every hand-written stylesheet — so an author's own
+   * `.card { display: block }` wins over a generated rule whatever order the files load in, and
+   * `@layer reset, ramonda, app;` still places the whole of it in one line. Both measured in
+   * Chromium, before and after the sub-layers, in `prototype-layers.mjs`.
    */
-  test("every rule sits in it", () => {
+  test("every rule sits in one of them, beneath the app's own CSS", () => {
     const sheet = new Sheet();
     sheet.add("a.tsx", [FLEX, GRID]);
 
     const css = sheet.css();
-    expect(css.startsWith("@layer ramonda {\n")).toBe(true);
+    expect(css.startsWith(`${LAYER_ORDER}\n@layer ramonda.`)).toBe(true);
     expect(css.endsWith("}\n")).toBe(true);
-    expect(css.match(/@layer/g)).toHaveLength(1);
+    // Nothing but layer blocks, so nothing generated is ever unlayered.
+    expect(css.replace(`${LAYER_ORDER}\n`, "").replace(/@layer ramonda\.r\d+ \{\n(?:.*\n)*?\}\n/g, "")).toBe("");
+  });
+
+  /**
+   * The statement is what makes the rank order the same in every stylesheet, and a file declares the
+   * WHOLE list rather than the ranks it uses.
+   *
+   * Measured in Chromium, and a subset is worse than useless: a file holding only `margin-left`,
+   * loading before one holding `margin` and `margin-left`, put the shorthand's layer AFTER the
+   * longhand's, because CSS appends a name it has not seen to the end of the order — `4px` became
+   * `0px`. With no statement at all the order is first-USE order, which fails the same way.
+   */
+  test("the statement declares every rank, not the ones this file uses", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [FLEX]);
+
+    const declared = sheet.cssFor("a.tsx").split("\n")[0];
+    expect(declared).toBe(LAYER_ORDER);
+    expect(declared.match(/ramonda\.r/g)).toHaveLength(SHEET_RANKS.length);
+  });
+
+  /**
+   * The fault this exists for, at the level the sheet can be asked about it: one rule in two files'
+   * stylesheets, and the second file must not be able to move it.
+   *
+   * Measured in Chromium through a real build before the layers: `Card.tsx` writing `color: red` and
+   * `@media { color: blue }` rendered blue on its own and red once `Panel.tsx` — which writes only
+   * `color: red` — loaded after it. The layers put the two rules in different layers, so the
+   * sequence they land in decides nothing. 2,250 load orders swept, both minifiers, zero wrong.
+   */
+  test("a conditional rule and an unconditional one are in different layers", () => {
+    const sheet = new Sheet();
+    const RED = block("r-6666666666666666", "color:red;");
+    const BLUE = { ...block("r-7777777777777777", "color:blue;"), conditions: ["@media (min-width:1px)"] };
+    sheet.add("Card.tsx", [RED, BLUE]);
+    sheet.add("Panel.tsx", [RED]);
+
+    const card = sheet.cssFor("Card.tsx");
+    const red = /@layer (ramonda\.r\d+) \{\n\.r-6666/.exec(card)?.[1];
+    const blue = /@layer (ramonda\.r\d+) \{\n@media/.exec(card)?.[1];
+    expect(red).toBeDefined();
+    expect(blue).toBeDefined();
+    expect(red).not.toBe(blue);
+    // Later in the declared order, which is what makes the conditional one win.
+    expect(LAYER_ORDER.indexOf(`${blue}`)).toBeGreaterThan(LAYER_ORDER.indexOf(`${red}`));
+
+    // And the file that writes only the shared rule declares the same order.
+    expect(sheet.cssFor("Panel.tsx").startsWith(LAYER_ORDER)).toBe(true);
   });
 
   test("an empty sheet is empty text, not an empty layer", () => {
@@ -195,7 +246,9 @@ describe("a named rule", () => {
     const sheet = new Sheet();
     sheet.add("a.tsx", [SLIDE]);
 
-    expect(sheet.css()).toBe(`@layer ramonda {\n@keyframes r-4444444444444444 { from{opacity:0;}to{opacity:1;} }\n}\n`);
+    expect(sheet.css()).toBe(
+      `${LAYER_ORDER}\n@layer ramonda.r11 {\n@keyframes r-4444444444444444 { from{opacity:0;}to{opacity:1;} }\n}\n`,
+    );
   });
 
   test("and one whose at-rule takes no name carries none", () => {
@@ -290,7 +343,7 @@ describe("an atomic rule", () => {
     const sheet = new Sheet();
     sheet.add("a.tsx", [atom("r-1111111111111111", "display:flex;", { property: "display" })]);
 
-    expect(sheet.css()).toBe("@layer ramonda {\n.r-1111111111111111 { display:flex; }\n}\n");
+    expect(sheet.css()).toBe(`${LAYER_ORDER}\n@layer ramonda.r11 {\n.r-1111111111111111 { display:flex; }\n}\n`);
   });
 
   test("a nested selector is written onto the class, not inside the rule", () => {

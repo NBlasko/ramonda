@@ -36,7 +36,7 @@ export function messageFor(one: UnknownVariable): string {
     `fallback — \`var(${one.read.name}, <value>)\` — which says it may be absent.`
   );
 }
-import { sheetRank, withParent } from "./flatten";
+import { LAYER_ORDER, layerFor, sheetRank, withParent } from "./flatten";
 import { escapeClass } from "./names";
 import type { EmittedBlock } from "./transform";
 
@@ -90,6 +90,34 @@ function write(className: string, block: EmittedBlock): string {
  */
 function ordered<T extends { block: EmittedBlock }>(rules: Iterable<[string, T]>): [string, T][] {
   return [...rules].sort((a, b) => sheetRank(a[1].block) - sheetRank(b[1].block));
+}
+
+/**
+ * Rules that are already in order, written out as a stylesheet: the layer statement, then a layer
+ * per rank.
+ *
+ * **Why a layer per rank rather than one `ramonda`** is on {@link layerFor}, and the short of it is
+ * that a stylesheet is a sequence while a layer is not: one rule is written into every file that
+ * names it, so the sequence depends on which chunk loaded first and the rank's order was undone by
+ * an unrelated component. The layer statement is what makes the order the same in every file.
+ *
+ * Still emitted in rank order, and each layer holds its rules in the order they were given — the
+ * layer decides between ranks, the sequence still decides within one, and a reader of the output
+ * sees the same order the sheet has always written.
+ */
+function wrap<T extends { block: EmittedBlock }>(rules: readonly [string, T][]): string {
+  if (rules.length === 0) return "";
+
+  let out = `${LAYER_ORDER}\n`;
+  for (let index = 0; index < rules.length; ) {
+    const rank = sheetRank(rules[index][1].block);
+    let inside = "";
+    for (; index < rules.length && sheetRank(rules[index][1].block) === rank; index++) {
+      inside += write(rules[index][0], rules[index][1].block);
+    }
+    out += `@layer ${layerFor(rank)} {\n${inside}}\n`;
+  }
+  return out;
 }
 
 /**
@@ -277,11 +305,7 @@ export class Sheet {
    * order to emit, with the rank sorting within it as it always did.
    */
   cssFor(file: string): string {
-    let out = "";
-    for (const [className, rule] of this.ownOrder(file)) {
-      out += write(className, rule.block);
-    }
-    return out === "" ? "" : `@layer ramonda {\n${out}}\n`;
+    return wrap(this.ownOrder(file));
   }
 
   /** This file's own claims, in the order it wrote them, sorted by {@link sheetRank} within that. */
@@ -308,11 +332,7 @@ export class Sheet {
    * substituted upstream, and nesting is what CSS itself resolves.
    */
   css(): string {
-    if (this.rules.size === 0) return "";
-
-    let out = "@layer ramonda {\n";
-    for (const [className, rule] of ordered(this.rules)) out += write(className, rule.block);
-    return `${out}}\n`;
+    return wrap(ordered(this.rules));
   }
 
   /**

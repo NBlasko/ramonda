@@ -459,6 +459,15 @@ is why the sheet does not grow with the number of blocks.
 Order is decided by `sheetRank` — `conditional * 1000 - breadth` — not by module graph order, because
 a rule may land in any chunk and a chunk has to stand on its own.
 
+**And the rank is a LAYER, not a position, because a position was not enough.** One rule goes into
+the stylesheet of every file that names it — the thing that lets a chunk stand alone — so a second
+file re-emitting a shared rule put it after the first file's higher-ranked ones and same-specificity
+later-wins undid the rank. Measured in Chromium through a real build: a file writing `color: red` and
+`@media { color: blue }` rendered blue alone and red once an innocent file writing only `color: red`
+loaded after it. A layer's place is fixed by its declaration rather than by where its rules sit, so
+each rank gets a layer under `ramonda` and every stylesheet declares the whole order. What this does
+NOT settle is two declarations of the SAME rank; see `PLAN.md`.
+
 The sheet does sit in a named `@layer ramonda`, and the honest statement of what that buys is on the
 docs page rather than here: **unlayered CSS beats layered CSS**, checked before specificity, so an
 author's ordinary stylesheet wins without doing anything. An author who wants the other order writes

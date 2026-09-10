@@ -1798,6 +1798,27 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 - **The tooling decision.** A file using this cannot be read by biome or oxlint directly. Track K
   turns that into "our tooling" rather than "no tooling", but it stays a deliberate choice.
 - **Nesting depth in v1** — `&`, pseudo-classes and `@media` are recommended; anything deeper waits.
+- **Two declarations of the SAME rank, in two files.** A layer per rank fixed the cross-rank
+  reversal — see below — and this half is not fixed.
+
+  Two overlapping conditions on one property, which is what mobile-first breakpoints are: `padding`
+  under `@media (min-width: 40rem)` and again under `@media (min-width: 64rem)`. Both are
+  conditional and neither is a shorthand, so the rank is equal and the sheet orders them by the
+  file's own order. A second file writing only the first of the two re-emits it into the same layer,
+  after the other, and the override dies. Measured: 280 of 750 load orders wrong.
+
+  **No per-file layer scheme settles it, and that is measured rather than argued.** A layer per
+  POSITION within the rank looks like the answer and is worse than it looks — a position belongs to
+  the file, so a shared rule gets a different layer in each file that names it: 144 of 750 wrong. The
+  reason is the same one that makes the rank layers work: a layer's place is fixed by its
+  declaration, and CSS appends a name it has not seen to the END of the order. A stylesheet cannot
+  declare an order it does not yet know, and a file emitting one half of a pair does not know the
+  other half exists.
+
+  So the answer is not a layer. Either the rank separates them intrinsically — a `min-width` is a
+  number, and a narrower query could rank lower, which is what every other framework does — or the
+  sheet reports the pair, since it is the one thing that has every file at once. Undecided, and
+  `prototype-layers.mjs` holds every measurement above.
 
 ## How to work here
 
@@ -1815,4 +1836,5 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
   node packages/css/prototype-tooling.mjs
   node packages/css/prototype-scale.mjs [instances]
   node packages/css/prototype-bailout.mjs
+  node packages/css/prototype-layers.mjs
   ```

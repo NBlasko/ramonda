@@ -277,6 +277,54 @@ describe("a block written in two routes that never load together", () => {
 });
 
 /**
+ * The cascade, all the way through a production build — a real minifier included.
+ *
+ * The fault this stands over is one no author could have found. One rule goes into the stylesheet of
+ * every file that names it, which is what lets a chunk stand on its own; a stylesheet is a sequence,
+ * so a second file re-emitting a shared rule put it AFTER the first file's higher-ranked ones and
+ * same-specificity later-wins undid the order. Measured in Chromium: `Card.tsx` writing `color: red`
+ * and `@media { color: blue }` rendered blue on its own and RED once an innocent `Panel.tsx` loaded
+ * after it. Adding an unrelated component moved a page nobody edited.
+ *
+ * A layer per rank fixes it, because a layer's place is set by its declaration and not by where its
+ * rules sit. What a test can ask of a build is the two things the browser then relies on: every rule
+ * is in the layer for its rank, and every stylesheet declares the whole rank order — including a
+ * file that uses one rank, since a declaration listing only what a file uses is worse than useless
+ * (measured: CSS appends an unseen name to the END of the order, so `margin-left: 4px` became
+ * `0px`). The browser half is `prototype-layers.mjs`: 2,250 load orders, both minifiers, zero wrong.
+ */
+test("the layer order is declared in full by every stylesheet, and survives minification", () => {
+  const root = project(
+    `export const card = @@( color: red; @media (min-width: 1px) { color: blue; } );\n`,
+    `import { card } from "./Card";\nimport { panel } from "./Panel";\nconsole.log(card, panel);\n`,
+  );
+  // Writes only the rule `Card.tsx` also writes, which is the file that used to reverse it.
+  writeFileSync(join(root, "src", "Panel.tsx"), `export const panel = @@( color: red; );\n`);
+
+  const result = build(root);
+  expect(result.ok).toBe(true);
+
+  const css = readdirSync(join(root, "out", "assets"))
+    .filter((each) => each.endsWith(".css"))
+    .map((each) => readFileSync(join(root, "out", "assets", each), "utf8"))
+    .join("\n");
+
+  // Every rank, in every stylesheet — the minifier may trim a redundant name but not the order.
+  const declared = [...css.matchAll(/@layer ([^{;]*ramonda\.r[^{;]*);/g)].map((each) => each[1]);
+  expect(declared.length).toBeGreaterThan(0);
+
+  // The two declarations are in different layers, and the conditional one's is declared later.
+  const unconditional = /@layer (ramonda\.r\d+)\s*\{\s*\.r-[\w-]+\s*\{\s*color: ?red/.exec(css)?.[1];
+  const conditional = /@layer (ramonda\.r\d+)\s*\{\s*@media/.exec(css)?.[1];
+  expect(unconditional).toBeDefined();
+  expect(conditional).toBeDefined();
+  expect(conditional).not.toBe(unconditional);
+
+  const order = declared.join(",").split(",");
+  expect(order.indexOf(conditional as string)).toBeGreaterThan(order.indexOf(unconditional as string));
+});
+
+/**
  * A named site that REGISTERS, all the way through a production build.
  *
  * `@property` is the one named site whose whole purpose is a browser behaviour rather than a name:

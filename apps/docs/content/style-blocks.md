@@ -156,6 +156,12 @@ The `@layer a, b;` statement is what ranks them, and **a layer named later in it
 Without that statement the order is whichever layer the browser meets first, which is the same "your
 bundler decides" problem in a smaller box: write the statement.
 
+**Inside `ramonda` there are numbered layers**, and you will see them if you read the output:
+`@layer ramonda.r11 { … }`. They are how the generated CSS keeps its own order — a shorthand before
+its longhands, an unconditional declaration before a conditional one — and they are not something to
+write against. `ramonda` is the name: putting it in your own statement orders everything in it, and
+the numbers can change between versions.
+
 ## Three ways to write one
 
 ```tsx

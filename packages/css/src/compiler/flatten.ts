@@ -73,6 +73,57 @@ export function sheetRank(declaration: { property?: string; conditions?: readonl
   return conditional * 1000 - breadth;
 }
 
+/**
+ * Every rank {@link sheetRank} can answer, ascending — the sheet's whole order, known before a build.
+ *
+ * Known in advance because both halves of a rank are: conditional is a bit, and breadth comes from a
+ * generated table. Twenty-four of them, and that is what makes the layer scheme below possible.
+ */
+export const SHEET_RANKS: readonly number[] = (() => {
+  const breadths = new Set<number>([0]);
+  for (const covered of Object.values(SHORTHANDS)) breadths.add(covered.length);
+
+  const ranks = new Set<number>();
+  for (const breadth of breadths) {
+    ranks.add(-breadth);
+    ranks.add(1000 - breadth);
+  }
+  return [...ranks].sort((a, b) => a - b);
+})();
+
+/**
+ * The cascade layer a rank's rules go in, and it is the fix for a fault no author could have seen.
+ *
+ * **One rule is written into the stylesheet of every file that names it** — that is what lets a chunk
+ * stand on its own, and it is measured (an owner-per-rule left a lazily-loaded route naming a class
+ * no stylesheet held). But a stylesheet is a sequence, so a file re-emitting a shared rule puts it
+ * AFTER the rules of whichever file loaded first, and same-specificity later-wins undoes the order
+ * the rank promised. Measured in Chromium through a real build: `Card.tsx` writing `color: red` and
+ * `@media { color: blue }` rendered blue alone and red once an innocent `Panel.tsx` — which writes
+ * only `color: red` — loaded after it. Adding an unrelated component moved a page nobody edited.
+ *
+ * A layer answers it because a layer's position is decided by its DECLARATION and not by where its
+ * rules are: put every rank in its own layer, declare the whole list at the top of every stylesheet,
+ * and re-emission cannot move anything. Measured over 2,250 load orders of random rank sets across
+ * three files, through both minifiers a Vite build can use: zero disagreements.
+ *
+ * **The whole list, in every stylesheet, and that is not caution.** Measured: a stylesheet declaring
+ * only the ranks it uses is worse than useless — a file holding just `margin-left` loading before one
+ * holding `margin` and `margin-left` put the shorthand's layer AFTER the longhand's, because CSS
+ * appends a name it has not seen to the END of the order. `margin-left: 4px` became `0px`. With no
+ * statement at all the order is first-USE order, which fails the same way.
+ *
+ * What this does NOT settle is two declarations of the same rank — the sheet has always ordered
+ * those by the file's own order, and a layer cannot help, since a file that emits only one of them
+ * would have to know the other to declare its layer. See `PLAN.md`.
+ */
+export function layerFor(rank: number): string {
+  return `ramonda.r${String(SHEET_RANKS.indexOf(rank)).padStart(2, "0")}`;
+}
+
+/** The statement that fixes the order of every rank layer, which each stylesheet begins with. */
+export const LAYER_ORDER = `@layer ${SHEET_RANKS.map(layerFor).join(",")};`;
+
 /** Whether a shorthand sets everything another property sets, so a later one CLEARS it in the merge. */
 export function covers(shorthand: string, other: string): boolean {
   return SHORTHANDS[shorthand]?.includes(other) ?? false;

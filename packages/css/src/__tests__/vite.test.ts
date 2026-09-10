@@ -124,7 +124,7 @@ describe("the stylesheet, one module per file", () => {
     transform.call({}, STYLED, "/src/Card.tsx");
 
     const css = load.call({}, cssOf("/src/Card.tsx"));
-    expect(css).toContain("@layer ramonda {");
+    expect(css).toContain("@layer ramonda.");
     expect(css).toContain("display:flex;");
   });
 
