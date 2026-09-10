@@ -1839,4 +1839,13 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
   node packages/css/prototype-bailout.mjs
   node packages/css/prototype-layers.mjs
   node packages/css/prototype-dev-vs-build.mjs
+  node packages/css/prototype-shorthands.mjs
+  ```
+
+  And two generators that ask BROWSERS rather than `mdn-data`, run on demand because three engines
+  are not something `pnpm check` should download:
+
+  ```
+  node scripts/build-prefixed-properties.mjs
+  node scripts/build-shorthand-leaves.mjs
   ```

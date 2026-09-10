@@ -81,6 +81,14 @@ const properties = require("mdn-data/css/properties.json");
  * failed with `Unexpected token ']'` and named neither file. A reader that cannot be broken by a
  * formatting decision is one less way for a generated file to take the build down.
  */
+const LEAVES = JSON.parse(
+  (
+    /LEAVES: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\})\s*;/.exec(
+      readFileSync(join(root, "packages/css/src/compiler/leaves.generated.ts"), "utf8"),
+    )?.[1] ?? "{}"
+  ).replace(/,(\s*[}\]])/g, "$1"),
+);
+
 const PREFIXED = JSON.parse(
   (
     /PREFIXED: readonly string\[\] = (\[[\s\S]*?\])\s*;/.exec(
@@ -664,7 +672,25 @@ const MORE_UNITS = [
  * The NAMES come from `prefixed.generated.ts` rather than from `mdn-data`, because `mdn-data` has 99
  * of them and the engines have 262 between them — see `build-prefixed-properties.mjs`.
  */
-const named = [...new Set([...Object.keys(properties).filter((name) => !name.startsWith("-")), ...PREFIXED])].sort();
+const named = [
+  ...new Set([
+    ...Object.keys(properties).filter((name) => !name.startsWith("-")),
+    ...PREFIXED,
+    /**
+     * And every LEAF an engine names, which `mdn-data` may not know at all.
+     *
+     * A shorthand's clear-list can only name a property this list holds, so a leaf missing from it is
+     * a leaf the merge cannot clear. Measured: Chromium resets four `timeline-trigger-activation-*`
+     * and `timeline-trigger-active-*` longhands that `mdn-data` has never heard of — it lists
+     * `timeline-trigger-exit-range-*` instead — so `timeline-trigger` could not clear them and the
+     * longhand's class would have landed and won.
+     *
+     * A leaf with no `mdn-data` entry gets `CssValue` and no value checking, the same as an
+     * engine-only prefixed name, and that is the honest answer: there is no grammar to read.
+     */
+    ...Object.values(LEAVES).flat(),
+  ]),
+].sort();
 
 freeIsFree();
 
@@ -782,138 +808,24 @@ for (const name of named) {
 }
 
 /**
- * Shorthand -> every longhand it sets, transitively.
+ * Every property's leaves — itself, for a longhand — from the ENGINES rather than from `mdn-data`.
  *
- * **Composition needs this and nothing before it did.** A shorthand and its longhand are DIFFERENT
- * properties, so merging two blocks keeps both classes and the STYLESHEET breaks the tie — measured
- * in Chromium, `.a{padding:8px}` with `.b{padding-left:40px}` gives 40px whichever order the classes
- * are written in, and 8px if the longhand is emitted first. Against the call site, silently.
+ * `mdn-data`'s own `initial` field was the source and it is not usable: it was patched by hand twice
+ * here, for four logical shorthands whose `initial` names an unrelated property or the wrong side and
+ * six it does not know are shorthands, each patch found by a review measuring a silently lost style.
+ * Measured AFTER both patches, against what the engines reset: **37 more longhands still missing**,
+ * five of them verified end to end against plain CSS in Chromium. The pattern is age —
+ * `animation-range-*`, `border-image-*`, `text-decoration-thickness`, `background-position-x/y` are
+ * longhands added to a shorthand after its `initial` field was written.
  *
- * The merge answers it as CSS's own cascade does — a later shorthand clears its own longhands — and
- * this is the table it reads. **No value parsing anywhere**, which is why it is the answer: measured,
- * only 10 of the 78 shorthands split by a mechanical rule, and on this repository's own blocks 50 of
- * 108 declarations are shorthands with 7 of those splitting. Expanding VALUES would buy almost
- * nothing; clearing longhands buys all of it.
- *
- * `mdn-data` marks a shorthand by giving it an `initial` that is an ARRAY — the longhands it sets —
- * and the table is NOT that list. Two things it misses, both measured against the real table:
- *
- * - **it stops at sub-shorthands.** `border` sets `border-width`, which is itself a shorthand for
- *   four, so the list has to be closed transitively to reach the leaves.
- * - **it names no shorthand at all**, so `border` would not clear `border-left` — measured, both
- *   classes stayed on the element and a rule that `border` replaces survived it.
- *
- * So what a property CLEARS is every other property whose leaves are a SUBSET of its own, which is
- * what "sets everything that one sets" means and is computable from the same data. A longhand's
- * leaf set is itself alone, so nothing is a subset of it and it clears nothing — which is right.
- *
- * Computed once here rather than by a recursive merge on every render.
+ * See `scripts/build-shorthand-leaves.mjs`, which asks Chromium, Firefox and WebKit and writes
+ * `leaves.generated.ts`. Both hand-patches are gone with it: measured, the engines answer exactly
+ * what each of them said, so they were describing the engines all along.
  */
-function longhandsOf(name, properties, seen = new Set()) {
-  const direct = properties[name]?.initial;
-  if (!Array.isArray(direct)) return [];
-
-  const out = [];
-  for (const one of direct) {
-    if (seen.has(one)) continue;
-    seen.add(one);
-    const deeper = longhandsOf(one, properties, seen);
-    // A sub-shorthand is replaced by what it sets: the merge clears leaves, and a name that is
-    // itself a shorthand would be a key nothing ever writes.
-    if (deeper.length === 0) out.push(one);
-    else out.push(...deeper);
-  }
-  return out;
-}
-
-/**
- * The four logical shorthands `mdn-data`'s own `initial` field gets WRONG, corrected here.
- *
- * Found by a review of the runtime merge, which measured what it costs — and it is not subtle:
- *
- *     color: red; border-block-start: 1px solid blue;   ->  `color: red` silently gone
- *     border-top: 1px solid red; border-block-end: …;   ->  `border-top` silently gone
- *
- * `initial` is a shorthand's list of longhands by convention, and for these four it names something
- * else entirely:
- *
- *     border-block-start   ["border-width", "border-style", "color"]
- *     border-inline-start  ["border-width", "border-style", "color"]
- *     border-inline-end    ["border-width", "border-style", "color"]
- *     border-block-end     ["border-top-width", "border-top-style", "border-top-color"]
- *
- * The first three name `color`, an unrelated property, and two shorthands that expand to every
- * physical border longhand. The fourth names the wrong SIDE. Each of the correct names exists in
- * `mdn-data`; only this field is wrong, and `assertLogicalLeaves` below fails the build if the next
- * one is — or if this table stops being needed.
- */
-const LOGICAL_LONGHANDS = {
-  "border-block-start": ["border-block-start-width", "border-block-start-style", "border-block-start-color"],
-  "border-block-end": ["border-block-end-width", "border-block-end-style", "border-block-end-color"],
-  "border-inline-start": ["border-inline-start-width", "border-inline-start-style", "border-inline-start-color"],
-  "border-inline-end": ["border-inline-end-width", "border-inline-end-style", "border-inline-end-color"],
-};
-
-/**
- * The six logical shorthands `mdn-data` does not know are shorthands at all.
- *
- * `border-inline-width`'s `initial` is `"medium"` — the initial VALUE, where every other shorthand's
- * is its list of longhands. So it was read as a longhand that sets only itself, and
- * `border-inline-width: 8px; border-width: 0px` left both classes on the element with the wrong one
- * winning. Measured in Chromium against plain CSS, in both writing modes.
- *
- * DERIVED rather than listed, because the shape is the whole rule: a two-side logical name whose
- * `-start` and `-end` siblings both exist sets exactly those two. That also makes it self-checking —
- * a `mdn-data` release that starts listing them turns this into nothing, and `assertDerivedPairs`
- * says so rather than letting a correction outlive its bug.
- */
-const DERIVED_PAIRS = {};
-for (const name of named) {
-  for (const axis of ["block", "inline"]) {
-    const at = name.indexOf(`-${axis}`);
-    if (at === -1) continue;
-    const rest = name.slice(at);
-    if (rest.startsWith(`-${axis}-start`) || rest.startsWith(`-${axis}-end`)) continue;
-    const head = name.slice(0, at);
-    const tail = name.slice(at + axis.length + 1);
-    const pair = [`${head}-${axis}-start${tail}`, `${head}-${axis}-end${tail}`];
-    if (!pair.every((one) => properties[one] !== undefined)) continue;
-    if (Array.isArray(properties[name]?.initial)) continue;
-    DERIVED_PAIRS[name] = pair;
-  }
-}
-
-/** Every property's leaves — itself, for a longhand. */
 const leavesOf = new Map();
 for (const name of named) {
-  const corrected = LOGICAL_LONGHANDS[name] ?? DERIVED_PAIRS[name];
-  const leaves = corrected ?? longhandsOf(name, properties);
+  const leaves = LEAVES[name] ?? [];
   leavesOf.set(name, new Set(leaves.length === 0 ? [name] : leaves));
-}
-
-assertDerivedPairs();
-
-/** The six above are exactly the ones `mdn-data` is missing, and the build says when it is not. */
-function assertDerivedPairs() {
-  const found = Object.keys(DERIVED_PAIRS).sort();
-  const expected = [
-    "border-block-color",
-    "border-block-style",
-    "border-block-width",
-    "border-inline-color",
-    "border-inline-style",
-    "border-inline-width",
-  ];
-  if (found.join(",") === expected.join(",")) return;
-  const gone = expected.filter((one) => !found.includes(one));
-  const extra = found.filter((one) => !expected.includes(one));
-  console.error(
-    `\n${TAG} the logical shorthands mdn-data does not list longhands for have changed:\n\n` +
-      (gone.length > 0 ? `  now listed, so the correction is dead: ${gone.join(", ")}\n` : "") +
-      (extra.length > 0 ? `  newly missing, so the merge would not clear them: ${extra.join(", ")}\n` : "") +
-      `\n  Update the list in \`assertDerivedPairs\`.\n`,
-  );
-  process.exit(1);
 }
 
 assertLogicalLeaves();
@@ -964,19 +876,9 @@ function assertLogicalLeaves() {
     console.error(
       `\n${TAG} a logical shorthand sets a property outside its own side, which the merge would ` +
         `clear:\n\n  ${wrong.join("\n  ")}\n\n` +
-        `  \`initial\` in mdn-data is wrong for it. Add the real longhands to LOGICAL_LONGHANDS.\n`,
-    );
-    process.exit(1);
-  }
-
-  const stale = Object.keys(LOGICAL_LONGHANDS).filter((name) => {
-    const derived = longhandsOf(name, properties);
-    return derived.length > 0 && derived.every((leaf) => leaf.startsWith(`${name}-`));
-  });
-  if (stale.length > 0) {
-    console.error(
-      `\n${TAG} mdn-data now derives ${stale.join(", ")} correctly. Delete ` +
-        `${stale.length === 1 ? "that entry" : "those entries"} from LOGICAL_LONGHANDS.\n`,
+        `  It comes from \`leaves.generated.ts\` now, so either an engine really does that — which is ` +
+        `a browser bug worth reading about before working around — or the enumeration in ` +
+        `\`build-shorthand-leaves.mjs\` picked up something it should not have.\n`,
     );
     process.exit(1);
   }

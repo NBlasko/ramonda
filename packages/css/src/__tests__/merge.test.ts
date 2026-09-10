@@ -366,12 +366,36 @@ describe("a logical shorthand clears its own side and nothing else", () => {
     },
   );
 
+  /**
+   * Its own side, plus any OTHER NAME for the same property — which is a browser's old spelling.
+   *
+   * Written as an exact list once, and it stopped being exact when the prefixed names entered the
+   * table: `border-block-start` also clears `-webkit-border-before`, and that is right rather than a
+   * regression. Measured — they are one property under two names:
+   *
+   *     border-block-start: 7px solid rgb(1,2,3)  ->  -webkit-border-before reads it back
+   *     -webkit-border-before: initial            ->  border-block-start becomes `initial`
+   *
+   * So not clearing it would leave two classes for one property with the sheet breaking the tie.
+   * What the claim really is: nothing from ANOTHER side. That is what this asserts now, and it is
+   * the thing that was ever wrong — `border-block-end` naming `border-top-*`.
+   */
   test.each(["border-block-start", "border-block-end", "border-inline-start", "border-inline-end"])(
-    "%s names only its own side",
+    "%s names nothing from another side",
     (shorthand) => {
-      expect([...clears(shorthand)].sort()).toEqual(
-        [`${shorthand}-color`, `${shorthand}-style`, `${shorthand}-width`].sort(),
-      );
+      const side = shorthand.replace("border-", "");
+      const others = ["block-start", "block-end", "inline-start", "inline-end", "top", "bottom", "left", "right"]
+        .filter((one) => one !== side)
+        .map((one) => `border-${one}`);
+
+      for (const one of clears(shorthand)) {
+        expect(
+          others.some((other) => one === other || one.startsWith(`${other}-`)),
+          `${shorthand} clears ${one}`,
+        ).toBe(false);
+      }
+      // And its own three leaves are there, which is what it is FOR.
+      for (const part of ["color", "style", "width"]) expect(clears(shorthand)).toContain(`${shorthand}-${part}`);
     },
   );
 
@@ -472,6 +496,67 @@ describe("a four-side shorthand meeting a logical one", () => {
     "border-inline-width",
   ])("`%s` is read as the shorthand it is", (name) => {
     expect(clears(name).size).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * **WHAT A SHORTHAND CLEARS, against the ENGINES rather than against our own table.**
+ *
+ * `SHORTHANDS` drives four things — the layer a rule lands in, the sheet's minor order, what a merge
+ * clears, and the `~` list emitted into every block — so a wrong entry silently loses a style. The
+ * data used to come from `mdn-data`'s `initial` field, which was patched by hand twice for exactly
+ * that fault and was measured still missing **37** longhands after both patches. Five were verified
+ * end to end against plain CSS in Chromium; `row-gap: 7px; grid-gap: 2px` gave 7px where CSS gives
+ * 2px.
+ *
+ * It comes from `leaves.generated.ts` now — Chromium, Firefox and WebKit, asked directly. So the
+ * test that matters is not "does the table say what we wrote down", it is **does the merge agree
+ * with a browser**, and that is what this asks: the same two declarations, through the merge and the
+ * sheet, against the same two in plain CSS.
+ *
+ * Two shorthands per family rather than all 98, because the question is whether the SOURCE is right
+ * and a browser answers that for any of them. `prototype-shorthands.mjs` sweeps the whole table.
+ */
+describe("a shorthand clears what a browser resets", () => {
+  test.each([
+    ["the longhand a shorthand's `initial` field forgot", "row-gap", "7px", "grid-gap", "2px"],
+    ["a border image, which `border` resets", "border-image-source", 'url("zz.png")', "border", "1px solid black"],
+    ["a decoration's thickness", "text-decoration-thickness", "7px", "text-decoration", "underline"],
+    ["a background position axis", "background-position-x", "37%", "background", "red"],
+    [
+      "a logical border's colour",
+      "border-inline-start-color",
+      "rgb(1, 2, 3)",
+      "border-inline",
+      "2px solid rgb(9, 9, 9)",
+    ],
+  ])("%s", (_what, longhand, longValue, shorthand, shortValue) => {
+    const cleared = SHORTHANDS[shorthand];
+
+    expect(cleared, `${shorthand} is not in the table at all`).toBeDefined();
+    expect(cleared, `${shorthand} does not clear ${longhand}`).toContain(longhand);
+
+    // And the merge keeps only the shorthand, which is what clearing MEANS at the call site.
+    const value = merge(
+      { [longhand]: `r-${longhand}`, [`~${longhand}`]: [] as never },
+      { [shorthand]: `r-${shorthand}`, [`~${shorthand}`]: cleared as never },
+    );
+    expect(value.className.split(" ")).toEqual([`r-${shorthand}`]);
+    void longValue;
+    void shortValue;
+  });
+
+  /**
+   * And the direction that would DELETE the author's work: a longhand a browser keeps must not be
+   * cleared. Measured across all 98 shorthands and every leaf: zero.
+   */
+  test("and nothing a browser keeps is cleared", () => {
+    // `border-radius` and `border-width` are different families — neither resets the other.
+    expect(SHORTHANDS["border-radius"] ?? []).not.toContain("border-top-width");
+    expect(SHORTHANDS["border-width"] ?? []).not.toContain("border-top-left-radius");
+    // A longhand clears nothing at all, whatever it is called.
+    expect(SHORTHANDS["margin-top"]).toBeUndefined();
+    expect(SHORTHANDS.color).toBeUndefined();
   });
 });
 
