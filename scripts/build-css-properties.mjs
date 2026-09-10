@@ -67,6 +67,27 @@ const check = process.argv.includes("--check");
 const TAG = "[css-properties]";
 
 const properties = require("mdn-data/css/properties.json");
+/**
+ * The prefixed names the engines have, which is 262 against `mdn-data`'s 99 — see
+ * `build-prefixed-properties.mjs`.
+ *
+ * Read out of the generated TEXT rather than imported: that file is TypeScript and this is a plain
+ * script, and a build step that needed a transpiler to read its own input would be one more thing
+ * between a person and a regenerate.
+ *
+ * Newlines and a trailing comma are tolerated, and that is not politeness. The file is in biome's
+ * exclusion list beside the other three generated ones — it was not, for one commit, and the
+ * formatter split the array across lines and left a trailing comma, which is not JSON. The gate
+ * failed with `Unexpected token ']'` and named neither file. A reader that cannot be broken by a
+ * formatting decision is one less way for a generated file to take the build down.
+ */
+const PREFIXED = JSON.parse(
+  (
+    /PREFIXED: readonly string\[\] = (\[[\s\S]*?\])\s*;/.exec(
+      readFileSync(join(root, "packages/css/src/compiler/prefixed.generated.ts"), "utf8"),
+    )?.[1] ?? "[]"
+  ).replace(/,(\s*\])/, "$1"),
+);
 const syntaxes = require("mdn-data/css/syntaxes.json");
 
 /**
@@ -306,12 +327,22 @@ function freeIsFree() {
 }
 
 /**
- * Vendor-prefixed names are left out and caught by an index signature instead.
+ * Vendor-prefixed names are NAMED, so an editor offers them — and typed as `CssValue`, so nothing
+ * they accept today is refused tomorrow.
  *
- * A hundred of them, each one a name nobody misspells into a different property — and an index
- * signature on `` `-${string}` `` accepts every one, including the prefixes MDN does not list. It
- * costs nothing that matters: a key not starting with `-` still has to be a real property, so
- * `dsiplay` is still an excess property with a suggestion beside it.
+ * They used to be left out entirely, caught by the index signature on `` `-${string}` `` and nothing
+ * else. That comment argued "each one a name nobody misspells into a different property", and it was
+ * wrong twice over: somebody typed `-wdasdsdebkit-line-clamp: 3` and it compiled and shipped, and an
+ * index signature offers no completions at all, so there was no list to misspell FROM.
+ *
+ * The prefix is checked by `unknown-prefix` now — four prefixes, a closed set. The NAME after it
+ * still cannot be: MDN's hundred does not include `-webkit-font-smoothing` or
+ * `-moz-osx-font-smoothing`, which are two of the most-written lines in real CSS, and refusing those
+ * is the one failure this map may not have.
+ *
+ * So naming them buys completion and costs nothing: `CssValue` is what the index signature says
+ * anyway, so the intersection narrows nothing, and a prefixed name MDN does not list still lands on
+ * the index signature exactly as before.
  */
 /**
  * What a person wants when they hover a property, out of the same data the types come from.
@@ -621,9 +652,19 @@ const MORE_UNITS = [
   "ric",
 ];
 
-const named = Object.keys(properties)
-  .filter((name) => !name.startsWith("-"))
-  .sort();
+/**
+ * Every property this generates a row for — the standard ones and the vendor-prefixed ones together.
+ *
+ * They used to be two lists with two code paths, and the prefixed one emitted `CssValue` and nothing
+ * else: no completion, no value checking, and a name after a real prefix that nobody could tell from
+ * a typo. Through the same loop they get exactly what a standard property gets, decided by the same
+ * question — a grammar that closes becomes a union, one that does not becomes a keyword row, and one
+ * `mdn-data` has no grammar for at all becomes `CssValue`, which is what they all were.
+ *
+ * The NAMES come from `prefixed.generated.ts` rather than from `mdn-data`, because `mdn-data` has 99
+ * of them and the engines have 262 between them — see `build-prefixed-properties.mjs`.
+ */
+const named = [...new Set([...Object.keys(properties).filter((name) => !name.startsWith("-")), ...PREFIXED])].sort();
 
 freeIsFree();
 
@@ -648,6 +689,19 @@ let unions = 0;
 let checkable = 0;
 
 for (const name of named) {
+  /**
+   * A name an ENGINE has and `mdn-data` does not — 163 of the 262, `-webkit-font-smoothing` among
+   * them. There is no grammar to read, so there is nothing to check a value against and nothing to
+   * offer: it is `CssValue`, which is what every prefixed name was before any of this. The NAME is
+   * still checked, which is the half that could be.
+   */
+  if (properties[name] === undefined) {
+    rows.push(
+      `  /** \`${name}\` — a vendor-prefixed property, from the engine's own list. */\n  ${JSON.stringify(name)}: CssValue;`,
+    );
+    continue;
+  }
+
   const keywords = keywordsOf(properties[name].syntax);
   const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
   const type = keywords === undefined ? "CssValue" : `Keyword<${keywords.map((k) => JSON.stringify(k)).join(" | ")}>`;
@@ -705,6 +759,9 @@ for (const name of named) {
  * grammar is the reason, so a wrong report is a person deleting quotes that belonged there.
  */
 const stringAllowed = named.filter((name) => {
+  // An engine-only name has no grammar, so this cannot decide — and the note above says which way
+  // silence falls: listed as allowing one, because a wrong report deletes quotes that belonged.
+  if (properties[name] === undefined) return true;
   const scanned = scan(name);
   return scanned.stringy || scanned.free;
 });
@@ -712,6 +769,7 @@ const stringAllowed = named.filter((name) => {
 /** The same, for the ones whose remaining identifier is a property name — see the two sets above. */
 const propertyNamedRows = [];
 for (const name of named) {
+  if (properties[name] === undefined) continue;
   if (NAMES_A_PROPERTY.has(name)) {
     propertyNamedRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(scan(name).words.join(" "))},`);
     continue;

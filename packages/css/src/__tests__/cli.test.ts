@@ -174,6 +174,51 @@ describe("--stdin-file-path", () => {
  * `'{' expected.` at line 1 column 1 of the author's own source file, which reads as *your component
  * is broken* and sent one reader looking for a fault in a file that had none.
  */
+/**
+ * **A FILE OVER 64KB CAME BACK CUT IN HALF, and format-on-save wrote the half.**
+ *
+ * `--stdin-file-path` is what an editor asks: text in, formatted text out, nothing written. The
+ * answer went to `process.stdout.write` and the process then called `process.exit(0)` — and
+ * `process.exit` does not drain a pipe. A pipe holds 64KB, so everything past it was lost.
+ *
+ * Measured, on a 132,780-byte file:
+ *
+ *     biome directly          132780 -> 132780   complete
+ *     through ramonda-css     132780 ->  65536   cut, mid-line, with no error
+ *
+ * The extension in `vscode/` replaces the WHOLE DOCUMENT with what comes back, so saving any file
+ * over 64KB deleted the rest of it. Silently, on every save, in a published extension.
+ *
+ * A byte count rather than a formatting assertion: what this is about is that nothing was lost.
+ */
+describe("a file bigger than a pipe", () => {
+  const LINES = 5000;
+
+  test("comes back whole, not cut at 64KB", () => {
+    const text =
+      `const a = <div css=@@( display: flex; )>x</div>;\n` +
+      Array.from({ length: LINES }, (_, index) => `export const n${index} = ${index};`).join("\n") +
+      "\n";
+
+    /**
+     * From the PACKAGE, for the reason the describe above gives: the wrapper walks up for the
+     * project's own biome, and a folder under `/tmp` has none. Running it there exits before stdin
+     * is read, and the parent's 132KB write then fails with `EPIPE` — which is a fixture that cannot
+     * see the fault rather than a fault.
+     */
+    const out = execFileSync(process.execPath, [BIN, "format", "--stdin-file-path=src/Big.tsx"], {
+      cwd: PACKAGE,
+      input: text,
+      encoding: "utf8",
+    });
+
+    expect(text.length).toBeGreaterThan(65536);
+    expect(out.length).toBeGreaterThan(65536);
+    // The last declaration is the one a cut takes first.
+    expect(out).toContain(`export const n${LINES - 1} = ${LINES - 1};`);
+  });
+});
+
 describe("an argument that is not a project", () => {
   /** Run with arbitrary arguments, not the tsconfig the other tests pass. */
   function runWith(root: string, args: readonly string[]): { output: string; status: number } {

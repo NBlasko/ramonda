@@ -4,7 +4,7 @@ const vscode = require("vscode");
 const { commandFor } = require("./locate");
 
 /**
- * Format-on-save for a file holding a `@( … )` style block, which no formatter can do on its own.
+ * Format-on-save for a file holding a `@@( … )` style block, which no formatter can do on its own.
  *
  * ## The fault this exists for
  *
@@ -49,6 +49,20 @@ function activate(context) {
           cwd: dirname(file),
           input: text,
           encoding: "utf8",
+          /**
+           * A BOUND, because this is synchronous and it is on the extension host's thread.
+           *
+           * A command that hangs — a binary waiting on something, a machine under load — takes the
+           * editor with it, and there is nothing the person can do but restart it. Ten seconds is
+           * far past any real format: measured, an 80,000-line file came back in 771 ms.
+           */
+          timeout: 10_000,
+          /**
+           * And a bound on what it may SAY, for the reason `tools.ts` gives: the answer is the whole
+           * formatted file, and the default is a megabyte. A file past that would throw here and the
+           * save would quietly do nothing.
+           */
+          maxBuffer: 64 * 1024 * 1024,
         });
 
         return formatted === text ? [] : [vscode.TextEdit.replace(everything(document), formatted)];

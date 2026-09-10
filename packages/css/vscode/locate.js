@@ -15,8 +15,15 @@ function commandFor(file) {
   let at = dirname(file);
 
   for (;;) {
-    const binary = join(at, "node_modules", ".bin", "ramonda-css");
-    if (existsSync(binary)) return binary;
+    /**
+     * The spellings an install writes, plain one first — see `toolIn` in `tooling.ts`, which had the
+     * same gap. On Windows npm and pnpm write `ramonda-css`, `ramonda-css.cmd` and `ramonda-css.ps1`,
+     * and the extensionless one is a shell script that `execFileSync` cannot run.
+     */
+    for (const spelling of ["", ".cmd", ".exe", ".ps1"]) {
+      const binary = join(at, "node_modules", ".bin", `ramonda-css${spelling}`);
+      if (existsSync(binary)) return binary;
+    }
 
     const up = dirname(at);
     if (up === at) return undefined;

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { checkProject } from "./check";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
@@ -185,12 +185,31 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
 
     const named = stdin.includes("=") ? stdin.slice(stdin.indexOf("=") + 1) : (paths[0] ?? "stdin.tsx");
     const source = readFileSync(0, "utf8");
+    let formatted: string;
     try {
-      process.stdout.write(formatText(source, resolve(cwd, named), biomeFormatter(binary, cwd)));
+      formatted = formatText(source, resolve(cwd, named), biomeFormatter(binary, cwd));
     } catch (error) {
       if (!(error instanceof ToolFailed)) throw error;
       console.error(`\n${TAG} \`${name}\` refused:\n\n${error.message}\n`);
       process.exit(1);
+    }
+
+    /**
+     * **Written SYNCHRONOUSLY, and it used to go through `process.stdout.write` and then exit.**
+     *
+     * A write to a pipe is asynchronous and `process.exit` does not drain one. A pipe holds 64KB, so
+     * everything past that was lost. Measured on a 132,780-byte file: biome answered with all of it
+     * and this handed back 65,536 bytes, cut mid-line, with no error anywhere.
+     *
+     * The editor extension in `vscode/` replaces the WHOLE DOCUMENT with what comes back, so saving
+     * any file over 64KB deleted the rest of it — silently, on every save, in a published extension.
+     *
+     * `writeSync` in a loop, because a pipe accepts what it has room for and answers with how much
+     * it took. The loop is the whole fix: it is what makes the write finish before the exit.
+     */
+    const bytes = Buffer.from(formatted, "utf8");
+    for (let written = 0; written < bytes.length; ) {
+      written += writeSync(1, bytes, written, bytes.length - written);
     }
     process.exit(0);
   }

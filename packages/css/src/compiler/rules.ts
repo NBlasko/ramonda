@@ -2,6 +2,7 @@ import type { Config } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, widthSlot } from "./flatten";
 import { holeOutOfPlace } from "./errors";
+import { PREFIXED } from "./prefixed.generated";
 import {
   DESCRIPTORS,
   KEYWORDS,
@@ -99,6 +100,7 @@ export const RULE_IDS = [
   "unknown-named-block",
   "composition-in-a-named-block",
   "ignore-without-a-reason",
+  "unknown-prefix",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -1214,6 +1216,88 @@ function isNameCharacter(code: number): boolean {
 }
 
 /**
+ * The prefixes that have names, read off {@link PREFIXED} rather than written out.
+ *
+ * Hard-coding them was wrong in both directions and both were measured. `-o-` was in the list and no
+ * engine has a single `-o-` name left — Presto has been gone since 2013 — and `-apple-` was NOT in
+ * it, while WebKit has two (`-apple-pay-button-style`, `-apple-pay-button-type`), so a real property
+ * was reported as an unknown prefix.
+ *
+ * Derived, there is one source for both halves of the question and they cannot drift apart. Measured
+ * today: `-webkit-` 182, `-ms-` 48, `-moz-` 30, `-apple-` 2.
+ */
+const PREFIXES = [...new Set(PREFIXED.map((one) => /^(-[a-z]+-)/.exec(one)?.[1] ?? one))].sort();
+
+/**
+ * A NAME THAT LOOKS PREFIXED AND IS NOT, which passed in silence.
+ *
+ * `unknown-property` returned early for every name starting with `-`, and the generator says why:
+ * "each one a name nobody misspells into a different property". Found by somebody typing
+ * `-wdasdsdebkit-line-clamp: 3` — it compiled, it shipped, and it did nothing.
+ *
+ * **A list of valid prefixed NAMES would be the wrong repair, and that was measured.** MDN's data
+ * holds a hundred of them and does not hold `-webkit-font-smoothing` or `-moz-osx-font-smoothing`,
+ * which are two of the most-written lines in real CSS. Reporting those would be refusing valid CSS,
+ * which is the one failure this package may not have — so the name after the prefix is not checked,
+ * and cannot be.
+ *
+ * The prefix itself is a different question and is answerable. What is left unreported is a real
+ * prefix on a name no browser has, which is the same trade CSS itself makes: a declaration a browser
+ * does not understand is dropped, and that is what a prefix is for.
+ */
+function unknownPrefix(item: Declaration, findings: Finding[]): void {
+  const name = item.property;
+  // `--anything` is a custom property, which is the author's own name and always valid.
+  if (name.startsWith("--")) return;
+
+  const cut = name.indexOf("-", 1);
+  const prefix = cut === -1 ? name : name.slice(0, cut + 1);
+
+  if (!PREFIXES.includes(prefix)) {
+    const meant = nearest(prefix, PREFIXES);
+    findings.push({
+      rule: "unknown-prefix",
+      at: item.at ?? 0,
+      length: name.length,
+      message:
+        `\`${name}\` begins with a dash, so it is a vendor-prefixed property — and \`${prefix}\` is not ` +
+        `one of the four prefixes there are: ${PREFIXES.join(", ")}. ` +
+        (meant === undefined
+          ? "A custom property takes two dashes: `--name`."
+          : `Did you mean \`${meant}${name.slice(prefix.length)}\`?`),
+    });
+    return;
+  }
+
+  /**
+   * **The NAME after the prefix, which passed while only the prefix was checked.** Found by somebody
+   * typing `-webkit-border-before-coloaasdsdr: "asdasdsadsd"` and watching it compile.
+   *
+   * A list of valid names was refused once, on the grounds that `mdn-data` holds 99 and has neither
+   * `-webkit-font-smoothing` nor `-moz-osx-font-smoothing`, so a list built from it would refuse
+   * lines people write every day. That measurement was right and the conclusion was not: the ENGINES
+   * keep their own lists, and asked directly they give 262 names between them — with
+   * `-webkit-font-smoothing` in all three of them. See `scripts/build-prefixed-properties.mjs`.
+   *
+   * A name an engine adds after that script was last run is refused until it is run again. That is
+   * the cost, it is real, and `ramonda-css-ignore <reason>` is the escape for exactly this shape.
+   */
+  if (PREFIXED.includes(name)) return;
+
+  const meant = nearest(name, PREFIXED);
+  findings.push({
+    rule: "unknown-property",
+    at: item.at ?? 0,
+    length: name.length,
+    message:
+      `\`${name}\` is not a property Chromium, Firefox or WebKit has. ` +
+      (meant === undefined
+        ? "A vendor-prefixed name is a browser's own, so this one belongs to none of them."
+        : `Did you mean \`${meant}\`?`),
+  });
+}
+
+/**
  * A dashed property name that is nearly one CSS has.
  *
  * **Bare names are left to the types**, which report them with TypeScript's own *did you mean*. A
@@ -1227,8 +1311,12 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
   const name = item.property;
   if (item.at === undefined) return;
   // A custom property is the author's, and a vendor-prefixed name is a browser's — neither is in
-  // CSS's own list and neither is a typo of anything in it.
-  if (name.startsWith("-") || !name.includes("-")) return;
+  // CSS's own list. The PREFIX is checked separately; see `unknownPrefix`.
+  if (name.startsWith("-")) {
+    unknownPrefix(item, findings);
+    return;
+  }
+  if (!name.includes("-")) return;
 
   /**
    * Inside a named block the vocabulary is that at-rule's descriptors, and only those: `src` is not

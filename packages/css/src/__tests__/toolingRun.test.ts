@@ -331,6 +331,38 @@ describe("finding the tool", () => {
 
     expect(toolIn(root, "biome")).toBeUndefined();
   });
+
+  /**
+   * **THE SPELLING WINDOWS USES**, which this looked for and would not have found.
+   *
+   * npm and pnpm write THREE files into `.bin` on Windows — `biome`, `biome.cmd` and `biome.ps1` —
+   * and the extensionless one is a shell script for Git Bash. `execFileSync` does not use a shell, so
+   * on Windows it is the `.cmd` that can be run, and this returned the shell script.
+   *
+   * **Not measured, and that has to be said plainly: there is no Windows here.** What IS measured is
+   * the lookup, which is what this asserts. CI runs `ubuntu-latest` for every job, so nothing in this
+   * repository has ever executed on Windows — see the review note in the TODO.
+   */
+  test.each([".cmd", ".ps1", ".exe"])("finds the %s a Windows install writes", (extension) => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-run-"));
+    files.push(root);
+    mkdirSync(join(root, "node_modules", ".bin"), { recursive: true });
+    writeFileSync(join(root, "node_modules", ".bin", `biome${extension}`), "");
+
+    expect(toolIn(root, "biome")).toBe(join(root, "node_modules", ".bin", `biome${extension}`));
+  });
+
+  /** And the extensionless one still wins where it exists, which is every POSIX install. */
+  test("the plain name first, which is what a POSIX install has", () => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-run-"));
+    files.push(root);
+    const bin = join(root, "node_modules", ".bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "biome"), "");
+    writeFileSync(join(bin, "biome.cmd"), "");
+
+    expect(toolIn(root, "biome")).toBe(join(bin, "biome"));
+  });
 });
 
 /**

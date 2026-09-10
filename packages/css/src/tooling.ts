@@ -42,12 +42,28 @@ export interface ToolFinding {
  * the package being worked on found nothing at all — and a monorepo is the ordinary case, not the
  * exotic one.
  */
+/**
+ * The spellings an install writes, plain one first.
+ *
+ * npm and pnpm write THREE files into `.bin` on Windows — `biome`, `biome.cmd` and `biome.ps1` — and
+ * the extensionless one is a shell script for Git Bash. `execFileSync` uses no shell, so on Windows
+ * it is the `.cmd` that can be run, and this looked for the shell script and nothing else.
+ *
+ * **Not measured, and that has to be said: there is no Windows here, and CI runs `ubuntu-latest` for
+ * every job — so nothing in this repository has ever executed on one.** What IS measured is the
+ * lookup, in `toolingRun.test.ts`. The plain name is first, so every POSIX install answers exactly as
+ * it did.
+ */
+const SPELLINGS = ["", ".cmd", ".exe", ".ps1"];
+
 export function toolIn(directory: string, name: string): string | undefined {
   let at = resolve(directory);
 
   for (;;) {
-    const found = join(at, "node_modules", ".bin", name);
-    if (existsSync(found)) return found;
+    for (const spelling of SPELLINGS) {
+      const found = join(at, "node_modules", ".bin", `${name}${spelling}`);
+      if (existsSync(found)) return found;
+    }
 
     const up = dirname(at);
     if (up === at) return undefined;

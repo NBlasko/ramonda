@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +7,8 @@ import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { virtualFile } from "../compiler/virtual";
 import { init } from "../plugin";
+
+const require = createRequire(import.meta.url);
 
 /**
  * The language service plugin, driven the way an editor drives one: a real `ts.LanguageService`, the
@@ -423,6 +426,84 @@ describe("what the plugin does not touch", () => {
     expect(service.getSemanticDiagnostics(FILE)).toHaveLength(1);
   });
 
+  /**
+   * **A file with NO BLOCK is answered by the real service, method for method.**
+   *
+   * Every proxy added for the surface has two sides, and the tests above only ever exercise one:
+   * refusing or mapping for an overlaid file. The other side is the claim that matters to everybody
+   * who is not using this syntax in a particular file — nothing an editor offers may disappear
+   * because a plugin is installed.
+   *
+   * Asserted as SAMENESS against a service with no plugin in front of it, rather than as an outcome,
+   * because "what TypeScript would have said" is the whole claim and an outcome would only restate
+   * this test's own fixture.
+   */
+  test("every method the surface proxies answers exactly as it would with no plugin", () => {
+    const plainSource = `const tone = "red";\nconst other = tone;\nexport default other;\n`;
+    const { service, plain, source } = editor(plainSource);
+    const at = source.indexOf("other");
+    const range = { pos: at, end: at + 5 };
+    const span = { start: 0, length: source.length };
+
+    const same = (what: string, run: (one: ts.LanguageService) => unknown) => {
+      expect([what, JSON.stringify(run(service)) ?? null]).toEqual([what, JSON.stringify(run(plain)) ?? null]);
+    };
+
+    same("toggleLineComment", (one) => one.toggleLineComment(FILE, range));
+    same("toggleMultilineComment", (one) => one.toggleMultilineComment(FILE, range));
+    same("commentSelection", (one) => one.commentSelection(FILE, range));
+    same("uncommentSelection", (one) => one.uncommentSelection(FILE, range));
+    same("getDocCommentTemplateAtPosition", (one) => one.getDocCommentTemplateAtPosition(FILE, 0));
+    same("getJsxClosingTagAtPosition", (one) => one.getJsxClosingTagAtPosition(FILE, at));
+    same("getLinkedEditingRangeAtPosition", (one) => one.getLinkedEditingRangeAtPosition(FILE, at));
+    same("findReferences", (one) => one.findReferences(FILE, source.indexOf("tone")));
+    same("getBreakpointStatementAtPosition", (one) => one.getBreakpointStatementAtPosition(FILE, at));
+    same("getSpanOfEnclosingComment", (one) => one.getSpanOfEnclosingComment(FILE, at, false));
+    same("getNameOrDottedNameSpan", (one) => one.getNameOrDottedNameSpan(FILE, at, at + 5));
+    same("getBraceMatchingAtPosition", (one) => one.getBraceMatchingAtPosition(FILE, source.indexOf('"')));
+    same("getIndentationAtPosition", (one) => one.getIndentationAtPosition(FILE, at, {}));
+    same("isValidBraceCompletionAtPosition", (one) => one.isValidBraceCompletionAtPosition(FILE, at, 123));
+    same("provideInlayHints", (one) => one.provideInlayHints(FILE, span, {}));
+    same("prepareCallHierarchy", (one) => one.prepareCallHierarchy(FILE, at));
+    same("getSyntacticClassifications", (one) => one.getSyntacticClassifications(FILE, span));
+    same("getSemanticClassifications", (one) => one.getSemanticClassifications(FILE, span));
+    same("getEncodedSyntacticClassifications", (one) => one.getEncodedSyntacticClassifications(FILE, span));
+    same("getEncodedSemanticClassifications", (one) => one.getEncodedSemanticClassifications(FILE, span, undefined));
+    same("getEditsForFileRename", (one) =>
+      one.getEditsForFileRename(join(dirname(FILE), "theme.ts"), join(dirname(FILE), "colours.ts"), {}, {}),
+    );
+    same("getOutliningSpans", (one) => one.getOutliningSpans(FILE));
+    same("getSmartSelectionRange", (one) => one.getSmartSelectionRange(FILE, at));
+    same("getRenameInfo", (one) => one.getRenameInfo(FILE, source.indexOf("tone"), {}));
+    same("getFormattingEditsForDocument", (one) => one.getFormattingEditsForDocument(FILE, {}));
+    same("getFormattingEditsForRange", (one) => one.getFormattingEditsForRange(FILE, 0, source.length, {}));
+    same("getFormattingEditsAfterKeystroke", (one) => one.getFormattingEditsAfterKeystroke(FILE, at, ";", {}));
+    same("getCodeFixesAtPosition", (one) => one.getCodeFixesAtPosition(FILE, at, at + 5, [2304], {}, {}));
+    same("getApplicableRefactors", (one) => one.getApplicableRefactors(FILE, at, {}));
+    same("getDocumentHighlights", (one) => one.getDocumentHighlights(FILE, at, [FILE]));
+    same("getSignatureHelpItems", (one) => one.getSignatureHelpItems(FILE, at, undefined));
+    same("getDefinitionAndBoundSpan", (one) => one.getDefinitionAndBoundSpan(FILE, at));
+    same("getNavigationBarItems", (one) => one.getNavigationBarItems(FILE));
+    same("getNavigationTree", (one) => one.getNavigationTree(FILE));
+  });
+
+  /** And the call-hierarchy pair, which needs an item to ask about rather than a position. */
+  test("the call hierarchy is the real service's for a file with no block", () => {
+    const plainSource = `function one() { two(); }\nfunction two() {}\nexport default one;\n`;
+    const { service, plain, source } = editor(plainSource);
+    const at = source.indexOf("two()");
+
+    const item = plain.prepareCallHierarchy(FILE, at);
+    expect(item).toBeDefined();
+    const only = Array.isArray(item) ? item[0] : item;
+    expect(JSON.stringify(service.provideCallHierarchyIncomingCalls(FILE, only?.selectionSpan.start ?? at))).toBe(
+      JSON.stringify(plain.provideCallHierarchyIncomingCalls(FILE, only?.selectionSpan.start ?? at)),
+    );
+    expect(JSON.stringify(service.provideCallHierarchyOutgoingCalls(FILE, only?.selectionSpan.start ?? at))).toBe(
+      JSON.stringify(plain.provideCallHierarchyOutgoingCalls(FILE, only?.selectionSpan.start ?? at)),
+    );
+  });
+
   test("a caret past the end of the file answers nothing rather than guessing", () => {
     const { service, source } = editor(`const a = <div css=@@( display: flex; )>x</div>;\n`);
 
@@ -539,6 +620,259 @@ export default [before, a, after];
  * None of it is visible in a diagnostic, which is why it survived a plugin measured by what it
  * reported.
  */
+/**
+ * THE SURFACE ITSELF — which methods carry a position or an edit, and whether each is answered for.
+ *
+ * `Object.create(service)` means everything not overridden falls through, and the host is patched IN
+ * PLACE, so a fall-through answers about the VIRTUAL text. That is the fault review 4 called "the
+ * whole position surface", and it was repaired one method at a time — which is a repair that rots,
+ * because TypeScript adds methods and nothing here would notice.
+ *
+ * So the surface is read out of `typescript.d.ts` and compared. A method that carries a position or
+ * an edit is either proxied or listed below with the reason it needs no proxy — and a new one is a
+ * failing test rather than a fault somebody meets in an editor.
+ */
+describe("the language service surface", () => {
+  /** Every method on `interface LanguageService`, with the parameters it declares. */
+  const surface = (): { name: string; args: string }[] => {
+    const dts = readFileSync(join(dirname(require.resolve("typescript")), "typescript.d.ts"), "utf8");
+    const at = dts.indexOf("interface LanguageService {");
+    const body = dts.slice(at, dts.indexOf("\n    }", at));
+    return [...body.matchAll(/^\s{8}(\w+)\??\(([^)]*)\)/gm)].map((one) => ({
+      name: one[1],
+      args: one[2].replace(/\s+/g, " ").trim(),
+    }));
+  };
+
+  /** Whether an answer or an argument is an offset into a file, and so has to be the author's. */
+  const positional = (one: { name: string; args: string }) =>
+    /position|start|end|span|offset|range/i.test(one.args) ||
+    /Span|Edit|Location|Definition|Rename|Range/.test(one.name);
+
+  /**
+   * The ones that need no proxy, each with why. A name here is a claim, and every claim below was
+   * measured rather than reasoned about.
+   */
+  const ANSWERED_WITHOUT_A_PROXY: Record<string, string> = {
+    // Reachable only with an action `getApplicableRefactors` handed out, and that answers `[]` for
+    // an overlaid file — measured: `Debug Failure. Unrecognized action name`.
+    getEditsForRefactor: "no refactor is ever offered for an overlaid file",
+    getMoveToRefactoringFileSuggestions: "same — it is part of a refactor that is never offered",
+    // Reachable only with an entry `getCompletionsAtPosition` handed out, which is proxied, and both
+    // take the position back through the same mapping.
+    getCompletionEntryDetails: "proxied where the entries come from",
+    getCompletionEntrySymbol: "proxied where the entries come from",
+    // Not offsets into a file: a paste's ranges are the SOURCE document's.
+    preparePasteEditsForFile: "its ranges are the copied document's, not this file's",
+  };
+
+  test("every method carrying a position or an edit is proxied, or listed with its reason", () => {
+    const plugin = readFileSync(join(PACKAGE, "src", "plugin.ts"), "utf8");
+    const proxied = new Set([...plugin.matchAll(/proxy\.(\w+)\s*=/g)].map((one) => one[1]));
+
+    const unanswered = surface()
+      .filter(positional)
+      .map((one) => one.name)
+      .filter((name) => !proxied.has(name) && ANSWERED_WITHOUT_A_PROXY[name] === undefined);
+
+    expect(unanswered).toEqual([]);
+  });
+
+  /** And the list itself cannot rot into naming methods that no longer exist. */
+  test("every reason names a method the language service still has", () => {
+    const names = new Set(surface().map((one) => one.name));
+
+    expect(Object.keys(ANSWERED_WITHOUT_A_PROXY).filter((name) => !names.has(name))).toEqual([]);
+  });
+});
+
+/**
+ * The three that were measured WRITING into the author's file, and the one that pointed into text
+ * nobody wrote.
+ *
+ * Review 4 refused `findRenameLocations` because "a rename that is offered and wrong is the file
+ * gone". These are the same thing through doors left open, and the first of them fires from renaming
+ * an unrelated file.
+ */
+describe("what an editor would have written", () => {
+  const WITH_IMPORT = `import { tone } from "./theme";
+const a = <div css=@@(
+  color: {tone};
+)>hello</div>;
+`;
+
+  /**
+   * **Renaming any file rewrote this one at an offset nobody wrote.** TypeScript computes
+   * import-path edits for every file in a project when one is renamed. Measured on a 103-character
+   * file: an edit at offset 565, which is inside the preamble this plugin writes.
+   */
+  test("renaming another file does not edit a file holding a block", () => {
+    const { service } = editor(WITH_IMPORT);
+    const theme = join(dirname(FILE), "theme.ts");
+
+    const edits = service.getEditsForFileRename(theme, join(dirname(FILE), "colours.ts"), {}, {});
+
+    expect(edits.filter((one) => one.fileName === FILE)).toEqual([]);
+  });
+
+  /**
+   * **Cmd+/ commented the wrong line.** Measured on a block's second line: the edit inserted `//` at
+   * offset 0 — it had found the start of the line holding that offset in the VIRTUAL text, which is
+   * the preamble's first line, which is offset 0 in both files and line one in the author's.
+   */
+  test.each(["toggleLineComment", "toggleMultilineComment", "commentSelection", "uncommentSelection"] as const)(
+    "%s writes nothing into a file holding a block",
+    (which) => {
+      const source = `const a = <div css=@@(
+  color: red;
+)>hello</div>;
+`;
+      const { service } = editor(source);
+      const line = { pos: source.indexOf("color"), end: source.indexOf("red;") + 4 };
+
+      expect(service[which](FILE, line)).toEqual([]);
+    },
+  );
+
+  /**
+   * **Typing `/**` offered a JSDoc for a function the author has never seen** — the template was
+   * built from this plugin's own `__block(declarations: …)` declaration, which is what sits at the
+   * top of the virtual text.
+   */
+  test("a doc comment template is not offered from the scaffolding", () => {
+    const { service } = editor(WITH_IMPORT);
+
+    expect(service.getDocCommentTemplateAtPosition(FILE, 0)).toBeUndefined();
+  });
+
+  /**
+   * `findReferences` is what the "Find All References" PANEL calls — the other API for the question
+   * `getReferencesAtPosition` answers, and only one of the two was proxied. Measured on a
+   * 106-character file: a reference at offset 583.
+   */
+  test("find-all-references points inside the author's file", () => {
+    const source = `const tone = "red";
+const a = <div css=@@(
+  color: {tone};
+)>x</div>;
+`;
+    const { service } = editor(source);
+
+    const found = service.findReferences(FILE, source.indexOf("tone"));
+
+    expect(found?.length).toBeGreaterThan(0);
+    for (const one of found ?? []) {
+      for (const reference of one.references) {
+        expect(reference.textSpan.start + reference.textSpan.length).toBeLessThanOrEqual(source.length);
+        expect(source.slice(reference.textSpan.start, reference.textSpan.start + reference.textSpan.length)).toBe(
+          "tone",
+        );
+      }
+    }
+  });
+
+  /**
+   * Every span an editor DRAWS is inside the file the author has open.
+   *
+   * The claim, rather than an outcome, because the outcome differs per method and the thing that
+   * must hold is the same for all of them: a span past the end of the author's text is a box drawn
+   * over nothing, and a span inside it that covers the wrong characters is a box drawn over the
+   * wrong thing. Both were what the virtual offsets gave.
+   */
+  test.each([
+    ["getNameOrDottedNameSpan", (one: ts.LanguageService, at: number) => one.getNameOrDottedNameSpan(FILE, at, at + 4)],
+    [
+      "getSpanOfEnclosingComment",
+      (one: ts.LanguageService, at: number) => one.getSpanOfEnclosingComment(FILE, at, false),
+    ],
+    [
+      "getBreakpointStatementAtPosition",
+      (one: ts.LanguageService, at: number) => one.getBreakpointStatementAtPosition(FILE, at),
+    ],
+  ])("%s answers inside the author's file", (_what, run) => {
+    const source = `const tone = "red";\nconst a = <div css=@@(\n  color: {tone};\n)>x</div>;\n`;
+    const { service } = editor(source);
+
+    const span = run(service, source.indexOf("tone"));
+    if (span === undefined) return;
+    expect(span.start + span.length).toBeLessThanOrEqual(source.length);
+  });
+
+  /** Brace matching, which answers with a PAIR and had to keep both halves or neither. */
+  test("brace matching answers with braces the author wrote", () => {
+    const source = `const a = { k: 1 };\nconst b = <div css=@@( color: red; )>x</div>;\n`;
+    const { service } = editor(source);
+
+    for (const span of service.getBraceMatchingAtPosition(FILE, source.indexOf("{"))) {
+      expect(span.start + span.length).toBeLessThanOrEqual(source.length);
+      expect(["{", "}"]).toContain(source.slice(span.start, span.start + span.length));
+    }
+  });
+
+  /**
+   * The two that answer with a number and a boolean: nothing to map on the way back, and the
+   * position going in still has to be the author's.
+   */
+  test("indentation and brace completion take the author's own position", () => {
+    const source = `const a = <div css=@@(\n  color: red;\n)>x</div>;\nconst b = {\n`;
+    const { service } = editor(source);
+    const at = source.length - 1;
+
+    // `NaN` is what TypeScript answers for a position it cannot indent, and it is the real service's
+    // answer rather than this plugin's — asserted as "a number came back", which is the claim here.
+    expect(typeof service.getIndentationAtPosition(FILE, at, {})).toBe("number");
+    expect(typeof service.isValidBraceCompletionAtPosition(FILE, at, 123)).toBe("boolean");
+  });
+
+  /** A caret this cannot place answers nothing, rather than answering about the scaffolding. */
+  test("a caret with no home in the author's file answers nothing", () => {
+    const source = `const a = <div css=@@( color: red; )>x</div>;\n`;
+    const { service } = editor(source);
+    const past = source.length + 200;
+
+    expect(service.getBreakpointStatementAtPosition(FILE, past)).toBeUndefined();
+    expect(service.getNameOrDottedNameSpan(FILE, past, past + 2)).toBeUndefined();
+    expect(service.getBraceMatchingAtPosition(FILE, past)).toEqual([]);
+    expect(service.findReferences(FILE, past)).toBeUndefined();
+    expect(service.getIndentationAtPosition(FILE, past, {})).toBe(0);
+    expect(service.isValidBraceCompletionAtPosition(FILE, past, 123)).toBe(false);
+  });
+
+  /** Pasting into a file holding a block writes nothing, the same as every other edit. */
+  test("a paste into a file holding a block is not offered", () => {
+    const source = `const a = <div css=@@( color: red; )>x</div>;\n`;
+    const { service } = editor(source);
+
+    expect(
+      service.getPasteEdits(
+        {
+          targetFile: FILE,
+          pastedText: ["const b = 1;"],
+          pasteLocations: [{ pos: 0, end: 0 }],
+          copiedFrom: undefined,
+          preferences: {},
+        },
+        {},
+      ).edits,
+    ).toEqual([]);
+  });
+
+  /** And a breakpoint lands on a statement the author wrote, rather than one this package did. */
+  test("a breakpoint span is inside the author's file", () => {
+    const source = `const tone = "red";
+const a = <div css=@@(
+  color: {tone};
+)>x</div>;
+`;
+    const { service } = editor(source);
+
+    const span = service.getBreakpointStatementAtPosition(FILE, source.indexOf("tone"));
+
+    expect(span).toBeDefined();
+    expect((span?.start ?? 0) + (span?.length ?? 0)).toBeLessThanOrEqual(source.length);
+  });
+});
+
 describe("every other answer that carries a position", () => {
   const CODE = `const before = 1;
 const a = <div css=@@( display: flex; )>x</div>;

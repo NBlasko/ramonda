@@ -2146,3 +2146,120 @@ describe("`@layer` inside a block", () => {
     expect(rules(css)).toEqual([]);
   });
 });
+
+/**
+ * A VENDOR PREFIX THAT IS NOT ONE, which passed in silence.
+ *
+ * `-webkit-line-clamp` is not in CSS's own list and is not a typo of anything in it, so
+ * `unknown-property` returns early for every name starting with `-` — and the generator says why:
+ * "each one a name nobody misspells into a different property". Measured by the user typing
+ * `-wdasdsdebkit-line-clamp: 3`, which compiled, shipped, and did nothing.
+ *
+ * A list of valid prefixed NAMES would be the wrong repair and was measured to be: MDN's data holds
+ * a hundred of them and does not hold `-webkit-font-smoothing` or `-moz-osx-font-smoothing`, which
+ * are two of the most-written lines in real CSS. Reporting those would be refusing valid CSS, which
+ * is the one failure this package may not have.
+ *
+ * The PREFIX is a different question, and it is closed: `-webkit-`, `-moz-`, `-ms-`, `-o-`. Four,
+ * fixed for fifteen years, and the working group stopped minting them. So the prefix is checked and
+ * the name after it is not.
+ */
+describe("a vendor prefix", () => {
+  test.each(["-webkit-line-clamp", "-moz-osx-font-smoothing", "-ms-overflow-style", "-apple-pay-button-style"])(
+    "%s is a browser's own name and is left alone",
+    (name) => {
+      expect(checkNamedFree(`${name}: 3;`)).toEqual([]);
+    },
+  );
+
+  /**
+   * `-o-` is gone, and that is a measurement rather than an omission: no engine has a single `-o-`
+   * name left — Presto has been gone since 2013 — so an `-o-` property belongs to nobody. It used to
+   * be one of four hard-coded prefixes, which also left out `-apple-`, so a real WebKit property was
+   * reported as an unknown prefix. Both halves come off one list now.
+   */
+  test("an `-o-` name belongs to no engine any more", () => {
+    const found = checkNamedFree("-o-object-fit: cover;");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("unknown-prefix");
+  });
+
+  test("a custom property is the author's own and is left alone", () => {
+    expect(checkNamedFree("--brand: red;")).toEqual([]);
+  });
+
+  test.each([
+    ["a typo in the prefix", "-wdasdsdebkit-line-clamp"],
+    ["one letter out", "-webkti-line-clamp"],
+    ["a prefix nobody has", "-blink-line-clamp"],
+    ["a single dash and a word", "-lineclamp"],
+  ])("%s is reported", (_what, name) => {
+    const found = checkNamedFree(`${name}: 3;`);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("unknown-prefix");
+    expect(found[0].message).toContain(name);
+  });
+
+  /**
+   * **AND THE NAME AFTER THE PREFIX**, which passed while only the prefix was checked. Found by
+   * somebody typing `-webkit-border-before-coloaasdsdr: "asdasdsadsd"` and watching it compile.
+   *
+   * A list of valid names was refused once, on the grounds that `mdn-data` holds 99 of them and has
+   * neither `-webkit-font-smoothing` nor `-moz-osx-font-smoothing`. That measurement was right and
+   * the conclusion was not: the ENGINES have their own lists, and asked directly they give 262
+   * names between them — `-webkit-font-smoothing` among them, from all three. See
+   * `scripts/build-prefixed-properties.mjs`.
+   */
+  test.each([
+    ["the name after a real prefix", "-webkit-border-before-coloaasdsdr"],
+    ["one letter out", "-webkit-line-clampp"],
+    ["a name no engine has", "-webkit-not-a-property"],
+    ["a Firefox name spelt as WebKit's", "-webkit-osx-font-smoothing"],
+  ])("%s is reported: %s", (_what, name) => {
+    const found = checkNamedFree(`${name}: 3;`);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("unknown-property");
+  });
+
+  /**
+   * Every name at least one engine has is left alone — including the two `mdn-data` does not list,
+   * which is the whole reason the engines are asked.
+   */
+  test.each([
+    "-webkit-line-clamp",
+    "-webkit-box-orient",
+    "-webkit-font-smoothing",
+    "-moz-osx-font-smoothing",
+    "-webkit-backdrop-filter",
+    "-webkit-tap-highlight-color",
+    "-webkit-text-stroke",
+    "-ms-overflow-style",
+  ])("%s is a real property and is left alone", (name) => {
+    expect(checkNamedFree(`${name}: 3;`)).toEqual([]);
+  });
+
+  /** A near miss is offered where there is one, the same as for a bare name. */
+  test("a near miss in the name is offered as the fix", () => {
+    const [found] = checkNamedFree("-webkit-line-clampp: 3;");
+
+    expect(found.message).toContain("-webkit-line-clamp");
+  });
+
+  /** The message names the prefixes that have properties, which is what an author can choose from. */
+  test("and the message names the prefixes that exist", () => {
+    const [found] = checkNamedFree("-webkti-line-clamp: 3;");
+
+    for (const prefix of ["-webkit-", "-moz-", "-ms-", "-apple-"]) expect(found.message).toContain(prefix);
+    expect(found.message).not.toContain("-o-,");
+  });
+
+  /** A near miss in the prefix is offered, because that is what a typo in one looks like. */
+  test("a near miss in the prefix is offered as the fix", () => {
+    const [found] = checkNamedFree("-webkti-line-clamp: 3;");
+
+    expect(found.message).toContain("-webkit-line-clamp");
+  });
+});

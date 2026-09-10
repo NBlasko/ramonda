@@ -1,7 +1,16 @@
 import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
-import { BREADTH_LAYERS, LAYER_ORDER } from "../compiler/flatten";
+import { BREADTH_LAYERS, LAYER_ORDER, layerPathFor } from "../compiler/flatten";
+
+/**
+ * The layer a rule lands in, from the same function the sheet uses.
+ *
+ * Written out as `u11` once, and it stopped being `u11` the moment the shorthand table grew — the
+ * name is an index into the breadths, so hard-coding it made a test about the generated data rather
+ * than about the sheet.
+ */
+const layerOf = (block: Parameters<typeof layerPathFor>[0]) => layerPathFor(block).join(".");
 import { escapeClass } from "../compiler/names";
 import { Sheet } from "../compiler/sheet";
 
@@ -30,7 +39,7 @@ describe("dedupe", () => {
     sheet.add("b.tsx", [FLEX]);
 
     expect(sheet.css()).toBe(
-      `${LAYER_ORDER}\n@layer ramonda {\n@layer u11 {\n.r-1111111111111111 { display:flex; }\n}\n}\n`,
+      `${LAYER_ORDER}\n@layer ramonda {\n@layer ${layerOf(FLEX)} {\n.r-1111111111111111 { display:flex; }\n}\n}\n`,
     );
   });
 
@@ -283,7 +292,7 @@ describe("a named rule", () => {
     sheet.add("a.tsx", [SLIDE]);
 
     expect(sheet.css()).toBe(
-      `${LAYER_ORDER}\n@layer ramonda {\n@layer u11 {\n@keyframes r-4444444444444444 { from{opacity:0;}to{opacity:1;} }\n}\n}\n`,
+      `${LAYER_ORDER}\n@layer ramonda {\n@layer ${layerOf(SLIDE)} {\n@keyframes r-4444444444444444 { from{opacity:0;}to{opacity:1;} }\n}\n}\n`,
     );
   });
 
@@ -446,7 +455,7 @@ describe("an atomic rule", () => {
     sheet.add("a.tsx", [atom("r-1111111111111111", "display:flex;", { property: "display" })]);
 
     expect(sheet.css()).toBe(
-      `${LAYER_ORDER}\n@layer ramonda {\n@layer u11 {\n.r-1111111111111111 { display:flex; }\n}\n}\n`,
+      `${LAYER_ORDER}\n@layer ramonda {\n@layer ${layerOf(FLEX)} {\n.r-1111111111111111 { display:flex; }\n}\n}\n`,
     );
   });
 

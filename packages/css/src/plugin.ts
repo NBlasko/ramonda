@@ -781,6 +781,204 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         overlaid(fileName) ? { textSpan: { start: 0, length: 0 } } : service.getSmartSelectionRange(fileName, position);
 
       /**
+       * **THE REST OF THE SURFACE**, and it was answered one method at a time until a test read the
+       * surface itself.
+       *
+       * `Object.create(service)` means everything not overridden falls through, and the host is
+       * patched IN PLACE — so a fall-through answers about the virtual text. Review 4 called that
+       * "the whole position surface" and repaired the methods it could name; twenty-five more were
+       * still falling through, and three of them were measured writing into the author's file.
+       *
+       * **`getEditsForFileRename` is the worst of them, and it fires from renaming an unrelated
+       * file.** Measured on a 103-character file: it answered with an edit at offset **565**, which
+       * is inside the preamble this plugin wrote. TypeScript computes import-path edits for every
+       * file in the project when one is renamed, so an everyday gesture rewrote source at offsets
+       * nobody wrote. Exactly what `findRenameLocations` was refused for, through a door left open.
+       *
+       * `toggleLineComment` is the everyday one: measured, Cmd+/ on a block's second line commented
+       * **line one** — it found the start of the line holding that offset in the virtual text, which
+       * is the preamble's first line, which is offset 0 in both.
+       *
+       * And `getDocCommentTemplateAtPosition` answered with a template built from this plugin's own
+       * `__block(declarations: …)` declaration: typing `/**` at the top of a file offered a JSDoc for
+       * a function the author has never seen.
+       *
+       * All of them are refused rather than mapped, for the reason already written above the
+       * formatting edits: **an edit that cannot be offered is a feature missing; an edit that is
+       * offered and wrong is the file gone.** The surface is asserted in `plugin.test.ts`, so a
+       * method TypeScript adds later is a failing test rather than something met in an editor.
+       */
+      proxy.getEditsForFileRename = (oldPath, newPath, formatOptions, preferences) => {
+        const its = service.getEditsForFileRename(oldPath, newPath, formatOptions, preferences);
+        // Every file's own overlay: the ones this does not overlay keep their edits, which are theirs.
+        return its.filter((one) => overlayFor(one.fileName) === undefined);
+      };
+
+      proxy.getPasteEdits = (args, formatOptions) =>
+        overlaid(args.targetFile)
+          ? { edits: [], fixId: undefined as never }
+          : service.getPasteEdits(args, formatOptions);
+
+      proxy.toggleLineComment = (fileName, range) =>
+        overlaid(fileName) ? [] : service.toggleLineComment(fileName, range);
+      proxy.toggleMultilineComment = (fileName, range) =>
+        overlaid(fileName) ? [] : service.toggleMultilineComment(fileName, range);
+      proxy.commentSelection = (fileName, range) =>
+        overlaid(fileName) ? [] : service.commentSelection(fileName, range);
+      proxy.uncommentSelection = (fileName, range) =>
+        overlaid(fileName) ? [] : service.uncommentSelection(fileName, range);
+
+      proxy.getDocCommentTemplateAtPosition = (fileName, position, options, formatOptions) =>
+        overlaid(fileName)
+          ? undefined
+          : service.getDocCommentTemplateAtPosition(fileName, position, options, formatOptions);
+
+      proxy.getJsxClosingTagAtPosition = (fileName, position) =>
+        overlaid(fileName) ? undefined : service.getJsxClosingTagAtPosition(fileName, position);
+
+      proxy.getLinkedEditingRangeAtPosition = (fileName, position) =>
+        overlaid(fileName) ? undefined : service.getLinkedEditingRangeAtPosition(fileName, position);
+
+      /**
+       * The answers that carry a position and no edit — mapped where a span comes back, refused where
+       * one does not.
+       *
+       * `findReferences` is the one a person meets: it is what the "Find All References" PANEL calls,
+       * and `getReferencesAtPosition` — proxied above — is the other API for the same question.
+       * Measured on a 106-character file, it answered with a reference at offset **583**.
+       *
+       * The rest hand back a span into a file: a brace's match, the statement a breakpoint goes on,
+       * the comment around a caret. None of them writes, so a wrong one is a misdrawn box rather than
+       * a lost file — but a breakpoint on the wrong line is a debugging session spent on the wrong
+       * question, and none of them costs anything to map.
+       */
+      proxy.findReferences = (fileName, position) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.findReferences(fileName, position);
+
+        const at = file.virtualOf(position);
+        if (at === undefined) return undefined;
+        const got = service.findReferences(fileName, at);
+        if (got === undefined) return undefined;
+
+        return got.flatMap((one) => {
+          const its = overlayFor(one.definition.fileName);
+          if (its === undefined) return [{ ...one, references: elsewhere(overlayFor, one.references) }];
+
+          const textSpan = back(its, one.definition.textSpan);
+          if (textSpan === undefined) return [];
+          const contextSpan = one.definition.contextSpan && back(its, one.definition.contextSpan);
+          return [
+            {
+              definition: { ...one.definition, textSpan, ...(contextSpan === undefined ? {} : { contextSpan }) },
+              references: elsewhere(overlayFor, one.references),
+            },
+          ];
+        });
+      };
+
+      /** A span in, a span out — every one of these is the same shape. */
+      const spanning =
+        (run: (fileName: string, at: number) => ts.TextSpan | undefined) =>
+        (fileName: string, position: number): ts.TextSpan | undefined => {
+          const file = overlay(fileName, readSnapshot);
+          if (file === undefined) return run(fileName, position);
+
+          const at = file.virtualOf(position);
+          return at === undefined ? undefined : back(file, run(fileName, at));
+        };
+
+      proxy.getBreakpointStatementAtPosition = spanning((name, at) =>
+        service.getBreakpointStatementAtPosition(name, at),
+      );
+      proxy.getSpanOfEnclosingComment = (fileName, position, onlyMultiLine) =>
+        spanning((name, at) => service.getSpanOfEnclosingComment(name, at, onlyMultiLine))(fileName, position);
+
+      proxy.getNameOrDottedNameSpan = (fileName, start, end) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getNameOrDottedNameSpan(fileName, start, end);
+
+        const from = file.virtualOf(start);
+        const to = file.virtualOf(end);
+        if (from === undefined || to === undefined) return undefined;
+        return back(file, service.getNameOrDottedNameSpan(fileName, from, to));
+      };
+
+      proxy.getBraceMatchingAtPosition = (fileName, position) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getBraceMatchingAtPosition(fileName, position);
+
+        const at = file.virtualOf(position);
+        if (at === undefined) return [];
+        return service.getBraceMatchingAtPosition(fileName, at).flatMap((span) => {
+          const home = back(file, span);
+          return home === undefined ? [] : [home];
+        });
+      };
+
+      /**
+       * The rest carry a position and answer with something no mapping puts right — a hint drawn
+       * between two characters, a call hierarchy of items in several files, a classification of the
+       * scaffolding's own tokens. Refused, which draws nothing rather than drawing it in the wrong
+       * place.
+       *
+       * `getEncodedSemanticClassifications` is proxied properly above, and it is the one an editor
+       * uses for semantic colour; these are its older siblings.
+       */
+      proxy.provideInlayHints = (fileName, span, preferences) =>
+        overlaid(fileName) ? [] : service.provideInlayHints(fileName, span, preferences);
+
+      proxy.prepareCallHierarchy = (fileName, position) =>
+        overlaid(fileName) ? undefined : service.prepareCallHierarchy(fileName, position);
+      proxy.provideCallHierarchyIncomingCalls = (fileName, position) =>
+        overlaid(fileName) ? [] : service.provideCallHierarchyIncomingCalls(fileName, position);
+      proxy.provideCallHierarchyOutgoingCalls = (fileName, position) =>
+        overlaid(fileName) ? [] : service.provideCallHierarchyOutgoingCalls(fileName, position);
+
+      proxy.getSyntacticClassifications = ((fileName: string, span: ts.TextSpan, format?: unknown) =>
+        overlaid(fileName)
+          ? []
+          : (service.getSyntacticClassifications as (a: string, b: ts.TextSpan, c?: unknown) => unknown)(
+              fileName,
+              span,
+              format,
+            )) as typeof service.getSyntacticClassifications;
+
+      proxy.getSemanticClassifications = ((fileName: string, span: ts.TextSpan, format?: unknown) =>
+        overlaid(fileName)
+          ? []
+          : (service.getSemanticClassifications as (a: string, b: ts.TextSpan, c?: unknown) => unknown)(
+              fileName,
+              span,
+              format,
+            )) as typeof service.getSemanticClassifications;
+
+      proxy.getEncodedSyntacticClassifications = (fileName, span) =>
+        overlaid(fileName)
+          ? { spans: [], endOfLineState: 0 as ts.EndOfLineState }
+          : service.getEncodedSyntacticClassifications(fileName, span);
+
+      /**
+       * A position in and a number or a boolean out — nothing to map on the way back, and the
+       * position going in still has to be the author's.
+       */
+      proxy.getIndentationAtPosition = (fileName, position, options) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getIndentationAtPosition(fileName, position, options);
+
+        const at = file.virtualOf(position);
+        return at === undefined ? 0 : service.getIndentationAtPosition(fileName, at, options);
+      };
+
+      proxy.isValidBraceCompletionAtPosition = (fileName, position, openingBrace) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.isValidBraceCompletionAtPosition(fileName, position, openingBrace);
+
+        const at = file.virtualOf(position);
+        return at === undefined ? false : service.isValidBraceCompletionAtPosition(fileName, at, openingBrace);
+      };
+
+      /**
        * Syntactic diagnostics come from the virtual file too, and they have to: the author's file does
        * not parse as TypeScript at all, so the real service reports the block itself as a syntax
        * error — a red squiggle on correct code, which is the loudest possible way to be wrong.
