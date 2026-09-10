@@ -473,6 +473,13 @@ A breakpoint is a number, so the layer for it comes out of a name space of thous
 slot's DIGITS, one nested layer each, because ten names per level is a list every stylesheet can
 carry and thousands is not. Unconditional rules stay flat.
 
+The modes are ordered against the breakpoints the way Tailwind orders them — reduced motion, colour
+scheme and medium below, `@supports`, orientation, contrast and `forced-colors` above. That is a
+decision the user made over the one this first shipped, and the argument is about which mistake is
+silent rather than about taste: a base block carries the theme and the block reusing it adjusts at a
+breakpoint, and only the runtime can see that pair at all. Which is why `compose` warns about it in
+development, and why that warning is measured to cost nothing in a production build.
+
 **The thing this buys is not that dev matches the build.** Measured on a real dev server against a
 real `vite preview` of the same app: before the layers the two already agreed, and both were wrong.
 What moved is that a rule's place in the cascade is a function of the RULE — not of which files are

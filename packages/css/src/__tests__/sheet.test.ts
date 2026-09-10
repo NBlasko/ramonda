@@ -703,47 +703,47 @@ describe("the order one file's stylesheet comes out in", () => {
   /**
    * Two conditions the sheet CANNOT order, which is the case this is about.
    *
-   * `min-height` and `print` carry no width, so both land in the last slot and rank the same — see
-   * `widthSlot`. Two breakpoints would be ordered by their own widths now and would not ask this
-   * question at all.
+   * `min-height` and `hover` are conditions the mode table does not list, so both land in its last
+   * slot and rank the same — see `widthSlot`. Two breakpoints, or two modes the table knows, are
+   * ordered by it now and would not ask this question at all.
    */
-  const CONDITIONS = (first: "height" | "print") => {
+  const CONDITIONS = (first: "height" | "hover") => {
     const h = `  @media (min-height: 40rem) { color: blue; }\n`;
-    const p = `  @media print { color: green; }\n`;
+    const p = `  @media (hover: hover) { color: green; }\n`;
     return `const a = <div css=@@(\n${first === "height" ? h + p : p + h})>x</div>;\n`;
   };
 
   const blocksOf = (code: string, file: string) => transform(code, { filename: file })?.blocks ?? [];
   // The `@media`, not the class name — a class is named after its condition and holds the word too.
-  const conditionsIn = (css: string) => [...css.matchAll(/@media \(?(min-height|print)/g)].map((found) => found[1]);
+  const conditionsIn = (css: string) => [...css.matchAll(/@media \((min-height|hover)/g)].map((found) => found[1]);
 
   test("its own, whatever another file claimed the same classes first", () => {
     const sheet = new Sheet();
     sheet.add("/a.tsx", blocksOf(CONDITIONS("height"), "/a.tsx"));
-    sheet.add("/b.tsx", blocksOf(CONDITIONS("print"), "/b.tsx"));
+    sheet.add("/b.tsx", blocksOf(CONDITIONS("hover"), "/b.tsx"));
 
-    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["min-height", "print"]);
-    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["print", "min-height"]);
+    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["min-height", "hover"]);
+    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["hover", "min-height"]);
   });
 
   test("and the same as it would be compiled alone, which is the point", () => {
     const together = new Sheet();
     together.add("/a.tsx", blocksOf(CONDITIONS("height"), "/a.tsx"));
-    together.add("/b.tsx", blocksOf(CONDITIONS("print"), "/b.tsx"));
+    together.add("/b.tsx", blocksOf(CONDITIONS("hover"), "/b.tsx"));
 
     const alone = new Sheet();
-    alone.add("/b.tsx", blocksOf(CONDITIONS("print"), "/b.tsx"));
+    alone.add("/b.tsx", blocksOf(CONDITIONS("hover"), "/b.tsx"));
 
     expect(together.cssFor("/b.tsx")).toBe(alone.cssFor("/b.tsx"));
   });
 
   test("in the other build order too, so neither file is the privileged one", () => {
     const sheet = new Sheet();
-    sheet.add("/b.tsx", blocksOf(CONDITIONS("print"), "/b.tsx"));
+    sheet.add("/b.tsx", blocksOf(CONDITIONS("hover"), "/b.tsx"));
     sheet.add("/a.tsx", blocksOf(CONDITIONS("height"), "/a.tsx"));
 
-    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["min-height", "print"]);
-    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["print", "min-height"]);
+    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["min-height", "hover"]);
+    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["hover", "min-height"]);
   });
 
   /**

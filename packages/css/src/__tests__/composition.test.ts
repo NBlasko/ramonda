@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { merge } from "../merge";
 import { transform } from "../compiler/transform";
+import { sheetRank } from "../compiler/flatten";
 
 /**
  * Composition as the author writes it: inside the block, with **later winning**.
@@ -44,6 +45,63 @@ describe("a spread", () => {
     const out = emit(`const card = @@(\n  ...{base};\n);\n`);
 
     expect(out).not.toContain("const _s0 =");
+  });
+});
+
+/**
+ * A REUSE INSIDE A REUSE, which the user asked to be measured rather than assumed.
+ *
+ * `one` is spread into `two`, `two` into `three`, and each level overrides one thing. It works
+ * because `merge` is associative and a merged value carries the map it came from — but nothing
+ * asserted the chain, and "it composes" is exactly the claim that stops being true quietly.
+ */
+describe("a reuse inside a reuse", () => {
+  const chain =
+    `const one = @@( color: red; gap: 1px; );\n` +
+    `const two = @@( ...{one}; gap: 2px; padding: 2px; );\n` +
+    `const three = @@( ...{two}; padding: 3px; );\n`;
+
+  test("each level overrides the one below it and nothing else", () => {
+    const out = transform(chain, { filename: "Card.tsx" });
+    const code = (out?.code ?? "")
+      .split("\n")
+      .filter((line) => !line.startsWith("import "))
+      .join("\n");
+    const value = new Function("_merge", `${code}\nreturn three;`)(merge) as { className: string };
+
+    const named = value.className.split(" ");
+    const rules = new Map((out?.blocks ?? []).map((one) => [one.className, one.css]));
+    expect(named.map((one) => rules.get(one)).sort()).toEqual(["color:red;", "gap:2px;", "padding:3px;"]);
+  });
+
+  test("and the innermost one is still a constant, so the chain costs one allocation per level", () => {
+    const out = transform(chain, { filename: "Card.tsx" })?.code ?? "";
+
+    // `one` holds no hole, so it is hoisted; `two` and `three` hold a spread and cannot be.
+    expect(out).toContain("const _s0 = _merge({");
+    expect(out).toMatch(/const two = _merge\(one,/);
+    expect(out).toMatch(/const three = _merge\(two,/);
+  });
+
+  /**
+   * And the thing the chain is FOR: what the sheet then decides between two rules the merge kept.
+   *
+   * The base's rule and the modifier's are different keys, so both classes land and the SHEET breaks
+   * the tie — which the compiler cannot check, because a spread's operand is a runtime value. With
+   * Tailwind's order a breakpoint beats the colour scheme, so a base carrying the theme and a
+   * modifier adjusting at a breakpoint does what it reads like.
+   */
+  test("a modifier's breakpoint beats a base's colour scheme, which is why that order was chosen", () => {
+    const source =
+      `const base = @@( @media (prefers-color-scheme: dark) { color: white; } );\n` +
+      `const card = @@( ...{base}; @media (min-width: 40rem) { color: blue; } );\n`;
+    const out = transform(source, { filename: "Card.tsx" });
+
+    const dark = out?.blocks.find((one) => one.conditions?.[0]?.includes("prefers-color-scheme"));
+    const wide = out?.blocks.find((one) => one.conditions?.[0]?.includes("min-width"));
+    expect(dark).toBeDefined();
+    expect(wide).toBeDefined();
+    expect(sheetRank(wide as never)).toBeGreaterThan(sheetRank(dark as never));
   });
 });
 

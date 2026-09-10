@@ -282,26 +282,60 @@ describe("how narrow a rule is", () => {
   });
 
   /**
-   * A MODE, and it comes last on purpose. `print` and `prefers-color-scheme` are not size
-   * refinements — they are written to override — and placing them first would refuse the ordinary
-   * shape of breakpoints followed by a dark-mode override.
+   * THE MODES, in Tailwind's own order, which is where the breakpoints sit in the middle.
+   *
+   * Read out of its `corePlugins.js` rather than invented: reduced motion, the colour scheme and the
+   * medium are weaker than a breakpoint; `@supports`, orientation, contrast and `forced-colors` are
+   * stronger. **The user chose this over the order I had shipped** — I had every mode beating every
+   * breakpoint — and the reason is which mistake stays silent: theming lives in a BASE block and a
+   * modifier adjusts at a breakpoint, so `...{base}; @media (min-width: …) { … }` is the shape
+   * people write, and mode-wins loses it with nothing able to report it.
    */
-  test.each([
-    "@media print",
-    "@media (prefers-color-scheme: dark)",
-    "@supports (display: grid)",
-    "@media (min-height: 40rem)",
-  ])("a condition with no width comes after every breakpoint: %s", (condition) => {
-    expect(slot(condition)).toBeGreaterThan(slot("@media (min-width: 4999px)"));
+  test("the modes are ordered against each other the way Tailwind orders them", () => {
+    const order = [
+      "@media (prefers-reduced-motion: reduce)",
+      "@media (prefers-color-scheme: dark)",
+      "@media print",
+      "@media (min-width: 40rem)",
+      "@supports (display: grid)",
+      "@media (orientation: portrait)",
+      "@media (prefers-contrast: more)",
+      "@media (forced-colors: active)",
+    ];
+
+    const slots = order.map((one) => slot(one));
+    expect(slots).toEqual([...slots].sort((a, b) => a - b));
+    expect(new Set(slots).size).toBe(order.length);
+    // And every one of them is after the unconditional rules.
+    expect(Math.min(...slots)).toBeGreaterThan(widthSlot([]));
   });
 
-  /** A width in a unit that cannot be turned into a number leaves the rule with the modes. */
-  test.each(["@media (min-width: 50ch)", "@media (min-width: calc(10px + 1em))", "@media (min-width: fit-content)"])(
-    "and so does a width this cannot read: %s",
-    (condition) => {
-      expect(slot(condition)).toBe(slot("@media print"));
-    },
-  );
+  test.each([
+    ["a weaker mode loses to a breakpoint", "@media (prefers-color-scheme: dark)", "@media (min-width: 1px)"],
+    ["and the medium does too", "@media print", "@media (min-width: 1px)"],
+    ["a stronger one beats it", "@media (min-width: 4999px)", "@media (forced-colors: active)"],
+    ["and so does `@supports`", "@media (min-width: 4999px)", "@supports (display: grid)"],
+  ])("%s", (_what, weaker, stronger) => {
+    expect(slot(weaker)).toBeLessThan(slot(stronger));
+  });
+
+  /** A condition the table does not know comes last, where it ties with the others like it. */
+  test.each([
+    ["@media (min-height: 40rem)", "a query about something else"],
+    ["@media (hover: hover)", "a device fact the table does not list"],
+    ["@media (min-width: 50ch)", "a width in a unit this cannot read"],
+    ["@media (min-width: calc(10px + 1em))", "a width that is an expression"],
+  ])("a condition this table cannot place comes last: %s", (condition) => {
+    expect(slot(condition)).toBeGreaterThan(slot("@media (forced-colors: active)"));
+    expect(slot(condition)).toBe(slot("@media (min-height: 1px)"));
+  });
+
+  /** Beyond the widest slot the values are clamped, so nothing wraps past anything else. */
+  test("a breakpoint past the widest slot ties rather than wrapping", () => {
+    expect(slot("@media (min-width: 9000px)")).toBe(slot("@media (min-width: 99999px)"));
+    // Still a breakpoint, so still below the modes that beat one.
+    expect(slot("@media (min-width: 9000px)")).toBeLessThan(slot("@media (forced-colors: active)"));
+  });
 
   /** Two conditions around one rule mean it applies only where both hold, so both are read. */
   test("the most restrictive of several conditions is the one that places it", () => {
@@ -312,12 +346,6 @@ describe("how narrow a rule is", () => {
   /** A band is placed by where it starts: no single number orders two bands that overlap in part. */
   test("a rule with both is placed by its `min-width`", () => {
     expect(slot("@media (min-width: 40rem) and (max-width: 64rem)")).toBe(slot("@media (min-width: 40rem)"));
-  });
-
-  /** Beyond the widest slot the values are clamped, so nothing wraps past anything else. */
-  test("a breakpoint past the widest slot ties rather than wrapping", () => {
-    expect(slot("@media (min-width: 9000px)")).toBe(slot("@media (min-width: 99999px)"));
-    expect(slot("@media (min-width: 9000px)")).toBeLessThan(slot("@media print"));
   });
 
   /** The rank is this, with the breadth deciding what the width leaves tied. */

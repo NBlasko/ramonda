@@ -1,3 +1,4 @@
+import { widthSlot } from "./conditions";
 import type { StyleValue, StyleVarValue } from "./types";
 
 /**
@@ -99,6 +100,110 @@ function setsNothing(entry: StyleEntry | StyleClears | undefined): boolean {
 }
 
 /**
+ * Whether a warning has already been said, so a render loop says it once.
+ *
+ * Dev only, and it never grows in a production build: nothing reaches it, because the only caller is
+ * inside the guard below and a bundler that replaces `process.env.NODE_ENV` drops the branch and
+ * everything it alone referenced. Measured through a real Vite production build — neither the
+ * sentence nor `process` appears in the output.
+ */
+const said = new Set<string>();
+
+/**
+ * Forget what has been said, so a test can watch the warning happen more than once.
+ *
+ * Exported for the tests and for nothing else — the set is deliberately never cleared at runtime,
+ * which is what makes a render loop say each thing once.
+ */
+export function forget(): void {
+  said.clear();
+}
+
+/** Whether this is a development build, spelled so that nothing breaks where nobody defines it. */
+const inDevelopment = (): boolean => typeof process !== "undefined" && process.env?.NODE_ENV !== "production";
+
+/**
+ * How strongly a key's CONTEXT overrides, or `undefined` when the pair cannot be compared.
+ *
+ * A key is `conditions… | selector? | property`, and its doc says it is never parsed back — the
+ * parts share a separator a selector is allowed to contain, so `[title|="x"]` splits into nonsense.
+ * The property is safe, being the tail after the LAST separator. The context is not, so this only
+ * answers when every part of it begins with `@`, which a condition does and a selector cannot.
+ *
+ * **A selector is why that matters rather than being caution.** A selector adds specificity, which
+ * beats source order on its own — so `&:hover { color: red }` against `@media { color: blue }` is
+ * settled by the selector and not by the sheet. Comparing them would report correct CSS, which is
+ * the failure mode this package has paid for before.
+ */
+function slotOf(context: string): number | undefined {
+  if (context === "") return 0;
+  return context.split("|").every((one) => one.startsWith("@")) ? widthSlot([context]) : undefined;
+}
+
+/**
+ * An override that composition asks for and the STYLESHEET will not honour, said out loud in dev.
+ *
+ * **The one hole the compiler cannot see.** Two declarations of one property under different
+ * conditions are different keys, so the merge keeps both, both classes land, and the sheet breaks
+ * the tie by how strongly each condition overrides — see `widthSlot`. Within one block
+ * `override-out-of-order` reports where that contradicts the author's order. Across a SPREAD it
+ * cannot: `...{base}` is a runtime value, and the compiler does not know what is in it.
+ *
+ * Measured in Chromium, on the shape people write — a base carrying the theme and a modifier
+ * adjusting it:
+ *
+ *     const base = @@( @media (prefers-color-scheme: dark) { color: white; } );
+ *     const card = @@( ...{base}; @media (min-width: 40rem) { color: blue; } );
+ *
+ * With the modes ordered against breakpoints the way Tailwind orders them this one is right, and the
+ * mirror of it — a base with the breakpoint, a modifier with the mode — is the one that loses. Either
+ * way something loses silently, and only the runtime holds both maps at once, so this is the only
+ * place the question can be asked at all.
+ *
+ * Said once per pair, because a render loop would otherwise say it a thousand times.
+ */
+function warnAboutOrder(chosen: Record<string, StyleEntry | StyleClears>): void {
+  /** Property -> what was composed for it, in composition order. */
+  const byProperty = new Map<string, { key: string; slot: number }[]>();
+
+  for (const key in chosen) {
+    if (key.startsWith(CLEARS)) continue;
+    const cut = key.lastIndexOf("|");
+    const slot = slotOf(cut === -1 ? "" : key.slice(0, cut));
+    if (slot === undefined) continue;
+
+    const property = cut === -1 ? key : key.slice(cut + 1);
+    const list = byProperty.get(property);
+    if (list === undefined) byProperty.set(property, [{ key, slot }]);
+    else list.push({ key, slot });
+  }
+
+  for (const [property, list] of byProperty) {
+    let strongest = list[0];
+    for (const one of list.slice(1)) {
+      if (one.slot >= strongest.slot) {
+        strongest = one;
+        continue;
+      }
+      const message =
+        `[@ramonda/css] \`${property}\` is composed later under \`${context(one.key)}\` than under ` +
+        `\`${context(strongest.key)}\`, and it will not override it — the stylesheet emits the ` +
+        `stronger condition last, so the earlier one wins wherever both apply. Put the two under one ` +
+        `condition, or compose them the other way round.`;
+      if (said.has(message)) continue;
+      said.add(message);
+      console.warn(message);
+    }
+  }
+}
+
+/** A key's context, for the message — the whole key when it has none. */
+const context = (key: string): string => {
+  const cut = key.lastIndexOf("|");
+  return cut === -1 ? "no condition" : key.slice(0, cut);
+};
+
+/**
  * Compose blocks into one map — the primitive, and the one that is closed over its own output.
  *
  * `merge` returns the VALUE the framework takes, which is a different shape and cannot be composed
@@ -114,10 +219,13 @@ function setsNothing(entry: StyleEntry | StyleClears | undefined): boolean {
 export function compose(...maps: readonly (StyleMap | StyleValue | false | null | undefined)[]): StyleMap {
   /** Insertion-ordered, which is what keeps a composed map behaving like the sequence it came from. */
   const chosen: Record<string, StyleEntry | StyleClears> = {};
+  /** How many maps actually arrived, for the dev warning below. */
+  let given = 0;
 
-  for (const given of maps) {
-    if (!given) continue;
-    const map = mapOf(given);
+  for (const one of maps) {
+    if (!one) continue;
+    given++;
+    const map = mapOf(one);
     for (const key in map) {
       if (key.startsWith(CLEARS)) continue;
       // A declaration with nothing to set is not set, so it neither displaces nor clears anything.
@@ -134,6 +242,12 @@ export function compose(...maps: readonly (StyleMap | StyleValue | false | null 
       chosen[key] = map[key];
     }
   }
+
+  /**
+   * Only when more than one map was composed. A single block's contradictions are the compiler's to
+   * report, at the author's own line, and it does — this exists for what a spread hides.
+   */
+  if (given > 1 && inDevelopment()) warnAboutOrder(chosen);
 
   return chosen;
 }

@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
-import { compose, merge } from "../merge";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { compose, forget, merge } from "../merge";
 import { block } from "../value";
 import { SHORTHANDS } from "../compiler/keywords.generated";
 
@@ -472,5 +472,114 @@ describe("a four-side shorthand meeting a logical one", () => {
     "border-inline-width",
   ])("`%s` is read as the shorthand it is", (name) => {
     expect(clears(name).size).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The override a SPREAD hides, said out loud in dev — the one hole the compiler cannot see.
+ *
+ * Two declarations of one property under different conditions are different keys, so the merge keeps
+ * both and the sheet breaks the tie by how strongly each condition overrides. Within one block
+ * `override-out-of-order` reports where that contradicts the author's order; across `...{base}` it
+ * cannot, because a spread's operand is a runtime value. Only the runtime holds both maps.
+ */
+describe("an override the stylesheet will not honour", () => {
+  const said: string[] = [];
+  const real = console.warn;
+
+  beforeEach(() => {
+    said.length = 0;
+    console.warn = (message: string) => said.push(message);
+  });
+  afterEach(() => {
+    console.warn = real;
+    // The warning is said once per pair for the life of the module, so each test needs its own.
+    forget();
+  });
+
+  const under = (condition: string, property: string, value: string) => ({
+    [`${condition}|${property}`]: `r-${value}`,
+  });
+
+  test("a mode composed after a breakpoint cannot override it, and is reported", () => {
+    compose(
+      under("@media (min-width: 40rem)", "color", "wide"),
+      under("@media (prefers-color-scheme: dark)", "color", "dark"),
+    );
+
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain("`color`");
+    expect(said[0]).toContain("prefers-color-scheme");
+    expect(said[0]).toContain("min-width: 40rem");
+  });
+
+  test("and the way round the stylesheet does honour is silent", () => {
+    compose(
+      under("@media (prefers-color-scheme: dark)", "color", "dark"),
+      under("@media (min-width: 40rem)", "color", "wide"),
+    );
+
+    expect(said).toEqual([]);
+  });
+
+  test("two breakpoints, the wider one composed later, is silent", () => {
+    compose(under("@media (min-width: 40rem)", "color", "narrow"), under("@media (min-width: 64rem)", "color", "wide"));
+
+    expect(said).toEqual([]);
+  });
+
+  test("and the narrower one composed later is reported", () => {
+    compose(under("@media (min-width: 64rem)", "color", "wide"), under("@media (min-width: 40rem)", "color", "narrow"));
+
+    expect(said).toHaveLength(1);
+  });
+
+  /**
+   * A SELECTOR settles it by specificity, not by the sheet — so comparing the pair would report
+   * correct CSS, which is the failure mode this package has already paid for.
+   */
+  test("a selector against a condition is not compared at all", () => {
+    compose(under("@media (min-width: 40rem)", "color", "wide"), { "&:hover|color": "r-hover" });
+
+    expect(said).toEqual([]);
+  });
+
+  /** And a key whose parts cannot be split apart is left alone rather than guessed at. */
+  test("a condition holding the key's own separator is not compared", () => {
+    compose(under("@media (min-width: 40rem)", "color", "wide"), {
+      '@supports selector([title|="x"])|color': "r-supports",
+    });
+
+    expect(said).toEqual([]);
+  });
+
+  test("two properties that do not fight are not compared", () => {
+    compose(
+      under("@media (min-width: 40rem)", "color", "wide"),
+      under("@media (prefers-color-scheme: dark)", "background-color", "dark"),
+    );
+
+    expect(said).toEqual([]);
+  });
+
+  /** One block on its own is the compiler's to report, at the author's line. */
+  test("a single map is not checked here at all", () => {
+    compose({
+      "@media (min-width: 40rem)|color": "r-wide",
+      "@media (prefers-color-scheme: dark)|color": "r-dark",
+    });
+
+    expect(said).toEqual([]);
+  });
+
+  test("and it is said once, however many times the same thing is composed", () => {
+    for (let index = 0; index < 5; index++) {
+      compose(
+        under("@media (min-width: 40rem)", "color", "wide"),
+        under("@media (prefers-color-scheme: dark)", "color", "dark"),
+      );
+    }
+
+    expect(said).toHaveLength(1);
   });
 });

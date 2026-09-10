@@ -1798,28 +1798,28 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 - **The tooling decision.** A file using this cannot be read by biome or oxlint directly. Track K
   turns that into "our tooling" rather than "no tooling", but it stays a deliberate choice.
 - **Nesting depth in v1** — `&`, pseudo-classes and `@media` are recommended; anything deeper waits.
-- **Two conditions that carry no width.** The breakpoint half is DONE — the sheet reads the width off
-  the query, so two `min-width`s land in different layers and the wider one is last whatever order
-  they were written in. Measured through the real sheet in Chromium: 600 load orders across three
-  files, both minifiers, zero wrong.
+- **Two conditions the mode table does not name.** The ordering half is DONE and the reuse half is
+  DONE; what is left is small.
 
-  What is left is `@media print` against `prefers-color-scheme: dark` against `@supports` — no number
-  to compare, so they share a slot and the file's own order decides, which another file writing one
-  of the two can still reverse. Measured: card alone is right, card plus an innocent second file is
-  not.
+  The modes now have their own places around the breakpoints, in Tailwind's order — read out of its
+  `corePlugins.js`, not invented: reduced motion, colour scheme and medium below the breakpoints;
+  `@supports`, orientation, contrast and `forced-colors` above them. **The user chose that over the
+  order I had shipped** (every mode beating every breakpoint), and the reason is which mistake stays
+  silent: theming lives in a base block and the block reusing it adjusts at a breakpoint, which is
+  the shape people write.
 
-  **No per-file layer scheme settles it**, and that is measured rather than argued. A layer per
-  POSITION within the slot looks like the answer and is worse than it looks — a position belongs to
-  the file, so a shared rule gets a different layer in each file that names it: 144 of 750 load
-  orders wrong. The reason is the one that makes the rest of the scheme work: a layer's place is
-  fixed by its declaration, and CSS appends a name it has not seen to the END of the order. A
-  stylesheet cannot declare an order it does not yet know, and a file emitting one half of a pair
-  does not know the other half exists.
+  And the reuse hole is closed where it can be: `compose` warns in development when two declarations
+  of one property are composed in an order the sheet will not honour. It is the only place that
+  question can be asked — a spread's operand is a runtime value, so the compiler does not know what
+  is in it, and only the runtime holds both maps. Measured: zero bytes in a production build (neither
+  the sentence, nor `widthSlot`, nor `process` appears in a real Vite production bundle).
 
-  So either these get an order of their own — an arbitrary one, which is what a hash would give, and
-  then a report when the author's order disagrees with it — or the sheet reports the pair, since it
-  is the one thing that has every file at once. Undecided. `prototype-layers.mjs` holds every
-  measurement.
+  What is left: `@media (min-height: …)` against `@media (hover: hover)` — two conditions the table
+  does not name share its last slot, so the file's own order decides and another file can still
+  reverse it. Inside one block `override-out-of-order` reports nothing there (equal rank) and across a
+  spread the dev warning cannot compare them either. Either the table grows to name them, or their
+  slot is derived from the condition's own text — an arbitrary but stable order, plus a report when
+  the author's order disagrees with it. Undecided, and much smaller than it was.
 
 ## How to work here
 

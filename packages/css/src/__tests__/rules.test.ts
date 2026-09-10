@@ -1108,10 +1108,36 @@ describe("an override the sheet's order will not honour", () => {
     ).toHaveLength(0);
   });
 
-  test("a mode is not a size, so it comes after every breakpoint and overrides one", () => {
-    expect(checkNamedFree("@media (min-width: 64rem) { padding: 8px; }\n@media print { padding: 0px; }")).toHaveLength(
-      0,
-    );
+  /**
+   * A MODE against a breakpoint, and which way round is Tailwind's order — the user's call over the
+   * one I had shipped. The colour scheme and the medium are WEAKER than a breakpoint; `@supports`,
+   * orientation, contrast and `forced-colors` are stronger. See `widthSlot`.
+   */
+  test.each([
+    [
+      "a breakpoint below the colour scheme is fine",
+      "@media (prefers-color-scheme: dark)",
+      "@media (min-width: 64rem)",
+    ],
+    ["and below the medium too", "@media print", "@media (min-width: 64rem)"],
+    ["`forced-colors` below a breakpoint is fine", "@media (min-width: 64rem)", "@media (forced-colors: active)"],
+  ])("%s", (_what, above, below) => {
+    expect(checkNamedFree(`${above} { padding: 8px; }\n${below} { padding: 0px; }`)).toHaveLength(0);
+  });
+
+  test.each([
+    [
+      "the colour scheme below a breakpoint cannot override it",
+      "@media (min-width: 64rem)",
+      "@media (prefers-color-scheme: dark)",
+    ],
+    ["nor can the medium", "@media (min-width: 64rem)", "@media print"],
+    ["nor a breakpoint below `forced-colors`", "@media (forced-colors: active)", "@media (min-width: 64rem)"],
+  ])("%s", (_what, above, below) => {
+    const found = checkNamedFree(`${above} { padding: 8px; }\n${below} { padding: 0px; }`);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("override-out-of-order");
   });
 
   test("`@supports` is the same, because a condition adds no specificity", () => {

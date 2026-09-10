@@ -1,6 +1,7 @@
 import type { Block, BlockItem } from "./ast";
 import { HOLE, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, SHORTHANDS } from "./keywords.generated";
+import { widthSlot } from "../conditions";
 import { CONDITION, SPREAD, holeIn } from "./read";
 
 /**
@@ -68,81 +69,7 @@ function breadthOf(declaration: { property?: string }): number {
   return declaration.property === undefined ? 0 : (SHORTHANDS[declaration.property]?.length ?? 0);
 }
 
-/** A length in a media query, in px — `rem` and `em` at the root's 16px, and nothing else. */
-function pixelsOf(text: string): number | undefined {
-  const found = /^\s*(-?\d*\.?\d+)(px|rem|em)\s*$/.exec(text);
-  if (found === null) return undefined;
-  const value = Number(found[1]);
-  return found[2] === "px" ? value : value * 16;
-}
-
-/**
- * The widest `min-width` and the narrowest `max-width` across every condition around a rule — the
- * most restrictive of each, since a rule under two conditions applies only where both hold.
- *
- * A width in a unit this cannot resolve is simply not one of them, which leaves the rule with the
- * modes: no number, nothing to compare.
- */
-function widthsIn(conditions: readonly string[]): { min?: number; max?: number } {
-  let min: number | undefined;
-  let max: number | undefined;
-
-  for (const condition of conditions) {
-    for (const [, which, text] of condition.matchAll(/\((min|max)-width\s*:([^)]*)\)/g)) {
-      const pixels = pixelsOf(text);
-      if (pixels === undefined) continue;
-      if (which === "min") min = min === undefined ? pixels : Math.max(min, pixels);
-      else max = max === undefined ? pixels : Math.min(max, pixels);
-    }
-  }
-  return { min, max };
-}
-
-/** The widest breakpoint that gets its own slot; beyond it, values are clamped and tie. */
-const WIDEST = 4999;
-
-/**
- * How NARROW the viewport a rule applies to is, as a number that sorts — the sheet's major order.
- *
- * **A narrower rule has to be emitted later**, and until this existed the sheet could not tell two
- * breakpoints apart. `padding` under `@media (min-width: 40rem)` and again under
- * `@media (min-width: 64rem)` are both conditional and neither is a shorthand, so they ranked the
- * same, and the sheet fell back to the order the file happened to write them in — which another file
- * re-emitting one of the two then reversed. Measured in Chromium: 280 of 750 load orders wrong.
- *
- * A breakpoint is a NUMBER, so this is what every atomic CSS framework does: order by the query
- * rather than by where it was written. The four bands, ascending:
- *
- * | slot | what is in it |
- * |---|---|
- * | `0` | not conditional at all, so it is first |
- * | `1 … 5000` | `max-width`, the narrowest last — which is desktop-first |
- * | `5001 … 10000` | `min-width`, the widest last — which is mobile-first |
- * | `10001` | conditional, with no width this can read |
- *
- * **`min-width` after `max-width`** when both match, which is the order the frameworks settled on.
- * A rule with BOTH is placed by its `min-width`: a band is narrower than the open range it starts
- * from, and no single number orders two bands that overlap only partly.
- *
- * **A condition with no width comes LAST, and that is a choice.** `@media print`,
- * `prefers-color-scheme: dark`, `forced-colors`, `@supports` — these are not size refinements, they
- * are modes, and a mode is written to override. Placing them first would refuse the ordinary shape
- * of breakpoints followed by a dark-mode override, and placing them last refuses the reverse, which
- * is rare. They still tie with EACH OTHER, the way everything conditional used to tie, and there the
- * sheet falls back to the order the file wrote — see `PLAN.md` for what is still open.
- *
- * A width in a unit this cannot resolve — `50ch`, a `calc()` — leaves the rule with the modes, since
- * no number can be compared.
- */
-export function widthSlot(conditions: readonly string[] | undefined): number {
-  if (conditions === undefined || conditions.length === 0) return 0;
-
-  const { min, max } = widthsIn(conditions);
-  const clamp = (value: number) => Math.min(Math.max(value, 0), WIDEST);
-  if (min !== undefined) return WIDEST + 2 + clamp(min);
-  if (max !== undefined) return WIDEST + 1 - clamp(max);
-  return 2 * WIDEST + 3;
-}
+export { widthSlot } from "../conditions";
 
 /**
  * Where a declaration's rule goes in the stylesheet, and it is a RULE rather than an accident.

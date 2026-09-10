@@ -749,7 +749,7 @@ describe("the same declaration in two contexts", () => {
   });
 
   test("and two different conditions are two rules again", () => {
-    const out = emit(`const c = @@( @media (min-width: 40rem) { padding: 8px; } @media print { padding: 8px; } );\n`);
+    const out = emit(`const c = @@( @media print { padding: 8px; } @media (min-width: 40rem) { padding: 8px; } );\n`);
 
     expect(out?.blocks).toHaveLength(2);
   });

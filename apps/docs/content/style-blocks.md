@@ -193,20 +193,61 @@ stylesheet emits the rule that applies to a wider viewport first, so the earlier
 wherever both apply. Write it above, or put it under the same condition.
 ```
 
-**A mode is not a size.** `@media print`, `prefers-color-scheme: dark`, `forced-colors`, `@supports`
-— these carry no width, so they come after every breakpoint and override one:
+**A mode is not a size, and it has its own place in the list.** `prefers-color-scheme` and
+`@media print` are weaker than a breakpoint; `@supports`, `orientation`, `prefers-contrast` and
+`forced-colors` are stronger. So a theme goes above the breakpoints that refine it:
 
 ```tsx
 <div css=@@(
-  @media (min-width: 64rem) { color: black; }
   @media (prefers-color-scheme: dark) { color: white; }
+  @media (min-width: 64rem) { color: black; }
 )>…</div>
 ```
 
-Two of THOSE against each other is the one case with no rule: `@media print` and
-`prefers-color-scheme: dark` both carry no width, so nothing tells them apart and the one you wrote
-last wins — which is CSS's own answer, and it holds as long as no other file writes one of the two.
-Put them under one condition if it matters.
+The full order, weakest first:
+
+```
+prefers-reduced-motion  →  prefers-color-scheme  →  print  →  BREAKPOINTS
+   →  @supports  →  orientation  →  prefers-contrast  →  forced-colors
+```
+
+**Breakpoints sit in the middle**, so a breakpoint beats a dark-mode rule and `forced-colors` beats a
+breakpoint. That is Tailwind's order, and the reason to keep it is which mistake stays quiet: theming
+usually lives in the block you reuse, and the block reusing it usually adjusts at a breakpoint.
+
+A condition this list does not name — `@media (min-height: …)`, `@media (hover: hover)`, a width in a
+unit that cannot be turned into a number — comes last, and two of those against each other is the one
+case with no rule. Nothing tells them apart, so the one you wrote last wins. Put them under one
+condition if it matters.
+
+### When you reuse a block, the order is still the list above
+
+`...{base}` merges another block's declarations. Two declarations of one property under different
+conditions are two different things set, so both survive the merge and the list above decides:
+
+```tsx
+const base = @@( @media (prefers-color-scheme: dark) { color: white; } );
+
+<div css=@@(
+  ...{base};
+  @media (min-width: 40rem) { color: blue; }
+)>…</div>
+```
+
+At 40rem and up the element is blue, in dark mode too — the breakpoint is further down the list.
+
+**Write it the other way round and you are told, at run time in development:**
+
+```
+[@ramonda/css] `color` is composed later under `@media (prefers-color-scheme: dark)` than under
+`@media (min-width: 40rem)`, and it will not override it — the stylesheet emits the stronger
+condition last, so the earlier one wins wherever both apply. Put the two under one condition, or
+compose them the other way round.
+```
+
+Inside one block you get that as a build error instead, on the line you wrote. Across a reuse it can
+only be a run-time warning: what is in `...{base}` is a value, and the compiler does not know it. The
+warning is said once, and it is not in a production build at all.
 
 ### How the order is kept, if you read the output
 
