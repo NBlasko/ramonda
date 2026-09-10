@@ -6,7 +6,7 @@ const MARKER = "ramonda-css-ignore";
 
 /** One directive the author wrote, and what it says. */
 export interface Ignored {
-  /** The line the directive applies to — the one after it. 1-based, as a person counts. */
+  /** The line the directive applies to — its own, or the one after. 1-based, as a person counts. */
   readonly line: number;
   /** Why, in the author's own words. Never empty: an empty one is refused rather than obeyed. */
   readonly reason: string;
@@ -30,6 +30,22 @@ export interface Ignored {
  * - **an empty reason is refused**, because a directive with nothing after it is a silence;
  * - **every annotated site is returned**, so a run can print what was exempted and nobody has to
  *   grep for them to find out.
+ *
+ * ## The two places a person writes one, and which line each is about
+ *
+ * Every linter has both spellings and this had only one. Measured on the other — the directive at
+ * the END of the line that is wrong — it covered the line BELOW: the fault it was written for was
+ * still reported, and a line the author never looked at was silenced instead. "It cannot creep past
+ * what the author looked at" was true of the wrong line.
+ *
+ * One marker still, told apart by what is IN FRONT of it:
+ *
+ * - **alone on its line** — nothing before it but whitespace and a comment opener — is about the
+ *   line below, which is where a reason wants room to be written;
+ * - **following code** is about the code it follows.
+ *
+ * That is what the two spellings mean everywhere else, so there is no second word to learn, and
+ * neither can reach a line the author did not have in front of them.
  *
  * The scan is by LINE and reads no comment syntax, which is deliberate: a block is CSS and the code
  * around it is TypeScript, so a directive has to work in `/* … *\/` and in `//` without this having
@@ -63,7 +79,7 @@ export function ignoredIn(source: string): { ignored: Ignored[]; findings: Findi
             "being true is one somebody can see.",
         });
       } else {
-        ignored.push({ line: line + 1, reason, at: at + found });
+        ignored.push({ line: alone(text, found) ? line + 1 : line, reason, at: at + found });
       }
     }
     at += text.length + 1;
@@ -71,6 +87,17 @@ export function ignoredIn(source: string): { ignored: Ignored[]; findings: Findi
   }
 
   return { ignored, findings };
+}
+
+/**
+ * Whether the directive is the only thing on its line — which is what says which line it is about.
+ *
+ * Everything a comment opener is made of counts as nothing: `/*`, `//`, and the `*` a continuation
+ * line begins with. What is left is the author's own code, and code in front of a directive is what
+ * the directive is about.
+ */
+function alone(text: string, found: number): boolean {
+  return text.slice(0, found).replace(/\/\*|\/\/|\*|\s/g, "") === "";
 }
 
 /** Whether a finding sits on a line an author took responsibility for. */

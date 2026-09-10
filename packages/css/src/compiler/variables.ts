@@ -79,6 +79,15 @@ export function readsIn(parts: readonly ValuePart[], into: VariableRead[]): void
         continue;
       }
       if (code !== 118 && code !== 86 /* v V */) continue;
+      /**
+       * **The END of an ident that happens to be `var`**, which was read as a call and reported.
+       *
+       * This looked for `v`, `a`, `r`, `(` and never at what came before, so `mysvar(--x)` was a read
+       * of `--x` — a name nothing sets, reported on valid CSS with nothing else to explain it. A
+       * false report is the one failure a checker does not survive. `-` counts, because a CSS ident
+       * may hold one: `my-var(` is one ident, not `my-` and a call.
+       */
+      if (index > 0 && isWordCharacter(text.charCodeAt(index - 1))) continue;
 
       let after = index + 1;
       if ((text.charCodeAt(after) | 32) !== 97 /* a */) continue;
@@ -97,6 +106,20 @@ export function readsIn(parts: readonly ValuePart[], into: VariableRead[]): void
 
       let end = start + 2;
       while (end < text.length && isWordCharacter(text.charCodeAt(end))) end++;
+
+      /**
+       * The name ran to the end of this part, so it is NOT FINISHED — the next part is a hole, or
+       * the text simply stops.
+       *
+       * `var(--brand-{n})` is refused by `glued-hole`, and this reported `--brand-` as well: one
+       * fault came back as two, and the second named a variable nobody wrote. An unreadable call is
+       * not evidence of a missing name either way, which is what the note below already says about
+       * the character after it.
+       */
+      if (end === text.length) {
+        index = end - 1;
+        continue;
+      }
 
       // Past the name, a comma is a fallback and `)` is the end of the call. Anything else is text
       // this cannot read, and an unreadable call is not evidence of a missing name either way.

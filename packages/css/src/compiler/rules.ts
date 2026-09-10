@@ -931,11 +931,23 @@ function holeAsAVariableName(block: Block, findings: Finding[]): void {
           rule: "hole-as-a-variable-name",
           at: part.at ?? item.valueAt ?? item.at ?? 0,
           length: part.length ?? 2,
+          /**
+           * **What the last sentence used to say had stopped being true.** It read "one imported
+           * from another module is not", which was the state of things before cross-module
+           * references resolved — and both the build and `ramonda-css` supply a reader now, so an
+           * imported `@@property` is written straight into the text like a local one.
+           *
+           * What is left when this fires is a reference that did not resolve, and the reasons are
+           * specific: a bare package specifier, which `namedSites` refuses because resolving one
+           * needs a bundler's resolver; a file that is not there; or a name the module does not
+           * export. Naming the CATEGORY instead sent an author to rewrite architecture that works.
+           */
           message:
             "`var()` takes a literal name, and a hole is a value — this compiles to " +
-            "`var(var(--\u2026))`, which resolves to nothing and drops the declaration in silence. A " +
-            "`@@property( \u2026 )` in this file is a name it can read; one imported from another module " +
-            "is not.",
+            "`var(var(--\u2026))`, which resolves to nothing and drops the declaration in silence. " +
+            "A `@@property( \u2026 )` is a name it can read, in this file or imported from a " +
+            "relative module — so this one did not resolve: check the path, the export, and that " +
+            "the specifier begins with `.`, since a package name needs a bundler's resolver.",
         });
       }
     }

@@ -46,7 +46,13 @@ async function serve(source: string) {
   const server = await createServer({
     root,
     logLevel: "silent",
-    server: { middlewareMode: true, ws: false },
+    // The real watcher OFF, and that is what makes this test deterministic rather than nearly so.
+    // Measured: chokidar fires its own event for the same write, so `sent.length` grew from a
+    // payload that belonged to the PREVIOUS save and the fetch ran before this one was handled.
+    // The trace showed 3 and 4 payloads where the test had made 2 and 3 saves. Nothing here is
+    // about chokidar noticing a file; the change event is emitted below, which is the input the
+    // plugin is under test for.
+    server: { middlewareMode: true, ws: false, watch: null },
     plugins: [ramondaCss({ runtime }) as never],
   });
   servers.push(server);
@@ -60,10 +66,15 @@ async function serve(source: string) {
   /**
    * A save, and the wait for the server to have finished handling it.
    *
-   * The wait is generous because the gate runs every package at once and this one waits on a real
-   * server: at two seconds it passed here and failed once inside `pnpm check`, which is the shape of
-   * a test that measures the machine rather than the code. Vitest's own timeout is what should end a
-   * hang, not a number chosen here.
+   * **One save is one payload, because the real watcher is off** — see `createServer` above. It was
+   * not, and this waited for `sent.length` to grow by any amount: chokidar fired its own event for
+   * the same write, so the wait could be satisfied by a payload belonging to the PREVIOUS save and
+   * the fetch ran before this one had been handled. Measured over repeated whole-suite runs, it
+   * failed about one run in four, only under the load of the other files — and a trace showed 3 and
+   * 4 payloads where the test had made 2 and 3 saves.
+   *
+   * The first repair was a longer wait, which is what one reaches for when the cause is a guess. It
+   * made the window smaller and left the race. Vitest's own timeout is what should end a hang.
    */
   async function save(next: string) {
     const before = sent.length;

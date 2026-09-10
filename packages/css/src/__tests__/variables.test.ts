@@ -39,8 +39,35 @@ describe("the names a block reads", () => {
   test.each([
     ["inside a string, which is a quotation", '  content: "var(--a)";'],
     ["not a custom property, which is not valid CSS", "  color: var(brand);"],
+    /**
+     * **THE END OF AN IDENT THAT HAPPENS TO BE `var`**, which was read as a call and reported.
+     *
+     * The scan looked for `v`, `a`, `r`, `(` and never at what came BEFORE — so `mysvar(--x)` was a
+     * read of `--x`, a name nothing sets, reported on valid CSS with no other finding to explain it.
+     * A false report is the one failure a checker does not survive.
+     */
+    ["an ident that merely ends in `var`", "  font-family: mysvar(--x);"],
+    ["and one ending in it after a dash, which CSS idents may hold", "  color: my-var(--x);"],
+    /**
+     * A NAME CUT OFF BY A HOLE. `var(--brand-{n})` is refused by `glued-hole` — text written against
+     * a hole is not part of its value — and this reported `--brand-` as well, so one fault came back
+     * as two and the second named a variable nobody wrote. A run that ends at the part boundary is a
+     * name this cannot read, and an unreadable call is not evidence of a missing name either way,
+     * which is what the code already says about the character after it.
+     *
+     * A name running off the end of the whole VALUE is not among these, and that is a fact about the
+     * parser rather than an omission: `color: var(--brand` with no `)` comes back as the text
+     * `var(--brand\n)`, because the tolerant read carries the block's own closing paren into it. The
+     * shape cannot be made, so it is not asserted.
+     */
+    ["a name a hole finishes", "  color: var(--brand-{n});"],
   ])("%s is not a read", (_what, css) => {
     expect(names(css)).toEqual([]);
+  });
+
+  /** And the ident guard reads the OTHER way too: a call at the very start of a value is one. */
+  test("a read with nothing before it", () => {
+    expect(names("  color: var(--a);")).toEqual(["--a"]);
   });
 });
 

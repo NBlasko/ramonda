@@ -73,6 +73,47 @@ describe("a finding an author took responsibility for", () => {
 
     expect(rules(source)).toEqual([]);
   });
+
+  /**
+   * **THE OTHER PLACE A PERSON WRITES IT — at the end of the line that is wrong.**
+   *
+   * Every linter has both spellings, and the tests above only ever measured one. Measured on the
+   * other: the directive covered the line BELOW, so the fault it was written for was still reported
+   * and a line the author never looked at was silenced instead — "it cannot creep past what the
+   * author looked at" was true of the wrong line.
+   *
+   * One marker still, and the two are told apart by what is in front of it: a directive ALONE on its
+   * line is about the line below, and one following code is about the code it follows. That is what
+   * the two spellings already mean everywhere else, and it needs no second word to learn.
+   */
+  test("at the end of the line it is about", () => {
+    const source = "const a = <div css=@@(\n  display: flexx; /* ramonda-css-ignore a vendor sheet */\n)>x</div>;\n";
+
+    expect(rules(source)).toEqual([]);
+  });
+
+  test("and one following code does NOT reach the line below it", () => {
+    const source =
+      "const a = <div css=@@(\n  color: red; /* ramonda-css-ignore this line is fine */\n  display: flexx;\n)>x</div>;\n";
+
+    expect(rules(source)).toEqual(["unknown-value"]);
+  });
+
+  /** Alone on its line still means the line below, which is what the tests above rely on. */
+  test("alone on its line, in a `//` comment, above the declaration", () => {
+    const source =
+      "const a = 1; // ramonda-css-ignore about the line below\nconst b = <div css=@@( display: flexx; )>x</div>;\n";
+
+    // Following code, so it is about `const a = 1;` — which has no finding — and the block is
+    // reported. The two spellings cannot both be about the same line.
+    expect(rules(source)).toEqual(["unknown-value"]);
+  });
+
+  test("the build honours the end-of-line spelling too", () => {
+    const source = "const a = <div css=@@(\n  display: flexx; /* ramonda-css-ignore a vendor sheet */\n)>x</div>;\n";
+
+    expect(built(source)).toBeUndefined();
+  });
 });
 
 describe("a directive with nothing after it", () => {
