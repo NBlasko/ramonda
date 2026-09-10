@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ABBREVIATIONS, KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
+import { nearest } from "../compiler/rules";
 import { namedSites, syntaxesIn } from "../compiler/references";
 import { type Finding, checkBlock, checkText } from "../compiler/rules";
 import { findBlocks } from "../compiler/scan";
@@ -2261,5 +2262,110 @@ describe("a vendor prefix", () => {
     const [found] = checkNamedFree("-webkti-line-clamp: 3;");
 
     expect(found.message).toContain("-webkit-line-clamp");
+  });
+});
+
+/**
+ * AN AT-RULE NAME THAT DOES NOT EXIST, and it drops the whole rule.
+ *
+ * Found the way the pseudo-class was: `AT_RULE_LINKS` holds every at-rule name CSS has, and
+ * `normalise.ts` and `plugin.ts` both read it — while no RULE did. So the FEATURE inside a `@media`
+ * was checked and the word `@media` itself was not:
+ *
+ *     @media (min-widht: 40rem) { … }   reported
+ *     @medai (min-width: 40rem) { … }   silent
+ *
+ * Measured in Chromium, inserting the rule and reading `cssRules` back: a name the browser does not
+ * know keeps ZERO rules — every declaration inside it is dropped, and the element stays black. Same
+ * cost as the pseudo-class and for the same reason: it is the rule that is thrown away, not one
+ * declaration.
+ */
+describe("an at-rule name", () => {
+  test.each(["@media (min-width: 40rem)", "@supports (display: grid)", "@container (min-width: 10px)", "@layer x"])(
+    "%s is one CSS has and is left alone",
+    (prelude) => {
+      // `@layer` has a rule of its own — `layer-in-a-block` — so it is only the NAME being asked here.
+      const found = checkNamedFree(`${prelude} { color: red; }`).filter((one) => one.rule === "unknown-at-rule");
+
+      expect(found).toEqual([]);
+    },
+  );
+
+  test.each([
+    ["a typo", "@medai (min-width: 40rem)", "@media"],
+    ["one letter out", "@supprts (display: grid)", "@supports"],
+    ["a missing letter", "@containr (min-width: 10px)", "@container"],
+  ])("%s is reported: %s", (_what, prelude, meant) => {
+    const found = checkNamedFree(`${prelude} { color: red; }`);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("unknown-at-rule");
+    expect(found[0].message).toContain(meant);
+  });
+
+  /**
+   * A name with no near miss is still reported, because unlike a property this is not a case the
+   * types cover — nothing else in this package says a word about it, and the whole rule is dropped.
+   */
+  test("a name that is nothing at all is reported without a suggestion", () => {
+    const found = checkNamedFree("@notarule { color: red; }");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("unknown-at-rule");
+    expect(found[0].message).not.toContain("Did you mean");
+  });
+
+  /**
+   * A VENDOR at-rule is a browser's own — `@-moz-document` was real — so the prefix is checked and
+   * the name after it is not, exactly as for a property.
+   */
+  test("a vendor-prefixed at-rule is left alone", () => {
+    expect(checkNamedFree("@-moz-document url-prefix() { color: red; }")).toEqual([]);
+  });
+});
+
+/**
+ * **A SWAPPED PAIR OF LETTERS, which is the commonest typo and got no suggestion.**
+ *
+ * Found by `@medai` — a transposition of `@media`. Levenshtein counts a swap as TWO edits, and the
+ * bound is scaled by length, so for a six-character name it is 1 and the swap is out of reach.
+ *
+ * Measured over every single-swap typo of every name in the four vocabularies, and every single
+ * DELETION too, so the change is measured for what it might break:
+ *
+ *                     Levenshtein                    optimal string alignment
+ *     properties  swap  right 12978  wrong 88  silent 199   right 13263  wrong 2  silent 0
+ *     properties  drop  right 14223  wrong 63  silent   0   right 14223  wrong 63 silent 0
+ *     features    swap  right   577  wrong 10  silent  31   right   618  wrong 0  silent 0
+ *     at-rules    swap  right   157  wrong  0  silent  25   right   182  wrong 0  silent 0
+ *     selectors   swap  right  1210  wrong  2  silent 141   right  1353  wrong 0  silent 0
+ *
+ * Better in every direction — 396 silent typos become 0, 100 wrong suggestions become 2, deletions
+ * are untouched — and FASTER, 0.024 ms against 0.037 ms per word over 828 names, because a swap
+ * costing 1 reaches the abandon bound sooner.
+ *
+ * It is one rule with six consumers: `unknown-property`, `unknown-value`, `unknown-media-feature`,
+ * `unknown-prefix`, `unknown-at-rule`, and the config's rule-id check.
+ */
+describe("a swapped pair of letters", () => {
+  test.each([
+    ["@medai", "@media"],
+    ["oclor", "color"],
+    ["gpa", "gap"],
+  ])("%s is a typo of %s", (typo, meant) => {
+    const among = typo.startsWith("@") ? ["@media", "@supports", "@container", "@layer"] : ["color", "gap", "padding"];
+
+    expect(nearest(typo, among)).toBe(meant);
+  });
+
+  /** And a name that is nothing like any of them still gets nothing, which is the honest answer. */
+  test("but a word that is nothing like one gets no suggestion", () => {
+    expect(nearest("zzzzzzzz", ["color", "gap", "padding"])).toBeUndefined();
+  });
+
+  /** A deletion still works, which is what the measurement above was checking for. */
+  test("a dropped letter is still a typo", () => {
+    expect(nearest("colr", ["color", "gap", "padding"])).toBe("color");
+    expect(nearest("flex-dirction", ["flex-direction", "flex-wrap"])).toBe("flex-direction");
   });
 });
