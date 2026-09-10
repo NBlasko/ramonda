@@ -301,6 +301,29 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
     throw new Error(`${path} must export an object, or a function returning one.`);
   }
 
+  /**
+   * **An `async` config was silently ignored**, and `async` is what somebody writes the moment the
+   * config reads anything — a token list beside it, which is the shape `__dirname` exists here for.
+   *
+   * A Promise is an object, so the check above let it through; `Object.keys` of one is empty, so
+   * every validation below passed over nothing; and what came back was the empty config. Measured:
+   * `export default async () => ({ units: ["px"] })` enforced no units and said nothing — the exact
+   * failure the note on {@link readConfig} refuses, "a tool that quietly ran with defaults because
+   * somebody's config had a typo".
+   *
+   * It cannot be awaited instead. The editor asks for a config inside `getScriptSnapshot`, which is
+   * synchronous, so a reader that returned a promise there would have to be a SECOND reader — and
+   * one rule with two readers is this repository's recurring fault. So it is refused, with the one
+   * thing the author can do about it.
+   */
+  if (typeof (config as { then?: unknown }).then === "function") {
+    throw new Error(
+      `${path} is async, and a config cannot be — the editor asks for it synchronously, so there is ` +
+        `nowhere to await it. Read what you need at the top level, or move the work into the value: ` +
+        `\`export default { units: readFileSync(join(__dirname, "units.json"), "utf8").split(",") }\`.`,
+    );
+  }
+
   for (const key of Object.keys(config)) {
     if (IDENTITY.has(key)) {
       throw new Error(

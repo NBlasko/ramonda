@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { checkProject } from "./check";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
@@ -45,13 +45,23 @@ const argv = process.argv.slice(2);
 /** Relative to where the command was run, which is how a person reads their own tree. */
 const where = (file: string) => relative(process.cwd(), file) || file;
 
-if (argv[0] === "format" || argv[0] === "lint") {
-  runTool(argv[0], argv.slice(1));
-}
-
+/**
+ * Help first, before anything is dispatched — because ASKING FOR HELP REWROTE THE TREE.
+ *
+ * `format` and `lint` used to be dispatched above this, and `runTool` filters every `-` argument out
+ * of its paths, so `--help` left none and "no paths" means the whole directory. Measured:
+ * `ramonda-css format --help` rewrote a file and exited 0, having been asked what the command does.
+ *
+ * A person meeting a new command types `--help` first, so it is the one argument that must never do
+ * work.
+ */
 if (argv.includes("--help") || argv.includes("-h")) {
   console.log(USAGE);
   process.exit(0);
+}
+
+if (argv[0] === "format" || argv[0] === "lint") {
+  runTool(argv[0], argv.slice(1));
 }
 
 /**
@@ -139,6 +149,18 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
   const stdin = args.find((argument) => argument.startsWith("--stdin-file-path"));
   const paths = args.filter((argument) => !argument.startsWith("-"));
   const cwd = process.cwd();
+
+  /**
+   * The ARGUMENTS first, because a path that is not there is answerable without any tool — and
+   * `filesUnder` reaches it through `statSync`, which throws `ENOENT`. Measured, the output was a
+   * raw stack starting `node:fs:1739`. A typo in a CI script deserves a sentence.
+   */
+  for (const path of paths) {
+    if (!existsSync(resolve(cwd, path))) {
+      console.error(`\n${TAG} \`${path}\` is not there, so there is nothing to ${which}.\n`);
+      process.exit(1);
+    }
+  }
 
   const name = which === "format" ? "biome" : "oxlint";
   const binary = toolIn(cwd, name);

@@ -497,6 +497,51 @@ describe("a reference to a named site", () => {
 
     expect(report.findings.length).toBeGreaterThan(0);
   });
+
+  /**
+   * ONE DECLARED IN ANOTHER MODULE, which is the shape a shared theme has and the shape this refused.
+   *
+   * The reference reader is injected — `Imported.read` — and its own note says why: "a virtual file
+   * that resolved less than the build would type-check an expression the build never emits, and
+   * report a name the author was right to write." Both halves of this command are in that note, and
+   * only one of them obeyed it. `checkedSource` was given the reader; `virtualFile` was not, so the
+   * type half resolved less than the build.
+   *
+   * Measured through the real command, on a file that compiles: *1 block(s) could not be read, so
+   * nothing was checked*, and a message that says the name must be "declared in this file" — which it
+   * is, in the file next to it. A project with a shared token could not run the check at all.
+   */
+  const THEME = `export const accent = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: #10b981;\n);\n`;
+
+  test("one imported from another module reads in a value", () => {
+    const report = check({
+      "theme.ts": THEME,
+      "Card.tsx": `import { accent } from "./theme";\nconst card = @@( color: var({accent}); );\nexport { card };\n`,
+    });
+
+    expect(report.refused).toBe(false);
+    expect(report.findings).toEqual([]);
+  });
+
+  test("and sets a registered property by name, which only resolving makes legal", () => {
+    const report = check({
+      "theme.ts": THEME,
+      "Card.tsx": `import { accent } from "./theme";\nconst card = @@( {accent}: #f05; );\nexport { card };\n`,
+    });
+
+    expect(report.refused).toBe(false);
+    expect(report.findings).toEqual([]);
+  });
+
+  /** And a name no module exports is still a hole, so the fault it really is comes back. */
+  test("a name the imported module does not export is still reported", () => {
+    const report = check({
+      "theme.ts": THEME,
+      "Card.tsx": `import { missing } from "./theme";\nconst card = @@( {missing}: #f05; );\nexport { card };\n`,
+    });
+
+    expect(report.findings.length).toBeGreaterThan(0);
+  });
 });
 
 /**

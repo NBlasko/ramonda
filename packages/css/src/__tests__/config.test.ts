@@ -524,6 +524,30 @@ describe("what a config is allowed to use", () => {
     expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
   });
 
+  /**
+   * **AN `async` CONFIG WAS SILENTLY IGNORED**, and `async` is what somebody writes the moment the
+   * config reads anything — a token list beside it, which is a shape this file's own notes mention.
+   *
+   * A Promise is an object, so the shape check let it through, `Object.keys` of it is empty, every
+   * validation passed over nothing, and what came back was `{}`. Measured: `export default async ()
+   * => ({ units: ["px"] })` gave the empty config, so the units were not enforced and nothing said
+   * so — the exact failure this file exists to refuse, since "a tool that quietly ran with defaults
+   * because somebody's config had a typo would be the worst of both".
+   *
+   * It cannot be awaited: the editor asks for a config inside `getScriptSnapshot`, which is
+   * synchronous, and a reader that returned a promise there would have to be a second reader. So it
+   * is refused, with the reason.
+   */
+  test.each([
+    ["an async function", `export default async () => ({ units: ["px"] });\n`],
+    ["a function returning a promise", `export default () => Promise.resolve({ units: ["px"] });\n`],
+    ["a promise directly", `export default Promise.resolve({ units: ["px"] });\n`],
+  ])("%s is refused rather than silently ignored", (_what, body) => {
+    const dir = project(body);
+
+    expect(() => readConfig(findConfig(dir), ts)).toThrow(/cannot be async|await/i);
+  });
+
   test("and `__filename`, which is the config itself", () => {
     const dir = project(`export default { units: [__filename.endsWith("ramonda.css.ts") ? "px" : "rem"] };\n`);
 

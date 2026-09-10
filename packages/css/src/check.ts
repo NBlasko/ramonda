@@ -110,7 +110,27 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     if (text === undefined || !mayHoldABlock(text)) continue;
 
     try {
-      const virtual = virtualFile(text, { properties: options.properties });
+      /**
+       * **The same reader BOTH halves of this command use**, and it used to be given to one of them.
+       *
+       * `Imported.read` says why it is injected: "a virtual file that resolved less than the build
+       * would type-check an expression the build never emits — and report a name the author was
+       * right to write." `checkedSource` below was given it; this was not, so the type half resolved
+       * less than the build. Measured through the real command, on a file that compiles:
+       *
+       *     1 block(s) could not be read, so nothing was checked
+       *     src/Card.tsx:2:25  a hole cannot be a whole declaration … The one name a hole may stand
+       *                        in is a `@@property( … )` declared in this file.
+       *
+       * It IS declared, in the module beside it, and the build resolves it — a reference to a named
+       * site is written into the text at compile time rather than carried as a hole, which is the
+       * only thing that makes a `var()` of one resolve at all. So the CI gate refused a shared
+       * theme, with a message saying the author should have done what they had done.
+       *
+       * The `filename` goes with it: a relative specifier is resolved against the file holding the
+       * import, so a reader with nothing to resolve against reads nothing.
+       */
+      const virtual = virtualFile(text, { properties: options.properties, filename: fileName, read: readModule });
       // `mayHoldABlock` is allowed to say maybe — a string or a comment can hold the syntax, and
       // a file that turns out to hold no block needs no overlay.
       if (virtual !== undefined) {

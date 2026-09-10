@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -209,5 +209,46 @@ describe("an argument that is not a project", () => {
     expect(output).toContain("format");
     expect(output).toContain("lint");
     expect(output).not.toContain("file(s) type-check");
+  });
+
+  /**
+   * **ASKING FOR HELP REWROTE THE TREE.** `format` and `lint` were dispatched at the top of the file,
+   * before `--help` was looked at — and `runTool` filters every `-` argument out of its paths, so
+   * `--help` left none and "no paths" means the whole directory. Measured: `ramonda-css format
+   * --help` rewrote a file and exited 0, having been asked what the command does.
+   *
+   * A person meeting a new command types `--help` first. That is the one argument that must never
+   * do work.
+   */
+  test.each([
+    ["format", "format"],
+    ["lint", "lint"],
+    ["format, short", "format"],
+  ])("`%s --help` prints the usage and touches nothing", (_what, which) => {
+    const root = project(`const a = 1;\n`);
+    const messy = join(root, "src", "messy.ts");
+    const before = `export const b   =   2;\n`;
+    writeFileSync(messy, before);
+
+    const { output, status } = runWith(root, [which, "--help"]);
+
+    expect(status).toBe(0);
+    expect(output).toContain("ramonda-css");
+    expect(readFileSync(messy, "utf8")).toBe(before);
+  });
+
+  /**
+   * And a path that is not there is answered, rather than throwing out of `node:fs`.
+   *
+   * `filesUnder` calls `statSync`, which throws `ENOENT` — measured, the output was a raw stack
+   * trace starting `node:fs:1739`, and the exit code was the one Node picks for an uncaught throw.
+   * A typo in a CI script deserves a sentence.
+   */
+  test.each(["format", "lint"])("`%s` on a path that is not there says which one", (which) => {
+    const { output, status } = runWith(project(`const a = 1;\n`), [which, "src/Nowhere"]);
+
+    expect(status).toBe(1);
+    expect(output).toContain("src/Nowhere");
+    expect(output).not.toContain("node:fs");
   });
 });
