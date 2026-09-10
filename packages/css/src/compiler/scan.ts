@@ -110,12 +110,98 @@ export function findBlocks(source: string): BlockSite[] {
    */
   const quiet: { from: number; to: number }[] = [];
 
+  /**
+   * How many block parentheses are open — zero outside a block, and CSS inside one.
+   *
+   * **The walk goes THROUGH a block's own text, and used to read it as JavaScript.** That is what a
+   * CSS value costs when the lexers disagree, and both were measured:
+   *
+   *     background: url(http://x/a.png)     `//` read as a line comment
+   *     border-radius: 50% / 20%            `%` ends no expression, so `/` opened a "regex"
+   *
+   * In each, everything after it on that line was swallowed — a second block on the same tag
+   * vanished, and the raw `@@( … )` was left in the output for the bundler to choke on.
+   *
+   * It goes through rather than SKIPPING the body on purpose: a `@@(` written inside a block is
+   * found here, and that is what `transform` refuses as *a block cannot contain another block*.
+   * Skipping would take the refusal away with the fault.
+   *
+   * The mode is the two differences that matter. CSS has no line comment, and no regular
+   * expressions — everything else it skips, this skips too.
+   */
+  let inBlock = 0;
+
   while (index < length) {
     const code = source.charCodeAt(index);
 
+    if (inBlock > 0) {
+      if (code === 47 /* / */ && source.charCodeAt(index + 1) === 42 /* * */) {
+        const end = source.indexOf("*/", index + 2);
+        if (end === -1) break;
+        quiet.push({ from: index, to: end + 2 });
+        index = end + 2;
+        continue;
+      }
+      if (code === 34 /* " */ || code === 39 /* ' */) {
+        const end = endOfQuoted(source, index);
+        if (end === undefined) {
+          index++;
+          continue;
+        }
+        quiet.push({ from: index, to: end });
+        index = end;
+        continue;
+      }
+      // A template literal can only be a hole's, and a `)` inside one closes nothing here.
+      if (code === 96 /* ` */) {
+        const end = endOfTemplate(source, index);
+        quiet.push({ from: index, to: end });
+        index = end;
+        continue;
+      }
+      if (code === 40 /* ( */) inBlock++;
+      else if (code === 41 /* ) */) inBlock--;
+      else if (code === 64 && source.charCodeAt(index + 1) === 64) {
+        // A block written inside a block. Found rather than skipped — see the note above.
+        let after = index + 2;
+        while (after < length && isNameCharacter(source.charCodeAt(after))) after++;
+        if (source.charCodeAt(after) === 40) {
+          const named = source.slice(index + 2, after);
+          found.push({
+            start: index,
+            name: "",
+            wrap: false,
+            open: after,
+            opening: index,
+            at: named === "" ? undefined : named.toLowerCase(),
+          });
+          inBlock++;
+          index = after + 1;
+          continue;
+        }
+      }
+      index++;
+      continue;
+    }
+
     if (code === 47 /* / */) {
       const next = source.charCodeAt(index + 1);
+      /**
+       * A `//` is a line comment, EXCEPT where it is a URL's scheme.
+       *
+       * `<p>see https://x.dev <b css=@@( … )>x</b></p>` is prose to a reader and `https:` plus a
+       * comment to a JavaScript lexer — measured, the block after it was lost and the raw `@@(`
+       * reached the JSX parser. A scheme is a name, a colon and the two slashes with nothing
+       * between, which is not a shape anybody writes as a label and a comment.
+       */
       if (next === 47) {
+        // A scheme is two ordinary characters, and must not fall through to the regex question
+        // below either: a `/` after a `>` opens one, which is how the whole tag was swallowed.
+        if (isScheme(source, index)) {
+          index += 2;
+          previous = 47;
+          continue;
+        }
         const end = source.indexOf("\n", index);
         if (end === -1) break;
         quiet.push({ from: index, to: end + 1 });
@@ -123,11 +209,22 @@ export function findBlocks(source: string): BlockSite[] {
         previous = 10;
         continue;
       }
-      if (next === 42) {
+      /**
+       * A block comment that is never closed is not a comment.
+       *
+       * The same argument as an unterminated quote, one step further: `<p>2 /* 3</p>` is prose, and
+       * reading it as a comment took **the rest of the file** — measured, two blocks on later lines
+       * lost and `transform` returning nothing at all. A file whose comment is genuinely unclosed
+       * does not parse either way, so what this does with the rest of it decides nothing.
+       */
+      if (next === 42 && source.includes("*/", index + 2)) {
         const end = source.indexOf("*/", index + 2);
-        if (end === -1) break;
         quiet.push({ from: index, to: end + 2 });
         index = end + 2;
+        continue;
+      }
+      if (next === 42) {
+        index += 2;
         continue;
       }
       /**
@@ -154,6 +251,13 @@ export function findBlocks(source: string): BlockSite[] {
 
     if (code === 34 /* " */ || code === 39 /* ' */) {
       const end = endOfQuoted(source, index);
+      // No closing quote before the line ended, so it never opened a string — see `endOfQuoted`.
+      // Past it as ordinary text, which is what an apostrophe in JSX prose is.
+      if (end === undefined) {
+        index++;
+        previous = code;
+        continue;
+      }
       quiet.push({ from: index, to: end });
       index = end;
       previous = code;
@@ -182,10 +286,10 @@ export function findBlocks(source: string): BlockSite[] {
         if (site !== undefined) {
           const named = source.slice(index + 2, after);
           found.push({ ...site, open: after, opening: index, at: named === "" ? undefined : named.toLowerCase() });
-          // The block's own text is read by the parser, which is the only thing that can tell where
-          // it ends — a `)` inside a string or an expression does not close it. Resuming right after
-          // the `(` is safe because a nested block is not a thing: the walk finds the same opening
-          // again only if the parser left it, and the parser consumes the whole block.
+          // Inside the block from here, where the rules are CSS's — see `inBlock`. The parser is
+          // still the only thing that can say where a block ENDS; this only has to stop being fooled
+          // by CSS on the way through, and to keep finding a `@@(` written inside one.
+          inBlock = 1;
           index = after + 1;
           continue;
         }
@@ -245,14 +349,35 @@ export function afterShebang(source: string): number {
   return source.startsWith("#!") ? nextLine(source, 0) : 0;
 }
 
+/**
+ * Whether the `//` at `at` is a URL's scheme rather than a comment's opening.
+ *
+ * A name, a colon and the slashes with nothing between them — `https://`, `file://`, `ws://`. A
+ * label followed immediately by a comment would have to be written `outer://`, which nobody does.
+ */
+function isScheme(source: string, at: number): boolean {
+  if (source.charCodeAt(at - 1) !== 58 /* : */) return false;
+  return at >= 2 && isNameCharacter(source.charCodeAt(at - 2));
+}
+
 /** The start of the line after the one `from` is on, or the end of the source. */
 function nextLine(source: string, from: number): number {
   const line = source.indexOf("\n", from);
   return line === -1 ? source.length : line + 1;
 }
 
-/** Past the closing quote of a string starting at `start`, or the end of the source. */
-function endOfQuoted(source: string, start: number): number {
+/**
+ * Past the closing quote of a string starting at `start`, or NOTHING when there is no closing quote.
+ *
+ * **A JavaScript string may not contain a raw newline**, so a quote with no partner before the line
+ * ends never opened one — and the caller resumes just past it as ordinary text rather than reading
+ * to the newline. That is not a heuristic; it is the grammar.
+ *
+ * Measured, and it is what an apostrophe in JSX TEXT costs: `<p>It's <b css=@@( … )>x</b></p>` had
+ * the `'` open a string that swallowed the block, so `findBlocks` returned NOTHING for that file and
+ * the raw `@@(` reached the JSX parser. An English apostrophe between tags is everyday.
+ */
+function endOfQuoted(source: string, start: number): number | undefined {
   const quote = source.charCodeAt(start);
   let index = start + 1;
   while (index < source.length) {
@@ -262,12 +387,10 @@ function endOfQuoted(source: string, start: number): number {
       continue;
     }
     if (code === quote) return index + 1;
-    // A newline ends an unterminated string rather than running to the end of the file: the walk is
-    // looking for attributes, and treating the rest of a module as one string would hide them all.
-    if (code === 10) return index + 1;
+    if (code === 10) return undefined;
     index++;
   }
-  return index;
+  return undefined;
 }
 
 /**
@@ -301,7 +424,8 @@ function endOfSubstitution(source: string, start: number): number {
   while (index < source.length) {
     const code = source.charCodeAt(index);
     if (code === 34 || code === 39) {
-      index = endOfQuoted(source, index);
+      // A quote with no partner on its line never opened a string; past it as one character.
+      index = endOfQuoted(source, index) ?? index + 1;
       continue;
     }
     if (code === 96) {

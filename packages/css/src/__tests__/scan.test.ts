@@ -55,16 +55,57 @@ describe("what the walk steps over", () => {
     expect(findBlocks("const s = `a \\` css=@@( color: red; )`;\n")).toEqual([]);
   });
 
-  test("a comment that is never closed ends the walk rather than the file", () => {
-    expect(findBlocks("/* css=@@( color: red; )\n")).toEqual([]);
+  /**
+   * A BLOCK COMMENT THAT IS NEVER CLOSED is not a comment, which is the same argument as an
+   * unterminated quote one step further.
+   *
+   * Reading it as one took **the rest of the file**: `<p>2 /* 3</p>` is prose, and two blocks on
+   * later lines were lost with `transform` returning nothing at all. A file whose comment is
+   * genuinely unclosed does not parse either way, so what this does with the rest of it decides
+   * nothing.
+   */
+  test.each([
+    ["a `/*` in JSX text", "const a = <p>2 /* 3</p>;\nconst b = @@( color: red; );\n"],
+    ["one with nothing after it", "/* css=@@( color: red; )\n"],
+  ])("%s does not hide a block", (_what, source) => {
+    expect(findBlocks(source).length).toBeGreaterThan(0);
+  });
+
+  /** A CLOSED one still does, which is the case this was written for. */
+  test("a closed block comment hides one", () => {
+    expect(findBlocks("/* css=@@( color: red; ) */\n")).toEqual([]);
   });
 
   test("a line comment that runs to the end of the file ends the walk", () => {
     expect(findBlocks("// css=@@( color: red; )")).toEqual([]);
   });
 
-  test("a string that runs to the end of the file ends there", () => {
-    expect(findBlocks(`const s = "css=@@( color: red; )`)).toEqual([]);
+  /**
+   * A QUOTE WITH NO PARTNER never opened a string, because a JavaScript string may not contain a raw
+   * newline — so the walk goes past it as ordinary text rather than reading to the line's end.
+   *
+   * That is the grammar rather than a guess, and it is what an apostrophe in JSX TEXT costs:
+   * `<p>It's <b css=@@( … )>x</b></p>` had the `'` swallow the block, so `findBlocks` returned
+   * NOTHING for the file and the raw `@@(` reached the JSX parser. An English apostrophe between
+   * tags is everyday.
+   *
+   * A file whose string is genuinely unterminated does not parse as TypeScript either way, so what
+   * this does with the rest of it decides nothing.
+   */
+  test.each([
+    ["an apostrophe in JSX text", `const a = <p>It's <b css=@@( color: red; )>x</b></p>;\n`],
+    ["one before the block on its own line", `const a = <p>don't</p>;\nconst b = @@( color: red; );\n`],
+    ["a quote left open", `const s = "css=@@( color: red; )`],
+  ])("%s does not hide a block", (_what, source) => {
+    expect(findBlocks(source).length).toBeGreaterThan(0);
+  });
+
+  /** A CLOSED string still hides one, which is the case this was written for. */
+  test.each([
+    ["a double-quoted string", `const s = "css=@@( color: red; )";\n`],
+    ["a single-quoted one", `const s = 'css=@@( color: red; )';\n`],
+  ])("%s hides it", (_what, source) => {
+    expect(findBlocks(source)).toEqual([]);
   });
 
   test("a template that runs to the end of the file ends there", () => {
@@ -263,6 +304,63 @@ describe("a block that is not an attribute", () => {
     ["a brace in a comment", "const a = <div onclick={() => {} /* } */} css=@@( color: red; )>x</div>;\n"],
   ])("%s still leaves the attribute an attribute", (_what, source) => {
     expect(findBlocks(source).at(-1)?.wrap).toBe(true);
+  });
+
+  /**
+   * A BLOCK'S OWN TEXT IS CSS, and the walk went through it reading JavaScript.
+   *
+   * Two lexers disagree about the same characters, and both cost a block. Measured:
+   *
+   *     background: url(http://x/a.png)     `//` read as a line comment
+   *     border-radius: 50% / 20%            `%` ends no expression, so `/` opened a "regex"
+   *
+   * In each, everything after it on that line was swallowed: a second block on the same tag
+   * vanished, and the raw `@@( … )` was left in the output for the bundler to choke on — loud, and
+   * about the wrong line.
+   *
+   * The walk still goes THROUGH the body rather than skipping it, which is what keeps a `@@(`
+   * written inside a block findable. `transform` refuses that as *a block cannot contain another
+   * block*, and skipping would take the refusal away with the fault.
+   */
+  test.each([
+    ["a url with a scheme", "const a = <div css=@@( background: url(http://x/a.png); ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["a slash between percentages", "const a = <div css=@@( border-radius: 50% / 20%; ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["a division in a hole", "const a = <div css=@@( width: {a / b}px; ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["an apostrophe in a css string", `const a = <div css=@@( content: "it's"; ) sx=@@( gap: 4px; )>x</div>;\n`],
+    ["a paren inside a css string", 'const a = <div css=@@( content: ")"; ) sx=@@( gap: 4px; )>x</div>;\n'],
+    ["a paren inside a hole's template", "const a = <div css=@@( color: {`a)b`}; ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["a css comment holding a paren", "const a = <div css=@@( /* ) */ color: red; ) sx=@@( gap: 4px; )>x</div>;\n"],
+  ])("%s leaves the block after it findable", (_what, source) => {
+    expect(findBlocks(source).map((one) => one.name)).toEqual(["css", "sx"]);
+  });
+
+  /** And a block written INSIDE a block is still found, which is what the refusal reads. */
+  test("a nested block is found, not skipped", () => {
+    const source = 'const a = @@( color: {x ? @@( color: red; ) : "b"}; );\n';
+
+    expect(findBlocks(source).length).toBe(2);
+  });
+
+  /**
+   * A `//` that is a URL's SCHEME rather than a comment's opening.
+   *
+   * `<p>see https://x.dev <b css=@@( … )>x</b></p>` is prose to a reader and `https:` plus a comment
+   * to a JavaScript lexer. A scheme is a name, a colon and the two slashes with nothing between —
+   * not a shape anybody writes as a label and a comment.
+   */
+  test.each([
+    ["in JSX text", "const a = <p>see https://x.dev <b css=@@( color: red; )>x</b></p>;\n"],
+    ["in a css value", "const a = <div css=@@( background: url(https://x/a.png); ) sx=@@( gap: 4px; )>x</div>;\n"],
+  ])("a scheme %s is not a comment", (_what, source) => {
+    expect(findBlocks(source).length).toBeGreaterThan(0);
+  });
+
+  test.each([
+    ["a plain line comment", "// css=@@( color: red; )\nconst a = @@( gap: 4px; );\n"],
+    ["a label and then one", "outer: // css=@@( color: red; )\nconst a = @@( gap: 4px; );\n"],
+    ["one after an expression", "const n = a / b; // css=@@( color: red; )\nconst a = @@( gap: 4px; );\n"],
+  ])("%s is still a comment", (_what, source) => {
+    expect(findBlocks(source).map((one) => one.name)).toEqual(["a"]);
   });
 
   /** And a `)` that opens nothing still falls the safe way — an assignment, not an attribute. */
