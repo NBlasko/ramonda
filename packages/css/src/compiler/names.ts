@@ -63,6 +63,44 @@ const SPACE = 62n ** BigInt(HASH_LENGTH);
 const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 /**
+ * What a NAMED site compiles to — the name the stylesheet uses for it.
+ *
+ * Two of the three are named by their BODY and nothing else, and that is right: two `@@keyframes`
+ * with the same steps are the same animation, and two `@@font-face` with the same `src` are the same
+ * face. Identical ones anywhere in a build collapse to one rule, which is the property the whole
+ * design rests on.
+ *
+ * **A `@@property` is not like them, and naming it the same way was a silent fault.** A keyframes is
+ * a VALUE; a registered custom property is a place to keep one. Two registrations that read the same
+ * are still two variables, the way `let x = 0; let y = 0;` is two variables — so the author's own
+ * BINDING is part of what names it.
+ *
+ * Measured before this: two tokens declared side by side with the same `syntax`, `inherits` and
+ * `initial-value` — the ordinary shape of a palette — got one name, and the emitted literal came out
+ * with a DUPLICATE KEY:
+ *
+ *     {"--r-6lbmZbNkr":"…-red","--r-6lbmZbNkr":"…-blue", …}
+ *
+ * so `{accent}: red` was discarded by the later key and `color: var({accent})` read blue. Nothing
+ * warned: the sheet's collision assertion cannot fire, because the two `@property` rules genuinely
+ * are identical.
+ *
+ * The binding is stable across files, which is what keeps the dedupe promise: an import resolves to
+ * the site in the module that DECLARES it, so `import { accent as brand }` still names `accent`'s
+ * variable. Two modules declaring the same name with the same body are one variable, which is the
+ * shared token they both meant.
+ */
+export function nameForSite(at: string, name: string, normalised: string): string {
+  const hashed = classNameFor(at === "property" ? `${name}\u0000${normalised}` : normalised);
+  /**
+   * A `@property` registers a CUSTOM property, and a custom property is spelled with two dashes.
+   * `@property r-… { … }` is not a rule any browser keeps, so the dashes are part of the name — in
+   * the stylesheet, and in the string the site compiles to.
+   */
+  return at === "property" ? `--${hashed}` : hashed;
+}
+
+/**
  * `r-` plus the hash of the normalised block.
  *
  * The prefix is not decoration: a CSS class may not begin with a digit, and half of all hashes do.

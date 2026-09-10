@@ -1,4 +1,4 @@
-import { classNameFor } from "./names";
+import { nameForSite } from "./names";
 import { normalise } from "./normalise";
 import { readBlock } from "./read";
 import { findBlocks } from "./scan";
@@ -48,8 +48,45 @@ const NAMED_OPENING = /@@[A-Za-z0-9_-]/;
  *
  * `from "./x"` only: a package specifier needs a resolver, and the four consumers of this function
  * would each have to bring the same one — see the note on {@link Imported}.
+ *
+ * A DEFAULT import before the clause is allowed, and used not to be: `import d, { accent } from
+ * "./theme"` resolved nothing at all, so the token silently degraded to a hole. Loud, through
+ * `hole-as-a-variable-name` — but it is a shape none of the three documented limits mentions, and
+ * nothing about a default import makes the named ones unreadable.
  */
-const AN_IMPORT = /^[ \t]*import\s+\{([^}]*)\}\s+from\s+["'](\.[^"']*)["']/gm;
+const AN_IMPORT = /^[ \t]*import\s+(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}\s+from\s+["'](\.[^"']*)["']/gm;
+
+/**
+ * The source with every block comment blanked out, so a commented-out import is not read as one.
+ *
+ * The line anchor above already rejects `// import … `; a `/* … *\/` opened at column 0 it did not,
+ * and the note above claims the failure mode "fails closed". Measured, it fails OPEN when the module
+ * exists: an import inside a block comment still resolved its token, and the build that should have
+ * refused compiled — **commenting an import out to see whether it is needed is the ordinary way to
+ * find out**, and here it changed nothing except that an error disappeared.
+ *
+ * Blanked rather than removed, so every offset after it is unmoved and the line anchor still sees
+ * the lines it saw.
+ *
+ * A scan, not a parse: a `/*` written inside a string swallows the rest of the file, so an import
+ * below it goes unread. That is the direction this is allowed to be wrong in — an unresolved
+ * reference stays a hole and `hole-as-a-variable-name` reports it, which is the closed failure the
+ * note claimed and did not have.
+ */
+function outsideComments(source: string): string {
+  if (!source.includes("/*")) return source;
+
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const open = source.indexOf("/*", at);
+    if (open === -1) return out + source.slice(at);
+    const close = source.indexOf("*/", open + 2);
+    const end = close === -1 ? source.length : close + 2;
+    out += source.slice(at, open) + source.slice(open, end).replace(/[^\n]/g, " ");
+    at = end;
+  }
+}
 
 export interface Imported {
   /** For resolving a relative specifier. The importing file's own path. */
@@ -79,7 +116,7 @@ function imported(source: string, options: Imported, texts?: string[]): Map<stri
   const read = options.read;
   if (read === undefined) return out;
 
-  for (const found of source.matchAll(AN_IMPORT)) {
+  for (const found of outsideComments(source).matchAll(AN_IMPORT)) {
     const [, clause, specifier] = found;
     // Read once per specifier, and only when the clause names something.
     const names = clause
@@ -140,13 +177,29 @@ export function importedSites(source: string, options: Imported): { names: Map<s
  * that file is where a value it refuses would be written — so following the import buys nothing
  * here and would make this a second place that resolves modules.
  */
-export function syntaxesIn(source: string): Map<string, string> {
+export function syntaxesIn(source: string, options: Imported = {}): Map<string, string> {
   const out = new Map<string, string>();
   if (!NAMED_OPENING.test(source)) return out;
 
+  /**
+   * The SAME resolution `namedSites` uses, because the name is the same name.
+   *
+   * It read with no `resolve` at all, so a `@@property` whose own body names another token — the
+   * ordinary shape of a theme — normalised to different text here and hashed to a different name.
+   * Measured, the two maps disagreed:
+   *
+   *     namedSites   [["base","--r-k8u6ISIlk"],["other","--r-Uo2yQGE1g"]]
+   *     syntaxesIn   [["--r-k8u6ISIlk","<color>"],["--r-7DeqAp7g7","<color>"]]
+   *
+   * `--r-Uo2yQGE1g` appears in no syntax map, so the transform never checked what `other` may hold —
+   * and `{other}: 12px` on a `<color>` property COMPILED, which is the exact failure
+   * `value-and-registered-syntax` exists to prevent. `{base}: 12px` was refused on the same run.
+   */
+  const references = namedSites(source, options);
+
   for (const site of findBlocks(source)) {
     if (site.at !== "property") continue;
-    const read = readBlock(source, site.open, "", { tolerant: true });
+    const read = readBlock(source, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
 
     for (const item of read.block.items) {
       if (item.kind !== "declaration" || item.property !== "syntax") continue;
@@ -157,7 +210,7 @@ export function syntaxesIn(source: string): Map<string, string> {
         .join("")
         .trim()
         .replace(/^["']|["']$/g, "");
-      out.set(`--${classNameFor(normalise(read.block))}`, text);
+      out.set(nameForSite("property", site.name, normalise(read.block)), text);
     }
   }
 
@@ -183,8 +236,7 @@ export function namedSites(source: string, options: Imported = {}): Map<string, 
     // block under it is half-typed. What is wrong with the block is reported by whoever reads it
     // properly — saying it twice, from here, would say it about the wrong thing.
     const read = readBlock(source, site.open, "", { tolerant: true, resolve: (name) => found.get(name) });
-    const className = classNameFor(normalise(read.block));
-    found.set(site.name, site.at === "property" ? `--${className}` : className);
+    found.set(site.name, nameForSite(site.at, site.name, normalise(read.block)));
   }
 
   return found;

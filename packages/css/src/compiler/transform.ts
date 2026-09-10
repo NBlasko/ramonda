@@ -1,7 +1,7 @@
 import MagicString from "magic-string";
 import { segments } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
-import { classNameFor, nameFor, substitute, variableNameFor } from "./names";
+import { classNameFor, nameForSite, nameFor, substitute, variableNameFor } from "./names";
 import type { Config } from "../config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
@@ -155,7 +155,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   const from = importedSites(source, { filename, read: options.read });
   const references = namedSites(source, { filename, read: options.read });
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
-  const syntaxes = syntaxesIn(source);
+  const syntaxes = syntaxesIn(source, { filename, read: options.read });
   const resolve = (expression: string): string | undefined => references.get(expression);
 
   /** What every block in this file sets and reads, in one list each — see {@link TransformResult}. */
@@ -205,7 +205,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       if (site.at === undefined) continue;
       const read = readBlock(text, site.open, filename, { tolerant: true });
       const canonical = normalise(read.block);
-      const className = site.at === "property" ? `--${classNameFor(canonical)}` : classNameFor(canonical);
+      const className = nameForSite(site.at, site.name, canonical);
       // A `@@property` SETS the name it registers: the registration carries an `initial-value`, so a
       // `var()` reading it always resolves. Recorded here because the generated name is only known now.
       if (site.at === "property") variablesSet.push(className);
@@ -294,12 +294,9 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     // Normalised ONCE. It was called twice — for the name and again for the rule — and normalisation
     // walks the whole block, so that was a second full pass per block for a string already in hand.
     const canonical = normalise(read.block);
-    /**
-     * A `@property` registers a CUSTOM property, and a custom property is spelled with two dashes.
-     * `@property r-… { … }` is not a rule any browser keeps, so the dashes are part of the name —
-     * in the stylesheet, and in the string the site compiles to.
-     */
-    const className = site.at === "property" ? `--${classNameFor(canonical)}` : classNameFor(canonical);
+    // What a named site is called is `nameForSite`'s to decide, and it is the only thing that decides
+    // it — the references map and the syntax map ask the same function. See its own note.
+    const className = site.at === undefined ? classNameFor(canonical) : nameForSite(site.at, site.name, canonical);
     // A `@@property` SETS the name it registers: the registration carries an `initial-value`, so a
     // `var()` reading it always resolves. Recorded here because the generated name is only known now.
     if (site.at === "property") variablesSet.push(className);

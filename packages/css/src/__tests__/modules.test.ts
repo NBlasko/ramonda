@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { namedSites } from "../compiler/references";
+import { namedSites, syntaxesIn } from "../compiler/references";
 import { transform } from "../compiler/transform";
 
 /**
@@ -77,7 +77,66 @@ describe("a named site imported from another module", () => {
     expect(there.get("accent")).not.toBe(namedSites(theme).get("accent"));
   });
 
+  /**
+   * The clause shapes people write, and one that resolved NOTHING.
+   *
+   * `import d, { accent } from "./theme"` was not matched at all, so the token degraded silently to
+   * a hole. Loud in the end, through `hole-as-a-variable-name` — but it is a shape none of the three
+   * documented limits mentions, and nothing about a default import makes the named ones unreadable.
+   */
+  test.each([
+    ["a plain named import", 'import { accent } from "./theme";'],
+    ["a default before the clause", 'import d, { accent } from "./theme";'],
+    ["a type modifier inside it", 'import { type Tone, accent } from "./theme";'],
+  ])("%s resolves the token", (_what, line) => {
+    const there = namedSites(`${line}\n`, { filename: "/src/Card.tsx", read: reader({ "./theme": theme }) });
+
+    expect(there.has("accent")).toBe(true);
+  });
+
+  test("and a renamed one is known by the name this file uses", () => {
+    const there = namedSites(`import { accent as brand } from "./theme";\n`, {
+      filename: "/src/Card.tsx",
+      read: reader({ "./theme": theme }),
+    });
+
+    expect(there.has("brand")).toBe(true);
+    // The generated name is the DECLARING module's, so renaming on import changes no variable.
+    expect(there.get("brand")).toBe(namedSites(theme).get("accent"));
+  });
+
   describe("what it must not resolve", () => {
+    /**
+     * A COMMENTED-OUT import, which the line anchor caught in one spelling and not the other.
+     *
+     * `// import …` never matched. A `/* … *\/` opened at column 0 did — so the token still
+     * resolved, and a build that should have refused compiled. **Commenting an import out to see
+     * whether it is needed is the ordinary way to find out**, and here it changed nothing except
+     * that an error disappeared. The regex's own note claimed this direction "fails closed".
+     */
+    test.each([
+      ["a line comment", '// import { accent } from "./theme";'],
+      ["a block comment", '/*\nimport { accent } from "./theme";\n*/'],
+      ["a block comment with the import indented", '/*\n  import { accent } from "./theme";\n*/'],
+    ])("%s is not an import", (_what, text) => {
+      const there = namedSites(`${text}\nconst c = @@( color: red; );\n`, {
+        filename: "/src/Card.tsx",
+        read: reader({ "./theme": theme }),
+      });
+
+      expect(there.has("accent")).toBe(false);
+    });
+
+    /** And a real import after a closed comment is still read — the blanking ends where it ends. */
+    test("one written after a comment is read", () => {
+      const there = namedSites(`/* a note */\nimport { accent } from "./theme";\n`, {
+        filename: "/src/Card.tsx",
+        read: reader({ "./theme": theme }),
+      });
+
+      expect(there.has("accent")).toBe(true);
+    });
+
     test("a package specifier, which needs a resolver this does not have", () => {
       const there = namedSites(`import { accent } from "@acme/theme";\n`, {
         filename: "/src/Card.tsx",
@@ -147,6 +206,103 @@ describe("a named site imported from another module", () => {
  * module's own text, so every reader emits the same rule under the same name and the sheet keeps
  * one — which is the same property that makes an atom written in fifty files one rule.
  */
+/**
+ * THE SYNTAX MAP AND THE REFERENCE MAP KEY THE SAME SITE, and they used to disagree.
+ *
+ * `namedSites` reads a block with `resolve`, so a `{token}` inside it becomes the TEXT it compiles
+ * to; `syntaxesIn` read with no `resolve` at all, so the same block normalised differently and
+ * hashed to a different name. Measured, on a `@@property` whose own body names another token —
+ * which is the ordinary shape of a theme:
+ *
+ *     namedSites   [["base","--r-k8u6ISIlk"],["other","--r-Uo2yQGE1g"]]
+ *     syntaxesIn   [["--r-k8u6ISIlk","<color>"],["--r-7DeqAp7g7","<color>"]]
+ *
+ * `--r-Uo2yQGE1g` was in no syntax map, so the transform never checked what `other` may hold and
+ * `{other}: 12px` on a `<color>` property COMPILED — the exact failure `value-and-registered-syntax`
+ * exists to prevent, and it shipped silently for every theme that references itself.
+ */
+describe("the two maps a named site appears in", () => {
+  const THEME =
+    'const base  = @@property( syntax: "<color>"; inherits: true;  initial-value: red; );\n' +
+    'const other = @@property( syntax: "<color>"; inherits: false; initial-value: var({base}); );\n';
+
+  test("every name in one is a name in the other", () => {
+    const names = [...namedSites(THEME).values()];
+    const syntaxes = [...syntaxesIn(THEME).keys()];
+
+    expect(names.sort()).toEqual(syntaxes.sort());
+  });
+
+  test.each([
+    ["one whose body names nothing", "{base}"],
+    ["one whose body names another token", "{other}"],
+  ])("a wrong value is refused for %s", (_what, token) => {
+    const source = `${THEME}const a = <div css=@@( ${token}: 12px; )>x</div>;\n`;
+
+    expect(() => transform(source, { filename: "C.tsx" })).toThrow(/registered as .<color>./);
+  });
+});
+
+/**
+ * WHAT NAMES A NAMED SITE, and the one of the three that is not named by its body.
+ *
+ * Two `@@keyframes` with the same steps are the same animation, and two `@@font-face` with the same
+ * `src` are the same face — identical ones anywhere in a build collapse to one rule, which is the
+ * property the whole design rests on.
+ *
+ * A `@@property` is not like them. A keyframes is a VALUE; a registered custom property is a place to
+ * keep one, and two registrations that read the same are still two variables — the way
+ * `let x = 0; let y = 0;` is two variables.
+ *
+ * Measured before this: two tokens declared side by side with the same `syntax`, `inherits` and
+ * `initial-value` — the ordinary shape of a palette — got ONE name, and the emitted literal came out
+ * with a duplicate key, so the first was discarded by the second and every read of it got the other's
+ * value. Nothing warned: the sheet's collision assertion cannot fire, because the two `@property`
+ * rules genuinely are identical.
+ */
+describe("two named sites with identical bodies", () => {
+  const twice = (at: string, body: string) =>
+    namedSites(`export const one = @@${at}( ${body} );\nexport const two = @@${at}( ${body} );\n`);
+
+  test("two `@@property` tokens are two variables", () => {
+    const names = twice("property", 'syntax: "<color>"; inherits: true; initial-value: #10b981;');
+
+    expect(names.get("one")).not.toBe(names.get("two"));
+  });
+
+  test("but two `@@keyframes` are one animation, which is right", () => {
+    const names = twice("keyframes", "from { opacity: 0; }");
+
+    expect(names.get("one")).toBe(names.get("two"));
+  });
+
+  test("and the emitted literal has no duplicate key", () => {
+    const source =
+      'export const accent  = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n' +
+      'export const surface = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n' +
+      "const card = <div css=@@( {accent}: red; {surface}: blue; )>x</div>;\n";
+    const line =
+      transform(source, { filename: "C.tsx" })
+        ?.code.split("\n")
+        .find((one) => one.includes("_merge({")) ?? "";
+    const keys = [...line.matchAll(/"(--r-[^"]+)":/g)].map((one) => one[1]);
+
+    expect(keys).toHaveLength(2);
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  /** The DECLARING module names it, so importing under another name changes no variable. */
+  test("a token is the same variable in every file that reads it", () => {
+    const theme = 'export const accent = @@property( syntax: "<color>"; inherits: true; initial-value: red; );\n';
+    const there = namedSites(`import { accent as brand } from "./theme";\n`, {
+      filename: "/src/Card.tsx",
+      read: (specifier: string) => (specifier === "./theme" ? theme : undefined),
+    });
+
+    expect(there.get("brand")).toBe(namedSites(theme).get("accent"));
+  });
+});
+
 describe("the rule an imported token declared", () => {
   const theme = `export const accent = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n`;
   const read = (specifier: string) => (specifier === "./theme" ? theme : undefined);

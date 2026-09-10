@@ -71,7 +71,7 @@ export function checkedSource(
   // a working theme a fault; one that resolved more would miss one. Both consumers pass the same.
   const references = namedSites(source, { filename: fileName, read });
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
-  const syntaxes = syntaxesIn(source);
+  const syntaxes = syntaxesIn(source, { filename: fileName, read });
 
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName, { tolerant, resolve: (name) => references.get(name) });
