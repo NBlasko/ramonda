@@ -358,3 +358,46 @@ describe("the rule an imported token declared", () => {
     expect((out?.blocks ?? []).filter((one) => one.at === "property")).toHaveLength(1);
   });
 });
+
+/**
+ * WHAT A NAME IS A HASH OF, which four notes in three files described wrongly.
+ *
+ * They said "a hash of the module's TEXT", arguing that two readers seeing two different texts would
+ * generate two different names for one token. The name is a hash of the parsed BLOCK — so the
+ * mechanism is more robust than the note claimed, and the fragility it warned about is not there.
+ *
+ * What a differing text really changes is what the DECLARATION says, which is enough to matter and is
+ * what those notes say now.
+ */
+describe("what a token's name depends on", () => {
+  const declaration = 'export const accent = @@property( syntax: "<color>"; inherits: true; initial-value: red; );\n';
+  const name = (source: string) => namedSites(source).get("accent");
+
+  test.each([
+    ["the line endings", declaration.replace(/\n/g, "\r\n")],
+    ["a leading byte order mark", `﻿${declaration}`],
+    ["a comment above it", `// a note nobody reads\n${declaration}`],
+    ["code around it", `const z = 1;\n${declaration}export const y = 2;\n`],
+    ["the indentation", `  ${declaration}`],
+  ])("%s does not change it", (_what, source) => {
+    expect(name(source)).toBe(name(declaration));
+  });
+
+  /** And the declaration itself does, which is the half that has to be true. */
+  test.each([
+    [
+      "a different syntax",
+      'export const accent = @@property( syntax: "<length>"; inherits: true; initial-value: red; );\n',
+    ],
+    [
+      "a different initial value",
+      'export const accent = @@property( syntax: "<color>"; inherits: true; initial-value: blue; );\n',
+    ],
+    [
+      "a different binding",
+      'export const other = @@property( syntax: "<color>"; inherits: true; initial-value: red; );\n',
+    ],
+  ])("%s does", (_what, source) => {
+    expect(namedSites(source).values().next().value).not.toBe(name(declaration));
+  });
+});

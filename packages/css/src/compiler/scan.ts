@@ -94,7 +94,7 @@ export function findBlocks(source: string): BlockSite[] {
   // A shebang is not JavaScript and is not a comment either — nothing in the language skips it, so
   // `@@(` written in one would be read as a block on a line the engine never parses.
   let index = afterShebang(source);
-  /** The last character that was not whitespace, so a `/` can be told from a division. */
+  /** The last character that could END an expression, so a regex can be told from a division. */
   let previous = 0;
   /**
    * Every span this walk STEPPED OVER — a comment, a string, a template, a regex.
@@ -307,9 +307,15 @@ export function findBlocks(source: string): BlockSite[] {
  * Whether a `/` here opens a regular expression rather than dividing.
  *
  * The classic lexer question, answered the classic way: a `/` divides only when something that can
- * END an expression is behind it — a name, a number, a closing bracket. Everything else is a regex.
- * Erring towards "regex" is the safe direction here: the cost is skipping text that was a division,
- * and a division cannot contain a block anyway.
+ * END an expression is behind it — a name, a number, a closing bracket, a string. Everything else is
+ * a regex. Erring towards "regex" is the safe direction here: the cost is skipping text that was a
+ * division, and a division cannot contain a block anyway.
+ *
+ * **A TEMPLATE LITERAL ends an expression too, and was missing from the list.** Measured,
+ * `` const a = `x` / 2, p = @@( … ); `` found no block at all: the `/` opened a "regex" that ran to
+ * the next one and took the block with it. The quote arms below it were unreachable for a while for
+ * a related reason — the walk stepped over a string without recording what it had stepped over — and
+ * both are the same fault, which is why they are one note.
  */
 function startsARegex(previous: number): boolean {
   if (previous === 0) return true;
@@ -318,7 +324,8 @@ function startsARegex(previous: number): boolean {
     previous === 41 /* ) */ ||
     previous === 93 /* ] */ ||
     previous === 34 ||
-    previous === 39;
+    previous === 39 ||
+    previous === 96; /* ` */
   return !ends;
 }
 
@@ -443,11 +450,15 @@ function endOfSubstitution(source: string, start: number): number {
 }
 
 /**
- * Whether an `@(` at `at` is the value of a JSX attribute, and which one.
+ * Whether the `@@(` at `at` is the value of a JSX attribute, and which name it is written under.
  *
- * Walks back over whitespace, an `=`, more whitespace and a name, and requires whitespace before
- * the name — which is what separates one attribute from the tag or from the attribute before it.
- * Everything the walk cannot reach this way is left alone.
+ * Walks back over whitespace, an `=`, more whitespace and a name, and requires whitespace before the
+ * name — which is what separates one attribute from the tag or from the attribute before it.
+ *
+ * Every path returns a site: what the walk cannot prove is an attribute is a VALUE, which is a site
+ * too. `undefined` is in the type because `isAttribute` may answer either way and a caller reading
+ * this signature should not have to know that it never does — the branch below is the one that would
+ * produce it if a shape were ever added that is neither.
  */
 function siteBefore(
   source: string,

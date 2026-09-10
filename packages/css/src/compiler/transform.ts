@@ -51,7 +51,7 @@ export interface TransformOptions {
    * How to read a module this file imports a named site from — see {@link Imported}.
    *
    * Injected rather than `fs`, and not only to keep the compiler free of Node: the editor must read
-   * its own unsaved buffer, and a name here is a hash of the module's TEXT. Two consumers reading
+   * its own unsaved buffer, and a name here is a hash of the DECLARATION it finds there. Two readers
    * two different texts would generate two different names for one token, and the editor would then
    * report a fault the build does not have.
    *

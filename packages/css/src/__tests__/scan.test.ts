@@ -363,6 +363,33 @@ describe("a block that is not an attribute", () => {
     expect(findBlocks(source).map((one) => one.name)).toEqual(["a"]);
   });
 
+  /**
+   * WHAT ENDS AN EXPRESSION, which is what tells a division from a regular expression.
+   *
+   * A template literal was missing from the list, so `` const a = `x` / 2, p = @@( … ); `` found no
+   * block at all — the `/` opened a "regex" that ran to the next one and took the block with it. The
+   * quote cases were unreachable for a related reason, and both are the same fault: the walk stepped
+   * over something without recording what it had stepped over.
+   */
+  test.each([
+    ["a string", `const a = "x" / 2, p = @@( color: red; );\n`],
+    ["a template literal", "const a = `x` / 2, p = @@( color: red; );\n"],
+    ["a name", "const a = b / 2, p = @@( color: red; );\n"],
+    ["a number", "const a = 4 / 2, p = @@( color: red; );\n"],
+    ["a closing paren", "const a = (b) / 2, p = @@( color: red; );\n"],
+    ["a closing bracket", "const a = b[0] / 2, p = @@( color: red; );\n"],
+  ])("%s before a `/` is a division, not a regex", (_what, source) => {
+    expect(findBlocks(source).map((one) => one.name)).toEqual(["p"]);
+  });
+
+  /** And a real regex is still stepped over, including one that holds the syntax. */
+  test.each([
+    ["a plain one", "const r = /a/g, p = @@( color: red; );\n"],
+    ["one holding the syntax", "const r = /@@\\(/, p = @@( color: red; );\n"],
+  ])("%s is skipped", (_what, source) => {
+    expect(findBlocks(source).map((one) => one.name)).toEqual(["p"]);
+  });
+
   /** And a `)` that opens nothing still falls the safe way — an assignment, not an attribute. */
   test.each([
     ["a stray closing paren", `) panel = @@( display: flex; );\n`],

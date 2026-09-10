@@ -96,9 +96,14 @@ export interface Imported {
    *
    * **Injected rather than `fs`, and that is the whole reason this is a parameter.** A build reads
    * the disk; the editor must read its own buffer, which holds what the author has typed and not
-   * yet saved. A name here is a hash of the module's TEXT, so two consumers reading two different
-   * texts would generate two different names for one token — and the editor would then report a
-   * fault the build does not have, or miss one it does.
+   * yet saved. Two consumers reading two different texts of one module would see two different
+   * DECLARATIONS in it — and the editor would then report a fault the build does not have, or miss
+   * one it does.
+   *
+   * The name itself is a hash of the parsed BLOCK, not of the text, which is more robust than this
+   * note used to claim: measured, LF against CRLF, a leading BOM and any amount of code around the
+   * declaration all give the same name. What a differing text changes is what the declaration SAYS,
+   * which is enough.
    */
   readonly read?: (specifier: string, from: string) => string | undefined;
 }
@@ -155,7 +160,7 @@ function imported(source: string, options: Imported, texts?: string[]): Map<stri
  * were right and the registration was simply absent.
  *
  * So the file that READS a token emits that token's rule itself. It costs nothing to do twice: the
- * name is a hash of the module's own text, so every file that reads the same token emits the same
+ * name is a hash of the declaration itself, so every file that reads the same token emits the same
  * rule under the same name, and the sheet keeps one. The theme module need not be in the JavaScript
  * graph at all.
  */
