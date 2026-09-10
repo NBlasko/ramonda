@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { flatten } from "../compiler/flatten";
+import { flatten, sheetRank, widthSlot } from "../compiler/flatten";
 import { readBlock } from "../compiler/read";
 import { findBlocks } from "../compiler/scan";
 
@@ -243,5 +243,93 @@ describe("which conditions may be sorted", () => {
   /** An at-rule nobody here has heard of keeps its order too, which is the safe direction. */
   test("an at-rule this list does not know keeps its order", () => {
     expect(conditionsOf("@invented x { @media print { color: red; } }")).toEqual(["@invented x", "@media print"]);
+  });
+});
+
+/**
+ * How narrow a rule is, as a number that sorts — which is the order the stylesheet comes out in.
+ *
+ * The reason it exists is a fault no author could have found: two breakpoints for one property were
+ * both conditional and neither was a shorthand, so they ranked the same, and the sheet fell back to
+ * the order the file wrote them in — which another file writing only one of the two then reversed.
+ * Measured in Chromium: 280 of 750 load orders wrong. So the width comes off the QUERY now, which is
+ * what every atomic CSS framework does.
+ */
+describe("how narrow a rule is", () => {
+  const slot = (...conditions: string[]) => widthSlot(conditions);
+
+  test("nothing conditional is first, whatever else is in the build", () => {
+    expect(widthSlot(undefined)).toBe(0);
+    expect(widthSlot([])).toBe(0);
+  });
+
+  test("a wider `min-width` is later, which is what mobile-first means", () => {
+    expect(slot("@media (min-width: 40rem)")).toBeLessThan(slot("@media (min-width: 64rem)"));
+  });
+
+  test("a narrower `max-width` is later, which is what desktop-first means", () => {
+    expect(slot("@media (max-width: 64rem)")).toBeLessThan(slot("@media (max-width: 40rem)"));
+  });
+
+  /** Which of the two wins when both match, and the frameworks all settled on this one. */
+  test("every `min-width` is after every `max-width`", () => {
+    expect(slot("@media (max-width: 1px)")).toBeLessThan(slot("@media (min-width: 4999px)"));
+  });
+
+  test("`px`, `rem` and `em` are the same number", () => {
+    expect(slot("@media (min-width: 640px)")).toBe(slot("@media (min-width: 40rem)"));
+    expect(slot("@media (min-width: 40em)")).toBe(slot("@media (min-width: 40rem)"));
+  });
+
+  /**
+   * A MODE, and it comes last on purpose. `print` and `prefers-color-scheme` are not size
+   * refinements — they are written to override — and placing them first would refuse the ordinary
+   * shape of breakpoints followed by a dark-mode override.
+   */
+  test.each([
+    "@media print",
+    "@media (prefers-color-scheme: dark)",
+    "@supports (display: grid)",
+    "@media (min-height: 40rem)",
+  ])("a condition with no width comes after every breakpoint: %s", (condition) => {
+    expect(slot(condition)).toBeGreaterThan(slot("@media (min-width: 4999px)"));
+  });
+
+  /** A width in a unit that cannot be turned into a number leaves the rule with the modes. */
+  test.each(["@media (min-width: 50ch)", "@media (min-width: calc(10px + 1em))", "@media (min-width: fit-content)"])(
+    "and so does a width this cannot read: %s",
+    (condition) => {
+      expect(slot(condition)).toBe(slot("@media print"));
+    },
+  );
+
+  /** Two conditions around one rule mean it applies only where both hold, so both are read. */
+  test("the most restrictive of several conditions is the one that places it", () => {
+    expect(slot("@media (min-width: 40rem)", "@media (min-width: 64rem)")).toBe(slot("@media (min-width: 64rem)"));
+    expect(slot("@media (max-width: 40rem)", "@media (max-width: 64rem)")).toBe(slot("@media (max-width: 40rem)"));
+  });
+
+  /** A band is placed by where it starts: no single number orders two bands that overlap in part. */
+  test("a rule with both is placed by its `min-width`", () => {
+    expect(slot("@media (min-width: 40rem) and (max-width: 64rem)")).toBe(slot("@media (min-width: 40rem)"));
+  });
+
+  /** Beyond the widest slot the values are clamped, so nothing wraps past anything else. */
+  test("a breakpoint past the widest slot ties rather than wrapping", () => {
+    expect(slot("@media (min-width: 9000px)")).toBe(slot("@media (min-width: 99999px)"));
+    expect(slot("@media (min-width: 9000px)")).toBeLessThan(slot("@media print"));
+  });
+
+  /** The rank is this, with the breadth deciding what the width leaves tied. */
+  describe("and the rank built on it", () => {
+    test("puts a shorthand before its own longhand", () => {
+      expect(sheetRank({ property: "margin" })).toBeLessThan(sheetRank({ property: "margin-left" }));
+    });
+
+    test("and the width decides before the breadth does", () => {
+      const wide = sheetRank({ property: "margin-left", conditions: ["@media (min-width: 64rem)"] });
+      const narrow = sheetRank({ property: "margin", conditions: ["@media (min-width: 40rem)"] });
+      expect(narrow).toBeLessThan(wide);
+    });
   });
 });

@@ -52,77 +52,182 @@ export interface AtomicDeclaration {
 }
 
 /**
+ * The distinct breadths a property can have, WIDEST first — the sheet's minor order.
+ *
+ * From the generated shorthand table, so it is known before a build: twelve of them. `all` covers
+ * 41 properties and comes first; a longhand covers none and comes last.
+ */
+const BREADTHS: readonly number[] = (() => {
+  const found = new Set<number>([0]);
+  for (const covered of Object.values(SHORTHANDS)) found.add(covered.length);
+  return [...found].sort((a, b) => b - a);
+})();
+
+/** How many properties a declaration's own property clears. */
+function breadthOf(declaration: { property?: string }): number {
+  return declaration.property === undefined ? 0 : (SHORTHANDS[declaration.property]?.length ?? 0);
+}
+
+/** A length in a media query, in px — `rem` and `em` at the root's 16px, and nothing else. */
+function pixelsOf(text: string): number | undefined {
+  const found = /^\s*(-?\d*\.?\d+)(px|rem|em)\s*$/.exec(text);
+  if (found === null) return undefined;
+  const value = Number(found[1]);
+  return found[2] === "px" ? value : value * 16;
+}
+
+/**
+ * The widest `min-width` and the narrowest `max-width` across every condition around a rule — the
+ * most restrictive of each, since a rule under two conditions applies only where both hold.
+ *
+ * A width in a unit this cannot resolve is simply not one of them, which leaves the rule with the
+ * modes: no number, nothing to compare.
+ */
+function widthsIn(conditions: readonly string[]): { min?: number; max?: number } {
+  let min: number | undefined;
+  let max: number | undefined;
+
+  for (const condition of conditions) {
+    for (const [, which, text] of condition.matchAll(/\((min|max)-width\s*:([^)]*)\)/g)) {
+      const pixels = pixelsOf(text);
+      if (pixels === undefined) continue;
+      if (which === "min") min = min === undefined ? pixels : Math.max(min, pixels);
+      else max = max === undefined ? pixels : Math.min(max, pixels);
+    }
+  }
+  return { min, max };
+}
+
+/** The widest breakpoint that gets its own slot; beyond it, values are clamped and tie. */
+const WIDEST = 4999;
+
+/**
+ * How NARROW the viewport a rule applies to is, as a number that sorts — the sheet's major order.
+ *
+ * **A narrower rule has to be emitted later**, and until this existed the sheet could not tell two
+ * breakpoints apart. `padding` under `@media (min-width: 40rem)` and again under
+ * `@media (min-width: 64rem)` are both conditional and neither is a shorthand, so they ranked the
+ * same, and the sheet fell back to the order the file happened to write them in — which another file
+ * re-emitting one of the two then reversed. Measured in Chromium: 280 of 750 load orders wrong.
+ *
+ * A breakpoint is a NUMBER, so this is what every atomic CSS framework does: order by the query
+ * rather than by where it was written. The four bands, ascending:
+ *
+ * | slot | what is in it |
+ * |---|---|
+ * | `0` | not conditional at all, so it is first |
+ * | `1 … 5000` | `max-width`, the narrowest last — which is desktop-first |
+ * | `5001 … 10000` | `min-width`, the widest last — which is mobile-first |
+ * | `10001` | conditional, with no width this can read |
+ *
+ * **`min-width` after `max-width`** when both match, which is the order the frameworks settled on.
+ * A rule with BOTH is placed by its `min-width`: a band is narrower than the open range it starts
+ * from, and no single number orders two bands that overlap only partly.
+ *
+ * **A condition with no width comes LAST, and that is a choice.** `@media print`,
+ * `prefers-color-scheme: dark`, `forced-colors`, `@supports` — these are not size refinements, they
+ * are modes, and a mode is written to override. Placing them first would refuse the ordinary shape
+ * of breakpoints followed by a dark-mode override, and placing them last refuses the reverse, which
+ * is rare. They still tie with EACH OTHER, the way everything conditional used to tie, and there the
+ * sheet falls back to the order the file wrote — see `PLAN.md` for what is still open.
+ *
+ * A width in a unit this cannot resolve — `50ch`, a `calc()` — leaves the rule with the modes, since
+ * no number can be compared.
+ */
+export function widthSlot(conditions: readonly string[] | undefined): number {
+  if (conditions === undefined || conditions.length === 0) return 0;
+
+  const { min, max } = widthsIn(conditions);
+  const clamp = (value: number) => Math.min(Math.max(value, 0), WIDEST);
+  if (min !== undefined) return WIDEST + 2 + clamp(min);
+  if (max !== undefined) return WIDEST + 1 - clamp(max);
+  return 2 * WIDEST + 3;
+}
+
+/**
  * Where a declaration's rule goes in the stylesheet, and it is a RULE rather than an accident.
  *
- * The merge decides which classes land on an element; two things it cannot decide are the sheet's,
- * and both were measured in Chromium:
+ * The merge decides which classes land on an element; three things it cannot decide are the sheet's,
+ * and all three were measured in Chromium:
  *
  * - **a conditional rule beats an unconditional one for the same property only if emitted after it**;
- * - **a longhand emitted before a shorthand loses to it**, whatever the call site said.
+ * - **a longhand emitted before a shorthand loses to it**, whatever the call site said;
+ * - **of two breakpoints that both match, the one emitted later wins** — see {@link widthSlot}.
  *
- * So: conditional after unconditional, and within each the broadest property first — measured by how
- * many other properties it clears, which is what the shorthand table already knows.
+ * So: by how narrow the rule is, and within that the broadest property first — measured by how many
+ * other properties it clears, which is what the shorthand table already knows.
  *
  * **One definition, used twice.** The sheet emits in this order and `override-out-of-order` reports
  * where it contradicts the order the author wrote. Two copies of that question is the shape this
  * package keeps finding a fault in.
  */
 export function sheetRank(declaration: { property?: string; conditions?: readonly string[] }): number {
-  const conditional = (declaration.conditions?.length ?? 0) > 0 ? 1 : 0;
-  const breadth = declaration.property === undefined ? 0 : (SHORTHANDS[declaration.property]?.length ?? 0);
-  return conditional * 1000 - breadth;
+  return widthSlot(declaration.conditions) * 100 + BREADTHS.indexOf(breadthOf(declaration));
 }
 
 /**
- * Every rank {@link sheetRank} can answer, ascending — the sheet's whole order, known before a build.
- *
- * Known in advance because both halves of a rank are: conditional is a bit, and breadth comes from a
- * generated table. Twenty-four of them, and that is what makes the layer scheme below possible.
- */
-export const SHEET_RANKS: readonly number[] = (() => {
-  const breadths = new Set<number>([0]);
-  for (const covered of Object.values(SHORTHANDS)) breadths.add(covered.length);
-
-  const ranks = new Set<number>();
-  for (const breadth of breadths) {
-    ranks.add(-breadth);
-    ranks.add(1000 - breadth);
-  }
-  return [...ranks].sort((a, b) => a - b);
-})();
-
-/**
- * The cascade layer a rank's rules go in, and it is the fix for a fault no author could have seen.
+ * The nested cascade layer a rule goes in, as the path under `ramonda` — and it is the fix for a
+ * fault no author could have seen.
  *
  * **One rule is written into the stylesheet of every file that names it** — that is what lets a chunk
  * stand on its own, and it is measured (an owner-per-rule left a lazily-loaded route naming a class
- * no stylesheet held). But a stylesheet is a sequence, so a file re-emitting a shared rule puts it
- * AFTER the rules of whichever file loaded first, and same-specificity later-wins undoes the order
+ * no stylesheet held). But a stylesheet is a SEQUENCE, so a file re-emitting a shared rule puts it
+ * after the rules of whichever file loaded first, and same-specificity later-wins undoes the order
  * the rank promised. Measured in Chromium through a real build: `Card.tsx` writing `color: red` and
- * `@media { color: blue }` rendered blue alone and red once an innocent `Panel.tsx` — which writes
- * only `color: red` — loaded after it. Adding an unrelated component moved a page nobody edited.
+ * `@media { color: blue }` rendered blue on its own and RED once an innocent `Panel.tsx` — which
+ * writes only `color: red` — loaded after it. Adding an unrelated component moved a page nobody
+ * edited, and nothing could report it.
  *
- * A layer answers it because a layer's position is decided by its DECLARATION and not by where its
- * rules are: put every rank in its own layer, declare the whole list at the top of every stylesheet,
- * and re-emission cannot move anything. Measured over 2,250 load orders of random rank sets across
- * three files, through both minifiers a Vite build can use: zero disagreements.
+ * A layer answers it because a layer's place is fixed by its DECLARATION and not by where its rules
+ * are. What a layer needs is a NAME, and the order of the names has to be declared identically by
+ * every stylesheet — a file declaring only what it uses is worse than useless, since CSS appends a
+ * name it has not seen to the END of the order.
  *
- * **The whole list, in every stylesheet, and that is not caution.** Measured: a stylesheet declaring
- * only the ranks it uses is worse than useless — a file holding just `margin-left` loading before one
- * holding `margin` and `margin-left` put the shorthand's layer AFTER the longhand's, because CSS
- * appends a name it has not seen to the END of the order. `margin-left: 4px` became `0px`. With no
- * statement at all the order is first-USE order, which fails the same way.
+ * ## Why the conditional half is a path of digits
  *
- * What this does NOT settle is two declarations of the same rank — the sheet has always ordered
- * those by the file's own order, and a layer cannot help, since a file that emits only one of them
- * would have to know the other to declare its layer. See `PLAN.md`.
+ * An unconditional rule has one of twelve breadths, so twelve names cover it and every stylesheet
+ * lists all twelve. A breakpoint is a number, and thousands of names cannot be listed — so the width
+ * slot is written as its DIGITS, one nested layer each, and every level's list is the same ten names
+ * in every file. `min-width: 640px` is slot 5641, so it lands in `ramonda.c.d0.d5.d6.d4.d1` — the
+ * five digits, and then its breadth.
+ *
+ * Nesting is what makes it cheap: a statement inside a layer block names no prefix. Measured on a
+ * stylesheet holding seven rules, the whole scheme costs about 150 gzipped bytes. And the common case
+ * stays flat — an unconditional rule is `ramonda.u07`, two levels, no tree.
+ *
+ * Measured in Chromium through the real sheet: 600 load orders of random rule sets across three
+ * files, each through no minifier, esbuild and lightningcss, zero wrong. See `prototype-layers.mjs`.
  */
-export function layerFor(rank: number): string {
-  return `ramonda.r${String(SHEET_RANKS.indexOf(rank)).padStart(2, "0")}`;
+export function layerPathFor(declaration: { property?: string; conditions?: readonly string[] }): string[] {
+  const breadth = String(BREADTHS.indexOf(breadthOf(declaration))).padStart(2, "0");
+  const slot = widthSlot(declaration.conditions);
+  if (slot === 0) return [`u${breadth}`];
+
+  return [
+    "c",
+    ...String(slot)
+      .padStart(5, "0")
+      .split("")
+      .map((digit) => `d${digit}`),
+    `b${breadth}`,
+  ];
 }
 
-/** The statement that fixes the order of every rank layer, which each stylesheet begins with. */
-export const LAYER_ORDER = `@layer ${SHEET_RANKS.map(layerFor).join(",")};`;
+/** The names one level of the digit path may hold, in order. */
+export const DIGIT_LAYERS: readonly string[] = [...Array(10).keys()].map((one) => `d${one}`);
+
+/** The names a breadth level may hold, in order — widest first. */
+export const BREADTH_LAYERS: readonly string[] = BREADTHS.map((_, at) => String(at).padStart(2, "0"));
+
+/**
+ * The statement every stylesheet begins with: each unconditional breadth, then everything
+ * conditional.
+ *
+ * The whole list, and that is not caution. Measured: a stylesheet declaring only the layers it uses
+ * put a shorthand's layer AFTER a longhand's, because a file holding just `margin-left` loaded first
+ * and CSS appends an unseen name to the end of the order — `margin-left: 4px` became `0px`.
+ */
+export const LAYER_ORDER = `@layer ${[...BREADTH_LAYERS.map((one) => `ramonda.u${one}`), "ramonda.c"].join(",")};`;
 
 /** Whether a shorthand sets everything another property sets, so a later one CLEARS it in the merge. */
 export function covers(shorthand: string, other: string): boolean {

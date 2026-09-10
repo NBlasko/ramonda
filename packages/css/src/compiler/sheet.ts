@@ -36,7 +36,7 @@ export function messageFor(one: UnknownVariable): string {
     `fallback — \`var(${one.read.name}, <value>)\` — which says it may be absent.`
   );
 }
-import { LAYER_ORDER, layerFor, sheetRank, withParent } from "./flatten";
+import { BREADTH_LAYERS, DIGIT_LAYERS, LAYER_ORDER, layerPathFor, sheetRank, withParent } from "./flatten";
 import { escapeClass } from "./names";
 import type { EmittedBlock } from "./transform";
 
@@ -92,32 +92,68 @@ function ordered<T extends { block: EmittedBlock }>(rules: Iterable<[string, T]>
   return [...rules].sort((a, b) => sheetRank(a[1].block) - sheetRank(b[1].block));
 }
 
+/** One level of the layer tree: the rules that stop here, and the levels under it. */
+interface Level {
+  readonly own: string[];
+  readonly under: Map<string, Level>;
+}
+
+const level = (): Level => ({ own: [], under: new Map() });
+
 /**
- * Rules that are already in order, written out as a stylesheet: the layer statement, then a layer
- * per rank.
+ * The names a level's children MAY hold, in order — which is what two files have to agree on.
  *
- * **Why a layer per rank rather than one `ramonda`** is on {@link layerFor}, and the short of it is
- * that a stylesheet is a sequence while a layer is not: one rule is written into every file that
- * names it, so the sequence depends on which chunk loaded first and the rank's order was undone by
- * an unrelated component. The layer statement is what makes the order the same in every file.
+ * Read off the children rather than counted from the depth: every child of one level is the same
+ * kind of step, because {@link layerPathFor} builds the path that way. The top level needs none —
+ * {@link LAYER_ORDER} declares those, fully qualified, at the very start of the stylesheet.
+ */
+function namesUnder(under: Map<string, Level>): readonly string[] {
+  const [first] = under.keys();
+  if (first === undefined || first.startsWith("u") || first === "c") return [];
+  return first.startsWith("d") ? DIGIT_LAYERS : BREADTH_LAYERS.map((one) => `b${one}`);
+}
+
+/**
+ * Rules that are already in order, written out as a stylesheet: the layer statement, then the tree
+ * of layers their ranks map to.
  *
- * Still emitted in rank order, and each layer holds its rules in the order they were given — the
- * layer decides between ranks, the sequence still decides within one, and a reader of the output
- * sees the same order the sheet has always written.
+ * **Why layers at all** is on {@link layerPathFor}, and the short of it is that a stylesheet is a
+ * sequence while a layer is not: one rule is written into the stylesheet of every file that names
+ * it, so the sequence depends on which chunk loaded first, and the rank's order was undone by an
+ * unrelated component.
+ *
+ * Each level declares the names it MAY hold rather than the ones it does, which is what makes two
+ * files agree; and the rules inside one layer keep the order they were given, so a reader of the
+ * output still sees the order the sheet has always written.
  */
 function wrap<T extends { block: EmittedBlock }>(rules: readonly [string, T][]): string {
   if (rules.length === 0) return "";
 
-  let out = `${LAYER_ORDER}\n`;
-  for (let index = 0; index < rules.length; ) {
-    const rank = sheetRank(rules[index][1].block);
-    let inside = "";
-    for (; index < rules.length && sheetRank(rules[index][1].block) === rank; index++) {
-      inside += write(rules[index][0], rules[index][1].block);
+  const root = level();
+  for (const [className, rule] of rules) {
+    let here = root;
+    for (const step of layerPathFor(rule.block)) {
+      let next = here.under.get(step);
+      if (next === undefined) {
+        next = level();
+        here.under.set(step, next);
+      }
+      here = next;
     }
-    out += `@layer ${layerFor(rank)} {\n${inside}}\n`;
+    here.own.push(write(className, rule.block));
   }
-  return out;
+
+  const written = (here: Level): string => {
+    let out = here.own.join("");
+    if (here.under.size === 0) return out;
+
+    const names = namesUnder(here.under);
+    if (names.length > 0) out += `@layer ${names.join(",")};\n`;
+    for (const [step, under] of here.under) out += `@layer ${step} {\n${written(under)}}\n`;
+    return out;
+  };
+
+  return `${LAYER_ORDER}\n@layer ramonda {\n${written(root)}}\n`;
 }
 
 /**

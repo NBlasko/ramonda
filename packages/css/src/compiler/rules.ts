@@ -1,6 +1,6 @@
 import type { Config } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
-import { conflict, covers, flatten, onlyTheModeDecides, sheetRank } from "./flatten";
+import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, widthSlot } from "./flatten";
 import { holeOutOfPlace } from "./errors";
 import {
   DESCRIPTORS,
@@ -1021,12 +1021,31 @@ function overrideOutOfOrder(block: Block, findings: Finding[]): void {
         length: later.property.length,
         message:
           `\`${later.property}\` is written to override ${where} above it, and it will not — the ` +
-          `stylesheet emits ${earlier.conditions.length > 0 ? "conditional rules after unconditional ones" : "a shorthand before its own longhands"}, ` +
-          `so the earlier one wins wherever both apply. Write it above, or put it under the same condition.`,
+          `stylesheet emits ${becauseOf(earlier, later)}, so the earlier one wins wherever both ` +
+          `apply. Write it above, or put it under the same condition.`,
       });
       return;
     }
   }
+}
+
+/**
+ * Why the sheet puts the earlier one last, in the reader's own terms.
+ *
+ * Three orders can be the reason, and naming the wrong one sends a reader looking at the wrong
+ * thing. The width one is the newest: the sheet reads a breakpoint off its query now, so a narrower
+ * rule is emitted after a wider one whatever order they were written in — see `widthSlot`.
+ */
+function becauseOf(
+  earlier: { property: string; conditions: readonly string[] },
+  later: { property: string; conditions: readonly string[] },
+): string {
+  if (earlier.conditions.length === 0) return "a shorthand before its own longhands";
+  if (widthSlot(later.conditions) === widthSlot(earlier.conditions)) {
+    return "the broadest property first";
+  }
+  if (later.conditions.length === 0) return "conditional rules after unconditional ones";
+  return "the rule that applies to a wider viewport first";
 }
 
 /**

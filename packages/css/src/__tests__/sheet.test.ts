@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
-import { LAYER_ORDER, SHEET_RANKS } from "../compiler/flatten";
+import { BREADTH_LAYERS, LAYER_ORDER } from "../compiler/flatten";
 import { escapeClass } from "../compiler/names";
 import { Sheet } from "../compiler/sheet";
 
@@ -29,7 +29,9 @@ describe("dedupe", () => {
     sheet.add("a.tsx", [FLEX]);
     sheet.add("b.tsx", [FLEX]);
 
-    expect(sheet.css()).toBe(`${LAYER_ORDER}\n@layer ramonda.r11 {\n.r-1111111111111111 { display:flex; }\n}\n`);
+    expect(sheet.css()).toBe(
+      `${LAYER_ORDER}\n@layer ramonda {\n@layer u11 {\n.r-1111111111111111 { display:flex; }\n}\n}\n`,
+    );
   });
 
   test("and the same block twice in one file is too", () => {
@@ -173,28 +175,30 @@ describe("the layers", () => {
     sheet.add("a.tsx", [FLEX, GRID]);
 
     const css = sheet.css();
-    expect(css.startsWith(`${LAYER_ORDER}\n@layer ramonda.`)).toBe(true);
+    expect(css.startsWith(`${LAYER_ORDER}\n@layer ramonda {\n`)).toBe(true);
     expect(css.endsWith("}\n")).toBe(true);
-    // Nothing but layer blocks, so nothing generated is ever unlayered.
-    expect(css.replace(`${LAYER_ORDER}\n`, "").replace(/@layer ramonda\.r\d+ \{\n(?:.*\n)*?\}\n/g, "")).toBe("");
+    // Every rule is inside `ramonda`, so nothing generated is ever unlayered.
+    expect(css.indexOf(".r-")).toBeGreaterThan(css.indexOf("@layer ramonda {"));
   });
 
   /**
-   * The statement is what makes the rank order the same in every stylesheet, and a file declares the
-   * WHOLE list rather than the ranks it uses.
+   * The statement is what makes the order the same in every stylesheet, and a file declares the
+   * WHOLE list rather than what it uses.
    *
    * Measured in Chromium, and a subset is worse than useless: a file holding only `margin-left`,
    * loading before one holding `margin` and `margin-left`, put the shorthand's layer AFTER the
    * longhand's, because CSS appends a name it has not seen to the end of the order — `4px` became
    * `0px`. With no statement at all the order is first-USE order, which fails the same way.
    */
-  test("the statement declares every rank, not the ones this file uses", () => {
+  test("the statement declares every layer, not the ones this file uses", () => {
     const sheet = new Sheet();
     sheet.add("a.tsx", [FLEX]);
 
     const declared = sheet.cssFor("a.tsx").split("\n")[0];
     expect(declared).toBe(LAYER_ORDER);
-    expect(declared.match(/ramonda\.r/g)).toHaveLength(SHEET_RANKS.length);
+    // Every breadth an unconditional rule can have, and one for everything conditional.
+    expect(declared.match(/ramonda\.u/g)).toHaveLength(BREADTH_LAYERS.length);
+    expect(declared).toContain("ramonda.c;");
   });
 
   /**
@@ -203,27 +207,59 @@ describe("the layers", () => {
    *
    * Measured in Chromium through a real build before the layers: `Card.tsx` writing `color: red` and
    * `@media { color: blue }` rendered blue on its own and red once `Panel.tsx` — which writes only
-   * `color: red` — loaded after it. The layers put the two rules in different layers, so the
-   * sequence they land in decides nothing. 2,250 load orders swept, both minifiers, zero wrong.
+   * `color: red` — loaded after it. The layers put the two in different layers, so the sequence they
+   * land in decides nothing.
    */
   test("a conditional rule and an unconditional one are in different layers", () => {
     const sheet = new Sheet();
-    const RED = block("r-6666666666666666", "color:red;");
-    const BLUE = { ...block("r-7777777777777777", "color:blue;"), conditions: ["@media (min-width:1px)"] };
+    const RED = { ...block("r-6666666666666666", "color:red;"), property: "color" };
+    const BLUE = {
+      ...block("r-7777777777777777", "color:blue;"),
+      property: "color",
+      conditions: ["@media (min-width:1px)"],
+    };
     sheet.add("Card.tsx", [RED, BLUE]);
     sheet.add("Panel.tsx", [RED]);
 
     const card = sheet.cssFor("Card.tsx");
-    const red = /@layer (ramonda\.r\d+) \{\n\.r-6666/.exec(card)?.[1];
-    const blue = /@layer (ramonda\.r\d+) \{\n@media/.exec(card)?.[1];
-    expect(red).toBeDefined();
-    expect(blue).toBeDefined();
-    expect(red).not.toBe(blue);
-    // Later in the declared order, which is what makes the conditional one win.
-    expect(LAYER_ORDER.indexOf(`${blue}`)).toBeGreaterThan(LAYER_ORDER.indexOf(`${red}`));
+    // The unconditional one is one level down; the conditional one is under `c`, which is declared
+    // after every `u`, so it wins wherever it applies.
+    expect(card).toMatch(/@layer u\d+ \{\n\.r-6666/);
+    expect(card).toContain("@layer c {");
+    expect(card.indexOf("@layer c {")).toBeGreaterThan(card.indexOf(".r-6666"));
 
     // And the file that writes only the shared rule declares the same order.
     expect(sheet.cssFor("Panel.tsx").startsWith(LAYER_ORDER)).toBe(true);
+  });
+
+  /**
+   * Two breakpoints for one property, which is what the layers alone could not settle: they are both
+   * conditional and neither is a shorthand, so they used to rank the same and the sheet fell back to
+   * the order the file wrote — which another file re-emitting one of the two then reversed.
+   *
+   * The width is read off the query now, so the wider `min-width` is later whatever the file did.
+   * Measured in Chromium over 900 load orders across three files: zero wrong.
+   */
+  test("two breakpoints go in different layers, the wider one later", () => {
+    const sheet = new Sheet();
+    const at = (query: string, className: string, value: string) => ({
+      ...block(className, `padding:${value};`),
+      property: "padding",
+      conditions: [query],
+    });
+    const NARROW = at("@media (min-width: 40rem)", "r-8888888888888888", "1rem");
+    const WIDE = at("@media (min-width: 64rem)", "r-9999999999999999", "2rem");
+
+    // Written wide-first, so the file's own order is the opposite of the one that must come out.
+    sheet.add("Card.tsx", [WIDE, NARROW]);
+
+    const css = sheet.cssFor("Card.tsx");
+    expect(css.indexOf("40rem")).toBeLessThan(css.indexOf("64rem"));
+
+    // A second file writing only the narrow one cannot put it after the wide one, because the layer
+    // it lands in was declared before the wide one's in every stylesheet.
+    sheet.add("Panel.tsx", [NARROW]);
+    expect(sheet.cssFor("Panel.tsx")).toContain("40rem");
   });
 
   test("an empty sheet is empty text, not an empty layer", () => {
@@ -247,7 +283,7 @@ describe("a named rule", () => {
     sheet.add("a.tsx", [SLIDE]);
 
     expect(sheet.css()).toBe(
-      `${LAYER_ORDER}\n@layer ramonda.r11 {\n@keyframes r-4444444444444444 { from{opacity:0;}to{opacity:1;} }\n}\n`,
+      `${LAYER_ORDER}\n@layer ramonda {\n@layer u11 {\n@keyframes r-4444444444444444 { from{opacity:0;}to{opacity:1;} }\n}\n}\n`,
     );
   });
 
@@ -343,7 +379,9 @@ describe("an atomic rule", () => {
     const sheet = new Sheet();
     sheet.add("a.tsx", [atom("r-1111111111111111", "display:flex;", { property: "display" })]);
 
-    expect(sheet.css()).toBe(`${LAYER_ORDER}\n@layer ramonda.r11 {\n.r-1111111111111111 { display:flex; }\n}\n`);
+    expect(sheet.css()).toBe(
+      `${LAYER_ORDER}\n@layer ramonda {\n@layer u11 {\n.r-1111111111111111 { display:flex; }\n}\n}\n`,
+    );
   });
 
   test("a nested selector is written onto the class, not inside the rule", () => {
@@ -596,42 +634,50 @@ describe("verifying a readable class", () => {
  * emit, and the rank still sorts within it because that part was never in doubt.
  */
 describe("the order one file's stylesheet comes out in", () => {
-  const CONDITIONS = (first: "width" | "height") => {
-    const w = `  @media (min-width: 40rem) { color: red; }\n`;
+  /**
+   * Two conditions the sheet CANNOT order, which is the case this is about.
+   *
+   * `min-height` and `print` carry no width, so both land in the last slot and rank the same — see
+   * `widthSlot`. Two breakpoints would be ordered by their own widths now and would not ask this
+   * question at all.
+   */
+  const CONDITIONS = (first: "height" | "print") => {
     const h = `  @media (min-height: 40rem) { color: blue; }\n`;
-    return `const a = <div css=@@(\n${first === "width" ? w + h : h + w})>x</div>;\n`;
+    const p = `  @media print { color: green; }\n`;
+    return `const a = <div css=@@(\n${first === "height" ? h + p : p + h})>x</div>;\n`;
   };
 
   const blocksOf = (code: string, file: string) => transform(code, { filename: file })?.blocks ?? [];
-  const conditionsIn = (css: string) => [...css.matchAll(/min-(width|height)/g)].map((found) => found[1]);
+  // The `@media`, not the class name — a class is named after its condition and holds the word too.
+  const conditionsIn = (css: string) => [...css.matchAll(/@media \(?(min-height|print)/g)].map((found) => found[1]);
 
   test("its own, whatever another file claimed the same classes first", () => {
     const sheet = new Sheet();
-    sheet.add("/a.tsx", blocksOf(CONDITIONS("width"), "/a.tsx"));
-    sheet.add("/b.tsx", blocksOf(CONDITIONS("height"), "/b.tsx"));
+    sheet.add("/a.tsx", blocksOf(CONDITIONS("height"), "/a.tsx"));
+    sheet.add("/b.tsx", blocksOf(CONDITIONS("print"), "/b.tsx"));
 
-    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["width", "height"]);
-    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["height", "width"]);
+    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["min-height", "print"]);
+    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["print", "min-height"]);
   });
 
   test("and the same as it would be compiled alone, which is the point", () => {
     const together = new Sheet();
-    together.add("/a.tsx", blocksOf(CONDITIONS("width"), "/a.tsx"));
-    together.add("/b.tsx", blocksOf(CONDITIONS("height"), "/b.tsx"));
+    together.add("/a.tsx", blocksOf(CONDITIONS("height"), "/a.tsx"));
+    together.add("/b.tsx", blocksOf(CONDITIONS("print"), "/b.tsx"));
 
     const alone = new Sheet();
-    alone.add("/b.tsx", blocksOf(CONDITIONS("height"), "/b.tsx"));
+    alone.add("/b.tsx", blocksOf(CONDITIONS("print"), "/b.tsx"));
 
     expect(together.cssFor("/b.tsx")).toBe(alone.cssFor("/b.tsx"));
   });
 
   test("in the other build order too, so neither file is the privileged one", () => {
     const sheet = new Sheet();
-    sheet.add("/b.tsx", blocksOf(CONDITIONS("height"), "/b.tsx"));
-    sheet.add("/a.tsx", blocksOf(CONDITIONS("width"), "/a.tsx"));
+    sheet.add("/b.tsx", blocksOf(CONDITIONS("print"), "/b.tsx"));
+    sheet.add("/a.tsx", blocksOf(CONDITIONS("height"), "/a.tsx"));
 
-    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["width", "height"]);
-    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["height", "width"]);
+    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["min-height", "print"]);
+    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["print", "min-height"]);
   });
 
   /**

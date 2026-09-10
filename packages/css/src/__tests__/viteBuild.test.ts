@@ -295,7 +295,7 @@ describe("a block written in two routes that never load together", () => {
  */
 test("the layer order is declared in full by every stylesheet, and survives minification", () => {
   const root = project(
-    `export const card = @@( color: red; @media (min-width: 1px) { color: blue; } );\n`,
+    `export const card = @@( color: red; @media (min-width: 40rem) { color: blue; } );\n`,
     `import { card } from "./Card";\nimport { panel } from "./Panel";\nconsole.log(card, panel);\n`,
   );
   // Writes only the rule `Card.tsx` also writes, which is the file that used to reverse it.
@@ -309,19 +309,59 @@ test("the layer order is declared in full by every stylesheet, and survives mini
     .map((each) => readFileSync(join(root, "out", "assets", each), "utf8"))
     .join("\n");
 
-  // Every rank, in every stylesheet — the minifier may trim a redundant name but not the order.
-  const declared = [...css.matchAll(/@layer ([^{;]*ramonda\.r[^{;]*);/g)].map((each) => each[1]);
+  // The statement, which is what makes the order the same in every stylesheet. A minifier may trim
+  // a name the same file declares again below, but not the order.
+  const declared = [...css.matchAll(/@layer ([^{;]*ramonda\.[^{;]*);/g)].map((each) => each[1]);
   expect(declared.length).toBeGreaterThan(0);
+  expect(declared[0]).toContain("ramonda.c");
 
-  // The two declarations are in different layers, and the conditional one's is declared later.
-  const unconditional = /@layer (ramonda\.r\d+)\s*\{\s*\.r-[\w-]+\s*\{\s*color: ?red/.exec(css)?.[1];
-  const conditional = /@layer (ramonda\.r\d+)\s*\{\s*@media/.exec(css)?.[1];
-  expect(unconditional).toBeDefined();
-  expect(conditional).toBeDefined();
-  expect(conditional).not.toBe(unconditional);
+  // The unconditional rule is in a `u` layer and the conditional one under `c`, which every
+  // stylesheet declares last — so the conditional one wins wherever it applies.
+  expect(css).toMatch(/@layer u\d+\s*\{\s*\.r-[\w-]+\s*\{\s*color: ?red/);
+  expect(css).toMatch(/@layer c\s*\{/);
+  expect(css.indexOf("color:red")).toBeLessThan(css.indexOf("@layer c"));
+});
 
-  const order = declared.join(",").split(",");
-  expect(order.indexOf(conditional as string)).toBeGreaterThan(order.indexOf(unconditional as string));
+/**
+ * TWO BREAKPOINTS, through the same build — the half a layer per rank could not settle.
+ *
+ * Both are conditional and neither is a shorthand, so they used to rank the same and the sheet fell
+ * back to the order the file wrote, which a second file writing one of the two then reversed. The
+ * width is read off the query now, so each lands in a layer of its own and the wider one is last.
+ *
+ * Written narrow-first here because that is the only way it compiles: writing the wider one below
+ * the narrower one is an override the sheet will not honour, and `override-out-of-order` refuses it
+ * — measured by writing it the other way round and watching the build fail.
+ */
+test("two breakpoints go in different layers, and the wider one is last", () => {
+  const root = project(
+    `export const card = @@(\n` +
+      `  @media (min-width: 40rem) { padding: 1rem; }\n` +
+      `  @media (min-width: 64rem) { padding: 2rem; }\n` +
+      `);\n`,
+    `import { card } from "./Card";\nimport { panel } from "./Panel";\nconsole.log(card, panel);\n`,
+  );
+  writeFileSync(
+    join(root, "src", "Panel.tsx"),
+    `export const panel = @@( @media (min-width: 40rem) { padding: 1rem; } );\n`,
+  );
+
+  const result = build(root);
+  expect(result.ok).toBe(true);
+
+  const css = readdirSync(join(root, "out", "assets"))
+    .filter((each) => each.endsWith(".css"))
+    .map((each) => readFileSync(join(root, "out", "assets", each), "utf8"))
+    .join("\n");
+
+  expect(css.indexOf("40rem")).toBeLessThan(css.indexOf("64rem"));
+
+  // Different layers, so Panel re-emitting the narrow one cannot put it after the wide one.
+  const layerOf = (query: string) => {
+    const at = css.indexOf(query);
+    return [...css.slice(0, at).matchAll(/@layer ([\w.]+)\s*\{/g)].map((each) => each[1]).join(">");
+  };
+  expect(layerOf("40rem")).not.toBe(layerOf("64rem"));
 });
 
 /**

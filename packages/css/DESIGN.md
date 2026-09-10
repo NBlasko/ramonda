@@ -456,8 +456,10 @@ block emits one class holding all its declarations*. **What ships is one class p
 its block sets. That is what lets two files agree on a class without knowing about each other, and it
 is why the sheet does not grow with the number of blocks.
 
-Order is decided by `sheetRank` — `conditional * 1000 - breadth` — not by module graph order, because
-a rule may land in any chunk and a chunk has to stand on its own.
+Order is decided by `sheetRank` — not by module graph order, because a rule may land in any chunk and
+a chunk has to stand on its own. The rank is *how specific the case is*: a condition beats none, a
+longhand beats its shorthand, and of two breakpoints the narrower case is emitted last, which is what
+every atomic CSS framework arrived at and is read off the query rather than off the author's order.
 
 **And the rank is a LAYER, not a position, because a position was not enough.** One rule goes into
 the stylesheet of every file that names it — the thing that lets a chunk stand alone — so a second
@@ -465,8 +467,13 @@ file re-emitting a shared rule put it after the first file's higher-ranked ones 
 later-wins undid the rank. Measured in Chromium through a real build: a file writing `color: red` and
 `@media { color: blue }` rendered blue alone and red once an innocent file writing only `color: red`
 loaded after it. A layer's place is fixed by its declaration rather than by where its rules sit, so
-each rank gets a layer under `ramonda` and every stylesheet declares the whole order. What this does
-NOT settle is two declarations of the SAME rank; see `PLAN.md`.
+each rank gets a layer under `ramonda` and every stylesheet declares the whole order.
+
+A breakpoint is a number, so the layer for it comes out of a name space of thousands — written as the
+slot's DIGITS, one nested layer each, because ten names per level is a list every stylesheet can
+carry and thousands is not. Unconditional rules stay flat. What is still not settled is two
+conditions carrying no width, `@media print` against `prefers-color-scheme`: nothing tells them
+apart, and there the file's own order is still the answer. See `PLAN.md`.
 
 The sheet does sit in a named `@layer ramonda`, and the honest statement of what that buys is on the
 docs page rather than here: **unlayered CSS beats layered CSS**, checked before specificity, so an

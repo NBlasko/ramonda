@@ -1077,6 +1077,43 @@ describe("an override the sheet's order will not honour", () => {
     );
   });
 
+  /**
+   * TWO BREAKPOINTS, and this is what the sheet could not tell apart until it read the query.
+   *
+   * The sheet emits the rule for the wider viewport first, because that is what a breakpoint means
+   * and what every atomic CSS framework does — so writing the wide one BELOW the narrow one is an
+   * override that cannot happen, and it used to be honoured only as long as no other file wrote one
+   * of the two. Measured in Chromium: 280 of 750 load orders wrong.
+   */
+  test("a narrow breakpoint below a wider one, which the sheet emits last", () => {
+    const found = checkNamedFree(
+      "@media (min-width: 64rem) { padding: 40px; }\n@media (min-width: 40rem) { padding: 8px; }",
+    );
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("override-out-of-order");
+    expect(found[0].message).toContain("wider viewport first");
+  });
+
+  test("and the way round the sheet does emit them is not reported", () => {
+    expect(
+      checkNamedFree("@media (min-width: 40rem) { padding: 8px; }\n@media (min-width: 64rem) { padding: 40px; }"),
+    ).toHaveLength(0);
+  });
+
+  /** `max-width` is desktop-first, so the narrower one is the one written — and emitted — last. */
+  test("max-width goes the other way, and the sheet's order is the written one", () => {
+    expect(
+      checkNamedFree("@media (max-width: 64rem) { padding: 8px; }\n@media (max-width: 40rem) { padding: 40px; }"),
+    ).toHaveLength(0);
+  });
+
+  test("a mode is not a size, so it comes after every breakpoint and overrides one", () => {
+    expect(checkNamedFree("@media (min-width: 64rem) { padding: 8px; }\n@media print { padding: 0px; }")).toHaveLength(
+      0,
+    );
+  });
+
   test("`@supports` is the same, because a condition adds no specificity", () => {
     expect(checkNamedFree("@supports (display: grid) { padding: 40px; }\npadding: 8px;")[0]?.rule).toBe(
       "override-out-of-order",

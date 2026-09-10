@@ -57,12 +57,19 @@ async function serve(source: string) {
     sent.push(payload);
   };
 
-  /** A save, and the wait for the server to have finished handling it. */
+  /**
+   * A save, and the wait for the server to have finished handling it.
+   *
+   * The wait is generous because the gate runs every package at once and this one waits on a real
+   * server: at two seconds it passed here and failed once inside `pnpm check`, which is the shape of
+   * a test that measures the machine rather than the code. Vitest's own timeout is what should end a
+   * hang, not a number chosen here.
+   */
   async function save(next: string) {
     const before = sent.length;
     writeFileSync(file, next);
     server.watcher.emit("change", file);
-    for (let waited = 0; sent.length === before && waited < 2000; waited += 10) {
+    for (let waited = 0; sent.length === before && waited < 30_000; waited += 10) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(sent.length).toBeGreaterThan(before);

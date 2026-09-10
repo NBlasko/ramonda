@@ -156,11 +156,74 @@ The `@layer a, b;` statement is what ranks them, and **a layer named later in it
 Without that statement the order is whichever layer the browser meets first, which is the same "your
 bundler decides" problem in a smaller box: write the statement.
 
-**Inside `ramonda` there are numbered layers**, and you will see them if you read the output:
-`@layer ramonda.r11 { … }`. They are how the generated CSS keeps its own order — a shorthand before
-its longhands, an unconditional declaration before a conditional one — and they are not something to
-write against. `ramonda` is the name: putting it in your own statement orders everything in it, and
-the numbers can change between versions.
+### Which of your own declarations wins
+
+Two declarations of the same property, and both of them apply. Plain CSS answers with whichever was
+written last. A block answers with a rule, and the rule is the same one every atomic CSS framework
+arrived at: **the more specific case wins, whatever order you wrote it in.**
+
+Four things make one declaration more specific than another, in this order:
+
+```
+1  a condition beats no condition          padding: 8px          then  @media … { padding: 40px }
+2  a longhand beats its shorthand          padding: 8px          then  padding-left: 40px
+3  a narrower max-width beats a wider one  max-width: 64rem      then  max-width: 40rem
+4  a wider min-width beats a narrower one  min-width: 40rem      then  min-width: 64rem
+```
+
+So this does what you meant, and the order you wrote the two breakpoints in does not matter:
+
+```tsx
+<div css=@@(
+  padding: 8px;
+  @media (min-width: 40rem) { padding: 16px; }
+  @media (min-width: 64rem) { padding: 24px; }
+)>…</div>
+```
+
+At 70rem the element gets `24px`. Not because that line is last, but because `64rem` is the narrower
+case — write the three in any order and the answer is the same.
+
+**Write them out of order and you are told.** A declaration that cannot override the one above it is
+refused rather than quietly ignored:
+
+```
+`padding` is written to override @media (min-width: 64rem) above it, and it will not — the
+stylesheet emits the rule that applies to a wider viewport first, so the earlier one wins
+wherever both apply. Write it above, or put it under the same condition.
+```
+
+**A mode is not a size.** `@media print`, `prefers-color-scheme: dark`, `forced-colors`, `@supports`
+— these carry no width, so they come after every breakpoint and override one:
+
+```tsx
+<div css=@@(
+  @media (min-width: 64rem) { color: black; }
+  @media (prefers-color-scheme: dark) { color: white; }
+)>…</div>
+```
+
+Two of THOSE against each other is the one case with no rule: `@media print` and
+`prefers-color-scheme: dark` both carry no width, so nothing tells them apart and the one you wrote
+last wins — which is CSS's own answer, and it holds as long as no other file writes one of the two.
+Put them under one condition if it matters.
+
+### How the order is kept, if you read the output
+
+You will see numbered layers inside `ramonda`:
+
+```css
+@layer ramonda.u00, …, ramonda.u11, ramonda.c;
+@layer ramonda {
+  @layer u03 { .r-p-8px { padding: 8px; } }
+  @layer c { … @media (min-width: 40rem) { … } … }
+}
+```
+
+That is the list above, made into cascade layers — a layer's place is decided by that statement
+rather than by where its rules sit, which is what makes the order the same however the files load.
+You never write against these names: `ramonda` is the name to put in your own `@layer` statement,
+and it orders everything inside it.
 
 ## Three ways to write one
 
