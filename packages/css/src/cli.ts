@@ -231,7 +231,21 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
   }
 
   const lint = oxlintLinter(binary, cwd);
-  const found = files.flatMap((file) => lintFile(file, lint));
+  let found: ReturnType<typeof lintFile>;
+  try {
+    found = files.flatMap((file) => lintFile(file, lint));
+  } catch (error) {
+    /**
+     * The tool's own words, the same as the formatter's above — and this half had no catch at all.
+     *
+     * It could not be reached while a failing linter came back as no findings, which is what made
+     * that the more serious half of one fault: `ramonda-css lint` printed *N file(s) lint clean* and
+     * exited 0 for a linter that had crashed. See `oxlintLinter`.
+     */
+    if (!(error instanceof ToolFailed)) throw error;
+    console.error(`\n${TAG} \`${name}\` refused:\n\n${error.message}\n`);
+    process.exit(1);
+  }
 
   if (found.length === 0) {
     console.log(`${TAG} ${files.length} file(s) lint clean`);

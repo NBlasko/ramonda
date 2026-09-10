@@ -89,6 +89,19 @@ export function biomeFormatter(binary: string, cwd: string): (text: string, path
  *
  * It exits non-zero when it finds something, so the report is read off the failure as well — an exit
  * code is the answer here, not an error.
+ *
+ * **But the ABSENCE of a report is not evidence of a clean file**, and this used to treat it as one.
+ * The catch handed whatever `stdout` held to `readReport`, which answers `[]` for anything it cannot
+ * parse — so a linter that crashed, that printed why it could not run, or that was not installed at
+ * all came back as no findings, and `ramonda-css lint` printed *N file(s) lint clean* and exited 0.
+ *
+ * This file's own note names the shape already; it is the reason `maxBuffer` was raised — "a
+ * truncated report is unparsable JSON, which is no findings, which is a file that lints CLEAN". The
+ * buffer was fixed and the error path was not, and the two halves of one command disagreed about it:
+ * `biomeFormatter` throws on the same binary.
+ *
+ * So a failure with nothing parsable in it is a `ToolFailed`, carrying the tool's own words, the same
+ * as the formatter's.
  */
 /**
  * The same file, under a name no exclusion for it can match.
@@ -108,7 +121,12 @@ export function oxlintLinter(binary: string, cwd: string): (path: string) => Rep
         execFileSync(binary, ["--format=json", path], { cwd, encoding: "utf8", maxBuffer: MAX_OUTPUT }),
       );
     } catch (error) {
-      return readReport((error as { stdout?: string }).stdout ?? "");
+      const failed = error as { stdout?: string; stderr?: string };
+      const said = failed.stdout ?? "";
+      // A report is what a non-zero exit means when there is one in the output. Anything else is the
+      // tool failing, and a failure that answered "no findings" is a file that lints clean.
+      if (said.includes("{")) return readReport(said);
+      throw new ToolFailed(`${failed.stderr ?? ""}${said}`.trim() || String(error));
     }
   };
 }

@@ -119,6 +119,20 @@ function blockAt(path: AstPath, options: Carried): string | undefined {
  * decided where this sits, and re-using the author's columns would drift a step further in every
  * time somebody formatted the file. What is deliberately NOT done is re-laying the CSS itself: that
  * is `ramonda-css format`'s business rather than a JavaScript printer's.
+ *
+ * **Every line used to be trimmed, which is precisely what destroys the relative shape.** Measured:
+ *
+ *     &:hover {          ->     &:hover {
+ *       color: blue;            color: blue;
+ *     }                         }
+ *
+ * — a nested rule's body at the level of its own brace, and two levels deep everything landed on
+ * one. `ramonda-css format` keeps the nesting on the same file, so the two formatters this package
+ * ships answered differently about one file, with a source rewrite on the end of it. And the damage
+ * STICKS: format again and the flattened text is what the author has.
+ *
+ * So what is stripped is the block's OWN base — the narrowest indentation any of its lines carries —
+ * and everything past that is the author's shape, kept.
  */
 function laid(block: string): Doc {
   const [first, ...rest] = block.split("\n");
@@ -128,7 +142,33 @@ function laid(block: string): Doc {
   const middle = rest.slice(0, -1);
   const { hardline, indent } = doc.builders;
 
-  return [first, indent(middle.flatMap((line) => [hardline, line.trim()])), hardline, last.trim()];
+  /**
+   * The block's base level, measured over its CONTENTS — and the closing line is not one of them.
+   *
+   * That line holds the `)` and sits at the OUTER level, which the printer has just chosen; counting
+   * it made the base zero on the first pass and the printer's own indentation on the second, so
+   * every format pushed the contents one step further in. Measured — the drift the note above warns
+   * about, arrived at by fixing something else.
+   *
+   * Over the contents alone it is stable: the shallowest of them lands exactly one step in, whatever
+   * it started at, so a second pass measures the same base and shifts by the same amount. A blank
+   * line has no indentation to speak of and would say the base is zero, so it is not asked.
+   *
+   * Tabs and spaces are counted the same, one character each. Mixing them inside one block is a
+   * question this cannot answer and nobody asks: whatever a file uses, it uses throughout.
+   */
+  const widths = middle.filter((line) => line.trim() !== "").map(indentationOf);
+  const base = widths.length === 0 ? 0 : Math.min(...widths);
+
+  const shifted = (line: string) => (line.trim() === "" ? "" : line.slice(base).trimEnd());
+
+  // The closing line is trimmed rather than shifted: it goes where the printer put the node.
+  return [first, indent(middle.flatMap((line) => [hardline, shifted(line)])), hardline, last.trim()];
+}
+
+/** How many characters of whitespace a line begins with. */
+function indentationOf(line: string): number {
+  return line.length - line.trimStart().length;
 }
 
 export default plugin;

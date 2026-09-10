@@ -103,6 +103,51 @@ describe("with it", () => {
     expect(out).toContain("`@ramonda-css-block:0`");
   });
 
+  /**
+   * **A NESTED RULE KEPT ITS STEP, AND IT DID NOT.**
+   *
+   * `laid` trimmed every line of the block and re-indented all of them by one, so `&:hover { … }`
+   * came back with its body at the same level as its own brace — the plugin's doc says "the block's
+   * own relative shape is kept", and `line.trim()` is exactly what destroys it. Two levels deep,
+   * everything landed on one.
+   *
+   * A formatter that damages source is the one thing a formatter must not be, and this damage
+   * STICKS: format again and the flattened text is what the author has.
+   *
+   * Measured against `ramonda-css format` on the same file, which keeps the nesting perfectly — so
+   * the two formatters this package ships answered differently about one file, which is this
+   * repository's recurring fault with a source rewrite on the end of it.
+   */
+  test("a nested rule keeps its own step", async () => {
+    const source = "const a = <div css=@@(\n  color: red;\n  &:hover {\n    color: blue;\n  }\n)>x</div>;\n";
+    const out = await format(source);
+    const inside = out.split("\n").filter((line) => line.includes("color: blue"))[0];
+    const hover = out.split("\n").filter((line) => line.includes("&:hover"))[0];
+
+    expect(inside.length - inside.trimStart().length).toBeGreaterThan(hover.length - hover.trimStart().length);
+  });
+
+  test("and two levels stay two levels", async () => {
+    const source =
+      "const a = <div css=@@(\n  &:hover {\n    @media print {\n      color: blue;\n    }\n  }\n)>x</div>;\n";
+    const out = await format(source);
+    const width = (needle: string) => {
+      const line = out.split("\n").filter((one) => one.includes(needle))[0];
+      return line.length - line.trimStart().length;
+    };
+
+    expect(width("@media print")).toBeGreaterThan(width("&:hover"));
+    expect(width("color: blue")).toBeGreaterThan(width("@media print"));
+  });
+
+  /** And formatting what it produced changes nothing more, which is what makes it safe to run. */
+  test("formatting twice is formatting once", async () => {
+    const source = "const a = <div css=@@(\n  color: red;\n  &:hover {\n    color: blue;\n  }\n)>x</div>;\n";
+    const once = await format(source);
+
+    expect(await format(once)).toBe(once);
+  });
+
   /** Two of them, so the grown marker has to clear the file rather than the first occurrence. */
   test("several of them are all left alone", async () => {
     const source =

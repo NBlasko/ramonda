@@ -280,6 +280,56 @@ describe("when the tool itself says no", () => {
     expect(output).toContain("the formatter's own sentence");
     expect(output).not.toContain("at formatFile");
   });
+
+  /**
+   * **AND THE LINTER SAID THE FILE WAS CLEAN.**
+   *
+   * `oxlintLinter` reads its report off the failure, because oxlint exits non-zero when it finds
+   * something — an exit code is the answer there, not an error. But the catch reads `stdout` and
+   * hands whatever it finds to `readReport`, which answers `[]` for anything it cannot parse. So a
+   * linter that crashed, that printed why it could not run, or that was not there at all came back
+   * as no findings, and `ramonda-css lint` printed *N file(s) lint clean* and exited 0.
+   *
+   * The file's own note already names this shape — it is the reason `maxBuffer` was raised: "a
+   * truncated report is unparsable JSON, which is no findings, which is a file that lints CLEAN".
+   * The buffer was fixed and the error path was not, and the two halves of one command disagreed
+   * about it: the formatter throws on the same binary.
+   *
+   * A report is evidence; the absence of one is not evidence of a clean file.
+   */
+  test("a linter that fails is not a file that lints clean", () => {
+    const root = project({ "Card.tsx": STYLED });
+
+    const own = join(root, "stub", ".bin");
+    mkdirSync(own, { recursive: true });
+    writeFileSync(join(own, "oxlint"), `#!/bin/sh\necho "oxlint: cannot read .oxlintrc.json" >&2\nexit 1\n`, {
+      mode: 0o755,
+    });
+    execFileSync("rm", [join(root, "node_modules")]);
+    execFileSync("mv", [join(root, "stub"), join(root, "node_modules")]);
+
+    const { output, status } = run(root, ["lint", "src/Card.tsx"]);
+
+    expect(status).toBe(1);
+    expect(output).not.toContain("lint clean");
+    expect(output).toContain("cannot read .oxlintrc.json");
+  });
+
+  /** And one that says nothing at all is still not a pass. */
+  test("nor is one that fails silently", () => {
+    const root = project({ "Card.tsx": STYLED });
+
+    const own = join(root, "stub", ".bin");
+    mkdirSync(own, { recursive: true });
+    writeFileSync(join(own, "oxlint"), `#!/bin/sh\nexit 101\n`, { mode: 0o755 });
+    execFileSync("rm", [join(root, "node_modules")]);
+    execFileSync("mv", [join(root, "stub"), join(root, "node_modules")]);
+
+    const { output, status } = run(root, ["lint", "src/Card.tsx"]);
+
+    expect(status).toBe(1);
+    expect(output).not.toContain("lint clean");
+  });
 });
 
 describe("what the wrapper refuses to guess", () => {
