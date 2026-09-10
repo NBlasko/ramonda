@@ -183,6 +183,14 @@ export function sheetRank(declaration: { property?: string; conditions?: readonl
  * every stylesheet — a file declaring only what it uses is worse than useless, since CSS appends a
  * name it has not seen to the END of the order.
  *
+ * **What this buys is not that the dev server matches the build.** Measured both ways on a real dev
+ * server and a real `vite preview` of the same app: before any of this they already agreed, and both
+ * were wrong. What moved is that a rule's place in the cascade is now a function of the RULE — not of
+ * which files are in the build, and not of when a chunk arrives. The control is the sharpest
+ * statement of it: with the layers off, clicking a button that loads a lazy chunk changed the colour
+ * of an element already on the page, which has nothing to do with that chunk. See
+ * `prototype-dev-vs-build.mjs`.
+ *
  * ## Why the conditional half is a path of digits
  *
  * An unconditional rule has one of twelve breadths, so twelve names cover it and every stylesheet

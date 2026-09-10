@@ -471,7 +471,13 @@ each rank gets a layer under `ramonda` and every stylesheet declares the whole o
 
 A breakpoint is a number, so the layer for it comes out of a name space of thousands — written as the
 slot's DIGITS, one nested layer each, because ten names per level is a list every stylesheet can
-carry and thousands is not. Unconditional rules stay flat. What is still not settled is two
+carry and thousands is not. Unconditional rules stay flat.
+
+**The thing this buys is not that dev matches the build.** Measured on a real dev server against a
+real `vite preview` of the same app: before the layers the two already agreed, and both were wrong.
+What moved is that a rule's place in the cascade is a function of the RULE — not of which files are
+in the build, and not of when a chunk arrives. With the layers off, loading a lazy chunk changed the
+colour of an element already on the page. `prototype-dev-vs-build.mjs` runs both sides. What is still not settled is two
 conditions carrying no width, `@media print` against `prefers-color-scheme`: nothing tells them
 apart, and there the file's own order is still the answer. See `PLAN.md`.
 
