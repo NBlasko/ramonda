@@ -483,9 +483,26 @@ function siteBefore(
   }
 
   /**
+   * **PROSE, which is where `@@(` means nothing and was compiled anyway.**
+   *
+   * This used to say there was nothing to require in front of a block, "because `@@( )` means
+   * nothing else in TypeScript". It means nothing else in TypeScript — and JSX TEXT is not
+   * TypeScript. Measured: `<p>Write @@( color: red; ) to style it.</p>` came out as
+   * `<p>Write _s0 to style it.</p>`, the author's sentence replaced by a value.
+   *
+   * The rule is the one this walk already uses for a `/`: two expressions cannot be adjacent, so a
+   * `@@(` behind something that ENDS an expression is not a block. See {@link endsAnExpression}.
+   *
+   * Refusing a real block is the SAFE direction, which is what lets this be a rule about characters
+   * rather than a JSX parser: an unrecognised block leaves `@@(` in an expression position, and that
+   * is a syntax error the build reports at the author's own line. Prose left alone is prose.
+   */
+  // Not when braced: the `{` is itself a position a value goes in, and what precedes it is the tag.
+  if (!braced && endsAnExpression(source, index)) return undefined;
+
+  /**
    * A block is an ordinary value, so it goes where any other value goes — an argument, an item, a
-   * branch of a ternary. There is nothing to require in front of it, because `@@(` means nothing
-   * else in TypeScript.
+   * branch of a ternary. Nothing else is required in front of it.
    *
    * What is read here is only what the WRITER needs: the name of a bare JSX attribute, so the value
    * can be given the braces the author did not write. Everything else is replaced where it stands.
@@ -512,6 +529,38 @@ function siteBefore(
   const name = source.slice(start, end);
   const wrap = !braced && isAttribute(source, start, quiet);
   return { start: wrap ? start : at, name, wrap };
+}
+
+/**
+ * Whether what ends at `index` can END an expression, so a block cannot begin after it.
+ *
+ * Three shapes, and each is something prose does and code does not:
+ *
+ * - **a name.** `Write @@(` is two expressions running together, which no JavaScript is. The
+ *   keywords are the exception — `return`, `yield`, `await` and the rest of {@link DECLARES} read as
+ *   names and are followed by a value — so the name is read out and looked up.
+ * - **a `>` that is not an arrow's.** `<p>@@(` is the tag closing, and `a > @@(` is a comparison
+ *   with a block on the right, which means nothing. `=>` is the one `>` a value follows.
+ * - **a full stop that is not a spread's.** `this. @@(` is nothing; `...@@(` is a spread.
+ *
+ * Everything else — `=`, `(`, `[`, `{`, `,`, `:`, `?`, an operator, the start of the file — is a
+ * position a value goes in, and is left alone. So prose ending in one of THOSE is still compiled;
+ * this is the shape of what people write, not a proof.
+ */
+function endsAnExpression(source: string, index: number): boolean {
+  if (index < 0) return false;
+  const code = source.charCodeAt(index);
+
+  if (isIdentifierCharacter(code)) {
+    let start = index;
+    while (start > 0 && isIdentifierCharacter(source.charCodeAt(start - 1))) start--;
+    return !DECLARES.has(source.slice(start, index + 1));
+  }
+
+  if (code === 62 /* > */) return source.charCodeAt(index - 1) !== 61 /* = */;
+  if (code === 46 /* . */) return !(source.charCodeAt(index - 1) === 46 && source.charCodeAt(index - 2) === 46);
+
+  return false;
 }
 
 /**
@@ -682,6 +731,27 @@ function beforeOpening(source: string, at: number, quiet: readonly Quiet[]): num
 
 function isSpace(code: number): boolean {
   return code === 32 || code === 9 || code === 10 || code === 13 || code === 12;
+}
+
+/**
+ * A JAVASCRIPT identifier character, which is not the same set as {@link isNameCharacter}.
+ *
+ * The two look like one rule and are two. A JSX attribute name carries `-` and `:` —
+ * `data-open`, `xlink:href` — and neither is an identifier character: `k: @@( … )` is an object
+ * value, a position a block goes in, and reading the `:` as part of a name made `k:` a word and
+ * refused the block. Found by the test that lists every position a block legitimately sits in.
+ *
+ * Not `-` either, for the same reason in the other direction: `a - @@( … )` means nothing, but
+ * nothing is gained by refusing it and the set is the language's.
+ */
+function isIdentifierCharacter(code: number): boolean {
+  return (
+    (code >= 97 && code <= 122) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 48 && code <= 57) ||
+    code === 95 ||
+    code === 36
+  );
 }
 
 /** A JSX attribute name: letters, digits, `_`, `$`, and the `-` and `:` that namespaced ones carry. */

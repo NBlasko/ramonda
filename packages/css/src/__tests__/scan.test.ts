@@ -447,3 +447,74 @@ describe("a slash", () => {
     expect(findBlocks(`const re = /=@@\\(x\\)/;\n`)).toEqual([]);
   });
 });
+
+/**
+ * PROSE, which is the one place `@@(` means nothing and was compiled anyway.
+ *
+ * `siteBefore` used to say there was nothing to require in front of a block, "because `@@( )` means
+ * nothing else in TypeScript". It means nothing else in TYPESCRIPT — and JSX text is not TypeScript.
+ * Measured: `<p>Write @@( color: red; ) to style it.</p>` came out as `<p>Write _s0 to style it.</p>`,
+ * the author's sentence replaced by a value.
+ *
+ * The rule is the one this walk already uses for a `/`: **two expressions cannot be adjacent.** So a
+ * `@@(` behind something that ENDS an expression is not a block. What is behind prose is a word, or
+ * the `>` that closed the tag, or a full stop — and none of those can be followed by an expression.
+ *
+ * **Refusing a real block is the safe direction, which is why this is allowed to be a rule about
+ * characters rather than a JSX parser.** A block that goes unrecognised leaves `@@(` in an expression
+ * position, and that is a syntax error the build reports at the author's line. Prose left alone is
+ * simply prose.
+ */
+describe("a block written in JSX text is prose", () => {
+  test.each([
+    ["a word before it", `const a = <p>Write @@( color: red; ) to style it.</p>;\n`],
+    ["the tag that opened it", `const a = <p>@@( color: red; ) is the syntax.</p>;\n`],
+    ["a full stop", `const a = <p>Like this. @@( color: red; )</p>;\n`],
+    ["a name that only looks like a keyword", `const a = <p>retort @@( color: red; )</p>;\n`],
+  ])("%s", (_what, source) => {
+    expect(findBlocks(source)).toEqual([]);
+  });
+
+  /** And the file is handed on untouched, which is the whole point. */
+  test("so a page of prose about blocks compiles to itself", () => {
+    const source = `const a = <p>Write @@( color: red; ) to style it.</p>;\n`;
+
+    expect(findBlocks(source)).toEqual([]);
+  });
+
+  /** A real block on another line in the same file is still found. */
+  test("and a real block beside the prose is still a block", () => {
+    const source =
+      `const a = <p>Write @@( color: red; ) to style it.</p>;\n` + `const b = <div css=@@( color: blue; )>x</div>;\n`;
+    const sites = findBlocks(source);
+
+    expect(sites).toHaveLength(1);
+    expect(sites[0].wrap).toBe(true);
+  });
+
+  /**
+   * Every position a block legitimately sits in, because the rule above is about what is BEHIND one
+   * and getting that wrong the other way would refuse working code.
+   */
+  test.each([
+    ["const", `const a = @@( color: red; );\n`],
+    ["return", `function f() { return @@( color: red; ); }\n`],
+    ["yield", `function* f() { yield @@( color: red; ); }\n`],
+    ["await", `const f = async () => await @@( color: red; );\n`],
+    ["an arrow", `const f = () => @@( color: red; );\n`],
+    ["an argument", `f(@@( color: red; ));\n`],
+    ["a second argument", `f(a, @@( color: red; ));\n`],
+    ["an array item", `const a = [@@( color: red; )];\n`],
+    ["a ternary", `const a = on ? @@( color: red; ) : none;\n`],
+    ["an object value", `const a = { k: @@( color: red; ) };\n`],
+    ["a bare attribute", `const a = <div css=@@( color: red; )>x</div>;\n`],
+    ["a braced attribute", `const a = <div css={@@( color: red; )}>x</div>;\n`],
+    ["a JSX child", `const a = <div>{@@( color: red; )}</div>;\n`],
+    ["a spread", `const a = { ...@@( color: red; ) };\n`],
+    ["default export", `export default @@( color: red; );\n`],
+    ["after a semicolon", `let a;\na = @@( color: red; );\n`],
+    ["at the very start of a file", `@@( color: red; );\n`],
+  ])("is still a block: %s", (_what, source) => {
+    expect(findBlocks(source)).toHaveLength(1);
+  });
+});
