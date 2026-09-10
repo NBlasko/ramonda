@@ -2,7 +2,7 @@ import { CssBlockError } from "./compiler/errors";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { configReader, environmentOf } from "./config";
+import { type Config, configReader, environmentOf } from "./config";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
@@ -79,6 +79,12 @@ interface ScanBuild {
   ): void;
 }
 
+/** What Vite hands a hot-update hook. Only what this reads is declared. */
+export interface HotUpdate {
+  readonly file: string;
+  read(): string | Promise<string>;
+}
+
 export interface CssPluginLike {
   name: string;
   enforce: "pre";
@@ -86,6 +92,8 @@ export interface CssPluginLike {
   resolveId(this: unknown, id: string): string | null;
   load(this: unknown, id: string): string | null;
   transform(this: unknown, code: string, id: string): { code: string; map: SourceMap } | null;
+  handleHotUpdate(this: unknown, context: HotUpdate): Promise<void>;
+  hotUpdate(this: unknown, context: HotUpdate): Promise<void>;
   generateBundle(this: unknown, options: unknown, bundle: Bundle): void;
 }
 
@@ -140,6 +148,108 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   const sheet = new Sheet();
   /** Files that currently contribute rules, so a file losing its last block is noticed. */
   const styled = new Set<string>();
+
+  /**
+   * The last compile of a file that had blocks: what it was compiled FROM, and what came out.
+   *
+   * Two hooks need the same answer within one save — see {@link CssPluginLike.hotUpdate} — and this
+   * is what keeps it ONE answer rather than two compiles that could disagree.
+   *
+   * Keyed by what the answer depends on, which is the source text AND the settings, so a stale entry
+   * cannot be served: either one different is a different compile.
+   *
+   * Only a file that HAS blocks is remembered. Everything else is the overwhelming majority, and
+   * what it costs to answer again is one scan of the text.
+   */
+  const compiled = new Map<
+    string,
+    { source: string; config: Config; result: NonNullable<ReturnType<typeof transform>> }
+  >();
+
+  /**
+   * What a file compiles to, and the only place the sheet is told.
+   *
+   * `undefined` for a file with no blocks — which is still told to the sheet, and only if it had some
+   * before. Found by a failing test: returning early meant an author who deleted the last block from
+   * a file left its rules in the sheet for the life of the dev server — and, worse, left the class
+   * NAME claimed, so re-adding an edited block collided with the one it used to be.
+   *
+   * `styled` is what makes that free: a file that never had a block is not looked up at all.
+   */
+  function compile(file: string, code: string) {
+    /**
+     * Asked first, and it is half the key.
+     *
+     * A dev server outlives the settings it booted with, and {@link configReader} answers with a new
+     * object when the file's text changes — so remembering the source text alone made a config edit
+     * invisible for as long as the file itself was not touched. Found by the test standing over that
+     * finding, which went red the moment the source text alone was the key.
+     */
+    const config = configFor(file);
+
+    const remembered = compiled.get(file);
+    if (remembered?.source === code && remembered.config === config) return remembered.result;
+
+    let result: ReturnType<typeof transform>;
+    try {
+      result = transform(code, { filename: file, runtime: options.runtime, read: readModule, config });
+    } catch (error) {
+      if (!(error instanceof CssBlockError)) throw error;
+      /**
+       * Vite reads `id` and `loc` off a thrown error to print the frame with a caret under it, so
+       * a refusal arrives as a position in the author's file rather than as a stack trace.
+       *
+       * **`loc.column` is 0-based, and it had to be measured.** The type says `column: number` and
+       * nothing else, and Vite echoes whatever it is given — so a wrong base is a caret one
+       * character off and no error anywhere. Measured on a real parse error at a known position:
+       * `@` on 1-based column 20 was reported as `1:19`, with the caret under it. Positions here
+       * are 1-based, the way an editor counts, so this is where they convert.
+       */
+      throw Object.assign(new Error(error.message), {
+        id: error.filename,
+        loc: { line: error.line, column: error.column - 1 },
+      });
+    }
+
+    if (result === undefined) {
+      compiled.delete(file);
+      if (styled.has(file)) {
+        styled.delete(file);
+        sheet.add(file, []);
+      }
+      return undefined;
+    }
+
+    styled.add(file);
+    /**
+     * Only this file's CSS can have moved.
+     *
+     * A file serves every rule it names, so one file's edit cannot change what another file
+     * serves — and its own stylesheet is reloaded along with the JavaScript Vite has just read.
+     * This used to tell other files too, because ownership moved rules between them; that
+     * mechanism could not work and is gone with the ownership that needed it.
+     */
+    sheet.add(file, result.blocks, { ...result.variables, known: config.variables });
+    compiled.set(file, { source: code, config, result });
+    return result;
+  }
+
+  /** What both hot-update hooks do. See where they are returned for why there are two of them. */
+  async function recompile(context: HotUpdate): Promise<void> {
+    const file = context.file;
+    if (!SOURCE.test(file) || file.includes("node_modules")) return;
+
+    const code = await context.read();
+    // A file that has never held a block, and does not now, has nothing here to be stale.
+    if (!styled.has(file) && !mayHoldABlock(code)) return;
+
+    try {
+      compile(file, code);
+    } catch {
+      // Swallowed on purpose — see the hooks. The memo still holds the last compile that worked,
+      // and its source is not this one, so the transform will compile again and report.
+    }
+  }
 
   return {
     name: "ramonda-css",
@@ -221,61 +331,8 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       // file whose blocks silently do not compile.
       if (!SOURCE.test(file) || file.includes("node_modules") || id.startsWith("\0")) return null;
 
-      const config = configFor(file);
-      let result: ReturnType<typeof transform>;
-      try {
-        result = transform(code, {
-          filename: file,
-          runtime: options.runtime,
-          read: readModule,
-          config,
-        });
-      } catch (error) {
-        if (!(error instanceof CssBlockError)) throw error;
-        /**
-         * Vite reads `id` and `loc` off a thrown error to print the frame with a caret under it, so
-         * a refusal arrives as a position in the author's file rather than as a stack trace.
-         *
-         * **`loc.column` is 0-based, and it had to be measured.** The type says `column: number` and
-         * nothing else, and Vite echoes whatever it is given — so a wrong base is a caret one
-         * character off and no error anywhere. Measured on a real parse error at a known position:
-         * `@` on 1-based column 20 was reported as `1:19`, with the caret under it. Positions here
-         * are 1-based, the way an editor counts, so this is where they convert.
-         */
-        throw Object.assign(new Error(error.message), {
-          id: error.filename,
-          loc: { line: error.line, column: error.column - 1 },
-        });
-      }
-
-      /**
-       * A file with NO blocks is still told to the sheet, and only if it had some before.
-       *
-       * Found by a failing test: returning early here meant an author who deleted the last block
-       * from a file left its rules in the sheet for the life of the dev server — and, worse, left the
-       * class NAME claimed, so re-adding an edited block collided with the one it used to be.
-       *
-       * `styled` is what makes it free: a file that never had a block is the overwhelming majority
-       * and is not looked up at all.
-       */
-      if (result === undefined) {
-        if (!styled.has(file)) return null;
-        styled.delete(file);
-        sheet.add(file, []);
-        return null;
-      }
-
-      styled.add(file);
-
-      /**
-       * Only this file's CSS can have moved.
-       *
-       * A file serves every rule it names, so one file's edit cannot change what another file
-       * serves — and its own stylesheet is reloaded along with the JavaScript Vite has just read.
-       * This used to tell other files too, because ownership moved rules between them; that
-       * mechanism could not work and is gone with the ownership that needed it.
-       */
-      sheet.add(file, result.blocks, { ...result.variables, known: config.variables });
+      const result = compile(file, code);
+      if (result === undefined) return null;
 
       /**
        * The import that carries this file's rules, appended rather than prepended: the CSS is applied
@@ -287,6 +344,34 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
 
       return { code: code2, map: result.map };
     },
+
+    /**
+     * The sheet is made fresh HERE, before either module is served.
+     *
+     * Measured on a real dev server: a save left the stylesheet exactly one save behind, every time.
+     * A save invalidates both the file and its stylesheet — Vite sends both in one update payload —
+     * and the client fetches them together. `load` answers the stylesheet out of the sheet, which is
+     * a string in a Map; the file has to run the compiler. So the stylesheet always wins the race
+     * and is served from a sheet still holding the PREVIOUS save's blocks, which Vite then caches.
+     * The page keeps the old rules until the next save, and the class the JavaScript names is in no
+     * stylesheet at all.
+     *
+     * Declaring the dependency was tried first and does not work in dev: `this.load({ id: file })`
+     * runs the plugin container's `load` hooks, and reading a source file off the disk is not one of
+     * them — so the code comes back null, the transform never runs, and the sheet is untouched.
+     *
+     * This is not a second answer to "what does this file compile to". {@link compile} is the one
+     * answer and it remembers what it was given, so the file's own `transform` reuses what this left
+     * behind rather than compiling again. A refusal is swallowed, because this is not where an author
+     * should meet a diagnostic — the transform reports it at their line, moments later, and Vite
+     * turns a throw from here into a SECOND overlay saying the same thing.
+     *
+     * Under both names, because Vite 6 renamed the hook to `hotUpdate` and Vite 5 only has the old
+     * one. Vite calls `hotUpdate` when a plugin has it and `handleHotUpdate` when it does not, so
+     * exactly one of these runs — and they are one function, not two answers.
+     */
+    handleHotUpdate: recompile,
+    hotUpdate: recompile,
 
     /**
      * What came back from post-processing, checked against what the sheet promised.
