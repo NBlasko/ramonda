@@ -6,7 +6,7 @@ import type { Config } from "../config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
 import { type VariableRead, type Variables, variablesIn } from "./variables";
-import { type Span, readBlock } from "./read";
+import { type Span, readBlock, tryReadBlock } from "./read";
 import { refuse } from "./errors";
 import { ignoredIn, isIgnored } from "./ignore";
 import { checkBlock, checkNamedSite, checkText } from "./rules";
@@ -203,7 +203,10 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   for (const text of from.texts) {
     for (const site of findBlocks(text)) {
       if (site.at === undefined) continue;
-      const read = readBlock(text, site.open, filename, { tolerant: true });
+      // Its own file is where a fault in it is reported — see `tryReadBlock`. A refusal from here
+      // would carry THIS file's name and an offset into the imported one.
+      const read = tryReadBlock(text, site.open);
+      if (read === undefined) continue;
       const canonical = normalise(read.block);
       const className = nameForSite(site.at, site.name, canonical);
       // A `@@property` SETS the name it registers: the registration carries an `initial-value`, so a
@@ -543,7 +546,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   const prologue =
     written.length === 0
       ? ""
-      : `import { merge as ${block} } from "${options.runtime ?? "@ramonda/css"}";\n` +
+      : // `JSON.stringify`, because this is a PATH. The option exists for a wrapper around another
+        // JSX library and the bundler plugins point it at an absolute one — which on Windows is
+        // `C:\Users\…`, and interpolating that emitted `from "C:\Users\x\dist\index.js"`: a
+        // syntax error, since `\x` starts a hex escape. Measured. A quote ended the string early.
+        `import { merge as ${block} } from ${JSON.stringify(options.runtime ?? "@ramonda/css")};\n` +
         `${[...hoisted].map(([map, id]) => `const ${id} = ${block}(${map});`).join("\n")}\n\n`;
 
   const top = afterDirectives(source);
@@ -592,19 +599,31 @@ function binding(source: string, base: string): string {
 }
 
 /**
- * Where the hoisted prologue may start: after a shebang and after a directive prologue.
+ * Where the hoisted prologue may start: after a shebang, after a directive prologue, and after the
+ * leading comments.
  *
  * `"use client"` is a directive only while nothing precedes it, so prepending in front of one turns
  * it into an ordinary string expression and the file quietly stops being what it said it was. The
  * imports themselves need no such care — an `import` declaration is hoisted, so a `const` written
  * above one still sees its bindings.
+ *
+ * **And a leading COMMENT is where TypeScript reads its pragmas from**, which is the same fault one
+ * step further out. `@jsxImportSource` in a file comment names a per-file JSX runtime — and this
+ * package's `runtime` option exists for another JSX library, so the two meet in one file. Measured
+ * on both transformers a build can use, with the import prepended above the comment: esbuild still
+ * honours the pragma and **`tsc` falls back to `react/jsx-runtime`**, silently. `@ts-nocheck`,
+ * `@ts-check` and `/// <reference … />` are read from the same place.
+ *
+ * So the prologue goes below the leading trivia rather than above it, which also leaves a licence
+ * header where its author put it.
  */
 function afterDirectives(source: string): number {
   let at = afterShebang(source);
 
   for (;;) {
-    const from = at;
     at = skipTrivia(source, at);
+    // Past the comments, whether or not a directive follows them — see the note above.
+    const from = at;
     const quote = source.charCodeAt(at);
     if (quote !== 34 && quote !== 39) return from;
 

@@ -203,6 +203,44 @@ describe("what it refuses, and where", () => {
   test("a hole that is never closed is refused too", () => {
     expect(() => emit(`const a = <div css=@@( color: {{accent )>x</div>;\n`)).toThrow(CssBlockError);
   });
+
+  /**
+   * A NAMED site's refusal names the same file as any other, and it used to name NONE.
+   *
+   * A named site is read three times: once to learn what it is called, once for the `syntax` it
+   * declares, and once properly. The first two only want a name, so they read tolerantly and passed
+   * `""` for the file — and a NUL is refused in both modes on purpose, because it is what marks a
+   * hole in the compiler's own text. So it escaped from a read whose job was to report nothing, and
+   * the build said `:1:36  a NUL character cannot be written…` about no file at all, ahead of the
+   * read that would have named the right one.
+   */
+  test("a NUL in a named site is refused against this file, not against none", () => {
+    const source = `const brand = @@property(\n  syntax: "\u0000";\n);\nconst a = @@( color: {brand}; );\n`;
+
+    try {
+      emit(source);
+      expect.unreachable("the transform should have refused");
+    } catch (error) {
+      const refusal = error as CssBlockError;
+      expect(refusal.filename).toBe("Card.tsx");
+      expect(refusal.line).toBe(2);
+      expect(refusal.message).toContain("Card.tsx:2:");
+    }
+  });
+
+  /**
+   * And a fault in a module this file only IMPORTS from is that module's own compile to report.
+   *
+   * The rule of an imported named site is carried across — the reader emits it, or the bundler drops
+   * the module and the registration never ships. That read passed the IMPORTING file's name with an
+   * offset into the imported text, which is a position in a file that has no such content.
+   */
+  test("a NUL in an imported module is left to that module's own compile", () => {
+    const source = `import { brand } from "./theme";\nconst a = @@( color: {brand}; );\n`;
+    const read = () => `export const brand = @@property( syntax: "\u0000"; );\n`;
+
+    expect(() => transform(source, { filename: "Card.tsx", read })).not.toThrow();
+  });
 });
 
 describe("the prologue's place in the file", () => {
@@ -261,6 +299,45 @@ describe("the prologue's place in the file", () => {
     expect(result?.code.split("\r\n")[0]).toBe(`"use client";`);
   });
 
+  /**
+   * A LEADING COMMENT stays leading, because TypeScript reads pragmas out of exactly those.
+   *
+   * `@jsxImportSource` in a file comment is how a per-file JSX runtime is named, and this option's
+   * whole purpose is another JSX library — so the two meet. Measured on both transformers a build
+   * can use: with the import prepended above the comment, esbuild still honours the pragma and
+   * **`tsc` falls back to `react/jsx-runtime`**, silently, which is the wrong runtime for the file.
+   * `@ts-nocheck`, `@ts-check` and `/// <reference … />` are read from the same place and would go
+   * the same way.
+   */
+  test.each([
+    ["a JSX pragma", `/** @jsxImportSource preact */`],
+    ["a ts directive", `// @ts-nocheck`],
+    ["a reference", `/// <reference types="x" />`],
+    ["a licence header", `/* Copyright someone */`],
+  ])("the prologue goes below a leading comment, not above it: %s", (_what, comment) => {
+    const result = emit(`${comment}
+const a = <div css=@@( color: red; )>x</div>;
+`);
+    const lines = result?.code.split("\n") ?? [];
+
+    expect(lines[0]).toBe(comment);
+    expect(lines[1]).toBe(`import { merge as _merge } from "@ramonda/css";`);
+  });
+
+  test("and below one that follows a directive, which is where both rules meet", () => {
+    const result = emit(
+      `"use client";
+/** @jsxImportSource preact */
+const a = <div css=@@( color: red; )>x</div>;
+`,
+    );
+    const lines = result?.code.split("\n") ?? [];
+
+    expect(lines[0]).toBe(`"use client";`);
+    expect(lines[1]).toBe(`/** @jsxImportSource preact */`);
+    expect(lines[2]).toBe(`import { merge as _merge } from "@ramonda/css";`);
+  });
+
   test("a comment above a directive does not stop it being one", () => {
     const result = emit(`// why\n"use client";\nconst a = <div css=@@( color: red; )>x</div>;\n`);
 
@@ -277,6 +354,28 @@ describe("the prologue's place in the file", () => {
     const result = transform(`const a = <div css=@@( color: red; )>x</div>;\n`, { runtime: "my-wrapper" });
 
     expect(result?.code).toContain(`from "my-wrapper"`);
+  });
+
+  /**
+   * **A PATH, and it was written into the import unescaped.** The option's whole purpose is a wrapper
+   * for another JSX library, which points it at a module — and the bundler plugins point it at an
+   * absolute one, which on Windows is `C:\Users\…`. Measured through esbuild: that emitted
+   * `from "C:\Users\x\dist\index.js"`, which is a *syntax error* — `\x` starts a hex escape and
+   * `\d` is not a hex digit — so the build failed on a line no author wrote. A path with a quote in
+   * it ended the string early, the same way.
+   *
+   * The CSS import two functions away has always been `JSON.stringify`ed. One of the two was right.
+   */
+  test.each([
+    ["a Windows path", "C:\\Users\\x\\dist\\index.js"],
+    ["a quote", 'a"b'],
+    ["a newline", "a\nb"],
+  ])("and the module it names is escaped, not interpolated: %s", (_what, runtime) => {
+    const result = transform(`const a = <div css=@@( color: red; )>x</div>;\n`, { runtime });
+
+    expect(result?.code.split("\n")[0]).toBe(`import { merge as _merge } from ${JSON.stringify(runtime)};`);
+    // And it parses, which is the thing the unescaped version did not do.
+    expect(() => new Function(`return ${JSON.stringify(runtime)}`)()).not.toThrow();
   });
 
   test("a file that already names the import binding does not get it taken away", () => {

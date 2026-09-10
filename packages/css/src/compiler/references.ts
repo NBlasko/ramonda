@@ -1,6 +1,6 @@
 import { nameForSite } from "./names";
 import { normalise } from "./normalise";
-import { readBlock } from "./read";
+import { tryReadBlock } from "./read";
 import { findBlocks } from "./scan";
 
 /**
@@ -204,7 +204,8 @@ export function syntaxesIn(source: string, options: Imported = {}): Map<string, 
 
   for (const site of findBlocks(source)) {
     if (site.at !== "property") continue;
-    const read = readBlock(source, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
+    const read = tryReadBlock(source, site.open, { resolve: (name) => references.get(name) });
+    if (read === undefined) continue;
 
     for (const item of read.block.items) {
       if (item.kind !== "declaration" || item.property !== "syntax") continue;
@@ -240,7 +241,8 @@ export function namedSites(source: string, options: Imported = {}): Map<string, 
     // Tolerant: this runs in an editor as well as in a build, and a name is still a name while the
     // block under it is half-typed. What is wrong with the block is reported by whoever reads it
     // properly — saying it twice, from here, would say it about the wrong thing.
-    const read = readBlock(source, site.open, "", { tolerant: true, resolve: (name) => found.get(name) });
+    const read = tryReadBlock(source, site.open, { resolve: (name) => found.get(name) });
+    if (read === undefined) continue;
     found.set(site.name, nameForSite(site.at, site.name, normalise(read.block)));
   }
 

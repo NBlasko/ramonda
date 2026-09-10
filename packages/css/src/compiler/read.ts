@@ -118,6 +118,29 @@ export interface ReadOptions {
    */
   readonly resolve?: (expression: string) => string | undefined;
 }
+/**
+ * A read whose job is not to REPORT anything: `undefined` where {@link readBlock} would refuse.
+ *
+ * Three readers want this — the two in `references.ts` that only need a site's NAME, and the loop in
+ * `transform.ts` that carries an imported module's rule across. All three pass `tolerant`, whose
+ * comment already says "what is wrong with the block is reported by whoever reads it properly", and
+ * all three passed a filename they could not honour: the reference readers passed `""` and the
+ * imported-rule loop passed the IMPORTING file's name with an offset into the imported text.
+ *
+ * Measured: a NUL in a `@@property` block — refused in both modes on purpose, since it is what marks
+ * a hole in the compiler's own text — came out of a build as `:1:36  a NUL character cannot be
+ * written…`. A refusal naming no file at all, ahead of the read that would have named the right one.
+ * The same shape as the review that found a rename writing at positions in a file nobody wrote.
+ */
+export function tryReadBlock(source: string, open: number, options: ReadOptions = {}): ReadBlock | undefined {
+  try {
+    return readBlock(source, open, "", { ...options, tolerant: true });
+  } catch {
+    // Whoever reads this text properly is where it is reported: its own file's transform.
+    return undefined;
+  }
+}
+
 export interface ReadBlock {
   readonly block: Block;
   /** Each carried expression's own bytes, in source coordinates and in source order. */
