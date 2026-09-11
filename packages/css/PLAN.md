@@ -1804,6 +1804,7 @@ runtime all agreed, and all three were wrong together.
 |---|---|
 | **quirks mode** | caught three times in one session: `padding: 123` accepted, `color: 0` read as a hex colour, `@container` answering on one axis. **Every probe page needs `<!doctype html>`** |
 | **a stale `dist`** | 57 tests passed against a `src/cli.ts` replaced by a line that throws. `built.mjs` guards it now; `turbo` always built first, so CI never saw it |
+| **a command that works only because of a PREVIOUS run** | the same trap from the other side. `pnpm lint` gained `ramonda-css lint`, which needs `dist`; the CI job that runs it builds nothing, so that half never once executed there — and the step is called "Lint (oxlint)", so the error named node's resolver. A working tree always has `dist`, so no developer can see it. **Ask of any command: would this work on a checkout?** |
 | **the control itself** | wrong five times across reviews 25–29 while the code was wrong three. A green control is a claim too, and the one claim nothing else checks |
 
 ### The shape that found most of them
@@ -1858,6 +1859,7 @@ question, asked mechanically, found reviews 20, 21 and 24 on its own.
 | `ACCEPTS`, the value-type matchers | 4 of 12 — `<length-percentage>`, `<number>`, `<url>`, `<image>` — had **never been run**, in the rule that decides accept-or-refuse. All four measured RIGHT; none was held |
 | the two `.generated.ts` tables nothing imports | build INPUTS read as text by `build-css-properties.mjs`; they never reach `dist`, and they sit in the coverage denominator |
 | `lib.d.ts` shared across the 11 `ts.Program`s | 8.15 s -> **5.90 s** in tests, 75 still passing — and not nearly the 80x a 60 s per-test timeout would need |
+| `pnpm lint` on a tree with no `dist` | **fails** — it runs `ramonda-css lint`, and `ramonda-css` is `bin.mjs` importing a build output. Invisible on every machine that has ever built; only a fresh checkout sees it |
 
 ## Still open
 

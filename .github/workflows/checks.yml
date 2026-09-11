@@ -26,6 +26,19 @@ jobs:
           # with "Does `main` exist and it's synced with remote?" rather than an answer.
           fetch-depth: 0
       - uses: ./.github/actions/setup
+      # `pnpm lint` is oxlint over the monorepo AND `ramonda-css lint` over two real demo files,
+      # and the second half is a BUILT command: `ramonda-css` is `bin.mjs`, which imports
+      # `dist/cli.js`. This job builds nothing, so that half could never have run here — it failed
+      # with `ERR_MODULE_NOT_FOUND` and a stack naming node's own resolver, on a step called
+      # "Lint (oxlint)", which is about as far from the cause as a message can be.
+      #
+      # It is invisible locally, and permanently: a working tree has `dist` from the last build, so
+      # `pnpm lint` passes on every machine that has ever built. Only a fresh checkout sees it.
+      #
+      # Through turbo, not `pnpm --filter … build` — `check-workflows.mjs` is about exactly this, and
+      # `build` has a `dependsOn` that a direct filter would skip.
+      - name: Build the CLI that `pnpm lint` runs
+        run: pnpm exec turbo run build --filter=@ramonda/css
       # oxlint over the whole monorepo in one pass (config: .oxlintrc.json). Hard
       # gate: the tree is clean today (0 errors).
       - name: Lint (oxlint)

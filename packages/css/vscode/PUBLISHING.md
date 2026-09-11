@@ -46,16 +46,21 @@ From the repository root:
 **The version is spent either way.** The marketplace takes a version once, refuses it ever after,
 and has no unpublish. That is the whole reason step 3 refuses instead of warning.
 
-## Upload AFTER the npm release, not before
+## The npm link does not gate the upload — I got this wrong once
 
-`README.md` links `@ramonda/css` on npm, in the section that tells a visitor how to get diagnostics,
-completions and formatting — which is most of what the page promises. Measured 2026-09-11:
-`npm view @ramonda/css` is a **404**, so that link is dead on the live page right now.
+`README.md` links `@ramonda/css` on npm, and `npm view @ramonda/css` is a 404 until `changeset
+publish` runs. I read that as a reason to hold the upload back. It is not one, and the user said so.
 
-The package is no longer `private`, so `changeset publish` fixes it. Until that has run, uploading a
-new `.vsix` only re-publishes the dead link under a version number that can never be reused. This is
-the same shape as `0.1.0`, which went live saying *"Installing it — Not published yet"*: the README
-is the front page, and a fact in it that stopped being true is not visible from the diff.
+**The marketplace renders the README of whatever version is live.** The link is not wrong TEXT — it
+points at something that does not exist yet, and it starts working on its own the moment the package
+publishes, with nothing re-uploaded. A fact that is about to become true is not the same as a fact
+that stopped being true.
+
+What that one really was: `0.1.0` went live saying *"Installing it — Not published yet"*, in the
+install section of a published extension's own page. That was wrong text, and it stayed live for a
+week because `0.1.1` was packaged and never uploaded. Which is the actual lesson — **a `.vsix` that
+is built and not uploaded fixes nothing.** Check the live version before assuming the last fix
+shipped: <https://marketplace.visualstudio.com/items?itemName=ramonda.css>, under *More Info*.
 
 ## Before a release that changes behaviour
 
