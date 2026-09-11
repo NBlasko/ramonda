@@ -1,5 +1,96 @@
 # @ramonda/core
 
+## 0.25.0
+
+### Minor Changes
+
+- 74e24a3: The `css` prop: an element takes a compiled style block
+
+  A style block is written in real CSS beside the markup and compiled, before the build, into a class
+  that already exists in a stylesheet plus one CSS custom property per carried expression. This is the
+  framework's half — by the time a value reaches an element there is nothing left to parse:
+
+  ```tsx
+  <div className="lead" css={_s0(isOnline ? "4px solid #10b981" : "4px solid #64748b")}>
+  ```
+
+  The generated class joins whatever `className` the element already has, and each hole is written with
+  `setProperty`. Both work on an SVG element too, where `className` is a read-only `SVGAnimatedString`
+  and the class has to go through the attribute — the block's class travels the ordinary `className`
+  path, so that is true without a second rule for it.
+
+  **A block is exempt from the double-render check.** A `css` value with holes is a fresh object on
+  every render because a per-element value IS one, so `RMD020` would be right about every element
+  carrying a block and useless on all of them. It joins `children` and the props a component declared
+  with `@StableProps`: the value is generated, and a fresh identity for it means nothing.
+
+  **A hole's value that would become a second declaration is refused.** A hole carries whatever the
+  author's expression evaluated to, and an expression can read a record — so "the author wrote it" is
+  not a defence. `setProperty` writes one declaration whatever it is handed, which closes it on the
+  client; it does not close it on the server, and that took a measurement to find. A server render is
+  serialized to HTML and the browser parses the style attribute back, and the parse applies the CSS
+  grammar to whatever the serializer wrote:
+
+  ```
+  red; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999
+  ```
+
+  came back through `renderToString` and `innerHTML` as `position: fixed`, `width: 100vw` and
+  `z-index: 9999` — real, applied declarations, a full-viewport overlay out of a colour that came from
+  a database. A value carrying a `;` is now dropped rather than written: the element is left unstyled
+  in that one respect, which is the right way round.
+
+  **Across the hydration boundary**, measured through a real server render and hydrate: the same value
+  on both sides is silent and correct; a value that differs is silent and the client's wins; a block on
+  only one side is put on or taken off, and the class disagreement is reported as it already was for
+  any other class.
+
+  `css` is declared explicitly on `RamondaArgs` and `SVGArgs` rather than left to the
+  `[val: Lowercase<string>]: any` index signature those types carry — an undeclared lowercase prop is
+  silently `any`, and nothing about the value would be checked. **This can break a `css` attribute
+  written for something else**, a custom element's own for instance: it now has to be a compiled block.
+
+- 93ceb21: Three diagnostics for a style block the runtime cannot use.
+
+  The framework owns a `css` prop whose meaning comes from a compiler, and the honest half of that
+  bargain is that a value the two disagree about is said out loud rather than silently absorbed. All
+  three were measured before they existed:
+
+  - **`RMD062`** — a compiled block with holes is a function, and reading it without calling it applies
+    the class with **no** custom properties, so every declaration reading one falls back. Silent.
+  - **`RMD063`** — a hole's value holding a `;` would become a second declaration, so it is refused and
+    the declaration is dropped. Silent, and the reason it is refused is a server round trip that turned
+    one into real, applied declarations.
+  - **`RMD064`** — a value that is not a compiled block at all. This one did not do nothing: it **threw**
+    `Cannot read properties of undefined (reading 'length')`, taking the render down and naming nothing
+    about `css`. It is ignored now, class included, and the element renders unstyled.
+
+### Patch Changes
+
+- 5c71153: The devtools panel the entry wires up is under test, and a comment stops naming a file that does not exist
+
+  `index.ts` does three things for the panel at module load, inside `if (__DEV__)`: it appends
+  `<ramonda-devtools>` once the element is defined, it turns Alt+D into a `ramonda:toggle-devtools`
+  event, and it attempts an optional import of `@ramonda/devtools`. Nothing tested any of them. The
+  file's own comment records what that cost once — the append and the shortcut used to live inside that
+  import's `.then()`, so an app that imported the panel itself got the logs and no badge.
+
+  Four tests now hold it: exactly one panel and in the body, Alt+D and only Alt+D, no second panel when
+  the entry is loaded again, and the shape of the block itself.
+
+  The last one reads the source, and that is not laziness. Measured: `vi.doMock("@ramonda/devtools")`
+  never runs, because the specifier is held in a variable — deliberately, since a literal one breaks
+  `vite build` for every app that has not installed the panel. `@ramonda/devtools` is also a
+  devDependency of core, so in a test run that import RESOLVES and the panel appears whether or not the
+  mount depends on it. Planting the historical bug back proves the point exactly: with the mount and
+  the shortcut moved into the import's callback, the three runtime tests still pass and only the shape
+  test fails.
+
+  The comment that pointed at `NodeEnvironment.test.ts` for the no-DOM guarantee now points at what
+  actually holds it: `scripts/check-bare-import.mjs`, which imports every published entry in its own
+  Node process with no DOM, and lists `@ramonda/devtools` as browser-only while `@ramonda/core` is not.
+  That file has never existed anywhere in the repository.
+
 ## 0.24.0
 
 ### Minor Changes
@@ -31,7 +122,7 @@
   ```tsx
   const [ConfProvider, ConfConsumer] = createContext(
     { conf: { dense: false }, tick: 0 },
-    { stableProps: ["conf"] }
+    { stableProps: ["conf"] },
   );
   ```
 
@@ -4579,7 +4670,7 @@ can not be found in the parent`, thrown out of the reconcile, with the children 
   ```tsx
   const [ParamsProvider, ParamsConsumer] = createContext(
     { params: {} },
-    { label: "RouteParams", optional: true }
+    { label: "RouteParams", optional: true },
   );
   ```
 
