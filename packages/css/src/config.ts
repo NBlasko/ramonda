@@ -163,6 +163,25 @@ export function findConfig(from: string): string | undefined {
  * A config that throws is REPORTED. A tool that quietly ran with defaults because somebody's config
  * had a typo would be the worst of both: the settings are not applied, and nothing says so.
  */
+/**
+ * A config this cannot use, said rather than thrown.
+ *
+ * Every way `ramonda.css.ts` can be wrong already had a careful sentence — a rule id that is not one,
+ * with a *did you mean*; an async config; `units` as a string. Measured, all of them reached a person
+ * as a Node crash: `throw new Error(…)`, a caret, and a stack. The words were right and the shape was
+ * a failure of the tool rather than a fault in their file.
+ *
+ * Its own class so the CLI can tell it from a bug of ours, which is the same distinction `ToolFailed`
+ * draws for a tool that would not run — and for the same reason: one of those is the author's to fix
+ * and the other is not.
+ */
+export class ConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigError";
+  }
+}
+
 export function readConfig(
   path: string | undefined,
   typescript: typeof ts,
@@ -177,7 +196,7 @@ function textOf(path: string): string {
   try {
     return readFileSync(path, "utf8");
   } catch (error) {
-    throw new Error(`${path} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+    throw new ConfigError(`${path} could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -288,17 +307,17 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
     );
     exported = holder.exports.default;
   } catch (error) {
-    throw new Error(`${path} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+    throw new ConfigError(`${path} could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
 
   if (exported === undefined) {
-    throw new Error(`${path} has no default export — write \`export default { … }\`.`);
+    throw new ConfigError(`${path} has no default export — write \`export default { … }\`.`);
   }
 
   const config =
     typeof exported === "function" ? (exported as (env: ConfigEnvironment) => unknown)(environment) : exported;
   if (typeof config !== "object" || config === null || Array.isArray(config)) {
-    throw new Error(`${path} must export an object, or a function returning one.`);
+    throw new ConfigError(`${path} must export an object, or a function returning one.`);
   }
 
   /**
@@ -317,7 +336,7 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
    * thing the author can do about it.
    */
   if (typeof (config as { then?: unknown }).then === "function") {
-    throw new Error(
+    throw new ConfigError(
       `${path} is async, and a config cannot be — the editor asks for it synchronously, so there is ` +
         `nowhere to await it. Read what you need at the top level, or move the work into the value: ` +
         `\`export default { units: readFileSync(join(__dirname, "units.json"), "utf8").split(",") }\`.`,
@@ -326,7 +345,7 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
 
   for (const key of Object.keys(config)) {
     if (IDENTITY.has(key)) {
-      throw new Error(
+      throw new ConfigError(
         `${path} sets \`${key}\`, which decides a block's IDENTITY and cannot be a project setting. ` +
           `Two packages naming one block differently would emit two rules for it, with nothing to ` +
           `notice — see CONTRACT.md §3. Class names are chosen by the bundler plugin, per build.`,
@@ -334,10 +353,10 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
     }
     const elsewhere = DECIDED_ELSEWHERE.get(key);
     if (elsewhere !== undefined) {
-      throw new Error(`${path} sets \`${key}\`, and ${elsewhere}.`);
+      throw new ConfigError(`${path} sets \`${key}\`, and ${elsewhere}.`);
     }
     if (!KNOWN.has(key)) {
-      throw new Error(`${path} sets \`${key}\`, which is not a setting. It holds ${[...KNOWN].join(", ")}.`);
+      throw new ConfigError(`${path} sets \`${key}\`, which is not a setting. It holds ${[...KNOWN].join(", ")}.`);
     }
   }
 
@@ -362,7 +381,7 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
  */
 function validate(config: Record<string, unknown>, path: string): void {
   const refuse = (says: string): never => {
-    throw new Error(`${path} ${says}`);
+    throw new ConfigError(`${path} ${says}`);
   };
 
   const units = config.units;

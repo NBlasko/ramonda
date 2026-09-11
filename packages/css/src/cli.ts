@@ -2,6 +2,7 @@
 import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { checkProject } from "./check";
+import { ConfigError } from "./config";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
 import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
 
@@ -60,8 +61,30 @@ if (argv.includes("--help") || argv.includes("-h")) {
   process.exit(0);
 }
 
+/**
+ * A config this cannot use is the AUTHOR's file, so it is said the way every other fault is.
+ *
+ * Measured before this existed: all six ways `ramonda.css.ts` can be wrong reached a person as a Node
+ * crash — `throw new Error(…)`, a caret, and a stack — while the sentence inside each was careful and
+ * right. A mistake in a block printed the tag, the file, the line and the sentence; a mistake in the
+ * config printed a stack trace. Same tool, same person, two shapes.
+ *
+ * Wrapped around the WHOLE dispatch rather than around each caller, because the config is read from
+ * three of them — `checkProject`, the formatter and the linter — and the next one would forget. That
+ * is the reason `transform.ts` gives for holding the CSS check itself, one layer down.
+ */
+function said<T>(run: () => T): T {
+  try {
+    return run();
+  } catch (error) {
+    if (!(error instanceof ConfigError)) throw error;
+    console.error(`\n${TAG} ${error.message}\n`);
+    process.exit(1);
+  }
+}
+
 if (argv[0] === "format" || argv[0] === "lint") {
-  runTool(argv[0], argv.slice(1));
+  said(() => runTool(argv[0] as "format" | "lint", argv.slice(1)));
 }
 
 /**
@@ -86,7 +109,7 @@ if (!tsconfig.endsWith(".json")) {
   process.exit(1);
 }
 
-const report = checkProject(tsconfig);
+const report = said(() => checkProject(tsconfig));
 
 /**
  * Every exemption, on every run, whether or not anything failed.

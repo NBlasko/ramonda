@@ -223,6 +223,54 @@ describe("a file bigger than a pipe", () => {
   });
 });
 
+/**
+ * **A MISTAKE IN YOUR CSS GETS A SENTENCE; A MISTAKE IN YOUR CONFIG GOT A STACK TRACE.**
+ *
+ * `ramonda.css.ts` has six ways to be wrong and every one of them has a careful sentence — a rule id
+ * that is not one, with a *did you mean*; an async config; `units` as a string; a setting that is not
+ * one. Measured, all six came out the same way:
+ *
+ *     file:///…/dist/chunk-SCWKQOHM.js:122
+ *         throw new Error(`${path} ${says}`);
+ *               ^
+ *     Error: …/ramonda.css.ts silences `unknown-vlaue`, which is not a rule. Did you mean …
+ *         at …
+ *
+ * The words are right and the presentation is a crash. Beside it, a fault in a BLOCK prints
+ * `[ramonda-css]`, the file, the line and the sentence — same tool, same person, two shapes. This is
+ * the shape reviews 14 and 16 found twice already in this file: one path handled, its sibling not.
+ */
+describe("a config this cannot use", () => {
+  const withConfig = (config: string) => {
+    const root = project(`const a = @@(\n  color: red;\n);\nexport default a;\n`);
+    writeFileSync(join(root, "ramonda.css.ts"), `${config}\n`);
+    return run(root);
+  };
+
+  test.each([
+    ["a rule id that is not one", 'export default { rules: { "unknown-vlaue": "off" } };', "Did you mean"],
+    ["an async config", 'export default async () => ({ units: ["px"] });', "is async"],
+    ["units as a string", 'export default { units: "px" };', "takes a list"],
+    ["a setting that is not one", 'export default { unitz: ["px"] };', "not a setting"],
+    ["exporting a number", "export default 5;", "must export an object"],
+  ])("%s is said as a sentence, not thrown", (_what, config, expected) => {
+    const { status, output } = withConfig(config);
+
+    expect(status).toBe(1);
+    expect(output).toContain(expected);
+    // The words a crash brings with it, and none of them helps anybody.
+    expect(output).not.toContain("throw new Error");
+    expect(output).not.toMatch(/^\s+at /m);
+  });
+
+  /** And it says WHOSE file, because a monorepo has more than one. */
+  test("and names the config file", () => {
+    const { output } = withConfig('export default { unitz: ["px"] };');
+
+    expect(output).toContain("ramonda.css.ts");
+  });
+});
+
 describe("an argument that is not a project", () => {
   /** Run with arbitrary arguments, not the tsconfig the other tests pass. */
   function runWith(root: string, args: readonly string[]): { output: string; status: number } {

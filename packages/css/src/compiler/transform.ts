@@ -279,7 +279,17 @@ export function transform(source: string, options: TransformOptions = {}): Trans
     )
       .filter((one) => !isIgnored(source, ignored, one))
       .sort((a, b) => a.at - b.at);
-    if (finding !== undefined) refuse(finding.message, source, finding.at, filename);
+    /**
+     * **The rule's id, then its sentence** — the way `ramonda-css` already prints one.
+     *
+     * The build printed the sentence alone, so a person stopped by it had no way to learn which key
+     * to write in `ramonda.css.ts`, while the same fault through the checker named it. The id is
+     * what somebody wants at exactly that moment, and `rules` takes it verbatim.
+     *
+     * A refusal the PARSER makes carries no rule and is untouched: there is no key to switch off,
+     * and naming one would send a reader after something that is not there.
+     */
+    if (finding !== undefined) refuse(`${finding.rule}: ${finding.message}`, source, finding.at, filename);
 
     /**
      * Every custom property this block sets and reads, kept for the whole-build check.

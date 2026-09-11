@@ -826,3 +826,49 @@ describe("the build refuses what the checker finds", () => {
     expect(body(`const s = @@( display: flex; gap: 8px; );\n`)).toContain("const s = _s0;");
   });
 });
+
+/**
+ * **A BUILD REFUSAL NAMES ITS RULE, and it did not.**
+ *
+ * `ramonda-css` prints the id then the sentence — `unknown-property: \`flex-dirction\` is not …` —
+ * and the BUILD printed the sentence alone. So a person whose build failed had no way to learn which
+ * key to write in `ramonda.css.ts`, while a person who ran the checker did. Same fault, same tool,
+ * two shapes — and the id is exactly what somebody wants at the moment a build stops them.
+ *
+ * It is the id and a colon, the way the checker already spells it, rather than a second wording.
+ */
+describe("a refusal names the rule that made it", () => {
+  const refused = (source: string) => {
+    try {
+      transform(source, { filename: "/a.tsx" });
+      return "did not refuse";
+    } catch (error) {
+      return (error as Error).message;
+    }
+  };
+
+  test.each([
+    ["unknown-property", "const a = @@(\n  flex-dirction: row;\n);\n"],
+    ["unknown-value", "const a = @@(\n  color: bleu;\n);\n"],
+    ["line-comment", "const a = @@(\n  // a note\n  color: red;\n);\n"],
+    ["unknown-flag", "const a = @@(\n  color: red !importantt;\n);\n"],
+    ["unknown-at-rule", "const a = @@(\n  @medai (min-width: 1px) { color: red; }\n);\n"],
+  ])("%s is named", (id, source) => {
+    const said = refused(source);
+
+    expect(said).toContain(`${id}:`);
+    // And the sentence is still there, whole.
+    expect(said.length).toBeGreaterThan(id.length + 20);
+  });
+
+  /**
+   * A refusal the PARSER makes has no rule behind it — there is no key to switch off, so naming one
+   * would send a reader looking for something that is not there.
+   */
+  test.each([
+    ["a block that cannot be read", "const a = @@(\n  color red;\n);\n"],
+    ["a hole where a property belongs", "const w = 1;\nconst a = @@(\n  {w}: red;\n);\n"],
+  ])("%s names no rule, because none made it", (_what, source) => {
+    expect(refused(source)).not.toMatch(/^\/a\.tsx:\d+:\d+\s+[a-z-]+:/);
+  });
+});
