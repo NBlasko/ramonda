@@ -125,4 +125,4 @@ does not know. A wrong `Content-Type` is worse than none, since a browser acts o
 
 ## License
 
-MIT
+[MIT](./LICENSE) © Nikola Blagojević

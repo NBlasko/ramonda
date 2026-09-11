@@ -775,4 +775,4 @@ to depend on: read it, do not build against it. `analyzeProject` returns the sam
 
 ## License
 
-[MIT](../../LICENSE) © Nikola Blagojević
+[MIT](./LICENSE) © Nikola Blagojević

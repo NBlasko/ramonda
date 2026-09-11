@@ -287,4 +287,4 @@ stays the package-level entry point; it is not a substitute for that.
 
 ## License
 
-[MIT](../../LICENSE) © Nikola Blagojević
+[MIT](./LICENSE) © Nikola Blagojević

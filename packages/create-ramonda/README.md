@@ -69,4 +69,4 @@ installs and one bundler plugin.
 
 ## License
 
-[MIT](../../LICENSE) © Nikola Blagojević
+[MIT](./LICENSE) © Nikola Blagojević

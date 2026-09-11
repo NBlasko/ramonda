@@ -258,6 +258,18 @@ for (const { dir, json } of packages) {
     missing.push(`${dir}/README.md — no \`## License\` section`);
     continue;
   }
+  /**
+   * And it points at the licence this package SHIPS.
+   *
+   * Every one of them said `](../../LICENSE)`, which is the repo root — a path a published tarball
+   * does not have. npm's rendered page resolves it against the repository and so looked right, and
+   * a person who unpacked the tarball followed it nowhere. Now that each package carries its own,
+   * `./LICENSE` is correct in both places.
+   */
+  if (!text.includes("](./LICENSE)")) {
+    missing.push(`${dir}/README.md — its \`## License\` link is not \`./LICENSE\``);
+    continue;
+  }
 
   const updated = text.slice(0, from) + region(json, runtime) + text.slice(to + END.length);
   if (updated === text) continue;
@@ -267,6 +279,35 @@ for (const { dir, json } of packages) {
   }
   writeFileSync(file, updated);
   console.log(`[readmes] ${dir}/README.md`);
+}
+
+/**
+ * **AND THE LICENCE, because a published package shipped none.**
+ *
+ * Measured on a real `npm pack` of `@ramonda/css`: 33 files, `"license": "MIT"` in the manifest, and
+ * **no licence text at all**. Every one of the eleven published packages was the same — npm includes
+ * a `LICENSE` from the package directory whether or not `files` names it, and there was none to
+ * include.
+ *
+ * A manifest field is a label; the licence is the text it labels, and a person who downloads the
+ * tarball is entitled to read the terms they were granted. The extension already ships one, because
+ * `vsce` copies the repo's own and warns when it cannot — which is what made the npm side visible.
+ *
+ * Copied rather than linked or symlinked: a tarball holds files, a symlink to `../../LICENSE` does
+ * not survive packing, and a README line pointing at GitHub is a promise about a server rather than
+ * the terms themselves. One source — the repo's own `LICENSE` — and this keeps every copy equal to
+ * it, the same way the README region is kept.
+ */
+const licence = readFileSync(join(repo, "LICENSE"), "utf8");
+for (const { dir } of packages) {
+  const file = join(repo, dir, "LICENSE");
+  if (existsSync(file) && readFileSync(file, "utf8") === licence) continue;
+  if (check) {
+    stale.push(`${dir}/LICENSE`);
+    continue;
+  }
+  writeFileSync(file, licence);
+  console.log(`[readmes] ${dir}/LICENSE`);
 }
 
 if (missing.length > 0) {

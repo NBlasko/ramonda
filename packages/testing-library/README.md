@@ -249,4 +249,4 @@ possible, there is a second, narrow door, pinned by its own tripwire.
 
 ## License
 
-[MIT](../../LICENSE) © Nikola Blagojević
+[MIT](./LICENSE) © Nikola Blagojević
