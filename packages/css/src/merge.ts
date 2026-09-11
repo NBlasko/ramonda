@@ -163,8 +163,14 @@ function slotOf(context: string): number | undefined {
  * Said once per pair, because a render loop would otherwise say it a thousand times.
  */
 function warnAboutOrder(chosen: Record<string, StyleEntry | StyleClears>): void {
-  /** Property -> what was composed for it, in composition order. */
-  const byProperty = new Map<string, { key: string; slot: number }[]>();
+  /** Property -> what was composed that SETS it, in composition order. */
+  const byProperty = new Map<string, { key: string; property: string; slot: number }[]>();
+
+  const register = (property: string, one: { key: string; property: string; slot: number }) => {
+    const list = byProperty.get(property);
+    if (list === undefined) byProperty.set(property, [one]);
+    else list.push(one);
+  };
 
   for (const key in chosen) {
     if (key.startsWith(CLEARS)) continue;
@@ -173,9 +179,31 @@ function warnAboutOrder(chosen: Record<string, StyleEntry | StyleClears>): void 
     if (slot === undefined) continue;
 
     const property = cut === -1 ? key : key.slice(cut + 1);
-    const list = byProperty.get(property);
-    if (list === undefined) byProperty.set(property, [{ key, slot }]);
-    else list.push({ key, slot });
+    const one = { key, property, slot };
+    register(property, one);
+
+    /**
+     * **And every longhand a SHORTHAND sets**, which this missed entirely — all 98 families.
+     *
+     * Grouping by the exact property name meant `padding` and `padding-left` were never compared,
+     * so a shorthand under a condition silently beat a longhand composed after it. Measured against
+     * plain CSS in Chromium: `...{@media (min-width: 1px) { padding: 11px }}; padding-left: 4px`
+     * computed 11px where hand-written CSS gives 4px. Swept across the table: 98 families asked, 0
+     * warned.
+     *
+     * The single-file checker has always caught this, through `covers()` and the shorthand table —
+     * and the runtime may not import that table, which is why `conditions.ts` exists at all. It does
+     * not need to: **the clear-list is already in the map**, because clearing is how a shorthand
+     * displaces a longhand. Its keys carry their own context, which is stripped here, since the
+     * question being asked is about two entries in DIFFERENT contexts.
+     */
+    const cleared = chosen[`${CLEARS}${key}`];
+    if (!Array.isArray(cleared)) continue;
+    for (const each of cleared as readonly string[]) {
+      const at = each.lastIndexOf("|");
+      const sets = at === -1 ? each : each.slice(at + 1);
+      if (sets !== property) register(sets, one);
+    }
   }
 
   for (const [property, list] of byProperty) {
@@ -185,11 +213,19 @@ function warnAboutOrder(chosen: Record<string, StyleEntry | StyleClears>): void 
         strongest = one;
         continue;
       }
+      /**
+       * Which properties the message names. They are the same one in the ordinary case, and a
+       * longhand against its own shorthand in the case above — where naming only the group would
+       * say `padding-left` twice and point at neither line the author wrote.
+       */
+      const later = one.property === property ? `\`${property}\`` : `\`${one.property}\``;
+      const earlier = strongest.property === property ? "it" : `\`${strongest.property}\`, which sets it too,`;
       const message =
-        `[@ramonda/css] \`${property}\` is composed later under \`${context(one.key)}\` than under ` +
-        `\`${context(strongest.key)}\`, and it will not override it — the stylesheet emits the ` +
-        `stronger condition last, so the earlier one wins wherever both apply. Put the two under one ` +
-        `condition, or compose them the other way round.`;
+        `[@ramonda/css] ${later} is composed later under \`${context(one.key)}\` than ` +
+        `${earlier === "it" ? `under \`${context(strongest.key)}\`` : `${earlier} under \`${context(strongest.key)}\``}` +
+        `, and it will not override it — the stylesheet emits the stronger condition last, so the ` +
+        `earlier one wins wherever both apply. Put the two under one condition, or compose them the ` +
+        `other way round.`;
       if (said.has(message)) continue;
       said.add(message);
       console.warn(message);

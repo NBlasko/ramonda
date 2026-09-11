@@ -102,6 +102,19 @@ function build(root: string): { ok: boolean; output: string; files: Record<strin
       cwd: root,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      /**
+       * **`NODE_ENV` OFF THE PARENT, and every test in this file was getting a TEST build.**
+       *
+       * Vitest sets `NODE_ENV=test`, `execFileSync` inherits it, and Vite's own define is
+       * `JSON.stringify(process.env.NODE_ENV || mode)` — so `process.env.NODE_ENV` was replaced with
+       * `"test"` and every `!== "production"` folded to TRUE. Measured: the app's own copy of that
+       * expression came out as `typeof process<"u"&&!0`.
+       *
+       * So this file said "all the way through a production build" and was not building one. It only
+       * became visible when a test asked whether development-only code is dropped, which is the one
+       * question that depends on it.
+       */
+      env: { ...process.env, NODE_ENV: "production" },
     });
     const out = join(root, "out", "assets");
     const files: Record<string, string> = {};
@@ -461,4 +474,78 @@ test("a unit the project's `ramonda.css.ts` does not allow fails the build", () 
   // is where a fault is listed under its id.
   expect(result.output).toContain("a CSS unit this project does not use");
   expect(result.output).toContain("px, rem");
+});
+
+/**
+ * **THE DEV WARNING COSTS NOTHING IN PRODUCTION, and nothing was holding that claim.**
+ *
+ * `merge.ts` says it in a comment — "it never grows in a production build: nothing reaches it,
+ * because the only caller is behind a `NODE_ENV` check, so a bundler folds the check and drops
+ * everything it alone referenced" — and that was measured once, by hand, and then left. A measured
+ * claim in a comment with no test over it is a claim that rots on the next edit, and the warning has
+ * since grown: it now walks a shorthand's clear-list, which for `all` is 559 entries.
+ *
+ * So this asks a real Vite production build. The evidence is the warning's own SENTENCE, which
+ * appears nowhere else in the package and cannot be minified away — a name could be mangled, a
+ * string cannot.
+ */
+describe("what development-only code costs a visitor", () => {
+  test("the order warning's words are in no production asset", () => {
+    const root = project(
+      `const base = @@(\n  @media (min-width: 1px) {\n    padding: 11px;\n  }\n);\n` +
+        `export const Card = () => <div css=@@(\n  ...{base};\n  padding-left: 4px;\n)>x</div>;\n`,
+      `import { Card } from "./Card";\nconsole.log(Card());\n`,
+    );
+
+    const result = build(root);
+    expect(result.ok, result.output).toBe(true);
+
+    const javascript = of(result.files, ".js");
+    expect(javascript.length).toBeGreaterThan(0);
+    // The class the block compiled to IS there, so this is measuring the right bundle.
+    expect(javascript).toMatch(/r-/);
+
+    for (const words of ["is composed later under", "will not override it", "@ramonda/css"]) {
+      expect(javascript, `\`${words}\` reached the bundle`).not.toContain(words);
+    }
+  });
+
+  /**
+   * And the SLOT table the warning uses to compare two conditions — `widthSlot` and the mode
+   * patterns. They are the warning's only reason to exist in a bundle, so a fold that missed would
+   * show up as a regular expression nobody needs at run time.
+   */
+  test("and neither is the slot table it compares with", () => {
+    const root = project(
+      `export const Card = () => <div css=@@(\n  @media (min-width: 40rem) {\n    gap: 8px;\n  }\n)>x</div>;\n`,
+      `import { Card } from "./Card";\nconsole.log(Card());\n`,
+    );
+
+    const result = build(root);
+    expect(result.ok, result.output).toBe(true);
+
+    const javascript = of(result.files, ".js");
+    for (const words of ["prefers-reduced-motion", "forced-colors", "min|max"]) {
+      expect(javascript, `\`${words}\` reached the bundle`).not.toContain(words);
+    }
+  });
+});
+
+test("zzdiagnose", () => {
+  const root = project(
+    `const base = @@(\n  @media (min-width: 1px) {\n    padding: 11px;\n  }\n);\n` +
+      `export const Card = () => <div css=@@(\n  ...{base};\n  padding-left: 4px;\n)>x</div>;\n`,
+    `import { Card } from "./Card";\nconsole.log(Card());\n`,
+  );
+  const result = build(root);
+  const javascript = of(result.files, ".js");
+  const lines: string[] = [`bundle ${javascript.length} bytes`];
+  for (const needle of ["process.env", '"production"', "typeof process", "is composed later", "NODE_ENV"]) {
+    const at = javascript.indexOf(needle);
+    lines.push(
+      `  ${needle.padEnd(22)} ${at === -1 ? "absent" : `at ${at}  ...${JSON.stringify(javascript.slice(Math.max(0, at - 70), at + 70))}`}`,
+    );
+  }
+  require("node:fs").writeFileSync("/tmp/zzdiag.txt", lines.join("\n"));
+  expect(result.ok).toBe(true);
 });

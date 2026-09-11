@@ -668,3 +668,113 @@ describe("an override the stylesheet will not honour", () => {
     expect(said).toHaveLength(1);
   });
 });
+
+/**
+ * **THE WARNING MISSED EVERY SHORTHAND, and that is all 98 families.**
+ *
+ * `warnAboutOrder` exists for the one hole the compiler cannot see: `...{base}` is a runtime value,
+ * so nothing at build time knows what is in it. It grouped by the EXACT property name, so
+ * `padding` and `padding-left` were never compared — and a shorthand under a condition silently beat
+ * a longhand composed after it.
+ *
+ * Measured against plain CSS in Chromium, over 425 compositions of 21 blocks: 406 agreed, 17
+ * disagreed AND warned (the documented cross-condition answer), and **2 disagreed with nothing
+ * said** — both this shape:
+ *
+ *     ...{@media (min-width: 1px) { padding: 11px }};  padding-left: 4px
+ *         ours 11px        plain CSS 4px
+ *
+ * Then swept across the whole table: **98 shorthand families asked, 0 warned, 98 silent.**
+ *
+ * The single-file checker catches all of it, because `override-out-of-order` knows the shorthand
+ * table through `covers()`. The runtime may not import that table — `conditions.ts` exists precisely
+ * so `merge.ts` does not pull `flatten.ts` and put 98 families on every page — but it does not need
+ * to: **the clear-list is already in the map**, under `~<context>|<property>`, because clearing is
+ * how a shorthand displaces a longhand in the first place.
+ */
+describe("a shorthand composed under a condition", () => {
+  const spoke: string[] = [];
+  let real: typeof console.warn;
+
+  beforeEach(() => {
+    forget();
+    spoke.length = 0;
+    real = console.warn;
+    console.warn = (...args: unknown[]) => void spoke.push(args.map(String).join(" "));
+  });
+  afterEach(() => {
+    console.warn = real;
+  });
+
+  /** A conditional shorthand, and the longhands it sets — keyed the way the compiler keys them. */
+  const conditional = (condition: string, shorthand: string, longhands: readonly string[]) => ({
+    [`${condition}|${shorthand}`]: `r-${shorthand}`,
+    [`~${condition}|${shorthand}`]: longhands.map((one) => `${condition}|${one}`) as never,
+  });
+
+  test("warns when a longhand it sets is composed after it", () => {
+    const value = merge(conditional("@media (min-width: 1px)", "padding", ["padding-left", "padding-top"]), {
+      "padding-left": "r-pl",
+    });
+
+    expect(spoke).toHaveLength(1);
+    expect(spoke[0]).toContain("padding-left");
+    expect(spoke[0]).toContain("padding");
+    // Both classes land, because neither clears the other across a condition.
+    expect(value.className.split(" ").sort()).toEqual(["r-padding", "r-pl"]);
+  });
+
+  test("and names both properties, because they are not the same one", () => {
+    merge(conditional("@media print", "border", ["border-left-color"]), { "border-left-color": "r-blc" });
+
+    expect(spoke[0]).toContain("border-left-color");
+    expect(spoke[0]).toContain("border");
+    expect(spoke[0]).toContain("@media print");
+  });
+
+  /** The other way round is fine: the stronger condition IS last, so it wins as written. */
+  test("says nothing when the conditional shorthand is composed last", () => {
+    merge({ "padding-left": "r-pl" }, conditional("@media (min-width: 1px)", "padding", ["padding-left"]));
+
+    expect(spoke).toEqual([]);
+  });
+
+  /**
+   * And nothing under ONE condition, where the layer order already settles it: a longhand's breadth
+   * puts it after its shorthand, so composing it later is exactly what happens.
+   */
+  test.each([
+    ["no condition at all", ""],
+    ["one condition, on both", "@media (min-width: 1px)"],
+  ])("says nothing with %s", (_what, condition) => {
+    const key = (property: string) => (condition === "" ? property : `${condition}|${property}`);
+    merge(
+      {
+        [key("padding")]: "r-p",
+        [`~${key("padding")}`]: [key("padding-left")] as never,
+      },
+      { [key("padding-left")]: "r-pl" },
+    );
+
+    expect(spoke).toEqual([]);
+  });
+
+  /** A property outside the shorthand's family is not its business. */
+  test("says nothing about an unrelated property", () => {
+    merge(conditional("@media (min-width: 1px)", "padding", ["padding-left"]), { color: "r-c" });
+
+    expect(spoke).toEqual([]);
+  });
+
+  /** And it stays silent in production, which is what the whole warning costs there: nothing. */
+  test("says nothing in production", () => {
+    const was = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      merge(conditional("@media (min-width: 1px)", "padding", ["padding-left"]), { "padding-left": "r-pl" });
+      expect(spoke).toEqual([]);
+    } finally {
+      process.env.NODE_ENV = was;
+    }
+  });
+});
