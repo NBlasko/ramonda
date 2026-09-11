@@ -42,6 +42,10 @@ const build = (root: string, options: Parameters<typeof esbuild.build>[0] = {}) 
     ...options,
   });
 
+/** Everything a failed build said — the errors and the notes hanging under them. */
+const spoken = (failure: esbuild.BuildFailure) =>
+  (failure.errors ?? []).flatMap((one) => [one.text, ...(one.notes ?? []).map((note) => note.text)]).join("\n");
+
 const outputs = (result: esbuild.BuildResult) =>
   Object.fromEntries((result.outputFiles ?? []).map((file) => [file.path.split(".").pop(), file.text]));
 
@@ -311,5 +315,89 @@ describe("which config a file is measured against", () => {
     const { css } = outputs(await build(repo, { entryPoints: [join(repo, "packages", "admin", "index.tsx")] }));
 
     expect(css).toContain("padding: 1em");
+  });
+});
+
+/**
+ * **A `filter` ONE DIRECTORY TOO NARROW, and the error names nothing this package owns.**
+ *
+ * `filter` is the lever the cost note offers: point it at the tree that holds blocks and nothing else
+ * is read. Its own words are accurate about what happens to a file it misses — *"compiled by esbuild
+ * exactly as it would be with no plugin at all"* — and with no plugin, `@@(` is not JavaScript.
+ * Measured, a filter covering `ui` on a project whose blocks are also in `other`:
+ *
+ *     Expected identifier but found "@"   at other/Panel.tsx:1
+ *
+ * That is the same sentence the Vite adapter's `config` hook exists to prevent — its note calls it
+ * out by name — so the package already knows the message is unactionable. Here a person reaches it by
+ * setting one option slightly wrong, and nothing in the error mentions this package at all.
+ *
+ * `onEnd` sees the build's errors, and whether a file holds a block is the cheap substring
+ * `mayHoldABlock` already answers, so the hint is added where the other whole-build checks live.
+ */
+describe("a filter that misses a file holding a block", () => {
+  test("says which file, and that the filter is why", async () => {
+    const root = project({
+      "index.tsx": `import { a } from "./ui/Card";\nimport { b } from "./other/Panel";\nconsole.log(a, b);\n`,
+    });
+    mkdirSync(join(root, "ui"), { recursive: true });
+    mkdirSync(join(root, "other"), { recursive: true });
+    writeFileSync(join(root, "ui", "Card.tsx"), `export const a = @@(\n  color: red;\n);\n`);
+    writeFileSync(join(root, "other", "Panel.tsx"), `export const b = @@(\n  color: blue;\n);\n`);
+
+    const failed = await build(root, { plugins: [ramondaCss({ filter: /ui\/.*\.tsx$/ })] }).catch(
+      (error: unknown) => error as esbuild.BuildFailure,
+    );
+
+    // esbuild's own sentence stays; the hint hangs under it as a NOTE, so a reader sees both.
+    const said = spoken(failed as esbuild.BuildFailure);
+    expect(said).toContain('Expected identifier but found "@"');
+    expect(said).toContain("Panel.tsx");
+    expect(said).toContain("filter");
+  });
+
+  /**
+   * **And with `absWorkingDir` set**, which is the only case where the path has to be resolved.
+   *
+   * esbuild reports a location relative to the build's working directory rather than as a path a
+   * reader could open — measured, `../../../../../private/var/folders/…/other/Panel.tsx`. With the
+   * directory left to the process it happens to resolve anyway, so a control could not see the
+   * resolve fail. Set, it cannot: the hint reads a file that is not where the path says.
+   */
+  test("finds the file when the build has its own working directory", async () => {
+    const root = project({
+      "index.tsx": `import { b } from "./other/Panel";
+console.log(b);
+`,
+    });
+    mkdirSync(join(root, "other"), { recursive: true });
+    writeFileSync(
+      join(root, "other", "Panel.tsx"),
+      `export const b = @@(
+  color: blue;
+);
+`,
+    );
+
+    const failed = await build(root, {
+      absWorkingDir: root,
+      entryPoints: ["index.tsx"],
+      outdir: "dist",
+      plugins: [ramondaCss({ filter: /ui\/.*\.tsx$/ })],
+    }).catch((error: unknown) => error as esbuild.BuildFailure);
+
+    expect(spoken(failed as esbuild.BuildFailure)).toContain("filter");
+  });
+
+  /** And a build that fails for an ordinary reason gets no hint it cannot use. */
+  test("says nothing extra about a file with no block in it", async () => {
+    const root = project({
+      "index.tsx": `import { a } from "./Plain";\nconsole.log(a);\n`,
+      "Plain.ts": `export const a = ((((;\n`,
+    });
+
+    const failed = await build(root).catch((error: unknown) => error as esbuild.BuildFailure);
+
+    expect(spoken(failed as esbuild.BuildFailure)).not.toContain("filter");
   });
 });

@@ -1,8 +1,10 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import ts from "typescript";
 import { configReader, environmentOf } from "./config";
 import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
+import { mayHoldABlock } from "./compiler/scan";
 import { Sheet } from "./compiler/sheet";
 import { transform } from "./compiler/transform";
 
@@ -80,6 +82,16 @@ export interface EsbuildCssPluginOptions {
 
 /** The handful of esbuild's plugin API this reaches for, declared rather than imported. */
 export interface EsbuildLike {
+  /**
+   * What the build was asked for, of which only the working directory is read.
+   *
+   * A location esbuild reports is RELATIVE to it — measured, a file under `/private/tmp` came back
+   * as `../../../../../private/tmp/…` from a build run elsewhere — so a path from an error cannot be
+   * opened without it. Optional because a caller holding an older esbuild still satisfies the rest
+   * of this shape, and a missing one falls back to the process's own directory, which is what
+   * esbuild does.
+   */
+  readonly initialOptions?: { absWorkingDir?: string };
   onResolve(options: { filter: RegExp }, callback: (args: { path: string }) => Resolved | undefined): void;
   onLoad(
     options: { filter: RegExp; namespace?: string },
@@ -110,6 +122,15 @@ interface Loaded {
 interface BuildOutput {
   outputFiles?: readonly { path: string; text: string }[];
   metafile?: { outputs: Record<string, unknown> };
+  /**
+   * What the build refused on, which `onEnd` is given whether or not the build succeeded.
+   *
+   * Declared here rather than imported, like everything else in this file: a package whose types
+   * drag in a bundler is a package that cannot be used without it. `notes` are esbuild's own way of
+   * hanging a second line under an error, which is where a hint belongs — it does not replace what
+   * the bundler said, and a reader sees both.
+   */
+  errors?: { text: string; location?: { file: string } | null; notes?: { text: string }[] }[];
 }
 
 export interface EsbuildCssPluginLike {
@@ -119,6 +140,9 @@ export interface EsbuildCssPluginLike {
 
 /** The same spelling the Vite plugin uses, so a stylesheet's id names the file it belongs to. */
 const SUFFIX = "?ramonda-css.css";
+
+/** What a note of ours is prefixed with, so a reader knows who spoke and this can find its own. */
+const TAG = "[ramonda-css]";
 
 /** Where the stylesheet modules live, so esbuild does not look for them on disk. */
 const NAMESPACE = "ramonda-css";
@@ -166,6 +190,16 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         if (args.path.includes("node_modules")) return undefined;
 
         const code = readFileSync(args.path, "utf8");
+        /**
+         * Asked ONCE, and it used to be asked twice — here and again for `known` below.
+         *
+         * `configReader` caches the answer, but every call still walks up the tree with `findConfig`
+         * and reads the file to decide whether anything changed. Measured on a real 300-file build:
+         * 179.5 µs/file with no config against 190.8 with one, so the pair costs about 11 µs/file.
+         * Small, and named rather than dressed up — the reason to hoist it is that one question asked
+         * twice in one function is the shape this repository keeps finding, not the microseconds.
+         */
+        const config = configFor(args.path);
 
         let result: ReturnType<typeof transform>;
         try {
@@ -173,7 +207,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
             filename: args.path,
             runtime: options.runtime,
             read: readModule,
-            config: configFor(args.path),
+            config,
           });
         } catch (error) {
           if (!(error instanceof CssBlockError)) throw error;
@@ -211,7 +245,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         }
 
         styled.add(args.path);
-        sheet.add(args.path, result.blocks, { ...result.variables, known: configFor(args.path).variables });
+        sheet.add(args.path, result.blocks, { ...result.variables, known: config.variables });
         const own = sheet.cssFor(args.path);
         const contents = own === "" ? result.code : `${result.code}\nimport ${JSON.stringify(args.path + SUFFIX)};\n`;
 
@@ -225,6 +259,49 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
        * pointing at nothing.
        */
       build.onEnd((result) => {
+        /**
+         * **A parse error on a file this plugin was never offered**, which is what a `filter` one
+         * directory too narrow produces.
+         *
+         * `filter` is the lever the cost note above offers, and its own words are accurate: a file it
+         * misses is "compiled by esbuild exactly as it would be with no plugin at all". With no
+         * plugin, `@@(` is not JavaScript — so the author gets *Expected identifier but found "@"*,
+         * which names nothing they can act on.
+         *
+         * That sentence is the one the Vite adapter's `config` hook exists to prevent; its note calls
+         * it out by name. So the message is already known to be unactionable, and here a person
+         * reaches it by setting one option slightly wrong.
+         *
+         * Whether the file holds a block is the cheap substring `mayHoldABlock` already answers, and
+         * it is asked only of files a build ALREADY failed on — so a build that succeeds pays
+         * nothing, and a build that failed for an ordinary reason gets no hint it cannot use.
+         */
+        for (const error of result.errors ?? []) {
+          const file = error.location?.file;
+          if (file === undefined || error.notes?.some((note) => note.text.includes(TAG))) continue;
+          if (options.filter === undefined || options.filter.test(file)) continue;
+
+          // esbuild reports a location relative to the build's working directory, not as a path a
+          // reader could open — see `initialOptions`.
+          const path = resolve(build.initialOptions?.absWorkingDir ?? process.cwd(), file);
+          let source: string;
+          try {
+            source = readFileSync(path, "utf8");
+          } catch {
+            continue;
+          }
+          if (!mayHoldABlock(source)) continue;
+
+          error.notes = [
+            ...(error.notes ?? []),
+            {
+              text:
+                `${TAG} \`${file}\` holds a style block and this plugin's \`filter\` does not reach it, ` +
+                "so esbuild parsed the block as JavaScript. Widen the filter to cover this file.",
+            },
+          ];
+        }
+
         // Every file is in, so the question no single file can answer is answerable now. Asked
         // before the stylesheet is looked for, because it does not depend on one being written —
         // an SSR build emits no CSS and still reads variables.
