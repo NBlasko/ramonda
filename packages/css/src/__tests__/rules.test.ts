@@ -2572,3 +2572,113 @@ describe("a squiggle about a hole", () => {
     }
   });
 });
+
+/**
+ * **EVERY `//`, and it used to be one per block.**
+ *
+ * The rule stopped after the first, deliberately and with a note: *"One per block: the rest of the
+ * line is already claimed, and a file full of them is one habit."* That reasoning was sound when it
+ * was written, and a measurement has since undercut it.
+ *
+ * TypeScript refuses EVERY one of them — the virtual file writes the comment and the next property
+ * as one key — and `check.ts` drops a `TS2353` only where a rule of ours already spoke. So with the
+ * suppression widened, a file with three comments showed:
+ *
+ *     2:3  line-comment  CSS has no `//` comment — … Write a block comment instead.
+ *     4:3  TS2353        … '"// two\n  color"' does not exist in type 'CssBlockShape'.
+ *     6:3  TS2353        … '"// three\n  margin"' does not exist in type 'CssBlockShape'.
+ *
+ * One good message and two that quote a comment and the next property mashed into a key. Reporting
+ * every one gives every comment the message that says what to do, and leaves nothing for the
+ * compiler to say badly.
+ *
+ * The habit argument survives in the other direction too: a person who wrote three wants to know
+ * there are three, because it is one edit repeated rather than three decisions.
+ */
+describe("every line comment", () => {
+  const comments = (source: string) => checkSource(source, "/a.tsx").filter((one) => one.rule === "line-comment");
+
+  test.each([
+    ["one", 1, "const a = @@(\n  // one\n  gap: 8px;\n);\n"],
+    ["two", 2, "const a = @@(\n  // one\n  gap: 8px;\n  // two\n  color: red;\n);\n"],
+    ["three", 3, "const a = @@(\n  // one\n  gap: 8px;\n  // two\n  color: red;\n  // three\n  margin: 0;\n);\n"],
+  ])("%s is reported as %i", (_what, expected, source) => {
+    expect(comments(source)).toHaveLength(expected);
+  });
+
+  test("one outside a nested rule and one inside are both reported", () => {
+    const source = "const a = @@(\n  // outside\n  gap: 8px;\n  &:hover {\n    // inside\n    color: red;\n  }\n);\n";
+
+    const found = comments(source);
+
+    expect(found).toHaveLength(2);
+    // Each squiggle is on its own `//`, which is what an editor draws.
+    for (const one of found) expect(source.slice(one.at, one.at + one.length)).toBe("//");
+  });
+
+  /**
+   * **The rest of the LINE is one fault, not several.** A second `//` after the first is inside the
+   * first one's text, and `////` is not four comments.
+   *
+   * Under test because the claim was written into the code and a control could not see it fail — the
+   * standing lesson that an assertion nobody can break is not an assertion.
+   */
+  test.each([
+    ["a doubled slash run", "const a = @@(\n  //// one\n  gap: 8px;\n);\n"],
+    ["a second one later on the line", "const a = @@(\n  // one // two\n  gap: 8px;\n);\n"],
+    ["a url after a comment starts", "const a = @@(\n  // see https://example.com\n  gap: 8px;\n);\n"],
+  ])("%s is one finding", (_what, source) => {
+    expect(comments(source)).toHaveLength(1);
+  });
+
+  /**
+   * **A `//` WITH NOTHING AFTER IT, where the editor and the build said different things.**
+   *
+   * A line comment is normally absorbed into the next declaration's key, so the block still parses
+   * and `line-comment` speaks. When it is the LAST thing there is no next declaration, the parser
+   * refuses first, and the refusal is the generic one:
+   *
+   *     editor (tolerant)   CSS has no `//` comment — … Write a block comment instead.
+   *     build and check     `// last` is not a declaration — a block holds `property: value;` …
+   *
+   * Both true, and only one says what to do. The file is not half-written — somebody finished it
+   * that way — so this is the same file getting two different answers from the same package.
+   */
+  test.each([
+    ["on the last line", "const a = @@(\n  gap: 8px;\n  // last\n);\n"],
+    ["alone in the block", "const a = @@(\n  // only\n);\n"],
+    ["last inside a nested rule", "const a = @@(\n  &:hover {\n    gap: 8px;\n    // last\n  }\n);\n"],
+  ])("%s says what to do, not that it is not a declaration", (_what, source) => {
+    let said = "";
+    try {
+      checkSource(source, "/a.tsx");
+      said = "did not refuse";
+    } catch (error) {
+      said = (error as Error).message;
+    }
+
+    expect(said).toContain("CSS has no `//` comment");
+  });
+
+  /** And each is at its own position, in the order a person reads them. */
+  test("each is at its own line", () => {
+    const source = "const a = @@(\n  // one\n  gap: 8px;\n  // two\n  color: red;\n);\n";
+
+    const lines = comments(source).map((one) => source.slice(0, one.at).split("\n").length);
+
+    expect(lines).toEqual([2, 4]);
+  });
+
+  /**
+   * What is still ONE finding: a `//` inside a hole is JavaScript, where a line comment is ordinary
+   * and is not this rule's business — and one inside a `/* … *` + `/` is the author's prose.
+   */
+  test.each([
+    ["inside a hole", "const w = 1;\nconst a = @@(\n  gap: {w /* px */};\n);\n"],
+    ["inside a block comment", "const a = @@(\n  /* not // a comment */\n  gap: 8px;\n);\n"],
+    ["inside a string", 'const a = @@(\n  content: "// not a comment";\n);\n'],
+    ["a url with two slashes", "const a = @@(\n  background: url(https://example.com/a.png);\n);\n"],
+  ])("%s is not a line comment", (_what, source) => {
+    expect(comments(source)).toEqual([]);
+  });
+});

@@ -262,6 +262,31 @@ describe("the CSS rules, beside the type errors", () => {
     expect(report.findings[0].message).toContain("flex-direction");
   });
 
+  /**
+   * **AND IT ONLY LOOKED AT ONE RULE**, so a `//` comment came back twice.
+   *
+   * The filter above asks whether an `unknown-property` finding sits at that character. Every other
+   * rule that speaks where TypeScript also refuses the key left the author with two errors for one
+   * mistake — and the compiler's is the worse one. Measured:
+   *
+   *     line-comment: CSS has no `//` comment — … Write a block comment instead.
+   *     TS2353: … and '"// the palette is in flux\n  gap"' does not exist in type 'CssBlockShape'.
+   *
+   * The second quotes the comment and the NEXT property mashed together as a key, with the newline
+   * spelt out. It is unactionable beside a message that says exactly what to do.
+   *
+   * The principle in the note above was already right — *"the same fault at the same character is
+   * the same fault"* — and only the filter was narrow. Swept across twelve faults, this is the one
+   * that doubled, which is why it is a widening of the same rule rather than a case for `//`.
+   */
+  test("a line comment is reported once, by the rule that explains it", () => {
+    const report = check({
+      "Card.tsx": `const a = @@(\n  color: red;\n  // the palette is in flux\n  gap: 8px;\n);\nexport default a;\n`,
+    });
+
+    expect(report.findings.map((finding) => finding.code)).toEqual(["line-comment"]);
+  });
+
   test("a TS2353 about something no rule named is still reported", () => {
     // A `@font-face` descriptor that is not one. `DESCRIPTORS` is a near-miss search, and `nope`
     // is near nothing, so no rule of ours claims it and the compiler's word is all there is.

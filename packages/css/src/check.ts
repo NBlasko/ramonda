@@ -209,10 +209,22 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
  * suggestion. Measured before this existed: `flex-dirction` was reported twice, once usefully.
  *
  * Matched on POSITION rather than on text: the same fault at the same character is the same fault,
- * and a `TS2353` about a nested rule's key is at a position no property rule names, so it survives.
+ * and a `TS2353` about a nested rule's key is at a position no rule of ours names, so it survives.
+ *
+ * **ANY rule of ours, and it used to be `unknown-property` alone.** Every other rule that speaks
+ * where TypeScript also refuses the key left two errors for one mistake, and the compiler's was the
+ * worse one. Measured on a `//` comment:
+ *
+ *     line-comment: CSS has no `//` comment — … Write a block comment instead.
+ *     TS2353: … and '"// the palette is in flux\n  gap"' does not exist in type 'CssBlockShape'.
+ *
+ * The second quotes the comment and the NEXT property mashed into one key, newline spelt out. The
+ * principle above was already right; only the filter was narrow. Swept across twelve faults, the
+ * comment is the one that doubled — so this is a widening of the same rule rather than a case for
+ * `//`, because the next rule to land on a key would have doubled too.
  */
 function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] {
-  const said = new Set(css.filter((finding) => finding.code === "unknown-property").map((finding) => at(finding)));
+  const said = new Set(css.map((finding) => at(finding)));
 
   return [...css, ...types.filter((finding) => !(finding.code === 2353 && said.has(at(finding))))].sort(
     (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column,

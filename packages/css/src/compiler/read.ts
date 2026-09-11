@@ -410,6 +410,18 @@ export function opensAHole(before: string): boolean {
   return text === "" || text === SPREAD || text.endsWith("(") || A_DECLARATION.test(before) || A_HELD_NAME.test(before);
 }
 
+/**
+ * What a `//` inside a block is, in one sentence — said by the `line-comment` RULE and by the
+ * parser's refusal, which are two paths to the same fault.
+ *
+ * Here rather than in `rules.ts` because `rules.ts` already imports from this file and the reverse
+ * would be a cycle. One sentence in one place: a second wording is the shape this repository keeps
+ * finding, where two halves of one answer drift the first time either is corrected.
+ */
+export const LINE_COMMENT =
+  "CSS has no `//` comment — this and the rest of the line are written into the stylesheet, " +
+  "and the build refuses the file. Write `/* … */`.";
+
 export function readBlock(source: string, open: number, filename: string, options: ReadOptions = {}): ReadBlock {
   const tolerant = options.tolerant === true;
   const resolve = options.resolve;
@@ -892,8 +904,21 @@ export function readBlock(source: string, open: number, filename: string, option
         }
 
         if (!tolerant) {
+          /**
+           * **A `//` comment, named as one**, because otherwise the same file got two answers.
+           *
+           * A line comment is normally absorbed into the NEXT declaration's key, so the block still
+           * parses and `line-comment` reports it with the sentence that says what to do. When it is
+           * the last thing in a block there is no next declaration, so this refusal ran first —
+           * and a person saw `CSS has no \`//\` comment` in the editor, which reads tolerantly, and
+           * *"`// last` is not a declaration"* from the build. Both true, one useless.
+           *
+           * The rule's own words rather than a second wording of them: one sentence, one place.
+           */
           refuse(
-            `\`${property.trim()}\` is not a declaration — a block holds \`property: value;\` and nested rules, nothing else.`,
+            property.trimStart().startsWith("//")
+              ? LINE_COMMENT
+              : `\`${property.trim()}\` is not a declaration — a block holds \`property: value;\` and nested rules, nothing else.`,
             source,
             // `from`, not `at - property.length`: the name is trimmed, so measuring its length back
             // from a position past the whitespace pointed one column further right for every space

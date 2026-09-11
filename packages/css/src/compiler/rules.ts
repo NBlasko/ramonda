@@ -16,7 +16,7 @@ import {
   UNIT_TYPE,
 } from "./keywords.generated";
 import { canonicalPrelude, canonicalValue } from "./normalise";
-import { CONDITION, SPREAD, closingHole, holeIn, opensAHole } from "./read";
+import { CONDITION, LINE_COMMENT, SPREAD, closingHole, holeIn, opensAHole } from "./read";
 import type { BlockSite } from "./scan";
 
 /**
@@ -223,12 +223,29 @@ export function checkText(source: string, open: number, end: number): Finding[] 
         rule: "line-comment",
         at: index,
         length: 2,
-        message:
-          "CSS has no `//` comment — this and the rest of the line are written into the stylesheet, " +
-          "and the build refuses the file. Write `/* … */`.",
+        message: LINE_COMMENT,
       });
-      // One per block: the rest of the line is already claimed, and a file full of them is one habit.
-      return findings;
+      /**
+       * **Every one of them, and this used to stop at the first.**
+       *
+       * The note here read *"One per block: the rest of the line is already claimed, and a file full
+       * of them is one habit"* — sound when it was written, and undercut by a later measurement.
+       *
+       * TypeScript refuses EVERY line comment, because the virtual file writes the comment and the
+       * next property as one key, and `check.ts` drops that duplicate only where a rule of ours
+       * already spoke. So a file with three comments showed one good message and two reading
+       * *"'\"// two\\n  color\"' does not exist in type"* — a comment and the next property mashed
+       * together. Reporting each one leaves the compiler nothing to say badly.
+       *
+       * The habit argument holds the other way too: somebody who wrote three wants to know there are
+       * three, because it is one edit repeated rather than three decisions.
+       *
+       * The rest of the LINE is still skipped — a second `//` on the same line is inside the first
+       * one's text and is not a second fault.
+       */
+      const newline = source.indexOf("\n", index);
+      index = newline === -1 || newline >= end ? end : newline;
+      continue;
     }
   }
 
