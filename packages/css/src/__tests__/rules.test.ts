@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { ABBREVIATIONS, KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
 import { nearest } from "../compiler/rules";
+import { checkSource } from "../compiler/source";
 import { namedSites, syntaxesIn } from "../compiler/references";
 import { type Finding, checkBlock, checkText } from "../compiler/rules";
 import { findBlocks } from "../compiler/scan";
@@ -2464,5 +2465,110 @@ describe("a keyword written in capitals", () => {
   /** A keyword already lowercase says nothing at all, which is the whole point. */
   test.each(["color: red", "display: flex", "flex-flow: row wrap"])("%s is clean", (written) => {
     expect(checkNamedFree(`${written};`)).toEqual([]);
+  });
+});
+
+/**
+ * **WHERE A SQUIGGLE ABOUT A HOLE LANDS, and two rules pointed at the wrong character.**
+ *
+ * `Finding` says it in its own doc: `at` is the author's offset OF THE FAULT and `length` is "the
+ * offending text itself — the property name, the word in the value — never the whole declaration".
+ * A wrong span sends a person to the wrong place, which is the one thing this package says it must
+ * never do.
+ *
+ * And the data was already there. `HolePart` carries `at` and `length`, and its own note says why:
+ * *"for a squiggle over the hole itself … it is what lets a rule about a hole's POSITION point at
+ * the hole rather than at the declaration holding it."* `hole-as-a-variable-name` reads it.
+ * `hole-in-a-named-block` and `glued-hole` did not — one question, two answers, which is this
+ * repository's recurring fault.
+ *
+ * Measured, `@@font-face( src: url({n}); )`:
+ *
+ *     at 43, length 1, covering "u"      the `u` of `url(`, one character, mid-word
+ *
+ * Both also stopped after the FIRST hole, so a block with two of them reported one — and the author
+ * fixes it, re-runs, and meets the next.
+ */
+describe("a squiggle about a hole", () => {
+  /** What the finding actually covers in the author's own text. */
+  const covered = (source: string, one: { at: number; length: number }) => source.slice(one.at, one.at + one.length);
+
+  describe("in a named block", () => {
+    test.each([
+      ["a hole inside a function", "const n = 1;\nconst a = @@font-face(\n  src: url({n});\n);\n", "{n}"],
+      ["a hole as the whole value", "const n = 1;\nconst a = @@font-face(\n  src: {n};\n);\n", "{n}"],
+      ["a longer name", "const weight = 1;\nconst a = @@font-face(\n  src: url({weight});\n);\n", "{weight}"],
+      [
+        "in @@property",
+        'const n = 1;\nconst a = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: {n};\n);\n',
+        "{n}",
+      ],
+      ["in @@keyframes", "const n = 1;\nconst a = @@keyframes(\n  from { opacity: {n}; }\n);\n", "{n}"],
+    ])("%s is squiggled over the hole", (_what, source, hole) => {
+      const [found] = checkSource(source, "/a.tsx").filter((one) => one.rule === "hole-in-a-named-block");
+
+      expect(found).toBeDefined();
+      expect(covered(source, found)).toBe(hole);
+    });
+
+    test("every hole is reported, not only the first", () => {
+      const source = "const n = 1;\nconst m = 2;\nconst a = @@font-face(\n  src: url({n});\n  font-weight: {m};\n);\n";
+
+      const found = checkSource(source, "/a.tsx").filter((one) => one.rule === "hole-in-a-named-block");
+
+      expect(found).toHaveLength(2);
+      expect(found.map((one) => covered(source, one))).toEqual(["{n}", "{m}"]);
+    });
+
+    test("and two holes in ONE declaration are two squiggles, because each must go", () => {
+      const source = "const a1 = 1;\nconst b1 = 2;\nconst a = @@font-face(\n  src: url({a1}) format({b1});\n);\n";
+
+      const found = checkSource(source, "/a.tsx").filter((one) => one.rule === "hole-in-a-named-block");
+
+      expect(found.map((one) => covered(source, one))).toEqual(["{a1}", "{b1}"]);
+    });
+  });
+
+  describe("glued to text", () => {
+    test.each([
+      ["a unit after it", "const w = 1;\nconst a = @@(\n  gap: 8px{w};\n);\n", "{w}"],
+      ["a unit written after", "const w = 1;\nconst a = @@(\n  gap: {w}px;\n);\n", "{w}"],
+      ["a longer name", "const spacing = 1;\nconst a = @@(\n  gap: {spacing}px;\n);\n", "{spacing}"],
+    ])("%s is squiggled over the hole", (_what, source, hole) => {
+      const [found] = checkSource(source, "/a.tsx").filter((one) => one.rule === "glued-hole");
+
+      expect(found).toBeDefined();
+      expect(covered(source, found)).toBe(hole);
+    });
+
+    test("every glued hole is reported", () => {
+      const source = "const w = 1;\nconst h = 2;\nconst a = @@(\n  margin: {w}px {h}px;\n);\n";
+
+      const found = checkSource(source, "/a.tsx").filter((one) => one.rule === "glued-hole");
+
+      expect(found.map((one) => covered(source, one))).toEqual(["{w}", "{h}"]);
+    });
+  });
+
+  /**
+   * And the invariant under all of it, asked of every rule at once: a finding is inside the file and
+   * covers something. A zero-width squiggle is a mark nobody can see.
+   */
+  test("every finding is inside the file and covers at least one character", () => {
+    const sources = [
+      "const a = @@(\n  flex-dirction: row;\n  color: bleu;\n  gap: 8pxx;\n);\n",
+      "const w = 1;\nconst a = @@(\n  gap: 8px{w};\n  color: var({w});\n);\n",
+      "const a = @@(\n  @medai (min-widht: 40rem) { color: red; }\n  -wdebkit-line-clamp: 3;\n);\n",
+      "const n = 1;\nconst a = @@font-face(\n  src: url({n});\n);\n",
+      "const a = @@(\n  // a note\n  &:HOVER { color: RED; }\n);\n",
+    ];
+
+    for (const source of sources) {
+      for (const one of checkSource(source, "/a.tsx")) {
+        expect(one.at, `${one.rule} starts before the file`).toBeGreaterThanOrEqual(0);
+        expect(one.at + one.length, `${one.rule} runs past the end`).toBeLessThanOrEqual(source.length);
+        expect(one.length, `${one.rule} has a zero-width squiggle`).toBeGreaterThan(0);
+      }
+    }
   });
 });

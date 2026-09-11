@@ -776,18 +776,32 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
         walkItems(item.items);
         continue;
       }
-      const hole = item.value.find((part) => part.kind === "hole");
-      if (hole === undefined) continue;
-
-      findings.push({
-        rule: "hole-in-a-named-block",
-        at: item.valueAt ?? item.at ?? 0,
-        length: 1,
-        message:
-          `a hole cannot go in \`@@${at}( … )\` — a hole is a custom property on an ELEMENT, and ` +
-          `this names something the whole stylesheet uses.`,
-      });
-      return;
+      /**
+       * **Over the HOLE, and every one of them.**
+       *
+       * This pointed at the start of the VALUE with a length of 1 — measured on
+       * `@@font-face( src: url({n}); )`, a one-character squiggle over the `u` of `url(`, which is
+       * mid-word and is not the fault. And it stopped after the first hole, so an author fixed one,
+       * re-ran, and met the next.
+       *
+       * `HolePart` carries `at` and `length` and its own note says why: *"for a squiggle over the
+       * hole itself … what lets a rule about a hole's POSITION point at the hole rather than at the
+       * declaration holding it."* `hole-as-a-variable-name` reads it; this did not.
+       *
+       * One finding per HOLE rather than per declaration, because each is a separate thing to
+       * remove — `src: url({a}) format({b})` is two edits.
+       */
+      for (const hole of item.value) {
+        if (hole.kind !== "hole") continue;
+        findings.push({
+          rule: "hole-in-a-named-block",
+          at: hole.at ?? item.valueAt ?? item.at ?? 0,
+          length: hole.length ?? 1,
+          message:
+            `a hole cannot go in \`@@${at}( … )\` — a hole is a custom property on an ELEMENT, and ` +
+            `this names something the whole stylesheet uses.`,
+        });
+      }
     }
   };
   walkItems(block.items);
@@ -1716,16 +1730,20 @@ function gluedHole(item: Declaration, findings: Finding[]): void {
       (after !== undefined && (after.kind === "hole" || (after.kind === "text" && !startsWithSpace(after.text))));
     if (!glued) continue;
 
+    /**
+     * Over the HOLE, and every one of them — the same two faults `hole-in-a-named-block` had, and
+     * the same data sitting unread in `part`. The message says "put the unit inside the hole", so
+     * the hole is what the author edits and what the squiggle belongs on.
+     */
     findings.push({
       rule: "glued-hole",
-      at: item.valueAt ?? item.at ?? 0,
-      length: Math.max(1, (item.end ?? 0) - (item.valueAt ?? 0)),
+      at: part.at ?? item.valueAt ?? item.at ?? 0,
+      length: part.length ?? Math.max(1, (item.end ?? 0) - (item.valueAt ?? 0)),
       message:
         "a hole becomes one custom property, and text written against it is not part of that value — " +
         "`{n}px` becomes `var(--…)px`, which computes to nothing and takes any earlier declaration " +
         "of the property with it. Put the unit inside the hole, or write `calc({n} * 1px)`.",
     });
-    return;
   }
 }
 
