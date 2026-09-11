@@ -74,16 +74,19 @@ describe("check-bundle", () => {
   });
 
   test("does NOT flag decorator text inside a string — why it parses instead of grepping", async () => {
-    // Measured on the real thing: core's DEV diagnostics put `@Host("div")` and
-    // `@Host("g")` into their suggestion messages, so four occurrences survive
-    // into any bundle that ships them. A grep for decorator syntax calls a
-    // perfectly good bundle broken; a parser does not care what is in a string.
+    // Measured on the real thing, `packages/core/dist/index.js` on 2026-09-04: five occurrences of
+    // `@Name(` survive into the shipped bundle — `@StableProps("key")` inside a fix message, and
+    // `@interval("1s")` inside a comment that shows what throws. A grep for decorator syntax calls
+    // that perfectly good bundle broken; a parser does not care what is in a string.
+    //
+    // The measurement used to be about `@Host`, which core's diagnostics no longer mention because
+    // the decorator is gone. The claim held while the names did not.
     const stringy = join(dir, "stringy");
     await mkdir(stringy, { recursive: true });
     await writeFile(
       join(stringy, "diagnostics.js"),
-      'export const fix = `Become the <g>: give it @Host("g") and render inside.`;\n' +
-        "export const other = { suggestion: '@Host(\"div\")' };\n",
+      'export const fix = `Name the set once: @StableProps("key") merges along the class chain.`;\n' +
+        "export const other = { suggestion: '@onWindow(\"resize\")' };\n",
     );
 
     const { code, output } = await runGuard(stringy);

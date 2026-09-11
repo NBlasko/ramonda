@@ -124,8 +124,9 @@ if (__DEV__) {
    * not defined`.
    *
    * The panel IS a custom element, so the registry is the capability that actually has to exist.
-   * `NodeEnvironment.test.ts` imports this module with no DOM at all, which is the check that
-   * would have caught it.
+   * What holds that today is `scripts/check-bare-import.mjs`: it imports every published entry, dev
+   * and production, in its own Node process with no DOM, and `@ramonda/core` is not on its
+   * browser-only list — so a top-level browser API here fails that gate rather than a page.
    */
   if (typeof customElements !== "undefined" && typeof window !== "undefined") {
     /**
@@ -140,6 +141,10 @@ if (__DEV__) {
      *
      * `whenDefined` is the honest hook: it fires for either route — core's own import when
      * the specifier happens to resolve, or the app's explicit one.
+     *
+     * `DevtoolsPanelWiring.test.ts` holds the shape, and it has to read this source to do it: in a
+     * test run `@ramonda/devtools` is a devDependency, so the import below RESOLVES and the panel
+     * appears either way. Which is exactly how the bug survived being tested.
      */
     void customElements.whenDefined("ramonda-devtools").then(() => {
       if (!document.querySelector("ramonda-devtools")) {
