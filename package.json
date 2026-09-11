@@ -27,12 +27,12 @@
     "extension:package": "node scripts/package-extension.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.11",
-    "@changesets/changelog-github": "^0.7.0",
-    "@changesets/cli": "^2.31.1",
-    "@vitest/coverage-v8": "^4.1.11",
-    "mdn-data": "^2.27.1",
-    "oxlint": "^1.81.0",
+    "@biomejs/biome": "^2.5.12",
+    "@changesets/changelog-github": "^1.0.1",
+    "@changesets/cli": "^3.0.2",
+    "@vitest/coverage-v8": "^5.0.0",
+    "mdn-data": "^2.35.0",
+    "oxlint": "^1.82.0",
     "turbo": "^2.10.12",
     "typescript": "5.9.3"
   },

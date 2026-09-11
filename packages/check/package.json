@@ -58,10 +58,10 @@
   "devDependencies": {
     "@ramonda/css": "workspace:*",
     "@ramonda/dom-facts": "workspace:*",
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.5.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vite": "7.3.6",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }
