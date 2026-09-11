@@ -2682,3 +2682,77 @@ describe("every line comment", () => {
     expect(comments(source)).toEqual([]);
   });
 });
+
+/**
+ * **`! important` WITH A SPACE IS VALID CSS, and it was reported as a value that does not exist.**
+ *
+ * The value scanner steps over `!important` by skipping from the bang to the next SPACE — so a
+ * space right after the bang stops the skip at the bang, and `important` is then read as a bare word
+ * in the value.
+ *
+ *     color: red ! important;   `color` does not accept `important`.
+ *
+ * Measured in Chromium, which is the only authority on this: `! important`, `!  important`,
+ * `!IMPORTANT` and even `!/**` + `*` + `/important` all make the declaration win, and `!importantt`
+ * does not. So four of the five spellings are importance and one is a typo — and the one we refused
+ * is valid.
+ *
+ * The pattern is the one `againstRegisteredSyntax` above already uses for the same question on a
+ * custom property's value: one question, one answer.
+ */
+describe("the important flag", () => {
+  test.each([
+    ["written plainly", "color: red !important;"],
+    ["with a space after the bang", "color: red ! important;"],
+    ["with more whitespace", "color: red  !  important;"],
+    ["in capitals", "color: red !IMPORTANT;"],
+    ["mixed case", "color: red !Important;"],
+    ["on a custom property", "--brand: red ! important;"],
+    ["on a shorthand", "padding: 4px ! important;"],
+  ])("%s is CSS, not a value", (_what, written) => {
+    expect(checkNamedFree(written)).toEqual([]);
+  });
+
+  /**
+   * **A MISSPELT FLAG DROPS THE DECLARATION**, and nothing said so — the old scanner stepped over
+   * anything after a bang, so a typo was as silent as the real thing.
+   *
+   * Measured in Chromium by inserting the rule and reading its declarations back:
+   *
+   *     color: red !important; gap: 8px;    3 declarations kept
+   *     color: red !importantt; gap: 8px;   2 — the colour is gone, the gap survives
+   *     color: red !urgent; …               2
+   *     color: red !; …                     2
+   *
+   * So the author's declaration silently does not apply, which is the failure this package exists
+   * for. `unknown-value` is the wrong id — the word is not a value — so this has its own.
+   */
+  test.each([
+    ["a typo", "color: red !importantt;", "importantt"],
+    ["another word", "color: red !urgent;", "urgent"],
+    ["a typo after a space", "color: red ! importnat;", "importnat"],
+  ])("%s drops the declaration and is reported", (_what, written, word) => {
+    const found = checkNamedFree(written);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("unknown-flag");
+    expect(found[0].message).toContain(word);
+    // The squiggle is on the flag, not on the whole declaration.
+    expect(found[0].length).toBeLessThanOrEqual(word.length + 2);
+  });
+
+  /** The bang alone is the same fault, with nothing to name. */
+  test("a bang with nothing after it is reported", () => {
+    const [found] = checkNamedFree("color: red !;");
+
+    expect(found.rule).toBe("unknown-flag");
+  });
+
+  /** And a bang inside a value is not a flag at all — only a trailing one is. */
+  test.each(['content: "!important";', "background: url(a!b.png);", 'content: "a ! b";'])(
+    "%s carries no flag",
+    (written) => {
+      expect(checkNamedFree(written).filter((one) => one.rule === "unknown-flag")).toEqual([]);
+    },
+  );
+});

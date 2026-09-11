@@ -463,3 +463,64 @@ describe("a width written the other ways CSS allows", () => {
     },
   );
 });
+
+/**
+ * **`!important` IS A DIFFERENT DECLARATION, and it was treated as the same one written twice.**
+ *
+ * A key answers *what does this set*, and two declarations with one key are the same thing set twice
+ * where the later wins. `!important` breaks that: it wins whatever the order. Measured in Chromium
+ * against the same CSS by hand:
+ *
+ *     color: rgb(1, 0, 0) !important;  color: rgb(2, 0, 0);
+ *         plain CSS  rgb(1, 0, 0)      ours  rgb(2, 0, 0)
+ *
+ * The important declaration was dropped from the map entirely — its rule was still written into the
+ * stylesheet, where nothing named it. So the author's strongest declaration silently did not apply,
+ * and its CSS shipped as bytes no element could reach.
+ *
+ * **The repair is to stop deciding and let CSS decide.** With its own key both classes land, and the
+ * browser resolves them exactly as it resolves hand-written CSS — including the layer reversal that
+ * `!important` causes, which was measured in the real layer scheme rather than reasoned about: four
+ * cases, all agreeing, one of them across a media query.
+ */
+describe("an important declaration", () => {
+  test("is not the same key as the plain one it sits beside", () => {
+    const [first, second] = keys("  color: rgb(1, 0, 0) !important;\n  color: rgb(2, 0, 0);");
+
+    expect(first).not.toBe(second);
+  });
+
+  test.each([
+    ["written the plain way", "color: red !important;"],
+    ["with a space after the bang", "color: red ! important;"],
+    ["in capitals", "color: red !IMPORTANT;"],
+    ["with more whitespace", "color: red  !  important;"],
+  ])("%s takes the important key", (_what, body) => {
+    const [plain] = keys("color: blue;");
+    const [important] = keys(body);
+
+    expect(important).not.toBe(plain);
+    // The SAME key whichever way it is spelt, so one declaration is one thing.
+    expect(important).toBe(keys("color: red !important;")[0]);
+  });
+
+  /** And a word that merely starts with `!` is not importance. */
+  test.each(["color: red !importantt;", "color: red !notimportant;"])("%s is not important", (body) => {
+    expect(keys(body)[0]).toBe(keys("color: blue;")[0]);
+  });
+
+  /** Two important declarations of one property ARE the same thing set twice — the later wins. */
+  test("two important declarations share a key", () => {
+    const [first, second] = keys("  color: rgb(1, 0, 0) !important;\n  color: rgb(2, 0, 0) !important;");
+
+    expect(first).toBe(second);
+  });
+
+  /** The context is still part of the key, so importance does not flatten two conditions into one. */
+  test("importance does not erase the condition", () => {
+    const plain = keys("color: red !important;")[0];
+    const underMedia = keys("  @media (min-width: 1px) { color: red !important; }")[0];
+
+    expect(underMedia).not.toBe(plain);
+  });
+});

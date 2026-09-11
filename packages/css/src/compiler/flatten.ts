@@ -249,6 +249,12 @@ export type AtomicSegment =
     };
 
 /** Every declaration a block makes, ignoring how it is composed. */
+/**
+ * `!important`, however it is spelt — the same pattern `rules.ts` matches for a custom property's
+ * value, because it is the same question asked of the same text.
+ */
+const IMPORTANT = /!\s*important\s*$/i;
+
 export function flatten(block: Block): AtomicDeclaration[] {
   return segments(block).flatMap((one) => (one.kind === "declarations" ? one.items : []));
 }
@@ -347,8 +353,29 @@ function declarationOf(
   const canonical = `${property}:${collapse(value)};`;
   const sorted = mayBeSorted(conditions) ? [...conditions].sort() : [...conditions];
 
+  /**
+   * **`!important` IS A DIFFERENT DECLARATION**, and it was the same key as the plain one beside it.
+   *
+   * A key answers *what does this set*, and two declarations sharing one are the same thing set
+   * twice, where the later wins. `!important` breaks that rule: it wins whatever the order.
+   * Measured in Chromium against the same CSS by hand —
+   * `color: rgb(1,0,0) !important; color: rgb(2,0,0)` gives `rgb(1,0,0)` there and gave `rgb(2,0,0)`
+   * here, because the important declaration was dropped from the map and only its unreachable rule
+   * reached the stylesheet.
+   *
+   * With its own key both classes land and **CSS decides**, which is this package's whole premise.
+   * That includes the layer REVERSAL `!important` causes, which was measured in the real layer
+   * scheme rather than reasoned about: four cases, all agreeing with plain CSS, one across a media
+   * query.
+   *
+   * The spelling is the one `rules.ts` already uses for the same question on a custom property —
+   * optional whitespace after the bang, and case-insensitive, because both are valid CSS and a
+   * browser reads all of them as importance.
+   */
+  const important = IMPORTANT.test(value);
+
   return {
-    key: [...sorted, ...(selector === "" ? [] : [selector]), property].join("|"),
+    key: [...sorted, ...(selector === "" ? [] : [selector]), important ? `${property}!` : property].join("|"),
     property,
     canonical,
     // The context first, so two rules differing only in it are visibly different text to hash.

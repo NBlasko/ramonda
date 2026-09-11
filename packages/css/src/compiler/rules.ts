@@ -103,6 +103,7 @@ export const RULE_IDS = [
   "ignore-without-a-reason",
   "unknown-prefix",
   "unknown-at-rule",
+  "unknown-flag",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -1166,6 +1167,7 @@ function walk(items: readonly BlockItem[], findings: Finding[], body?: string): 
     const before = findings.length;
     runOn(item, findings);
     if (findings.length === before && body === undefined) unknownValue(item, findings);
+    unknownFlag(item, findings);
     stringNotAllowed(item, findings);
     unknownUnit(item, findings);
     gluedHole(item, findings);
@@ -1620,6 +1622,71 @@ function unknownAtRule(rule: NestedRule, name: string, findings: Finding[]): voi
       `inside it, not just one. ` +
       (meant === undefined ? "Check the name." : `Did you mean \`${meant}\`?`),
   });
+}
+
+/**
+ * **A MISSPELT `!important`, which drops the declaration silently.**
+ *
+ * CSS has exactly one flag, and a bang at the end of a value that is not it makes the whole
+ * declaration invalid. Measured in Chromium by inserting the rule and counting what it holds:
+ *
+ *     color: red !important; gap: 8px;    3 declarations kept
+ *     color: red !importantt; gap: 8px;   2 — the colour is gone, the gap survives
+ *     color: red !urgent; …               2
+ *     color: red !; …                     2
+ *
+ * Nothing reported any of it, because the value scanner stepped over everything after a bang — a
+ * typo was as invisible as the real thing. `unknown-value` is the wrong id, since the word is not a
+ * value and the property does not decide what is allowed there: there is one flag, whatever the
+ * property.
+ *
+ * Only a TRAILING bang is a flag. One inside a string or a `url()` is ordinary text, which is why
+ * this asks the value's own parts rather than searching the text.
+ */
+function unknownFlag(item: Declaration, findings: Finding[]): void {
+  // A value carrying a hole is decided at render, so the text here is not the text that ships.
+  if (!item.value.every((part) => part.kind === "text")) return;
+  const written = item.value.map((part) => (part.kind === "text" ? part.text : "")).join("");
+
+  const bang = lastBangOutsideAString(written);
+  if (bang === -1) return;
+
+  const flag = written.slice(bang + 1).trim();
+  if (/^important$/i.test(flag)) return;
+
+  findings.push({
+    rule: "unknown-flag",
+    at: (item.valueAt ?? item.at ?? 0) + bang,
+    length: written.length - bang,
+    message:
+      (flag === ""
+        ? "a `!` at the end of a value is the start of `!important`, and there is nothing after it"
+        : `\`!${flag}\` is not a flag — CSS has one, \`!important\``) +
+      ", so a browser drops this declaration whole rather than reading the value. " +
+      "Write `!important`, or remove the `!`.",
+  });
+}
+
+/**
+ * The last `!` that is really a FLAG — not one inside a string or a function, where it is text.
+ *
+ * Measured in Chromium: `background: url(a!b.png)` is kept, and so is the same with a real
+ * `!important` after it. A flag sits at the top level of a value, after everything else.
+ */
+function lastBangOutsideAString(text: string): number {
+  let bang = -1;
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index);
+      continue;
+    }
+    if (code === 40 /* ( */) depth++;
+    else if (code === 41 /* ) */) depth = Math.max(0, depth - 1);
+    else if (code === 33 && depth === 0) bang = index;
+  }
+  return bang;
 }
 
 /**
@@ -2114,7 +2181,20 @@ function words(parts: readonly ValuePart[]): Word[] {
         continue;
       }
       if (code === 33 /* ! */) {
-        // `!important`, and anything else in that position is not a value word either.
+        /**
+         * `!important`, **and the space CSS allows after the bang.**
+         *
+         * This skipped from the bang to the next SPACE, so `! important` stopped the skip at the
+         * bang and `important` was then read as a bare word — *"`color` does not accept
+         * `important`"*, about valid CSS. Measured in Chromium: `! important`, `!  important`,
+         * `!IMPORTANT` and `!` + a comment + `important` all make the declaration win, and
+         * `!importantt` does not.
+         *
+         * Whitespace is stepped over first, then the word, so a word that merely begins with a bang
+         * is still a word and is still reported — which is what this rule is for.
+         */
+        index++;
+        while (index < text.length && isSpace(text.charCodeAt(index))) index++;
         while (index < text.length && !isSpace(text.charCodeAt(index))) index++;
         continue;
       }
