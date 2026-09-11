@@ -77,8 +77,16 @@ choice about this project, and a workspace setting is what other people on the p
 }
 ```
 
-Safe to set for a whole language rather than a folder: a file with no block is passed straight to
-biome, and a project without `@ramonda/css` is left untouched.
+**In the project's settings, never in your user settings.** `editor.defaultFormatter` decides which
+extension VS Code asks, and it does not fall through to another one:
+
+- In a project without `@ramonda/css` this extension has no command to run, returns no edits, and
+  format-on-save **silently does nothing** — Prettier and biome are never asked.
+- In a project that formats with Prettier it runs **biome** instead, because that is what the wrapper
+  wraps.
+
+Inside a project that uses biome it is safe for a whole language rather than a folder: a file with no
+block is passed straight to biome, with that project's own configuration.
 
 ## Where the colours apply
 

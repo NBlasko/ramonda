@@ -112,8 +112,20 @@ nothing, and a project that has not asked for the compiler should not be given o
 code --install-extension ramonda.css
 ```
 
-Or search **Ramonda CSS** in the Extensions panel. Then, if your project formats with **biome**, the
-extension is the formatter for the languages you write blocks in:
+Or search **Ramonda CSS** in the Extensions panel.
+
+Formatting then depends on what your project already uses, and the two answers are opposite.
+
+**Using Prettier? Keep Prettier, and do not touch `editor.defaultFormatter`.** `@ramonda/css` ships a
+Prettier plugin, so your usual formatter handles these files with nothing else to configure:
+
+```json
+{ "plugins": ["@ramonda/css/prettier"] }
+```
+
+**Using biome?** biome has no plugin surface for a syntax it cannot parse, so the formatting goes
+through this extension, which runs *your* biome with *your* config. Put it in the **project's own**
+`.vscode/settings.json`:
 
 ```json
 {
@@ -122,16 +134,17 @@ extension is the formatter for the languages you write blocks in:
 }
 ```
 
-If your project formats with **Prettier, keep Prettier** and leave `editor.defaultFormatter` alone —
-`@ramonda/css` ships a Prettier plugin, so your usual formatter handles these files with nothing else
-to configure:
+**Never put that line in your user settings.** `editor.defaultFormatter` decides which extension VS
+Code ASKS, and it does not fall through to another one:
 
-```json
-{ "plugins": ["@ramonda/css/prettier"] }
-```
+- In a project without `@ramonda/css`, this extension has no command to run, returns no edits, and
+  **format-on-save silently does nothing** — Prettier and biome are never asked. Nothing is broken
+  and nothing is formatted, which is the worst pair.
+- In a project that formats with Prettier, this runs **biome** instead, because that is what the
+  wrapper wraps. A whole file reformatted by the wrong tool.
 
-Either way a file with no block passes straight through, so this is safe to set for a whole language
-rather than for a folder.
+It is a per-project choice about which formatter owns your `.tsx` files, so it belongs in the project
+that made it.
 
 ## Check that it worked
 
