@@ -9,7 +9,7 @@ import { type VariableRead, type Variables, variablesIn } from "./variables";
 import { type Span, readBlock, tryReadBlock } from "./read";
 import { refuse } from "./errors";
 import { ignoredIn, isIgnored } from "./ignore";
-import { checkBlock, checkNamedSite, checkText } from "./rules";
+import { checkBlock, checkNamedSite, checkSite, checkText } from "./rules";
 import { type BlockSite, afterShebang, findBlocks, mayHoldABlock } from "./scan";
 
 /**
@@ -267,8 +267,16 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * position, the build stops at one anyway, and `ramonda-check` is what lists them all.
      */
     // A site whose NAME is not one this compiles gets that one finding and no more — there is no
+    /**
+     * **The SITE first, then the block.** A bare JSX attribute is no longer a spelling this compiles,
+     * and a block written that way must be refused before anything reads its CSS — reporting a
+     * property inside a block whose spelling is wrong sends a reader after the wrong thing.
+     *
+     * This seam is also where the rule moved from. It was `checkSite` in `plugin.ts` alone, drawn as
+     * a suggestion the build never saw, which was right while the spelling was supported.
+     */
     // shape to check its body against, so anything else said about it is a guess. See `checkedSource`.
-    const siteFindings = checkNamedSite(site);
+    const siteFindings = [...checkSite(source, site), ...checkNamedSite(site)];
     const [finding] = (
       siteFindings.length > 0
         ? siteFindings

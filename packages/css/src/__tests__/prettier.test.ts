@@ -21,7 +21,7 @@ const format = (source: string) => prettier.format(source, { parser: "typescript
 describe("without the plugin", () => {
   test("Prettier refuses a file holding a block, which is why this package ships one", async () => {
     await expect(
-      prettier.format(`const a = <div css=@@( display: flex; )>y</div>;\n`, { parser: "typescript" }),
+      prettier.format(`const a = <div css={@@( display: flex; )}>y</div>;\n`, { parser: "typescript" }),
     ).rejects.toThrow(/expected/);
   });
 });
@@ -48,7 +48,7 @@ describe("with it", () => {
    * two compile to the same class, and the braced spelling is the one to reach for anyway.
    */
   test("a bare attribute comes back braced, and nothing else about it moves", async () => {
-    const out = await format(`const a = <div css=@@(\n  display: flex;\n)>y</div>;\n`);
+    const out = await format(`const a = <div css={@@(\n  display: flex;\n)}>y</div>;\n`);
 
     expect(out).toContain("css={@@(");
     expect(out).not.toContain("css=@@(");
@@ -68,7 +68,7 @@ describe("with it", () => {
     for (const source of [
       `const panel = @@(\n  display: flex;\n);\n`,
       `const a = <div id="x" css={@@(\n  display: flex;\n)}>y</div>;\n`,
-      `const a = <div css=@@(\n  display: flex;\n)>y</div>;\n`,
+      `const a = <div css={@@(\n  display: flex;\n)}>y</div>;\n`,
     ]) {
       const once = await format(source);
       expect(await format(once)).toBe(once);
@@ -90,13 +90,13 @@ describe("with it", () => {
    * REPLACED by a copy of the block. The author's text, gone, from a formatter run.
    */
   test("a template literal that looks like the placeholder is left alone", async () => {
-    const source = "const a = <div css=@@( color: red; )>x</div>;\nconst note = `@ramonda-css-block:0`;\n";
+    const source = "const a = <div css={@@( color: red; )}>x</div>;\nconst note = `@ramonda-css-block:0`;\n";
 
     expect(await format(source)).toContain("`@ramonda-css-block:0`");
   });
 
   test("and the block beside it is still formatted", async () => {
-    const source = "const a = <div css=@@(\ncolor: red;\n)>x</div>;\nconst note = `@ramonda-css-block:0`;\n";
+    const source = "const a = <div css={@@(\ncolor: red;\n)}>x</div>;\nconst note = `@ramonda-css-block:0`;\n";
     const out = await format(source);
 
     expect(out).toContain("  color: red;");
@@ -119,7 +119,7 @@ describe("with it", () => {
    * repository's recurring fault with a source rewrite on the end of it.
    */
   test("a nested rule keeps its own step", async () => {
-    const source = "const a = <div css=@@(\n  color: red;\n  &:hover {\n    color: blue;\n  }\n)>x</div>;\n";
+    const source = "const a = <div css={@@(\n  color: red;\n  &:hover {\n    color: blue;\n  }\n)}>x</div>;\n";
     const out = await format(source);
     const inside = out.split("\n").filter((line) => line.includes("color: blue"))[0];
     const hover = out.split("\n").filter((line) => line.includes("&:hover"))[0];
@@ -129,7 +129,7 @@ describe("with it", () => {
 
   test("and two levels stay two levels", async () => {
     const source =
-      "const a = <div css=@@(\n  &:hover {\n    @media print {\n      color: blue;\n    }\n  }\n)>x</div>;\n";
+      "const a = <div css={@@(\n  &:hover {\n    @media print {\n      color: blue;\n    }\n  }\n)}>x</div>;\n";
     const out = await format(source);
     const width = (needle: string) => {
       const line = out.split("\n").filter((one) => one.includes(needle))[0];
@@ -142,7 +142,7 @@ describe("with it", () => {
 
   /** And formatting what it produced changes nothing more, which is what makes it safe to run. */
   test("formatting twice is formatting once", async () => {
-    const source = "const a = <div css=@@(\n  color: red;\n  &:hover {\n    color: blue;\n  }\n)>x</div>;\n";
+    const source = "const a = <div css={@@(\n  color: red;\n  &:hover {\n    color: blue;\n  }\n)}>x</div>;\n";
     const once = await format(source);
 
     expect(await format(once)).toBe(once);
@@ -151,7 +151,7 @@ describe("with it", () => {
   /** Two of them, so the grown marker has to clear the file rather than the first occurrence. */
   test("several of them are all left alone", async () => {
     const source =
-      "const a = <div css=@@( color: red; )>x</div>;\n" +
+      "const a = <div css={@@( color: red; )}>x</div>;\n" +
       "const one = `@ramonda-css-block:0`;\nconst two = `@ramonda-css-block:1`;\n";
     const out = await format(source);
 

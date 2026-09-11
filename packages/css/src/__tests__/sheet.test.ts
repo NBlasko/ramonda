@@ -719,7 +719,7 @@ describe("the order one file's stylesheet comes out in", () => {
   const CONDITIONS = (first: "height" | "hover") => {
     const h = `  @media (min-height: 40rem) { color: blue; }\n`;
     const p = `  @media (hover: hover) { color: green; }\n`;
-    return `const a = <div css=@@(\n${first === "height" ? h + p : p + h})>x</div>;\n`;
+    return `const a = <div css={@@(\n${first === "height" ? h + p : p + h})}>x</div>;\n`;
   };
 
   const blocksOf = (code: string, file: string) => transform(code, { filename: file })?.blocks ?? [];
@@ -768,10 +768,10 @@ describe("the order one file's stylesheet comes out in", () => {
    */
   test("a file whose own order contradicts the rank does not compile at all", () => {
     const source =
-      `const a = <div css=@@(\n` +
+      `const a = <div css={@@(\n` +
       `  @media (min-width: 40rem) { color: blue; }\n` +
       `  color: red;\n` +
-      `)>x</div>;\n`;
+      `)}>x</div>;\n`;
 
     expect(() => blocksOf(source, "/a.tsx")).toThrow(/will not/);
   });
@@ -779,10 +779,10 @@ describe("the order one file's stylesheet comes out in", () => {
   /** And written the way it compiles, the two agree — which is the same claim from the other side. */
   test("and written the way it compiles, the emitted order is both at once", () => {
     const source =
-      `const a = <div css=@@(\n` +
+      `const a = <div css={@@(\n` +
       `  color: red;\n` +
       `  @media (min-width: 40rem) { color: blue; }\n` +
-      `)>x</div>;\n`;
+      `)}>x</div>;\n`;
     const sheet = new Sheet();
     sheet.add("/a.tsx", blocksOf(source, "/a.tsx"));
 
@@ -809,7 +809,7 @@ describe("the order one file's stylesheet comes out in", () => {
  */
 describe("where the class goes in a nested selector", () => {
   const ruleFor = (css: string) => {
-    const source = `const a = <div css=@@(\n${css}\n)>x</div>;\n`;
+    const source = `const a = <div css={@@(\n${css}\n)}>x</div>;\n`;
     const sheet = new Sheet();
     const blocks = transform(source, { filename: "/a.tsx" })?.blocks ?? [];
     sheet.add("/a.tsx", blocks);

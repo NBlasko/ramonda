@@ -35,7 +35,7 @@ import { findBlocks } from "../compiler/scan";
 
 /** The findings for one block's text, which is how a person reads a rule's claim. */
 function check(css: string): Finding[] {
-  const source = `<div css=@@(\n${css}\n)>x</div>`;
+  const source = `<div css={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
   // Both halves, the way the real callers ask: the parse for what a declaration says, the text for
@@ -285,7 +285,7 @@ describe("the two generated lists, which are not the same list", () => {
 
 describe("more than one fault in a block", () => {
   test("comes back in the order a person reads the block", () => {
-    const source = `<div css=@@(\n  display: flexx;\n  flex-dirction: row;\n  overflow: hiddn;\n)>x</div>`;
+    const source = `<div css={@@(\n  display: flexx;\n  flex-dirction: row;\n  overflow: hiddn;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -316,7 +316,7 @@ describe("more than one fault in a block", () => {
 
 describe("what a finding carries", () => {
   test("the position of the fault itself, not of the block", () => {
-    const source = `<div css=@@(\n  display: flex;\n  flex-dirction: row;\n)>x</div>`;
+    const source = `<div css={@@(\n  display: flex;\n  flex-dirction: row;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -325,7 +325,7 @@ describe("what a finding carries", () => {
   });
 
   test("and a value fault points at the word, not at the declaration", () => {
-    const source = `<div css=@@(\n  border-left: 4px sollid red;\n)>x</div>`;
+    const source = `<div css={@@(\n  border-left: 4px sollid red;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -1871,7 +1871,7 @@ describe("a quoted string where the property has no place for one", () => {
   });
 
   test("the whole string is what is underlined, quotes included", () => {
-    const source = `<div css=@@(\n  color: "yellow";\n)>x</div>`;
+    const source = `<div css={@@(\n  color: "yellow";\n)}>x</div>`;
     const [site] = findBlocks(source);
     const [only] = checkBlock(readBlock(source, site.open, "Card.tsx", { tolerant: true }).block);
 
@@ -1907,7 +1907,7 @@ describe("a quoted string where the property has no place for one", () => {
 
   /** A project that means it can turn it off, the same as any other rule. */
   test("silenced by the project's own config", () => {
-    const source = `<div css=@@(\n  color: "yellow";\n)>x</div>`;
+    const source = `<div css={@@(\n  color: "yellow";\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -2017,7 +2017,7 @@ describe("valid CSS these rules must not report", () => {
    */
   describe("a unit that is not a unit because it is inside something", () => {
     const withUnits = (css: string) => {
-      const source = `<div css=@@(\n${css}\n)>x</div>`;
+      const source = `<div css={@@(\n${css}\n)}>x</div>`;
       const [site] = findBlocks(source);
       const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
       return checkBlock(read.block, { config: { units: ["px", "rem"] } }).map((one) => one.rule);
@@ -2291,6 +2291,139 @@ describe("a vendor prefix", () => {
 
     expect(found.message).toContain("-webkit-line-clamp");
   });
+});
+
+/**
+ * **A PSEUDO-CLASS THAT DOES NOT EXIST, and it drops the whole rule.**
+ *
+ * The shape this repository keeps finding: `SELECTORS` holds 129 pseudo-classes and pseudo-elements
+ * with their groups and their MDN links, `normalise.ts` reads it to canonicalise a prelude,
+ * `plugin.ts` reads it to hover one — and **no rule read it at all**. So `&:displaydd { … }` was
+ * silent, on a package whose whole claim is that a block is checked.
+ *
+ * Measured in Chromium, inserting a rule with two declarations and reading `cssRules` back: a
+ * pseudo-class the browser does not know keeps **zero rules**. `{"kept":0,"decls":0}`. Not one
+ * dropped declaration — every declaration beside it goes, and the element is left on what it
+ * inherited.
+ *
+ * ## Why the table is the oracle and the browser is not
+ *
+ * The three generated tables beside this one ask the ENGINES, because `mdn-data` was measured short
+ * three times. This one must not, and the same probe says why: **Chromium refuses 33 of the 129**.
+ * `:left`, `:right` and `:first` are paged-media; `::-ms-*` and `::-moz-*` belong to other engines;
+ * `:buffering`, `:playing` and `:seeking` are media ones it has not shipped. Every one is real CSS
+ * somewhere, and a rule that asked this browser would refuse valid CSS.
+ *
+ * Measured the other way too, which is the direction that matters: **0 of the 129 are reported.**
+ */
+describe("a pseudo-class that does not exist", () => {
+  const found = (prelude: string) =>
+    checkNamedFree(`${prelude} { color: red; }`).filter((one) => one.rule === "unknown-selector");
+
+  test.each([
+    ["the TODO's own case", "&:displaydd", ":display"],
+    ["a pseudo-element", "&::beforr", "::before"],
+    ["a functional one, by its name", "&:nth-chidl(2)", ":nth-child"],
+    ["one letter out", "&:hovr", ":hover"],
+  ])("%s is reported: %s", (_what, prelude, meant) => {
+    const [only, ...rest] = found(prelude);
+
+    expect(rest).toEqual([]);
+    expect(only.message).toContain(meant);
+    expect(only.message).toContain("the whole rule");
+  });
+
+  test.each([
+    ["a plain one", "&:hover"],
+    ["a pseudo-element", "&::before"],
+    ["a functional one, argument and all", "&:nth-child(2n+1)"],
+    ["a functional one with a selector inside", "&:not(.a)"],
+    ["a descendant class, which is not a pseudo at all", "& .title"],
+    ["an attribute selector", '&[data-theme="dark"]'],
+    ["a vendor pseudo-element, whose name is a browser's own", "&::-webkit-anything"],
+  ])("%s is left alone", (_what, prelude) => {
+    expect(found(prelude)).toEqual([]);
+  });
+
+  /**
+   * The ARGUMENT of a functional one is deliberately not read: `:nth-child(2n+1)`, `:not(.a)` and
+   * `:has(> img)` each have a grammar of their own, and a wrong argument is a different fault from a
+   * misspelled name. Only the name is checked.
+   */
+  test("a wrong argument is not this rule's business", () => {
+    expect(found("&:nth-child(banana)")).toEqual([]);
+  });
+
+  /** An at-rule prelude is `unknown-at-rule`'s, and the two must not both fire. */
+  test("an at-rule prelude is left to its own rule", () => {
+    expect(found("@medai (min-width: 40rem)")).toEqual([]);
+  });
+
+  /**
+   * **The scan is a linear walk, and it was a regex until CodeQL measured it.**
+   *
+   * The first version matched `::?[a-z-]+(?:\([^)]*\))?` with `matchAll`. CodeQL flagged it as a
+   * polynomial regular expression on uncontrolled data and named the input: a string of `:-(`.
+   * Measured, and it is real — the optional group opens a paren, `[^)]*` runs to the end of the
+   * string looking for a `)` that is not there, and backtracks, once per starting position:
+   *
+   *      500 repeats   1.3 ms
+   *     1000 repeats   4.5 ms
+   *     2000 repeats  17.7 ms
+   *     4000 repeats  68.1 ms      — double the input, quadruple the time
+   *
+   * Not an attack: the input is the author's own stylesheet. But a prelude with many parens is not
+   * exotic — `:not(:is(:has(…)))` is ordinary CSS — and a cliff in a checker an editor runs on every
+   * keystroke is worth removing. The walk that replaced it visits each character a bounded number of
+   * times: 8000 repeats measure 1.2 ms, sixteen times the input of the 68 ms row.
+   *
+   * **No duration is asserted here**, per `vitest.timeout.mjs`: a test that asserts a time measures
+   * whatever else the machine was doing. What the rows below hold is the BEHAVIOUR the rewrite had
+   * to keep, which is the part that would break silently.
+   */
+  test.each([
+    ["a URL in an attribute value, whose `://` is not a pseudo", '&[href^="https://x.dev"]'],
+    ["a lone colon", "&:"],
+    ["two lone colons", "&::"],
+    ["a selector list, both halves real", "a:hover, b:focus"],
+    ["a name inside a functional one", "&:has(:hover)"],
+    ["a TYPO inside a functional one, which is the argument's business", "&:is(:hovr)"],
+  ])("%s says nothing", (_what, prelude) => {
+    expect(found(prelude)).toEqual([]);
+  });
+
+  test("two pseudos on one selector are read separately", () => {
+    const [only, ...rest] = found("&:hover::beforr");
+
+    expect(rest).toEqual([]);
+    expect(only.message).toContain("::beforr");
+  });
+
+  /** The shape CodeQL named. What is asserted is that it terminates and says nothing, not how fast. */
+  test("a prelude of many unclosed parens terminates", () => {
+    expect(found(`&${":-(".repeat(4000)}`)).toEqual([]);
+  });
+
+  /**
+   * **The four CSS2 pseudo-elements written with ONE colon, which this rule got wrong first time.**
+   *
+   * `SELECTORS` holds them only as `::before` and their kind, so the first version of this reported
+   * `&:before` as a name CSS does not have — refusing valid CSS, which is the one failure this
+   * package may not have. Every browser still accepts them, and the gate caught it on
+   * `non-canonical-spelling`'s own test.
+   *
+   * They are not silent, they belong to the OTHER rule, which says to write `&::before` — the more
+   * useful sentence. One fault, one report.
+   */
+  test.each([":before", ":after", ":first-line", ":first-letter"])(
+    "`&%s` is valid CSS and is left to `non-canonical-spelling`",
+    (pseudo) => {
+      const all = checkNamedFree(`&${pseudo} { color: red; }`);
+
+      expect(found(`&${pseudo}`)).toEqual([]);
+      expect(all.map((one) => one.rule)).toEqual(["non-canonical-spelling"]);
+    },
+  );
 });
 
 /**

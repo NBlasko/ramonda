@@ -1,5 +1,13 @@
 # Ramonda CSS
 
+## 0.1.3
+
+- Rewrote *Where the colours apply*. `@ramonda/css@0.2.0` refuses a block written as a bare
+  `css=@@( … )` attribute — a block is a TypeScript value, and a bare attribute is the one shape only
+  JSX has. Nothing in this extension changes: it still colours that spelling, because a grammar
+  colours and does not decide what compiles, and taking it out would spread the error to the end of
+  the file. The red line comes from the language-service plugin, under the attribute name.
+
 ## 0.1.2
 
 - A conditional group is written `if ({ … })`. It was `@@if`, and `@@` now opens a style block and

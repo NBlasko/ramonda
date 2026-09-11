@@ -4,10 +4,10 @@ A style block written in real CSS beside the markup. At build time the static de
 class in a stylesheet and each carried expression becomes a CSS custom property on the element.
 
 ```
-<div css=@@(
+<div css={@@(
   display: flex;
   border-left: {isOnline ? "4px solid #10b981" : "4px solid #64748b"};
-)>
+)}>
 ```
 
 [readme:start]: #
@@ -29,19 +29,24 @@ Documentation: **[ramonda.dev/style-blocks](https://ramonda.dev/style-blocks)**
 
 [readme:end]: #
 
-## Three ways to write one
+## Two places it goes
+
+A block is a **value**, so it goes anywhere a value goes:
 
 ```tsx
-<div css=@@( display: flex; )>…</div>            a bare JSX attribute
-<div css={@@( display: flex; )}>…</div>          a value, in the braces JSX already has
+<div css={@@( display: flex; )}>…</div>          in the braces JSX already has
 const panel = @@( display: flex; );              a value, outside JSX
 ```
 
-Same class, same hash, same holes — only what is replaced differs. **Prefer one of the braced forms
-when the tag has other props**, and the reason is an editor limit rather than taste: an editor stops
-consulting syntax injections the moment it enters a tag's attribute list, so a bare attribute is only
-coloured when it is the first one, on the tag name's own line. In expression position there is no
-such limit.
+Same class, same hash, same holes — only what is replaced differs. Nothing about a block requires
+JSX: **this extends TypeScript, not JSX**, and a block in a `.ts` file with no markup works the same
+way.
+
+`css=@@( … )` — a bare JSX attribute, with no braces — was a third spelling and is refused now, with
+a message naming the one to write. It could only be coloured as the first attribute on the tag's own
+line, because an editor stops consulting syntax injections the moment it enters an attribute list;
+and Prettier rewrote it to the braced form anyway, so the file you saved was not the file you
+wrote.
 
 ## Builds
 
@@ -83,9 +88,9 @@ handled:
   { "plugins": ["@ramonda/css/prettier"] }
   ```
 
-  One thing it changes: a bare `css=@@( … )` comes back as `css={@@( … )}`. Prettier prints a quoted
-  attribute value itself and never offers a plugin the chance to print one, so the placeholder has to
-  be braced — and the two compile to the same class anyway.
+  Prettier prints an attribute value itself and never offers a plugin the chance to print one, which
+  is one of the two reasons the bare `css=@@( … )` spelling is no longer compiled: the formatter had
+  to hand back the braced form regardless.
 
 The syntax is not TypeScript, which is why this owns a parser and a virtual-file layer — the same way
 JSX is usable because somebody wrote the parser for it. Everything a block can say is type-checked:
@@ -130,7 +135,7 @@ const result = transform(readFileSync("Card.tsx", "utf8"), { filename: "Card.tsx
 The transform is what turns
 
 ```
-<div css=@@( display: flex; border-left: {accent}; )>
+<div css={@@( display: flex; border-left: {accent}; )}>
 ```
 
 into a `_merge({ … })` naming one class per declaration, with the expression handed to it as an

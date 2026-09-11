@@ -7,7 +7,7 @@ at-rules — with `{ … }` holes for TypeScript expressions. This extension col
 them on save.
 
 ```tsx
-<div css=@@(
+<div css={@@(
   display: flex;
   gap: 8px;
   border-left: 4px solid {this.accent};
@@ -82,18 +82,8 @@ biome, and a project without `@ramonda/css` is left untouched.
 
 ## Where the colours apply
 
-A bare `css=@@( … )` attribute is coloured when it is the **first attribute, on the tag name's own
-line**:
-
-```tsx
-<div css=@@(
-  display: flex;
-)>…</div>
-```
-
-VS Code stops consulting grammar injections once it is inside a tag's attribute list, so a bare
-block written after another attribute is not coloured. Write the block as a value and the limit is
-gone — any attribute, any line:
+**Everywhere a block is a value**, which since `@ramonda/css@0.2.0` is everywhere a block can be
+written — any attribute, any line, and outside JSX entirely:
 
 ```tsx
 <div
@@ -111,8 +101,12 @@ Blocks outside JSX are coloured wherever they are:
 const panel = @@( display: flex; );
 ```
 
-Colour is the only difference between the two spellings. A block compiles and is checked the same
-way whichever one you write.
+Both are the same value and compile to the same class.
+
+**A bare `css=@@( … )`, with no braces, is still coloured here** — this extension is a grammar and a
+grammar does not decide what compiles. `@ramonda/css` refuses that spelling from `0.2.0`: a block is
+a TypeScript value and a bare attribute is the one shape only JSX has. The red line comes from the
+language-service plugin, under the attribute name, and names the spelling to write.
 
 ## Other editors
 

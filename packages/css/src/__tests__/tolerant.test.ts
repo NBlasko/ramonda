@@ -30,7 +30,7 @@ const read = (source: string, tolerant: boolean) => {
 
 describe("what tolerance recovers", () => {
   test("a property with no colon yet becomes that property, with no value", () => {
-    const source = `<div css=@@( disp )>x</div>`;
+    const source = `<div css={@@( disp )}>x</div>`;
     const { block } = read(source, true);
 
     // `at` is where `disp` starts; `valueAt` is where a value would begin, which with nothing typed
@@ -48,7 +48,7 @@ describe("what tolerance recovers", () => {
   });
 
   test("the same inside a nested rule", () => {
-    const { block } = read(`<div css=@@( &:hover { col } )>x</div>`, true);
+    const { block } = read(`<div css={@@( &:hover { col } )}>x</div>`, true);
     const [rule] = block.items;
 
     expect(rule.kind).toBe("rule");
@@ -74,7 +74,7 @@ describe("what tolerance recovers", () => {
   test("and a hole in a position a custom property cannot occupy is kept as text", () => {
     // Refusing is right for a build and useless for an editor: the author is mid-thought, and taking
     // the whole file's completions away is not a way to tell them so. The CSS checker says it.
-    const { block } = read(`<div css=@@( {name}24px; )>x</div>`, true);
+    const { block } = read(`<div css={@@( {name}24px; )}>x</div>`, true);
 
     expect(block.items).toMatchObject([{ kind: "declaration" }]);
   });
@@ -82,30 +82,30 @@ describe("what tolerance recovers", () => {
 
 describe("what strict still refuses, because a build has no correct answer", () => {
   test.each([
-    ["a property with no colon", `<div css=@@( disp )>x</div>`],
+    ["a property with no colon", `<div css={@@( disp )}>x</div>`],
     ["a block with no closing paren", `<div css=@@( display: flex;\n`],
     ["a hole with no closing braces", `<div css=@@( color: {{accent`],
-    ["a hole as a property name", `<div css=@@( {name}; )>x</div>`],
+    ["a hole as a property name", `<div css={@@( {name}; )}>x</div>`],
   ])("%s", (_what, source) => {
     expect(() => read(source, false)).toThrow(CssBlockError);
   });
 
   test("and strict is the default, so nothing gets tolerance by forgetting to ask", () => {
-    const [site] = findBlocks(`<div css=@@( disp )>x</div>`);
+    const [site] = findBlocks(`<div css={@@( disp )}>x</div>`);
 
-    expect(() => readBlock(`<div css=@@( disp )>x</div>`, site.open, "Card.tsx")).toThrow(CssBlockError);
+    expect(() => readBlock(`<div css={@@( disp )}>x</div>`, site.open, "Card.tsx")).toThrow(CssBlockError);
   });
 });
 
 describe("a virtual file for an editor", () => {
   test("exists for a half-written block, which is when it is wanted", () => {
-    const file = virtualFile(`const a = <div css=@@( disp )>x</div>;\n`, { tolerant: true });
+    const file = virtualFile(`const a = <div css={@@( disp )}>x</div>;\n`, { tolerant: true });
 
     expect(file?.code).toContain("__block([{disp:");
   });
 
   test("and the strict one still refuses, so a build cannot get the tolerant reading by accident", () => {
-    expect(() => virtualFile(`const a = <div css=@@( disp )>x</div>;\n`)).toThrow(CssBlockError);
+    expect(() => virtualFile(`const a = <div css={@@( disp )}>x</div>;\n`)).toThrow(CssBlockError);
   });
 });
 
@@ -134,7 +134,7 @@ describe("a reading that has to end", () => {
     ["a brace that opens and never closes", `&:hover {`],
     ["everything at once", `} : ; &:hover { ) color: red;`],
   ])("%s is read and returns", (_what, css) => {
-    const source = `<div css=@@(\n  ${css}\n)>x</div>`;
+    const source = `<div css={@@(\n  ${css}\n)}>x</div>`;
     const [site] = findBlocks(source);
 
     // The claim is that this line is reached at all. A loop here does not fail a test, it hangs it.
@@ -180,12 +180,12 @@ describe("the column a refusal names", () => {
  */
 describe("what only the strict read refuses", () => {
   const strict = (css: string) => {
-    const source = `const x = <div css=@@(\n${css}\n)>y</div>;`;
+    const source = `const x = <div css={@@(\n${css}\n)}>y</div>;`;
     const [site] = findBlocks(source);
     return () => readBlock(source, site.open, "C.tsx");
   };
   const tolerant = (css: string) => {
-    const source = `const x = <div css=@@(\n${css}\n)>y</div>;`;
+    const source = `const x = <div css={@@(\n${css}\n)}>y</div>;`;
     const [site] = findBlocks(source);
     return readBlock(source, site.open, "C.tsx", { tolerant: true });
   };

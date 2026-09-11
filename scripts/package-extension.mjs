@@ -24,7 +24,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -120,9 +120,20 @@ if (wrong.length > 0) {
 
 /* ---- package ---------------------------------------------------------------------------------- */
 
-// A stale bundle beside a new one is the easiest wrong file to upload, so the name carries the
-// version and the old ones go. `*.vsix` is gitignored, so none of this was ever committed.
-for (const name of ["ramonda-css.vsix", out]) rmSync(join(here, name), { force: true });
+/**
+ * **Every other `.vsix` goes, not just the one about to be written.**
+ *
+ * The comment here used to say "the old ones go" while the code deleted exactly two names — the
+ * legacy fixed one and the file it was about to overwrite. So the first time a version was bumped,
+ * `ramonda-css-0.1.2.vsix` sat beside `ramonda-css-0.1.3.vsix` in the folder a person drags from,
+ * which is the failure the comment itself names. Caught by looking at the directory rather than at
+ * the script's own output, which reported success.
+ *
+ * `*.vsix` is gitignored, so nothing here was ever committed and nothing is lost by removing it.
+ */
+for (const name of readdirSync(here)) {
+  if (name.endsWith(".vsix")) rmSync(join(here, name), { force: true });
+}
 
 console.log(`[extension] ${id} ${manifest.version} — packaging\n`);
 execFileSync("pnpm", ["dlx", "@vscode/vsce@3", "package", "--no-dependencies", "--out", out], {

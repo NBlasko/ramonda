@@ -282,6 +282,7 @@ const CSS_LINES = {
   "unknown-flag": "a `!` at the end of a value that is not `!important`",
   "unknown-prefix": "a vendor prefix that is not one of the four",
   "unknown-at-rule": "an at-rule name CSS does not have",
+  "unknown-selector": "a pseudo-class or pseudo-element that is not one — the whole rule is dropped",
   "unknown-media-feature": "a media feature that will never match",
   "unknown-frame": "a keyframe selector that is not one",
   "unknown-named-block": "`@@name( … )` where the name is not a site this compiles",
@@ -296,7 +297,7 @@ const CSS_LINES = {
   "initial-value-and-syntax": "`@@property` with a syntax and no initial value",
   "line-comment": "a `//` comment, which CSS does not have",
   "run-on-declaration": "a missing `;`, so the next line joined this value",
-  "uncolourable-block": "something in a block that is not a declaration or a rule",
+  "block-as-a-jsx-attribute": "`css=@@( … )` — a block is a value, so it goes in the braces",
   "declaration-out-of-place": "a declaration where only a rule belongs",
   "rule-out-of-place": "a nested rule where only declarations belong",
   "at-rule-out-of-place": "an at-rule that names something for the whole stylesheet",
@@ -343,18 +344,18 @@ const cssRegion = [
   CSS_END,
 ].join("\n");
 
-const cssPage = join(here, "..", "content", "style-blocks.md");
+const cssPage = join(here, "..", "content", "style-blocks", "checking.md");
 const styleBlocks = replaceRegion(cssPage, CSS_START, CSS_END, cssRegion);
 if (styleBlocks.updated !== styleBlocks.text) {
   if (check) {
     console.error(
-      "[rules] the CSS rule table in style-blocks.md is out of date\n" +
+      "[rules] the CSS rule table in style-blocks/checking.md is out of date\n" +
         "        run `node scripts/build-rule-tables.mjs` and commit the result.",
     );
     process.exit(1);
   }
   writeFileSync(cssPage, styleBlocks.updated);
-  console.log(`[rules] style-blocks.md — ${cssIds.length} CSS rules`);
+  console.log(`[rules] style-blocks/checking.md — ${cssIds.length} CSS rules`);
 }
 
 /**

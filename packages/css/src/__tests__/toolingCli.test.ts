@@ -78,10 +78,10 @@ function run(root: string, args: string[]): { output: string; status: number } {
 
 const STYLED = `export const Card = (props: { id: string }) => {
   return (
-    <div css=@@(
+    <div css={@@(
       display: flex;
       border-left: {props.id};
-    )>
+    )}>
       <span>{props.id}</span>
     </div>
   );
@@ -101,7 +101,7 @@ describe("format", () => {
     // …and the block is still the author's own text, unreformatted.
     expect(out).toContain("display: flex;");
     expect(out).toContain("border-left: {props.id};");
-    expect(out).toContain("css=@@(");
+    expect(out).toContain("css={@@(");
   });
 
   /**
@@ -419,7 +419,7 @@ describe("a tool that says more than a megabyte", () => {
  *
  * The repair is to make the placeholder tell the truth about the block's shape: a multi-line block
  * is placeheld by something multi-line, so the element cannot fit on one line and biome breaks the
- * attributes itself. A ONE-LINE block keeps the short placeholder, because `css=@@( display: flex; )`
+ * attributes itself. A ONE-LINE block keeps the short placeholder, because `css={@@( display: flex; )}`
  * beside another attribute is a line the author chose and the formatter should be free to keep.
  */
 describe("a block beside another attribute", () => {

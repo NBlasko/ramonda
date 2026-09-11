@@ -300,11 +300,21 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         return cached === undefined ? [] : ours(cached.css, cached.author);
       };
 
-      /** What is true of the site rather than of its CSS, drawn as a suggestion. See `checkSite`. */
+      /**
+       * What is true of the SITE rather than of its CSS — see `checkSite`.
+       *
+       * **An error, at the category the rest of them use.** It was a suggestion, and that was right
+       * while the only thing `checkSite` said was "an editor will not colour this": nothing was
+       * wrong, and failing a file over a grammar nobody can see would have been the editor
+       * promising a page the build would have given anyway.
+       *
+       * The build refuses a bare attribute now, so the opposite is true — a yellow squiggle under
+       * something that does not compile is the editor promising a page the build will NOT give.
+       */
       const hintsFor = (fileName: string): ts.Diagnostic[] => {
         overlay(fileName, readSnapshot);
         const cached = cache.get(fileName);
-        return cached === undefined ? [] : ours(cached.hints, cached.author, 2 as ts.DiagnosticCategory);
+        return cached === undefined ? [] : ours(cached.hints, cached.author);
       };
 
       /**

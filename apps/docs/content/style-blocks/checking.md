@@ -1,0 +1,151 @@
+---
+title: What is checked
+description: Every fault a block can carry, reported where you wrote it — and the one way to say a rule is wrong about your line.
+section: Style blocks
+order: 108
+---
+
+# What is checked
+
+The syntax is not TypeScript, so the package owns a parser and a virtual-file layer — the same way
+JSX is usable because somebody wrote the parser for it. That layer is what buys the checking: a fault
+in a block arrives as an ordinary `tsc` diagnostic, on the character you wrote, in your own file.
+
+## What your editor tells you
+
+- **A property that does not exist** is TypeScript's own *did you mean*, on the property.
+- **A value the property does not take** is reported the same way, with the values it does take.
+  A property whose grammar admits a name nobody can judge — `animation-name: slidein` is yours to
+  pick — is left alone. A `url()` or a quoted string in the value does not make it one:
+  `cursor: url(a.cur), pointerr` is still reported, on `pointerr`.
+- **A hole is checked against the type the property accepts**, in the scope where it was written.
+  `this.weight` resolves to the field beside it, because the expression stays where you put it.
+- **A condition or a selector spelled two ways** is reported, with the spelling to use.
+  `@media (min-width:40rem)` and `@media (min-width: 40rem)` are the same CSS, so writing both is
+  writing two of what should be one thing.
+- **A quoted value on a property with no place for a string** is reported. Your editor completes a
+  value from a real union the way it completes any string literal, so `color: "yellow"` is an easy
+  thing to end up with — and it compiles, ships `color:"yellow"`, and is dropped by every browser.
+  `content: "hi"` and `font-family: "Brand"` are correct CSS and stay silent, because the question is
+  asked of each property's own grammar.
+
+## One spelling
+
+Two spellings of the same CSS are two things to search for and two to keep in step. Where a
+declaration, a condition or a selector has a canonical form, the other one is reported and the
+formatter writes the canonical one:
+
+```tsx expect-report:non-canonical-spelling
+const card = @@( COLOR: RED; );
+```
+
+CSS does not mind either. Your repository does.
+
+## Inside a named block, the vocabulary is its own
+
+`@@keyframes`, `@@font-face` and `@@property` each hold something different from an element's rule,
+and the check follows that:
+
+| written | what happens |
+|---|---|
+| `opacty: 1` in a frame | reported — a frame holds ordinary properties |
+| `form { … }` | reported — a frame is `from`, `to` or a percentage |
+| `opacity: 0` outside any frame | reported — it belongs to no time, so the browser drops it |
+| `@@font-face` with no `src` | reported — the descriptor is required, and the face would load nothing |
+| `font-familly: "Brand"` | reported, with the descriptor you meant |
+| `@@property` with no `inherits` | reported — measured, the browser drops the whole rule without it |
+| `initial-value` its `syntax` does not accept | reported — measured, the browser drops the whole rule for that too |
+| a registered property set to a value its `syntax` refuses | reported — measured, the browser keeps the `initial-value` and says nothing |
+| `&:hover { … }` in either | reported — a descriptor list has no element to select against |
+
+A hole may not go in one of these at all: a hole is a custom property **on an element**, and these
+name something the whole stylesheet uses, so there is no element for the value to come from.
+
+**A media feature that will never match is the row worth pausing on**, because it is not invalid CSS.
+Measured in Chromium, `@media (min-widht: 40rem)` survives a parse with its text intact — the browser
+keeps the rule and simply never matches it, so every declaration inside is silently inert. Nothing
+but this reports it.
+
+## When a rule is wrong
+
+**Every rule here fails the build.** There is no warning level, and that is deliberate: a warning
+nobody must act on is a warning nobody reads.
+
+So there is one way to say *I looked at this and it stays*:
+
+```
+/* ramonda-css-ignore a vendor stylesheet defines this one */
+display: flexx;
+```
+
+It covers **the next line only**, so it cannot creep past what you looked at. It works in a `//`
+comment too, for a finding about the block itself rather than about a line in it.
+
+**A reason is required.** A directive with nothing after it is refused, and does not exempt the line
+below it either:
+
+> a `ramonda-css-ignore` with no reason after it is a silence, not a record.
+
+And every one is printed on every run, whether or not anything failed:
+
+```
+[ramonda-css] 1 `ramonda-css-ignore`, honoured:
+
+  src/Card.tsx:12  a vendor stylesheet defines this one
+```
+
+That is what makes it a record rather than a silence. A reason that has stopped being true is one
+somebody meets, instead of one they would have to go looking for.
+
+## Every rule
+
+A typo in one of these ids is caught too: writing `unknown-unti` in
+[`ramonda.css.ts`](/style-blocks/settings) tells you so, and names the one you meant.
+
+[css-rules:start]: # "generated by scripts/build-rule-tables.mjs — edit the lines there"
+
+Every one of them fails the build. 33 of them, and each is a key you can switch off.
+
+| rule | reported when |
+|---|---|
+| `unknown-property` | a property name that is nearly one CSS has |
+| `unknown-value` | a word this property does not take |
+| `repeated-declaration` | the same property set twice to the same value |
+| `hole-out-of-place` | a hole where CSS needs text, like a property name |
+| `block-as-a-jsx-attribute` | `css=@@( … )` — a block is a value, so it goes in the braces |
+| `run-on-declaration` | a missing `;`, so the next line joined this value |
+| `line-comment` | a `//` comment, which CSS does not have |
+| `unknown-unit` | a unit CSS does not have |
+| `glued-hole` | text written against a hole, which is not part of its value |
+| `at-rule-out-of-place` | an at-rule that names something for the whole stylesheet |
+| `unknown-frame` | a keyframe selector that is not one |
+| `declaration-out-of-place` | a declaration where only a rule belongs |
+| `rule-out-of-place` | a nested rule where only declarations belong |
+| `override-out-of-order` | a declaration written to override one that will win anyway |
+| `variable-set-by-another-name` | a `var()` reading a name set with different capitals |
+| `hole-as-a-variable-name` | a hole naming a custom property rather than holding a value |
+| `initial-value-and-syntax` | `@@property` with a syntax and no initial value |
+| `unknown-media-feature` | a media feature that will never match |
+| `value-and-registered-syntax` | a value a registered custom property cannot hold |
+| `unit-not-allowed` | a unit your `ramonda.css.ts` does not allow |
+| `string-not-allowed` | a quoted value where the property takes a keyword |
+| `property-not-a-name` | a value that must name a property and does not |
+| `non-canonical-spelling` | one CSS written two ways — `ramonda-css format` fixes it |
+| `layer-in-a-block` | `@layer` inside a block, which the sheet already decides |
+| `spread-out-of-place` | `...{block}` somewhere a whole block cannot go |
+| `hole-in-a-named-block` | a hole in `@@keyframes( … )` and its kind, which have no element |
+| `unknown-named-block` | `@@name( … )` where the name is not a site this compiles |
+| `composition-in-a-named-block` | `...{block}` inside a named site, which composes nothing |
+| `ignore-without-a-reason` | `ramonda-css-ignore` with nothing after it |
+| `unknown-prefix` | a vendor prefix that is not one of the four |
+| `unknown-at-rule` | an at-rule name CSS does not have |
+| `unknown-selector` | a pseudo-class or pseudo-element that is not one — the whole rule is dropped |
+| `unknown-flag` | a `!` at the end of a value that is not `!important` |
+
+[css-rules:end]: #
+
+## Next
+
+- **[Project settings](/style-blocks/settings)** — switching a rule off, and making the rest
+  stricter than CSS is.
+- **[Tooling](/style-blocks/tooling)** — what your formatter and linter can and cannot read.

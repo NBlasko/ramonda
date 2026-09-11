@@ -24,7 +24,7 @@ const THEME = join(PACKAGE, "src", "__tests__", "theme.tsx");
 describe("the overlay cache and the modules a file reads", () => {
   const declares = `export const accent = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n`;
   const declaresNothing = `export const accent = "--not-a-site";\n`;
-  const card = `import { accent } from "./theme";\nexport const card = <div css=@@( color: var({accent}); )>x</div>;\n`;
+  const card = `import { accent } from "./theme";\nexport const card = <div css={@@( color: var({accent}); )}>x</div>;\n`;
 
   /** A host whose files and versions can both move, which the shared harness's cannot. */
   function project() {

@@ -50,7 +50,7 @@ const outputs = (result: esbuild.BuildResult) =>
   Object.fromEntries((result.outputFiles ?? []).map((file) => [file.path.split(".").pop(), file.text]));
 
 describe("a build", () => {
-  const APP = `const a = <div css=@@(\n  display: flex;\n  gap: 8px;\n)>x</div>;\nexport default a;\n`;
+  const APP = `const a = <div css={@@(\n  display: flex;\n  gap: 8px;\n)}>x</div>;\nexport default a;\n`;
 
   test("compiles the block, and the class is in both halves", async () => {
     const root = project({ "index.tsx": APP });
@@ -68,7 +68,7 @@ describe("a build", () => {
 
   test("a hole becomes a custom property the element carries", async () => {
     const root = project({
-      "index.tsx": `const w = 4;\nconst a = <div css=@@(\n  border-left: {\`\${w}px\`} solid red;\n)>x</div>;\nexport default a;\n`,
+      "index.tsx": `const w = 4;\nconst a = <div css={@@(\n  border-left: {\`\${w}px\`} solid red;\n)}>x</div>;\nexport default a;\n`,
     });
     const { js, css } = outputs(await build(root));
 
@@ -86,7 +86,7 @@ describe("a build", () => {
 
   /** The refusal has to arrive as a position in the author's file, not as a stack trace. */
   test("a block it cannot read is reported on the author's line", async () => {
-    const root = project({ "index.tsx": `const a = <div css=@@(\n  {whole}\n)>x</div>;\n` });
+    const root = project({ "index.tsx": `const a = <div css={@@(\n  {whole}\n)}>x</div>;\n` });
 
     await expect(build(root)).rejects.toMatchObject({
       errors: [expect.objectContaining({ location: expect.objectContaining({ line: 2 }) })],
@@ -140,8 +140,8 @@ describe("a build", () => {
 describe("a rebuild", () => {
   test("a file that loses its last block does not leave the sheet promising its class", async () => {
     const root = project({
-      "index.tsx": `import Card from "./Card";\nconst a = <div css=@@( display: flex; )>{Card}</div>;\nexport default a;\n`,
-      "Card.tsx": `const card = <div css=@@( color: red; )>x</div>;\nexport default card;\n`,
+      "index.tsx": `import Card from "./Card";\nconst a = <div css={@@( display: flex; )}>{Card}</div>;\nexport default a;\n`,
+      "Card.tsx": `const card = <div css={@@( color: red; )}>x</div>;\nexport default card;\n`,
     });
 
     const context = await esbuild.context({
@@ -202,7 +202,7 @@ export const panel = @@(\n  gap: {\`\${width}px\`};\n);
       "index.tsx": `import { c } from "./card";
 export default c;
 `,
-      "card.jsx": `export const c = <div css=@@( display: flex; )>x</div>;
+      "card.jsx": `export const c = <div css={@@( display: flex; )}>x</div>;
 `,
     });
 
@@ -245,7 +245,7 @@ describe("a build that writes to disk", () => {
    */
   test("is checked through the metafile", async () => {
     const root = project({
-      "index.tsx": `const a = <div css=@@(\n  display: flex;\n)>x</div>;
+      "index.tsx": `const a = <div css={@@(\n  display: flex;\n)}>x</div>;
 export default a;
 `,
     });
@@ -258,7 +258,7 @@ export default a;
 
   test("and says nothing when it can see neither", async () => {
     const root = project({
-      "index.tsx": `const a = <div css=@@( display: flex; )>x</div>;
+      "index.tsx": `const a = <div css={@@( display: flex; )}>x</div>;
 export default a;
 `,
     });
@@ -296,7 +296,7 @@ describe("which config a file is measured against", () => {
     for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
     writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
     writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px", "em"] };\n`);
-    const app = `const a = <div css=@@(\n  padding: 1em;\n)>x</div>;\nexport default a;\n`;
+    const app = `const a = <div css={@@(\n  padding: 1em;\n)}>x</div>;\nexport default a;\n`;
     for (const name of ["web", "admin"]) writeFileSync(join(repo, "packages", name, "index.tsx"), app);
     return repo;
   };

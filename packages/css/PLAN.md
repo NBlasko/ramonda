@@ -1859,6 +1859,9 @@ question, asked mechanically, found reviews 20, 21 and 24 on its own.
 | `ACCEPTS`, the value-type matchers | 4 of 12 — `<length-percentage>`, `<number>`, `<url>`, `<image>` — had **never been run**, in the rule that decides accept-or-refuse. All four measured RIGHT; none was held |
 | the two `.generated.ts` tables nothing imports | build INPUTS read as text by `build-css-properties.mjs`; they never reach `dist`, and they sit in the coverage denominator |
 | `lib.d.ts` shared across the 11 `ts.Program`s | 8.15 s -> **5.90 s** in tests, 75 still passing — and not nearly the 80x a 60 s per-test timeout would need |
+| an unknown pseudo-class, in Chromium | `{"kept":0,"decls":0}` — the **whole rule** goes, every declaration in it. `unknown-selector` reports it now |
+| Chromium against `SELECTORS` | it refuses **33 of 129** — `:left`, `::-ms-*`, `:playing` and their kind. So here the TABLE is the oracle and the engine is not, the opposite of the other three |
+| `unknown-selector` against all 129 | **0 falsely reported**, which is the direction that matters |
 | `pnpm lint` on a tree with no `dist` | **fails** — it runs `ramonda-css lint`, and `ramonda-css` is `bin.mjs` importing a build output. Invisible on every machine that has ever built; only a fresh checkout sees it |
 
 ## Still open
@@ -1874,7 +1877,6 @@ question, asked mechanically, found reviews 20, 21 and 24 on its own.
   |---|---|
   | `padding: 1px 2px 3px 4px 5px` | drops the declaration — arity is readable off the grammars already parsed |
   | `gap: 12` | drops it — 158 properties have ONE type per position, and the rule is right for 157 |
-  | `&:displaydd` | drops the **whole rule**, every declaration in it. `SELECTORS` has 129 entries and no rule reads them |
   | `@supports (min-width: 40rem)` | always TRUE — a group that can never be off, reading exactly like a breakpoint |
   | `@media (prefers-color-scheme: drak)` | never matches; the feature NAME is checked and its value is not |
   | `@-anything: 3` | one dropped declaration; a property name may not begin with `@` |

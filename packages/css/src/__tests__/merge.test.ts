@@ -320,7 +320,7 @@ describe("a value spread back in", () => {
    * THE SHAPE THE AUTHOR ACTUALLY WRITES, in the form the compiler emits it.
    *
    *     const base = @@( color: red; );
-   *     <div css=@@( ...{base}; color: {tint}; )>
+   *     <div css={@@( ...{base}; color: {tint}; )}>
    *
    *     _merge(base, {"color": ["r-OsXzXT1Qd", tint]})
    *
