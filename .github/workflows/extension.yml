@@ -24,11 +24,11 @@ jobs:
     name: Package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -54,7 +54,7 @@ jobs:
       # A GLOB, because the bundle carries its version: `ramonda-css-0.1.2.vsix`. The name used to be
       # fixed and this path was written out in full — which would have failed here, on a workflow
       # nothing runs automatically, long after the rename.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ramonda-css-vsix
           path: packages/css/vscode/*.vsix
