@@ -94,7 +94,24 @@ function setsNothing(entry: StyleEntry | StyleClears | undefined): boolean {
   if (entry === undefined || typeof entry === "string") return entry === undefined;
   for (let index = 1; index < entry.length; index++) {
     const value = entry[index];
-    if (value === undefined || value === null) return true;
+    /**
+     * **The empty string is this case too**, and it was not covered.
+     *
+     * Measured in Chromium, standards mode: a custom property set to the empty string substitutes as
+     * NOTHING, so the declaration reading it is invalid at computed-value time — `content: var(--c)`
+     * with `--c` empty computes to `none` rather than to `""`. An author who means `content: ""`
+     * passes the two quote characters, which is a different string.
+     *
+     * So it is exactly what the note above describes: a class that was never going to apply, only in
+     * the way of the one that would have. Left in, it took the base with it — measured through a real
+     * composition, `...{base}; color: {tint}` with an empty tint computed BLACK where the same two
+     * declarations by hand leave the base standing.
+     *
+     * **`0` and `false` are values and must not reach here.** `opacity: {o}` with `o = 0` is exactly
+     * what an author means, and it was measured working. This is a test for the absence of a value,
+     * not for falsiness.
+     */
+    if (value === undefined || value === null || value === "") return true;
   }
   return false;
 }

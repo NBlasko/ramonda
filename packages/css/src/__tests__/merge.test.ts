@@ -778,3 +778,59 @@ describe("a shorthand composed under a condition", () => {
     }
   });
 });
+
+/**
+ * **AN EMPTY STRING IS A HOLE THAT NEVER ARRIVED**, and it used to take the base with it.
+ *
+ * `setsNothing` drops an entry whose hole is `undefined` or `null`, with the reason written beside
+ * it: a declaration reading an unset `var()` is invalid at computed-value time and is dropped
+ * anyway, so its class "was only in the way of the one that would have applied". An empty string is
+ * the same case and was not covered.
+ *
+ * Measured in Chromium, standards mode. A custom property set to the empty string substitutes as
+ * NOTHING, so the declaration reading it is invalid — `content: var(--c)` with `--c` empty computes
+ * to `none`, not to `""`. An author who means `content: ""` passes the two quote characters, and
+ * that is a different string.
+ *
+ * And by hand the base survives, which is what this now matches:
+ *
+ *     color: rgb(1,0,0); color: ;     plain CSS  rgb(1,0,0)      ours, before  rgb(0,0,0)
+ *
+ * **`0` is NOT this case and must not become it.** `opacity: {o}` with `o = 0` is exactly what an
+ * author means, and it was measured working. The same for `""` where the author wrote the quotes.
+ */
+describe("a hole whose value is an empty string", () => {
+  const base = { color: ["r-base", "rgb(1, 0, 0)"] as never };
+
+  test("falls back to the base, the way an invalid declaration does in CSS", () => {
+    const value = merge(base, { color: ["r-tint", ""] as never });
+
+    expect(value.className).toBe("r-base");
+  });
+
+  test.each([
+    ["undefined", undefined],
+    ["null", null],
+    ["an empty string", ""],
+  ])("%s sets nothing", (_what, held) => {
+    expect(merge(base, { color: ["r-tint", held] as never }).className).toBe("r-base");
+  });
+
+  /** Every value an author could MEAN still lands, and `0` is the one that matters. */
+  test.each([
+    ["zero", 0],
+    ["the string zero", "0"],
+    ["a quoted empty string", '""'],
+    ["false", false],
+    ["a space", " "],
+  ])("%s is a value, and lands", (_what, held) => {
+    expect(merge(base, { color: ["r-tint", held] as never }).className).toBe("r-tint");
+  });
+
+  /** One missing value among several is still enough, for the reason the note above gives. */
+  test("one empty among several drops the whole declaration", () => {
+    const value = merge(base, { color: ["r-tint", "1px", "", "solid"] as never });
+
+    expect(value.className).toBe("r-base");
+  });
+});
