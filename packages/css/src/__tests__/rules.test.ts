@@ -1578,6 +1578,28 @@ describe("an initial-value its own syntax does not accept", () => {
     ]);
   });
 
+  /**
+   * **The other four component types, which nothing had ever run.**
+   *
+   * Coverage found it: of the twelve matchers in {@link ACCEPTS}, `<length-percentage>`, `<number>`,
+   * `<url>` and `<image>` had no test on either side — not one that reports and not one that stays
+   * quiet — in a rule whose entire job is deciding between those two. Measured, all four were
+   * already right; being right is not the same as being held, and the eight rows below hold them.
+   *
+   * `<length-percentage>` is the one with two ways to be satisfied, so both are written: a length is
+   * not a percentage to `UNIT_TYPE`, and the rule only stays quiet because it asks for each in turn.
+   */
+  test.each([
+    ["a word where a length-percentage was declared", `"<length-percentage>"`, "red"],
+    ["a length where a number was declared", `"<number>"`, "12px"],
+    ["a bare word where a url was declared", `"<url>"`, "red"],
+    ["a length where an image was declared", `"<image>"`, "12px"],
+  ])("%s", (_what, syntax, value) => {
+    expect(rules(property(`syntax: ${syntax}; inherits: false; initial-value: ${value};`))).toEqual([
+      "initial-value-and-syntax",
+    ]);
+  });
+
   test("the message names both halves, because either one could be the mistake", () => {
     const [finding] = of(property(`syntax: "<color>"; inherits: false; initial-value: 12px;`));
 
@@ -1602,6 +1624,11 @@ describe("an initial-value its own syntax does not accept", () => {
       ["a literal in the syntax", `syntax: "<length> | auto"; inherits: false; initial-value: auto;`],
       ["`*`, which accepts anything", `syntax: "*"; inherits: false; initial-value: whatever;`],
       ["a word for a custom-ident", `syntax: "<custom-ident>"; inherits: false; initial-value: red;`],
+      ["a length for a length-percentage", `syntax: "<length-percentage>"; inherits: false; initial-value: 12px;`],
+      ["a percentage for the same one", `syntax: "<length-percentage>"; inherits: false; initial-value: 50%;`],
+      ["a number for a number", `syntax: "<number>"; inherits: false; initial-value: 1.5;`],
+      ["a url for a url", `syntax: "<url>"; inherits: false; initial-value: url(a.png);`],
+      ["a gradient for an image", `syntax: "<image>"; inherits: false; initial-value: linear-gradient(red, blue);`],
       ["calc, which can be any type", `syntax: "<length>"; inherits: false; initial-value: calc(1px + 2em);`],
       ["a component with no matcher", `syntax: "<transform-list>"; inherits: false; initial-value: rotate(0deg);`],
       ["a multiplier, which this does not read", `syntax: "<length>+"; inherits: false; initial-value: 1px 2px;`],

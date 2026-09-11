@@ -1854,6 +1854,10 @@ question, asked mechanically, found reviews 20, 21 and 24 on its own.
 | the same through `setProperty` | no second declaration, on the client |
 | the same through a SERVER render and back | **injects** — the parse re-reads the style attribute. Refused at the value now |
 | a hole differing across hydration | **silent**, and the client's value wins — supersedes the object-style reading |
+| the manifest-escape gate's own walk | ONE level deep — and the manifest it missed, `vscode/package.json`, is the sentence the marketplace prints under the title |
+| `ACCEPTS`, the value-type matchers | 4 of 12 — `<length-percentage>`, `<number>`, `<url>`, `<image>` — had **never been run**, in the rule that decides accept-or-refuse. All four measured RIGHT; none was held |
+| the two `.generated.ts` tables nothing imports | build INPUTS read as text by `build-css-properties.mjs`; they never reach `dist`, and they sit in the coverage denominator |
+| `lib.d.ts` shared across the 11 `ts.Program`s | 8.15 s -> **5.90 s** in tests, 75 still passing — and not nearly the 80x a 60 s per-test timeout would need |
 
 ## Still open
 
@@ -1876,6 +1880,14 @@ question, asked mechanically, found reviews 20, 21 and 24 on its own.
   The oracle for all six is `(f)` against `not (f)` in a real browser, which already verifies the
   media features — and for `@container` the container must be `container-type: size` WITH a height,
   or the block axis answers "unknown" for every real feature.
+
+- **`virtual.test.ts` timed out once in CI, at 60 s, and it is NOT understood.** Measured: not caused
+  by the change it failed on (9.2 s with, 9.6 s without), and the slowest single case is ~750 ms
+  locally — so a per-test timeout firing needs about **80x** contention, which nothing else in this
+  repository has ever shown. Sharing `lib.d.ts` across the eleven programs took the file from 8.15 s
+  to 5.90 s, which is worth having and is not an explanation. `vitest.timeout.mjs` has the precedent
+  for a timeout expiring as a repo grows; this does not fit it. **Read the next CI failure's own log
+  rather than reasoning from here** — the one thing not yet done is looking at which case it named.
 
 - **`windows-latest` in CI.** Every job is `ubuntu-latest`, so nothing here has ever run on Windows,
   and half the people who install this are on one. `toolIn` and `vscode/locate.js` look for the

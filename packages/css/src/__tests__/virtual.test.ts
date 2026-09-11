@@ -317,6 +317,23 @@ interface Reported {
 }
 
 /**
+ * `lib.d.ts` and everything it pulls in, parsed once for the whole file rather than once per case.
+ *
+ * **A test that is slow for a reason nobody would defend is a flake waiting to happen.** Each case
+ * below builds a real `ts.Program`, and a program with no cache re-reads and re-parses the standard
+ * library every time — the same three megabytes, eleven times, for eleven files of four lines each.
+ * That is the whole cost of this suite; the virtual files are noise beside it.
+ *
+ * It is keyed by target as well as name because a `SourceFile` is parsed FOR a `ScriptTarget`, and
+ * handing a program one parsed for another is the kind of shortcut that works until somebody adds a
+ * case with different options. Every case here passes ES2022, so the key never varies today.
+ *
+ * Only files from DISK are kept. The virtual ones differ per case and are parsed each time, which is
+ * both correct and free.
+ */
+const ON_DISK = new Map<string, ts.SourceFile | undefined>();
+
+/**
  * The three real moves: write the virtual file, hand it to `tsc`, map each diagnostic home.
  *
  * Everything that maps nowhere is dropped, which is the same rule a checker and an editor apply —
@@ -335,16 +352,20 @@ function check(source: string): Reported[] {
 
   const host = ts.createCompilerHost({});
   const fromDisk = host.getSourceFile.bind(host);
-  host.getSourceFile = (name, language) =>
-    files[name] !== undefined
-      ? ts.createSourceFile(
-          name,
-          files[name],
-          language,
-          true,
-          name.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-        )
-      : fromDisk(name, language);
+  host.getSourceFile = (name, language) => {
+    if (files[name] !== undefined) {
+      return ts.createSourceFile(
+        name,
+        files[name],
+        language,
+        true,
+        name.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+      );
+    }
+    const key = `${name}|${language}`;
+    if (!ON_DISK.has(key)) ON_DISK.set(key, fromDisk(name, language));
+    return ON_DISK.get(key);
+  };
   host.readFile = (name) => files[name] ?? ts.sys.readFile(name);
   host.fileExists = (name) => files[name] !== undefined || ts.sys.fileExists(name);
 
