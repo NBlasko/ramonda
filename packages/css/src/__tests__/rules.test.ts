@@ -2360,6 +2360,51 @@ describe("a pseudo-class that does not exist", () => {
   });
 
   /**
+   * **The scan is a linear walk, and it was a regex until CodeQL measured it.**
+   *
+   * The first version matched `::?[a-z-]+(?:\([^)]*\))?` with `matchAll`. CodeQL flagged it as a
+   * polynomial regular expression on uncontrolled data and named the input: a string of `:-(`.
+   * Measured, and it is real — the optional group opens a paren, `[^)]*` runs to the end of the
+   * string looking for a `)` that is not there, and backtracks, once per starting position:
+   *
+   *      500 repeats   1.3 ms
+   *     1000 repeats   4.5 ms
+   *     2000 repeats  17.7 ms
+   *     4000 repeats  68.1 ms      — double the input, quadruple the time
+   *
+   * Not an attack: the input is the author's own stylesheet. But a prelude with many parens is not
+   * exotic — `:not(:is(:has(…)))` is ordinary CSS — and a cliff in a checker an editor runs on every
+   * keystroke is worth removing. The walk that replaced it visits each character a bounded number of
+   * times: 8000 repeats measure 1.2 ms, sixteen times the input of the 68 ms row.
+   *
+   * **No duration is asserted here**, per `vitest.timeout.mjs`: a test that asserts a time measures
+   * whatever else the machine was doing. What the rows below hold is the BEHAVIOUR the rewrite had
+   * to keep, which is the part that would break silently.
+   */
+  test.each([
+    ["a URL in an attribute value, whose `://` is not a pseudo", '&[href^="https://x.dev"]'],
+    ["a lone colon", "&:"],
+    ["two lone colons", "&::"],
+    ["a selector list, both halves real", "a:hover, b:focus"],
+    ["a name inside a functional one", "&:has(:hover)"],
+    ["a TYPO inside a functional one, which is the argument's business", "&:is(:hovr)"],
+  ])("%s says nothing", (_what, prelude) => {
+    expect(found(prelude)).toEqual([]);
+  });
+
+  test("two pseudos on one selector are read separately", () => {
+    const [only, ...rest] = found("&:hover::beforr");
+
+    expect(rest).toEqual([]);
+    expect(only.message).toContain("::beforr");
+  });
+
+  /** The shape CodeQL named. What is asserted is that it terminates and says nothing, not how fast. */
+  test("a prelude of many unclosed parens terminates", () => {
+    expect(found(`&${":-(".repeat(4000)}`)).toEqual([]);
+  });
+
+  /**
    * **The four CSS2 pseudo-elements written with ONE colon, which this rule got wrong first time.**
    *
    * `SELECTORS` holds them only as `::before` and their kind, so the first version of this reported

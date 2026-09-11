@@ -1558,8 +1558,10 @@ const PSEUDO_NAMES = new Set([
   ":first-letter",
 ]);
 
-/** A `:name` or `::name`, with its argument list left off — what a prelude actually spells. */
-const A_PSEUDO = /::?[a-z-]+(?:\([^)]*\))?/gi;
+/** A letter, a digit or a `-`: what a pseudo's NAME is made of, after its colons. */
+function isPseudoNameCharacter(code: number): boolean {
+  return (code >= 97 && code <= 122) || (code >= 65 && code <= 90) || (code >= 48 && code <= 57) || code === 45;
+}
 
 /**
  * **A PSEUDO-CLASS THAT DOES NOT EXIST, and it drops the whole rule.**
@@ -1595,24 +1597,56 @@ const A_PSEUDO = /::?[a-z-]+(?:\([^)]*\))?/gi;
 function unknownSelector(rule: NestedRule, findings: Finding[]): void {
   if (rule.prelude.startsWith("@")) return;
 
-  for (const found of rule.prelude.matchAll(A_PSEUDO)) {
-    const written = found[0];
-    const name = written.replace(/\(.*$/, "").toLowerCase();
-    if (PSEUDO_NAMES.has(name)) continue;
+  const text = rule.prelude;
 
+  for (let index = 0; index < text.length; index++) {
+    if (text.charCodeAt(index) !== 58 /* : */) continue;
+
+    const start = index;
+    let at = index + 1;
+    if (text.charCodeAt(at) === 58) at++;
+
+    const nameStart = at;
+    while (at < text.length && isPseudoNameCharacter(text.charCodeAt(at))) at++;
+
+    // A lone `:` — in an attribute selector's value, say. Nothing to name.
+    if (at === nameStart) {
+      index = at - 1;
+      continue;
+    }
+
+    const name = text.slice(start, at).toLowerCase();
     const prefix = /^::?(-[a-z]+-)/.exec(name)?.[1];
-    if (prefix !== undefined && PREFIXES.includes(prefix)) continue;
 
-    const meant = nearest(name, [...PSEUDO_NAMES]);
-    findings.push({
-      rule: "unknown-selector",
-      at: (rule.at ?? 0) + (found.index ?? 0),
-      length: name.length,
-      message:
-        `\`${name}\` is not a pseudo-class or pseudo-element CSS has, so a browser drops the whole ` +
-        `rule — every declaration inside it, not just one. ` +
-        (meant === undefined ? "Check the name." : `Did you mean \`${meant}\`?`),
-    });
+    if (!PSEUDO_NAMES.has(name) && !(prefix !== undefined && PREFIXES.includes(prefix))) {
+      const meant = nearest(name, [...PSEUDO_NAMES]);
+      findings.push({
+        rule: "unknown-selector",
+        at: (rule.at ?? 0) + start,
+        length: name.length,
+        message:
+          `\`${name}\` is not a pseudo-class or pseudo-element CSS has, so a browser drops the whole ` +
+          `rule — every declaration inside it, not just one. ` +
+          (meant === undefined ? "Check the name." : `Did you mean \`${meant}\`?`),
+      });
+    }
+
+    // Step over a functional one's argument, counting depth, so `:has(:hover)` reads the name and
+    // not what is inside it — see the note above about why the argument is not this rule's business.
+    if (text.charCodeAt(at) === 40 /* ( */) {
+      let depth = 0;
+      while (at < text.length) {
+        const code = text.charCodeAt(at);
+        if (code === 40) depth++;
+        else if (code === 41 /* ) */ && --depth === 0) {
+          at++;
+          break;
+        }
+        at++;
+      }
+    }
+
+    index = at - 1;
   }
 }
 
