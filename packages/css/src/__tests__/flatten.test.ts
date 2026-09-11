@@ -361,3 +361,105 @@ describe("how narrow a rule is", () => {
     });
   });
 });
+
+/**
+ * **A BREAKPOINT WRITTEN IN TWO SPELLINGS CSS TREATS AS ONE.**
+ *
+ * `widthSlot` is the sheet's major order, so a condition it cannot read as a width falls into the
+ * "unknown condition" band at the end — which sorts AFTER every breakpoint. Two spellings CSS
+ * accepts were landing there, and neither is exotic:
+ *
+ *     @media (min-width: 40REM)     a CSS unit is case-INSENSITIVE, so this is `40rem`
+ *     @media (width >= 40rem)       the range syntax, which is the spelling MDN now recommends
+ *
+ * Measured in Chromium against plain CSS, two breakpoints on one property in two FILES — where no
+ * rule can see both and the layer is the only thing deciding, which is the whole reason the layers
+ * exist:
+ *
+ *     40REM against 80rem       ours rgb(1,1,1)   plain CSS rgb(2,2,2)   wrong in BOTH file orders
+ *     width>=40rem vs >=80rem   right when the narrow file loads first, WRONG when the wide one does
+ *
+ * The second is the fault this scheme was built to prevent: both conditions tie in the unknown band,
+ * so the sheet's position decides, so adding an unrelated component moves a page nobody edited.
+ *
+ * In one file it is loud instead of silent, and wrongly so: `override-out-of-order` fires on
+ * `40REM` and explains that the rules are in the wrong ORDER, which is not true — the author is told
+ * to move correct CSS, for a reason that is not the reason.
+ */
+describe("a width written the other ways CSS allows", () => {
+  /** The slot `40rem` gets, which every spelling of the same width must also get. */
+  const canonical = widthSlot(["@media (min-width: 40rem)"]);
+
+  test.each([
+    ["capitals", "@media (min-width: 40REM)"],
+    ["mixed case", "@media (min-width: 40Rem)"],
+    ["capitals on px", "@media (min-width: 640PX)"],
+    ["capitals on em", "@media (min-width: 40EM)"],
+  ])("a unit in %s is the same width", (_what, condition) => {
+    expect(widthSlot([condition])).toBe(canonical);
+  });
+
+  test.each([
+    ["greater or equal", "@media (width >= 40rem)"],
+    ["strictly greater", "@media (width > 40rem)"],
+    ["the value first", "@media (40rem <= width)"],
+    ["the value first, strict", "@media (40rem < width)"],
+    ["in capitals too", "@media (WIDTH >= 40REM)"],
+  ])("the range syntax, %s, is a min-width", (_what, condition) => {
+    expect(widthSlot([condition])).toBe(canonical);
+  });
+
+  test.each([
+    ["less or equal", "@media (width <= 40rem)"],
+    ["strictly less", "@media (width < 40rem)"],
+    ["the value first", "@media (40rem >= width)"],
+  ])("the range syntax, %s, is a max-width", (_what, condition) => {
+    expect(widthSlot([condition])).toBe(widthSlot(["@media (max-width: 40rem)"]));
+  });
+
+  /** A band written in one condition, which the colon form cannot express at all. */
+  test("a two-sided range is both a min and a max", () => {
+    const band = widthSlot(["@media (40rem <= width <= 80rem)"]);
+
+    expect(band).toBe(widthSlot(["@media (min-width: 40rem) and (max-width: 80rem)"]));
+    expect(widthSlot(["@media (40rem < width < 80rem)"])).toBe(band);
+  });
+
+  /**
+   * And the ordering the slot exists for: a WIDER `min-width` must sort after a narrower one,
+   * whichever spelling either is written in. This is the claim, not the numbers.
+   */
+  test.each([
+    ["both in the range syntax", "@media (width >= 40rem)", "@media (width >= 80rem)"],
+    ["a range against a colon", "@media (min-width: 40rem)", "@media (width >= 80rem)"],
+    ["a colon against a range", "@media (width >= 40rem)", "@media (min-width: 80rem)"],
+    ["capitals against lowercase", "@media (min-width: 40REM)", "@media (min-width: 80rem)"],
+    ["lowercase against capitals", "@media (min-width: 40rem)", "@media (min-width: 80REM)"],
+  ])("the wider breakpoint sorts last: %s", (_what, narrow, wide) => {
+    expect(widthSlot([wide])).toBeGreaterThan(widthSlot([narrow]));
+  });
+
+  /**
+   * A HEIGHT range is not a width, and neither is a container's own axis — the slot is about width
+   * alone, and reading anything with a `>=` in it as one would put an unrelated condition in the
+   * breakpoint band.
+   */
+  test.each(["@media (height >= 40rem)", "@media (aspect-ratio >= 1/1)", "@media (resolution >= 2x)"])(
+    "%s is not a width",
+    (condition) => {
+      expect(widthSlot([condition])).toBeGreaterThan(widthSlot(["@media (min-width: 9999rem)"]));
+    },
+  );
+
+  /**
+   * A unit this cannot resolve is still not a width, which the module's own note promises — and the
+   * promise is about `vw` and `ch`, which genuinely depend on something a build cannot know. It was
+   * never meant to cover `REM`, which is the same unit in capitals.
+   */
+  test.each(["@media (min-width: 40vw)", "@media (width >= 40ch)", "@media (min-width: 40)"])(
+    "%s has no width to compare",
+    (condition) => {
+      expect(widthSlot([condition])).toBeGreaterThan(widthSlot(["@media (min-width: 9999rem)"]));
+    },
+  );
+});

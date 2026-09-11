@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { checkSource } from "../compiler/source";
 import { placehold } from "../compiler/tooling";
 import { formatText } from "../tooling";
 
@@ -636,5 +637,84 @@ describe("the one spelling a prelude may have", () => {
     const once = formatted("  @MEDIA (MIN-WIDTH:40rem) {\n    color: red;\n  }");
 
     expect(formatted(once)).toBe(once);
+  });
+});
+
+/**
+ * **THE PROMISE ITSELF: everything `non-canonical-spelling` reports, the formatter fixes.**
+ *
+ * The rule's message ends *"`ramonda-css format` fixes it"*. That is a promise, and it is the one
+ * thing that can rot here without either half looking wrong on its own — `rules.ts` and
+ * `tooling.ts` each asked their own `startsWith("@") ? condition : selector`, two copies of one
+ * pairing, and `tooling.ts`'s own note says what a drift would cost: a rule naming a fix the
+ * formatter declines to make is an error with no fix.
+ *
+ * It had already rotted once. The keyword VALUE case — `color: RED`, which is the same declaration
+ * CSS reads `color: red` as — came back from the checker as `unknown-value`, a message that was
+ * simply false, and the formatter left the line exactly as written. Measured over the generated
+ * table: 897 valid declarations refused that way.
+ *
+ * So this asserts the promise rather than either half of it: format the file, and the rule must have
+ * nothing left to say.
+ */
+describe("what the rule reports, the formatter writes", () => {
+  const FILE = "/Card.tsx";
+  const asIs = (text: string) => text;
+
+  /** One block per case, so the finding and the fix are about one line. */
+  const spellings = [
+    "&:HOVER { gap: 8px; }",
+    '&::BEFORE { content: ""; }',
+    "&:NTH-CHILD(2N + 1) { gap: 8px; }",
+    "@MEDIA (min-width: 40rem) { gap: 8px; }",
+    "@media (MIN-WIDTH: 40rem) { gap: 8px; }",
+    "@media PRINT { gap: 8px; }",
+    "@SUPPORTS (display: grid) { gap: 8px; }",
+    "color: RED;",
+    "display: FLEX;",
+    "overflow: Hidden;",
+    "flex-flow: ROW WRAP;",
+    "background-image: NONE;",
+    "text-transform: UPPERCASE;",
+  ];
+
+  test.each(spellings)("%s is reported, and formatting settles it", (written) => {
+    const source = `const a = @@(\n  ${written}\n);\n`;
+
+    const before = checkSource(source, FILE).filter((one) => one.rule === "non-canonical-spelling");
+    expect(before.length, `nothing reported ${written}`).toBeGreaterThan(0);
+
+    const formatted = formatText(source, FILE, asIs);
+    expect(checkSource(formatted, FILE)).toEqual([]);
+  });
+
+  /** And formatting twice is formatting once, which is what makes it safe to run on save. */
+  test.each(spellings)("%s formats to a fixed point", (written) => {
+    const once = formatText(`const a = @@(\n  ${written}\n);\n`, FILE, asIs);
+
+    expect(formatText(once, FILE, asIs)).toBe(once);
+  });
+
+  /**
+   * **And what the formatter may NOT rewrite.** A url is a filename, a string is the author's bytes,
+   * and a hole is JavaScript — `color: {RED}` names a binding, and folding it would rewrite the
+   * author's identifier into one that does not exist.
+   */
+  test.each([
+    'background-image: url("A.PNG");',
+    'content: "RED";',
+    "--Accent: RED;",
+    "display: -webkit-BOX;",
+    'grid-template-areas: "A B";',
+  ])("%s comes back byte for byte", (written) => {
+    const formatted = formatText(`const a = @@(\n  ${written}\n);\n`, FILE, asIs);
+
+    expect(formatted).toContain(written);
+  });
+
+  test("a hole's own identifier is left alone", () => {
+    const source = "const RED = 1;\nconst a = @@(\n  color: {RED};\n);\n";
+
+    expect(formatText(source, FILE, asIs)).toContain("color: {RED}");
   });
 });

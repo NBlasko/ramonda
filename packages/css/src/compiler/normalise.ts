@@ -1,5 +1,5 @@
 import type { Block, BlockItem, ValuePart } from "./ast";
-import { AT_RULE_LINKS, MEDIA_FEATURES, PROPERTIES, SELECTORS } from "./keywords.generated";
+import { AT_RULE_LINKS, KEYWORDS, MEDIA_FEATURES, PROPERTIES, SELECTORS } from "./keywords.generated";
 
 /**
  * The canonical text of a block, which is the definition of its identity.
@@ -289,6 +289,104 @@ function lowered(selector: string): string {
     const written = colons === ":" && PSEUDO_ELEMENTS.has(`::${lowered}`) ? "::" : colons;
     return `${written}${lowered}`;
   });
+}
+
+/**
+ * A rule's prelude, written the one way it may be written — a condition or a selector.
+ *
+ * **One copy, because there were two.** `rules.ts` asked this question to report
+ * `non-canonical-spelling` and `tooling.ts` asked it to WRITE the answer, each with its own
+ * `written.startsWith("@") ? canonicalCondition(…) : canonicalSelector(…)`. Two copies of one
+ * pairing is this repository's recurring fault, and here it decides both what is reported and what
+ * is written — so a drift would be a rule naming a fix the formatter declines to make.
+ */
+export function canonicalPrelude(written: string): string {
+  return written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written);
+}
+
+/**
+ * A declaration's VALUE, with a keyword written in the one case CSS reads it as.
+ *
+ * CSS keywords are case-insensitive: measured in Chromium over the generated table, of 314 pairs it
+ * accepts it accepts **every one in both cases**, with no exceptions. `color: RED` is `color: red`.
+ *
+ * **What may not be folded, and each would be a corruption rather than a tidy-up:** a word inside
+ * PARENTHESES, because `url(A.PNG)` is a filename and filenames are case-sensitive; a word inside a
+ * STRING, because those bytes are the author's; a custom property's value, which is arbitrary; and a
+ * property with no closed keyword row, because `animation-name: SlideIn` is a name the author
+ * invented. So this folds a bare word at the top level of the value and nothing else.
+ */
+export function canonicalValue(property: string, value: string): string {
+  if (property.startsWith("--")) return value;
+  const accepted = KEYWORDS[propertyName(property)];
+  if (accepted === undefined || accepted === "") return value;
+  const keywords = new Set(accepted.split(" "));
+
+  let out = "";
+  let depth = 0;
+  let quote = "";
+  let word = "";
+
+  /** A run of identifier characters, folded only if the fold names a keyword this property has. */
+  const flush = () => {
+    const lowered = word.toLowerCase();
+    out += depth === 0 && quote === "" && word !== lowered && keywords.has(lowered) ? lowered : word;
+    word = "";
+  };
+
+  for (const character of value) {
+    if (quote !== "") {
+      // Inside a string, and nothing in one is this function's to rewrite.
+      out += character;
+      if (character === quote) quote = "";
+      continue;
+    }
+    if (/[A-Za-z-]/.test(character)) {
+      word += character;
+      continue;
+    }
+    flush();
+    if (character === '"' || character === "'") quote = character;
+    // A brace is a HOLE, and what is inside one is JavaScript — `color: {RED}` names a binding, and
+    // folding it would rewrite the author's own identifier into one that does not exist.
+    else if (character === "(" || character === "{") depth++;
+    else if (character === ")" || character === "}") depth = Math.max(0, depth - 1);
+    out += character;
+  }
+  flush();
+  return out;
+}
+
+/**
+ * One declaration line, as the formatter writes it — `color: RED` becomes `color: red`.
+ *
+ * Here rather than in the formatter so that the rule reporting this and the formatter fixing it ask
+ * one function. `tooling.ts` says why in its own words: a rule naming a fix the formatter declines to
+ * make is an error with no fix, and a formatter rewriting what no rule asked for is a diff nobody
+ * wanted.
+ *
+ * The colon is found outside parentheses and strings, because `background: url(a:b)` has one that is
+ * not the separator.
+ */
+export function canonicalDeclaration(line: string): string {
+  let depth = 0;
+  let quote = "";
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index];
+    if (quote !== "") {
+      if (character === quote) quote = "";
+      continue;
+    }
+    if (character === '"' || character === "'") quote = character;
+    else if (character === "(" || character === "{") depth++;
+    else if (character === ")" || character === "}") depth = Math.max(0, depth - 1);
+    else if (character === ":" && depth === 0) {
+      const property = line.slice(0, index).trim();
+      const value = line.slice(index + 1);
+      return `${property}:${canonicalValue(property, value)}`;
+    }
+  }
+  return line;
 }
 
 export function canonicalCondition(condition: string): string {

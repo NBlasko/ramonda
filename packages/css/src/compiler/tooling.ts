@@ -1,4 +1,4 @@
-import { canonicalCondition, canonicalSelector } from "./normalise";
+import { canonicalDeclaration, canonicalPrelude } from "./normalise";
 import { closingHole, opensAHole, readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
 
@@ -425,9 +425,7 @@ function layout(body: string, indent: string, step: string): string[] {
        * either half: a rule reporting a spelling the formatter would not fix is an error with no
        * fix, and a formatter rewriting something no rule asked for is a diff nobody wanted.
        */
-      const written = line.trim();
-      const canonical = written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written);
-      line = `${canonical} {`;
+      line = `${canonicalPrelude(line.trim())} {`;
       emit();
       depth++;
       continue;
@@ -441,7 +439,13 @@ function layout(body: string, indent: string, step: string): string[] {
     }
 
     if (parens === 0 && code === 59 /* ; */) {
-      line = `${line.trim()};`;
+      /**
+       * And the DECLARATION, written the one way it may be written — the other half of the same
+       * promise. `non-canonical-spelling` reports a keyword in the wrong case and its message says
+       * this fixes it; before this line it did not, which is the shape a review already found in
+       * `tools.ts`: two halves of one command disagreeing about one file.
+       */
+      line = `${canonicalDeclaration(line.trim())};`;
       emit();
       continue;
     }

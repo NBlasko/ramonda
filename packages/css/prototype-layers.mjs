@@ -292,7 +292,21 @@ const LADDER = [
   under("g3", "padding-left", "3px", "@media (max-width: 2000px)"),
   under("g4", "padding-left", "4px", "@media (min-width: 1px)"),
   under("g5", "padding-left", "5px", "@media (min-width: 40rem)"),
-  under("g6", "padding-left", "6px", "@media (min-width: 64rem)"),
+  /**
+   * **The other spellings CSS has for one breakpoint**, mixed into the ladder rather than given a
+   * probe of their own, because the claim is the same claim: a wider width wins, however it is
+   * written. Three rungs, each a real width between the two around it at this viewport.
+   *
+   * The range form is what MDN now recommends, and a unit is case-INSENSITIVE. Both were read as no
+   * width at all, which put them in the unknown band at the END of the order — so they tied with
+   * each other and the sheet's POSITION decided, which is the one thing the layers exist to stop.
+   * Measured before the fix: `(width >= 40rem)` against `(width >= 80rem)` in two files was right
+   * when the narrow file loaded first and wrong when the wide one did.
+   */
+  under("g5b", "padding-left", "6px", "@media (width >= 50rem)"),
+  under("g6", "padding-left", "7px", "@media (min-width: 64rem)"),
+  under("g6b", "padding-left", "8px", "@media (min-width: 70REM)"),
+  under("g6c", "padding-left", "9px", "@media (75rem <= width <= 200rem)"),
 ];
 
 const rounds = [];
@@ -322,11 +336,25 @@ for (const [label, minify] of Object.entries(minifiers)) {
   for (const one of wrong.slice(0, 3)) console.log(`      ${JSON.stringify(one)}`);
 }
 
-// The last rung of that ladder, before the sheet read the query: `g5` and `g6` are two breakpoints,
-// and until the width came off the query they ranked the same and shared a layer.
-const [breaks] = stylesheetsFor([{ "Card.tsx": [LADDER[5], LADDER[6]], "Panel.tsx": [LADDER[5]] }]);
-await row("two breakpoints · card, panel", [breaks["Card.tsx"], breaks["Panel.tsx"]], "g5 g6", "padding-left", "6px");
-await row("two breakpoints · panel, card", [breaks["Panel.tsx"], breaks["Card.tsx"]], "g5 g6", "padding-left", "6px");
+/**
+ * Two breakpoints, which the RANK alone could not separate: until the width came off the query, `g5`
+ * and `g6` ranked the same and shared a layer, so the file order decided between them.
+ *
+ * **By NAME, not by index.** It read `LADDER[5]` and `LADDER[6]` and broke the moment a rung was
+ * inserted between them — the section then measured two rungs it was not about, and said so as a
+ * failure. A fixture that names what it means cannot be moved by an edit somewhere else.
+ */
+const rung = (className) => {
+  const found = LADDER.find((one) => one.className === className);
+  if (found === undefined) throw new Error(`no rung called ${className} — the ladder was renamed`);
+  return found;
+};
+const [narrow, wide] = [rung("g5"), rung("g6")];
+const [breaks] = stylesheetsFor([{ "Card.tsx": [narrow, wide], "Panel.tsx": [narrow] }]);
+// The wider rung's own value, so the claim survives the ladder growing.
+const wider = `${LADDER.indexOf(wide)}px`;
+await row("two breakpoints · card, panel", [breaks["Card.tsx"], breaks["Panel.tsx"]], "g5 g6", "padding-left", wider);
+await row("two breakpoints · panel, card", [breaks["Panel.tsx"], breaks["Card.tsx"]], "g5 g6", "padding-left", wider);
 report("two breakpoints, which the rank alone could not separate");
 
 // ── 5. What is still open ───────────────────────────────────────────────────────────────────────

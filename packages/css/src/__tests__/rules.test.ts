@@ -2369,3 +2369,100 @@ describe("a swapped pair of letters", () => {
     expect(nearest("flex-dirction", ["flex-direction", "flex-wrap"])).toBe("flex-direction");
   });
 });
+
+/**
+ * **A KEYWORD IN CAPITALS IS THE SAME CSS, and it was reported as a value that does not exist.**
+ *
+ * CSS keywords are case-insensitive. Measured in Chromium over the generated table: of 314 pairs it
+ * accepts, it accepts **every one of them in both cases** — zero exceptions. And measured through
+ * this checker over all 897 property/keyword pairs: **897 valid declarations refused**, every one of
+ * them only because the keyword was not lowercase.
+ *
+ *     color: RED        `color` does not accept `RED`.        which is false
+ *     display: FLEX     `display` does not accept `FLEX`.     which is false
+ *
+ * The verdict does not change — it is still refused — but the REASON becomes true, and
+ * `non-canonical-spelling` is the id this package already uses for one CSS written two ways, with
+ * the formatter rewriting it. `&:HOVER`, `@MEDIA` and `@media PRINT` were already handled that way;
+ * a keyword value was the case nobody had reached.
+ *
+ * The formatter half is not optional. The message promises `ramonda-css format` fixes it, and a rule
+ * naming a fix the formatter will not make is an error with no fix — which `tooling.ts` says in its
+ * own words above the line that canonicalises a prelude.
+ */
+describe("a keyword written in capitals", () => {
+  test.each([
+    ["color", "RED"],
+    ["display", "FLEX"],
+    ["background-image", "NONE"],
+    ["overflow", "Hidden"],
+    ["text-transform", "UPPERCASE"],
+  ])("%s: %s is the same CSS, not a value that does not exist", (property, value) => {
+    const found = checkNamedFree(`${property}: ${value};`);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("non-canonical-spelling");
+    expect(found[0].message).toContain(value.toLowerCase());
+  });
+
+  /** Every word in the value, because a shorthand carries several. */
+  test("a shorthand's keywords are all named", () => {
+    const [found] = checkNamedFree("flex-flow: ROW WRAP;");
+
+    expect(found.rule).toBe("non-canonical-spelling");
+    expect(found.message).toContain("row wrap");
+  });
+
+  /** And a value that really is wrong is still wrong, whatever its case. */
+  test.each(["color: REDD", "display: FLEXX", "overflow: HIDDENN"])("%s is still a fault", (written) => {
+    const [found] = checkNamedFree(`${written};`);
+
+    expect(found.rule).toBe("unknown-value");
+  });
+
+  /**
+   * **The 154 properties TYPESCRIPT checks are a different answer, and it is a limit rather than a
+   * fix.**
+   *
+   * `position` and `flex-direction` are typed as a closed union, so the rule stays silent on purpose
+   * — a review measured `position: statik` being reported by both halves. For those, an uppercase
+   * keyword is refused by `tsc`, and measured it is TS2820, which is TypeScript's own *did you mean*:
+   *
+   *     position: ABSOLUTE   TS2820 Type '"ABSOLUTE"' is not assignable to … Did you mean '"absolute"'?
+   *
+   * So the author still gets the right fix, phrased as a type error rather than as a spelling. It is
+   * left that way deliberately: accepting both cases in a type means doubling 154 unions, and the
+   * type map's instantiation count is FLAT today, which is the property worth keeping.
+   */
+  test.each(["position", "flex-direction"])("%s is TypeScript's to answer, so no rule speaks", (property) => {
+    expect(KEYWORDS[property]).toBeUndefined();
+    expect(checkNamedFree(`${property}: ABSOLUTE;`)).toEqual([]);
+  });
+
+  /**
+   * **What may NOT be folded**, and each of these would be a corruption rather than a tidy-up.
+   *
+   * A url is a filename and a filename is case-sensitive; a string is the author's own bytes; a
+   * custom property's value is arbitrary; and a vendor keyword is not in any generated row, so it is
+   * left alone for the reason `unknown-value` already leaves it alone.
+   */
+  test.each([
+    'background-image: url("A.PNG")',
+    'content: "RED"',
+    "--Accent: RED",
+    "display: -webkit-BOX",
+    'font-family: "Helvetica Neue"',
+    'grid-template-areas: "A B"',
+    "animation-name: SlideIn",
+    "width: CALC(100% - 8PX)",
+  ])("%s is left exactly as written", (written) => {
+    const found = checkNamedFree(`${written};`).filter((one) => one.rule === "non-canonical-spelling");
+
+    expect(found).toEqual([]);
+  });
+
+  /** A keyword already lowercase says nothing at all, which is the whole point. */
+  test.each(["color: red", "display: flex", "flex-flow: row wrap"])("%s is clean", (written) => {
+    expect(checkNamedFree(`${written};`)).toEqual([]);
+  });
+});

@@ -10,12 +10,66 @@
  * key, which is the same text run together — every function below matches over the joined string, so
  * both callers get the same answer without the key having to be parsed back into parts.
  */
-/** A length in a media query, in px — `rem` and `em` at the root's 16px, and nothing else. */
+/**
+ * A length in a media query, in px — `rem` and `em` at the root's 16px, and nothing else.
+ *
+ * **Case-insensitive, and it was not.** A CSS unit is a keyword, and keywords are case-insensitive:
+ * `40REM` is `40rem`, and a browser reads them as one breakpoint. This read `40REM` as no width at
+ * all, which put the rule in the unknown band at the END of the order — so measured in Chromium
+ * against plain CSS, `@media (min-width: 40REM)` in one file beat `@media (min-width: 80rem)` in
+ * another at a 1600px viewport, in both file orders. The narrower breakpoint won.
+ */
 function pixelsOf(text: string): number | undefined {
-  const found = /^\s*(-?\d*\.?\d+)(px|rem|em)\s*$/.exec(text);
+  const found = /^\s*(-?\d*\.?\d+)(px|rem|em)\s*$/i.exec(text);
   if (found === null) return undefined;
   const value = Number(found[1]);
-  return found[2] === "px" ? value : value * 16;
+  return found[2].toLowerCase() === "px" ? value : value * 16;
+}
+
+/**
+ * Every width a condition states, as a `min` or a `max`, in both spellings CSS has for one.
+ *
+ * **The range syntax was read as no width at all**, and it is the spelling MDN now recommends:
+ * `(width >= 40rem)` rather than `(min-width: 40rem)`. So every range breakpoint landed in the
+ * unknown band together, where they TIE — and a tie is decided by the sheet's position, which is
+ * exactly what the layers exist to stop. Measured: `(width >= 40rem)` against `(width >= 80rem)` in
+ * two files came out right when the narrow file loaded first and WRONG when the wide one did.
+ *
+ * The feature name may sit on either side of the comparison, or between two of them, and which side
+ * it is on flips the meaning: `(40rem <= width)` is a MIN, `(width <= 40rem)` is a max. Written as
+ * one walk over the parts rather than a regex per shape, because the two-sided form is the same
+ * question asked twice.
+ *
+ * `>` and `>=` land on the same width. They differ by the smallest length a browser can tell apart,
+ * and the slot is a sort order rather than a measurement — two breakpoints that close a pixel apart
+ * tie, which is honest, and the colon form already ties with itself the same way.
+ */
+function* widthsStated(condition: string): Generator<{ which: "min" | "max"; pixels: number }> {
+  // The colon form, which may name the feature `min-width` or `max-width`.
+  for (const [, which, text] of condition.matchAll(/\((min|max)-width\s*:([^)]*)\)/gi)) {
+    const pixels = pixelsOf(text);
+    if (pixels !== undefined) yield { which: which.toLowerCase() as "min" | "max", pixels };
+  }
+
+  // The range form. Only a group that holds a comparison, so an ordinary condition is skipped.
+  for (const [, inside] of condition.matchAll(/\(([^()]*[<>][^()]*)\)/g)) {
+    const parts = inside.split(/\s*(<=|>=|<|>)\s*/);
+    const at = parts.findIndex((one) => one.trim().toLowerCase() === "width");
+    // `height`, `aspect-ratio`, `resolution` — a comparison, and not one about width.
+    if (at === -1) continue;
+
+    for (const [value, operator, side] of [
+      [parts[at - 2], parts[at - 1], "before"],
+      [parts[at + 2], parts[at + 1], "after"],
+    ] as const) {
+      if (value === undefined || operator === undefined) continue;
+      const pixels = pixelsOf(value);
+      if (pixels === undefined) continue;
+      // `40rem <= width` bounds width from BELOW; `width <= 40rem` bounds it from above.
+      const lower = side === "before" ? operator.startsWith("<") : operator.startsWith(">");
+      yield { which: lower ? "min" : "max", pixels };
+    }
+  }
 }
 
 /**
@@ -30,9 +84,7 @@ function widthsIn(conditions: readonly string[]): { min?: number; max?: number }
   let max: number | undefined;
 
   for (const condition of conditions) {
-    for (const [, which, text] of condition.matchAll(/\((min|max)-width\s*:([^)]*)\)/g)) {
-      const pixels = pixelsOf(text);
-      if (pixels === undefined) continue;
+    for (const { which, pixels } of widthsStated(condition)) {
       if (which === "min") min = min === undefined ? pixels : Math.max(min, pixels);
       else max = max === undefined ? pixels : Math.min(max, pixels);
     }

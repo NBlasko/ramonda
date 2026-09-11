@@ -15,7 +15,7 @@ import {
   MEDIA_FEATURES,
   UNIT_TYPE,
 } from "./keywords.generated";
-import { canonicalCondition, canonicalSelector } from "./normalise";
+import { canonicalPrelude, canonicalValue } from "./normalise";
 import { CONDITION, SPREAD, closingHole, holeIn, opensAHole } from "./read";
 import type { BlockSite } from "./scan";
 
@@ -873,7 +873,7 @@ function spelling(block: Block, findings: Finding[]): void {
       if (item.at === undefined) continue;
 
       const written = item.prelude.trim();
-      const canonical = written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written);
+      const canonical = canonicalPrelude(written);
       if (canonical === written) continue;
 
       findings.push({
@@ -1409,6 +1409,8 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
   // An EMPTY row is a property that accepts no keyword at all — see the generator. Splitting `""`
   // would give a set holding one empty string, which matches nothing and reads as a bug later.
   const keywords = new Set(accepted === "" ? [] : accepted.split(" "));
+  /** Whether any word's only fault was its case — see the note beside the check below. */
+  let miscased = false;
 
   for (const word of words(item.value)) {
     /**
@@ -1424,6 +1426,20 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
      */
     if (word.text.startsWith("-")) continue;
     if (keywords.has(word.text) || GLOBAL.has(word.text)) continue;
+    /**
+     * **A keyword in the wrong CASE is the same CSS**, and saying it does not exist is a lie the
+     * author cannot act on. Measured over all 897 property/keyword pairs in the generated table:
+     * 897 valid declarations were refused, every one of them for its case alone. And measured in
+     * Chromium, of 314 pairs it accepts it accepts every one in BOTH cases, with no exceptions.
+     *
+     * The verdict is unchanged — still refused — and the id is the one this package already uses for
+     * one CSS written two ways, which the formatter then rewrites. Reported once per declaration
+     * rather than once per word, because the fix is the whole value.
+     */
+    if (keywords.has(word.text.toLowerCase()) || GLOBAL.has(word.text.toLowerCase())) {
+      miscased = true;
+      continue;
+    }
 
     const meant = nearest(word.text, [...keywords]);
     findings.push({
@@ -1436,6 +1452,28 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
           : `\`${item.property}\` does not accept \`${word.text}\`. Did you mean \`${meant}\`?`,
     });
   }
+
+  if (!miscased || findings.length > 0) return;
+  /**
+   * A value carrying a HOLE is left alone, and silence is the safe direction here: the hole is a
+   * runtime value, so the text this would name is not the text the author wrote. Before this rule
+   * existed such a declaration got `unknown-value` and a message that was false, so silence is
+   * already the better of the two.
+   */
+  const written = item.value.every((part) => part.kind === "text")
+    ? item.value.map((part) => (part.kind === "text" ? part.text : "")).join("")
+    : undefined;
+  if (written === undefined) return;
+
+  findings.push({
+    rule: "non-canonical-spelling",
+    at: item.valueAt ?? item.at ?? 0,
+    length: written.length,
+    message:
+      `write this as \`${canonicalValue(item.property, written)}\` — a CSS keyword is ` +
+      `case-insensitive, so the two are the same declaration, and one spelling is what lets two ` +
+      `blocks writing it agree on one class. \`ramonda-css format\` fixes it.`,
+  });
 }
 
 /**
