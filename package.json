@@ -20,7 +20,7 @@
     "check:nameless": "node scripts/check-nameless-class.mjs",
     "check:manifests": "node scripts/check-manifest-text.mjs",
     "changeset": "changeset",
-    "release": "pnpm build && pnpm --filter create-ramonda verify-versions && changeset publish",
+    "release": "pnpm build && pnpm --filter create-ramonda verify-versions && SELFTEST=missing node scripts/check-first-publish.mjs && node scripts/check-first-publish.mjs && changeset publish",
     "check:scaffold": "node scripts/check-scaffold.mjs ssr && node scripts/check-scaffold.mjs spa",
     "check:tsconfigs": "node scripts/check-tsconfigs.mjs",
     "check:decorators": "node scripts/check-decorator-duplication.mjs",
