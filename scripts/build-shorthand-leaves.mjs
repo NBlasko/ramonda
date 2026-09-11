@@ -48,10 +48,10 @@
  * the critical path, so the two seconds this takes cost nothing anybody waits for. Without that,
  * the list is right only until a browser release and nobody finds out.
  */
-import { existsSync, readFileSync } from "node:fs";
+
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { writeOrCheck } from "./engine-facts.mjs";
+import { previousFrom, unionOfMap, writeOrCheck } from "./engine-facts.mjs";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -112,8 +112,17 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
   }
 }
 
-const sorted = Object.keys(union).sort();
 const file = join(HERE, "..", "packages", "css", "src", "compiler", "leaves.generated.ts");
+
+/**
+ * What is committed, kept — see `engine-facts.mjs`. A shorthand a platform does not HAVE reports no
+ * leaves there, and dropping its row would stop the merge clearing them where the property exists.
+ */
+const merged = unionOfMap(
+  previousFrom(file, /LEAVES: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\n\})\s*;/, {}),
+  Object.fromEntries(Object.entries(union).map(([name, leaves]) => [name, [...leaves]])),
+);
+const sorted = Object.keys(merged);
 
 const wrote = writeOrCheck(
   file,
@@ -122,8 +131,9 @@ const wrote = writeOrCheck(
     `// What each shorthand RESETS, read out of the engines rather than out of mdn-data — whose own\n` +
     `// \`initial\` field was measured missing 37 longhands after two hand-patches for the same fault.\n` +
     `//\n` +
-    counts.map(([engine, total]) => `// ${engine.padEnd(10)} ${String(total).padStart(4)}\n`).join("") +
-    `// ${"the union".padEnd(10)} ${String(sorted.length).padStart(4)}\n` +
+    `// ${sorted.length} shorthands. The per-engine counts are printed by the run, not written\n` +
+    `// here: a browser answers for its PLATFORM, so those numbers differ between machines while\n` +
+    `// the shorthands do not. See \`engine-facts.mjs\`.\n` +
     `\n` +
     `/**\n` +
     ` * Shorthand -> every longhand some engine resets when it is written.\n` +
@@ -133,7 +143,7 @@ const wrote = writeOrCheck(
     ` * \`SHORTHANDS\` in \`keywords.generated.ts\`, which is computed from this.\n` +
     ` */\n` +
     `export const LEAVES: Readonly<Record<string, readonly string[]>> = {\n` +
-    sorted.map((name) => `  ${JSON.stringify(name)}: ${JSON.stringify([...union[name]].sort())},\n`).join("") +
+    sorted.map((name) => `  ${JSON.stringify(name)}: ${JSON.stringify(merged[name])},\n`).join("") +
     `};\n`,
   "build-shorthand-leaves",
   check,

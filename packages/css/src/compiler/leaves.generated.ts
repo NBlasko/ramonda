@@ -3,10 +3,9 @@
 // What each shorthand RESETS, read out of the engines rather than out of mdn-data — whose own
 // `initial` field was measured missing 37 longhands after two hand-patches for the same fault.
 //
-// chromium    110
-// firefox      95
-// webkit      102
-// the union   120
+// 120 shorthands. The per-engine counts are printed by the run, not written
+// here: a browser answers for its PLATFORM, so those numbers differ between machines while
+// the shorthands do not. See `engine-facts.mjs`.
 
 /**
  * Shorthand -> every longhand some engine resets when it is written.

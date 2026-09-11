@@ -18,6 +18,11 @@ import { mkdtempSync, rmSync, symlinkSync, writeFileSync, globSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { builtFromThisSource } from "./built.mjs";
+
+// This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
+builtFromThisSource();
+
 const repo = process.cwd();
 const core = join(repo, "packages/core");
 const vitest = globSync("node_modules/.pnpm/vitest@*/node_modules/vitest/vitest.mjs", { cwd: repo })[0];
@@ -68,11 +73,6 @@ writeFileSync(
   join(dir, "src.test.tsx"),
   `import { describe, test, expect } from "vitest";
 import { Component } from "@ramonda/core";
-import { builtFromThisSource } from "./built.mjs";
-
-// This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
-builtFromThisSource();
-
 class Card extends Component {
   accent = "#10b981";
   render() {

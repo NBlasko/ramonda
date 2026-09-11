@@ -32,10 +32,10 @@
  * — and `ramonda-css-ignore <reason>` is the escape for a rule that is wrong once, which exists for
  * exactly this shape.
  */
-import { existsSync, readFileSync } from "node:fs";
+
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { writeOrCheck } from "./engine-facts.mjs";
+import { previousFrom, unionOf, writeOrCheck } from "./engine-facts.mjs";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -95,8 +95,14 @@ for (const name of ["chromium", "firefox", "webkit"]) {
   }
 }
 
-const names = [...all].sort();
 const file = join(HERE, "..", "packages", "css", "src", "compiler", "prefixed.generated.ts");
+
+/**
+ * What is committed, kept — see `engine-facts.mjs`. A browser answers for the PLATFORM it runs on:
+ * `-apple-pay-button-style` and `-moz-osx-font-smoothing` come from macOS builds, and a Linux runner
+ * reports neither. Replacing the file would drop them and the checker would start calling them typos.
+ */
+const names = unionOf(previousFrom(file, /PREFIXED: readonly string\[\] = (\[[\s\S]*?\])\s*;/, []), [...all]);
 
 const wrote = writeOrCheck(
   file,
@@ -106,13 +112,10 @@ const wrote = writeOrCheck(
     `// still expose. mdn-data alone is not enough — it has neither \`-webkit-font-smoothing\` nor\n` +
     `// \`-moz-osx-font-smoothing\`, and refusing those would be refusing valid CSS.\n` +
     `//\n` +
-    counts
-      .map(
-        ([who, total, beyond]) =>
-          `// ${who.padEnd(10)} ${String(total).padStart(4)}${beyond > 0 ? `  (${beyond} mdn-data does not have)` : ""}\n`,
-      )
-      .join("") +
-    `// ${"the union".padEnd(10)} ${String(names.length).padStart(4)}\n` +
+    `// ${names.length} names. The per-engine counts are printed by the run, not written here: a\n` +
+    `// browser answers for its PLATFORM, so those numbers differ between a Mac and a Linux runner\n` +
+    `// while the names do not — and a header that moved with the machine made this file impossible\n` +
+    `// to check in CI. See \`engine-facts.mjs\`.\n` +
     `\n` +
     `/** A vendor-prefixed property some engine has. The PREFIX is checked separately — see \`PREFIXES\`. */\n` +
     `export const PREFIXED: readonly string[] = ${JSON.stringify(names)};\n`,

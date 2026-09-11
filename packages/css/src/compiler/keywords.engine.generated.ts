@@ -4,10 +4,9 @@
 // SVG spellings, mostly. Refusing one would be refusing valid CSS, which is the one failure a
 // type map may not have.
 //
-// chromium     14
-// firefox      14
-// webkit       13
-// the union    20 across 13 properties
+// 20 value(s) across 13 properties. The per-engine counts are printed by
+// the run, not written here: a browser answers for its PLATFORM, so those numbers differ
+// between machines while the values do not. See `engine-facts.mjs`.
 
 /** Property -> the extra values, beside what its `Keyword<…>` union already holds. */
 export const ENGINE_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
