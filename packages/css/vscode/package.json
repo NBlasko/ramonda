@@ -2,7 +2,7 @@
   "name": "css",
   "displayName": "Ramonda CSS",
   "description": "Real CSS beside your markup: syntax colouring, formatting and diagnostics for @@( … ) style blocks.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "publisher": "ramonda",
   "license": "MIT",
