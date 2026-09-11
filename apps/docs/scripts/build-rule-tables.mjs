@@ -343,18 +343,18 @@ const cssRegion = [
   CSS_END,
 ].join("\n");
 
-const cssPage = join(here, "..", "content", "style-blocks.md");
+const cssPage = join(here, "..", "content", "style-blocks", "checking.md");
 const styleBlocks = replaceRegion(cssPage, CSS_START, CSS_END, cssRegion);
 if (styleBlocks.updated !== styleBlocks.text) {
   if (check) {
     console.error(
-      "[rules] the CSS rule table in style-blocks.md is out of date\n" +
+      "[rules] the CSS rule table in style-blocks/checking.md is out of date\n" +
         "        run `node scripts/build-rule-tables.mjs` and commit the result.",
     );
     process.exit(1);
   }
   writeFileSync(cssPage, styleBlocks.updated);
-  console.log(`[rules] style-blocks.md — ${cssIds.length} CSS rules`);
+  console.log(`[rules] style-blocks/checking.md — ${cssIds.length} CSS rules`);
 }
 
 /**
