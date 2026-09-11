@@ -1,0 +1,217 @@
+{
+  "scopeName": "ramonda.css-block",
+  "injectionSelector": "L:meta.tag.tsx -meta.jsx.children -string -comment, L:meta.tag.jsx -meta.jsx.children -string -comment, L:meta.tag.ts -meta.jsx.children -string -comment, L:meta.tag.js -meta.jsx.children -string -comment",
+  "patterns": [
+    {
+      "include": "#block"
+    }
+  ],
+  "repository": {
+    "block": {
+      "begin": "(?<=\\s)([\\w:$-]+)\\s*(=)\\s*(@@)(\\()",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.other.attribute-name"
+        },
+        "2": {
+          "name": "keyword.operator.assignment"
+        },
+        "3": {
+          "name": "keyword.control.ramonda"
+        },
+        "4": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        }
+      },
+      "end": "(\\))",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.end.ramonda"
+        }
+      },
+      "contentName": "meta.embedded.block.css",
+      "patterns": [
+        {
+          "include": "#innards"
+        }
+      ],
+      "comment": "The lookbehind mirrors the compiler's own scanner, which requires whitespace before the name. This pattern is only the BARE attribute form, where the name and the `=` are coloured too; a block in expression position is `ramonda.css-value`. The `@@` is this language's MARKER and is coloured as one wherever it appears. It opens a BLOCK and nothing else does: `if ({ … })` and `...{ … }` carry no sigil, because inside a block the language is the block's own. A user reported the two characters coming out as punctuation in one place and a keyword in another, which is a reader having to learn that the same marker means two things. The BRACKET keeps `punctuation.section.embedded.begin`, and that is not cosmetic: it is what pairs with the `contentName` an editor reads to treat the inside as CSS."
+    },
+    "innards": {
+      "comment": "Order is the whole of it. A hole is ONE brace, and so is a nested rule's body — so every pattern that can recognise a hole from its POSITION runs before `#nested`, which would otherwise read `color: ` as a selector and the hole as a rule list. Measured: it did exactly that, and the CSS grammar agreed with it, scoping `accent` as a property name.",
+      "patterns": [
+        {
+          "include": "#composition"
+        },
+        {
+          "include": "#hole-in-a-name"
+        },
+        {
+          "include": "#declaration-with-a-hole"
+        },
+        {
+          "include": "#nested"
+        },
+        {
+          "include": "source.css#rule-list-innards"
+        }
+      ]
+    },
+    "nested": {
+      "comment": "A nested rule. The editor's CSS grammar has no pattern for one — measured, `&:hover {` comes back as a property whose value is `hover {` — so the block handles nesting itself. It runs LAST among the brace patterns: everything that can tell a hole by its position has already had the line, so a `{` reaching here opens a rule.",
+      "begin": "([^;{}]+?)(\\{)",
+      "beginCaptures": {
+        "1": {
+          "patterns": [
+            {
+              "comment": "`&` is CSS nesting's own, and the editor's CSS grammar has no pattern for it either.",
+              "match": "&",
+              "name": "entity.other.attribute-name.parent-selector.css"
+            },
+            {
+              "include": "source.css#selector-innards"
+            }
+          ]
+        },
+        "2": {
+          "name": "punctuation.section.property-list.begin.bracket.curly.css"
+        }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.property-list.end.bracket.curly.css"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#innards"
+        }
+      ]
+    },
+    "composition": {
+      "comment": "This language's own markers, which CSS has no idea about — measured, the CSS grammar read `if (` as a selector and `...` as nothing at all. Each one CONSUMES its hole rather than only colouring the marker: with one brace the hole left behind would be read as a rule body.",
+      "patterns": [
+        {
+          "comment": "`if ({ … })` opens a conditional group. Measured in Chromium 151: `if (x) { … }` in a prelude is DROPPED, because a type selector may not be followed by parentheses and a functional pseudo-class needs its colon — and nothing in CSS starts with a bare word and takes parens. The `(` is what makes it unambiguous, and it is why the condition needs no position rule of its own: a `(` is not a place a rule can open. `if` carried a `@@` until 2026-09-10; the sigil opens a BLOCK now and nothing else does.",
+          "begin": "\\s*\\b(if)\\s*(\\()\\s*(\\{)",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.ramonda"
+            },
+            "2": {
+              "name": "meta.brace.round.tsx"
+            },
+            "3": {
+              "name": "punctuation.section.embedded.begin.ramonda"
+            }
+          },
+          "end": "(\\})\\s*(\\))",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.end.ramonda"
+            },
+            "2": {
+              "name": "meta.brace.round.tsx"
+            }
+          },
+          "contentName": "meta.embedded.expression.tsx",
+          "patterns": [
+            {
+              "include": "source.tsx"
+            }
+          ]
+        },
+        {
+          "comment": "`...{ … };` merges another block's map here, in the position a declaration would be.",
+          "begin": "\\s*(\\.\\.\\.)\\s*(\\{)",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.ramonda"
+            },
+            "2": {
+              "name": "punctuation.section.embedded.begin.ramonda"
+            }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.end.ramonda"
+            }
+          },
+          "contentName": "meta.embedded.expression.tsx",
+          "patterns": [
+            {
+              "include": "source.tsx"
+            }
+          ]
+        }
+      ]
+    },
+    "hole-in-a-name": {
+      "comment": "A hole standing in a property NAME — `{accent}: #34d399`, the only way to set a registered property. Recognised by what FOLLOWS it: a brace pair with a colon after it. A rule's body cannot look like that, because nothing follows its `}` but the next item. The leading `\\s*` is there for the same reason as in `#declaration-with-a-hole`: to start where `#nested` starts, so order decides between them rather than indentation.",
+      "begin": "\\s*(\\{)(?=[^{}]*\\}\\s*:)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.begin.ramonda"
+        }
+      },
+      "end": "(\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.embedded.end.ramonda"
+        }
+      },
+      "contentName": "meta.embedded.expression.tsx",
+      "patterns": [
+        {
+          "include": "source.tsx"
+        }
+      ]
+    },
+    "declaration-with-a-hole": {
+      "comment": "A declaration whose value holds a hole, matched whole so the CSS grammar never sees the `{`.\n\nThe lookahead is the discriminator the parser uses, written as a regex: a property name, a colon, and then WHITESPACE OR THE BRACE ITSELF — and a `{` before any `;` or `}`. The space is load-bearing and a probe found it: `a:hover { … }` is a legal prelude and begins with a property-shaped name and a colon exactly like `border: 4px solid` does. A declaration's colon is followed by whitespace or its value; a pseudo-class's is followed at once by its own name.\n\nA declaration with no hole is left to the CSS grammar, so nothing that worked stops working.\n\nThe leading `\\s*` is not decoration. TextMate picks the pattern whose match starts EARLIEST in the line, and `#nested` begins with `[^;{}]+?`, which happily starts at the indentation — so a pattern anchored at the property name always lost to it. Measured: the rule won, and the CSS grammar then scoped the hole's expression as a property name.",
+      "begin": "(?=\\s*(?:--)?[-\\w]+\\s*:(?:\\s|\\{)[^;{}]*\\{)\\s*((?:--)?[-\\w]+)\\s*(:)",
+      "beginCaptures": {
+        "1": {
+          "name": "support.type.property-name.css"
+        },
+        "2": {
+          "name": "punctuation.separator.key-value.css"
+        }
+      },
+      "end": "(;)|(?=\\})",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.terminator.rule.css"
+        }
+      },
+      "patterns": [
+        {
+          "comment": "The hole itself. Inside a value there is nothing else a `{` can be.",
+          "begin": "(\\{)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.begin.ramonda"
+            }
+          },
+          "end": "(\\})",
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.section.embedded.end.ramonda"
+            }
+          },
+          "contentName": "meta.embedded.expression.tsx",
+          "patterns": [
+            {
+              "include": "source.tsx"
+            }
+          ]
+        },
+        {
+          "include": "source.css#property-values"
+        }
+      ]
+    }
+  }
+}

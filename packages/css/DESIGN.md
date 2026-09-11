@@ -1,10 +1,20 @@
 # A style block that becomes a class before the browser sees it
 
-**Status: a design, not a package.** No `package.json` on purpose — a manifest with no code is a
-package claiming to exist. This folder holds the design, seven runnable prototypes, and
-**[`PLAN.md`](./PLAN.md) — the order of work, what blocks what, and what may run in parallel.**
+**Status: BUILT.** This header said *a design, not a package — no `package.json` on purpose*, and
+that stopped being true when the package landed: `@ramonda/css` is a real workspace package at
+`0.0.0`, private and unpublished, with a compiler, a check command, an editor plugin, two bundler
+adapters and a formatter wrapper.
 
-This file is the *why*. `PLAN.md` is the *when*.
+This file is the *why*, and it is the oldest of the three. `PLAN.md` is the *when*; `CONTRACT.md` is
+what both halves must agree on.
+
+**It can drift, and it had — read on 2026-09-07 against the code it describes, six claims were
+wrong.** The header above was one. Decision 1 forbade a hole in a property name, which is now the one
+thing that makes a generated custom property settable; decision 2 promised an `initial` floor that is
+not emitted; decision 4 recommended one class per BLOCK where one class per DECLARATION ships;
+decision 6 named a shape that moved; and a whole section listed as *verified but not yet built* is
+built. Each is corrected in place, with what replaced it and why, rather than deleted — the
+reasoning is what stops the next version arriving by drift instead of by decision.
 
 ---
 
@@ -13,14 +23,14 @@ This file is the *why*. `PLAN.md` is the *when*.
 The style is written beside the markup, in CSS:
 
 ```
-<div css=@(
+<div css=@@(
   display: flex;
   flex-direction: column;
   padding: 24px;
   background-color: #0f172a;
-  border-left: {{isOnline ? "4px solid #10b981" : "4px solid #64748b"}};
+  border-left: {isOnline ? "4px solid #10b981" : "4px solid #64748b"};
 )>
-  <h3 css=@( margin: 0; color: #ffffff; )>Nikola</h3>
+  <h3 css=@@( margin: 0; color: #ffffff; )>Nikola</h3>
 </div>
 ```
 
@@ -29,12 +39,12 @@ can. Nothing about the style is in the bundle, nothing is rebuilt per render, an
 the sheet as a file:
 
 ```css
-.r-8e271c6c { display: flex; flex-direction: column; padding: 24px;
-              background-color: #0f172a; border-left: var(--r0); }
+.r-8e271c6c1f3a4b02 { display: flex; flex-direction: column; padding: 24px;
+              background-color: #0f172a; border-left: var(--r-8e271c6c1f3a4b02-0); }
 ```
 
 ```tsx
-<div className="r-8e271c6c" style={{ "--r0": isOnline ? "4px solid #10b981" : "4px solid #64748b" }}>
+<div className="r-8e271c6c1f3a4b02" style={{ "--r-8e271c6c1f3a4b02-0": isOnline ? "4px solid #10b981" : "4px solid #64748b" }}>
 ```
 
 **Static structure, dynamic values, never dynamic rules.** That invariant is what buys the whole
@@ -87,7 +97,7 @@ Two checkers, each doing the half it is good at.
 
 ### The interpolated expressions — `tsc`, through a virtual file
 
-`{{isOnline ? … }}` is TypeScript and has to be checked as TypeScript, in its real lexical scope,
+`{isOnline ? … }` is TypeScript and has to be checked as TypeScript, in its real lexical scope,
 with the surrounding file's imports and generics intact. The way to get that from a compiler that
 cannot parse the file is the same three moves the file-format frameworks make:
 
@@ -101,7 +111,7 @@ a genuine type error inside a hole:
 
 ```
 packages/css/example.tsx(13,27): error TS2339: Property 'toUpperCase' does not exist on type 'number'.
-      border-left: {{accent.toUpperCase()}};
+      border-left: {accent.toUpperCase()};
 ```
 
 Line 13, column 27, in the file the author wrote — not in a generated file, not "somewhere in this
@@ -119,7 +129,7 @@ the declarations become in the virtual file — an **object literal**, not a str
 ```ts
 declare function __block(declarations: Partial<CssProperties>): string;
 
-__block({ display: "flexx" });               // value typo
+__block({ position: "statik" });             // value typo
 __block({ dsiplay: "flex" });                // key typo
 __block({ padding: nekaFunc() });            // a hole returning the wrong type
 __block({ padding: "10px 20px" });           // correct — silent
@@ -128,18 +138,29 @@ __block({ padding: "10px 20px" });           // correct — silent
 `tsc --strict`, verbatim:
 
 ```
-TS2820: Type '"flexx"' is not assignable to type '"flex" | "none" | "block" | …'. Did you mean '"flex"'?
+TS2820: Type '"statik"' is not assignable to type
+        'Keyword<"fixed" | "absolute" | "static" | "relative" | "sticky"> | undefined'. Did you mean '"static"'?
 TS2561: Object literal may only specify known properties, but 'dsiplay' does not exist
-        in type 'Partial<CssProperties>'. Did you mean to write 'display'?
-TS2322: Type 'boolean' is not assignable to type 'Length | …'
+        in type 'CssBlockShape'. Did you mean to write 'display'?
+TS2322: Type 'boolean' is not assignable to type 'CssValue | undefined'
 ```
+
+**Two conditions on that, both found by measurement and neither obvious.**
+
+**The key has to be UNQUOTED.** `{ "dsiplay": … }` gets `TS2353` and no suggestion at all. So the
+virtual file writes a property bare whenever it is a valid identifier — and a dashed name,
+`flex-direction` or `border-left`, cannot be, so those get the plain message and their near miss
+belongs to the CSS checker.
+
+**The value typo only works where the grammar is a closed keyword set**, which is why the example
+above is `position` and not `display`. See the table below.
 
 Three things fall out of that one encoding, and they were three separate questions:
 
 - **a typo in the property name**, with TypeScript's own *did you mean* — because an object literal
   gets excess-property checking, which an argument list does not;
-- **a typo in an enumerable value**, likewise;
-- **a hole checked against the property it belongs to.** `padding: {{nekaFunc()}}` is checked against
+- **a typo in a value**, likewise, for the 123 properties whose grammar is a closed keyword set;
+- **a hole checked against the property it belongs to.** `padding: {nekaFunc()}` is checked against
   `CssProperties["padding"]`, so the function's return type has to be something padding accepts. That
   was the hardest-sounding request and it costs nothing extra: the hole simply lands in the value
   position of the object literal, and the mapping back to the author's line is already proved.
@@ -163,11 +184,28 @@ Unreadable, and it grows combinatorially with every shorthand position. So the s
 
 | kind of property | typed as | who catches a typo |
 |---|---|---|
-| enumerable (`display`, `position`, `flex-direction`, …) | a real union | **the types** — with *did you mean* |
-| lengths, colours, shorthands | `string \| number` | **our CSS checker**, where we write the message |
+| a closed keyword set (`position`, `flex-direction`, `text-align`, …) | a real union | **the types** — with *did you mean* |
+| everything else | `string \| number` | **our CSS checker**, where we write the message |
 
 The type system takes the half it is good at and stays readable; the checker takes the half where a
 grammar is needed and a human-written message is worth more than an expanded union.
+
+**Measured when the map was generated, and it moves `display` across the line.** Of 551 non-prefixed
+properties in MDN's data, **123 have a grammar that is a closed `|` list of keywords** and 428 do
+not. `display` is one of the 428: its grammar allows `inline flow-root`, so a union of its single
+keywords would reject valid CSS. It was the example in this table and it should not have been —
+**rejecting valid CSS is the one failure a type map may not have**, so the line is drawn at whether
+the grammar is genuinely closed, not at whether the property feels enumerable.
+
+Three things every union also has to allow, each a false error before it was added: the CSS-wide
+keywords (`inherit`, `initial`, `unset`, `revert`, `revert-layer`), `var(…)`, and `!important`. They
+are folded into one named alias, `Keyword<…>` — and the NAME earns its place, because TypeScript
+prints the alias in a diagnostic instead of expanding the union:
+
+```
+TS2820: Type '"statik"' is not assignable to type
+  'Keyword<"fixed" | "absolute" | "static" | "relative" | "sticky"> | undefined'. Did you mean '"static"'?
+```
 
 ### That the emitted CSS survives the pipeline
 
@@ -183,21 +221,33 @@ at a class that is not there.
 
 ## The syntax
 
-`@( … )` with `{{ … }}` holes. Kept, because we own the parser and there is no reason to pay a worse
-spelling to please a parser we are replacing anyway.
+`@@( … )` with `{ … }` holes.
 
-**One collision found, and it is worth knowing before writing the parser.** `@(expr)` is *already*
-valid TypeScript in **decorator position** — measured, this compiles:
+**It began as `@( … )`, and the second `@` was bought with two measurements.** `@(expr)` is *already*
+valid TypeScript in two places, and both compile:
 
 ```ts
 class C { @(dec) m() {} }
+class C { constructor(@(inject()) private x: number) {} }
 ```
 
-In a JSX attribute value position it is unambiguous (`"`, `{` or nothing are the only things allowed
-there), and in expression position it is a syntax error today (`TS1109`), so nothing existing changes
-meaning. **But this is a decorator-heavy framework**, so the parser must never look for a style block
-in front of a class, a method or a field. That is a one-line rule and a permanent test, not a design
-problem — as long as it is written down before rather than discovered after.
+In a decorator-heavy framework that is not a footnote. It forced the opening to be recognised only
+after `name =` — which is what kept a block out of every ordinary expression position: an argument,
+an object value, an array item, a branch of a ternary. **`@@(` is a syntax error everywhere**,
+measured in all five positions, so the rule disappeared and a block goes where any other value goes.
+
+The other half is the cheap pass, which runs on every file of every build — and it is the smaller
+half. Measured on this repository at the commit before this parser landed, the substring `@(`
+matched **2 of 1,093** tracked source files, and both were regular expressions, not decorators: an
+ordinary decorator reads `@name(`, which does not contain `@(`. Only the parenthesised form `@(dec)`
+does, and there were none. The second `@` buys a grammar that cannot collide with the language; it
+does not buy a build that skips meaningfully more files.
+
+**What one `@` cost, and it is the honest half:** the walk now has to know a regular expression when
+it sees one. `/=@(x)/` used to be ruled out for free, because the `=` inside it is preceded by `/`
+rather than by a name; with no rule about what stands in front of a block, a regex body is just text
+that can contain anything. That is the classic lexer question and it is answered the classic way — a
+`/` divides when something that can end an expression is behind it, and opens a regex otherwise.
 
 ---
 
@@ -214,7 +264,7 @@ None of them is optional, and the order matters because each one is useless with
    feature is technically safe and practically unusable.
    **And `ramonda-check` belongs in this piece, not in a fifth one** — it reads the author's source
    through the same virtual file, for the reason measured below.
-4. **Bundler adapters.** Vite first — that is where dev and HMR live — then esbuild.
+4. **Bundler adapters.** Vite first — that is where dev and HMR live — then esbuild. Both exist.
 
 ---
 
@@ -240,7 +290,7 @@ touching JavaScript at all.
 Four properties keep it there, and each is a design constraint rather than an optimisation:
 
 1. **The scan is one lexically-aware pass**, tracking strings, templates and comments — because
-   finding `=@(` is not the same as knowing it is an attribute rather than text. Measured at ~450 MB/s,
+   finding `=@@(` is not the same as knowing it is an attribute rather than text. Measured at ~450 MB/s,
    it is a fifth of the total.
 2. **No cross-file analysis, ever.** A class name is the hash of its own normalised text, so a block
    compiles knowing nothing about the rest of the app. That is what makes files independently
@@ -261,11 +311,11 @@ The first draft of this section had the transform rewrite the call site into `cl
 splicing the expression into a template string. Three things are wrong with that, and they are worth
 keeping written down.
 
-**The compiler would be building strings.** `style={\`--r0:${expr}\`}` means the transform
+**The compiler would be building strings.** `style={\`--r-8e271c6c1f3a4b02-0:${expr}\`}` means the transform
 concatenates author code into attribute text, which drags in escaping — a `"` or a `;` out of a hole
 must not be able to end the declaration or the attribute — for a problem that need not exist.
 
-**It assumes the block is a JSX attribute.** It is not, necessarily. `@( … )` is an expression, and
+**It assumes the block is a JSX attribute.** It is not, necessarily. `@@( … )` is an expression, and
 where it is written is not the transform's business: it may be assigned to a variable, returned from
 a method, held in a field, or passed to something. A transform that only knows how to rewrite a
 `<div>` has decided the feature is narrower than the syntax.
@@ -278,19 +328,26 @@ A block compiles to a **value**, and the expressions are transplanted verbatim i
 Nothing is concatenated, so nothing has to be escaped.
 
 ```tsx
-// static only — hoisted to module scope, built once for the life of the program
-const _s1 = block("r-94dc05ab");
+// static only — one class per declaration, hoisted to module scope and built once
+const _s1 = _merge({ "font-size": "r-fs-18px" });
 …
 <h3 css={_s1}>
 
-// with holes — the descriptor is still hoisted; only the values are per-render
-const _s2 = block("r-8e271c6c", ["--r0"]);
-…
-<div css={_s2(this.open ? "4px solid " + this.accent : "4px solid #64748b")}>
+// with holes — the expression is an argument, in a value position, per render
+<div css={_merge({
+  "border-left": ["r-8e271c6c1f3a4b02", this.open ? "4px solid " + this.accent : "4px solid #64748b"],
+  "~border-left": ["border-left-color", "border-left-style", "border-left-width"],
+})}>
 ```
 
+**`block()` is not what this emits, and has not been since the merge was written.** It is still a
+public export — an adapter for another JSX library builds a value with it — and four documents
+including this one showed it as the compiler's output long after it stopped being one. That is how a
+reader learned to call `merge(block(…))`, which is a value carrying no map and composes with
+nothing.
+
 The expression is an argument, copied across untouched. The custom property reaches the DOM through
-`setProperty("--r0", value)`, which takes a raw string — so **the escaping problem the string form
+`setProperty("--r-8e271c6c1f3a4b02-0", value)`, which takes a raw string — so **the escaping problem the string form
 created simply does not arise**.
 
 And a block with no holes is a module constant: it costs one allocation for the life of the program,
@@ -302,7 +359,7 @@ The value needs somewhere to land, and that is a real `css` prop maintained in t
 is also what makes the double-render question somebody's to answer rather than something to design
 around.
 
-**Measured: the object form is reported.** Rendering `style={{ "--r0": this.accent }}` in a
+**Measured: the object form is reported.** Rendering `style={{ "--r-8e271c6c1f3a4b02-0": this.accent }}` in a
 development build prints, on every render:
 
 ```
@@ -337,7 +394,28 @@ message existing.
 
 ### Elsewhere, and in another framework
 
-Because the compiled form is a value, `@( … )` outside JSX is the same feature with no special case.
+Because the compiled form is a value, `@@( … )` outside JSX is the same feature with no special case:
+
+```tsx
+const panel = @@(
+  display: flex;
+  gap: 8px;
+);
+
+<div css={panel}>…</div>
+```
+
+**And the same reasoning gives a second spelling inside JSX**, `css={@@( … )}`, which is a value in the
+braces JSX already has for one. It is not sugar: it exists because of a limit nothing in this package
+can lift. **An editor stops consulting syntax injections the moment it enters a tag's attribute
+list**, so a bare `css=@@( … )` is only coloured when it is the first attribute on the tag name's own
+line — which is not how anyone writes a tag with several props. Inside braces there is no such limit,
+at any position and on any line.
+
+What the three spellings share is everything that matters: the same class, the same hash, the same
+holes. Only what is replaced differs — a bare attribute needs the braces the author did not write,
+and the other two must not have them, or a value becomes an object literal.
+
 The package exports one function that turns a compiled value into `{ className, style }`, which is
 what a wrapper on another JSX framework spreads. Ramonda applies it natively through the prop; nobody
 else has to.
@@ -350,29 +428,82 @@ else has to.
 selector, or a whole declaration:
 
 ```
-border-left: {{…}};                ✓   becomes  border-left: var(--r0)
-{{cond ? "display:flex" : ""}}     ✗   a declaration — nothing to put a variable in
-{{name}}: 24px;                    ✗   a property name
-&:{{state}} { … }                  ✗   a selector
+border-left: {…};                ✓   becomes  border-left: var(--r-8e271c6c1f3a4b02-0)
+{cond ? "display:flex" : ""}     ✗   a declaration — nothing to put a variable in
+&:{state} { … }                  ✗   a selector
+{name}: 24px;                    ✓   ONLY where `name` is a `@@property( … )` — see below
 ```
-*Recommended:* value position only, refused at build time with the source position, and reported by
-the checker first.
+*Decided:* value position only, refused at build time with the source position, and reported by the
+checker first — **with one exception this section did not foresee.** A `@@property( … )` compiles to
+a NAME, a string known at build time, so a hole holding one is written in rather than substituted,
+and `{W}: 24px` emits `--r-…: 24px`. That is what makes a generated custom property settable; without
+it, registering one would be half a feature. `A_HELD_NAME` in `read.ts` is the discriminator, and
+nothing else may stand there.
 
 **2. ~~What an `undefined` hole does.~~ DECIDED by the server-rendering measurement below: the type
-refuses `undefined`.** It was a preference; the four hydration directions make it a requirement. Emit
-`var(--r0, initial)` as the floor anyway, for the value that arrives from outside the types.
+refuses `undefined`.** It was a preference; the four hydration directions make it a requirement.
+
+**The `var(--…, initial)` floor was NOT built, and this line used to say it would be.** What ships is
+`var(--r-…-0)` with no fallback. The floor would be dead weight: the type refuses `undefined`, the
+runtime refuses a value that is not a boolean, a number or a string, and a custom property that is
+genuinely unset already computes to the guaranteed-invalid value, which is what `initial` names.
 
 **3. Merging with a written `style`.** *Recommended:* merge, generated first, author last.
 
-**4. Ordering and specificity.** Two classes setting the same property are decided by their order in
-the sheet, which comes from module graph order. *Recommended:* one block emits one class holding all
-its declarations, and the sheet sits in a named `@layer` beneath author stylesheets.
+**4. ~~Ordering and specificity.~~ DECIDED, and NOT the way this line recommended.** It said *one
+block emits one class holding all its declarations*. **What ships is one class per DECLARATION** —
+`display: flex` written anywhere in an app is one rule, and an element carries one class per thing
+its block sets. That is what lets two files agree on a class without knowing about each other, and it
+is why the sheet does not grow with the number of blocks.
+
+Order is decided by `sheetRank` — not by module graph order, because a rule may land in any chunk and
+a chunk has to stand on its own. The rank is *how specific the case is*: a condition beats none, a
+longhand beats its shorthand, and of two breakpoints the narrower case is emitted last, which is what
+every atomic CSS framework arrived at and is read off the query rather than off the author's order.
+
+**And the rank is a LAYER, not a position, because a position was not enough.** One rule goes into
+the stylesheet of every file that names it — the thing that lets a chunk stand alone — so a second
+file re-emitting a shared rule put it after the first file's higher-ranked ones and same-specificity
+later-wins undid the rank. Measured in Chromium through a real build: a file writing `color: red` and
+`@media { color: blue }` rendered blue alone and red once an innocent file writing only `color: red`
+loaded after it. A layer's place is fixed by its declaration rather than by where its rules sit, so
+each rank gets a layer under `ramonda` and every stylesheet declares the whole order.
+
+A breakpoint is a number, so the layer for it comes out of a name space of thousands — written as the
+slot's DIGITS, one nested layer each, because ten names per level is a list every stylesheet can
+carry and thousands is not. Unconditional rules stay flat.
+
+The modes are ordered against the breakpoints the way Tailwind orders them — reduced motion, colour
+scheme and medium below, `@supports`, orientation, contrast and `forced-colors` above. That is a
+decision the user made over the one this first shipped, and the argument is about which mistake is
+silent rather than about taste: a base block carries the theme and the block reusing it adjusts at a
+breakpoint, and only the runtime can see that pair at all. Which is why `compose` warns about it in
+development, and why that warning is measured to cost nothing in a production build.
+
+**The thing this buys is not that dev matches the build.** Measured on a real dev server against a
+real `vite preview` of the same app: before the layers the two already agreed, and both were wrong.
+What moved is that a rule's place in the cascade is a function of the RULE — not of which files are
+in the build, and not of when a chunk arrives. With the layers off, loading a lazy chunk changed the
+colour of an element already on the page. `prototype-dev-vs-build.mjs` runs both sides. What is still not settled is two
+conditions carrying no width, `@media print` against `prefers-color-scheme`: nothing tells them
+apart, and there the file's own order is still the answer. See `PLAN.md`.
+
+The sheet does sit in a named `@layer ramonda`, and the honest statement of what that buys is on the
+docs page rather than here: **unlayered CSS beats layered CSS**, checked before specificity, so an
+author's ordinary stylesheet wins without doing anything. An author who wants the other order writes
+`@layer app, ramonda;`.
 
 **5. Nesting, `&:hover`, `@media`.** Unusable without them. *Recommended:* those three in v1.
 
-**6. ~~The compiled value's exact shape.~~ DECIDED: a call, `_s2(value)`.** It reads better and
-allocates the same as an array. The compiler still concatenates nothing — the expression is an
-argument, transplanted verbatim.
+**6. ~~The compiled value's exact shape.~~ DECIDED, and it moved again after this line was written.**
+It said `_s2(value)`. What ships is a MAP — `_merge({"color":["r-OsXzXT1Qd",x],"gap":"r-gap-8px"})` —
+which decision 4 forced: one class per declaration needs a value that says which class belongs to
+which property, so that merging two blocks can decide precedence property by property. Measured: the
+order of classes in a `class` attribute decides nothing, so the call site is the only place
+precedence can be decided at all.
+
+What survives from this line, and it is the part that mattered: **the compiler concatenates nothing**.
+The expression is transplanted verbatim as an array element, emitted exactly once.
 
 **7. May anything happen at runtime?** **DECIDED — no.** Custom properties only, never an injected
 rule. Injecting would give up server-render determinism, the cached sheet and the checker's view of
@@ -380,12 +511,21 @@ the styles, which is every property this design has. Written down so it is not r
 convenience later: a feature that "just needs a rule at runtime" is a feature that belongs somewhere
 else.
 
-**8. The name, and where it lives.** Not `@ramonda/*`, by constraint 3. Living in this monorepo is
-fine — one gate, one release pipeline — but nothing in it may import from the framework.
-**Recommended: `stilo`**, free on npm as of 2026-09-04. Short, says *style* without saying *CSS in
-JS*, and carries no framework in it, which matters for a package whose whole pitch is that it works
-anywhere. Checked and free alongside it: `cssat`, `at-block`, `blockcss`, `styleblock`, `kalem`.
-Taken: `cssx`, `atcss`. **Still the user's call.**
+**8. ~~The name, and where it lives.~~ DECIDED: `@ramonda/css`, in this monorepo.** The earlier
+recommendation here was a name outside the org — `stilo` — on the reading that "completely isolated
+from the framework" meant *organisationally* separate. It does not. It means **technically**
+uncoupled, and the precedent for that already exists in the repository: `@ramonda/lens` is under the
+org, ships in other people's bundles, and imports nothing at all.
+
+So the constraint stands and only its enforcement moves: **this package may not import the framework,
+in any direction, at any depth, not even as a peer.** A wrapper putting a `css` prop on another JSX
+library gets the value and `toStyleObject`, and drags nothing else in. Being under the org buys one
+gate, one release pipeline and one place to look, and costs nothing that constraint 3 was protecting.
+
+Two entry points, and the split is load-bearing rather than tidy: `@ramonda/css` is the compiled
+value that every page loads, and `@ramonda/css/compiler` decides names and never reaches a browser.
+A runtime that could hash a block would be a runtime that could invent a rule, which decision 7
+forbids — the boundary makes that true by construction.
 
 **9. ~~Does the framework report the generated object?~~ MEASURED, and it did.** Answered above:
 `RMD020` fires on every render for the object form. **Decided: the `css` prop is exempt**, one line
@@ -403,7 +543,7 @@ where a design that reads correctly can still be wrong.
 server writes them into the markup:
 
 ```html
-<div class="r-8e271c6c" style="--r0: #10b981; --r1: 24px;"></div>
+<div class="r-8e271c6c1f3a4b02" style="--r-8e271c6c1f3a4b02-0: #10b981; --r-8e271c6c1f3a4b02-1: 24px;"></div>
 ```
 
 The client re-derives them from the same state during hydration. There is no payload to serialise
@@ -438,6 +578,20 @@ about `style`. Row four is not general: with `title`, both directions are silent
 repaired both ways; with a custom property the divergence is reported and the stale value **survives
 hydration**. Worth confirming against the runtime's own rules before treating it as a defect — a
 framework that does not know which `--` properties are its own has a reason not to remove one.
+
+**Measured again once the framework side existed, and the second row changed.** The table above was
+taken on the OBJECT form — `style={{ "--r0": … }}` — where the value is part of an attribute the
+comparator reads. A compiled block is not: the class is compared like any other class and the values
+are applied with `setProperty` after the attribute pass, so nothing compares them. A differing hole
+is now **silent, and the client's value wins**. That is the better half of the two failing rows —
+the one that was reported was the one that was not repaired.
+
+**And a hostile value injects through a server render, which nothing here predicted.** `setProperty`
+writes one declaration whatever it is handed, so the client is safe; but a server render is
+serialized to HTML and the browser PARSES the style attribute back, and the parse applies the CSS
+grammar to whatever the serializer wrote. Through `renderToString` and `innerHTML`,
+`red; position: fixed; width: 100vw` came back as real, applied declarations. **A value carrying a
+`;` is refused** — see `CONTRACT.md`, *the one rule a consumer of a value must implement*.
 
 **What this settles: a hole may never be `undefined`, and the type is what enforces it.** Decision 2
 was a preference before this measurement and is a requirement after it. Both failing rows are
@@ -477,8 +631,8 @@ Two components. A card styles its own title through a nested rule; the title has
 Both are ordinary, and neither author knows about the other:
 
 ```
-Card's block:    & .title { color: {{this.accent}} }
-Title's block:   padding: {{this.pad}}
+Card's block:    & .title { color: {this.accent} }
+Title's block:   padding: {this.pad}
 ```
 
 With positional names, both call their first hole `--r0`:
@@ -618,14 +772,14 @@ The four pieces of work above are about the compiler, the check command, the edi
 There is a fifth thing that reads a `.tsx` file in this repository and it was not on the list:
 **`ramonda-check` itself**, which builds a `ts.Program` from the project's tsconfig.
 
-The obvious guess is that a file with `@( … )` in it fails to parse and the run stops. **Measured,
+The obvious guess is that a file with `@@( … )` in it fails to parse and the run stops. **Measured,
 and it is worse than that: TypeScript error-recovers, so the run looks completely normal.**
 
 The same component, twice, differing only in where the block sits in the attribute list:
 
 ```
-<div onclick={this.go} role="button" tabindex={5} css=@( display: flex; )>   // block last
-<div css=@( display: flex; ) onclick={this.go} role="button" tabindex={5}>   // block first
+<div onclick={this.go} role="button" tabindex={5} css=@@( display: flex; )>   // block last
+<div css=@@( display: flex; ) onclick={this.go} role="button" tabindex={5}>   // block first
 ```
 
 ```
@@ -660,7 +814,7 @@ the child intact — children survive the recovery, later attributes do not.
   over the blindness with a `// ramonda-check-ignore`.
 
 So the rule to write down before anyone builds a package with this: **a package whose source uses
-`@( … )` cannot honestly certify until the checker reads through the transform.** The certificate is
+`@@( … )` cannot honestly certify until the checker reads through the transform.** The certificate is
 not decoration here — it is the thing that would notice, and it should not be taught to look away.
 
 ---
@@ -677,7 +831,7 @@ but "which parts are still opinion".
 | a hole is type-checked in its real scope | a real `TS2339` at the author's line and column |
 | a property-name typo | `TS2561 … Did you mean to write 'display'?` |
 | a value typo | `TS2820 … Did you mean '"flex"'?` |
-| a hole typed by its property | `TS2322` on `padding: {{nekaFunc()}}` |
+| a hole typed by its property | `TS2322` on `padding: {nekaFunc()}` |
 | dev speed | +2.6% over esbuild; 15–22 µs per file, linear |
 | values crossing to the client | in the markup; no channel, no registry |
 | instances do not multiply rules | one rule at any N; 0.10 KB either way |
@@ -685,13 +839,24 @@ but "which parts are still opinion".
 | the generated object is reported | `RMD020`, every render |
 | the checker goes quietly blind | three rules become one, silently |
 
-### Answered by a decision, with the mechanism verified but not yet built
+### ~~Answered by a decision, with the mechanism verified but not yet built~~ — ALL OF IT IS BUILT
 
-The `RMD020` exemption — the place exists and already skips two other keys, but the line is not
-written. Scoped variable names — the cost is measured, the failure they prevent is read from the
-specification, because jsdom cannot resolve an inherited custom property. The assembly-time collision
-assertion, the round-trip assertion after post-processing, and the checker reading the virtual file:
-all three are ordinary work in places that already exist, and none is proved.
+This section listed five things as designed-but-unwritten. Every one of them now runs, and the list
+is kept because reading it against the code is what found this document drifting:
+
+- **The `RMD020` exemption** is written, in `renderStability.ts`, beside the two keys it already
+  skipped.
+- **The assembly-time collision assertion** is in `Sheet` — no two distinct blocks may share a class,
+  because a longer hash makes a collision unlikely and probability is not a promise.
+- **The round-trip assertion after post-processing** is `Sheet.verify`, called from the bundler's
+  `generateBundle` against every emitted stylesheet at once. It catches the failure that is invisible
+  by construction: a minifier renaming a class the emitted JavaScript already points at.
+- **The checker reading the virtual file** is what `ramonda-check` and the editor plugin both do, and
+  `checkSource` is the one sequence all three consumers share.
+- **Scoped variable names** ship, and the cost stayed where it was measured.
+
+Only jsdom's limit is unchanged: it still cannot resolve an inherited custom property, so that
+failure is read from the specification rather than from a test.
 
 ### The two that were unexamined — both measured now, both fine
 
@@ -775,9 +940,9 @@ block is put back at whatever indentation the formatter chose:
 export const Card = (props: { id: string }) => {
 	const accent = "#10b981";
 	return (
-		<div css=@(
+		<div css=@@(
 			display: flex;
-			border-left: {{accent}};
+			border-left: {accent};
 		)>
 			<span>{props.id}</span>
 		</div>
@@ -806,7 +971,7 @@ deliberately, not something for the first person who runs the formatter to disco
 The parsers either work or stop. There is a third category — **the highlighters** — and it neither
 works nor stops. It renders the code in the wrong colours.
 
-A `.tsx` code fence containing `@( … )` is highlighted by whatever reads the fence: this repository's
+A `.tsx` code fence containing `@@( … )` is highlighted by whatever reads the fence: this repository's
 own documentation site, an editor's markdown preview, npm's README rendering, and GitHub's diff view,
 where it is visible in any pull request that touches this file.
 
@@ -861,14 +1026,16 @@ proved above — which turns "no tooling" into "our tooling".
 
 ---
 
-## What this contradicts today
+## ~~What this contradicts today~~ — RESOLVED, and the page was rewritten rather than amended
 
-`apps/docs/content/styling.md` says, under *What the framework does not do*: **no scoping, no
-generated class names, no CSS-in-JS.** Its three stated reasons are that such a style ships in the
-bundle, is rebuilt every render, and cannot be cached as a file.
+`apps/docs/content/styling.md` said, under *What the framework does not do*: **no scoping, no
+generated class names, no CSS-in-JS**, for three reasons — such a style ships in the bundle, is
+rebuilt every render, and cannot be cached as a file.
 
-**Build-time extraction satisfies all three rather than contradicting them.** That is the strongest
-argument the design is right — and a page to rewrite rather than quietly amend when it lands.
+**Build-time extraction satisfies all three rather than contradicting them**, which was the strongest
+argument the design was right. The page now says so in its own words: both paragraphs name style
+blocks, one as the opt-in that generates a class and one as *"not the exception they look like"*.
+The framework's position is unchanged and the exception is stated where a reader meets the rule.
 
 ---
 
@@ -878,7 +1045,7 @@ argument the design is right — and a page to rewrite rather than quietly amend
 node packages/css/prototype-typecheck.mjs packages/css/example.tsx.txt
 ```
 
-Proves the claim everything else depends on: a `tsc` diagnostic from inside a `{{ … }}` hole,
+Proves the claim everything else depends on: a `tsc` diagnostic from inside a `{ … }` hole,
 reported at the right line and column of the author's own file.
 
 **The `.txt` on the end of the fixture is itself a measurement.** Named `example.tsx`, it turned this

@@ -9,7 +9,9 @@
     "apps/docs/src/generated/**",
     "packages/create-ramonda/templates/**",
     "packages/check/src/__tests__/fixtures/**",
-    "**/tsup.config.bundled_*.mjs"
+    "**/tsup.config.bundled_*.mjs",
+    "apps/playground-core/src/demos/panels.tsx",
+    "apps/playground-core/src/demos/HeavyPanel.tsx"
   ],
   "categories": {
     "correctness": "error"

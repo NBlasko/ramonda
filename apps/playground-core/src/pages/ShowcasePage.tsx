@@ -1,5 +1,16 @@
 import { Component, state } from "@ramonda/core";
-import { Counter, Clock, Inputs, HoverCard, DerivedSync, Toast, LifecycleDemo } from "../demos/panels";
+import {
+  Counter,
+  Clock,
+  Inputs,
+  HoverCard,
+  DerivedSync,
+  StyleBlock,
+  StyleBlockNested,
+  StyleBlockComposed,
+  Toast,
+  LifecycleDemo,
+} from "../demos/panels";
 
 export class ShowcasePage extends Component {
   @state source = 1;
@@ -34,6 +45,11 @@ export class ShowcasePage extends Component {
           </div>
           <div className="panel">
             <LifecycleDemo />
+          </div>
+          <div className="panel">
+            <StyleBlock />
+            <StyleBlockNested />
+            <StyleBlockComposed />
           </div>
         </section>
       </div>

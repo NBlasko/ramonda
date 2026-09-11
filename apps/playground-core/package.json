@@ -7,8 +7,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "check-types": "tsc --noEmit",
-    "test:browser": "playwright test"
+    "check-types": "ramonda-css tsconfig.json",
+    "test:browser": "playwright test",
+    "lint": "ramonda-css lint src",
+    "format": "ramonda-css format src",
+    "format:check": "ramonda-css format --check src"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +20,8 @@
     "@ramonda/core": "workspace:^",
     "@ramonda/form": "workspace:^",
     "@ramonda/query": "workspace:^",
-    "@ramonda/router": "workspace:^"
+    "@ramonda/router": "workspace:^",
+    "@ramonda/css": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

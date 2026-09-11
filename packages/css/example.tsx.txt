@@ -8,9 +8,9 @@ declare global {
 }
 const accent: number = 4;
 export const Card = (
-  <div css=@(
+  <div css=@@(
     display: flex;
-    border-left: {{accent.toUpperCase()}};
+    border-left: {accent.toUpperCase()};
   )>
     hi
   </div>

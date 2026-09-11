@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import MarkdownIt from "markdown-it";
 import { JSDOM } from "jsdom";
-import { createHighlighter } from "shiki";
+import { highlighter } from "./highlighter.mjs";
 import { ruleCatalogue } from "@ramonda/check";
 
 /**
@@ -53,11 +53,6 @@ const demosDir = join(root, "src", "demos");
  * the page follows the reader's light/dark preference with no second render and
  * no JavaScript. The cost is a slightly larger HTML payload, paid once at build.
  */
-const highlighter = await createHighlighter({
-  themes: ["github-light", "github-dark"],
-  langs: ["tsx", "ts", "js", "json", "css", "html", "bash", "markdown"],
-});
-
 /** A fence language Shiki does not know would throw; fall back to plain text. */
 const KNOWN_LANGS = new Set(highlighter.getLoadedLanguages());
 

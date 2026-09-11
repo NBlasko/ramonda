@@ -1,4 +1,5 @@
 import type { RefTarget } from "../base/Ref";
+import type { CssBlockValue } from "./cssBlock";
 import type { Runtime } from "../core/runtime";
 
 export interface AnchorClickEvent extends Event {
@@ -272,6 +273,14 @@ export type RamondaArgs<T extends BaseElements> = Partial<
   | {
       [val: Lowercase<string>]: any;
       style: string | Record<string, string | undefined>;
+      /**
+       * A compiled style block — see {@link CssBlockValue}.
+       *
+       * **Declared, not left to the index signature.** `[val: Lowercase<string>]: any` above claims
+       * every lowercase name, so `css` would be `any` and nothing about the value would be checked
+       * — a typo in a hand-written one, or a value from somewhere else entirely, would pass.
+       */
+      css: CssBlockValue;
       key: string | number;
       ref: RefTarget<T>;
     }
@@ -390,6 +399,8 @@ export type SVGArgs<T extends SVGElement> = Partial<
   SVGCamelCaseAttributes & {
     [attribute: Lowercase<string>]: unknown;
     style: string | Record<string, string | undefined>;
+    /** The same block an HTML element takes — the class is written as `class`, which SVG shares. */
+    css: CssBlockValue;
     key: string | number;
     ref: RefTarget<T>;
   } & Omit<DomProperties<T>, keyof SVGCamelCaseAttributes | Lowercase<string>> &

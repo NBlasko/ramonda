@@ -1,0 +1,546 @@
+import type { Block, BlockItem, ValuePart } from "./ast";
+import { AT_RULE_LINKS, KEYWORDS, MEDIA_FEATURES, PROPERTIES, SELECTORS } from "./keywords.generated";
+
+/**
+ * The canonical text of a block, which is the definition of its identity.
+ *
+ * Two blocks that normalise to the same string get the same class and therefore ONE rule, wherever
+ * and by whomever they were written. That makes this the most dangerous function in the package, and
+ * it is written around one asymmetry:
+ *
+ * - **a missed merge** costs one duplicate rule in a stylesheet — a few dozen bytes;
+ * - **a wrong merge** changes a page nobody edited, in a way no test of either block alone can find.
+ *
+ * So it throws away only what provably cannot change meaning, and where there is any doubt it keeps
+ * the difference. Number forms (`.5px` and `0.5px`), colour forms (`#FFF` and `#ffffff`) and keyword
+ * case are all safe to fold in principle and are deliberately NOT folded: each needs a value parser
+ * to do safely, and each buys a rule that was going to be duplicated anyway.
+ *
+ * It must also produce the same bytes in the server build and the client build, which is why it is
+ * one exported function rather than a rule written down twice.
+ */
+
+/**
+ * The delimiter around a hole's index in the canonical text.
+ *
+ * U+0000 has no meaning in CSS, and `readBlock` REFUSES a block that holds one — so a placeholder
+ * made of it cannot be forged by the source it is protecting.
+ *
+ * **The refusal is what guarantees that, and it was not always there.** This note used to argue
+ * from CSS preprocessing turning a NUL into U+FFFD, which does not apply: a block is read out of a
+ * TypeScript file and nothing preprocesses it as CSS. A review measured a block carrying two of them
+ * sharing an identity, and a class, with a block carrying a real hole.
+ *
+ * A placeholder is needed at all because the names are circular: the variable name is derived from
+ * the class, the class from the hash, and the hash from this text. Something has to stand in for the
+ * name while the name is being decided, and `substitute` puts the real one back afterwards.
+ */
+export const HOLE = "\u0000";
+
+export function normalise(block: Block): string {
+  return items(block.items);
+}
+
+function items(list: readonly BlockItem[]): string {
+  let out = "";
+  for (const item of list) {
+    out += item.kind === "declaration" ? `${propertyName(item.property)}:${value(item.value)};` : rule(item);
+  }
+  return out;
+}
+
+function rule(item: Extract<BlockItem, { kind: "rule" }>): string {
+  return `${collapse(item.prelude)}{${items(item.items)}}`;
+}
+
+/**
+ * `COLOR` and `color` are the same property; `--Accent` and `--accent` are two.
+ *
+ * Only A–Z is folded, so the result never depends on the machine's locale — `toLowerCase` maps `I`
+ * differently under a Turkish locale, and a class name that differs by locale would break the one
+ * thing the name has to do.
+ *
+ * **Exported because THREE files had this, byte for byte, reasoning included.** The key a block is
+ * looked up by, the key the virtual file writes, and the key the merge composes on all have to be
+ * the same string — three copies that agreed today and had nothing making them agree tomorrow. A
+ * custom property keeps its case, because CSS keeps it: without the fold, valid CSS would be
+ * reported as a property that does not exist, a *did you mean* about the author's own capitals.
+ */
+export function propertyName(property: string): string {
+  return property.startsWith("--") ? property : property.replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
+
+/**
+ * The value, with its holes standing in as placeholders.
+ *
+ * The parts are joined BEFORE the whitespace is collapsed, and that ordering is the whole
+ * correctness of it: collapsing each part on its own would trim the space in `4px solid {{colour}}`
+ * off the end of the text part, and merge it with `4px solid{{colour}}` — two different values, one
+ * class, and the second one broken.
+ */
+function value(parts: readonly ValuePart[]): string {
+  let raw = "";
+  for (const part of parts) raw += part.kind === "text" ? part.text : `${HOLE}${part.index}${HOLE}`;
+  return collapse(raw);
+}
+
+/**
+ * Runs of whitespace to one space, and none at the ends — except inside a string, where every
+ * character an author wrote is what they meant (`content: "a  b"`).
+ *
+ * Exported for the virtual file, which writes one declaration's value into a string literal and has
+ * to fold it the same way — not re-implement it. It is deliberately not on the package's surface.
+ */
+export function collapse(text: string): string {
+  let out = "";
+  let pending = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+
+    if (c === " " || c === "\t" || c === "\n" || c === "\r" || c === "\f") {
+      pending = true;
+      continue;
+    }
+
+    if (pending) {
+      // Never a leading space: a run before anything has been written is trimmed rather than kept.
+      if (out.length > 0) out += " ";
+      pending = false;
+    }
+
+    if (c === '"' || c === "'") {
+      i = string(text, i, (chunk) => {
+        out += chunk;
+      });
+      continue;
+    }
+
+    out += c;
+  }
+
+  // A run at the end is simply never flushed, which is the trim.
+  return out;
+}
+
+/**
+ * Copies one string literal out verbatim and returns the index of its closing quote.
+ *
+ * An unterminated string runs to the end of the text rather than throwing. This is a normaliser, not
+ * a validator: the parser has already refused a block it could not read, and a second opinion here
+ * would only be a second place for the two to disagree.
+ */
+function string(text: string, start: number, write: (chunk: string) => void): number {
+  const quote = text[start];
+  let i = start + 1;
+
+  while (i < text.length) {
+    const c = text[i];
+    if (c === "\\") {
+      i += 2;
+      continue;
+    }
+    if (c === quote) break;
+    i++;
+  }
+
+  const end = Math.min(i, text.length - 1);
+  write(text.slice(start, end + 1));
+  return end;
+}
+
+/**
+ * ONE SPELLING for a condition, and one for a selector.
+ *
+ * ## The fault these exist for
+ *
+ * A declaration's `key` — what decides whether one declaration OVERRIDES another — is derived from
+ * its own text. A review measured what that costs when two files spell one condition differently: a
+ * base written `@media (min-width:40rem)` and a modifier written `@media (min-width: 40rem)` are the
+ * same CSS and became two keys, so the merge kept BOTH classes and which one won was decided by
+ * whichever file the bundler transformed first.
+ *
+ * ## Why the source is canonicalised rather than the key
+ *
+ * CSS is case-insensitive about the words of the LANGUAGE — an at-rule's name, a media feature's
+ * name, a pseudo-class's name — and case-sensitive about an author's own identifiers. Measured with
+ * lightningcss: `:hover` and `:HOVER` are one rule, `.a` and `.A` are two. So a key cannot simply be
+ * lower-cased; folding a class name would introduce, deliberately, the exact collision the review
+ * was looking for.
+ *
+ * Making the SOURCE canonical moves the invariant from "the compiler normalises every spelling" to
+ * "there is only one spelling", which is far cheaper to be right about and leaves an author's own
+ * identifiers alone. The checker reports a text these would change and the formatter writes what
+ * they return, so **the rule reports exactly what the canonicaliser can fix** — an error with no fix
+ * is worse than a spelling, and one function asked two ways cannot drift from itself.
+ *
+ * ## What they deliberately leave alone
+ *
+ * `:nth-child(2n + 1)` and `@supports ((display: grid))` are each the same CSS as their tighter
+ * spelling and each needs real parsing to rewrite: `:nth-child(2n of .a)` has whitespace that
+ * matters, and telling a redundant paren from a grouping one is the `@supports` grammar. Left as
+ * written, which costs a second class and reports nothing.
+ */
+export function canonicalSelector(selector: string): string {
+  return overCode(selector, (code) => tightenedCounts(lowered(code)));
+}
+
+/**
+ * Applies `write` to the CODE of a prelude and leaves the author's own bytes alone.
+ *
+ * A string's contents and a comment's contents are the author's. A review measured what happens
+ * when they are not treated that way: `&[title="A:Hover"]` came back `&[title="A:hover"]`, and
+ * attribute matching is case-SENSITIVE — so the selector stopped matching what it had matched. The
+ * `non-canonical-spelling` rule agreed with the canonicaliser, so the build refused the correct
+ * spelling and named the broken one as the fix.
+ *
+ * The comment case only reaches here through the FORMATTER: the parser collapses a comment to one
+ * space before a rule ever sees a prelude, and the formatter hands over the line as written.
+ *
+ * An unterminated string or comment takes the rest of the prelude with it, which is what a parser
+ * would do with it too.
+ */
+function overCode(prelude: string, write: (code: string) => string): string {
+  let out = "";
+  let from = 0;
+  let index = 0;
+
+  const flush = (to: number) => {
+    if (to > from) out += write(prelude.slice(from, to));
+  };
+
+  while (index < prelude.length) {
+    const code = prelude.charCodeAt(index);
+
+    if (code === 34 || code === 39) {
+      flush(index);
+      const closed = endOfPreludeString(prelude, index);
+      out += prelude.slice(index, closed + 1);
+      index = closed + 1;
+      from = index;
+      continue;
+    }
+    if (code === 47 /* / */ && prelude.charCodeAt(index + 1) === 42 /* * */) {
+      flush(index);
+      const closed = prelude.indexOf("*/", index + 2);
+      const end = closed === -1 ? prelude.length : closed + 2;
+      out += prelude.slice(index, end);
+      index = end;
+      from = index;
+      continue;
+    }
+    index++;
+  }
+
+  flush(prelude.length);
+  return out;
+}
+
+/** Past the closing quote, or the last character when a prelude's string is never closed. */
+function endOfPreludeString(prelude: string, start: number): number {
+  const quote = prelude.charCodeAt(start);
+  for (let index = start + 1; index < prelude.length; index++) {
+    const code = prelude.charCodeAt(index);
+    if (code === 92 /* backslash */) {
+      index++;
+      continue;
+    }
+    if (code === quote) return index;
+  }
+  return prelude.length - 1;
+}
+
+/**
+ * `An+B` written the one way — `2n+1`, not `2n + 1`.
+ *
+ * A small closed syntax: an optional sign, an optional integer, an optional `n`, an optional sign
+ * and an optional integer, or one of the keywords. So the spaces around the sign carry nothing and
+ * come out, and `N` and `ODD` are the language's words and come down.
+ *
+ * **Everything from ` of ` onward is a SELECTOR and is left exactly as written.** Its whitespace is
+ * a combinator and its capitals are the author's classes. That boundary is why this looked like it
+ * needed a parser: the argument is two languages, and only the first one is closed.
+ */
+function tightenedCounts(selector: string): string {
+  return selector.replace(A_COUNT, (whole, name: string, argument: string) => {
+    const at = argument.search(/\sof\s/i);
+    const counted = at === -1 ? argument : argument.slice(0, at);
+    const rest = at === -1 ? "" : argument.slice(at);
+    if (!AN_B.test(counted.trim())) return whole;
+    return `:${name}(${counted
+      .trim()
+      .replace(/\s*([+-])\s*/g, "$1")
+      .toLowerCase()}${rest})`;
+  });
+}
+
+/** Every pseudo-class whose argument is an `An+B`. */
+const A_COUNT = /:(nth-(?:last-)?(?:child|of-type|col))\(([^)]*)\)/gi;
+
+/** `An+B` and the two keywords, which is the whole of what may be tightened. */
+const AN_B = /^[+-]?(?:\d+)?[nN]?\s*(?:[+-]\s*\d+)?$|^(?:odd|even)$/i;
+
+function lowered(selector: string): string {
+  return selector.replace(A_PSEUDO, (whole, colons: string, name: string) => {
+    const lowered = name.toLowerCase();
+    // A name nobody generated is a browser's or a typo's, and neither is this function's to rewrite.
+    if (!PSEUDO_CLASSES.has(`:${lowered}`) && !PSEUDO_ELEMENTS.has(`::${lowered}`)) return whole;
+    // A pseudo-ELEMENT written with one colon is CSS's own legacy spelling for four of them.
+    const written = colons === ":" && PSEUDO_ELEMENTS.has(`::${lowered}`) ? "::" : colons;
+    return `${written}${lowered}`;
+  });
+}
+
+/**
+ * A rule's prelude, written the one way it may be written — a condition or a selector.
+ *
+ * **One copy, because there were two.** `rules.ts` asked this question to report
+ * `non-canonical-spelling` and `tooling.ts` asked it to WRITE the answer, each with its own
+ * `written.startsWith("@") ? canonicalCondition(…) : canonicalSelector(…)`. Two copies of one
+ * pairing is this repository's recurring fault, and here it decides both what is reported and what
+ * is written — so a drift would be a rule naming a fix the formatter declines to make.
+ */
+export function canonicalPrelude(written: string): string {
+  return written.startsWith("@") ? canonicalCondition(written) : canonicalSelector(written);
+}
+
+/**
+ * A declaration's VALUE, with a keyword written in the one case CSS reads it as.
+ *
+ * CSS keywords are case-insensitive: measured in Chromium over the generated table, of 314 pairs it
+ * accepts it accepts **every one in both cases**, with no exceptions. `color: RED` is `color: red`.
+ *
+ * **What may not be folded, and each would be a corruption rather than a tidy-up:** a word inside
+ * PARENTHESES, because `url(A.PNG)` is a filename and filenames are case-sensitive; a word inside a
+ * STRING, because those bytes are the author's; a custom property's value, which is arbitrary; and a
+ * property with no closed keyword row, because `animation-name: SlideIn` is a name the author
+ * invented. So this folds a bare word at the top level of the value and nothing else.
+ */
+export function canonicalValue(property: string, value: string): string {
+  if (property.startsWith("--")) return value;
+  const accepted = KEYWORDS[propertyName(property)];
+  if (accepted === undefined || accepted === "") return value;
+  const keywords = new Set(accepted.split(" "));
+
+  let out = "";
+  let depth = 0;
+  let quote = "";
+  let word = "";
+
+  /** A run of identifier characters, folded only if the fold names a keyword this property has. */
+  const flush = () => {
+    const lowered = word.toLowerCase();
+    out += depth === 0 && quote === "" && word !== lowered && keywords.has(lowered) ? lowered : word;
+    word = "";
+  };
+
+  for (const character of value) {
+    if (quote !== "") {
+      // Inside a string, and nothing in one is this function's to rewrite.
+      out += character;
+      if (character === quote) quote = "";
+      continue;
+    }
+    if (/[A-Za-z-]/.test(character)) {
+      word += character;
+      continue;
+    }
+    flush();
+    if (character === '"' || character === "'") quote = character;
+    // A brace is a HOLE, and what is inside one is JavaScript — `color: {RED}` names a binding, and
+    // folding it would rewrite the author's own identifier into one that does not exist.
+    else if (character === "(" || character === "{") depth++;
+    else if (character === ")" || character === "}") depth = Math.max(0, depth - 1);
+    out += character;
+  }
+  flush();
+  return out;
+}
+
+/**
+ * One declaration line, as the formatter writes it — `color: RED` becomes `color: red`.
+ *
+ * Here rather than in the formatter so that the rule reporting this and the formatter fixing it ask
+ * one function. `tooling.ts` says why in its own words: a rule naming a fix the formatter declines to
+ * make is an error with no fix, and a formatter rewriting what no rule asked for is a diff nobody
+ * wanted.
+ *
+ * The colon is found outside parentheses and strings, because `background: url(a:b)` has one that is
+ * not the separator.
+ */
+export function canonicalDeclaration(line: string): string {
+  let depth = 0;
+  let quote = "";
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index];
+    if (quote !== "") {
+      if (character === quote) quote = "";
+      continue;
+    }
+    if (character === '"' || character === "'") quote = character;
+    else if (character === "(" || character === "{") depth++;
+    else if (character === ")" || character === "}") depth = Math.max(0, depth - 1);
+    else if (character === ":" && depth === 0) {
+      const property = line.slice(0, index).trim();
+      const value = line.slice(index + 1);
+      return `${property}:${canonicalValue(property, value)}`;
+    }
+  }
+  return line;
+}
+
+export function canonicalCondition(condition: string): string {
+  const written = unwrapped(condition);
+  const space = written.indexOf(" ");
+  const name = space === -1 ? written : written.slice(0, space);
+  if (!AT_RULES.has(name.toLowerCase())) return written;
+
+  const lowered = `@${name.slice(1).toLowerCase()}`;
+  const rest = space === -1 ? "" : written.slice(space + 1);
+  /**
+   * A `@layer`'s name and a `@scope`'s selector are the AUTHOR'S, so only the at-rule's own name is
+   * lowered for those. Everything else here takes a condition, whose feature names are the
+   * language's.
+   */
+  if (!CONDITIONAL.has(lowered)) return rest === "" ? lowered : `${lowered} ${rest}`;
+
+  /**
+   * The at-rule's name is taken off ONCE and the rest is walked in code runs — not the whole
+   * condition per run, which would have left a feature name after a string alone: the run
+   * `) and (MIN-WIDTH:40rem)` does not begin with an at-rule.
+   */
+  return `${lowered} ${overCode(rest, canonicalFeatures)}`;
+}
+
+/**
+ * One redundant pair of parens taken off a `@supports` condition, however many there are.
+ *
+ * Redundant means the whole condition is one balanced group, and its contents are one balanced group
+ * again — `((display: grid))`. A paren that GROUPS is not that: in `((a) and (b))` the first group
+ * closes before the end, so the outer pair is doing work and stays.
+ *
+ * That test is the whole reason this is possible without the `@supports` grammar. It answers the one
+ * shape a person writes and says nothing about the rest.
+ */
+function unwrapped(condition: string): string {
+  if (!condition.startsWith("@supports ")) return condition;
+
+  let rest = condition.slice("@supports ".length).trim();
+  while (isOneGroup(rest) && isOneGroup(rest.slice(1, -1).trim())) rest = rest.slice(1, -1).trim();
+  return `@supports ${rest}`;
+}
+
+/** Whether the text is `(` … `)` with the opening paren's own match at the very end. */
+function isOneGroup(text: string): boolean {
+  if (!text.startsWith("(") || !text.endsWith(")")) return false;
+
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    // A paren inside a string is text — `url("a)b")` would otherwise close the group early.
+    if (code === 34 || code === 39) {
+      index = endOfPreludeString(text, index);
+      continue;
+    }
+    if (code === 40) depth++;
+    else if (code === 41) {
+      depth--;
+      if (depth === 0) return index === text.length - 1;
+    }
+  }
+  return false;
+}
+
+/**
+ * A condition's feature names lowered and its colons spaced, and nothing else touched.
+ *
+ * One space after the colon, which is the convention a declaration already uses and the one the user
+ * chose. The value after it is left exactly as written — it may be an author's own custom property,
+ * and it is not this function's to fold.
+ */
+function canonicalFeatures(rest: string): string {
+  const spaced = rest.replace(A_FEATURE, (whole, open: string, name: string, gap: string) => {
+    const lowered = name.toLowerCase();
+    /**
+     * A name the language owns: a media feature, or — inside `@supports` — a property, because what
+     * that at-rule holds between parens is a DECLARATION rather than a query.
+     *
+     * The colon is spaced only for a KNOWN name, and that is not caution for its own sake: a value
+     * may hold a colon of its own, and `@supports (background: url(http://x))` spaced blindly comes
+     * back as `url(http: //x)`.
+     */
+    if (!MEDIA_FEATURE_NAMES.has(lowered) && !PROPERTY_NAMES.has(lowered)) return whole;
+    return `${open}${lowered}${gap === undefined ? "" : ": "}`;
+  });
+
+  /**
+   * A media TYPE and the logical keywords, which are the language's words and carry no parens —
+   * `@media PRINT`, `@media NOT print`, `@media screen AND (min-width: 40rem)`.
+   */
+  return spaced.replace(A_BARE_WORD, (whole, word: string) =>
+    MEDIA_WORDS.has(word.toLowerCase()) ? word.toLowerCase() : whole,
+  );
+}
+
+/** `:name` or `::name`, and nothing about what follows a `(` — that is the author's own text. */
+const A_PSEUDO = /(::?)([a-zA-Z-]+)/g;
+
+/**
+ * A feature name after a `(`, with the colon and the whitespace after it when there is one.
+ *
+ * A range condition — `(width > 40rem)` — has no colon, and the group comes back empty so nothing is
+ * inserted. A `(prefers-reduced-motion)` with no value is the same case.
+ */
+const A_FEATURE = /(\()([a-zA-Z-]+)(\s*:\s*)?/g;
+
+/** The at-rules whose CONDITION is the language's own vocabulary, so its feature names are lowered. */
+const CONDITIONAL = new Set(["@media", "@supports", "@container"]);
+
+/** Every at-rule name CSS has, lowered — a name outside it is not this function's to rewrite. */
+const AT_RULES = new Set(Object.keys(AT_RULE_LINKS).map((one) => one.toLowerCase()));
+
+/** Every pseudo-class and pseudo-element, without the `()` a functional one is listed with. */
+const PSEUDO_CLASSES = new Set(
+  Object.keys(SELECTORS)
+    .filter((one) => one.startsWith(":") && !one.startsWith("::"))
+    .map((one) => one.replace(/\(\)$/, "")),
+);
+const PSEUDO_ELEMENTS = new Set(
+  Object.keys(SELECTORS)
+    .filter((one) => one.startsWith("::"))
+    .map((one) => one.replace(/\(\)$/, "")),
+);
+
+/** Every media feature, so a name outside the list — a browser's, or a typo — is left as written. */
+const MEDIA_FEATURE_NAMES = new Set(MEDIA_FEATURES.map((one) => one.toLowerCase()));
+
+/** Every property, for `@supports`, whose parens hold a declaration rather than a query. */
+const PROPERTY_NAMES = new Set(PROPERTIES.map((one) => one.toLowerCase()));
+
+/**
+ * The media types and the logical keywords — the words a condition holds OUTSIDE its parens.
+ *
+ * A closed list, and short: the four types anybody writes plus the deprecated ones CSS still parses,
+ * and `and`, `or`, `not`, `only`. A word outside it is an author's own — a `@layer` name reaches here
+ * through no path, but a `@container`'s name does, and that is theirs.
+ */
+const MEDIA_WORDS = new Set([
+  "all",
+  "print",
+  "screen",
+  "speech",
+  "aural",
+  "braille",
+  "embossed",
+  "handheld",
+  "projection",
+  "tty",
+  "tv",
+  "and",
+  "or",
+  "not",
+  "only",
+]);
+
+/** A bare word, outside any parens — see `MEDIA_WORDS`. */
+const A_BARE_WORD = /(?<![\w(-])([a-zA-Z-]+)(?![\w(-])/g;

@@ -6,7 +6,18 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!packages/create-ramonda/templates/**"]
+    "includes": [
+      "**",
+      "!packages/create-ramonda/templates/**",
+      "!packages/css/src/properties.generated.ts",
+      "!packages/css/src/compiler/keywords.generated.ts",
+      "!packages/css/src/units.generated.ts",
+      "!packages/css/src/compiler/prefixed.generated.ts",
+      "!packages/css/src/compiler/leaves.generated.ts",
+      "!packages/css/src/compiler/keywords.engine.generated.ts",
+      "!apps/playground-core/src/demos/panels.tsx",
+      "!apps/playground-core/src/demos/HeavyPanel.tsx"
+    ]
   },
   "formatter": {
     "enabled": true,

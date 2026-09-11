@@ -1,0 +1,639 @@
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createHighlighter, type LanguageRegistration } from "shiki";
+import { findBlocks } from "../compiler/scan";
+import { beforeAll, describe, expect, test } from "vitest";
+
+/**
+ * The syntax colours, asserted as SCOPES rather than looked at.
+ *
+ * ## The fault this exists for
+ *
+ * A third category of tool neither works nor refuses: a highlighter renders the wrong colours and
+ * says nothing. Measured before the grammar existed, on the tsx grammar alone, every token of a
+ * block came back with the theme's INVALID colour — and so did every line BELOW it, to the end of
+ * the file. A block on line 243 made `const after = 1;` on line 259 look broken.
+ *
+ * ## Why this is testable at all
+ *
+ * TextMate grammars are usually judged by screenshot. They do not have to be: a grammar is a function
+ * from text to scopes, and shiki carries the same engine an editor uses. So every claim below is the
+ * scope a token really got.
+ *
+ * The first three readings of this were WRONG, and the reason is worth keeping: `codeToTokensBase`
+ * merges adjacent tokens that share a colour, and reading `explanation[0]` of a merged run reports
+ * one scope for all of them. Every explanation has to be walked, or a grammar that works looks
+ * broken — which is exactly what happened, twice.
+ */
+
+const GRAMMAR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "vscode", "grammar");
+
+const load = (name: string) => JSON.parse(readFileSync(join(GRAMMAR, `${name}.tmLanguage.json`), "utf8"));
+
+/** Every token's own scope, in order — never a merged colour run. */
+type Scoped = { text: string; scope: string };
+
+let scopesOf: (code: string) => Scoped[];
+
+/** The same reading with NO injection at all — the control for every claim about what is untouched. */
+let plainScopesOf: (code: string) => Scoped[];
+
+beforeAll(async () => {
+  const highlighter = await createHighlighter({
+    themes: ["github-dark"],
+    langs: [
+      "tsx",
+      "css",
+      { ...load("ramonda-css"), name: "ramonda-css", injectTo: ["source.tsx"] },
+      { ...load("ramonda-css-value"), name: "ramonda-css-value", injectTo: ["source.tsx"] },
+      // Into `source.css` as well: the hole sits inside a CSS declaration's value, and by then the
+      // CSS grammar is the one tokenising.
+      { ...load("ramonda-css-hole"), name: "ramonda-css-hole", injectTo: ["source.tsx", "source.css"] },
+    ],
+  });
+
+  const plain = await createHighlighter({ themes: ["github-dark"], langs: ["tsx"] });
+
+  const reading = (from: typeof highlighter) => (code: string) =>
+    from
+      .codeToTokensBase(code, { lang: "tsx", theme: "github-dark", includeExplanation: true })
+      .flat()
+      .flatMap((token) => token.explanation ?? [])
+      .filter((part) => part.content.trim() !== "")
+      .map((part) => ({ text: part.content, scope: part.scopes.at(-1)?.scopeName ?? "" }));
+
+  scopesOf = reading(highlighter);
+  plainScopesOf = reading(plain);
+});
+
+/** The scope one piece of text got, or nothing when the grammar never produced it as a token. */
+const scopeOf = (code: string, text: string) => scopesOf(code).find((token) => token.text === text)?.scope;
+
+describe("a block on one line", () => {
+  const CODE = `const a = <div css=@@( display: flex; )>x</div>;\n`;
+
+  test.each([
+    ["the attribute name", "css", "entity.other.attribute-name"],
+    // The marker and the bracket are two tokens now — see *the `@@` marker's colour* below.
+    ["the block's marker", "@@", "keyword.control.ramonda"],
+    ["a property name", "display", "support.type.property-name.css"],
+    ["a value", "flex", "support.constant.property-value.css"],
+    ["the semicolon", ";", "punctuation.terminator.rule.css"],
+    ["the block's closing", ")", "punctuation.section.embedded.end.ramonda"],
+  ])("%s", (_what, text, scope) => {
+    expect(scopeOf(CODE, text)).toBe(scope);
+  });
+
+  /**
+   * The half that matters as much as the colours inside: the tag has to close where it really
+   * closes. Before the grammar, the block ran to the end of the file and took everything with it.
+   */
+  test("the tag closes after the block, and the JSX carries on", () => {
+    const after = scopesOf(CODE);
+    const end = after.findIndex((token) => token.scope.endsWith(".end.ramonda"));
+
+    expect(after[end + 1]).toEqual({ text: ">", scope: "punctuation.definition.tag.end.tsx" });
+    expect(after[end + 2]).toEqual({ text: "x", scope: "meta.jsx.children.tsx" });
+  });
+});
+
+describe("a block across several lines", () => {
+  const CODE = `const a = (
+  <div css=@@(
+    display: flex;
+    color: {accent};
+    &:hover { color: red; }
+  )>x</div>
+);
+const after = 1;
+`;
+
+  test("the CSS inside is CSS", () => {
+    expect(scopeOf(CODE, "display")).toBe("support.type.property-name.css");
+    expect(scopeOf(CODE, "flex")).toBe("support.constant.property-value.css");
+  });
+
+  /** A hole is TypeScript, and the point of scoping it is that it reads as code rather than as CSS. */
+  test("a hole is the expression it holds", () => {
+    expect(scopeOf(CODE, "{")).toBe("punctuation.section.embedded.begin.ramonda");
+    expect(scopeOf(CODE, "accent")).toBe("variable.other.readwrite.tsx");
+    expect(scopeOf(CODE, "}")).toBe("punctuation.section.embedded.end.ramonda");
+  });
+
+  /**
+   * The line that made this worth building. Before the grammar, everything below a block was the
+   * theme's invalid colour to the end of the file — measured, `const` came back as a variable and
+   * `1;` as an error.
+   */
+  test("nothing below the block is touched", () => {
+    const tokens = scopesOf(CODE);
+    // From the LAST `const`, which is the one below the block — the first opens the file.
+    const below = tokens.slice(tokens.map((token) => token.text).lastIndexOf("const"));
+
+    expect(below).toEqual([
+      { text: "const", scope: "storage.type.tsx" },
+      { text: "after", scope: "variable.other.constant.tsx" },
+      { text: "=", scope: "keyword.operator.assignment.tsx" },
+      { text: "1", scope: "constant.numeric.decimal.tsx" },
+      { text: ";", scope: "punctuation.terminator.statement.tsx" },
+    ]);
+  });
+});
+
+describe("shapes a first sample did not have", () => {
+  /**
+   * The one that shipped broken. A `<p>` explaining the syntax puts `css=@@( … )` in JSX TEXT, the
+   * injection fired there, and the block it opened never closed — so the rest of the file was CSS.
+   * Measured in `apps/playground-core`: everything from the prose to the end of the file.
+   */
+  test("prose in JSX children that mentions a block is not a block", () => {
+    const code = `const a = <p>a \`css=@@( … )\` block</p>;\nconst after = 1;\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  /**
+   * Two things have to agree on what a block IS, and the compiler is the one that decides: its
+   * scanner requires whitespace before the name, so `` `css=@@( `` in prose is not a block to it. The
+   * grammar says the same now, which is a second line of defence for the case above — the selector
+   * keeps it out of JSX text, and this keeps it out of anywhere else the same shape can be written.
+   */
+  test("the compiler and the grammar agree on what is not a block", () => {
+    const prose = `const a = <p>a \`css=@@( … )\` block</p>;\n`;
+
+    expect(findBlocks(prose)).toHaveLength(0);
+    expect(scopesOf(prose).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+
+    // And on what is: the same shape, written where a block really goes.
+    const real = `const a = <div css=@@( color: red; )>y</div>;\n`;
+    expect(findBlocks(real)).toHaveLength(1);
+    expect(scopeOf(real, "@@")).toBe("keyword.control.ramonda");
+  });
+
+  /**
+   * The block does not have to be the last attribute, and the first `end` pattern assumed it was: it
+   * required the closing paren to be followed by `>` or `/`, so a block with an attribute after it
+   * never closed. A bare `)` is right because a paren inside the block is always inside something —
+   * `calc(…)`, `url(…)`, a hole's own call — and a child construct is consumed before an end is tried.
+   */
+  test.each([
+    ["an attribute after the block", `const a = <div css=@@( color: red; ) id="x">y</div>;\nconst after = 1;\n`],
+    ["calc() in a value", `const a = <div css=@@( width: calc(100% - 8px); )>y</div>;\nconst after = 1;\n`],
+    ["url() in a value", `const a = <div css=@@( background: url(a.png); )>y</div>;\nconst after = 1;\n`],
+    ["a call inside a hole", `const a = <div css=@@( color: {pick(1)}; )>y</div>;\nconst after = 1;\n`],
+    ["a self-closing tag", `const a = <img css=@@( color: red; ) />;\nconst after = 1;\n`],
+  ])("%s", (_what, code) => {
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+});
+
+/**
+ * The limit, measured rather than assumed — and it is the ENGINE's, not this grammar's.
+ *
+ * An injection is only consulted while the tsx grammar is still in the tag itself. The moment it
+ * enters `meta.tag.attributes.tsx` — which a second attribute does, and so does a newline after the
+ * tag name — no injection fires at all. Proved with a grammar that does nothing but match one word:
+ * it colours a first attribute and is never asked about a second.
+ *
+ * So a block is coloured when it is the FIRST attribute, on the tag name's own line. The tests below
+ * pin what really happens outside that, which is worth having both ways: the damage is contained to
+ * the tag rather than running down the file, and if an editor engine ever stops behaving this way,
+ * these are what say so.
+ */
+/**
+ * A nested rule, which is the block's whole reason for having braces.
+ *
+ * ## The fault this exists for
+ *
+ * The CSS grammar bundled with editors does not understand CSS nesting. Measured on a plain `.css`
+ * file, `a { &:hover { color: red; } }` comes back with `&` as a PROPERTY, `hover {` as its VALUE,
+ * and `color` inside coloured as a value rather than a property — the opening brace swallowed into a
+ * value token while its closing brace is scoped as a bracket. Two halves of one construct in two
+ * different colours is exactly what a reader calls noise, and it is inside every block that hovers.
+ *
+ * So the block grammar handles nesting itself rather than inheriting the gap.
+ */
+describe("a nested rule", () => {
+  const CODE = `const a = <div css=@@(\n  color: red;\n  &:hover { color: blue; }\n)>x</div>;\nconst after = 1;\n`;
+
+  test("the selector is a selector", () => {
+    expect(scopeOf(CODE, "&")).toBe("entity.other.attribute-name.parent-selector.css");
+    expect(scopeOf(CODE, "hover")).toBe("entity.other.attribute-name.pseudo-class.css");
+  });
+
+  test("its braces are braces", () => {
+    const tokens = scopesOf(CODE);
+
+    expect(tokens.find((token) => token.text === "{")?.scope).toBe(
+      "punctuation.section.property-list.begin.bracket.curly.css",
+    );
+    expect(tokens.find((token) => token.text === "}")?.scope).toBe(
+      "punctuation.section.property-list.end.bracket.curly.css",
+    );
+  });
+
+  /** The one a reader actually sees: the same property is the same colour in both places. */
+  test("a property inside is the same as a property outside", () => {
+    const inside = scopesOf(CODE).filter((token) => token.text === "color");
+
+    expect(inside).toHaveLength(2);
+    expect(inside[1].scope).toBe(inside[0].scope);
+  });
+
+  /** A hole inside a nested rule — the two constructs meet, and neither may eat the other. */
+  test("a hole inside one is still code", () => {
+    const code = `const a = <div css=@@(\n  &:hover { color: {accent}; }\n)>x</div>;\nconst after = 1;\n`;
+
+    expect(scopeOf(code, "hover")).toBe("entity.other.attribute-name.pseudo-class.css");
+    /**
+     * A hole and a rule body are both `{` now, so the brace is named by its SCOPE rather than by
+     * being the first one on the line — there are two, and the rule's comes first.
+     */
+    expect(
+      scopesOf(code)
+        .filter((token) => token.text === "{")
+        .map((token) => token.scope),
+    ).toEqual([
+      "punctuation.section.property-list.begin.bracket.curly.css",
+      "punctuation.section.embedded.begin.ramonda",
+    ]);
+    expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("and the block still closes where it closes", () => {
+    expect(scopeOf(CODE, "after")).toBe("variable.other.constant.tsx");
+  });
+});
+
+/**
+ * A block written as a VALUE, which is the answer to a limit rather than a second syntax.
+ *
+ * An editor stops consulting injections the moment it enters a tag's attribute list, so a bare
+ * `css=@@( … )` is only coloured as the first attribute on the tag name's own line — which is not how
+ * anyone writes a tag with several props. Inside the braces JSX already has for an expression there
+ * is no such limit, and it is the same case as a block written outside JSX altogether.
+ */
+describe("a block in expression position", () => {
+  test.each([
+    ["outside JSX", `const panel = @@(\n  display: flex;\n);\nconst after = 1;\n`],
+    [
+      "braced, as the second attribute",
+      `const a = <div id="x" css={@@( display: flex; )}>y</div>;\nconst after = 1;\n`,
+    ],
+    [
+      "braced, three lines into the tag",
+      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    css={@@(\n      display: flex;\n    )}\n  >y</div>\n);\nconst after = 1;\n`,
+    ],
+    [
+      "braced, with spaces inside the braces",
+      `const a = <div css={ @@( display: flex; ) }>y</div>;\nconst after = 1;\n`,
+    ],
+  ])("%s is CSS", (_what, code) => {
+    expect(scopeOf(code, "display")).toBe("support.type.property-name.css");
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("a hole in one is still the expression it holds", () => {
+    const code = `const panel = @@( color: {accent}; );\n`;
+
+    expect(scopeOf(code, "{")).toBe("punctuation.section.embedded.begin.ramonda");
+    expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
+  });
+
+  /**
+   * The lookbehind requires a `=`, and this is why. Permitting a bare `{` before the block would
+   * swallow a parenthesised decorator written on the same line as a class's opening brace —
+   * measured, `dec` stopped being a token at all.
+   */
+  test("a parenthesised decorator on the same line as a brace is left alone", () => {
+    const code = `class C { @(dec) m() {} }\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopeOf(code, "dec")).toBe("variable.other.readwrite.tsx");
+  });
+
+  test("and prose that mentions the syntax is still not a block", () => {
+    const code = `const a = <p>a \`css=@@( … )\` block</p>;\nconst after = 1;\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+});
+
+describe("where an injection cannot reach", () => {
+  const SECOND = `const a = <div id="x" css=@@( color: red; )>y</div>;\nconst after = 1;\n`;
+  const NEXT_LINE = `const a = (\n  <div\n    css=@@( color: red; )\n  >y</div>\n);\nconst after = 1;\n`;
+
+  /**
+   * Asserted as SAMENESS rather than as an outcome. What the tsx grammar makes of a block it was
+   * never told about is its own affair — measured, an attribute list it cannot parse runs past the
+   * tag — and the only claim this package can honestly make is that it changed nothing there.
+   */
+  test.each([
+    ["a block that is not the first attribute", SECOND],
+    ["a block on the line below the tag name", NEXT_LINE],
+  ])("%s reads exactly as it would with no grammar installed", (_what, code) => {
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopesOf(code)).toEqual(plainScopesOf(code));
+  });
+
+  /** The proof it is not this grammar: a one-word injection is ignored in the same place. */
+  test("no injection at all is consulted inside a tag's attribute list", async () => {
+    const { createHighlighter } = await import("shiki");
+    const probe: LanguageRegistration = {
+      name: "probe",
+      scopeName: "probe.injection",
+      injectionSelector: "L:source.tsx",
+      injectTo: ["source.tsx"],
+      patterns: [{ match: "\\bZZZ\\b", name: "keyword.probe" }],
+      repository: {},
+    };
+    const highlighter = await createHighlighter({ themes: ["github-dark"], langs: ["tsx", probe] });
+
+    const scopeOfZZZ = (code: string) =>
+      highlighter
+        .codeToTokensBase(code, { lang: "tsx", theme: "github-dark", includeExplanation: true })
+        .flat()
+        .flatMap((token) => token.explanation ?? [])
+        .find((part) => part.content.trim() === "ZZZ")
+        ?.scopes.at(-1)?.scopeName;
+
+    expect(scopeOfZZZ(`const a = <div ZZZ="1">x</div>;\n`)).toBe("keyword.probe");
+    expect(scopeOfZZZ(`const a = <div id="x" ZZZ="1">x</div>;\n`)).toBe("entity.other.attribute-name.tsx");
+  });
+});
+
+describe("what it must not claim", () => {
+  /**
+   * `{{` is ordinary JSX — `style={{ color: "red" }}` is an object literal in an expression
+   * container. That is why the hole is a SEPARATE injection, aimed at the CSS a block scopes, rather
+   * than a pattern in the one aimed at a tag.
+   */
+  test("an object literal in a JSX attribute is left alone", () => {
+    const code = `const a = <div style={{ color: "red" }}>x</div>;\n`;
+
+    expect(scopeOf(code, "{{")).toBeUndefined();
+    expect(scopeOf(code, "color")).not.toBe("support.type.property-name.css");
+  });
+
+  test("a decorator is not a block", () => {
+    const code = `class C {\n  @(dec) m() {}\n}\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+  });
+
+  test("and a file with no block at all is untouched", () => {
+    const code = `const a = <div className="lead">x</div>;\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopeOf(code, "className")).toBe("entity.other.attribute-name.tsx");
+  });
+});
+
+/**
+ * The manifest that carries the two grammars into an editor.
+ *
+ * ## The fault this exists for
+ *
+ * A grammar is reached by its `scopeName`, twice: once as the name the file declares, and once as the
+ * name the manifest registers it under. They are written in two places and nothing compares them — a
+ * typo in either leaves the extension installing cleanly, activating cleanly, and colouring nothing.
+ * The tests above would still pass, because they load the grammar files directly.
+ */
+describe("the VS Code extension", () => {
+  const EXTENSION = resolve(GRAMMAR, "..");
+  const manifest = JSON.parse(readFileSync(join(EXTENSION, "package.json"), "utf8"));
+
+  /** What VS Code is told to load, and where. */
+  const contributed: { scopeName: string; path: string; injectTo: string[] }[] = manifest.contributes.grammars;
+
+  for (const grammar of contributed) {
+    /** `source.tsx` is where a block lives; a grammar not injected there is one an author never sees. */
+    test(`${grammar.scopeName} is registered under the name its own file declares`, () => {
+      const file = JSON.parse(readFileSync(join(EXTENSION, grammar.path), "utf8"));
+
+      expect(file.scopeName).toBe(grammar.scopeName);
+      expect(grammar.injectTo).toContain("source.tsx");
+    });
+  }
+
+  /**
+   * The formatter half, and the reason it is in the extension at all: measured, the Biome extension
+   * does nothing with a file holding a block — it is excluded from `biome.json` — and with the
+   * exclusion lifted biome answers *"Code formatting aborted due to parsing errors"*.
+   *
+   * A `main` that does not resolve is an extension that activates and then throws, which VS Code
+   * reports as "cannot activate" with no clue which file it meant.
+   */
+  test("the formatter it declares is a file that exists", () => {
+    expect(manifest.main).toBeDefined();
+    expect(existsSync(join(EXTENSION, manifest.main))).toBe(true);
+
+    // Every language it says it wakes up for is one it registers a provider for, and the other way.
+    const woken = (manifest.activationEvents as string[]).map((event) => event.replace("onLanguage:", ""));
+    const registered = readFileSync(join(EXTENSION, manifest.main), "utf8");
+    for (const language of woken) expect(registered).toContain(`"${language}"`);
+  });
+
+  /**
+   * The project's own command, never a copy this extension carries: what runs on save has to be what
+   * `pnpm format` runs, or a file formatted on save is one two commands disagree about.
+   */
+  test("it looks for the project's own `ramonda-css`, and answers nothing when there is none", async () => {
+    const { commandFor } = await import(join(EXTENSION, "locate.js"));
+
+    expect(commandFor(resolve(GRAMMAR, "..", "..", "src", "index.ts"))).toContain(
+      join("node_modules", ".bin", "ramonda-css"),
+    );
+    expect(commandFor("/")).toBeUndefined();
+  });
+
+  /** Both directions: a grammar file nobody contributes is dead, and a contribution with no file is worse. */
+  test("the manifest contributes exactly the grammars that exist", () => {
+    expect(contributed.map((grammar) => basename(grammar.path)).sort()).toEqual(readdirSync(GRAMMAR).sort());
+  });
+});
+
+/**
+ * A named site, where the opening carries a word.
+ *
+ * The at-rule's name sits between the two `@` and the `(`, so a grammar written for a three-character
+ * opening does not begin at all — and a block that does not begin is a block whose CSS is tokenised
+ * as TypeScript, which is the failure this whole file exists to catch.
+ */
+describe("a named site", () => {
+  test.each([
+    ["keyframes", `const slide = @@keyframes(\n  from { opacity: 0; }\n);\nconst after = 1;\n`],
+    ["font-face", `const brand = @@font-face(\n  font-display: swap;\n);\nconst after = 1;\n`],
+    ["property", `const angle = @@property(\n  inherits: false;\n);\nconst after = 1;\n`],
+  ])("%s opens a block, and the file below it is untouched", (_what, code) => {
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(true);
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("the at-rule's name is coloured as one", () => {
+    const code = `const slide = @@keyframes(\n  from { opacity: 0; }\n);\n`;
+
+    expect(scopeOf(code, "keyframes")).toBe("keyword.control.at-rule.ramonda");
+  });
+
+  test("and the declarations inside are CSS", () => {
+    expect(scopeOf(`const brand = @@font-face(\n  font-display: swap;\n);\n`, "font-display")).toBe(
+      "support.type.property-name.css",
+    );
+  });
+});
+
+/**
+ * A block on a NESTED element, which is what "a `css` on every tag" means.
+ *
+ * A block used to be one class, so a component had one — on its root, with the children reached by
+ * descendant selectors. A block is one class per DECLARATION now, and the same declarations on two
+ * elements share their classes, so per-element is the cheaper shape as well as the clearer one.
+ *
+ * **It had no colours at all**, and the cause was a selector written for the old shape: the value
+ * injection excluded `meta.jsx.children` wholesale, so once the tsx grammar entered a parent's
+ * children nothing of ours was ever consulted again. Measured before this was written — a block on a
+ * nested element came back `variable.parameter.tsx`, and everything after it in the file was read as
+ * type parameters and arrow functions.
+ *
+ * The exclusion was load-bearing for one thing and one thing only: prose. `` `css=@@( … )` `` in a
+ * paragraph is JSX children TEXT, and it must not open a block. So the injection asks for a braced
+ * EXPRESSION instead of excluding children — prose is not one, and every nested element is.
+ */
+describe("a block on a nested element", () => {
+  test.each([
+    ["braced", `const a = (\n  <div>\n    <span css={@@( display: flex; )}>x</span>\n  </div>\n);\nconst after = 1;\n`],
+    [
+      "braced, with a sibling above it",
+      `const a = (\n  <div>\n    <p>t</p>\n    <span css={@@( display: flex; )}>x</span>\n  </div>\n);\nconst after = 1;\n`,
+    ],
+    [
+      "braced, several levels down",
+      `const a = (\n  <div>\n    <section>\n      <span css={@@( display: flex; )}>x</span>\n    </section>\n  </div>\n);\nconst after = 1;\n`,
+    ],
+  ])("%s is CSS, and the file below it is untouched", (_what, code) => {
+    expect(scopeOf(code, "display")).toBe("support.type.property-name.css");
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("the tags after it are still tags, not type parameters", () => {
+    const code = `const a = (\n  <div>\n    <span css={@@( display: flex; )}>x</span>\n    <em>y</em>\n  </div>\n);\n`;
+
+    expect(scopeOf(code, "em")).toBe("entity.name.tag.tsx");
+    expect(scopeOf(code, "div")).toBe("entity.name.tag.tsx");
+  });
+
+  test("and prose that mentions the syntax in children is still not a block", () => {
+    const code = `const a = (\n  <div>\n    <p>a \`css=@@( … )\` block</p>\n  </div>\n);\nconst after = 1;\n`;
+
+    expect(scopesOf(code).some((token) => token.scope.endsWith(".ramonda"))).toBe(false);
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+
+  test("a hole inside a nested block is still the expression it holds", () => {
+    const code = `const a = (\n  <div>\n    <span css={@@( color: {accent}; )}>x</span>\n  </div>\n);\n`;
+
+    expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
+  });
+});
+
+/**
+ * Composition, coloured as what it is rather than as CSS that happens to parse.
+ *
+ * `if {{ … }}` and `...{{ … }}` are this language's own, not CSS's — measured before this was
+ * written, the CSS grammar read `if` as a property name and the `...` as nothing at all. Neither
+ * broke anything, which is why it is a colour problem rather than a correctness one: a reader could
+ * not tell a condition from a declaration.
+ *
+ * The condition and the operand inside `{{ }}` keep being TypeScript, which is what they are.
+ */
+describe("the composition markers", () => {
+  test("`if` is a keyword, and its condition is still an expression", () => {
+    const code = `const c = @@(\n  if ({this.off}) {\n    opacity: 0.5;\n  }\n);\n`;
+
+    expect(scopeOf(code, "if")).toBe("keyword.control.ramonda");
+    expect(scopeOf(code, "this")).toBe("variable.language.this.tsx");
+    expect(scopeOf(code, "opacity")).toBe("support.type.property-name.css");
+  });
+
+  test("`...` is one too, and its operand is the expression it holds", () => {
+    const code = `const c = @@(\n  ...{base};\n  color: red;\n);\n`;
+
+    expect(scopeOf(code, "...")).toBe("keyword.control.ramonda");
+    expect(scopeOf(code, "base")).toBe("variable.other.readwrite.tsx");
+    expect(scopeOf(code, "color")).toBe("support.type.property-name.css");
+  });
+
+  test("and neither takes the rest of the block with it", () => {
+    const code = `const c = @@(\n  ...{base};\n  if ({on}) { opacity: 0.5; }\n  color: red;\n);\nconst after = 1;\n`;
+
+    expect(scopeOf(code, "color")).toBe("support.type.property-name.css");
+    expect(scopeOf(code, "after")).toBe("variable.other.constant.tsx");
+  });
+});
+
+/**
+ * `@@` is one colour wherever it appears, and it appears in one place: opening a block.
+ *
+ * **Reported by a user**: `@@(` came out as punctuation and `@@if` as a keyword, so the same two
+ * characters were two colours in one block. That was answered by making the marker one scope — and
+ * answered again, better, by taking `@@` off the guard entirely. It opens a BLOCK and nothing else
+ * does; inside one, the language is the block's own and spells itself without a sigil, as `{expr}`
+ * and `...{expr}` already did.
+ *
+ * `@@` is what says "the next thing is not TypeScript", and CSS can never produce it, since an
+ * at-keyword is `@` and then an ident and an ident cannot begin with `@`.
+ *
+ * The BRACKET keeps its own scope, and that is not a detail: `punctuation.section.embedded.begin` is
+ * what pairs with the `contentName` an editor reads to treat the inside as CSS. Colouring it as a
+ * keyword would have made the marker consistent and stopped the CSS from being CSS.
+ */
+describe("the `@@` marker's colour", () => {
+  const CODE =
+    `const a = <div css={@@(\n  ...{CONTROL};\n  if ({on}) { opacity: 0.5; }\n)}>x</div>;\n` +
+    `const b = @@keyframes( from { opacity: 0; } );\n` +
+    `const c = <div css=@@( color: red; )>y</div>;\n`;
+
+  test("every `@@` is the same scope", () => {
+    const markers = scopesOf(CODE).filter((token) => token.text.startsWith("@@"));
+
+    expect(markers.length).toBeGreaterThan(2);
+    expect(new Set(markers.map((token) => token.scope))).toEqual(new Set(["keyword.control.ramonda"]));
+  });
+
+  /** And it appears in ONE place — the guard inside a block carries none. */
+  test("the guard carries no marker", () => {
+    expect(scopeOf(CODE, "if")).toBe("keyword.control.ramonda");
+    expect(CODE).not.toContain("@@if");
+  });
+
+  test("and so is the composition marker beside it", () => {
+    expect(scopeOf(CODE, "...")).toBe("keyword.control.ramonda");
+  });
+
+  /** The bracket is what the editor pairs with the embedded content — see the note above. */
+  test("the bracket after it still opens the embedded region", () => {
+    const opens = scopesOf(CODE).filter(
+      (token) => token.text === "(" && token.scope === "punctuation.section.embedded.begin.ramonda",
+    );
+
+    expect(opens.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * A named site's NAME keeps its own scope, and that is the one difference worth having: `@@` says
+   * whose language this is, `keyframes` says which at-rule — the way CSS scopes `@keyframes` itself.
+   */
+  test("but a named site's name is still an at-rule keyword", () => {
+    expect(scopeOf(CODE, "keyframes")).toBe("keyword.control.at-rule.ramonda");
+  });
+
+  test("and the CSS inside is still CSS", () => {
+    expect(scopeOf(CODE, "opacity")).toBe("support.type.property-name.css");
+    expect(scopeOf(CODE, "red")).toBe("support.constant.color.w3c-standard-color-name.css");
+  });
+});

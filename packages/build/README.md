@@ -159,4 +159,4 @@ something else, run `ramonda-check-bundle` over the output and let the artifact 
 
 ## License
 
-[MIT](../../LICENSE) © Nikola Blagojević
+[MIT](./LICENSE) © Nikola Blagojević

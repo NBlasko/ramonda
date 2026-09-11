@@ -13,7 +13,7 @@
  * The CSS text never enters the virtual file — it is not TypeScript and `tsc` would have nothing to
  * say about it. It is checked separately, by a checker that knows CSS.
  *
- * A prototype, and it knows it: the block is found by scanning for `css=@(` rather than by a real
+ * A prototype, and it knows it: the block is found by scanning for `css=@@(` rather than by a real
  * parser, and the mapping is per-expression rather than a source map. Both are the real work.
  *
  *     node packages/css/prototype-typecheck.mjs packages/css/example.tsx
@@ -36,23 +36,33 @@ let out = "";
 let cursor = 0;
 
 for (;;) {
-  const at = original.indexOf("css=@(", cursor);
+  const at = original.indexOf("css=@@(", cursor);
   if (at === -1) {
     out += original.slice(cursor);
     break;
   }
   out += original.slice(cursor, at);
 
-  // Walk to the block's closing paren. `{{ … }}` holes are skipped whole, so a paren inside an
+  // Walk to the block's closing paren. A `{ … }` hole is skipped whole, so a paren inside an
   // expression cannot close the block.
-  let scan = at + "css=@(".length;
+  //
+  // **A prototype, so a hole's closer is found by counting braces rather than by reading
+  // TypeScript.** The real parser reads the expression; this cannot tell a `}` in a string from
+  // one that closes the hole, and it does not have to — see the header.
+  let scan = at + "css=@@(".length;
   let depth = 1;
   const holes = [];
   while (scan < original.length && depth > 0) {
-    if (original.startsWith("{{", scan)) {
-      const end = original.indexOf("}}", scan + 2);
-      holes.push({ start: scan + 2, end });
-      scan = end + 2;
+    if (original[scan] === "{") {
+      let braces = 1;
+      let end = scan + 1;
+      while (end < original.length && braces > 0) {
+        if (original[end] === "{") braces++;
+        else if (original[end] === "}") braces--;
+        if (braces > 0) end++;
+      }
+      holes.push({ start: scan + 1, end });
+      scan = end + 1;
       continue;
     }
     if (original[scan] === "(") depth++;

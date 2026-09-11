@@ -90,6 +90,9 @@ so a component that misuses the same property on every render reports once.
 | `RMD059` | warning | An async lifecycle rejected |
 | `RMD060` | error | render() is async |
 | `RMD061` | warning | A ref was built while a value was being derived |
+| `RMD062` | error | A style block was applied with no values for its holes |
+| `RMD063` | error | A style block's value was refused |
+| `RMD064` | error | A `css` value is not a compiled style block |
 
 ### RMD052 — A component among JSX children, where an element was meant
 

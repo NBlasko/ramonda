@@ -1,0 +1,2350 @@
+import type { Config } from "../config";
+import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
+import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, widthSlot } from "./flatten";
+import { holeOutOfPlace } from "./errors";
+import { PREFIXED } from "./prefixed.generated";
+import {
+  AT_RULE_LINKS,
+  DESCRIPTORS,
+  KEYWORDS,
+  NOT_IN_A_RULE,
+  PROPERTIES,
+  PROPERTY_NAMED,
+  STRING_ALLOWED,
+  UNITS,
+  MEDIA_FEATURES,
+  UNIT_TYPE,
+} from "./keywords.generated";
+import { canonicalPrelude, canonicalValue } from "./normalise";
+import { CONDITION, LINE_COMMENT, SPREAD, closingHole, holeIn, opensAHole } from "./read";
+import type { BlockSite } from "./scan";
+
+/**
+ * The CSS checker: the faults the type map deliberately cannot catch.
+ *
+ * ## What is left to it, and every boundary was measured
+ *
+ * Each candidate was put through the real type check before a rule was written for it, so nothing
+ * here repeats a diagnostic somebody already gets:
+ *
+ * | written | the types | here |
+ * |---|---|---|
+ * | `dsiplay: flex` | `TS2561`, **with** *did you mean* | — |
+ * | `flex-dirction: row` | `TS2353`, **no suggestion** | `unknown-property` |
+ * | `position: statik` | `TS2820`, with *did you mean* | — |
+ * | `display: flexx` | **silent** | `unknown-value` |
+ * | `border-left: 4px sollid red` | **silent** | `unknown-value` |
+ * | `color: red; color: red` | **silent** | `repeated-declaration` |
+ *
+ * A bare property name is left to the types because they say it better. A dashed one is not, and the
+ * reason is one character wide: a QUOTED object key gets no suggestion from TypeScript, and a dashed
+ * name cannot be written unquoted.
+ *
+ * ## It may not import `@ramonda/check`
+ *
+ * The technique is shared; the code is not. A rule here reads a parsed `Block`, not a `ts.Program` —
+ * there is no value to follow, no declaration to resolve, and nothing the other package's machinery
+ * would help with.
+ */
+
+/** One thing worth saying about a block. */
+export interface Finding {
+  /** The rule's id, which is what a reader searches for. */
+  readonly rule: RuleId;
+  /** The author's own offset — of the FAULT, not of the block that holds it. */
+  readonly at: number;
+  /**
+   * How much of the author's text the fault covers.
+   *
+   * An editor draws a squiggle from this, and a zero-width one is a mark nobody can see. It is the
+   * offending text itself — the property name, the word in the value — never the whole declaration.
+   */
+  readonly length: number;
+  /** What is wrong and what to write instead, in one sentence. */
+  readonly message: string;
+}
+
+/**
+ * Every rule this package can report, as a LIST — and the type is derived from it, not beside it.
+ *
+ * Written this way round because the config validates a rule id against this, and a union with a
+ * hand-kept array next to it would be two lists that must agree: exactly the fault this repository
+ * keeps finding. Here there is one list, and `RuleId` cannot name anything absent from it.
+ */
+export const RULE_IDS = [
+  "unknown-property",
+  "unknown-value",
+  "repeated-declaration",
+  "hole-out-of-place",
+  "uncolourable-block",
+  "run-on-declaration",
+  "line-comment",
+  "unknown-unit",
+  "glued-hole",
+  "at-rule-out-of-place",
+  "unknown-frame",
+  "declaration-out-of-place",
+  "rule-out-of-place",
+  "override-out-of-order",
+  "variable-set-by-another-name",
+  "hole-as-a-variable-name",
+  "initial-value-and-syntax",
+  "unknown-media-feature",
+  "value-and-registered-syntax",
+  "unit-not-allowed",
+  "string-not-allowed",
+  "property-not-a-name",
+  "non-canonical-spelling",
+  "layer-in-a-block",
+  "spread-out-of-place",
+  "hole-in-a-named-block",
+  "unknown-named-block",
+  "composition-in-a-named-block",
+  "ignore-without-a-reason",
+  "unknown-prefix",
+  "unknown-at-rule",
+  "unknown-flag",
+] as const;
+
+export type RuleId = (typeof RULE_IDS)[number];
+
+/** Accepted by every property, whatever else it accepts. */
+const GLOBAL = new Set(["inherit", "initial", "unset", "revert", "revert-layer"]);
+
+/** The same list as a set, for the "does this exist" question rather than the "what was meant" one. */
+const KNOWN = new Set(PROPERTIES);
+
+/** The same question as {@link STRING_ALLOWED}, asked once — see `stringNotAllowed`. */
+const STRINGS_FIT = new Set(STRING_ALLOWED);
+
+/**
+ * What an editor will not colour, which is the one thing here a BUILD has no business failing over.
+ *
+ * An editor stops consulting syntax injections the moment it enters a tag's attribute list, so a
+ * bare `css=@@( … )` is coloured only as the FIRST attribute on the tag name's own line. Written
+ * anywhere else it compiles, is checked, and looks like an error — with nothing on the screen to say
+ * why, because what failed is a grammar nobody can see.
+ *
+ * So it is reported where it can be acted on and nowhere else: the editor plugin draws it as a
+ * SUGGESTION. `checkBlock`'s findings stop a build; this one must not, because nothing is wrong.
+ */
+export function checkSite(source: string, site: BlockSite): Finding[] {
+  if (!site.wrap || firstOnTheTagLine(source, site.start)) return [];
+
+  return [
+    {
+      rule: "uncolourable-block",
+      at: site.start,
+      length: site.name.length,
+      message:
+        `an editor colours a bare block only as the first attribute on the tag name's own line — ` +
+        `write it as \`${site.name}={@@( … )}\`, which is the same value and is coloured anywhere.`,
+    },
+  ];
+}
+
+/**
+ * Whether the name at `start` follows the tag's own name with nothing but spaces between.
+ *
+ * A newline is enough to lose the colours, which is why this is not `isAttribute` with a flag: that
+ * one walks over attributes and line breaks to prove the site is in a tag at all, and here both of
+ * those are the answer NO.
+ */
+function firstOnTheTagLine(source: string, start: number): boolean {
+  let index = start - 1;
+  while (index >= 0 && (source.charCodeAt(index) === 32 || source.charCodeAt(index) === 9)) index--;
+
+  const end = index + 1;
+  while (index >= 0 && isTagNameCharacter(source.charCodeAt(index))) index--;
+
+  return index >= 0 && end > index + 1 && source.charCodeAt(index) === 60; /* < */
+}
+
+/** A tag name: an identifier, plus the `.` of a member expression and the `-` of a custom element. */
+function isTagNameCharacter(code: number): boolean {
+  return (
+    (code >= 97 && code <= 122) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 48 && code <= 57) ||
+    code === 95 ||
+    code === 36 ||
+    code === 45 ||
+    code === 46
+  );
+}
+
+/**
+ * What is true of the block's TEXT rather than of its parse.
+ *
+ * `//` is the whole of it, and it needs the text because the parser has no idea what a line comment
+ * is — it reads the characters as part of a property name and hands them on. Measured end to end:
+ * `// why` is written into the stylesheet verbatim, `.r-x{// why\n  color:red;}`, and a real CSS
+ * compiler then refuses the WHOLE file with `SyntaxError: Unexpected token Semicolon`, naming
+ * nothing about the block, the file or the line. A build that fails somewhere else entirely, for a
+ * comment.
+ *
+ * A `//` inside a string or a function is text, not a comment — `url(https://example.com/a.png)` is
+ * the case that matters, and `url(//cdn/a.png)` is the same without a scheme. Both are stepped over
+ * whole, the same discipline every scanner in this package uses.
+ */
+export function checkText(source: string, open: number, end: number): Finding[] {
+  const findings: Finding[] = [];
+  let parens = 0;
+  /** Where the current item began — `opensAHole` reads the text in front of a `{`, not the block. */
+  let item = open + 1;
+
+  for (let index = open + 1; index < end; index++) {
+    const code = source.charCodeAt(index);
+
+    if (code === 59 /* ; */ || code === 125 /* } */) item = index + 1;
+
+    if (code === 34 /* " */ || code === 39 /* ' */) {
+      index = endOfString(source, index);
+      continue;
+    }
+    if (code === 47 /* / */ && source.charCodeAt(index + 1) === 42 /* * */) {
+      const close = source.indexOf("*/", index + 2);
+      index = close === -1 ? end : close + 1;
+      continue;
+    }
+    if (code === 123 /* { */ && opensAHole(source.slice(item, index))) {
+      // Not `indexOf("}")`: a hole holds JavaScript, so an object literal inside one has its own —
+      // see `closingHole`, which three scanners share for exactly this reason.
+      //
+      // A `{` that opens a nested RULE is deliberately NOT stepped over: a `//` inside one is the
+      // same fault as a `//` anywhere else, and skipping the body would take it with it.
+      const close = closingHole(source, index);
+      index = close === -1 ? end : close - 1;
+      continue;
+    }
+    if (code === 40 /* ( */) parens++;
+    else if (code === 41 /* ) */) parens = Math.max(0, parens - 1);
+    else if (parens === 0 && code === 47 && source.charCodeAt(index + 1) === 47) {
+      findings.push({
+        rule: "line-comment",
+        at: index,
+        length: 2,
+        message: LINE_COMMENT,
+      });
+      /**
+       * **Every one of them, and this used to stop at the first.**
+       *
+       * The note here read *"One per block: the rest of the line is already claimed, and a file full
+       * of them is one habit"* — sound when it was written, and undercut by a later measurement.
+       *
+       * TypeScript refuses EVERY line comment, because the virtual file writes the comment and the
+       * next property as one key, and `check.ts` drops that duplicate only where a rule of ours
+       * already spoke. So a file with three comments showed one good message and two reading
+       * *"'\"// two\\n  color\"' does not exist in type"* — a comment and the next property mashed
+       * together. Reporting each one leaves the compiler nothing to say badly.
+       *
+       * The habit argument holds the other way too: somebody who wrote three wants to know there are
+       * three, because it is one edit repeated rather than three decisions.
+       *
+       * The rest of the LINE is still skipped — a second `//` on the same line is inside the first
+       * one's text and is not a second fault.
+       */
+      const newline = source.indexOf("\n", index);
+      index = newline === -1 || newline >= end ? end : newline;
+      continue;
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * A block's faults, and `at` is the at-rule it IS — `keyframes`, `font-face`, `property` — if any.
+ *
+ * A named site holds a different vocabulary, and passing the name is what keeps this from reporting
+ * correct CSS: `src` is not a property, `from` is not a selector, and a body typed against the
+ * properties would be wrong on every line. Most of a named body belongs to the TYPES, which know
+ * each at-rule's own descriptors and say *did you mean* about them. What is left here is the two
+ * faults a type cannot see, because both are about shape rather than about a name.
+ */
+/**
+ * What the rules need to know about a block beyond the block itself.
+ *
+ * An OBJECT rather than more positional parameters, and the reason is this repository's recurring
+ * fault: one rule with several consumers, one of which quietly passes less than the others. Four
+ * positional arguments across three call sites was already the shape that goes wrong — a new one is
+ * added in one place and forgotten in two, and nothing says so.
+ */
+export interface CheckOptions {
+  /** The at-rule this block IS, when it is a named site — `property`, `keyframes`, `font-face`. */
+  readonly at?: string;
+  /** Binding -> the generated name it resolves to. See {@link namedSites}. */
+  readonly references?: ReadonlyMap<string, string>;
+  /** Generated name -> the `syntax` its `@@property` declared. See {@link syntaxesIn}. */
+  readonly syntaxes?: ReadonlyMap<string, string>;
+  /** The project's own settings, which decide what is a fault HERE rather than in CSS. */
+  readonly config?: Config;
+}
+
+export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] {
+  const { at, references, syntaxes, config } = options;
+  const findings: Finding[] = [];
+  walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
+  overrideOutOfOrder(block, findings);
+  holeAsAVariableName(block, findings);
+  mediaFeatures(block, findings);
+  spelling(block, findings);
+  layerInABlock(block, findings);
+  spreadOutOfPlace(block, findings);
+  if (at !== undefined) holeInANamedBlock(block, at, findings);
+  if (at !== undefined) compositionInANamedBlock(block, at, findings);
+  if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
+  if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
+  if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
+  if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
+  const silenced = config?.rules;
+  const kept = silenced === undefined ? findings : findings.filter((one) => silenced[one.rule] !== "off");
+  return kept.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * A variable set by one name and read by another, when the author meant one.
+ *
+ * A named `@@property` block is a TypeScript binding, and `var({{accent}})` resolves at build time to
+ * the name that block generated. Setting it with the same binding works end to end — `{{accent}}:
+ * blue` writes `--r-…: blue` and the `var()` reads it back.
+ *
+ * **Writing the literal name instead is two variables, and nothing said so.** Measured:
+ *
+ * ```
+ * --accent: blue;               ->  .r-… { --accent: blue }       ONE variable
+ * background: var({{accent}});  ->  reads --r-k8u6ISIlk           ANOTHER
+ * ```
+ *
+ * The author believes they set what they read; the `var()` falls back to the `@property`
+ * `initial-value` and the declaration they wrote does nothing for it. Reported before the binding
+ * form is recommended anywhere, or the recommendation creates the fault it exists to remove.
+ *
+ * **It matches by NAME and nothing else**, which is what keeps it precise: `--accent` set while the
+ * binding `accent` is read. A literal nobody has a binding for is ordinary CSS and is left alone; so
+ * is a block that reads the literal it set.
+ */
+function setByAnotherName(block: Block, references: ReadonlyMap<string, string>, findings: Finding[]): void {
+  // What a resolved reference looks like once it is text: the generated name, by binding.
+  const generated = new Map([...references].map(([binding, name]) => [name, binding]));
+  const read = new Set<string>();
+  const set: { name: string; at: number }[] = [];
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      if (item.property.startsWith("--") && item.at !== undefined) {
+        set.push({ name: item.property, at: item.at });
+      }
+      for (const part of item.value) {
+        if (part.kind !== "text") continue;
+        const binding = generated.get(part.text);
+        if (binding !== undefined) read.add(binding);
+      }
+    }
+  };
+  walkItems(block.items);
+
+  for (const one of set) {
+    const binding = one.name.slice(2);
+    if (!read.has(binding)) continue;
+
+    findings.push({
+      rule: "variable-set-by-another-name",
+      at: one.at,
+      length: one.name.length,
+      message:
+        `\`${one.name}\` is set here, and \`${binding}\` is read as a binding below — those are two ` +
+        `different custom properties, so this declaration does nothing for it. Write ` +
+        `\`{{${binding}}}: …\` to set the one you read.`,
+    });
+  }
+}
+
+/**
+ * What a `syntax` component accepts, as a test on the value's own text.
+ *
+ * **Matchers rather than a classifier, and that is the whole safety of the rule.** Classifying the
+ * value and comparing types fails the wrong way — an incomplete classification makes a good value
+ * look like the wrong type and reports correct CSS. Asking each component "do you accept this" fails
+ * by going quiet, because a component with no matcher here silences the rule entirely.
+ *
+ * They are LOOSE for the same reason, and each looseness is a report given up on purpose:
+ *
+ * - `<color>` accepts any bare word rather than a list of named colours, so a value that is really a
+ *   `<custom-ident>` is never mistaken for a fault;
+ * - `<length>` and its kind accept a number with ANY unit, because `units.json` does not group units
+ *   by value type and a hand-written partition would rot — so `<length>` with `3s` is MISSED;
+ * - anything holding a function is accepted wherever a function could go, because `calc()`,
+ *   `min()` and `var()` can each be any type at all.
+ *
+ * What survives all of that is the case that actually happens: a value of visibly the wrong SHAPE.
+ */
+/**
+ * A number, and it may carry an EXPONENT — css-syntax-3 §4.3.12, so `1e3` is a `<number>` and
+ * `1e2px` is `100px`. A review found both reported: the matchers could not express the form at all,
+ * and `unknown-unit` said `e` was not a unit on top of it.
+ */
+const DIGITS = "[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?";
+const A_NUMBER = new RegExp(`^${DIGITS}$`);
+const A_DIMENSION = new RegExp(`^(${DIGITS})([a-z%]+)$`, "i");
+const A_HEX = /^#[0-9a-f]{3,8}$/i;
+/**
+ * An identifier, and a `<dashed-ident>` is one.
+ *
+ * Per css-values-4 a `<dashed-ident>` IS a `<custom-ident>` with the extra restriction that it starts
+ * with two dashes — so `--x` is a valid `<custom-ident>` and was reported as not being one. The
+ * generator reasons correctly about exactly this production; this matcher did not.
+ */
+const AN_IDENT = /^--?[a-z_][\w-]*$|^-?[a-z_][\w-]*$/i;
+const A_CALL = /^[a-z-]+\(/i;
+
+/**
+ * A number with a unit of the RIGHT family, or a bare `0`, or a call.
+ *
+ * The first version accepted a number with any unit at all, because `units.json` groups units by the
+ * spec that defines them rather than by what they are — so `<angle>` accepted `12px`, and the rule
+ * that matters most here could not fire. `UNIT_TYPE` is the partition, written down in the generator
+ * with an assertion that every unit lands in exactly one family, so a unit CSS adds fails the build
+ * until somebody says what it is.
+ *
+ * A bare `0` is a length and an angle and a time — CSS lets it be dimensionless — and a call is any
+ * type at all, because `calc()`, `min()` and `var()` are.
+ */
+const dimensional = (family: string) => (value: string) => {
+  if (value === "0" || A_CALL.test(value)) return true;
+  const found = A_DIMENSION.exec(value);
+  if (found === null) return false;
+
+  const type = UNIT_TYPE[found[2].toLowerCase()];
+  // A unit that is not a unit has no type, and `unknown-unit` owns it — it names the unit, which is
+  // the more useful sentence. Two rules on one fault reads as two faults.
+  return type === undefined || type === family;
+};
+
+const ACCEPTS: Readonly<Record<string, (value: string) => boolean>> = {
+  "<length>": dimensional("length"),
+  "<percentage>": dimensional("percentage"),
+  "<length-percentage>": (value) => dimensional("length")(value) || dimensional("percentage")(value),
+  "<angle>": dimensional("angle"),
+  "<time>": dimensional("time"),
+  "<resolution>": dimensional("resolution"),
+  "<number>": (value) => A_NUMBER.test(value) || A_CALL.test(value),
+  "<integer>": (value) => /^[+-]?\d+$/.test(value) || A_CALL.test(value),
+  "<color>": (value) => A_HEX.test(value) || AN_IDENT.test(value) || A_CALL.test(value),
+  "<url>": (value) => A_CALL.test(value),
+  "<image>": (value) => A_CALL.test(value) || AN_IDENT.test(value),
+  "<custom-ident>": (value) => AN_IDENT.test(value),
+};
+
+/**
+ * An `initial-value` its own `syntax` does not accept.
+ *
+ * **Measured in Chromium 151, and the registration does not half-work — it is GONE:**
+ *
+ * | written | kept? | the name then |
+ * |---|---|---|
+ * | `syntax: "<color>"; initial-value: #10b981` | yes | refuses junk, falls back to the colour |
+ * | `syntax: "<color>"; initial-value: 12px` | **no**, absent from `cssRules` | **accepts any junk** |
+ * | `syntax: "<length>"; initial-value: red` | **no** | **accepts any junk** |
+ *
+ * No interpolation in a transition, no fallback for a value the property cannot parse, and the name
+ * back to holding whatever it is handed. Every reason to write `@@property( … )` at all, removed by
+ * one mismatched line, and nothing anywhere says so.
+ *
+ * See {@link ACCEPTS} for why it is matchers, and for the reports deliberately given up.
+ */
+function initialValueAndSyntax(block: Block, findings: Finding[]): void {
+  let syntax: string | undefined;
+  let value: { text: string; at: number } | undefined;
+
+  for (const item of block.items) {
+    if (item.kind !== "declaration") continue;
+    // A descriptor written with a hole cannot be read, and a hole is the author's business.
+    const text = item.value.every((part) => part.kind === "text")
+      ? item.value
+          .map((part) => (part.kind === "text" ? part.text : ""))
+          .join("")
+          .trim()
+      : undefined;
+    if (text === undefined) continue;
+
+    if (item.property === "syntax") syntax = text.replace(/^["']|["']$/g, "");
+    if (item.property === "initial-value") value = { text, at: item.valueAt ?? item.at ?? 0 };
+  }
+
+  if (syntax === undefined || value === undefined || syntax === "*") return;
+
+  const components = syntax.split("|").map((one) => one.trim());
+  // A multiplier is a LIST, which this does not read; one unknown component silences the whole rule.
+  if (components.some((one) => /[+#]$/.test(one) || (one.startsWith("<") && ACCEPTS[one] === undefined))) return;
+
+  const accepted = components.some((one) => (one.startsWith("<") ? ACCEPTS[one](value.text) : one === value.text));
+  if (accepted) return;
+
+  findings.push({
+    rule: "initial-value-and-syntax",
+    at: value.at,
+    length: value.text.length,
+    message:
+      `\`syntax: "${syntax}"\` does not accept \`${value.text}\`, so the browser drops the whole ` +
+      `registration — measured, the name then holds any value at all, with no interpolation and no ` +
+      `fall back to this one. Fix whichever of the two is wrong.`,
+  });
+}
+
+/** Whether `known`'s dash-delimited segments appear, in order, among `parts`. */
+function segmentsOf(known: string, parts: readonly string[]): boolean {
+  let at = 0;
+  for (const part of parts) {
+    if (part === known.split("-")[at]) at++;
+  }
+  return at === known.split("-").length;
+}
+
+/**
+ * A known feature with characters typed INTO it, which edit distance cannot safely reach.
+ *
+ * `prefers-reduced-mErrorotion` is six characters from `prefers-reduced-motion`, and `nearest`'s
+ * bound is three — raising it is not the fix. Measured on this table: `prefers-reduced-data` is a
+ * REAL feature about as far from `prefers-reduced-motion` as that typo is, so any bound wide enough
+ * to catch the one reports the other, and the other was new once. Distance cannot tell them apart.
+ *
+ * Subsequence can. A known name being a subsequence of what was written means somebody typed extra
+ * characters into a real name; a genuinely new feature does not contain an old one's letters in
+ * order. The length bound keeps a longer relative out — a future `prefers-reduced-motion-strength`
+ * is nine longer and stays silent, and this typo is six.
+ *
+ * **And the length bound was not enough, which a review measured.** `video-` is exactly six, and
+ * every `video-`-prefixed feature Media Queries 5 defines is its unprefixed relative with a whole
+ * segment in front — so the entire family came back as typos, `min-video-width` as a typo of
+ * `min-width` among them. No bound can separate those: the extra text really is six characters.
+ *
+ * What separates them is WHERE the extra characters are. CSS names a family by adding whole
+ * dash-delimited segments — `device-width`, `min-width`, `video-width`, `prefers-reduced-motion` —
+ * and a typo does not land on segment boundaries. So the subsequence is asked of the SEGMENTS as
+ * well: if the known name's segments are a subsequence of the written name's, this is a relative and
+ * nothing is said. `prefers-reduced-mErrorotion` still reports, because its last segment is a typo
+ * of a segment rather than an extra one.
+ *
+ * That is also the safer direction for a feature CSS invents after this list was generated: an
+ * unknown feature is `<general-enclosed>`, legal CSS that never matches, and reporting one as a typo
+ * is the false report this rule is shaped to avoid.
+ */
+const INSERTED = 6;
+
+function typedInto(written: string): string | undefined {
+  const parts = written.split("-");
+
+  for (const known of MEDIA_FEATURES) {
+    const extra = written.length - known.length;
+    if (extra <= 0 || extra > INSERTED) continue;
+
+    // A whole segment added is a family, not a slip — see the note above.
+    if (segmentsOf(known, parts)) continue;
+
+    let at = 0;
+    for (const character of written) {
+      if (character === known[at]) at++;
+    }
+    if (at === known.length) return known;
+  }
+  return undefined;
+}
+
+/**
+ * A registered property set to a value its own `syntax` refuses.
+ *
+ * **Measured in Chromium 151, and it fails without failing:**
+ *
+ *     @property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg }
+ *     .set { --angle: 12px }        ->  --angle computes to 0deg
+ *
+ * The value is discarded and the `initial-value` stands. Nothing is dropped and nothing is said, so
+ * the element shows the default and looks deliberate — and a `@keyframes` frame set to the wrong
+ * type behaves the same way, which is an animation that silently does not move.
+ *
+ * Both halves are here to be read: the reference has resolved to the site's generated name, and that
+ * site's `syntax` came from its own block. It reuses {@link ACCEPTS}, so it gives up exactly the same
+ * reports for exactly the same reason — a component with no matcher, or a multiplier, says nothing.
+ *
+ * A value holding a hole or a `var()` is not judged: what it will be is not known here.
+ */
+function againstRegisteredSyntax(block: Block, syntaxes: ReadonlyMap<string, string>, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const syntax = syntaxes.get(item.property);
+      if (syntax === undefined || syntax === "*") continue;
+      if (!item.value.every((part) => part.kind === "text")) continue;
+
+      const value = item.value
+        .map((part) => (part.kind === "text" ? part.text : ""))
+        .join("")
+        .trim();
+      /**
+       * `!important` is not part of the value, and on a custom property it is ordinary CSS — it is
+       * how a variable is made to win. A review measured `{angle}: 90deg !important` reported as a
+       * value `<angle>` does not accept, because the flag went into the matcher with the value.
+       */
+      const written = value.replace(/\s*!\s*important\s*$/i, "");
+      /**
+       * A CSS-wide keyword and `var()`, both asked CASE-INSENSITIVELY, because CSS keywords and
+       * function names are — css-values-4 §Textual Data Types. `INHERIT` was reported, and the
+       * `var(` escape was matched with no `i` while `variableReads` beside it explains at length why
+       * it matches `var` case-insensitively. One question, two answers, in one file.
+       */
+      if (written === "" || GLOBAL.has(written.toLowerCase()) || /(^|[^\w-])var\(/i.test(written)) continue;
+
+      const components = syntax.split("|").map((one) => one.trim());
+      if (components.some((one) => /[+#]$/.test(one) || (one.startsWith("<") && ACCEPTS[one] === undefined))) continue;
+
+      const accepted = components.some((one) => (one.startsWith("<") ? ACCEPTS[one](written) : one === written));
+      if (accepted) continue;
+
+      findings.push({
+        rule: "value-and-registered-syntax",
+        at: item.valueAt ?? item.at ?? 0,
+        length: value.length,
+        message:
+          `this property is registered as \`${syntax}\` and does not accept \`${written}\` — measured, the ` +
+          `browser keeps the \`initial-value\` instead and says nothing, so the element shows the default.`,
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/** A feature's name, wherever it sits inside a `@media` condition. */
+const A_FEATURE = /\(\s*([a-zA-Z][\w-]*)\s*[:)<>=]/g;
+const KNOWN_FEATURES = new Set(MEDIA_FEATURES);
+
+/**
+ * A `@media` feature that is nearly one CSS has.
+ *
+ * **Nothing checked a media condition at all**, and the fault it leaves is the quiet kind: measured
+ * in Chromium 151, every one of these survives a parse with its text intact, `cssRules` and all —
+ *
+ *     @media (min-widht: 40rem)                    kept
+ *     @media (prefers-reduced-mErrorotion: reduce) kept
+ *     @media (nonsense)                            kept
+ *     @media (min-width 40rem)                     kept, and it has no colon
+ *
+ * — because an unknown feature is `<general-enclosed>` in the grammar, which is **legal CSS that
+ * never matches**. So a typo is not invalid; it is a block that silently never applies, and nothing
+ * anywhere would say so.
+ *
+ * A NEAR MISS only, for the reason every table-backed rule here says the same thing: the list is a
+ * snapshot, a feature invented after it is valid, and reporting valid CSS is how a checker earns
+ * being switched off. `@supports` and `@container` are left alone — their conditions are a different
+ * grammar with different names.
+ *
+ * The table is written down because nothing can supply it, and it is verified against a real browser
+ * in `apps/playground-core/browser`: for a name Chromium knows, exactly one of `(f)` and `not (f)`
+ * holds; for one it does not, both are false. That is the oracle a stylesheet parse is not.
+ */
+function mediaFeatures(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      walkItems(item.items);
+      if (!item.prelude.startsWith("@media") || item.at === undefined) continue;
+
+      for (const found of item.prelude.matchAll(A_FEATURE)) {
+        const name = found[1];
+        // A browser's own feature is not in CSS's list and is not a typo of anything in it.
+        if (name.startsWith("-") || KNOWN_FEATURES.has(name)) continue;
+
+        const meant = nearest(name, MEDIA_FEATURES as string[]) ?? typedInto(name);
+        if (meant === undefined) continue;
+
+        findings.push({
+          rule: "unknown-media-feature",
+          at: item.at + (found.index ?? 0) + found[0].indexOf(name),
+          length: name.length,
+          message:
+            `\`${name}\` is not a media feature, so this condition never matches and the rules inside ` +
+            `it never apply — a browser keeps it rather than refusing it. Did you mean \`${meant}\`?`,
+        });
+      }
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A prelude spelled a way that is the same CSS and a different class.
+ *
+ * `:hover` and `:HOVER` are one rule to a browser, and two keys here — because a declaration's key
+ * is its own text, and folding it in the compiler is not available: CSS is case-insensitive about
+ * the words of the LANGUAGE and case-sensitive about an author's identifiers, so lowering a selector
+ * would merge `.a` with `.A`. A review measured the cost of not folding at all: a base and a
+ * modifier one space apart kept both classes, so the modifier did not override and the winner was
+ * decided by whichever file the bundler reached first.
+ *
+ * So the SOURCE is canonical, and this is what says so. `ramonda-css format` writes the same answer.
+ *
+ * **It reports exactly what the canonicaliser changes.** A shape `canonicalCondition` and
+ * `canonicalSelector` leave alone — `:nth-child(2n + 1)`, `@supports ((display: grid))`, both of
+ * which need real parsing to rewrite — is a shape this says nothing about. An error with no fix is
+ * worse than a spelling, and one function asked two ways cannot drift from the other consumer.
+ */
+/**
+ * `@layer` written INSIDE a block, which looks like a cascade control and cannot be one.
+ *
+ * **The stylesheet is already one layer.** Everything this compiler emits is wrapped in
+ * `@layer ramonda { … }`, which is what puts it beneath an author's own unlayered CSS whatever order
+ * the files load in.
+ *
+ * So a `@layer a` inside a block makes a SUBLAYER, `ramonda.a` — and whether that beats `ramonda.b`
+ * is decided by which of the two the sheet writes first, because CSS orders layers it was given no
+ * explicit order for by first appearance. The sheet writes per file, in each file's own source
+ * order, so the answer is a property of the BUILD. The author gets a lever whose other end is not in
+ * their hands.
+ *
+ * **Layers themselves are not refused, and the message has to say so** — this is the one refusal
+ * here that an author will read as a missing feature. `@layer` belongs in their own stylesheet,
+ * where the order can be declared, and `ramonda` can be ordered among their layers from there.
+ * Measured: `@layer app, ramonda;` at the top of an authored sheet orders both.
+ *
+ * The place this would become real is a declared order — somewhere for `@layer a, b;` to be written
+ * inside our own layer. There is nowhere in a block to write it, so it is a feature rather than a
+ * fix, and it is not pretended at here.
+ */
+function layerInABlock(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      walkItems(item.items);
+
+      const prelude = item.prelude.trim();
+      if (item.at === undefined || !/^@layer\b/i.test(prelude)) continue;
+
+      findings.push({
+        rule: "layer-in-a-block",
+        at: item.at,
+        length: item.prelude.length,
+        message:
+          "a style block cannot hold `@layer`. Everything compiled here is already emitted inside " +
+          "`@layer ramonda`, so a layer written in a block is a sublayer of it — and which sublayer " +
+          "wins is decided by the order the stylesheet happens to write them in, not by anything " +
+          "written here. Declare your layers in your own stylesheet, where the order can be given: " +
+          "`@layer app, ramonda;` puts this package's output wherever you want it among them.",
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A SPREAD inside a selector or a conditional at-rule, which cannot mean anything.
+ *
+ * A spread merges a whole block, and a block's map carries the context each of its declarations was
+ * written in. Inside `&:hover` it would have to re-scope every key it holds — `background` becoming
+ * `:hover|background` — which a merge cannot do at runtime. A GUARD is fine: `if` changes no key,
+ * it only decides whether the whole map lands.
+ *
+ * **Refused by the build already, and by nothing else.** The refusal lived in `transform`, so the
+ * editor and `ramonda-check` were both green on a file the build stops on — see `checkBlock`'s own
+ * note about `@property`, which was this fault one rule earlier. The transform still refuses; it
+ * refuses because this reports, which is what makes the two answers one answer.
+ */
+function spreadOutOfPlace(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[], scoped: boolean): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        // A guard is not a scope: `if` decides whether the map lands, and changes no key in it.
+        const guard = holeIn(item.prelude, CONDITION) !== undefined;
+        walkItems(item.items, scoped || !guard);
+        continue;
+      }
+      if (!scoped || holeIn(item.property, SPREAD) === undefined) continue;
+
+      findings.push({
+        rule: "spread-out-of-place",
+        at: item.at ?? 0,
+        length: item.property.length,
+        message:
+          "a spread merges a whole block, and a block carries the context its own declarations " +
+          "were written in — so it cannot go inside a selector or a `@media`. Write it at the " +
+          "top level of the block, or inside `if { … }`, which changes no declaration.",
+      });
+    }
+  };
+  walkItems(block.items, false);
+}
+
+/**
+ * A HOLE inside `@@keyframes( … )` and the other named sites, which have no element to hold one.
+ *
+ * A hole becomes a custom property ON AN ELEMENT. A named site has none — an animation is applied by
+ * whatever names it, a font face by nothing at all — so the value would be read from wherever the
+ * rule happened to land. Refused by the build for that reason, and reported here for the same one.
+ */
+function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      /**
+       * **Over the HOLE, and every one of them.**
+       *
+       * This pointed at the start of the VALUE with a length of 1 — measured on
+       * `@@font-face( src: url({n}); )`, a one-character squiggle over the `u` of `url(`, which is
+       * mid-word and is not the fault. And it stopped after the first hole, so an author fixed one,
+       * re-ran, and met the next.
+       *
+       * `HolePart` carries `at` and `length` and its own note says why: *"for a squiggle over the
+       * hole itself … what lets a rule about a hole's POSITION point at the hole rather than at the
+       * declaration holding it."* `hole-as-a-variable-name` reads it; this did not.
+       *
+       * One finding per HOLE rather than per declaration, because each is a separate thing to
+       * remove — `src: url({a}) format({b})` is two edits.
+       */
+      for (const hole of item.value) {
+        if (hole.kind !== "hole") continue;
+        findings.push({
+          rule: "hole-in-a-named-block",
+          at: hole.at ?? item.valueAt ?? item.at ?? 0,
+          length: hole.length ?? 1,
+          message:
+            `a hole cannot go in \`@@${at}( … )\` — a hole is a custom property on an ELEMENT, and ` +
+            `this names something the whole stylesheet uses.`,
+        });
+      }
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * The three forms a `@@name( … )` may take, and the one place they are written down.
+ *
+ * `transform` kept its own set and `virtual.ts` kept its own table, which is how a misspelt name
+ * came to be type-checked as an ORDINARY block: no surface meant no named check, and the ordinary
+ * one took over. `SURFACES` reads this, and so does the rule below.
+ */
+export const NAMED_BLOCKS = ["keyframes", "font-face", "property"] as const;
+
+/**
+ * A `@@name( … )` whose name is not one this compiles.
+ *
+ * **Refused by the build and by nothing else**, so the editor and `ramonda-check` were both green —
+ * and worse than green: with no surface for it, `@@keyfrmes( … )` was checked as an ordinary block,
+ * so `from { … }` was read as the selector `& from` and the report talked about a nested rule. A
+ * wrong message is worse than none, because it sends a person to the wrong line.
+ */
+export function checkNamedSite(site: BlockSite): Finding[] {
+  if (site.at === undefined || (NAMED_BLOCKS as readonly string[]).includes(site.at)) return [];
+
+  const meant = nearest(site.at, NAMED_BLOCKS as readonly string[]);
+  return [
+    {
+      rule: "unknown-named-block",
+      at: site.opening,
+      length: site.open + 1 - site.opening,
+      message:
+        `\`@@${site.at}( … )\` is not something this compiles — the named forms are ` +
+        `${NAMED_BLOCKS.map((one) => `\`@@${one}( … )\``).join(", ")}.` +
+        (meant === undefined ? "" : ` Did you mean \`@@${meant}( … )\`?`),
+    },
+  ];
+}
+
+/**
+ * `if` or a spread inside `@@keyframes( … )` and the other named blocks.
+ *
+ * Composition decides what lands on an ELEMENT: a guard switches a map on and off, a spread merges
+ * one into another. A named block is not an element — it is a rule the whole stylesheet uses — so
+ * neither has anything to act on.
+ *
+ * **Both were reported as something else.** `if ({on}) { from { … } }` came back as *`if ( 0 )`
+ * is not a keyframe*, which names the guard as a frame; and the virtual file wrote the helper call
+ * among the object literal's members, where a call is not a member, so the file did not parse and
+ * nothing else in it was checked either.
+ */
+function compositionInANamedBlock(block: Block, at: string, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      const found =
+        item.kind === "rule"
+          ? holeIn(item.prelude, CONDITION) !== undefined
+          : holeIn(item.property, SPREAD) !== undefined;
+
+      if (found) {
+        findings.push({
+          rule: "composition-in-a-named-block",
+          at: item.at ?? 0,
+          length: item.kind === "rule" ? item.prelude.length : item.property.length,
+          message:
+            `\`@@${at}( … )\` cannot hold ${item.kind === "rule" ? "`if`" : "a spread"} — composition ` +
+            `decides what lands on an ELEMENT, and this names a rule the whole stylesheet uses. ` +
+            `Compose where the block is used instead.`,
+        });
+        return;
+      }
+      if (item.kind === "rule") walkItems(item.items);
+    }
+  };
+  walkItems(block.items);
+}
+
+function spelling(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      walkItems(item.items);
+      if (item.at === undefined) continue;
+
+      const written = item.prelude.trim();
+      const canonical = canonicalPrelude(written);
+      if (canonical === written) continue;
+
+      findings.push({
+        rule: "non-canonical-spelling",
+        at: item.at,
+        length: item.prelude.length,
+        message:
+          `write this as \`${canonical}\` — the two are the same CSS, and one spelling is what lets a ` +
+          `declaration here override the same one written elsewhere. \`ramonda-css format\` fixes it.`,
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/** `var(` and nothing but whitespace since — the position where a NAME belongs. */
+const OPENS_A_VAR = /var\(\s*$/i;
+
+/**
+ * A hole standing where `var()` takes a name.
+ *
+ * **Measured in Chromium 151, and it is silent:**
+ *
+ * ```
+ * .a { --name: --accent; --accent: #10b981; background: var(var(--name)); border: 4px solid red }
+ *       background -> rgba(0, 0, 0, 0)      the declaration is gone
+ *       border     -> 4px rgb(255, 0, 0)    and the one beside it survives
+ * ```
+ *
+ * `var()` resolves a literal name, not a value that happens to spell one — so a hole there compiles
+ * to `var(var(--r-…-0))` and the declaration does nothing. ONE declaration, not the rule, which is
+ * what makes it hard to see.
+ *
+ * **This package said so in `references.ts` and emitted it anyway**, because that is the shape an
+ * IMPORTED binding produces: `namedSites` reads one file, so `import { accent } from "./theme"` is
+ * not a name it can resolve and the reference stays a hole. Measured, `background: var({{accent}})`
+ * on an imported binding compiled to `background:var(var(--r-…-0))` with nothing reported at all.
+ *
+ * A reference to a site in the SAME file never reaches here: it is resolved to text before any rule
+ * runs, so there is no hole to find. That is what the named-site design is for, and it is asserted.
+ *
+ * The FALLBACK is a different position and is left alone — `var(--x, {{colour}})` is a value where a
+ * value belongs, and `var(--unset, var(--hole))` was measured resolving correctly. Only the first
+ * argument is a name.
+ */
+function holeAsAVariableName(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const [position, part] of item.value.entries()) {
+        if (part.kind !== "hole" || position === 0) continue;
+        const before = item.value[position - 1];
+        if (before.kind !== "text" || !OPENS_A_VAR.test(before.text)) continue;
+
+        findings.push({
+          rule: "hole-as-a-variable-name",
+          at: part.at ?? item.valueAt ?? item.at ?? 0,
+          length: part.length ?? 2,
+          /**
+           * **What the last sentence used to say had stopped being true.** It read "one imported
+           * from another module is not", which was the state of things before cross-module
+           * references resolved — and both the build and `ramonda-css` supply a reader now, so an
+           * imported `@@property` is written straight into the text like a local one.
+           *
+           * What is left when this fires is a reference that did not resolve, and the reasons are
+           * specific: a bare package specifier, which `namedSites` refuses because resolving one
+           * needs a bundler's resolver; a file that is not there; or a name the module does not
+           * export. Naming the CATEGORY instead sent an author to rewrite architecture that works.
+           */
+          message:
+            "`var()` takes a literal name, and a hole is a value — this compiles to " +
+            "`var(var(--\u2026))`, which resolves to nothing and drops the declaration in silence. " +
+            "A `@@property( \u2026 )` is a name it can read, in this file or imported from a " +
+            "relative module — so this one did not resolve: check the path, the export, and that " +
+            "the specifier begins with `.`, since a package name needs a bundler's resolver.",
+        });
+      }
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A declaration written to override an earlier one, which the stylesheet's order will not let win.
+ *
+ * **The stylesheet has ONE order and a block has another.** A rule is shared by every element that
+ * names it, so the sheet cannot honour any block's order — it emits unconditional rules before
+ * conditional ones and broader properties before the ones they cover, and that is what makes the
+ * common shapes right. Inside a block, the author's order is what decides. The two agree almost
+ * always, and where they do not the author's loses SILENTLY.
+ *
+ * Measured against plain CSS in Chromium, the same declarations in the same order:
+ *
+ * | written | plain CSS | ours |
+ * |---|---|---|
+ * | `@media { padding: 40px }` then `padding: 8px` | 8px | **40px** |
+ * | `@media { padding: 40px }` then `padding-left: 8px` | left 8px | **left 40px** |
+ * | `@media { &:hover { … } }` then a plain one | same | same — a selector adds specificity |
+ * | two under the SAME condition | same | same — the rank does not separate them |
+ *
+ * The merge cannot answer it: two different keys are two classes, both land, and the sheet breaks
+ * the tie. Reported rather than silently reordered, because the sheet's order is what makes every
+ * other block right and a page nobody edited must not move.
+ *
+ * Only the SELECTOR has to match, because a selector adds specificity and that beats source order
+ * on its own — measured, and it is why the rule would otherwise report correct CSS.
+ */
+function overrideOutOfOrder(block: Block, findings: Finding[]): void {
+  const flat = flatten(block);
+
+  for (const [index, later] of flat.entries()) {
+    for (const earlier of flat.slice(0, index)) {
+      if (earlier.selector !== later.selector) continue;
+      // The same key is the same thing set twice, and the merge already keeps the later one.
+      if (earlier.key === later.key) continue;
+      if (!conflict(earlier.property, later.property)) continue;
+
+      /**
+       * The merge settles it, so the sheet never gets to. A later shorthand CLEARS its own
+       * longhands, and the clear-list carries the context — so it reaches an earlier longhand under
+       * the same conditions and no other. Measured: `padding-left: 40px; padding: 8px` is the same
+       * as plain CSS, and reporting it would be reporting correct CSS.
+       */
+      const sameContext = earlier.conditions.join("|") === later.conditions.join("|");
+      if (sameContext && covers(later.property, earlier.property)) continue;
+
+      if (sheetRank(later) >= sheetRank(earlier)) continue;
+
+      /**
+       * A LOGICAL property meeting a PHYSICAL one, which no order can settle.
+       *
+       * `margin-inline` is left and right in a horizontal writing mode and top and bottom in a
+       * vertical one, so whether it covers `margin-left` is not known until the element is laid
+       * out. Measured in Chromium, both modes: the sheet's broadest-first order is right in one and
+       * wrong in the other, silently, and the wrong one is the mode almost every page is in.
+       *
+       * The other direction needs no message, because it needs no rule: `margin` sets all four
+       * sides whatever the mode, so it clears `margin-inline` and the merge settles it above.
+       */
+      if (onlyTheModeDecides(earlier.property, later.property)) {
+        findings.push({
+          rule: "override-out-of-order",
+          at: later.at ?? 0,
+          length: later.property.length,
+          message:
+            `\`${later.property}\` is written to override \`${earlier.property}\` above it, and whether ` +
+            `it does depends on \`writing-mode\` — a logical property names a side the layout picks, so ` +
+            `a stylesheet cannot be ordered for both. Write the two in one system: \`${earlier.property}\` ` +
+            `has a logical spelling, and \`${later.property}\` a physical one.`,
+        });
+        return;
+      }
+
+      const where = earlier.conditions.length > 0 ? earlier.conditions.join(" ") : `\`${earlier.property}\``;
+      findings.push({
+        rule: "override-out-of-order",
+        at: later.at ?? 0,
+        length: later.property.length,
+        message:
+          `\`${later.property}\` is written to override ${where} above it, and it will not — the ` +
+          `stylesheet emits ${becauseOf(earlier, later)}, so the earlier one wins wherever both ` +
+          `apply. Write it above, or put it under the same condition.`,
+      });
+      return;
+    }
+  }
+}
+
+/**
+ * Why the sheet puts the earlier one last, in the reader's own terms.
+ *
+ * Three orders can be the reason, and naming the wrong one sends a reader looking at the wrong
+ * thing. The width one is the newest: the sheet reads a breakpoint off its query now, so a narrower
+ * rule is emitted after a wider one whatever order they were written in — see `widthSlot`.
+ */
+function becauseOf(
+  earlier: { property: string; conditions: readonly string[] },
+  later: { property: string; conditions: readonly string[] },
+): string {
+  if (earlier.conditions.length === 0) return "a shorthand before its own longhands";
+  if (widthSlot(later.conditions) === widthSlot(earlier.conditions)) {
+    return "the broadest property first";
+  }
+  if (later.conditions.length === 0) return "conditional rules after unconditional ones";
+  return "the rule that applies to a wider viewport first";
+}
+
+/**
+ * `body` is the at-rule whose body these items ARE, and it changes what an item may be:
+ *
+ * - `keyframes` — frames, each holding ordinary declarations. A declaration outside a frame is
+ *   dropped by the browser, so it is reported here.
+ * - anything else named — descriptors, which are declarations and nothing else. A nested rule is
+ *   reported, and the property rules stand down: the descriptor vocabulary is the types'.
+ */
+function walk(items: readonly BlockItem[], findings: Finding[], body?: string): void {
+  /** What each property was last declared as, for `repeated-declaration`. Per rule, not per block. */
+  const seen = new Map<string, string>();
+
+  for (const item of items) {
+    if (item.kind === "rule") {
+      if (body !== undefined && body !== "keyframes") {
+        ruleOutOfPlace(item, body, findings);
+        continue;
+      }
+      if (body === "keyframes") unknownFrame(item, findings);
+      else atRuleOutOfPlace(item, findings);
+      holeInHead(item.prelude, item.at, body === "keyframes" ? "a frame" : "a selector", findings);
+      // A nested rule has its own scope: `color` beside it and `color` inside it are two
+      // declarations on two different elements, and neither repeats the other. A frame's contents
+      // are ordinary declarations, which is why the name does not travel into it.
+      walk(item.items, findings);
+      continue;
+    }
+
+    if (body === "keyframes") {
+      declarationOutOfPlace(item, findings);
+      continue;
+    }
+
+    /**
+     * A hole read into the PROPERTY, which is what a forgiving parse does with one written where a
+     * custom property cannot go. `{{name}}: 24px` puts it in the name; a hole standing alone with no
+     * colon after it puts the whole declaration there.
+     */
+    const named = findings.length;
+    holeInHead(item.property, item.at, item.value.length === 0 ? "a declaration" : "a property name", findings);
+    /**
+     * A name that is not a name, which silences the near-miss search below it: one fault, one report,
+     * and `font size` is not a typo of a property — it is two words where one belongs.
+     *
+     * Not asked at all when the name held a HOLE, which the line above has just reported. A hole
+     * kept as text by the tolerant reading is an expression, and an expression has spaces in it —
+     * so this would say *`{cond ? "display:flex" : ""}` is not a property name* underneath a
+     * diagnostic that already said something truer.
+     */
+    if (findings.length === named && propertyNotAName(item, findings)) {
+      unknownUnit(item, findings);
+      gluedHole(item, findings);
+      repeated(item, seen, findings);
+      continue;
+    }
+    // Against the right vocabulary: the properties in an ordinary block, that at-rule's descriptors
+    // in a named one. The types report WHETHER a name exists either way; this is the suggestion,
+    // which a quoted key never gets from them.
+    unknownProperty(item, findings, body);
+    /**
+     * The run-on FIRST, and it silences the value check for the same declaration.
+     *
+     * A missing `;` makes the next declaration part of this one's value, so the words in it are words
+     * this property does not accept — and both rules have something true to say about one mistake.
+     * Measured on the shape a person writes: `gap: 8px` with no `;` above `padding: 4px 0;` came back
+     * as BOTH *`gap` does not accept `padding`* and *`padding` is being read as part of `gap`'s
+     * value*. The second is the one that says what to do.
+     */
+    const before = findings.length;
+    runOn(item, findings);
+    if (findings.length === before && body === undefined) unknownValue(item, findings);
+    unknownFlag(item, findings);
+    stringNotAllowed(item, findings);
+    unknownUnit(item, findings);
+    gluedHole(item, findings);
+    repeated(item, seen, findings);
+  }
+}
+
+/* ── the rules ─────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Two declarations run together, which is what a missing `;` makes of them.
+ *
+ * **Nothing else reports it, and that had to be measured.** `padding: 4px 0 border-left: 1px solid
+ * red` is one value to the parser, and `padding` is not among the 123 properties whose values are a
+ * closed union — so the type layer has no grounds and `unknown-value` has nothing to check against.
+ * The browser drops both declarations and the page renders without the style, silently, which is the
+ * whole reason this exists.
+ *
+ * **A colon inside a value is the tell.** CSS values do not contain bare colons; the three places one
+ * legitimately appears — inside a string, inside `url( … )`, inside any other function — are exactly
+ * where this does not look. A hole is skipped too: what is inside one is TypeScript, and a colon
+ * there is a type annotation or a conditional.
+ */
+function runOn(declaration: Declaration, findings: Finding[]): void {
+  for (const part of declaration.value) {
+    if (part.kind !== "text" || part.at === undefined) continue;
+
+    const at = bareColon(part.text);
+    if (at === -1) continue;
+
+    /** The name the colon belongs to, which is the declaration that was swallowed. */
+    let start = at;
+    while (start > 0 && isNameCharacter(part.text.charCodeAt(start - 1))) start--;
+    const name = part.text.slice(start, at);
+    if (name === "") continue;
+
+    findings.push({
+      rule: "run-on-declaration",
+      at: part.at + start,
+      length: name.length,
+      message:
+        `\`${name}\` is being read as part of \`${declaration.property}\`'s value — ` +
+        `the declaration before it has no \`;\`, so the browser drops both.`,
+    });
+    return;
+  }
+}
+
+/** The first colon that is not inside a string or a function, or -1. */
+function bareColon(text: string): number {
+  let depth = 0;
+  let quote = 0;
+
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+
+    if (quote !== 0) {
+      if (code === 92 /* \ */) index++;
+      else if (code === quote) quote = 0;
+      continue;
+    }
+
+    if (code === 34 /* " */ || code === 39 /* ' */) quote = code;
+    else if (code === 40 /* ( */) depth++;
+    else if (code === 41 /* ) */) depth = Math.max(0, depth - 1);
+    else if (code === 58 /* : */ && depth === 0) return index;
+  }
+
+  return -1;
+}
+
+/** A CSS property name's characters, which is what stands before the colon that gave it away. */
+function isNameCharacter(code: number): boolean {
+  return (
+    (code >= 97 && code <= 122) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 48 && code <= 57) ||
+    code === 45 ||
+    code === 95
+  );
+}
+
+/**
+ * The prefixes that have names, read off {@link PREFIXED} rather than written out.
+ *
+ * Hard-coding them was wrong in both directions and both were measured. `-o-` was in the list and no
+ * engine has a single `-o-` name left — Presto has been gone since 2013 — and `-apple-` was NOT in
+ * it, while WebKit has two (`-apple-pay-button-style`, `-apple-pay-button-type`), so a real property
+ * was reported as an unknown prefix.
+ *
+ * Derived, there is one source for both halves of the question and they cannot drift apart. Measured
+ * today: `-webkit-` 182, `-ms-` 48, `-moz-` 30, `-apple-` 2.
+ */
+const PREFIXES = [...new Set(PREFIXED.map((one) => /^(-[a-z]+-)/.exec(one)?.[1] ?? one))].sort();
+
+/**
+ * A NAME THAT LOOKS PREFIXED AND IS NOT, which passed in silence.
+ *
+ * `unknown-property` returned early for every name starting with `-`, and the generator says why:
+ * "each one a name nobody misspells into a different property". Found by somebody typing
+ * `-wdasdsdebkit-line-clamp: 3` — it compiled, it shipped, and it did nothing.
+ *
+ * **A list of valid prefixed NAMES would be the wrong repair, and that was measured.** MDN's data
+ * holds a hundred of them and does not hold `-webkit-font-smoothing` or `-moz-osx-font-smoothing`,
+ * which are two of the most-written lines in real CSS. Reporting those would be refusing valid CSS,
+ * which is the one failure this package may not have — so the name after the prefix is not checked,
+ * and cannot be.
+ *
+ * The prefix itself is a different question and is answerable. What is left unreported is a real
+ * prefix on a name no browser has, which is the same trade CSS itself makes: a declaration a browser
+ * does not understand is dropped, and that is what a prefix is for.
+ */
+function unknownPrefix(item: Declaration, findings: Finding[]): void {
+  const name = item.property;
+  // `--anything` is a custom property, which is the author's own name and always valid.
+  if (name.startsWith("--")) return;
+
+  const cut = name.indexOf("-", 1);
+  const prefix = cut === -1 ? name : name.slice(0, cut + 1);
+
+  if (!PREFIXES.includes(prefix)) {
+    const meant = nearest(prefix, PREFIXES);
+    findings.push({
+      rule: "unknown-prefix",
+      at: item.at ?? 0,
+      length: name.length,
+      message:
+        `\`${name}\` begins with a dash, so it is a vendor-prefixed property — and \`${prefix}\` is not ` +
+        `one of the four prefixes there are: ${PREFIXES.join(", ")}. ` +
+        (meant === undefined
+          ? "A custom property takes two dashes: `--name`."
+          : `Did you mean \`${meant}${name.slice(prefix.length)}\`?`),
+    });
+    return;
+  }
+
+  /**
+   * **The NAME after the prefix, which passed while only the prefix was checked.** Found by somebody
+   * typing `-webkit-border-before-coloaasdsdr: "asdasdsadsd"` and watching it compile.
+   *
+   * A list of valid names was refused once, on the grounds that `mdn-data` holds 99 and has neither
+   * `-webkit-font-smoothing` nor `-moz-osx-font-smoothing`, so a list built from it would refuse
+   * lines people write every day. That measurement was right and the conclusion was not: the ENGINES
+   * keep their own lists, and asked directly they give 262 names between them — with
+   * `-webkit-font-smoothing` in all three of them. See `scripts/build-prefixed-properties.mjs`.
+   *
+   * A name an engine adds after that script was last run is refused until it is run again. That is
+   * the cost, it is real, and `ramonda-css-ignore <reason>` is the escape for exactly this shape.
+   */
+  if (PREFIXED.includes(name)) return;
+
+  const meant = nearest(name, PREFIXED);
+  findings.push({
+    rule: "unknown-property",
+    at: item.at ?? 0,
+    length: name.length,
+    message:
+      `\`${name}\` is not a property Chromium, Firefox or WebKit has. ` +
+      (meant === undefined
+        ? "A vendor-prefixed name is a browser's own, so this one belongs to none of them."
+        : `Did you mean \`${meant}\`?`),
+  });
+}
+
+/**
+ * A dashed property name that is nearly one CSS has.
+ *
+ * **Bare names are left to the types**, which report them with TypeScript's own *did you mean*. A
+ * dashed one cannot be an unquoted object key, and a quoted key gets no suggestion — measured. So
+ * this fills exactly that hole and nothing else.
+ *
+ * A name with no near miss is not reported either: the types already said it does not exist, and
+ * repeating that with nothing added is noise.
+ */
+function unknownProperty(item: Declaration, findings: Finding[], body?: string): void {
+  const name = item.property;
+  if (item.at === undefined) return;
+  // A custom property is the author's, and a vendor-prefixed name is a browser's — neither is in
+  // CSS's own list. The PREFIX is checked separately; see `unknownPrefix`.
+  if (name.startsWith("-")) {
+    unknownPrefix(item, findings);
+    return;
+  }
+  if (!name.includes("-")) return;
+
+  /**
+   * Inside a named block the vocabulary is that at-rule's descriptors, and only those: `src` is not
+   * a property and `font-family` in a `@font-face` is not the property of the same name. An at-rule
+   * with no table gets no report at all, which is the safe direction — the types still have it.
+   */
+  const among = body === undefined ? PROPERTIES : DESCRIPTORS[body];
+  if (among === undefined || among.includes(name)) return;
+  if (body === undefined && KNOWN.has(name)) return;
+
+  const meant = nearest(name, among);
+  if (meant === undefined) return;
+
+  findings.push({
+    rule: "unknown-property",
+    at: item.at,
+    length: name.length,
+    message:
+      body === undefined
+        ? `\`${name}\` is not a CSS property. Did you mean \`${meant}\`?`
+        : `\`${name}\` is not a \`@${body}\` descriptor. Did you mean \`${meant}\`?`,
+  });
+}
+
+/**
+ * A property name holding whitespace, which no CSS identifier may.
+ *
+ * **The class name survives it and the DECLARATION does not.** `nameFor` falls to the hash for such
+ * a name, so the stylesheet parses — but the rule it emits still says `--a b: red`, which no browser
+ * accepts, so an element carrying the class gets nothing. A review found the naming half; this is the
+ * half that tells the author.
+ *
+ * Nothing reported it before. `unknown-property` returns early for a name starting with `-` and for
+ * one with no `-` at all, so both of the shapes an author actually writes walked past it: two words
+ * where one belongs, and a name wrapped across lines — which is also what a missing `;` looks like
+ * from here.
+ *
+ * The dashed form is suggested only when it IS a property, because a suggestion that is not one
+ * would be a guess dressed as an answer.
+ */
+function propertyNotAName(item: Declaration, findings: Finding[]): boolean {
+  const name = item.property;
+  if (item.at === undefined || !/\s/.test(name)) return false;
+  // A spread is not a property and carries no name — see `isSpread`, and the parser's own note.
+  if (name.startsWith("...")) return false;
+  /**
+   * A `//` comment, which CSS does not have and `line-comment` reports from the TEXT pass. The
+   * parser reads one as a property name, and it is a name full of whitespace — so this would say
+   * *`// why color` is not a property name* beside a diagnostic that already explains the real
+   * fault. The two passes cannot see each other's findings, so the skip is here.
+   */
+  if (name.trimStart().startsWith("//")) return false;
+
+  const dashed = name.trim().replace(/\s+/g, "-");
+  const real = KNOWN.has(dashed) || dashed.startsWith("--");
+
+  findings.push({
+    rule: "property-not-a-name",
+    at: item.at,
+    length: name.length,
+    message:
+      `\`${name.trim().replace(/\s+/g, " ")}\` is not a property name — a CSS name holds no whitespace, so ` +
+      `the browser drops the declaration.` +
+      (real ? ` Did you mean \`${dashed}\`?` : " A `-` between the words, or a `;` missing above this line."),
+  });
+  return true;
+}
+
+/**
+ * A bare word in a value that the property does not accept.
+ *
+ * This is the half the types gave up on. A property whose grammar is a closed keyword set gets a
+ * real union and TypeScript reports it; the other 428 take COMBINATIONS — `display: inline flow-root`
+ * — and a union of their single keywords would reject valid CSS.
+ *
+ * A checker has no such constraint, because it reads one token and says something about that token
+ * alone. `KEYWORDS` holds the properties whose grammar admits no arbitrary identifier; a property
+ * reachable through `<custom-ident>` and its kind is absent, because `animation-name: slidein` is a
+ * name the author invented and nothing here can judge it.
+ */
+function unknownValue(item: Declaration, findings: Finding[]): void {
+  const names = PROPERTY_NAMED[item.property];
+  if (names !== undefined) return propertyNames(item, names, findings);
+
+  const accepted = KEYWORDS[item.property];
+  if (accepted === undefined) return;
+
+  // An EMPTY row is a property that accepts no keyword at all — see the generator. Splitting `""`
+  // would give a set holding one empty string, which matches nothing and reads as a bug later.
+  const keywords = new Set(accepted === "" ? [] : accepted.split(" "));
+  /** Whether any word's only fault was its case — see the note beside the check below. */
+  let miscased = false;
+
+  for (const word of words(item.value)) {
+    /**
+     * A word that starts with a dash is never a keyword, and reporting one was a live fault.
+     *
+     * `display: -webkit-box` and `cursor: -webkit-grab` are CSS that works, and both were reported
+     * as typos: the vendor's own vocabulary is not in any generated row, and it never will be —
+     * `mdn-data` holds the unprefixed names. A `--`-prefixed word is the other half, and it is
+     * valid for eighteen properties: `anchor-name: --card`, `view-timeline-name: --t`.
+     *
+     * `propertyNames` below has had this skip since it was written. This rule did not, which is the
+     * drift: one question — is a dashed word a keyword — answered in two places, one of them wrong.
+     */
+    if (word.text.startsWith("-")) continue;
+    if (keywords.has(word.text) || GLOBAL.has(word.text)) continue;
+    /**
+     * **A keyword in the wrong CASE is the same CSS**, and saying it does not exist is a lie the
+     * author cannot act on. Measured over all 897 property/keyword pairs in the generated table:
+     * 897 valid declarations were refused, every one of them for its case alone. And measured in
+     * Chromium, of 314 pairs it accepts it accepts every one in BOTH cases, with no exceptions.
+     *
+     * The verdict is unchanged — still refused — and the id is the one this package already uses for
+     * one CSS written two ways, which the formatter then rewrites. Reported once per declaration
+     * rather than once per word, because the fix is the whole value.
+     */
+    if (keywords.has(word.text.toLowerCase()) || GLOBAL.has(word.text.toLowerCase())) {
+      miscased = true;
+      continue;
+    }
+
+    const meant = nearest(word.text, [...keywords]);
+    findings.push({
+      rule: "unknown-value",
+      at: word.at ?? item.valueAt ?? item.at ?? 0,
+      length: word.text.length,
+      message:
+        meant === undefined
+          ? `\`${item.property}\` does not accept \`${word.text}\`.`
+          : `\`${item.property}\` does not accept \`${word.text}\`. Did you mean \`${meant}\`?`,
+    });
+  }
+
+  if (!miscased || findings.length > 0) return;
+  /**
+   * A value carrying a HOLE is left alone, and silence is the safe direction here: the hole is a
+   * runtime value, so the text this would name is not the text the author wrote. Before this rule
+   * existed such a declaration got `unknown-value` and a message that was false, so silence is
+   * already the better of the two.
+   */
+  const written = item.value.every((part) => part.kind === "text")
+    ? item.value.map((part) => (part.kind === "text" ? part.text : "")).join("")
+    : undefined;
+  if (written === undefined) return;
+
+  findings.push({
+    rule: "non-canonical-spelling",
+    at: item.valueAt ?? item.at ?? 0,
+    length: written.length,
+    message:
+      `write this as \`${canonicalValue(item.property, written)}\` — a CSS keyword is ` +
+      `case-insensitive, so the two are the same declaration, and one spelling is what lets two ` +
+      `blocks writing it agree on one class. \`ramonda-css format\` fixes it.`,
+  });
+}
+
+/**
+ * A value whose bare words are keywords or PROPERTY NAMES — `transition-property`, `will-change`,
+ * and the `transition` shorthand.
+ *
+ * Their grammars admit a free identifier, which is normally the honest reason to check nothing: a
+ * name somebody invented cannot be told from a name somebody mistyped. Here it can, because the
+ * identifier is a property name and that is a closed set this package already generates.
+ *
+ * **The shorthand is checked by elimination rather than by a model of its grammar.** `transition`
+ * mixes a property, two times and an easing function in one comma-separated list, and nothing here
+ * parses that. It does not have to: a time is not a bare word, `cubic-bezier( … )` is a function, and
+ * the keywords come from the longhands — so what is left is a property name. `animation` is
+ * deliberately not treated the same way, because `animation-name` is the author's own `@keyframes`.
+ *
+ * **Three things are not typos and must not be reported.** A vendor-prefixed property is not in the
+ * generated list, which holds only unprefixed names. A custom property is animatable and is the
+ * author's own word. And a CSS-wide keyword is accepted everywhere.
+ */
+function propertyNames(item: Declaration, accepted: string, findings: Finding[]): void {
+  const keywords = new Set(accepted === "" ? [] : accepted.split(" "));
+
+  for (const word of words(item.value)) {
+    if (word.text.startsWith("-")) continue;
+    if (keywords.has(word.text) || GLOBAL.has(word.text) || KNOWN.has(word.text)) continue;
+
+    const meant = nearest(word.text, PROPERTIES as string[]);
+    findings.push({
+      rule: "unknown-value",
+      at: word.at ?? item.valueAt ?? item.at ?? 0,
+      length: word.text.length,
+      message:
+        `\`${item.property}\` does not accept \`${word.text}\` — it takes a property name` +
+        (keywords.size === 0 ? "." : ` or one of ${[...keywords].sort().join(", ")}.`) +
+        (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
+    });
+  }
+}
+
+/** The at-rules that name something for the whole stylesheet, so a block may not hold one. */
+const ELSEWHERE = new Set(NOT_IN_A_RULE);
+
+/**
+ * An at-rule that is not part of an element's rule.
+ *
+ * A block IS one element's rule. `@keyframes`, `@font-face` and `@property` are not that — each names
+ * something the whole stylesheet can use — and written inside a block they compile, nest inside the
+ * class rule, and do nothing at all. Measured: `@keyframes slide { … }` came out as
+ * `.r-…{@keyframes slide{…}}`, which no browser resolves and nothing else reports.
+ *
+ * The list is a deny-list, and which mistake that chooses is written down where it is generated: the
+ * at-rules that DO nest are a growing set, so an allow-list would have reported `@scope` and
+ * `@starting-style` as faults on the day they arrived.
+ */
+function atRuleOutOfPlace(rule: NestedRule, findings: Finding[]): void {
+  if (!rule.prelude.startsWith("@")) return;
+
+  const name = `@${rule.prelude.slice(1).split(/[\s(]/, 1)[0].toLowerCase()}`;
+  if (!ELSEWHERE.has(name)) {
+    unknownAtRule(rule, name, findings);
+    return;
+  }
+
+  findings.push({
+    rule: "at-rule-out-of-place",
+    at: rule.at ?? 0,
+    length: name.length,
+    message:
+      `\`${name}\` is not part of an element's rule — it names something the whole stylesheet uses, ` +
+      `and inside a block it compiles to a rule no browser resolves. Put it in a stylesheet; a block ` +
+      `holds what applies to this element.`,
+  });
+}
+
+/** Every at-rule name CSS has, lowered. The same table `normalise.ts` reads to canonicalise one. */
+const AT_RULE_NAMES = new Set(Object.keys(AT_RULE_LINKS).map((one) => one.toLowerCase()));
+
+/**
+ * **AN AT-RULE NAME THAT DOES NOT EXIST, and it drops the whole rule.**
+ *
+ * `AT_RULE_LINKS` holds every at-rule name CSS has, and `normalise.ts` and `plugin.ts` both read it —
+ * while no rule did. So the FEATURE inside a `@media` was checked and the word `@media` was not:
+ *
+ *     @media (min-widht: 40rem) { … }   reported by `unknown-media-feature`
+ *     @medai (min-width: 40rem) { … }   silent
+ *
+ * Measured in Chromium, inserting the rule and reading `cssRules` back: a name the browser does not
+ * know keeps ZERO rules. Every declaration inside it is dropped and the element keeps its inherited
+ * value — the same cost as a wrong pseudo-class and for the same reason. It is the RULE that is
+ * thrown away, not one declaration.
+ *
+ * A name with no near miss is still reported, unlike `unknown-property`: there the types have
+ * already said the name does not exist, and here nothing else in this package says a word.
+ *
+ * A VENDOR at-rule is a browser's own — `@-moz-document` was real — so the prefix is checked and the
+ * name after it is not, exactly as for a property.
+ */
+function unknownAtRule(rule: NestedRule, name: string, findings: Finding[]): void {
+  if (AT_RULE_NAMES.has(name)) return;
+  if (name.startsWith("@-")) {
+    const prefix = /^@(-[a-z]+-)/.exec(name)?.[1];
+    if (prefix !== undefined && PREFIXES.includes(prefix)) return;
+  }
+
+  const meant = nearest(name, [...AT_RULE_NAMES]);
+  findings.push({
+    rule: "unknown-at-rule",
+    at: rule.at ?? 0,
+    length: name.length,
+    message:
+      `\`${name}\` is not an at-rule CSS has, so a browser drops the whole rule — every declaration ` +
+      `inside it, not just one. ` +
+      (meant === undefined ? "Check the name." : `Did you mean \`${meant}\`?`),
+  });
+}
+
+/**
+ * **A MISSPELT `!important`, which drops the declaration silently.**
+ *
+ * CSS has exactly one flag, and a bang at the end of a value that is not it makes the whole
+ * declaration invalid. Measured in Chromium by inserting the rule and counting what it holds:
+ *
+ *     color: red !important; gap: 8px;    3 declarations kept
+ *     color: red !importantt; gap: 8px;   2 — the colour is gone, the gap survives
+ *     color: red !urgent; …               2
+ *     color: red !; …                     2
+ *
+ * Nothing reported any of it, because the value scanner stepped over everything after a bang — a
+ * typo was as invisible as the real thing. `unknown-value` is the wrong id, since the word is not a
+ * value and the property does not decide what is allowed there: there is one flag, whatever the
+ * property.
+ *
+ * Only a TRAILING bang is a flag. One inside a string or a `url()` is ordinary text, which is why
+ * this asks the value's own parts rather than searching the text.
+ */
+function unknownFlag(item: Declaration, findings: Finding[]): void {
+  // A value carrying a hole is decided at render, so the text here is not the text that ships.
+  if (!item.value.every((part) => part.kind === "text")) return;
+  const written = item.value.map((part) => (part.kind === "text" ? part.text : "")).join("");
+
+  const bang = lastBangOutsideAString(written);
+  if (bang === -1) return;
+
+  const flag = written.slice(bang + 1).trim();
+  if (/^important$/i.test(flag)) return;
+
+  findings.push({
+    rule: "unknown-flag",
+    at: (item.valueAt ?? item.at ?? 0) + bang,
+    length: written.length - bang,
+    message:
+      (flag === ""
+        ? "a `!` at the end of a value is the start of `!important`, and there is nothing after it"
+        : `\`!${flag}\` is not a flag — CSS has one, \`!important\``) +
+      ", so a browser drops this declaration whole rather than reading the value. " +
+      "Write `!important`, or remove the `!`.",
+  });
+}
+
+/**
+ * The last `!` that is really a FLAG — not one inside a string or a function, where it is text.
+ *
+ * Measured in Chromium: `background: url(a!b.png)` is kept, and so is the same with a real
+ * `!important` after it. A flag sits at the top level of a value, after everything else.
+ */
+function lastBangOutsideAString(text: string): number {
+  let bang = -1;
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index);
+      continue;
+    }
+    if (code === 40 /* ( */) depth++;
+    else if (code === 41 /* ) */) depth = Math.max(0, depth - 1);
+    else if (code === 33 && depth === 0) bang = index;
+  }
+  return bang;
+}
+
+/**
+ * A CSS number, which is more than the shape a person types.
+ *
+ * Measured in Chromium, all of these are kept as frames: `.5%` becomes `0.5%`, `1e2%` becomes
+ * `100%`, `+50%` becomes `50%`. A rule written from `50%` alone reported four correct spellings — so
+ * this is the grammar rather than the habit, and the range is asked separately, because `150%` is a
+ * number this matches and a frame the browser drops.
+ */
+const NUMBER = /^[+]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/;
+
+/** The same, carrying a `%`, with the number kept so its range can be asked. */
+const PERCENTAGE = /^([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)%$/;
+
+/**
+ * A word in a `@keyframes` body that is not a frame.
+ *
+ * **The types cannot ask this and it was measured before it was written.** A frame is any string to
+ * an index signature — that is what lets `50%` and `0%, 100%` through — so `form { opacity: 0 }`
+ * type-checks, compiles, ships, and animates nothing: the browser drops a frame it cannot read and
+ * the animation runs with one keyframe fewer, or with none.
+ *
+ * A frame is `from`, `to`, or a percentage, and a comma-separated list of those is one frame with
+ * several times. A bare number is called out on its own, because a missing `%` reads as correct to
+ * everyone who writes it.
+ */
+function unknownFrame(rule: NestedRule, findings: Finding[]): void {
+  // A GUARD is not a frame and is not spelled like one. `composition-in-a-named-block` owns it, and
+  // saying `if ( 0 ) is not a keyframe` beside that names the wrong thing as the fault.
+  if (holeIn(rule.prelude, CONDITION) !== undefined) return;
+
+  for (const part of rule.prelude.split(",")) {
+    const frame = part.trim().toLowerCase();
+    if (frame === "" || frame === "from" || frame === "to") continue;
+
+    const percentage = PERCENTAGE.exec(frame);
+    if (percentage !== null) {
+      const time = Number.parseFloat(percentage[1]);
+      if (time >= 0 && time <= 100) continue;
+
+      findings.push({
+        rule: "unknown-frame",
+        at: rule.at ?? 0,
+        length: rule.prelude.trimEnd().length,
+        message:
+          `\`${part.trim()}\` is not a keyframe — a frame is a time between 0% and 100%, and the ` +
+          `browser drops one outside it along with everything that frame would have set.`,
+      });
+      return;
+    }
+
+    const meant = NUMBER.test(frame) ? `${frame}%` : nearest(frame, ["from", "to"]);
+    findings.push({
+      rule: "unknown-frame",
+      at: rule.at ?? 0,
+      length: rule.prelude.trimEnd().length,
+      message:
+        `\`${part.trim()}\` is not a keyframe. ` +
+        (meant === undefined
+          ? "A frame is `from`, `to`, or a percentage, and a browser drops one it cannot read."
+          : `Did you mean \`${meant}\`?`),
+    });
+    return;
+  }
+}
+
+/**
+ * A declaration written straight into a `@keyframes` body, outside any frame.
+ *
+ * The same index signature accepts it, and the browser does not: a declaration at that level belongs
+ * to no time, so it is dropped and the animation is missing whatever it said.
+ */
+function declarationOutOfPlace(item: Declaration, findings: Finding[]): void {
+  findings.push({
+    rule: "declaration-out-of-place",
+    at: item.at ?? 0,
+    length: item.property.length,
+    message:
+      `\`${item.property}\` is not inside a frame. A \`@keyframes\` block holds frames — \`from\`, \`to\`, ` +
+      `a percentage — and a declaration outside one belongs to no time, so the browser drops it.`,
+  });
+}
+
+/**
+ * A nested rule inside a body that holds descriptors.
+ *
+ * `@font-face` and `@property` are a flat list of descriptors: there is no element to select against
+ * and nothing for a nested rule to mean. The types report the KEY as one no descriptor has, which is
+ * true but reads as a spelling question; this says what is actually wrong with it.
+ */
+function ruleOutOfPlace(rule: NestedRule, atRule: string, findings: Finding[]): void {
+  findings.push({
+    rule: "rule-out-of-place",
+    at: rule.at ?? 0,
+    length: rule.prelude.trimEnd().length,
+    message:
+      `\`${rule.prelude.trim()}\` cannot go here. A \`@${atRule}\` block is a flat list of descriptors — ` +
+      `there is no element to select against, so a nested rule has nothing to apply to.`,
+  });
+}
+
+/**
+ * Text with no whitespace between it and a hole, which does not do what it reads as.
+ *
+ * A hole becomes one custom property, so `{n}px` becomes `var(--r-…-0)px` — and a `var()` is
+ * substituted as TOKENS, so the `12` and the `px` never become one length. **Measured in Chromium**
+ * with `--w: 12`: `padding-left: var(--w)px` computes to `0px`, and
+ * `padding-left: 8px; padding-left: var(--w)px` computes to `0px` as well — invalid at
+ * computed-value time takes the property to its initial value and the earlier declaration with it.
+ * `calc(var(--w) * 1px)` computes to `12px`, and so does a hole that carries its own unit.
+ *
+ * The word reader steps over a glued piece rather than judging it — it has to, or `px` would be
+ * reported as a value `padding-left` does not accept. That silence was recorded as a false report
+ * and is now known to have been a TRUE one with the wrong message. This is the right message.
+ */
+function gluedHole(item: Declaration, findings: Finding[]): void {
+  for (const [position, part] of item.value.entries()) {
+    if (part.kind !== "hole") continue;
+
+    const before = item.value[position - 1];
+    const after = item.value[position + 1];
+    const glued =
+      (before !== undefined && before.kind === "text" && !endsInSpace(before.text)) ||
+      (after !== undefined && (after.kind === "hole" || (after.kind === "text" && !startsWithSpace(after.text))));
+    if (!glued) continue;
+
+    /**
+     * Over the HOLE, and every one of them — the same two faults `hole-in-a-named-block` had, and
+     * the same data sitting unread in `part`. The message says "put the unit inside the hole", so
+     * the hole is what the author edits and what the squiggle belongs on.
+     */
+    findings.push({
+      rule: "glued-hole",
+      at: part.at ?? item.valueAt ?? item.at ?? 0,
+      length: part.length ?? Math.max(1, (item.end ?? 0) - (item.valueAt ?? 0)),
+      message:
+        "a hole becomes one custom property, and text written against it is not part of that value — " +
+        "`{n}px` becomes `var(--…)px`, which computes to nothing and takes any earlier declaration " +
+        "of the property with it. Put the unit inside the hole, or write `calc({n} * 1px)`.",
+    });
+  }
+}
+
+/**
+ * Whether a character keeps a hole apart from what is written next to it.
+ *
+ * Whitespace is the obvious one, and it is not the only one: `calc( … )` and a comma-separated list
+ * are their own grammars, so `calc({{n}} * 1px)` and `minmax(0, {{n}})` concatenate nothing. What is
+ * left — a letter, a digit, a `#`, a `-` — would run into the substituted tokens and produce a value
+ * the browser refuses.
+ */
+function separates(code: number): boolean {
+  return (
+    isSpace(code) ||
+    code === 40 /* ( */ ||
+    code === 41 /* ) */ ||
+    code === 44 /* , */ ||
+    code === 47 /* / */ ||
+    code === 42 /* * */ ||
+    code === 43 /* + */
+  );
+}
+
+/** A run that ends in something that separates — or an empty one, which separates by being nothing. */
+function endsInSpace(text: string): boolean {
+  return text === "" || separates(text.charCodeAt(text.length - 1));
+}
+
+/** The same at the other end. */
+function startsWithSpace(text: string): boolean {
+  return text !== "" && separates(text.charCodeAt(0));
+}
+
+/** Every unit CSS has, for the question below. */
+const KNOWN_UNITS = new Set(UNITS);
+
+/**
+ * A number and the letters against it, which is the shape both unit rules look for.
+ *
+ * The EXPONENT is part of the number — `1e2px` is `100px`, css-syntax-3 §4.3.12 — and without it
+ * the letters matched were `e`, so a review measured *`e` is not a CSS unit* on valid CSS.
+ *
+ * And the unit may not be followed by a word character, which is what keeps a bare `2e3` out: with
+ * the exponent optional, the engine would otherwise back off to a unit of `e` and leave the `3`.
+ */
+const A_UNIT = /(?<![\w.#-])\d*\.?\d+(?:[eE][+-]?\d+)?([a-zA-Z%]+)(?![\w.])/g;
+
+/**
+ * Every unit written in a value, with the two places one is not a unit stepped over.
+ *
+ * **One walk, because there were two and a review found the same fault in both.** `unit-not-allowed`
+ * and `unknown-unit` each read a text part raw, so:
+ *
+ *     content: "100%"                  ->  `%` is a CSS unit this project does not use
+ *     content: "3rd"                   ->  `rd` is not a CSS unit. Did you mean `rad`?
+ *     background-image: url(16em.svg)  ->  `em` is a CSS unit this project does not use
+ *
+ * None of those holds a unit, and there is no config an author could write to make them correct —
+ * the text is a CSS string or a filename. `words()` has stepped over both since it was written; this
+ * is the same knowledge, in the one place both rules now ask.
+ *
+ * A STRING is its own grammar: a `<string-token>`'s contents are text, not values. A `<url-token>`
+ * is too — `url(a-16em.svg)` is a path, and CSS does not parse values inside one. An ordinary call
+ * is NOT skipped, because `calc(100% - 4em)` and `rgb(0 0 0 / 50%)` hold real units in real value
+ * positions.
+ */
+function* unitsIn(text: string, at: number): Generator<{ unit: string; at: number; length: number }> {
+  /** The stretches that are value text — outside every string and every `url( … )`. */
+  const stretches: { text: string; at: number }[] = [];
+  let from = 0;
+  let index = 0;
+
+  while (index < text.length) {
+    const code = text.charCodeAt(index);
+
+    if (code === 34 || code === 39) {
+      stretches.push({ text: text.slice(from, index), at: from });
+      index = endOfString(text, index) + 1;
+      from = index;
+      continue;
+    }
+    // `url(`, matched case-insensitively because CSS function names are — and the closing paren is
+    // found by the same scanner a value's own calls use.
+    if ((code === 117 || code === 85) && /^url\s*\(/i.test(text.slice(index))) {
+      stretches.push({ text: text.slice(from, index), at: from });
+      index = endOfCall(text, text.indexOf("(", index)) + 1;
+      from = index;
+      continue;
+    }
+    index++;
+  }
+  stretches.push({ text: text.slice(from), at: from });
+
+  for (const stretch of stretches) {
+    for (const found of stretch.text.matchAll(A_UNIT)) {
+      yield {
+        unit: found[1],
+        at: at + stretch.at + found.index + found[0].length - found[1].length,
+        length: found[1].length,
+      };
+    }
+  }
+}
+
+/**
+ * A unit CSS has and this project does not.
+ *
+ * The one rule here that is not about CSS at all. `em` is valid everywhere and a team may still have
+ * decided against it — the fault is local to a project, so the list comes from `ramonda.css.ts` and
+ * there is no default: a project that says nothing gets every unit CSS has.
+ *
+ * It runs BESIDE `unknown-unit` rather than instead of it. A unit that is not a unit is a typo
+ * wherever it is written; a unit the project has banned is a different sentence, and reading both on
+ * one declaration would be two faults where there is one — so a unit CSS does not have is skipped
+ * here and left to the rule that names it.
+ */
+function unitNotAllowed(block: Block, allowed: readonly string[], findings: Finding[]): void {
+  const permitted = new Set(allowed.map((one) => one.toLowerCase()));
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+
+        for (const found of unitsIn(part.text, part.at)) {
+          const unit = found.unit.toLowerCase();
+          if (permitted.has(unit) || !KNOWN_UNITS.has(unit)) continue;
+
+          findings.push({
+            rule: "unit-not-allowed",
+            at: found.at,
+            length: found.length,
+            message:
+              `\`${found.unit}\` is a CSS unit this project does not use. \`ramonda.css.ts\` allows ` +
+              `${[...permitted].sort().join(", ")}.`,
+          });
+        }
+      }
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A number whose unit is NEARLY one — `150oms`, `10pxx`.
+ *
+ * **It began as a near miss and that was too weak**, measured on the shape a person actually types:
+ * `150xxms` and `150asdasdms` both passed, because neither is within an edit or two of `ms`. The
+ * caution behind it was `mdn-data`'s unit list being incomplete — thirty units, missing `%`, the
+ * line-height units, every container-query unit and every viewport variant — and that is answered by
+ * the supplement rather than by refusing to speak: measured after it, every exotic real unit is in
+ * the set, `q` and `x` and `ic` and `rcap` and `dppx` and `svmin` and `cqmax` among them.
+ *
+ * So it is a membership test now, and the near miss only chooses the SUGGESTION. What is left is the
+ * one risk worth naming: a unit invented after this list was generated is reported until the list is
+ * regenerated, which is `scripts/build-css-properties.mjs` and one command.
+ */
+function unknownUnit(item: Declaration, findings: Finding[]): void {
+  for (const part of item.value) {
+    if (part.kind !== "text" || part.at === undefined) continue;
+
+    for (const found of unitsIn(part.text, part.at)) {
+      const unit = found.unit.toLowerCase();
+      if (KNOWN_UNITS.has(unit)) continue;
+
+      const meant = nearest(unit, UNITS as string[]);
+      findings.push({
+        rule: "unknown-unit",
+        at: found.at,
+        length: found.length,
+        message: `\`${found.unit}\` is not a CSS unit.` + (meant === undefined ? "" : ` Did you mean \`${meant}\`?`),
+      });
+    }
+  }
+}
+
+/**
+ * The same property declared twice with the SAME value, which says nothing either way.
+ *
+ * **Only when the value matches, and that narrowing is the whole rule.** Two declarations of one
+ * property with DIFFERENT values is a deliberate idiom — a fallback for an engine that will drop the
+ * second, `width: 100px; width: fit-content;`. Reporting it would be reporting a technique, which is
+ * how a checker earns being switched off.
+ */
+function repeated(item: Declaration, seen: Map<string, string>, findings: Finding[]): void {
+  // A hole makes two declarations different whatever the text says: the values are decided at
+  // render, and nothing here knows they will agree.
+  if (item.value.some((part) => part.kind === "hole")) {
+    seen.delete(item.property);
+    return;
+  }
+
+  const value = item.value
+    .map((part) => (part.kind === "text" ? part.text : ""))
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (seen.get(item.property) === value && item.at !== undefined) {
+    findings.push({
+      rule: "repeated-declaration",
+      at: item.at,
+      length: item.property.length,
+      message: `\`${item.property}\` is already set to \`${value}\` in this block. The first one can never apply.`,
+    });
+  }
+
+  seen.set(item.property, value);
+}
+
+/**
+ * A hole where a custom property cannot go: a property name, a selector, a whole declaration.
+ *
+ * The build refuses these outright — a custom property holds a VALUE, so there is no correct
+ * compilation — and this exists to say it FIRST, in an editor, while it is being typed rather than
+ * at the end of a build. It is reachable only from a forgiving parse, which is what an editor uses.
+ */
+function holeInHead(
+  text: string,
+  at: number | undefined,
+  what: "a declaration" | "a property name" | "a selector" | "a frame",
+  findings: Finding[],
+): void {
+  const found = text.indexOf("{");
+  if (found === -1 || at === undefined) return;
+
+  // The `{`, which is where the author has to move something. The expression's own length is not the
+  // fault and underlining it would say the expression is wrong.
+  findings.push({ rule: "hole-out-of-place", at: at + found, length: 1, message: holeOutOfPlace(what) });
+}
+
+/* ── reading a value ───────────────────────────────────────────────────────────────────────── */
+
+interface Word {
+  readonly text: string;
+  readonly at: number | undefined;
+}
+
+/**
+ * A quoted string where the property's grammar has no place for one.
+ *
+ * **Reported by a user**, and how they arrived at it is the reason this rule exists rather than a
+ * note in the documentation. A block's value is a TypeScript string literal in the file the editor
+ * type-checks — `display: flex` is `{display:"flex"}` there — so the editor has every reason to
+ * offer the word with quotes round it. Accepting that offer compiles, ships `color:"yellow"`, and
+ * every browser drops the declaration. Nothing anywhere said so.
+ *
+ * **"No strings" is not the rule, because two of these four are correct CSS:**
+ *
+ *     color: "yellow";        invalid — the quotes are part of a CSS string
+ *     display: "flex";        invalid, the same way
+ *     content: "hi";          correct — a `<string>` is what belongs there
+ *     font-family: "Brand";   correct
+ *
+ * So it is asked of the grammar, out of the same sweep that answers every other value question:
+ * `STRING_ALLOWED` holds the properties reaching `<string>` anywhere, and the ones whose grammar
+ * nothing here can decide. A property this cannot judge is one it says nothing about.
+ *
+ * **Only at the top level, and that guard is the ONLY thing holding `url()` up.** A review measured
+ * what the comment here used to imply: `STRING_ALLOWED` does NOT contain the `<url>` properties.
+ * `mdn-data` gives `<url>` no grammar and the generator's walk cannot follow a functional reference
+ * like `<image-set()>`, so `background-image` and about twenty relatives are absent from the set.
+ * Measured with the depth ignored, `background-image: url("a.png")` — as ordinary as CSS gets — is
+ * reported, which is how a checker earns being switched off. So this is not the second of two
+ * defences; it is the one.
+ *
+ * One report per declaration. Two quoted words are one mistake.
+ */
+function stringNotAllowed(item: Declaration, findings: Finding[]): void {
+  if (!KNOWN.has(item.property) || STRINGS_FIT.has(item.property)) return;
+
+  let depth = 0;
+  for (const part of item.value) {
+    // The compiler's own text, not the author's — it has no position and is nobody's typo.
+    if (part.kind !== "text" || part.resolved) continue;
+    const text = part.text;
+
+    for (let index = 0; index < text.length; index++) {
+      const code = text.charCodeAt(index);
+      if (code === 40 /* ( */) depth++;
+      else if (code === 41 /* ) */ && depth > 0) depth--;
+      else if (code === 34 || code === 39) {
+        const closing = endOfString(text, index);
+        if (depth > 0) {
+          index = closing;
+          continue;
+        }
+
+        const written = text.slice(index, Math.min(closing + 1, text.length));
+        const inside = text.slice(index + 1, closing);
+        findings.push({
+          rule: "string-not-allowed",
+          at: (part.at ?? item.valueAt ?? item.at ?? 0) + index,
+          length: written.length,
+          message:
+            `\`${item.property}\` does not take a quoted string` +
+            (inside === "" ? "." : `. Write \`${item.property}: ${inside};\`.`) +
+            ` The quotes are part of a CSS string, so a browser drops the declaration.`,
+        });
+        return;
+      }
+    }
+  }
+}
+
+/**
+ * The bare identifiers in a value, and nothing else.
+ *
+ * Everything skipped here is something no keyword table could judge, and each was a false report
+ * before it was skipped: a string's contents (`content: "flexx"`), a function's name and arguments
+ * (`rgb(0 0 0)`, `var(--x, flex)`), a number or a length, a hex colour, and `!important`.
+ *
+ * A hole contributes nothing at all — its value is decided at render, and this is a build-time read.
+ */
+function words(parts: readonly ValuePart[]): Word[] {
+  const out: Word[] = [];
+
+  for (const [position, part] of parts.entries()) {
+    if (part.kind !== "text") continue;
+    // The compiler's own text, not the author's: a generated name is no typo and has no position.
+    if (part.resolved) continue;
+    const text = part.text;
+
+    /**
+     * A word TOUCHING a hole is part of the hole's value, not a value of its own.
+     *
+     * `padding: {{n}}px` is one length written in two pieces, and `px` on its own is nothing a
+     * property accepts. Measured before this existed, on every property with a keyword row:
+     * `gap: {{n}}px` reported *`gap` does not accept `px`* — a false report on correct CSS, which is
+     * how a checker earns being switched off. Whitespace is what separates values, so a piece with
+     * none between it and the hole is the same value.
+     */
+    const glued = {
+      before: position > 0 && parts[position - 1].kind === "hole" && !isSpace(text.charCodeAt(0)),
+      after:
+        position + 1 < parts.length &&
+        parts[position + 1].kind === "hole" &&
+        !isSpace(text.charCodeAt(text.length - 1)),
+    };
+    const first = out.length;
+
+    for (let index = 0; index < text.length; index++) {
+      const code = text.charCodeAt(index);
+
+      if (code === 34 || code === 39) {
+        index = endOfString(text, index);
+        continue;
+      }
+      if (code === 33 /* ! */) {
+        /**
+         * `!important`, **and the space CSS allows after the bang.**
+         *
+         * This skipped from the bang to the next SPACE, so `! important` stopped the skip at the
+         * bang and `important` was then read as a bare word — *"`color` does not accept
+         * `important`"*, about valid CSS. Measured in Chromium: `! important`, `!  important`,
+         * `!IMPORTANT` and `!` + a comment + `important` all make the declaration win, and
+         * `!importantt` does not.
+         *
+         * Whitespace is stepped over first, then the word, so a word that merely begins with a bang
+         * is still a word and is still reported — which is what this rule is for.
+         */
+        index++;
+        while (index < text.length && isSpace(text.charCodeAt(index))) index++;
+        while (index < text.length && !isSpace(text.charCodeAt(index))) index++;
+        continue;
+      }
+      if (code === 35 /* # */ || (code >= 48 && code <= 57) || code === 46 /* . */) {
+        while (index < text.length && !isSpace(text.charCodeAt(index)) && text.charCodeAt(index) !== 44) index++;
+        continue;
+      }
+      /**
+       * A leading `-` belongs to the word when a letter or another `-` follows it, which is CSS's own
+       * identifier rule: `-webkit-transform` and `--brand` are one word each, and `-8px` is a number.
+       * Without it, a vendor-prefixed property read as `webkit-transform` and a custom property as
+       * `brand` — both reported as typos of something they are not.
+       */
+      const dashed = code === 45 && (isWordStart(text.charCodeAt(index + 1)) || text.charCodeAt(index + 1) === 45);
+      if (!dashed && !isWordStart(code)) continue;
+
+      const start = index;
+      if (dashed) index += text.charCodeAt(index + 1) === 45 ? 2 : 1;
+      while (index < text.length && isWordCharacter(text.charCodeAt(index))) index++;
+
+      // A function: the name is not a keyword and its arguments are its own grammar.
+      if (text.charCodeAt(index) === 40 /* ( */) {
+        index = endOfCall(text, index);
+        continue;
+      }
+
+      out.push({ text: text.slice(start, index), at: part.at === undefined ? undefined : part.at + start });
+      index--;
+    }
+
+    if (glued.before && out.length > first) out.splice(first, 1);
+    if (glued.after && out.length > first) out.pop();
+  }
+
+  return out;
+}
+
+function endOfString(text: string, start: number): number {
+  const quote = text.charCodeAt(start);
+  let index = start + 1;
+  while (index < text.length) {
+    if (text.charCodeAt(index) === 92) {
+      index += 2;
+      continue;
+    }
+    if (text.charCodeAt(index) === quote) return index;
+    index++;
+  }
+  return index;
+}
+
+function endOfCall(text: string, open: number): number {
+  let index = open + 1;
+  let depth = 1;
+  while (index < text.length && depth > 0) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index);
+    } else if (code === 40) depth++;
+    else if (code === 41) depth--;
+    index++;
+  }
+  return index - 1;
+}
+
+const isSpace = (code: number) => code === 32 || code === 9 || code === 10 || code === 13 || code === 12;
+const isWordStart = (code: number) => (code >= 97 && code <= 122) || (code >= 65 && code <= 90);
+const isWordCharacter = (code: number) => isWordStart(code) || (code >= 48 && code <= 57) || code === 45 || code === 95;
+
+/* ── the near miss ─────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The closest name, or nothing when nothing is close.
+ *
+ * The bound is what keeps the suggestion honest: a name three edits away from `flex-direction` is
+ * not a typo of it, and offering one anyway sends a reader to change a line that was right for a
+ * different reason. Scaled by length, so a short name needs a closer match than a long one.
+ */
+export function nearest(word: string, among: readonly string[]): string | undefined {
+  const bound = Math.min(3, Math.max(1, Math.floor(word.length / 4)));
+  let best: string | undefined;
+  let closest = bound + 1;
+
+  for (const candidate of among) {
+    if (Math.abs(candidate.length - word.length) > closest) continue;
+    const distance = editDistance(word, candidate, closest);
+    if (distance < closest) {
+      closest = distance;
+      best = candidate;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Levenshtein, abandoned as soon as every cell in a row is past the bound.
+ *
+ * The bound is what makes this affordable: `unknown-value` asks it once per word against a set that
+ * can be 160 colours long, and a full matrix per candidate would be the checker's whole cost.
+ */
+function editDistance(a: string, b: string, bound: number): number {
+  /** The row before the one before, which is the only thing a swap needs to see. */
+  let twoBack: number[] = [];
+  let previous = Array.from({ length: b.length + 1 }, (_unused, index) => index);
+
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    let best = i;
+
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      let value = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + cost);
+
+      /**
+       * **A SWAPPED PAIR IS ONE EDIT, and plain Levenshtein counts it as two.**
+       *
+       * A swap is the commonest way to mistype a word, and the bound is scaled by length — so for a
+       * six-character name it is 1, and every transposition was out of reach. Found by `@medai`,
+       * which is `@media` with two letters swapped and got no suggestion at all.
+       *
+       * Measured over every single-swap typo of every name in the four vocabularies, and every
+       * single DELETION as well, so the change was measured for what it might break:
+       *
+       *     properties  swap   Levenshtein  right 12978  wrong 88  silent 199
+       *                        this         right 13263  wrong  2  silent   0
+       *     properties  drop   both the same: right 14223, wrong 63, silent 0
+       *     at-rules    swap   157 -> 182 right, 25 silent -> 0
+       *     selectors   swap  1210 -> 1353 right, 141 silent -> 0
+       *
+       * Better in every direction, and FASTER — 0.024 ms against 0.037 ms per word over 828 names,
+       * because a swap costing 1 reaches the abandon bound sooner.
+       */
+      if (
+        i > 1 &&
+        j > 1 &&
+        a.charCodeAt(i - 1) === b.charCodeAt(j - 2) &&
+        a.charCodeAt(i - 2) === b.charCodeAt(j - 1)
+      ) {
+        value = Math.min(value, twoBack[j - 2] + 1);
+      }
+
+      row.push(value);
+      if (value < best) best = value;
+    }
+
+    if (best > bound) return bound + 1;
+    twoBack = previous;
+    previous = row;
+  }
+
+  return previous[b.length];
+}

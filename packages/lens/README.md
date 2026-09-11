@@ -409,4 +409,4 @@ so there is no draft that can escape its producer, and no finalize pass over the
 
 ## License
 
-[MIT](../../LICENSE) © Nikola Blagojević
+[MIT](./LICENSE) © Nikola Blagojević

@@ -1,0 +1,107 @@
+{
+  "name": "@ramonda/css",
+  "version": "0.0.0",
+  "description": "A style block written in real CSS beside the markup, compiled to a class and custom properties.",
+  "license": "MIT",
+  "author": "Nikola Blagojević",
+  "homepage": "https://ramonda.dev/style-blocks",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NBlasko/ramonda.git",
+    "directory": "packages/css"
+  },
+  "bugs": {
+    "url": "https://github.com/NBlasko/ramonda/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "keywords": [
+    "css",
+    "compiler",
+    "atomic-css",
+    "custom-properties",
+    "type-safe"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": {
+        "development": "./dist/index.js",
+        "production": "./dist/index.prod.js",
+        "default": "./dist/index.js"
+      }
+    },
+    "./compiler": {
+      "types": "./dist/compiler/index.d.ts",
+      "import": "./dist/compiler/index.js"
+    },
+    "./properties": {
+      "types": "./dist/properties.d.ts",
+      "import": "./dist/properties.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    },
+    "./esbuild": {
+      "types": "./dist/esbuild.d.ts",
+      "import": "./dist/esbuild.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "require": "./dist/plugin.cjs",
+      "default": "./dist/plugin.cjs"
+    },
+    "./prettier": {
+      "types": "./dist/prettier.d.ts",
+      "import": "./dist/prettier.js"
+    }
+  },
+  "bin": {
+    "ramonda-css": "./bin.mjs"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "bin.mjs",
+    "plugin",
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "check-types": "tsc --noEmit",
+    "lint": "oxlint",
+    "format": "biome format --write src"
+  },
+  "dependencies": {
+    "magic-string": "^0.30.21"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0",
+    "prettier": "^3"
+  },
+  "devDependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
+    "@types/node": "^26.4.1",
+    "esbuild": "^0.28.2",
+    "prettier": "3",
+    "shiki": "^4.4.3",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "7.3.6",
+    "vitest": "^4.1.11"
+  },
+  "peerDependenciesMeta": {
+    "prettier": {
+      "optional": true
+    }
+  }
+}

@@ -41,6 +41,10 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     include: ["src/__tests__/*.test.{ts,tsx}"],
+    // `scripts/highlighter.mjs` is a build script, not app source: it reads the grammar files beside
+    // it through `import.meta.url`, which vite rewrites to a served `/@fs/…` URL. Loaded by node, as
+    // the content build loads it, the URL is a real path and the module is the one that ships.
+    server: { deps: { external: [/scripts\/highlighter\.mjs$/] } },
     testTimeout,
     hookTimeout,
   },

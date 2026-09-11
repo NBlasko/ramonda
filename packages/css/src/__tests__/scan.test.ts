@@ -1,0 +1,520 @@
+import { describe, expect, test } from "vitest";
+import { findBlocks, mayHoldABlock } from "../compiler/scan";
+
+/**
+ * The scan, on the code it is most likely to be wrong about.
+ *
+ * `transform.test.ts` covers what a block becomes. This covers the walk that decides what a block IS
+ * — the part where an ordinary file can look like one, and where getting it wrong means silently
+ * rewriting somebody's source.
+ */
+
+const names = (source: string) => findBlocks(source).map((site) => site.name);
+
+describe("the cheap question, asked first", () => {
+  test("a file with none of the characters is answered without reading it", () => {
+    expect(mayHoldABlock("const a = 1;\n")).toBe(false);
+    expect(mayHoldABlock("<div css=@@( display: flex; )>x</div>")).toBe(true);
+  });
+
+  /**
+   * What the second `@` bought is a grammar that cannot collide — not, as a note here once claimed,
+   * a build that skips many more files.
+   *
+   * Measured on this repository at the commit before this parser landed, the substring `@(` matched
+   * **2 of 1,093** tracked source files, and both were regular expressions. No decorator matched,
+   * because an ordinary one reads `@name(`. Only the parenthesised form below does, and it is the
+   * form that is genuinely ambiguous: it is valid TypeScript in both positions asserted here.
+   */
+  test("a decorator does not even reach the second pass", () => {
+    expect(mayHoldABlock("class C { @(dec) m() {} }")).toBe(false);
+    expect(mayHoldABlock("class C { constructor(@(inject()) private x: number) {} }")).toBe(false);
+    expect(findBlocks("class C { @(dec) m() {} }")).toEqual([]);
+  });
+});
+
+describe("what the walk steps over", () => {
+  test("an escaped quote does not end the string it is in", () => {
+    expect(findBlocks(`const s = "a \\" css=@@( display: flex; )";\n`)).toEqual([]);
+  });
+
+  test("an unterminated string ends at the newline, so the rest of the file is still read", () => {
+    // Running an unterminated string to the end of the module would hide every block below it.
+    expect(names(`const s = "oops;\nconst a = <div css=@@( display: flex; )>x</div>;\n`)).toEqual(["css"]);
+  });
+
+  test("a substitution is code, and a block inside one is still not an attribute", () => {
+    expect(findBlocks("const s = `a ${ { x: `css=@@( display: flex; )` } } b`;\n")).toEqual([]);
+  });
+
+  test("a template nested in a substitution closes at its own backtick", () => {
+    expect(names("const s = `${ `${ `inner` }` }`;\nconst a = <div css=@@( color: red; )>x</div>;\n")).toEqual(["css"]);
+  });
+
+  test("an escaped backtick does not end the template", () => {
+    expect(findBlocks("const s = `a \\` css=@@( color: red; )`;\n")).toEqual([]);
+  });
+
+  /**
+   * A BLOCK COMMENT THAT IS NEVER CLOSED is not a comment, which is the same argument as an
+   * unterminated quote one step further.
+   *
+   * Reading it as one took **the rest of the file**: `<p>2 /* 3</p>` is prose, and two blocks on
+   * later lines were lost with `transform` returning nothing at all. A file whose comment is
+   * genuinely unclosed does not parse either way, so what this does with the rest of it decides
+   * nothing.
+   */
+  test.each([
+    ["a `/*` in JSX text", "const a = <p>2 /* 3</p>;\nconst b = @@( color: red; );\n"],
+    ["one with nothing after it", "/* css=@@( color: red; )\n"],
+  ])("%s does not hide a block", (_what, source) => {
+    expect(findBlocks(source).length).toBeGreaterThan(0);
+  });
+
+  /** A CLOSED one still does, which is the case this was written for. */
+  test("a closed block comment hides one", () => {
+    expect(findBlocks("/* css=@@( color: red; ) */\n")).toEqual([]);
+  });
+
+  test("a line comment that runs to the end of the file ends the walk", () => {
+    expect(findBlocks("// css=@@( color: red; )")).toEqual([]);
+  });
+
+  /**
+   * A QUOTE WITH NO PARTNER never opened a string, because a JavaScript string may not contain a raw
+   * newline — so the walk goes past it as ordinary text rather than reading to the line's end.
+   *
+   * That is the grammar rather than a guess, and it is what an apostrophe in JSX TEXT costs:
+   * `<p>It's <b css=@@( … )>x</b></p>` had the `'` swallow the block, so `findBlocks` returned
+   * NOTHING for the file and the raw `@@(` reached the JSX parser. An English apostrophe between
+   * tags is everyday.
+   *
+   * A file whose string is genuinely unterminated does not parse as TypeScript either way, so what
+   * this does with the rest of it decides nothing.
+   */
+  test.each([
+    ["an apostrophe in JSX text", `const a = <p>It's <b css=@@( color: red; )>x</b></p>;\n`],
+    ["one before the block on its own line", `const a = <p>don't</p>;\nconst b = @@( color: red; );\n`],
+    ["a quote left open", `const s = "css=@@( color: red; )`],
+  ])("%s does not hide a block", (_what, source) => {
+    expect(findBlocks(source).length).toBeGreaterThan(0);
+  });
+
+  /** A CLOSED string still hides one, which is the case this was written for. */
+  test.each([
+    ["a double-quoted string", `const s = "css=@@( color: red; )";\n`],
+    ["a single-quoted one", `const s = 'css=@@( color: red; )';\n`],
+  ])("%s hides it", (_what, source) => {
+    expect(findBlocks(source)).toEqual([]);
+  });
+
+  test("a template that runs to the end of the file ends there", () => {
+    expect(findBlocks("const s = `css=@@( color: red; )")).toEqual([]);
+  });
+
+  test("a substitution that runs to the end of the file ends there", () => {
+    expect(findBlocks("const s = `${ css=@@( color: red; )")).toEqual([]);
+  });
+
+  test("a string inside a substitution is still a string", () => {
+    expect(findBlocks('const s = `${ "css=@@( color: red; )" }`;\n')).toEqual([]);
+  });
+
+  test("a shebang is not JavaScript, so nothing in it is a block", () => {
+    // Nothing in the language skips a shebang line — not the parser, not a comment rule — so the
+    // walk has to, or `@(` written in one is read as code the engine never sees.
+    expect(findBlocks(`#!/usr/bin/env node css=@@( color: red; )\nconst a = 1;\n`)).toEqual([]);
+  });
+
+  test("and a block below a shebang is still found", () => {
+    expect(names(`#!/usr/bin/env node\nconst a = <div css=@@( color: red; )/>;\n`)).toEqual(["css"]);
+  });
+});
+
+describe("what counts as the attribute", () => {
+  test("whitespace is allowed around the equals, because JSX allows it", () => {
+    expect(names(`<div css = @@( display: flex; )>x</div>`)).toEqual(["css"]);
+  });
+
+  test("a newline between attributes is whitespace like any other", () => {
+    expect(names(`<div\n  className="lead"\n  css=@@( display: flex; )\n>x</div>`)).toEqual(["css"]);
+  });
+
+  test("the name is taken verbatim, so a host may call the prop what it likes", () => {
+    expect(names(`<div sx=@@( display: flex; )>x</div>`)).toEqual(["sx"]);
+  });
+
+  test("a namespaced name is one name", () => {
+    expect(names(`<div my:css=@@( display: flex; )>x</div>`)).toEqual(["my:css"]);
+  });
+
+  /**
+   * An `=` with no name before it is not an attribute, and it is not nothing either: a block is a
+   * VALUE, so it is found and written where it stands. `wrap` is what says the difference — only a
+   * bare JSX attribute gets the braces it did not write.
+   */
+  test("an equals with nothing before it is a value, not an attribute", () => {
+    const [only, ...rest] = findBlocks(`=@@(x)`);
+
+    expect(rest).toEqual([]);
+    expect({ name: only.name, wrap: only.wrap }).toEqual({ name: "", wrap: false });
+  });
+
+  test("two blocks in one file are both found, in source order", () => {
+    expect(names(`<div css=@@( color: red; )/>\n<p sx=@@( color: blue; )/>`)).toEqual(["css", "sx"]);
+  });
+});
+
+/**
+ * The two spellings that are not a JSX attribute.
+ *
+ * ## Why they exist
+ *
+ * `DESIGN.md` promised one of them from the start — "because the compiled form is a value, `@@( … )`
+ * outside JSX is the same feature with no special case" — and the code did not do it: it wrote the
+ * attribute form everywhere, so `const panel = @@( … )` compiled to `const panel={_s0}`, an object
+ * literal rather than the value.
+ *
+ * The other, `css={@@( … )}`, came out of a limit nothing here can lift. An editor stops consulting
+ * syntax injections the moment it enters a tag's attribute list, so a bare block gets no colours
+ * unless it is the first attribute on the tag name's own line — which is not how anyone writes a tag
+ * with several props. Inside the braces JSX already has for an expression, every editor question
+ * works, at any position and on any line. Measured with a grammar that matches one word: it is asked
+ * about a braced attribute on the fourth line of a tag, and never about a bare one on the second.
+ *
+ * Both are the same case to everything downstream: replace the block with the value, and touch
+ * nothing to its left.
+ */
+describe("a block that is not an attribute", () => {
+  test.each([
+    ["a value, outside JSX", `const panel = @@( display: flex; );\n`, "panel"],
+    ["a value, exported", `export const panel = @@( display: flex; );\n`, "panel"],
+    ["a braced attribute", `const a = <div css={@@( display: flex; )}>x</div>;\n`, "css"],
+    [
+      "a braced attribute, four lines into the tag",
+      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    css={@@( display: flex; )}\n  >x</div>\n);\n`,
+      "css",
+    ],
+  ])("%s is found, and is not wrapped", (_what, source, name) => {
+    const [site, ...rest] = findBlocks(source);
+
+    expect(rest).toEqual([]);
+    expect(site.name).toBe(name);
+    expect(site.wrap).toBe(false);
+  });
+
+  /**
+   * The other side, and the one that has to keep working: an attribute is still an attribute however
+   * many attributes were written before it, and whatever shape their values had.
+   */
+  test.each([
+    ["the only attribute", `const a = <div css=@@( display: flex; )>x</div>;\n`],
+    ["after a quoted one", `const a = <div className="lead" css=@@( display: flex; )>x</div>;\n`],
+    ["after a braced one", `const a = <div onclick={f} css=@@( display: flex; )>x</div>;\n`],
+    ["after a bare one", `const a = <input disabled css=@@( display: flex; )>;\n`],
+    ["after a spread", `const a = <div {...rest} css=@@( display: flex; )>x</div>;\n`],
+    ["on a namespaced tag", `const a = <Foo.Bar css=@@( display: flex; )>x</Foo.Bar>;\n`],
+    ["on a line of its own", `const a = (\n  <div\n    id="x"\n    css=@@( display: flex; )\n  >x</div>\n);\n`],
+  ])("%s is wrapped", (_what, source) => {
+    expect(findBlocks(source)[0]?.wrap).toBe(true);
+  });
+
+  /**
+   * A BARE BLOCK is a value the walk has to step over, and nothing stepped over it.
+   *
+   * The second bare block on a tag met the first one's `)` and gave up, so it was read as an
+   * assignment — and that broke two things at once: the build emitted `sx=_s1`, a JSX attribute
+   * holding a bare identifier, and the formatter was handed a placeholder biome cannot parse either.
+   * One scan fault, two victims.
+   */
+  test.each([
+    ["two bare blocks", `const a = <div css=@@( color: red; ) sx=@@( gap: 4px; )>x</div>;\n`],
+    ["three of them", `const a = <div a=@@( color: red; ) b=@@( gap: 4px; ) c=@@( top: 0; )>x</div>;\n`],
+    [
+      "a bare block then a quoted attribute",
+      `const a = <div css=@@( color: red; ) id="x" sx=@@( gap: 4px; )>x</div>;\n`,
+    ],
+    ["a named one before it", `const a = <div css=@@keyframes( from { opacity: 0; } ) sx=@@( gap: 4px; )>x</div>;\n`],
+    // A `)` in the CSS is what makes the count worth asking about, and both shapes are ordinary.
+    ["a value holding parens", `const a = <div css=@@( width: calc(100% - 8px); ) sx=@@( gap: 4px; )>x</div>;\n`],
+    ["a url with a paren", `const a = <div css=@@( background: url(a.png); ) sx=@@( gap: 4px; )>x</div>;\n`],
+  ])("%s: every one of them is wrapped", (_what, source) => {
+    const sites = findBlocks(source);
+
+    expect(sites.length).toBeGreaterThan(1);
+    for (const site of sites) expect(site.wrap).toBe(true);
+  });
+
+  /**
+   * THE BACKWARDS WALK SEES WHAT THE FORWARD ONE SAW, and it used to see raw text.
+   *
+   * `isAttribute` reads backwards over the values written before a name, and it knew nothing about
+   * comments or strings — so a `<` inside a LINE COMMENT above an assignment made it reach a tag
+   * opening that is not there. Measured, `const panel = @@( … )` under `// the <div wrapper` came
+   * out `const panel = {_s0};`: an object literal, not the merged style, with nothing reported.
+   *
+   * **That is the direction this must never answer.** A wrong NO is a syntax error the build stops
+   * on; a wrong YES is valid code that means the wrong thing. A block comment and a string never
+   * leaked, and both were accidents rather than rules — a comment close ends the scan on a character
+   * it does not know, and a quote is stepped over by a branch meant for attribute values. All four are one
+   * answer now, taken from the walk that computed it going forward.
+   */
+  test.each([
+    ["a `<` in a line comment", "// the <div wrapper for the card\nconst panel = @@( display: flex; );\n"],
+    ["a tag name in one", "// see <Card for the props\nconst panel = @@( color: red; );\n"],
+    ["a `<` in a block comment", "/* the <div wrapper */\nconst panel = @@( color: red; );\n"],
+    ["a `<` in a string", 'const tag = "<div";\nconst panel = @@( color: red; );\n'],
+    ["a `<` in a template", "const tag = `<div`;\nconst panel = @@( color: red; );\n"],
+    // A comparison with no semicolon after it: `const` is neither an attribute's name nor a tag's,
+    // so meeting one settles the question the safe way.
+    ["a comparison, semicolon-free", "const small = a<b\nconst panel = @@( color: red; );\n"],
+    ["and with `let`", "let small = a<b\nlet panel = @@( color: red; );\n"],
+  ])("%s does not make an assignment an attribute", (_what, source) => {
+    expect(findBlocks(source).at(-1)?.wrap).toBe(false);
+  });
+
+  /**
+   * A COMMENT BETWEEN ATTRIBUTES is stepped over, and used to end the walk on the character it met.
+   *
+   * The wrong direction the other way: a real attribute read as an assignment, emitting `css=_s0`.
+   * The build stops on it, so it is the safe half — but it is the same missing knowledge as the
+   * comment above an assignment, and one answer settles both.
+   */
+  test.each([
+    ["a block comment between attributes", 'const a = <div id="x" /* note */ css=@@( color: red; )>x</div>;\n'],
+    ["one right after the tag name", "const a = <div /* note */ css=@@( color: red; )>x</div>;\n"],
+    [
+      "a line comment on its own line",
+      'const a = (\n  <div\n    id="x"\n    // a note\n    css=@@( color: red; )\n  >x</div>\n);\n',
+    ],
+  ])("%s keeps the attribute an attribute", (_what, source) => {
+    expect(findBlocks(source).at(-1)?.wrap).toBe(true);
+  });
+
+  /**
+   * A BRACE inside a string is text, and `beforeOpening` counted it — so a real attribute was read
+   * as an assignment and emitted `css=_s0`, a JSX attribute holding a bare identifier. The safe
+   * direction, so the build stops; but the message names neither the brace nor the string it is in.
+   */
+  test.each([
+    ["a brace in a string", 'const a = <div title={"}"} css=@@( color: red; )>x</div>;\n'],
+    ["a brace in a call's argument", 'const a = <div title={t("a } b")} css=@@( color: red; )>x</div>;\n'],
+    ["an opening brace in a string", 'const a = <div onclick={() => { f("{") }} css=@@( color: red; )>x</div>;\n'],
+    ["a brace in a regex", 'const a = <div onclick={() => s.replace(/}/g, "")} css=@@( color: red; )>x</div>;\n'],
+    ["a brace in a comment", "const a = <div onclick={() => {} /* } */} css=@@( color: red; )>x</div>;\n"],
+  ])("%s still leaves the attribute an attribute", (_what, source) => {
+    expect(findBlocks(source).at(-1)?.wrap).toBe(true);
+  });
+
+  /**
+   * A BLOCK'S OWN TEXT IS CSS, and the walk went through it reading JavaScript.
+   *
+   * Two lexers disagree about the same characters, and both cost a block. Measured:
+   *
+   *     background: url(http://x/a.png)     `//` read as a line comment
+   *     border-radius: 50% / 20%            `%` ends no expression, so `/` opened a "regex"
+   *
+   * In each, everything after it on that line was swallowed: a second block on the same tag
+   * vanished, and the raw `@@( … )` was left in the output for the bundler to choke on — loud, and
+   * about the wrong line.
+   *
+   * The walk still goes THROUGH the body rather than skipping it, which is what keeps a `@@(`
+   * written inside a block findable. `transform` refuses that as *a block cannot contain another
+   * block*, and skipping would take the refusal away with the fault.
+   */
+  test.each([
+    ["a url with a scheme", "const a = <div css=@@( background: url(http://x/a.png); ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["a slash between percentages", "const a = <div css=@@( border-radius: 50% / 20%; ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["a division in a hole", "const a = <div css=@@( width: {a / b}px; ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["an apostrophe in a css string", `const a = <div css=@@( content: "it's"; ) sx=@@( gap: 4px; )>x</div>;\n`],
+    ["a paren inside a css string", 'const a = <div css=@@( content: ")"; ) sx=@@( gap: 4px; )>x</div>;\n'],
+    ["a paren inside a hole's template", "const a = <div css=@@( color: {`a)b`}; ) sx=@@( gap: 4px; )>x</div>;\n"],
+    ["a css comment holding a paren", "const a = <div css=@@( /* ) */ color: red; ) sx=@@( gap: 4px; )>x</div>;\n"],
+  ])("%s leaves the block after it findable", (_what, source) => {
+    expect(findBlocks(source).map((one) => one.name)).toEqual(["css", "sx"]);
+  });
+
+  /** And a block written INSIDE a block is still found, which is what the refusal reads. */
+  test("a nested block is found, not skipped", () => {
+    const source = 'const a = @@( color: {x ? @@( color: red; ) : "b"}; );\n';
+
+    expect(findBlocks(source).length).toBe(2);
+  });
+
+  /**
+   * A `//` that is a URL's SCHEME rather than a comment's opening.
+   *
+   * `<p>see https://x.dev <b css=@@( … )>x</b></p>` is prose to a reader and `https:` plus a comment
+   * to a JavaScript lexer. A scheme is a name, a colon and the two slashes with nothing between —
+   * not a shape anybody writes as a label and a comment.
+   */
+  test.each([
+    ["in JSX text", "const a = <p>see https://x.dev <b css=@@( color: red; )>x</b></p>;\n"],
+    ["in a css value", "const a = <div css=@@( background: url(https://x/a.png); ) sx=@@( gap: 4px; )>x</div>;\n"],
+  ])("a scheme %s is not a comment", (_what, source) => {
+    expect(findBlocks(source).length).toBeGreaterThan(0);
+  });
+
+  test.each([
+    ["a plain line comment", "// css=@@( color: red; )\nconst a = @@( gap: 4px; );\n"],
+    ["a label and then one", "outer: // css=@@( color: red; )\nconst a = @@( gap: 4px; );\n"],
+    ["one after an expression", "const n = a / b; // css=@@( color: red; )\nconst a = @@( gap: 4px; );\n"],
+  ])("%s is still a comment", (_what, source) => {
+    expect(findBlocks(source).map((one) => one.name)).toEqual(["a"]);
+  });
+
+  /**
+   * WHAT ENDS AN EXPRESSION, which is what tells a division from a regular expression.
+   *
+   * A template literal was missing from the list, so `` const a = `x` / 2, p = @@( … ); `` found no
+   * block at all — the `/` opened a "regex" that ran to the next one and took the block with it. The
+   * quote cases were unreachable for a related reason, and both are the same fault: the walk stepped
+   * over something without recording what it had stepped over.
+   */
+  test.each([
+    ["a string", `const a = "x" / 2, p = @@( color: red; );\n`],
+    ["a template literal", "const a = `x` / 2, p = @@( color: red; );\n"],
+    ["a name", "const a = b / 2, p = @@( color: red; );\n"],
+    ["a number", "const a = 4 / 2, p = @@( color: red; );\n"],
+    ["a closing paren", "const a = (b) / 2, p = @@( color: red; );\n"],
+    ["a closing bracket", "const a = b[0] / 2, p = @@( color: red; );\n"],
+  ])("%s before a `/` is a division, not a regex", (_what, source) => {
+    expect(findBlocks(source).map((one) => one.name)).toEqual(["p"]);
+  });
+
+  /** And a real regex is still stepped over, including one that holds the syntax. */
+  test.each([
+    ["a plain one", "const r = /a/g, p = @@( color: red; );\n"],
+    ["one holding the syntax", "const r = /@@\\(/, p = @@( color: red; );\n"],
+  ])("%s is skipped", (_what, source) => {
+    expect(findBlocks(source).map((one) => one.name)).toEqual(["p"]);
+  });
+
+  /** And a `)` that opens nothing still falls the safe way — an assignment, not an attribute. */
+  test.each([
+    ["a stray closing paren", `) panel = @@( display: flex; );\n`],
+    ["a call before it", `f(1);\nconst panel = @@( display: flex; );\n`],
+    // A `)` inside a tag, closing something that is not a block — the count lands on a `(` with no
+    // `@@` in front of it, and the walk gives up rather than guessing what the parens were.
+    ["a call as an attribute value", `const a = <div onclick=f() css=@@( color: red; )>x</div>;\n`],
+    ["one with an argument", `const a = <div onclick=f(1) css=@@( color: red; )>x</div>;\n`],
+  ])("%s is a value", (_what, source) => {
+    expect(findBlocks(source).at(-1)?.wrap).toBe(false);
+  });
+
+  /**
+   * Which way an unprovable case falls, and it is deliberate. An attribute mistaken for a value
+   * emits `css=_s0`, which is a syntax error the build reports at once; a value mistaken for an
+   * attribute emits an object literal, which is valid code that means the wrong thing.
+   */
+  test("a reassignment is a value, not an attribute", () => {
+    expect(findBlocks(`let panel;\npanel = @@( display: flex; );\n`)[0]?.wrap).toBe(false);
+  });
+
+  /** A brace that opens nothing leaves the walk before the start of the file, which is not a tag. */
+  test("and so is one written after a stray closing brace", () => {
+    expect(findBlocks(`} panel = @@( display: flex; );\n`)[0]?.wrap).toBe(false);
+  });
+});
+
+/**
+ * A regular expression, which the walk has to know from a division.
+ *
+ * The `@@(` spelling took away the rule that used to settle this for free: with `name =` required in
+ * front of a block, `/=@(x)/` was ruled out because the `=` inside it is preceded by `/` rather than
+ * by a name. A block is an ordinary value now, so a regex body is just text that can contain
+ * anything — including this syntax.
+ *
+ * Both directions are asserted, because getting it wrong in either is silent: a division read as a
+ * regex swallows real code, and a regex read as division compiles its body as CSS.
+ */
+describe("a slash", () => {
+  const BLOCK = "@@( display: flex; )";
+
+  test.each([
+    ["division by a number", `const a = x / 2;`],
+    ["division by a call", `const a = f() / 2;`],
+    ["division by an index", `const a = arr[0] / 2;`],
+    ["a regex", `const re = /ab+c/;`],
+    ["a regex with a slash in a character class", `const re = /[/]/;`],
+    ["a regex with an escaped slash", `const re = /a\\/b/;`],
+    ["a template holding a division", "const s = `a${1 / 2}`;"],
+  ])("%s does not hide the block after it", (_what, before) => {
+    expect(findBlocks(`${before}\nconst p = ${BLOCK};\n`)).toHaveLength(1);
+  });
+
+  test("and a regex holding the syntax is not a block", () => {
+    expect(findBlocks(`const re = /=@@\\(x\\)/;\n`)).toEqual([]);
+  });
+});
+
+/**
+ * PROSE, which is the one place `@@(` means nothing and was compiled anyway.
+ *
+ * `siteBefore` used to say there was nothing to require in front of a block, "because `@@( )` means
+ * nothing else in TypeScript". It means nothing else in TYPESCRIPT — and JSX text is not TypeScript.
+ * Measured: `<p>Write @@( color: red; ) to style it.</p>` came out as `<p>Write _s0 to style it.</p>`,
+ * the author's sentence replaced by a value.
+ *
+ * The rule is the one this walk already uses for a `/`: **two expressions cannot be adjacent.** So a
+ * `@@(` behind something that ENDS an expression is not a block. What is behind prose is a word, or
+ * the `>` that closed the tag, or a full stop — and none of those can be followed by an expression.
+ *
+ * **Refusing a real block is the safe direction, which is why this is allowed to be a rule about
+ * characters rather than a JSX parser.** A block that goes unrecognised leaves `@@(` in an expression
+ * position, and that is a syntax error the build reports at the author's line. Prose left alone is
+ * simply prose.
+ */
+describe("a block written in JSX text is prose", () => {
+  test.each([
+    ["a word before it", `const a = <p>Write @@( color: red; ) to style it.</p>;\n`],
+    ["the tag that opened it", `const a = <p>@@( color: red; ) is the syntax.</p>;\n`],
+    ["a full stop", `const a = <p>Like this. @@( color: red; )</p>;\n`],
+    ["a name that only looks like a keyword", `const a = <p>retort @@( color: red; )</p>;\n`],
+  ])("%s", (_what, source) => {
+    expect(findBlocks(source)).toEqual([]);
+  });
+
+  /** And the file is handed on untouched, which is the whole point. */
+  test("so a page of prose about blocks compiles to itself", () => {
+    const source = `const a = <p>Write @@( color: red; ) to style it.</p>;\n`;
+
+    expect(findBlocks(source)).toEqual([]);
+  });
+
+  /** A real block on another line in the same file is still found. */
+  test("and a real block beside the prose is still a block", () => {
+    const source =
+      `const a = <p>Write @@( color: red; ) to style it.</p>;\n` + `const b = <div css=@@( color: blue; )>x</div>;\n`;
+    const sites = findBlocks(source);
+
+    expect(sites).toHaveLength(1);
+    expect(sites[0].wrap).toBe(true);
+  });
+
+  /**
+   * Every position a block legitimately sits in, because the rule above is about what is BEHIND one
+   * and getting that wrong the other way would refuse working code.
+   */
+  test.each([
+    ["const", `const a = @@( color: red; );\n`],
+    ["return", `function f() { return @@( color: red; ); }\n`],
+    ["yield", `function* f() { yield @@( color: red; ); }\n`],
+    ["await", `const f = async () => await @@( color: red; );\n`],
+    ["an arrow", `const f = () => @@( color: red; );\n`],
+    ["an argument", `f(@@( color: red; ));\n`],
+    ["a second argument", `f(a, @@( color: red; ));\n`],
+    ["an array item", `const a = [@@( color: red; )];\n`],
+    ["a ternary", `const a = on ? @@( color: red; ) : none;\n`],
+    ["an object value", `const a = { k: @@( color: red; ) };\n`],
+    ["a bare attribute", `const a = <div css=@@( color: red; )>x</div>;\n`],
+    ["a braced attribute", `const a = <div css={@@( color: red; )}>x</div>;\n`],
+    ["a JSX child", `const a = <div>{@@( color: red; )}</div>;\n`],
+    ["a spread", `const a = { ...@@( color: red; ) };\n`],
+    ["default export", `export default @@( color: red; );\n`],
+    ["after a semicolon", `let a;\na = @@( color: red; );\n`],
+    ["at the very start of a file", `@@( color: red; );\n`],
+  ])("is still a block: %s", (_what, source) => {
+    expect(findBlocks(source)).toHaveLength(1);
+  });
+});

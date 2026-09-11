@@ -1,0 +1,351 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { beforeAll, afterEach, describe, expect, test } from "vitest";
+import { builtFromThisSource } from "./built";
+
+/** This file runs the BUILD, so a stale `dist` would measure a previous version — see `built.ts`. */
+beforeAll(builtFromThisSource);
+
+/**
+ * The bin, run as a build would run it.
+ *
+ * `check.test.ts` covers every decision the command makes. This covers the two things only a real
+ * process can show, and they are the two a build depends on: **the exit code**, and what a person
+ * reads when it fails. A check that reports correctly and exits 0 is a check that does not exist.
+ */
+
+const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const BIN = join(PACKAGE, "bin.mjs");
+
+const projects: string[] = [];
+afterEach(() => {
+  for (const each of projects.splice(0)) rmSync(each, { recursive: true, force: true });
+});
+
+function project(card: string): string {
+  const root = mkdtempSync(join(tmpdir(), "ramonda-css-cli-"));
+  projects.push(root);
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(
+    join(root, "src", "jsx.d.ts"),
+    `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+  );
+  writeFileSync(join(root, "src", "Card.tsx"), card);
+  writeFileSync(
+    join(root, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        strict: true,
+        target: "ES2022",
+        module: "ESNext",
+        moduleResolution: "bundler",
+        jsx: "preserve",
+        types: [],
+        skipLibCheck: true,
+        baseUrl: ".",
+        paths: { "@ramonda/css/properties": [join(PACKAGE, "src", "properties.ts")] },
+      },
+      include: ["src"],
+    }),
+  );
+  return root;
+}
+
+/** What a build sees: the output, and the code it exited with. */
+function run(root: string): { output: string; status: number } {
+  try {
+    const output = execFileSync(process.execPath, [BIN, "tsconfig.json"], { cwd: root, encoding: "utf8" });
+    return { output, status: 0 };
+  } catch (error) {
+    const failed = error as { stdout?: string; stderr?: string; status?: number };
+    return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? -1 };
+  }
+}
+
+describe("the bin", () => {
+  test("is there before it is built, or a fresh checkout cannot link it", () => {
+    // pnpm creates a package's bin links from what is on disk at install time. A bin that IS a build
+    // output is not there yet, so the link is skipped and every build calling it fails.
+    expect(existsSync(BIN)).toBe(true);
+    expect(existsSync(join(PACKAGE, "dist", "cli.js"))).toBe(true);
+  });
+
+  test("says what it checked, and exits 0", () => {
+    const { output, status } = run(project(`const a = <div css=@@( display: flex; )>x</div>;\nexport default a;\n`));
+
+    expect(status).toBe(0);
+    expect(output).toContain("[ramonda-css]");
+    expect(output).toContain("1 of them carrying a style block");
+  });
+
+  test("names the fault at the author's own line, and exits 1", () => {
+    const { output, status } = run(
+      project(`const a = (\n  <div css=@@(\n    dsiplay: flex;\n  )>x</div>\n);\nexport default a;\n`),
+    );
+
+    expect(status).toBe(1);
+    expect(output).toContain("src/Card.tsx:3:5");
+    expect(output).toContain("Did you mean to write 'display'?");
+  });
+
+  test("a block it cannot read is reported alone, and exits 1", () => {
+    const { output, status } = run(
+      project(`const a = (\n  <div css=@@(\n    {name}: 24px;\n  )>x</div>\n);\nexport default a;\n`),
+    );
+
+    expect(status).toBe(1);
+    expect(output).toContain("could not be read, so nothing was checked");
+    expect(output).toContain("src/Card.tsx:3:5");
+    // The position is printed once, not twice — the message carries its own and it is trimmed off.
+    expect(output).not.toContain("Card.tsx:3:5  a hole");
+  });
+});
+
+/**
+ * The buffer an editor has, formatted without touching the file.
+ *
+ * ## The fault this exists for
+ *
+ * An editor asks a formatter about the BUFFER, not the file. A provider that pointed the command at
+ * a path would format what was last saved and hand the author edits computed against text they have
+ * since changed — which is how a formatter deletes work.
+ *
+ * It is also the only way an editor can format one of these files at all. Measured: the Biome
+ * extension does nothing, because a file holding a block is excluded from `biome.json` — and with
+ * the exclusion lifted biome answers *"Code formatting aborted due to parsing errors"*, because the
+ * syntax is not TypeScript and `biome-ignore` is read by the parser that already failed.
+ */
+describe("--stdin-file-path", () => {
+  /**
+   * Run from the PACKAGE rather than from a throwaway project: the wrapper reaches for the biome the
+   * project has, by walking up from the working directory, and a temp folder under `/tmp` has none —
+   * measured, `biome is not installed here`.
+   */
+  const through = (source: string, args: readonly string[] = ["format", "--stdin-file-path=src/Card.tsx"]) => {
+    try {
+      return {
+        output: execFileSync(process.execPath, [BIN, ...args], { cwd: PACKAGE, input: source, encoding: "utf8" }),
+        status: 0,
+      };
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? -1 };
+    }
+  };
+
+  /**
+   * **The element opens out, and that is the fix rather than a cost of it.** A block that spans
+   * lines is placeheld by something that spans lines — see `compiler/tooling.ts` — so biome measures
+   * the opening element as the multi-line thing it is, instead of as fourteen characters.
+   *
+   * Measured against the reference: `prettier`, with this package's own plugin, prints this exact
+   * file exactly this way, character for character. The two formatters agreed on nothing here
+   * before, and the file they disagreed about was the ordinary one.
+   */
+  test("formats the text it was given and writes nothing else", () => {
+    const source = `const a = <div   css={@@(\n  display: flex;\n)}>x</div>;\nexport default a;\n`;
+    const { output, status } = through(source);
+
+    expect(status).toBe(0);
+    expect(output).toBe(
+      `const a = (\n  <div\n    css={@@(\n      display: flex;\n    )}\n  >\n    x\n  </div>\n);\nexport default a;\n`,
+    );
+  });
+
+  test("a file with no block goes straight through the tool", () => {
+    const { output } = through(`const a   =   1;\nexport default a;\n`);
+
+    expect(output).toBe(`const a = 1;\nexport default a;\n`);
+  });
+
+  /** `lint` reports positions in a file, so a buffer with no name on disk is not a question it can take. */
+  test("is refused for lint, with a reason", () => {
+    const { output, status } = through(`const a = 1;\n`, ["lint", "--stdin-file-path=src/Card.tsx"]);
+
+    expect(status).toBe(1);
+    expect(output).toContain("is for `format`");
+  });
+});
+
+/**
+ * What the command does with an argument that is not a project.
+ *
+ * `format` and `lint` take PATHS, and the check takes a tsconfig — so `ramonda-css src/App.tsx` is
+ * the mistake this command invites. Measured before it was fixed: TypeScript's JSON reader answered
+ * `'{' expected.` at line 1 column 1 of the author's own source file, which reads as *your component
+ * is broken* and sent one reader looking for a fault in a file that had none.
+ */
+/**
+ * **A FILE OVER 64KB CAME BACK CUT IN HALF, and format-on-save wrote the half.**
+ *
+ * `--stdin-file-path` is what an editor asks: text in, formatted text out, nothing written. The
+ * answer went to `process.stdout.write` and the process then called `process.exit(0)` — and
+ * `process.exit` does not drain a pipe. A pipe holds 64KB, so everything past it was lost.
+ *
+ * Measured, on a 132,780-byte file:
+ *
+ *     biome directly          132780 -> 132780   complete
+ *     through ramonda-css     132780 ->  65536   cut, mid-line, with no error
+ *
+ * The extension in `vscode/` replaces the WHOLE DOCUMENT with what comes back, so saving any file
+ * over 64KB deleted the rest of it. Silently, on every save, in a published extension.
+ *
+ * A byte count rather than a formatting assertion: what this is about is that nothing was lost.
+ */
+describe("a file bigger than a pipe", () => {
+  const LINES = 5000;
+
+  test("comes back whole, not cut at 64KB", () => {
+    const text =
+      `const a = <div css=@@( display: flex; )>x</div>;\n` +
+      Array.from({ length: LINES }, (_, index) => `export const n${index} = ${index};`).join("\n") +
+      "\n";
+
+    /**
+     * From the PACKAGE, for the reason the describe above gives: the wrapper walks up for the
+     * project's own biome, and a folder under `/tmp` has none. Running it there exits before stdin
+     * is read, and the parent's 132KB write then fails with `EPIPE` — which is a fixture that cannot
+     * see the fault rather than a fault.
+     */
+    const out = execFileSync(process.execPath, [BIN, "format", "--stdin-file-path=src/Big.tsx"], {
+      cwd: PACKAGE,
+      input: text,
+      encoding: "utf8",
+    });
+
+    expect(text.length).toBeGreaterThan(65536);
+    expect(out.length).toBeGreaterThan(65536);
+    // The last declaration is the one a cut takes first.
+    expect(out).toContain(`export const n${LINES - 1} = ${LINES - 1};`);
+  });
+});
+
+/**
+ * **A MISTAKE IN YOUR CSS GETS A SENTENCE; A MISTAKE IN YOUR CONFIG GOT A STACK TRACE.**
+ *
+ * `ramonda.css.ts` has six ways to be wrong and every one of them has a careful sentence — a rule id
+ * that is not one, with a *did you mean*; an async config; `units` as a string; a setting that is not
+ * one. Measured, all six came out the same way:
+ *
+ *     file:///…/dist/chunk-SCWKQOHM.js:122
+ *         throw new Error(`${path} ${says}`);
+ *               ^
+ *     Error: …/ramonda.css.ts silences `unknown-vlaue`, which is not a rule. Did you mean …
+ *         at …
+ *
+ * The words are right and the presentation is a crash. Beside it, a fault in a BLOCK prints
+ * `[ramonda-css]`, the file, the line and the sentence — same tool, same person, two shapes. This is
+ * the shape reviews 14 and 16 found twice already in this file: one path handled, its sibling not.
+ */
+describe("a config this cannot use", () => {
+  const withConfig = (config: string) => {
+    const root = project(`const a = @@(\n  color: red;\n);\nexport default a;\n`);
+    writeFileSync(join(root, "ramonda.css.ts"), `${config}\n`);
+    return run(root);
+  };
+
+  test.each([
+    ["a rule id that is not one", 'export default { rules: { "unknown-vlaue": "off" } };', "Did you mean"],
+    ["an async config", 'export default async () => ({ units: ["px"] });', "is async"],
+    ["units as a string", 'export default { units: "px" };', "takes a list"],
+    ["a setting that is not one", 'export default { unitz: ["px"] };', "not a setting"],
+    ["exporting a number", "export default 5;", "must export an object"],
+  ])("%s is said as a sentence, not thrown", (_what, config, expected) => {
+    const { status, output } = withConfig(config);
+
+    expect(status).toBe(1);
+    expect(output).toContain(expected);
+    // The words a crash brings with it, and none of them helps anybody.
+    expect(output).not.toContain("throw new Error");
+    expect(output).not.toMatch(/^\s+at /m);
+  });
+
+  /** And it says WHOSE file, because a monorepo has more than one. */
+  test("and names the config file", () => {
+    const { output } = withConfig('export default { unitz: ["px"] };');
+
+    expect(output).toContain("ramonda.css.ts");
+  });
+});
+
+describe("an argument that is not a project", () => {
+  /** Run with arbitrary arguments, not the tsconfig the other tests pass. */
+  function runWith(root: string, args: readonly string[]): { output: string; status: number } {
+    try {
+      const output = execFileSync(process.execPath, [BIN, ...args], { cwd: root, encoding: "utf8" });
+      return { output, status: 0 };
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? -1 };
+    }
+  }
+
+  test("a source file is answered by saying what this takes", () => {
+    const { output, status } = runWith(project(`const a = <div css=@@( display: flex; )>x</div>;\n`), ["src/Card.tsx"]);
+
+    expect(status).toBe(1);
+    expect(output).toContain("tsconfig");
+    expect(output).not.toContain("'{' expected");
+  });
+
+  test("a file that is not there says so, rather than reporting a parse", () => {
+    const { output, status } = runWith(project(`const a = 1;\n`), ["nope.json"]);
+
+    expect(status).toBe(1);
+    expect(output).toContain("nope.json");
+  });
+
+  test("`--help` prints the usage instead of checking a project", () => {
+    const { output, status } = runWith(project(`const a = 1;\n`), ["--help"]);
+
+    expect(status).toBe(0);
+    expect(output).toContain("ramonda-css");
+    expect(output).toContain("format");
+    expect(output).toContain("lint");
+    expect(output).not.toContain("file(s) type-check");
+  });
+
+  /**
+   * **ASKING FOR HELP REWROTE THE TREE.** `format` and `lint` were dispatched at the top of the file,
+   * before `--help` was looked at — and `runTool` filters every `-` argument out of its paths, so
+   * `--help` left none and "no paths" means the whole directory. Measured: `ramonda-css format
+   * --help` rewrote a file and exited 0, having been asked what the command does.
+   *
+   * A person meeting a new command types `--help` first. That is the one argument that must never
+   * do work.
+   */
+  test.each([
+    ["format", "format"],
+    ["lint", "lint"],
+    ["format, short", "format"],
+  ])("`%s --help` prints the usage and touches nothing", (_what, which) => {
+    const root = project(`const a = 1;\n`);
+    const messy = join(root, "src", "messy.ts");
+    const before = `export const b   =   2;\n`;
+    writeFileSync(messy, before);
+
+    const { output, status } = runWith(root, [which, "--help"]);
+
+    expect(status).toBe(0);
+    expect(output).toContain("ramonda-css");
+    expect(readFileSync(messy, "utf8")).toBe(before);
+  });
+
+  /**
+   * And a path that is not there is answered, rather than throwing out of `node:fs`.
+   *
+   * `filesUnder` calls `statSync`, which throws `ENOENT` — measured, the output was a raw stack
+   * trace starting `node:fs:1739`, and the exit code was the one Node picks for an uncaught throw.
+   * A typo in a CI script deserves a sentence.
+   */
+  test.each(["format", "lint"])("`%s` on a path that is not there says which one", (which) => {
+    const { output, status } = runWith(project(`const a = 1;\n`), [which, "src/Nowhere"]);
+
+    expect(status).toBe(1);
+    expect(output).toContain("src/Nowhere");
+    expect(output).not.toContain("node:fs");
+  });
+});

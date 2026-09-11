@@ -1,0 +1,44 @@
+/**
+ * `@ramonda/css/compiler` — what a build loads, and what a browser never does.
+ *
+ * The split is not tidiness. Everything here decides a name, and a name is decided once at build
+ * time by definition: a runtime that could hash a block would be a runtime that could invent a rule,
+ * and no rule is ever created at runtime — see DESIGN.md, decision 7. Keeping the hash on this side
+ * of the boundary is what makes that true by construction rather than by discipline.
+ *
+ * Two emitters over one parse, and that is the whole architecture. `transform` produces the file a
+ * bundler runs; `virtualFile` produces the file `tsc` checks. They share `findBlocks` and
+ * `readBlock` and nothing else, because a second reading of the syntax would be a second answer to
+ * what a file means.
+ *
+ * `Sheet` is the third piece and the only one that sees more than one file at a time: the transform
+ * is deliberately local, so dedupe, the collision assertion and the round trip all live there.
+ *
+ * `checkBlock` and `checkText` are the fourth: the CSS faults the type map deliberately cannot catch,
+ * one read off the parse and one off the text — a `//` has no parse, because CSS has no line
+ * comment. Both, or a caller checks half. Read off the
+ * same `Block` and reporting nothing the types already say.
+ *
+ * `placehold` is the fifth, and the only one that is not about correctness: a formatter rewrites
+ * text rather than reporting positions in it, so it cannot be given the virtual file and needs a
+ * copy it can hand back.
+ */
+export type { Block, BlockItem, Declaration, HolePart, NestedRule, TextPart, ValuePart } from "./ast";
+export { CssBlockError, holeOutOfPlace, positionOf } from "./errors";
+export { HASH_LENGTH, classNameFor, substitute, variableNameFor } from "./names";
+export { HOLE, normalise } from "./normalise";
+export type { ReadBlock, ReadOptions, Span } from "./read";
+export { Sheet } from "./sheet";
+export { readBlock } from "./read";
+export type { Finding, RuleId } from "./rules";
+export { checkBlock, checkText } from "./rules";
+export { MEDIA_FEATURES } from "./keywords.generated";
+export { checkSource } from "./source";
+export type { BlockSite } from "./scan";
+export { findBlocks, mayHoldABlock } from "./scan";
+export type { Placeheld } from "./tooling";
+export { placehold } from "./tooling";
+export type { EmittedBlock, SourceMap, TransformOptions, TransformResult } from "./transform";
+export { transform } from "./transform";
+export type { VirtualFile, VirtualFileOptions } from "./virtual";
+export { virtualFile } from "./virtual";

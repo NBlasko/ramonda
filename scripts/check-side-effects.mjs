@@ -97,6 +97,11 @@ const DECIDED = {
     expect: false,
     why: "Two plugin factories and a constant, imported by a config file that a bundler never bundles. Nothing runs on import, and the claim costs nothing to keep true.",
   },
+  css: {
+    keeps: false,
+    expect: false,
+    why: "The entry is the COMPILED value and nothing else — `block`, `merge`, `compose`, `toStyleObject` and the types. It imports nothing at all, framework included, by the rule the package is built on, so there is nothing at module scope for a consumer to observe. Everything that runs — the parser, the bundler plugins, the language-service plugin, the CLI — is behind a subpath a browser never loads.",
+  },
   server: {
     keeps: false,
     expect: false,

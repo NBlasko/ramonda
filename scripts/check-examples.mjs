@@ -25,6 +25,7 @@
  *   node scripts/check-examples.mjs query     # only paths containing "query"
  */
 import { analyzeProgram } from "@ramonda/check";
+import { checkSource, mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -89,6 +90,19 @@ function blocksIn(file) {
     // highlighting.
     // ```tsx alternatives — two ways of writing the same thing, shown side by side. As one file
     // they collide, and the collision is the point rather than a fault.
+    /**
+     * ```tsx module:./theme — this block IS that module for the rest of the page.
+     *
+     * A page that teaches a two-file shape had no way to be checked: the theme example on
+     * `style-blocks.md` was marked `alternatives` and therefore checked by nothing, which is the
+     * "docs can lie and pass" fault this gate exists for, sitting on the gate's own flagship page.
+     *
+     * The block is still checked itself. It is also written into the work directory under the name
+     * the specifier asks for, so `import { accent } from "./theme"` resolves for `tsc`, and handed
+     * to the CSS rules as text so a `@@property` in it resolves for them too.
+     */
+    const provides = /(?:^|\s)module:(\S+)/.exec(attrs)?.[1];
+
     if (attrs.includes("expect-error") || attrs.includes("alternatives")) {
       expected.push({ file, line: text.slice(0, match.index).split("\n").length + 1 });
       continue;
@@ -105,7 +119,7 @@ function blocksIn(file) {
     // later, so the first example is reported and is not wrong. Naming the rule keeps every OTHER
     // rule live on the block, which is the difference between a gate and a gate people switch off.
     // Several rules are separated by `+`.
-    out.push({ code, line, expectReport: reportsAllowedBy(attrs) });
+    out.push({ code, line, provides, expectReport: reportsAllowedBy(attrs) });
   }
   return out;
 }
@@ -309,6 +323,23 @@ function ramondaGlobals(except = new Set()) {
 }
 
 /**
+ * A documented example with a style block whose property does not exist. See `SELFTEST=block`.
+ *
+ * `packages/_preamble.d.ts` is what gives it `Component`, the same as any README block.
+ */
+const PLANTED = `export class Planted extends Component {
+  render() {
+    return (
+      <div css=@@(
+        display: flex;
+        dsiplay: flex;
+      )>x</div>
+    );
+  }
+}
+`;
+
+/**
  * The smallest wrapper that makes a block parse.
  *
  * Plenty of examples are deliberately not whole files — a run of class members with no class around
@@ -319,8 +350,28 @@ function ramondaGlobals(except = new Set()) {
  *
  * `export {}` makes the file a module, which is what a fragment with a top-level `await` needs and
  * what stops a `const` in one block colliding with the same name in another.
+ *
+ * ## A `@@( … )` style block is read first, and that is not a convenience
+ *
+ * The syntax is not TypeScript, so no wrapper makes it parse and every attempt returns `null` — the
+ * block is filed under "not standalone code and skipped" and the run exits 0. **Measured by planting
+ * a wrong example into a real README: `dsiplay: flex` was skipped in silence**, in a repository that
+ * has already shipped three wrong examples exactly that way.
+ *
+ * So a block holding one is turned into its virtual reading before anything tries to wrap it, and
+ * the reading is line for line — which is what lets an error still name the author's own line, since
+ * this reports by line and has no source map to consult.
  */
 function shape(code) {
+  /**
+   * The virtual reading, when there is one. Strict: a documented example of a syntax IS the place a
+   * malformed block must be caught, and the tolerant reading would quietly accept `disp`.
+   */
+  if (mayHoldABlock(code)) {
+    const virtual = virtualFile(code, { properties: "@ramonda/css/properties" });
+    if (virtual !== undefined) code = virtual.code;
+  }
+
   // The filler `render` is only added when the fragment has none of its own. Plenty of blocks ARE a
   // `render` — `render() { return <p/>; }` is how the JSX page opens — and adding a second one made
   // every such block report a duplicate implementation.
@@ -485,10 +536,31 @@ const units = [];
 
 const unparseable = [];
 
+/**
+ * `SELFTEST=block` plants a documented example whose style block is wrong.
+ *
+ * The fault this guards is the one measured before the virtual reading existed: the block never
+ * parses, so every wrapper `shape` tries returns `null`, the block is filed under "not standalone
+ * code and skipped", and **the run exits 0**. Silence, in a repository that has already shipped three
+ * wrong examples exactly that way.
+ *
+ * So the floor is asserted rather than assumed: with this set, a run that does NOT report the planted
+ * block is a run that has gone blind again.
+ */
+const selftest = process.env.SELFTEST === "block";
+if (selftest) {
+  files.push("SELFTEST");
+}
+
+/** Specifier -> the page that provided it, so two pages cannot claim one. */
+const claimed = new Map();
+
 for (const file of files) {
-  const blocks = blocksIn(file);
+  const blocks = file === "SELFTEST" ? [{ code: PLANTED, line: 1, expectReport: undefined }] : blocksIn(file);
   if (blocks.length === 0) continue;
   const ambient = preamblesFor(file);
+  /** Specifier -> the block's text, for the CSS rules. `tsc` reads the copy written beside them. */
+  const provided = new Map();
 
   blocks.forEach((block, index) => {
     const shaped = shape(block.code);
@@ -496,16 +568,47 @@ for (const file of files) {
       unparseable.push({ file, index, line: block.line });
       return;
     }
-    const name = `${file.replace(/[^\w]/g, "_")}__${index}.tsx`;
-    const path = join(work, name);
+    const path = join(work, `${file.replace(/[^\w]/g, "_")}__${index}.tsx`);
     writeFileSync(path, shaped.text);
+
+    /**
+     * A block that IS a module gets a second copy under the name the specifier asks for, beside the
+     * blocks that import it — so `./theme` resolves for `tsc` exactly as it would in a project.
+     *
+     * The work directory is FLAT, so a specifier belongs to whichever page claimed it. Two pages
+     * teaching a `./theme` would silently share one, and this refuses instead.
+     *
+     * **A directory per page was tried first and it broke seven routing examples** — `TS2339` on
+     * `BaseHook<undefined>`, a wrong TYPE rather than a missing name, from moving the units without
+     * moving anything else. The cause was not established, and routing around it without saying so
+     * is how a gate stops being trusted. Recorded in the TODO.
+     */
+    if (block.provides !== undefined) {
+      const already = claimed.get(block.provides);
+      if (already !== undefined && already !== file) {
+        console.error(
+          `\n[examples] two pages both provide \`${block.provides}\`:\n\n    ${already}\n    ${file}\n\n` +
+            "The examples share one work directory, so one would quietly overwrite the other. Give\n" +
+            "one of them a different specifier.\n",
+        );
+        process.exit(1);
+      }
+      claimed.set(block.provides, file);
+      writeFileSync(join(work, `${block.provides.replace(/^\.\//, "")}.tsx`), shaped.text);
+      provided.set(block.provides, block.code);
+    }
+
     units.push({
       path,
       file,
       index,
       line: block.line,
+      /** The example as WRITTEN, for the CSS rules — they answer in the author's coordinates. */
+      code: block.code,
       offset: shaped.offset,
       ambient,
+      /** What this page's `module:` fences declared, so the CSS rules can resolve an import. */
+      provided,
       expectReport: block.expectReport,
     });
   });
@@ -549,6 +652,11 @@ const options = {
     "@ramonda/form/bguard": [`${repo}/packages/form/src/bguard.ts`],
     "@ramonda/form": [`${repo}/packages/form/src/index.ts`],
     "@ramonda/lens": [`${repo}/packages/lens/src/index.ts`],
+    // Two entries, and the order matters the same way the router's does — the longer specifier has
+    // to be tried first or `@ramonda/css` swallows it.
+    "@ramonda/css/properties": [`${repo}/packages/css/src/properties.ts`],
+    "@ramonda/css/compiler": [`${repo}/packages/css/src/compiler/index.ts`],
+    "@ramonda/css": [`${repo}/packages/css/src/index.ts`],
     "@ramonda/devtools": [`${repo}/packages/devtools/src/index.ts`],
     "@ramonda/testing-library": [`${repo}/packages/testing-library/src/index.ts`],
     // A real dependency of `@ramonda/form`, and the form examples build their schema with it. Left
@@ -608,6 +716,73 @@ for (const group of groups.values()) {
 
   const globalsFile = join(work, `__globals-${groupIndex++}.d.ts`);
   writeFileSync(globalsFile, ramondaGlobals(declaredHere));
+
+  /**
+   * The CSS rules, which the type check cannot stand in for.
+   *
+   * Measured by planting one: `display: flexx` in a documented example passed this gate in silence.
+   * `display` has an open grammar, so there is no union for TypeScript to refuse it against — which
+   * is the exact case `unknown-value` exists for. A page can teach a value that does not exist, and
+   * this repository has shipped three wrong examples that way already.
+   *
+   * Read from the example's own text rather than from the virtual copy: the rules answer in the
+   * author's coordinates, which is what a line number here has to be.
+   *
+   * **`checkSource` rather than the sequence written out here, and that was a real divergence.** This
+   * used to call `readBlock` with no `resolve` and `checkBlock` with no `references`, while
+   * `ramonda-check` passed both — so a reference to a named site read here as a HOLE rather than as
+   * the name it compiles to, and `variable-set-by-another-name` could never fire on a documented
+   * example. Three callers of one sequence, and this was the one that had drifted.
+   *
+   * A refused block loses the other blocks in its file rather than only itself, which the per-site
+   * loop did not. That is the right trade: the refusal is already reported above and the file fails
+   * either way, so what is lost is CSS findings on a file that is not going to pass.
+   */
+  for (const unit of group.units) {
+    if (!mayHoldABlock(unit.code)) continue;
+    let found;
+    try {
+      // No reader: a documented example is one fenced block, so it imports nothing this could
+      // resolve — and a reader pointed at the repository would resolve a path the reader of
+      // the page never has.
+      found = checkSource(unit.code, unit.file, { read: (specifier) => unit.provided.get(specifier) });
+    } catch {
+      // A block the parser refuses is already reported as a refusal, above.
+      continue;
+    }
+    if (found.length === 0) continue;
+    const list = byUnit.get(unit) ?? [];
+    for (const finding of found) {
+      /**
+       * `expect-report` silences a CSS rule exactly as it silences a framework one, and it did not.
+       * The marker was honoured only in the `analyzeProgram` loop, so a page that teaches a CSS
+       * mistake had no way to say so — measured on this page's own `var(--ackcent)` example, which
+       * failed the gate while carrying the marker for the very rule that reported it. `usedRules` is
+       * fed too, so a marker for a rule that has stopped firing is still caught as stale.
+       */
+      const allowed = unit.expectReport;
+      if (allowed === true) {
+        used.add(unit);
+        continue;
+      }
+      if (allowed !== undefined && allowed.has(finding.rule)) {
+        used.add(unit);
+        usedRules.add(`${unit.file}\u0000${finding.rule}`);
+        continue;
+      }
+
+      const before = unit.code.slice(0, finding.at);
+      const line = before.split("\n").length - 1;
+      list.push({
+        where: `${unit.file}:${unit.line + line}`,
+        column: finding.at - (before.lastIndexOf("\n") + 1) + 1,
+        message: `${finding.rule}: ${finding.message}`,
+        code: 0,
+      });
+    }
+    if (list.length === 0) continue;
+    byUnit.set(unit, list);
+  }
 
   const program = ts.createProgram([globalsFile, ...ambientFiles, ...group.units.map((u) => u.path)], options);
   for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
@@ -685,6 +860,16 @@ rmSync(work, { recursive: true, force: true });
 
 /* ── report ────────────────────────────────────────────────────────────────────────────────── */
 
+if (selftest) {
+  const caught = [...byUnit].some(([unit]) => unit.file === "SELFTEST");
+  console[caught ? "log" : "error"](
+    caught
+      ? "[examples] SELFTEST block: the planted style block was reported, as it must be"
+      : "[examples] SELFTEST block: the planted style block was NOT reported — the gate is blind to the syntax again",
+  );
+  process.exit(caught ? 0 : 1);
+}
+
 const total = [...byUnit.values()].reduce((n, list) => n + list.length, 0);
 
 const skipped =
@@ -738,7 +923,10 @@ if (total === 0 && reported.length === 0 && stale.length === 0) {
 if (total > 0) console.error(`\n[examples] ${total} problem(s) in ${byUnit.size} of ${units.length} code blocks:\n`);
 for (const [unit, list] of byUnit) {
   console.error(`  ${unit.file}  (block ${unit.index + 1})`);
-  for (const problem of list) console.error(`    ${problem.where}  TS${problem.code}: ${problem.message}`);
+  // A CSS rule has no TypeScript code and says its own name in the message — see the block above.
+  for (const problem of list) {
+    console.error(`    ${problem.where}  ${problem.code === 0 ? "" : `TS${problem.code}: `}${problem.message}`);
+  }
   console.error("");
 }
 if (total > 0)

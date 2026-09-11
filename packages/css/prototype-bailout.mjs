@@ -7,6 +7,10 @@
  *     node packages/css/prototype-bailout.mjs
  */
 import { globSync, readFileSync } from "node:fs";
+import { builtFromThisSource } from "./built.mjs";
+
+// This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
+builtFromThisSource();
 const files = globSync("{apps,packages}/*/src/**/*.{ts,tsx}", { cwd: process.cwd() }).filter(
   (f) => !f.includes("/dist/") && !f.includes("/.build/"),
 );
@@ -18,7 +22,7 @@ let hits = 0;
 const t0 = performance.now();
 for (let round = 0; round < 20; round++) {
   hits = 0;
-  for (const s of sources) if (s.includes("=@(")) hits++;
+  for (const s of sources) if (s.includes("=@@(")) hits++;
 }
 const t1 = performance.now();
 

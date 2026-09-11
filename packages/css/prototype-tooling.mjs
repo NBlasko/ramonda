@@ -1,5 +1,5 @@
 /**
- * The formatter and the linter cannot read a file containing `@( … )`. What can be done about it?
+ * The formatter and the linter cannot read a file containing `@@( … )`. What can be done about it?
  *
  * The first answer people reach for is a suppression comment, and it cannot work: `biome-ignore` and
  * `oxlint-disable` are read BY the parser, and the parser fails before it reaches them. Measured —
@@ -42,9 +42,9 @@ const FILE = "Card.tsx";
 const source = `export const Card = (props: { id: string }) => {
   const accent = "#10b981";
   return (
-    <div css=@(
+    <div css=@@(
       display: flex;
-      border-left: {{accent}};
+      border-left: {accent};
     )>
       <span>{props.id}</span>
     </div>
@@ -63,16 +63,23 @@ function blocksIn(text) {
   const found = [];
   let cursor = 0;
   for (;;) {
-    const at = text.indexOf("css=@(", cursor);
+    const at = text.indexOf("css=@@(", cursor);
     if (at === -1) return found;
-    let scan = at + 6;
+    let scan = at + "css=@@(".length;
     let depth = 1;
     const holes = [];
     while (scan < text.length && depth > 0) {
-      if (text.startsWith("{{", scan)) {
-        const end = text.indexOf("}}", scan + 2);
-        holes.push({ start: scan + 2, end });
-        scan = end + 2;
+      if (text[scan] === "{") {
+        // A prototype counts braces; the real parser reads the expression. See the header.
+        let braces = 1;
+        let end = scan + 1;
+        while (end < text.length && braces > 0) {
+          if (text[end] === "{") braces++;
+          else if (text[end] === "}") braces--;
+          if (braces > 0) end++;
+        }
+        holes.push({ start: scan + 1, end });
+        scan = end + 1;
         continue;
       }
       if (text[scan] === "(") depth++;

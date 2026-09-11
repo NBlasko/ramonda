@@ -26,6 +26,19 @@ jobs:
           # with "Does `main` exist and it's synced with remote?" rather than an answer.
           fetch-depth: 0
       - uses: ./.github/actions/setup
+      # `pnpm lint` is oxlint over the monorepo AND `ramonda-css lint` over two real demo files,
+      # and the second half is a BUILT command: `ramonda-css` is `bin.mjs`, which imports
+      # `dist/cli.js`. This job builds nothing, so that half could never have run here — it failed
+      # with `ERR_MODULE_NOT_FOUND` and a stack naming node's own resolver, on a step called
+      # "Lint (oxlint)", which is about as far from the cause as a message can be.
+      #
+      # It is invisible locally, and permanently: a working tree has `dist` from the last build, so
+      # `pnpm lint` passes on every machine that has ever built. Only a fresh checkout sees it.
+      #
+      # Through turbo, not `pnpm --filter … build` — `check-workflows.mjs` is about exactly this, and
+      # `build` has a `dependsOn` that a direct filter would skip.
+      - name: Build the CLI that `pnpm lint` runs
+        run: pnpm exec turbo run build --filter=@ramonda/css
       # oxlint over the whole monorepo in one pass (config: .oxlintrc.json). Hard
       # gate: the tree is clean today (0 errors).
       - name: Lint (oxlint)
@@ -92,7 +105,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-headless-shell-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+          key: playwright-engines-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       # The headless shell alone, not the full Chromium: measured at 267 MB against 656 MB, and this
       # suite runs headless, so the rest is a download nothing opens. A headed run would need
@@ -106,6 +119,34 @@ jobs:
       # Apt packages, which are the runner's and not ours to cache.
       - name: Its system libraries
         run: pnpm --filter playground-core exec playwright install-deps chromium-headless-shell
+
+      # Firefox and WebKit, for the three generators below and for nothing else.
+      #
+      # They are HERE rather than in `test` because that job is the bottleneck for how long CI takes,
+      # and this one was already built to run beside it — its own note above says so. The generators
+      # themselves take about two seconds each; what costs is the download, which the cache above
+      # holds and which no other job pays.
+      - name: The other two engines
+        run: |
+          pnpm --filter playground-core exec playwright install firefox webkit
+          pnpm --filter playground-core exec playwright install-deps firefox webkit
+
+      # What `mdn-data` says against what a browser does — three facts this package generates by
+      # ASKING, because `mdn-data` was measured wrong about each of them:
+      #
+      #   prefixed properties   it lists 99; the engines have 262 between them
+      #   shorthand leaves      it was missing 37, after two hand-patches for the same fault
+      #   union keywords        14 values Chromium accepts that the type map refused
+      #
+      # The last is the one that matters most: `properties.ts` states the line these protect —
+      # "rejecting valid CSS is the one failure a type map may not have" — and an `mdn-data` bump or
+      # a browser release can reopen any of them silently. `pnpm check` cannot ask, because three
+      # engines are not something a local gate should download; this job already has them.
+      - name: What the engines say
+        run: |
+          node scripts/build-prefixed-properties.mjs --check
+          node scripts/build-shorthand-leaves.mjs --check
+          node scripts/build-engine-keywords.mjs --check
 
       - name: Build the playground
         run: pnpm exec turbo run build --filter=playground-core
@@ -200,7 +241,9 @@ jobs:
       # which is exactly what a fresh checkout gives — so running it earlier, or in a
       # job of its own, would report the missing build rather than the examples.
       - name: Type-check the documentation examples
-        run: node scripts/check-examples.mjs
+        run: |
+          SELFTEST=block node scripts/check-examples.mjs
+          node scripts/check-examples.mjs
 
       # Here for the same reason, and it needs the build even more directly: it asks a bundler what
       # survives importing each package's EMITTED entry. `@ramonda/devtools` once declared
