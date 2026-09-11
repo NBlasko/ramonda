@@ -1758,6 +1758,68 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 | `merge(base, modifier)` end to end | the CALL SITE decides — `cursor` and a shorthand override both land right |
 | the shorthand-aware merge, 50,309 random groupings | **associative** — nesting and flattening never disagree |
 | an always-truthy `if` condition, as a TYPE | reportable — and `any`/`unknown`/`T \| undefined` stay silent |
+
+### Against a BROWSER rather than against ourselves
+
+Nineteen reviews ran before the release. The findings are in the code and its comments; what is here
+is what was measured and came back CLEAN, because a refutation leaves no trace anywhere else — and
+re-deriving one is the same wasted week the heading above is about.
+
+**The method that found the last four faults**: compare against the CSS a person would have TYPED, in
+a real browser, rather than comparing two halves of this package with each other. Every review before
+that compared halves — checker against build, Vite against esbuild, types against rules — and those
+cannot find a fault both halves share. `!important` was exactly that: the compiler, the sheet and the
+runtime all agreed, and all three were wrong together.
+
+| | result |
+|---|---|
+| one block's atoms vs the same block as ONE plain rule | 22 blocks, 21 properties: **0 different**, after `!important` |
+| a hole, against the value written in by hand | 18 shapes: **0 different** |
+| composition with conditions, against the same CSS by hand | 21: 16 agree, 5 differ and **all 5 warn**, 0 silent |
+| the warning's own advice, followed | both halves stop the warning AND compute what the author meant |
+| the layer scheme, three minifiers | **1,800 load orders, 0 wrong** |
+| class names, 21x24x8 corpus | 2,904 blocks, 2,772 names, **0 collisions** |
+| `canonicalSelector`, against what a selector MATCHES | 64 selectors in Chromium: **0 meanings changed** |
+| every shorthand's clear-list, against the engines | 98 families, **321 pairs, 0 wrong both directions** |
+| `verifyVariables`, both directions | 17 shapes: **0 false reports** — the direction that matters |
+| the two bundler adapters, same source | 12 fault cases, 6 whole-build checks, 6 config keys: **0 disagreements** |
+| the checker against the BUILD | 23 sources, 21 rules: **0 disagreements** about whether to refuse |
+| `mdn-data` vs the ENGINES, vendor prefixes | 99 against **262**; it lacks `-webkit-font-smoothing`, which all three have |
+| `mdn-data` vs the engines, shorthand leaves | **37 longhands missing** after two hand-patches for the same fault |
+| the closed unions, against Chromium | 24 it refuses — harmless — and **14 it ACCEPTS that the map refused**: `writing-mode: tb`, `overflow-x: overlay`, `word-wrap: anywhere` and their kind. Closed by asking the engines; now 0 |
+| a keyword's CASE | Chromium accepts every one in both cases; **897 of 897** were reported as a value that does not exist, which was false. Still refused, as `non-canonical-spelling`, and the formatter rewrites them |
+| a swapped pair of letters, Levenshtein vs OSA | 396 silent typos -> 0, 100 wrong -> 2, and **faster** |
+| the dev warning in a production build | folds to nothing — measured with `NODE_ENV=production`, not with vitest's `test` |
+| four spellings of the `NODE_ENV` guard | **all four behave identically** — the optional chain was not the cause |
+| the warning's cost per compose | 0.0011 ms plain, 0.0056 `padding`, 0.0132 `border`, 0.1152 `all` |
+| `tsc` instantiations, a plain block | **FLAT at 597** — 1 block or 200 |
+| a generated token scale, arity, or a unit rule, as TYPES | instantiations **flat at 30**; only a MESSAGE in a type grows (59 -> 2,447) |
+| deriving a generated map with `Omit<Base, …>` | 2,531 instantiations against 30 for a written-out interface |
+| `configFor` called twice per file | 11 µs/file on a real 300-file build — small, and named as small |
+| a `filter` one directory too narrow, esbuild | `Expected identifier but found "@"`, naming nothing this package owns |
+
+### Three traps this cost a day each
+
+| | |
+|---|---|
+| **quirks mode** | caught three times in one session: `padding: 123` accepted, `color: 0` read as a hex colour, `@container` answering on one axis. **Every probe page needs `<!doctype html>`** |
+| **a stale `dist`** | 57 tests passed against a `src/cli.ts` replaced by a line that throws. `built.mjs` guards it now; `turbo` always built first, so CI never saw it |
+| **the control itself** | wrong five times across reviews 25–29 while the code was wrong three. A green control is a claim too, and the one claim nothing else checks |
+
+### The shape that found most of them
+
+**One question, two consumers, and only one of them right.** Nine of the nineteen reviews found it:
+
+- data that exists and nothing reads — `SELECTORS`, `AT_RULE_LINKS`, the clear-list in a composed map,
+  `HolePart.at`, the `TS2353` suppression reading one rule of thirty-two
+- a pair where one half was fixed and the other was not — the `maxBuffer` raised and the error path
+  left, the formatter's prelude and its declaration, `unknown-property` and every other rule
+- one answer written out twice — the prelude canonicaliser in `rules.ts` and `tooling.ts`, the
+  `line-comment` sentence, `verifyVariables` in two adapters
+
+When looking for the next one, ask **what does this depend on, and who else reads it** — that
+question, asked mechanically, found reviews 20, 21 and 24 on its own.
+
 | a spread of a non-block, as a TYPE | reportable; a lookup with a union key passes |
 | a typo inside `if`, and in every nesting of it | same code, same *did you mean*, as outside — nothing lost |
 | the condition as an ARGUMENT wrapping the group | **hides every fault in the body** — so it is its own array element |
@@ -1798,6 +1860,31 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
 - **The tooling decision.** A file using this cannot be read by biome or oxlint directly. Track K
   turns that into "our tooling" rather than "no tooling", but it stays a deliberate choice.
 - **Nesting depth in v1** — `&`, pseudo-classes and `@media` are recommended; anything deeper waits.
+- **Six rules the checker could have and does not**, each measured against a browser and each a
+  declaration or a rule the browser DROPS while this compiles it silently. None blocks the release:
+  they are new refusals, and what a build rejects is the user's call.
+
+  | | what a browser does |
+  |---|---|
+  | `padding: 1px 2px 3px 4px 5px` | drops the declaration — arity is readable off the grammars already parsed |
+  | `gap: 12` | drops it — 158 properties have ONE type per position, and the rule is right for 157 |
+  | `&:displaydd` | drops the **whole rule**, every declaration in it. `SELECTORS` has 129 entries and no rule reads them |
+  | `@supports (min-width: 40rem)` | always TRUE — a group that can never be off, reading exactly like a breakpoint |
+  | `@media (prefers-color-scheme: drak)` | never matches; the feature NAME is checked and its value is not |
+  | `@-anything: 3` | one dropped declaration; a property name may not begin with `@` |
+
+  The oracle for all six is `(f)` against `not (f)` in a real browser, which already verifies the
+  media features — and for `@container` the container must be `container-type: size` WITH a height,
+  or the block axis answers "unknown" for every real feature.
+
+- **`windows-latest` in CI.** Every job is `ubuntu-latest`, so nothing here has ever run on Windows,
+  and half the people who install this are on one. `toolIn` and `vscode/locate.js` look for the
+  `.cmd` spelling now, but whether `execFileSync` then RUNS a `.cmd` cleanly is a question this
+  machine cannot answer. One line of CI turns the reasoning into measurement.
+- **Config-driven strictness through codegen**, which is the user's idea and the one thing that would
+  put this ahead of StyleX rather than level with it. The measurements are in the TODO: every
+  constraint works as a generated TYPE with instantiations FLAT, the exception being a message inside
+  a type. `units` already ships this way, through a rule rather than a type.
 - **Two conditions the mode table does not name.** The ordering half is DONE and the reuse half is
   DONE; what is left is small.
 
@@ -1849,4 +1936,5 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
   ```
   node scripts/build-prefixed-properties.mjs
   node scripts/build-shorthand-leaves.mjs
+  node scripts/build-engine-keywords.mjs
   ```

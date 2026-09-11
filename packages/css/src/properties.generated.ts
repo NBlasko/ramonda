@@ -999,7 +999,7 @@ export interface CssProperties {
    * Initial: `baseline`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/alignment-baseline
    */
-  "alignment-baseline": Keyword<"baseline" | "alphabetic" | "ideographic" | "middle" | "central" | "mathematical" | "text-before-edge" | "text-after-edge">;
+  "alignment-baseline": Keyword<"baseline" | "alphabetic" | "ideographic" | "middle" | "central" | "mathematical" | "text-before-edge" | "text-after-edge" | "auto" | "hanging" | "text-bottom" | "text-top">;
   /**
    * `all` — `initial | inherit | unset | revert | revert-layer`
    * Initial: `noPracticalInitialValue`. Inherited: no.
@@ -2064,7 +2064,7 @@ export interface CssProperties {
    * Initial: `auto`. Inherited: yes.
    * @see https://developer.mozilla.org/docs/Web/CSS/dominant-baseline
    */
-  "dominant-baseline": Keyword<"auto" | "text-bottom" | "alphabetic" | "ideographic" | "middle" | "central" | "mathematical" | "hanging" | "text-top">;
+  "dominant-baseline": Keyword<"auto" | "text-bottom" | "alphabetic" | "ideographic" | "middle" | "central" | "mathematical" | "hanging" | "text-top" | "text-after-edge" | "text-before-edge">;
   /**
    * `dynamic-range-limit` — `standard | no-limit | constrained | <dynamic-range-limit-mix()>`
    * Initial: `no-limit`. Inherited: yes.
@@ -2149,7 +2149,7 @@ export interface CssProperties {
    * Initial: `nowrap`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/flex-wrap
    */
-  "flex-wrap": Keyword<"nowrap" | "wrap" | "wrap-reverse">;
+  "flex-wrap": Keyword<"nowrap" | "wrap" | "wrap-reverse" | "balance">;
   /**
    * `float` — `left | right | none | inline-start | inline-end`
    * Initial: `none`. Inherited: no.
@@ -2507,7 +2507,7 @@ export interface CssProperties {
    * Initial: `auto`. Inherited: yes.
    * @see https://developer.mozilla.org/docs/Web/CSS/image-rendering
    */
-  "image-rendering": Keyword<"auto" | "crisp-edges" | "pixelated" | "smooth">;
+  "image-rendering": Keyword<"auto" | "crisp-edges" | "pixelated" | "smooth" | "optimizeSpeed">;
   /**
    * `image-resolution` — `[ from-image || <resolution> ] && snap?`
    * Initial: `1dppx`. Inherited: yes.
@@ -2781,7 +2781,7 @@ export interface CssProperties {
    * Status: experimental.
    * @see https://developer.mozilla.org/docs/Web/CSS/margin-trim
    */
-  "margin-trim": Keyword<"none" | "in-flow" | "all">;
+  "margin-trim": Keyword<"none" | "in-flow" | "all" | "block" | "inline">;
   /**
    * `marker` — `none | <url>`
    * Initial: `marker-start, marker-mid, marker-end`. Inherited: yes.
@@ -3111,13 +3111,13 @@ export interface CssProperties {
    * Initial: `auto`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/overflow-anchor
    */
-  "overflow-anchor": Keyword<"auto" | "none">;
+  "overflow-anchor": Keyword<"auto" | "none" | "visible">;
   /**
    * `overflow-block` — `visible | hidden | clip | scroll | auto`
    * Initial: `auto`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/overflow-block
    */
-  "overflow-block": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto">;
+  "overflow-block": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto" | "overlay">;
   /**
    * `overflow-clip-box` — `padding-box | content-box`
    * Initial: `padding-box`. Inherited: no.
@@ -3135,7 +3135,7 @@ export interface CssProperties {
    * Initial: `auto`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/overflow-inline
    */
-  "overflow-inline": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto">;
+  "overflow-inline": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto" | "overlay">;
   /**
    * `overflow-wrap` — `normal | break-word | anywhere`
    * Initial: `normal`. Inherited: yes.
@@ -3147,13 +3147,13 @@ export interface CssProperties {
    * Initial: `visible`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/overflow-x
    */
-  "overflow-x": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto">;
+  "overflow-x": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto" | "overlay">;
   /**
    * `overflow-y` — `visible | hidden | clip | scroll | auto`
    * Initial: `visible`. Inherited: no.
    * @see https://developer.mozilla.org/docs/Web/CSS/overflow-y
    */
-  "overflow-y": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto">;
+  "overflow-y": Keyword<"visible" | "hidden" | "clip" | "scroll" | "auto" | "overlay">;
   /**
    * `overlay` — `none | auto`
    * Initial: `none`. Inherited: no.
@@ -3841,7 +3841,7 @@ export interface CssProperties {
    * Initial: `auto`. Inherited: yes.
    * @see https://developer.mozilla.org/docs/Web/CSS/text-align-last
    */
-  "text-align-last": Keyword<"auto" | "start" | "end" | "left" | "right" | "center" | "justify">;
+  "text-align-last": Keyword<"auto" | "start" | "end" | "left" | "right" | "center" | "justify" | "match-parent">;
   /**
    * `text-anchor` — `start | middle | end`
    * Initial: `start`. Inherited: yes.
@@ -4309,13 +4309,13 @@ export interface CssProperties {
    * Initial: `normal`. Inherited: yes.
    * @see https://developer.mozilla.org/docs/Web/CSS/overflow-wrap
    */
-  "word-wrap": Keyword<"normal" | "break-word">;
+  "word-wrap": Keyword<"normal" | "break-word" | "anywhere">;
   /**
    * `writing-mode` — `horizontal-tb | vertical-rl | vertical-lr | sideways-rl | sideways-lr`
    * Initial: `horizontal-tb`. Inherited: yes.
    * @see https://developer.mozilla.org/docs/Web/CSS/writing-mode
    */
-  "writing-mode": Keyword<"horizontal-tb" | "vertical-rl" | "vertical-lr" | "sideways-rl" | "sideways-lr">;
+  "writing-mode": Keyword<"horizontal-tb" | "vertical-rl" | "vertical-lr" | "sideways-rl" | "sideways-lr" | "lr" | "rl" | "tb">;
   /**
    * `x` — `<length> | <percentage>`
    * Initial: `0`. Inherited: no.

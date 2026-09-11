@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 
@@ -85,6 +85,21 @@ const LEAVES = JSON.parse(
   (
     /LEAVES: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\})\s*;/.exec(
       readFileSync(join(root, "packages/css/src/compiler/leaves.generated.ts"), "utf8"),
+    )?.[1] ?? "{}"
+  ).replace(/,(\s*[}\]])/g, "$1"),
+);
+
+/**
+ * Values an engine accepts that `mdn-data` left out of a property's grammar — see
+ * `build-engine-keywords.mjs`. Empty until that has been run once, which is the honest default: it
+ * widens what is allowed and never narrows it.
+ */
+const ENGINE_KEYWORDS = JSON.parse(
+  (
+    /ENGINE_KEYWORDS: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\n\})\s*;/.exec(
+      existsSync(join(root, "packages/css/src/compiler/keywords.engine.generated.ts"))
+        ? readFileSync(join(root, "packages/css/src/compiler/keywords.engine.generated.ts"), "utf8")
+        : "",
     )?.[1] ?? "{}"
   ).replace(/,(\s*[}\]])/g, "$1"),
 );
@@ -728,7 +743,19 @@ for (const name of named) {
     continue;
   }
 
-  const keywords = keywordsOf(properties[name].syntax);
+  /**
+   * The grammar's own keywords, **plus what an ENGINE accepts and `mdn-data` did not list.**
+   *
+   * `properties.ts` states the line: rejecting valid CSS is the one failure a type map may not have.
+   * Measured against Chromium, the shipped unions refused 14 values it accepts — `writing-mode: tb`,
+   * `overflow-x: overlay`, `word-wrap: anywhere`, `alignment-baseline: auto` and their kind. Legacy
+   * and SVG spellings, which is exactly what somebody migrating an existing stylesheet writes.
+   *
+   * Third time `mdn-data` has not been enough, and the third time the answer is the same: ask the
+   * engines. See `build-engine-keywords.mjs`, whose output this merges.
+   */
+  const grammar = keywordsOf(properties[name].syntax);
+  const keywords = grammar === undefined ? undefined : [...new Set([...grammar, ...(ENGINE_KEYWORDS[name] ?? [])])];
   const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
   const type = keywords === undefined ? "CssValue" : `Keyword<${keywords.map((k) => JSON.stringify(k)).join(" | ")}>`;
   rows.push(`${documentation(name)}\n  ${key}: ${type};`);
