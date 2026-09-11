@@ -23,7 +23,8 @@
     "release": "pnpm build && pnpm --filter create-ramonda verify-versions && changeset publish",
     "check:scaffold": "node scripts/check-scaffold.mjs ssr && node scripts/check-scaffold.mjs spa",
     "check:tsconfigs": "node scripts/check-tsconfigs.mjs",
-    "check:decorators": "node scripts/check-decorator-duplication.mjs"
+    "check:decorators": "node scripts/check-decorator-duplication.mjs",
+    "extension:package": "node scripts/package-extension.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.11",

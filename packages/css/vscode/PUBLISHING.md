@@ -1,83 +1,123 @@
-# Publishing this extension
+# Releasing this extension
 
-Everything in this folder is ready to package. What is left needs an account, and an account is not
-something a repository can hold — so this is the list, in the order it has to happen.
+`ramonda.css` is live. This is how a new version reaches it.
 
-## Once, by a person
+## The four steps
 
-1. **A publisher on the Visual Studio Marketplace.** DONE — `ramonda`, created 2026-09-08. The full
-   identifier of this extension is therefore `ramonda.css`, which mirrors the npm package it serves
-   (`@ramonda/css`); a second extension would be `ramonda.check`, on the same axis. **Neither half of
-   that identifier can be changed after the first publish** — a rename is a new extension, with none
-   of the installs or ratings of the old one.
-   <https://marketplace.visualstudio.com/manage>
+From the repository root:
 
-2. **A Personal Access Token** from Azure DevOps, in the same organisation as the publisher, scoped
-   to **Marketplace → Manage** and nothing else. This is the token CI uses.
+1. **Bump `version`** in `packages/css/vscode/package.json`.
 
-3. **A repository secret** — `VSCE_PAT` — holding it. The workflow below reads that name.
+   Nothing bumps it for you. The extension is deliberately outside `changeset`, because its version
+   and the npm packages' versions answer different questions — an extension is released when its
+   grammars, formatter or diagnostics change, and `@ramonda/css` is released when its API does.
+   Tying them together would publish an unchanged extension on every patch of anything.
 
-4. **`icon`** — DONE, and where it comes from matters more than the file. `icon.png` is the project's
-   own mark, rendered from the SVG the documentation site serves, which is itself generated from
-   `@ramonda/theme`:
+   Pre-1.0, the same rule the packages use: anything a user would notice is a **minor**, a fix is a
+   **patch**. Colouring that starts matching something new is a minor; a scope that was wrong is a
+   patch.
 
-       qlmanage -t -s 1024 -o <tmp> apps/docs/public/apple-icon.svg
-       sips -z 512 512 <tmp>/apple-icon.svg.png --out packages/css/vscode/icon.png
+2. **Write the entry at the top of `CHANGELOG.md`**, under `## <the same version>`.
 
-   **512×512, and from the SVG rather than from a PNG.** 128×128 is the marketplace MINIMUM, not the
-   size it displays: the item page draws the icon far larger than a list row does, and the first
-   version of this file was a 180×180 PNG scaled down to 128 — which looked soft beside extensions
-   shipping vectors. The user noticed before anybody else could. Render from the vector at a
-   multiple, then scale down once; never scale a small raster up.
+   Not bookkeeping. It is the extension's second tab on the marketplace page, and it is the only
+   thing that tells somebody with it installed what they are about to get. The packager refuses to
+   build if the top heading and the manifest disagree — which is the one place a human writes the
+   version twice, and therefore the only place a typo can be caught.
 
-   The light plate is deliberate: a transparent mark sits on white in one place and on near-black in
-   another.
+3. **`pnpm extension:package`**
 
-   **If a second extension is ever published — a checker, say — the axis that tells them apart is the
-   colour of the flower's CENTRE**, not a letter and not a badge. The icon is drawn at 16px in the
-   list of installed extensions, where three letters are a smudge and a colour is not. CSS keeps the
-   canonical gold centre because it is the first one; the next one changes it.
+   Writes `packages/css/vscode/ramonda-css-<version>.vsix` — about 41 KB, twelve files — and deletes
+   any older bundle beside it, because a stale `.vsix` is the easiest wrong file to upload. It is
+   gitignored (`*.vsix`); nothing about it is ever committed.
 
-5. **Open VSX, if the extension should reach Cursor, Windsurf or VSCodium** — none of them can
-   install from the Microsoft marketplace. A separate registry, a separate account (GitHub sign-in
-   plus the Eclipse publisher agreement) and a separate token: `ovsx create-namespace ramonda` once,
-   then `ovsx publish ramonda-css.vsix`. Nothing in this folder depends on it.
+   It refuses to build rather than build something broken. What it checks is what the test suite
+   cannot: that the manifest still points at files that exist, that each grammar's `scopeName`
+   matches the one it is registered under, that the icon is still 512×512, and steps 1 and 2 above.
+   `grammar.test.ts` asserts what the grammars MATCH; nothing else asserts that the manifest can
+   still find them. A renamed grammar file packages without a word and fails in a real editor as
+   "the colours just don't work".
 
-## Every release
+4. **Upload it.** <https://marketplace.visualstudio.com/manage/publishers/ramonda> → the `…` beside
+   `ramonda.css` → **Update** → drop the file in. New installs have it within a few minutes;
+   installed copies update on their own.
 
-Both are run **from this folder**, and neither is a `pnpm --filter` away. `packages/css/vscode` is
-deliberately not a workspace package — it is installed by linking and nothing in it goes to npm — so
-a filter matched no project and said so; and `pnpm publish` is a BUILT-IN command, which is why the
-second script is not called `publish`.
+   No token, no Azure DevOps, nothing to sign in to beyond the publisher account.
 
-    cd packages/css/vscode
-    pnpm run package               # writes ramonda-css.vsix
-    pnpm run publish-marketplace   # needs VSCE_PAT in the environment
+**The version is spent either way.** The marketplace takes a version once, refuses it ever after,
+and has no unpublish. That is the whole reason step 3 refuses instead of warning.
+
+## Upload AFTER the npm release, not before
+
+`README.md` links `@ramonda/css` on npm, in the section that tells a visitor how to get diagnostics,
+completions and formatting — which is most of what the page promises. Measured 2026-09-11:
+`npm view @ramonda/css` is a **404**, so that link is dead on the live page right now.
+
+The package is no longer `private`, so `changeset publish` fixes it. Until that has run, uploading a
+new `.vsix` only re-publishes the dead link under a version number that can never be reused. This is
+the same shape as `0.1.0`, which went live saying *"Installing it — Not published yet"*: the README
+is the front page, and a fact in it that stopped being true is not visible from the diff.
+
+## Before a release that changes behaviour
+
+Two things no test can do, because they are about the MANIFEST rather than the code:
+
+- Install the `.vsix` into a clean editor — `code --install-extension packages/css/vscode/ramonda-css-<version>.vsix`
+  — and open a file with a block. A wrong `injectTo` is invisible to every test and fatal in use.
+- Read `README.md` as the marketplace renders it. It is the extension's whole front page.
+
+## Publishing from CI, and why it is not on yet
+
+`.github/workflows/extension.yml` is written and **disabled** — `workflow_dispatch` only, so it
+cannot fire by accident. It needs one secret, `VSCE_PAT`, and that is where the chain stops:
+
+> a PAT comes from **Azure DevOps**, which needs an **organisation**, which needs an **Azure
+> subscription** with Owner or Contributor on it.
+
+Measured on 2026-09-11, signed in as the publisher account: `dev.azure.com/_usersSettings/tokens`
+is a 404 without an organisation, and the create-organisation form answers *"We couldn't find any
+subscriptions you have access to."* Microsoft's own billing FAQ says the same thing — a subscription
+is the requirement, pay-as-you-go included, and Azure DevOps itself stays free at its free tier.
+
+So a pay-as-you-go Azure subscription is the price of automating step 4, and the four steps above are
+the price of not having one. **Neither is urgent.** If the subscription is ever created and the
+picker still comes up empty, that is a stale token: Azure portal → Settings → All Directories →
+Switch to the subscription's directory, sign in again, then back to the signup.
+
+## The account facts, so they are not rediscovered
+
+- **Publisher `ramonda`**, created 2026-09-08, owned by the outlook.com account. The extension's full
+  identifier is therefore `ramonda.css`, mirroring the npm package it serves; a second extension
+  would be `ramonda.check`, on the same axis. **Neither half can be changed after the first
+  publish** — a rename is a new extension, with none of the installs or ratings of the old one.
+
+- **`icon.png` is the project's own mark**, rendered from the SVG the documentation site serves,
+  which is generated from `@ramonda/theme`:
+
+      qlmanage -t -s 1024 -o <tmp> apps/docs/public/apple-icon.svg
+      sips -z 512 512 <tmp>/apple-icon.svg.png --out packages/css/vscode/icon.png
+
+  512×512, and from the VECTOR. 128×128 is the marketplace minimum, not the size it displays: the
+  item page draws the icon far larger than a list row does, and the first version of this file was a
+  180×180 PNG scaled down — soft beside extensions shipping vectors. The light plate is deliberate;
+  a transparent mark sits on white in one place and on near-black in another.
+
+  **If a second extension is ever published, the axis that tells them apart is the colour of the
+  flower's CENTRE** — not a letter and not a badge. The icon is drawn at 16px in the list of
+  installed extensions, where three letters are a smudge and a colour is not. CSS keeps the canonical
+  gold centre because it was first; the next one changes it.
+
+- **Open VSX is a separate registry** and nothing here reaches it. Cursor, Windsurf and VSCodium
+  cannot install from the Microsoft marketplace at all. It needs its own account (GitHub sign-in plus
+  the Eclipse publisher agreement) and its own token: `ovsx create-namespace ramonda` once, then
+  `ovsx publish ramonda-css-<version>.vsix`.
+
+## Why the scripts live where they do
+
+`packages/css/vscode` is deliberately **not** a workspace package — it is installed by linking and
+nothing in it goes to npm — so `pnpm --filter` matches no project and says so. `pnpm
+extension:package` from the root is the route; `pnpm run package` inside the folder runs the same
+script. And `pnpm publish` is a built-in command, which is why the other one is called
+`publish-marketplace`.
 
 `vsce` is fetched by `pnpm dlx`, pinned to its major, rather than installed: it is a tool used twice
 a year, and every contributor would otherwise carry it in every install.
-
-**`version` is `0.0.0` and has to move before the first publish.** The marketplace refuses a version
-it has already seen, and unlike npm there is no unpublish. It is the manifest's version that moves
-and nothing else: `install.mjs` reads the name and version out of the manifest, so the linked folder
-follows a bump on its own.
-
-## What is deliberately NOT automated
-
-The extension is **not** part of `changeset publish`. Its version and the npm packages' versions
-answer different questions — an extension is released when its grammars or diagnostics change, and
-`@ramonda/css` is released when its API does — and tying them together would publish an unchanged
-extension on every patch of anything.
-
-## A workflow, when the token exists
-
-`.github/workflows/extension.yml` is written and **disabled**: its trigger is `workflow_dispatch`
-only, so it cannot fire by accident before step 3 above is done. Add the secret, then decide whether
-to give it a tag trigger.
-
-## Before the first publish, check by hand
-
-- Install the `.vsix` into a clean editor (`code --install-extension ramonda-css.vsix`) and open a
-  file with a block. The grammars are asserted by `grammar.test.ts`, but the MANIFEST that loads them
-  is not — a wrong `injectTo` or a renamed grammar file is invisible to those tests.
-- Read `README.md` as the marketplace will render it: it is the extension's whole front page.

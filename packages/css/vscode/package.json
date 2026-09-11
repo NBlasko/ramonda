@@ -1,7 +1,7 @@
 {
   "name": "css",
   "displayName": "Ramonda CSS",
-  "description": "Real CSS beside your markup: syntax colouring, formatting and diagnostics for @@( \u2026 ) style blocks.",
+  "description": "Real CSS beside your markup: syntax colouring, formatting and diagnostics for @@( … ) style blocks.",
   "version": "0.1.2",
   "private": true,
   "publisher": "ramonda",
@@ -75,7 +75,7 @@
   "bugs": {
     "url": "https://github.com/NBlasko/ramonda/issues"
   },
-  "author": "Nikola Blagojevi\u0107",
+  "author": "Nikola Blagojević",
   "keywords": [
     "css",
     "eteti",
@@ -87,7 +87,7 @@
   ],
   "scripts": {
     "install-locally": "node install.mjs",
-    "package": "pnpm dlx @vscode/vsce@3 package --no-dependencies --out ramonda-css.vsix",
+    "package": "node ../../../scripts/package-extension.mjs",
     "publish-marketplace": "pnpm dlx @vscode/vsce@3 publish --no-dependencies"
   }
 }

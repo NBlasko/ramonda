@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,17 +29,33 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** `\uXXXX`, anywhere in the file. */
 const ESCAPE = /\\u[0-9a-fA-F]{4}/;
 
-/** Every manifest a person reads: the workspace's own, its packages', and its apps'. */
+/** Everything that is not a manifest anybody wrote: installed, built, or generated. */
+const SKIP = new Set(["node_modules", "dist", "build", ".git", ".turbo", ".next", "coverage"]);
+
+/**
+ * Every manifest a person reads, at ANY depth.
+ *
+ * **It walked one level for a while, and the manifest that got away was the worst one to miss.**
+ * `packages/css/vscode/package.json` is the VS Code extension's, and its `description` is the
+ * sentence the marketplace prints under the title. It carried `@@( … )` and an author reading
+ * `Nikola Blagojević` — already published, for anyone to read — because the walk stopped one
+ * directory above it.
+ *
+ * So depth is not somewhere to save work: a manifest further down is not a lesser manifest, and
+ * here it was the most public one in the repository.
+ */
 function manifests() {
-  const out = [join(root, "package.json")];
-  for (const group of ["packages", "apps"]) {
-    const dir = join(root, group);
-    if (!existsSync(dir)) continue;
+  const out = [];
+  const walk = (dir) => {
+    const file = join(dir, "package.json");
+    if (existsSync(file)) out.push(file);
     for (const name of readdirSync(dir)) {
-      const file = join(dir, name, "package.json");
-      if (existsSync(file)) out.push(file);
+      if (SKIP.has(name) || name.startsWith(".")) continue;
+      const next = join(dir, name);
+      if (statSync(next).isDirectory()) walk(next);
     }
-  }
+  };
+  walk(root);
   return out;
 }
 

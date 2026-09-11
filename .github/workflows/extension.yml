@@ -50,10 +50,14 @@ jobs:
         run: pnpm run package
 
       # Kept whether or not it is published, so a build can be installed by hand from a run.
+      #
+      # A GLOB, because the bundle carries its version: `ramonda-css-0.1.2.vsix`. The name used to be
+      # fixed and this path was written out in full — which would have failed here, on a workflow
+      # nothing runs automatically, long after the rename.
       - uses: actions/upload-artifact@v4
         with:
           name: ramonda-css-vsix
-          path: packages/css/vscode/ramonda-css.vsix
+          path: packages/css/vscode/*.vsix
           if-no-files-found: error
 
       # `publish-marketplace`, and the name matters: `pnpm publish` is a BUILT-IN command, so
