@@ -41,6 +41,31 @@ const card = @@( COLOR: RED; );
 
 CSS does not mind either. Your repository does.
 
+## Inside a named block, the vocabulary is its own
+
+`@@keyframes`, `@@font-face` and `@@property` each hold something different from an element's rule,
+and the check follows that:
+
+| written | what happens |
+|---|---|
+| `opacty: 1` in a frame | reported — a frame holds ordinary properties |
+| `form { … }` | reported — a frame is `from`, `to` or a percentage |
+| `opacity: 0` outside any frame | reported — it belongs to no time, so the browser drops it |
+| `@@font-face` with no `src` | reported — the descriptor is required, and the face would load nothing |
+| `font-familly: "Brand"` | reported, with the descriptor you meant |
+| `@@property` with no `inherits` | reported — measured, the browser drops the whole rule without it |
+| `initial-value` its `syntax` does not accept | reported — measured, the browser drops the whole rule for that too |
+| a registered property set to a value its `syntax` refuses | reported — measured, the browser keeps the `initial-value` and says nothing |
+| `&:hover { … }` in either | reported — a descriptor list has no element to select against |
+
+A hole may not go in one of these at all: a hole is a custom property **on an element**, and these
+name something the whole stylesheet uses, so there is no element for the value to come from.
+
+**A media feature that will never match is the row worth pausing on**, because it is not invalid CSS.
+Measured in Chromium, `@media (min-widht: 40rem)` survives a parse with its text intact — the browser
+keeps the rule and simply never matches it, so every declaration inside is silently inert. Nothing
+but this reports it.
+
 ## When a rule is wrong
 
 **Every rule here fails the build.** There is no warning level, and that is deliberate: a warning

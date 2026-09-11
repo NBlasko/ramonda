@@ -68,8 +68,79 @@ A misspelling is not a CSS problem here, it is an unresolved name: `var({ackcent
 name 'ackcent'. Did you mean 'accent'?*, from TypeScript, with the suggestion it already knows how to
 make.
 
-**A theme is a module of these.** Put the tokens in their own file and import them — there is no
-`@@theme`, because a file of `@@property` sites already is one.
+## A theme is a module of these
+
+Put the tokens in their own file and import them. That is the whole of it — there is no `@@theme`,
+because a file of `@@property` sites already is one:
+
+```tsx module:./theme
+// theme.tsx
+export const accent = @@property(
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #10b981;
+);
+
+export const gap = @@property(
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 12px;
+);
+```
+
+```tsx
+import { accent, gap } from "./theme";
+
+const card = @@(
+  color: var({accent});
+  border-color: var({accent});
+  padding: var({gap});
+);
+```
+
+**One variable per token, and none on the element.** Measured through a production build: those three
+declarations became three classes reading two custom properties — `color` and `border-color` share
+`accent`'s — and the element carries no inline style at all. Every block in the app that reads
+`accent` gets the same class, so the rules are shared too.
+
+The rule that registers a token travels with whoever reads it, so a theme module needs no other
+reason to be in your bundle: the name is derived from the module's text, so every reader emits the
+same registration and the stylesheet keeps one.
+
+**A theme swap is then CSS, not a render.** The value is an ordinary custom property, so setting it
+again on an ancestor changes everything below. Put `data-theme` on `<html>` and nothing re-renders —
+the browser recomputes styles, which is what it is for.
+
+## A font, and a property you can animate
+
+```tsx
+const brand = @@font-face(
+  font-family: "Brand";
+  src: url("/brand.woff2") format("woff2");
+  font-display: swap;
+);
+
+const angle = @@property(
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+);
+
+const turn = @@keyframes(
+  from { {angle}: 0deg; }
+  to { {angle}: 180deg; }
+);
+
+const dial = @@(
+  transform: rotate(var({angle}));
+  animation: {turn} 1.2s linear infinite;
+);
+```
+
+`@@font-face` names nothing — the `font-family` inside it is the handle, and that is the string other
+rules match on, so its block is written for its own sake. The other two name something, and
+`@@property` names a **custom** property, so what it compiles to is `--r-…` with the dashes: that is
+the one name a hole may stand in, which is how the frames above set it.
 
 ## A name nothing sets
 
@@ -129,6 +200,16 @@ attribute on `<html>` changes, which is not a render at all.
 
 A hole is for what varies per **instance** — a value this element has and the one beside it does not.
 A theme is the opposite of that.
+
+## `:root` does not work inside a block
+
+```
+:root { --accent: red; }        ✗  inside a block
+```
+
+It compiles, and then does nothing. Measured through the same CSS compiler a build uses, it flattens
+to `.r-… :root` — a descendant selector, and `:root` is the `<html>` element, which is nobody's
+descendant. The theme's own declarations belong in a stylesheet.
 
 ## Next
 

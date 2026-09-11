@@ -2,7 +2,7 @@
 title: Composing, and who wins
 description: Merging one block into another, conditions that bring whole groups, and the cascade layer that decides against your own stylesheet.
 section: Style blocks
-order: 110
+order: 111
 ---
 
 # Composing, and who wins
@@ -64,6 +64,61 @@ Because that is the one rule this syntax has: **TypeScript appears inside `{ }` 
 `if (this.disabled)` would read more naturally and would be a second spelling for the same thing —
 and the moment there are two, every reader has to learn which one a given line is.
 
+## What is checked in a group
+
+Everything a block is checked for, a group is checked for the same way — a typo inside `if` is the
+same error, with the same *did you mean*, that it is outside one.
+
+**The condition is an ordinary expression and is not required to be a `boolean`.** It is the same
+`if` JavaScript has, and `if ({items.length})` is the shape people reach for; demanding a `boolean`
+would refuse it for nothing. What is refused is a condition that can never be FALSE, because that is
+a group that can never be off. A type that holds `false`, `0`, `""`, `null` or `undefined` is a
+condition; one that holds none of them is a mistake.
+
+| written | what happens |
+|---|---|
+| `if ({this.method})` — a method you forgot to call | reported: *a function is always truthy — call it, or test a value* |
+| `if ({someObject})`, `if ({"yes"})`, `if ({items})` | reported: *this is always truthy, so the group can never be off* |
+| `if ({maybeUndefined})` | fine — that is the shape a prop has |
+| `if ({items.length})`, `if ({name})` | fine — `0` and `""` are false, so the group can be off |
+| `...{notABlock}` | reported: *only a style block can be spread* |
+| `...{base}` inside `&:hover` or a `@media` | reported — see below |
+
+## Nesting, and a shorthand meeting its longhand
+
+`if` nests, and a nested condition means both must hold. A selector inside a group and a group inside
+a selector mean the same thing, so write whichever reads better.
+
+One thing worth knowing, because CSS itself works this way: a **shorthand written later clears the
+longhands it covers**. If a base sets `padding-left: 40px` and a modifier sets `padding: 8px`, the
+modifier wins completely — which is what those two declarations would do in a plain stylesheet. The
+other direction leaves both standing, also as CSS does.
+
+That holds across the logical spellings too: `margin` sets all four sides whichever way the text
+runs, so it clears `margin-inline`, `margin-block-start` and the rest.
+
+**A spread goes at the top of a block, or inside `if`** — not inside a selector or a `@media`. It
+merges a whole block, and a block carries the context each of its own declarations was written in, so
+there is nothing sensible for a nested one to mean. An `if` is fine: it changes no declaration, it
+only decides whether the whole thing lands.
+
+## Logical and physical, in one block
+
+`margin-inline` is the left and right margins when the text runs across, and the top and bottom ones
+when it runs down. Which it is depends on `writing-mode`, and that is not known until the page is
+laid out.
+
+So a block that writes a physical side and then a logical one that might cover it is reported:
+
+```
+margin-left: 4px;
+margin-inline: 8px;        ✗  whether this overrides the line above depends on writing-mode
+```
+
+Write both in one system — `margin-inline-start` and `margin-inline`, or `margin-left` and `margin`
+— and the question does not arise. The other order is fine, and so is a four-side shorthand in
+either position, because neither leaves anything for the layout to decide.
+
 ## The one place this is not plain CSS
 
 Every rule is emitted inside `@layer ramonda`, and **a layer is the one thing here that behaves
@@ -121,6 +176,22 @@ The `@layer a, b;` statement is what ranks them, and **a layer named later in it
 
 Without that statement the order is whichever layer the browser meets first, which is the same
 "your bundler decides" problem in a smaller box. Write the statement.
+
+## What a block cannot hold is `@layer` itself
+
+```tsx expect-report:layer-in-a-block
+const a = <div css={@@(
+  @layer buttons {
+    color: red;
+  }
+)}>…</div>;
+```
+
+A layer written in a block would be a sublayer of `ramonda`, and CSS orders layers it was given no
+explicit order for by first appearance. The stylesheet writes one file at a time, so which sublayer
+wins would be decided by which file your bundler reached first — and there is nowhere inside a block
+to write the `@layer a, b;` that would settle it. **It looks like a cascade control and cannot be
+one**, so it is reported rather than emitted.
 
 ## Next
 

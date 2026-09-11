@@ -2,7 +2,7 @@
 title: Project settings
 description: ramonda.css.ts, the rules your project makes stricter than CSS is, and what the class names say.
 section: Style blocks
-order: 111
+order: 112
 ---
 
 # Project settings
@@ -74,6 +74,31 @@ Where a declaration sits is written in front of it:
 
 The `_` before `.title` is the space in `& .title` — which is what separates a descendant from
 `&.title`, a different element and a different class.
+
+## Why some are still a hash
+
+```
+r-QbofRLj5j
+```
+
+Four reasons, and each is a name that could not be written rather than a preference:
+
+- **the declaration carries a hole** — its value is a custom property, not text you wrote;
+- **the name would be too long** — over 32 characters, which in practice means a `transition` or a
+  `grid-template` with several parts;
+- **the value or the context holds a character a class name cannot** — a quote, most often;
+- **the selector is a list** — `&:hover, &:focus` is two selectors sharing a body, and there is no
+  one spelling for it.
+
+## In the stylesheet they look escaped
+
+```css
+.r-bg-\#10b981 { background: #10b981 }
+```
+
+That backslash is CSS's own: in a selector a `#` starts an id, so a class name holding one has to say
+it means a `#`. The markup carries the name without it, which is what you see in devtools and what
+you would grep for.
 
 ## Next
 

@@ -130,6 +130,116 @@ Invalid at computed-value time is worse than invalid at parse time: the property
 initial value **and takes any earlier declaration of it with it**. So text written against a hole is
 reported — a unit, a suffix, a `#` in front, on either side.
 
+## One value, read many times
+
+Write the hole wherever you need the value. That is the whole answer for almost every block:
+
+```tsx
+declare const accent: string;
+
+const card = @@(
+  border-left: 4px solid {accent};
+  background: {accent};
+  color: {accent};
+);
+```
+
+A hole belongs to the declaration it is written in, so this puts **three** custom properties on the
+element rather than one, all holding the same value — a rule is shared by every element that names
+it, so its variable cannot be named after anything but itself.
+
+**Whether that matters is a number, and the number is small.** On a real block reading one value
+five times, measured: the `style` attribute is 102 B written directly, and 24 B if you declare a
+custom property once and read it. **Seventy-eight bytes an element.** On one card that is nothing;
+on a list of a hundred rows it is 7.8 KB of markup, and then it is worth a line:
+
+```tsx
+declare const accent: string;
+
+const row = @@(
+  --accent: {accent};
+  border-left: 4px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent);
+);
+```
+
+The three declarations below it have no hole at all now, so they are static classes that dedupe with
+every other block writing the same thing. **Reach for this when a block repeats across many
+elements, not by default** — the direct form is shorter to read and to write, and 78 bytes is not a
+reason.
+
+**The name is yours, and a custom property INHERITS.** `--accent` is set on the element and is
+visible to everything inside it: measured, a descendant that reads `var(--accent)` and never sets one
+picks up the ancestor's value, a descendant that sets its own shadows it, and an element outside the
+subtree falls back. That is a feature when you mean it and a collision when you do not — a card
+setting `--accent` changes any descendant whose own block reads that name.
+
+So pick a name you would be happy to see inherited, or one nobody else would write. The names the
+compiler generates for holes never have this problem: `--r-<class>-0` is derived from the declaration
+itself, so two different declarations can never agree on one by accident.
+
+## A hole may not be empty
+
+`string | number`, and nothing else. `undefined` and `null` are refused, so a value that might not be
+there needs a fallback written where it is used:
+
+```
+color: {tint};                   ✗  TS2345 — `null` is not a value
+color: {tint ?? "inherit"};      ✓
+```
+
+An empty hole is not a declaration you can see. It is a `var()` with nothing behind it, which makes
+the whole declaration invalid at computed-value time — so the property falls back past **every
+earlier declaration of it**, including the one you spread in above.
+
+On a server-rendered page it is worse in one direction: a hole that has a value on the server and
+none on the client is a divergence, and the page keeps showing the server's value. Write the empty
+case out and neither happens.
+
+## The value carrying a unit can be typed
+
+A hole's value is `string | number`, and it has to be: **349 of 551 properties are composite**.
+`border-left` is `<line-width> || <line-style> || <color>`, so `4px solid red` in any order — a type
+narrow enough to refuse `4px sollid red` would refuse `red 4px solid`, which is correct CSS.
+
+So the type goes where the value is **made**, which is the better place anyway: the error lands on
+the line somebody wrote.
+
+```
+const border: CssDimension = `${weight}px`;      ✓
+const border: CssDimension = `${weight}pddx`;    ✗  TS2322, on this line
+```
+
+No `as const` is needed — the annotation is the context — and it works in a getter, which is where a
+value like this usually comes from:
+
+```tsx
+import type { CssDimension } from "@ramonda/css";
+
+class Card {
+  weight = 4;
+  get border(): CssDimension {
+    return `${this.weight}px`;
+  }
+}
+```
+
+**The unit set is a parameter**, so an app that has settled on one says so:
+
+```
+const gap: CssDimension<"px"> = `${n}rem`;       ✗  TS2322 — this app writes px
+```
+
+There is a union per family — `CssLengthUnit`, `CssAngleUnit`, `CssTimeUnit`, `CssResolutionUnit`
+and `CssFrequencyUnit` — so `CssDimension<CssLengthUnit>` is a length and refuses `12deg`. All of
+them are generated from the same unit table the checker measures a typo against, so the two cannot
+disagree.
+
+One looseness, on purpose: **any call is admitted.** `calc()`, `min()`, `clamp()` and `var()` can
+each produce any dimension and nothing in a type can read inside one, so `calc(1rem + 2px)` passes
+`CssDimension<"px">`. Refusing calls would make the type useless in the one place you reach for it.
+
 ## Comments
 
 A block is CSS, so its comment is CSS's, and it is stripped from the emitted rule:

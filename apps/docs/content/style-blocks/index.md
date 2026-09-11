@@ -151,9 +151,11 @@ being asked — that is the setting above.
   nesting and conditions.
 - **[What is checked](/style-blocks/checking)** — every rule, what it catches, and how to silence one
   that is wrong.
-- **[Names the whole stylesheet sees](/style-blocks/variables)** — custom properties, `@@property`,
-  and what a theme is.
-- **[Composing](/style-blocks/composing)** — reusing a block, and which declaration wins.
+- **[Names the stylesheet sees](/style-blocks/variables)** — custom properties, `@@property`,
+  keyframes, and what a theme is.
+- **[Which declaration wins](/style-blocks/order)** — two declarations of one property, and the rule
+  that decides between them.
+- **[Composing](/style-blocks/composing)** — reusing a block, conditions, and your own stylesheet.
 - **[Project settings](/style-blocks/settings)** — `ramonda.css.ts`, and making the rules stricter.
 - **[Tooling](/style-blocks/tooling)** — formatters, linters, other JSX libraries, and what this
   does not do.
