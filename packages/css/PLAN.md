@@ -1840,6 +1840,7 @@ Every row was run, not reasoned. Re-deriving them is the main way to waste a wee
   node packages/css/prototype-layers.mjs
   node packages/css/prototype-dev-vs-build.mjs
   node packages/css/prototype-shorthands.mjs
+  node packages/css/prototype-composition.mjs
   ```
 
   And two generators that ask BROWSERS rather than `mdn-data`, run on demand because three engines
