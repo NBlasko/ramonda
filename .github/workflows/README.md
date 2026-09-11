@@ -119,9 +119,21 @@ public repositories, on the built-in `GITHUB_TOKEN`. Coverage is still not a
 *threshold* gate; nothing fails on a percentage (see *Deliberate gaps*).
 
 It was briefly a separate `coverage` task in its own job, and that was wrong twice
-over. It ran the whole suite a second time for one report — measured here, `turbo run
-test --force` takes 116.6s and the instrumented run 126.9s, so the duplicate cost a
-full extra ~2 minutes to save 10 seconds of instrumentation. And more seriously, the
+over. It ran the whole suite a second time for one report — measured at the time,
+`turbo run test --force` took 116.6s and the instrumented run 126.9s, so the duplicate
+cost a full extra ~2 minutes to save 10 seconds of instrumentation.
+
+**That 10 seconds is no longer the number, and the difference is not small.** Measured
+2026-09-11, after `@ramonda/css` was added — a package that did not exist when the line
+above was written, and which is now a third of the suite:
+
+    @ramonda/css      46.6s uninstrumented      225.3s with --coverage      4.8x
+    plugin.test.ts    42.8s                     219.1s                      5.1x
+
+The whole `test` job is ~2438s of CPU work, of which `@ramonda/css` is 836s and
+`@ramonda/core` 593s. So instrumentation is now the dominant cost of the job rather
+than a rounding error, and the reasoning that folded the two tasks together — correct
+then — is worth re-deciding on these numbers. See *Deliberate gaps*. And more seriously, the
 second task name silently **dropped tests**: 21 test tasks against 18 coverage ones,
 because `create-ramonda` (which tests the built bundle), `@ramonda/docs` and
 `@ramonda/playground-ssr` (whose test boots a server and smoke-tests it) have no
@@ -562,6 +574,24 @@ only with the fix in hand:
 - **Turbo remote caching.** Add `TURBO_TOKEN` / `TURBO_TEAM` to share the build
   cache across runs and machines, so `test` and `build` stop rebuilding from
   scratch each job.
+- **The `test` job costs ~10 minutes, and instrumentation is most of it.** Measured
+  2026-09-11: 2438s of CPU work across 15 packages, `@ramonda/css` 836s of it and
+  `@ramonda/core` 593s — and `--coverage` is **4.8x** on css (46.6s to 225.3s). Three
+  things to weigh, in this order:
+  1. **Take coverage off the PR path.** It is paid on all 15 packages on every run and
+     the number is read by Coveralls alone. Running it on `main` only, or in a job that
+     does not block a merge, is roughly a fivefold cut. Read the *Coverage* section
+     first: folding the two tasks into one was deliberate and dropped three test tasks
+     when they were separate. Whatever replaces it must keep `turbo run test` as the
+     gate.
+  2. **Cache `.turbo` between runs.** Only the pnpm store and the Playwright binaries
+     are cached today, so every run re-tests every package including untouched ones —
+     a PR that edits only `apps/docs` pays for the whole suite. `test` is already
+     `cache: true` with `outputs` declared, so this is workflow YAML and nothing else.
+     It does not help a PR that changes a big package, which is the point: it fixes the
+     common case, not the worst one.
+  3. **Split the job** only if the two above are not enough. `css` alone is 836s against
+     1602s for everything else, and a second job pays checkout, install and build again.
 - **Node version matrix.** CI runs one version, from `.nvmrc`. A matrix is worth
   adding when the packages have users on other majors — which is a `1.x` concern,
   not a `0.x` one. Until then a second version costs CI minutes to prove something

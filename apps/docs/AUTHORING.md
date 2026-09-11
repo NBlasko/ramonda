@@ -127,3 +127,31 @@ framework used to do. That knowledge lives in the git history and in the source'
 which is the one job the diff-writing this repository does so much of is genuinely for.
 
 The real answer is a reader who is not us. Until there is one, these are the proxies.
+
+## OPEN, for Monday: the reader who is not us read it, and the answer was bad
+
+2026-09-11. The repository owner read `/style-blocks` as a reader and said so plainly: *"generalno
+je mnogo losa … ovo je porazavajuce"*. That is the verdict this checklist says it cannot produce,
+from the only person who can produce it, and it is the one that counts.
+
+**It is not one page.** The style-blocks pages were written and reviewed the same week and still came
+out this way, so the fault is in how pages get written here, not in a page.
+
+What is already known about the how, from that week alone:
+
+- **A split lost thirteen sections**, including the package's central semantics — the four rules that
+  decide which of two declarations wins. Found by a mechanical walk of the old outline, not by
+  reading the result. The line count made it look like tidying.
+- **Three live factual errors** sat on the published page: an extension described as *"not published
+  yet"* a week after it shipped, Prettier and biome given one instruction where they need opposite
+  ones, and a syntax led with that the project had decided against and never writes.
+- **Every one of the seven checks above passed** on those pages. So did `check-examples`, which
+  proves an example COMPILES and nothing else.
+
+**The task, and it is a research task first.** Find out what actually produces good documentation
+here — a different model, a different prompt shape, a human pass, a reader-facing test, or the
+admission that a checklist written by the same hand that writes the pages cannot catch what it
+misses. Bring evidence, not a preference: take one bad page, have two or three approaches rewrite
+it, and have somebody who does not know the framework read the results cold.
+
+Do not start by rewriting pages. The pages have been rewritten twice already.
