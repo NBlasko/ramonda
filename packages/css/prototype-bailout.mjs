@@ -7,6 +7,10 @@
  *     node packages/css/prototype-bailout.mjs
  */
 import { globSync, readFileSync } from "node:fs";
+import { builtFromThisSource } from "./built.mjs";
+
+// This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
+builtFromThisSource();
 const files = globSync("{apps,packages}/*/src/**/*.{ts,tsx}", { cwd: process.cwd() }).filter(
   (f) => !f.includes("/dist/") && !f.includes("/.build/"),
 );

@@ -68,6 +68,10 @@ writeFileSync(
   join(dir, "src.test.tsx"),
   `import { describe, test, expect } from "vitest";
 import { Component } from "@ramonda/core";
+import { builtFromThisSource } from "./built.mjs";
+
+// This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
+builtFromThisSource();
 
 class Card extends Component {
   accent = "#10b981";

@@ -4,7 +4,11 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, test } from "vitest";
+import { beforeAll, afterEach, describe, expect, test } from "vitest";
+import { builtFromThisSource } from "./built";
+
+/** This file runs the BUILD, so a stale `dist` would measure a previous version — see `built.ts`. */
+beforeAll(builtFromThisSource);
 
 /**
  * The editor extension, which is PUBLISHED and had no test of any kind.

@@ -39,6 +39,10 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { builtFromThisSource } from "./built.mjs";
+
+// This probe reads `dist`, and its numbers get written down as facts — see `built.mjs`.
+builtFromThisSource();
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const { chromium } = createRequire(join(HERE, "..", "..", "apps", "playground-core", "package.json"))(
