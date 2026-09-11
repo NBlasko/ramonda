@@ -28,7 +28,7 @@ function hooks() {
   return { plugin, transform, load, resolveId };
 }
 
-const STYLED = `const a = <div css=@@( display: flex; )>x</div>;\n`;
+const STYLED = `const a = <div css={@@( display: flex; )}>x</div>;\n`;
 
 describe("where it sits in the pipeline", () => {
   test("before esbuild, which is a requirement rather than a preference", () => {
@@ -174,8 +174,8 @@ describe("a save, which is what a dev server does all day", () => {
 
   test("a block the author deleted leaves the sheet with it", () => {
     const { transform, load } = hooks();
-    transform.call({}, `const a = <div css=@@( display: flex; )>x</div>;\n`, "/src/Card.tsx");
-    transform.call({}, `const a = <div css=@@( display: grid; )>x</div>;\n`, "/src/Card.tsx");
+    transform.call({}, `const a = <div css={@@( display: flex; )}>x</div>;\n`, "/src/Card.tsx");
+    transform.call({}, `const a = <div css={@@( display: grid; )}>x</div>;\n`, "/src/Card.tsx");
 
     const css = load.call({}, cssOf("/src/Card.tsx"));
     expect(css).toContain("display:grid;");
@@ -245,16 +245,16 @@ describe("a save, which is what a dev server does all day", () => {
 
     transform.call(
       context,
-      `const a = <div css=@@( display: flex; )>x</div>;\nconst b = <p css=@@( color: red; )>y</p>;\n`,
+      `const a = <div css={@@( display: flex; )}>x</div>;\nconst b = <p css={@@( color: red; )}>y</p>;\n`,
       "/src/One.tsx",
     );
-    transform.call(context, `const c = <div css=@@( color: red; )>z</div>;\n`, "/src/Two.tsx");
+    transform.call(context, `const c = <div css={@@( color: red; )}>z</div>;\n`, "/src/Two.tsx");
     expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("color:red;");
 
     reloaded.length = 0;
     // One.tsx keeps `display:flex` and drops `color:red`, so it still has blocks — a different path
     // from losing every one of them.
-    transform.call(context, `const a = <div css=@@( display: flex; )>x</div>;\n`, "/src/One.tsx");
+    transform.call(context, `const a = <div css={@@( display: flex; )}>x</div>;\n`, "/src/One.tsx");
 
     expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("color:red;");
     expect(reloaded).toEqual([]);
@@ -273,7 +273,7 @@ describe("a block it cannot read", () => {
     const { transform } = hooks();
 
     try {
-      transform.call({}, `const a = <div css=@@( {name}: 24px; )>x</div>;\n`, "/src/Card.tsx");
+      transform.call({}, `const a = <div css={@@( {name}: 24px; )}>x</div>;\n`, "/src/Card.tsx");
       expect.unreachable("the plugin should have refused");
     } catch (error) {
       const refusal = error as Error & { id?: string; loc?: { line: number; column: number } };
@@ -286,11 +286,14 @@ describe("a block it cannot read", () => {
        * error anywhere to find it. Measured on a real parse error at a known position: `@` on
        * 1-based column 20 came back as `1:19`, caret under it.
        *
-       * The hole's `{` is at 1-based column 24 in the source below.
+       * The hole's `{` is at 1-based column 25 in the source below — it was 24 while a block could
+       * be written as a bare attribute, and the brace the braced spelling adds moved every column
+       * after it by one. The numbers are asserted from the source rather than written out for
+       * exactly this reason.
        */
-      const source = `const a = <div css=@@( {name}: 24px; )>x</div>;\n`;
-      expect(source.indexOf("{", source.indexOf("@@(") + 3) + 1).toBe(24);
-      expect(refusal.loc).toEqual({ line: 1, column: 23 });
+      const source = `const a = <div css={@@( {name}: 24px; )}>x</div>;\n`;
+      expect(source.indexOf("{", source.indexOf("@@(") + 3) + 1).toBe(25);
+      expect(refusal.loc).toEqual({ line: 1, column: 24 });
     }
   });
 });
@@ -326,7 +329,7 @@ describe("what an app has to write", () => {
  * in the stylesheet. Nothing throws. The page renders, unstyled, with nothing to blame.
  */
 describe("the assembled stylesheet", () => {
-  const SOURCE = `const a = <div css=@@( color: {c}; )>x</div>;\n`;
+  const SOURCE = `const a = <div css={@@( color: {c}; )}>x</div>;\n`;
 
   /** The plugin after one file has been through it, and the CSS it produced. */
   const built = () => {
@@ -399,7 +402,11 @@ describe("the assembled stylesheet", () => {
    */
   test("but a variable nothing sets is refused even then", () => {
     const plugin = ramondaCss();
-    plugin.transform.call({}, `const a = <div css=@@( color: var(--nothing-sets-this); )>x</div>;\n`, "/src/Card.tsx");
+    plugin.transform.call(
+      {},
+      `const a = <div css={@@( color: var(--nothing-sets-this); )}>x</div>;\n`,
+      "/src/Card.tsx",
+    );
 
     expect(() => plugin.generateBundle?.call({}, {}, { "index.js": { type: "chunk", fileName: "index.js" } })).toThrow(
       /--nothing-sets-this/,
@@ -454,7 +461,7 @@ describe("what the plugin tells a config about the build", () => {
       plugin.config({}, { mode: "production" });
       const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
       try {
-        transform.call({}, `const a = <div css=@@( padding: 1em; )>x</div>;\n`, join(dir, "Card.tsx"));
+        transform.call({}, `const a = <div css={@@( padding: 1em; )}>x</div>;\n`, join(dir, "Card.tsx"));
         return "accepted";
       } catch (error) {
         return (error as Error).message;
@@ -471,7 +478,7 @@ describe("what the plugin tells a config about the build", () => {
       plugin.config({}, { mode: "development" });
       const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
       try {
-        transform.call({}, `const a = <div css=@@( padding: 1em; )>x</div>;\n`, join(dir, "Card.tsx"));
+        transform.call({}, `const a = <div css={@@( padding: 1em; )}>x</div>;\n`, join(dir, "Card.tsx"));
         return "accepted";
       } catch (error) {
         return (error as Error).message;
@@ -510,7 +517,7 @@ describe("the dependency scan", () => {
     const { load } = scanner();
     const path = written(
       "Card.tsx",
-      `import { thing } from "./thing";\nconst a = <div css=@@( display: flex; )>x</div>;\n`,
+      `import { thing } from "./thing";\nconst a = <div css={@@( display: flex; )}>x</div>;\n`,
     );
 
     const result = load?.({ path });
@@ -529,7 +536,7 @@ describe("the dependency scan", () => {
   /** A scan is not where an author should meet a diagnostic — the real transform reports it. */
   test("a block it cannot read is passed over rather than thrown from", () => {
     const { load } = scanner();
-    const path = written("Broken.tsx", `const a = <div css=@@( {whatever}: 4px; )>x</div>;\n`);
+    const path = written("Broken.tsx", `const a = <div css={@@( {whatever}: 4px; )}>x</div>;\n`);
 
     expect(() => load?.({ path })).not.toThrow();
     expect(load?.({ path })).toBeNull();
@@ -571,7 +578,7 @@ describe("which config a transform is measured against", () => {
     }
   };
 
-  const transforming = (file: string, source = `const a = <div css=@@( padding: 1em; )>x</div>;\n`) => {
+  const transforming = (file: string, source = `const a = <div css={@@( padding: 1em; )}>x</div>;\n`) => {
     const plugin = ramondaCss();
     plugin.config({}, { mode: "development" });
     const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
@@ -613,7 +620,7 @@ describe("which config a transform is measured against", () => {
     const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
     const run = () => {
       try {
-        transform.call({}, `const a = <div css=@@( padding: 1em; )>x</div>;\n`, file);
+        transform.call({}, `const a = <div css={@@( padding: 1em; )}>x</div>;\n`, file);
         return "accepted";
       } catch (error) {
         return (error as Error).message;

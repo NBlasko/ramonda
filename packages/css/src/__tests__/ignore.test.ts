@@ -26,9 +26,9 @@ const built = (source: string): string | undefined => {
 };
 
 describe("a finding an author took responsibility for", () => {
-  const WRONG = "const a = <div css=@@(\n  display: flexx;\n)>x</div>;\n";
+  const WRONG = "const a = <div css={@@(\n  display: flexx;\n)}>x</div>;\n";
   const EXEMPT =
-    "const a = <div css=@@(\n  /* ramonda-css-ignore a vendor sheet defines it */\n  display: flexx;\n)>x</div>;\n";
+    "const a = <div css={@@(\n  /* ramonda-css-ignore a vendor sheet defines it */\n  display: flexx;\n)}>x</div>;\n";
 
   test("is reported without the directive", () => {
     expect(rules(WRONG)).toEqual(["unknown-value"]);
@@ -51,14 +51,14 @@ describe("a finding an author took responsibility for", () => {
   /** It is LINE scoped, so it cannot creep past the line the author looked at. */
   test("the line after the next one is still reported", () => {
     const source =
-      "const a = <div css=@@(\n  /* ramonda-css-ignore this one */\n  display: flexx;\n  color: redd;\n)>x</div>;\n";
+      "const a = <div css={@@(\n  /* ramonda-css-ignore this one */\n  display: flexx;\n  color: redd;\n)}>x</div>;\n";
 
     expect(rules(source)).toEqual(["unknown-value"]);
   });
 
   test("and so is the line before it", () => {
     const source =
-      "const a = <div css=@@(\n  color: redd;\n  /* ramonda-css-ignore this one */\n  display: flexx;\n)>x</div>;\n";
+      "const a = <div css={@@(\n  color: redd;\n  /* ramonda-css-ignore this one */\n  display: flexx;\n)}>x</div>;\n";
 
     expect(rules(source)).toEqual(["unknown-value"]);
   });
@@ -87,14 +87,14 @@ describe("a finding an author took responsibility for", () => {
    * the two spellings already mean everywhere else, and it needs no second word to learn.
    */
   test("at the end of the line it is about", () => {
-    const source = "const a = <div css=@@(\n  display: flexx; /* ramonda-css-ignore a vendor sheet */\n)>x</div>;\n";
+    const source = "const a = <div css={@@(\n  display: flexx; /* ramonda-css-ignore a vendor sheet */\n)}>x</div>;\n";
 
     expect(rules(source)).toEqual([]);
   });
 
   test("and one following code does NOT reach the line below it", () => {
     const source =
-      "const a = <div css=@@(\n  color: red; /* ramonda-css-ignore this line is fine */\n  display: flexx;\n)>x</div>;\n";
+      "const a = <div css={@@(\n  color: red; /* ramonda-css-ignore this line is fine */\n  display: flexx;\n)}>x</div>;\n";
 
     expect(rules(source)).toEqual(["unknown-value"]);
   });
@@ -102,7 +102,7 @@ describe("a finding an author took responsibility for", () => {
   /** Alone on its line still means the line below, which is what the tests above rely on. */
   test("alone on its line, in a `//` comment, above the declaration", () => {
     const source =
-      "const a = 1; // ramonda-css-ignore about the line below\nconst b = <div css=@@( display: flexx; )>x</div>;\n";
+      "const a = 1; // ramonda-css-ignore about the line below\nconst b = <div css={@@( display: flexx; )}>x</div>;\n";
 
     // Following code, so it is about `const a = 1;` — which has no finding — and the block is
     // reported. The two spellings cannot both be about the same line.
@@ -110,14 +110,14 @@ describe("a finding an author took responsibility for", () => {
   });
 
   test("the build honours the end-of-line spelling too", () => {
-    const source = "const a = <div css=@@(\n  display: flexx; /* ramonda-css-ignore a vendor sheet */\n)>x</div>;\n";
+    const source = "const a = <div css={@@(\n  display: flexx; /* ramonda-css-ignore a vendor sheet */\n)}>x</div>;\n";
 
     expect(built(source)).toBeUndefined();
   });
 });
 
 describe("a directive with nothing after it", () => {
-  const SILENT = "const a = <div css=@@(\n  /* ramonda-css-ignore */\n  display: flexx;\n)>x</div>;\n";
+  const SILENT = "const a = <div css={@@(\n  /* ramonda-css-ignore */\n  display: flexx;\n)}>x</div>;\n";
 
   /**
    * An empty reason is a silence rather than a record, and it is refused — so the exemption below it
@@ -134,7 +134,7 @@ describe("a directive with nothing after it", () => {
   /** And it cannot exempt ITSELF: the directive is on its own line, and the scope is the next one. */
   test("two of them are both reported", () => {
     const source =
-      "const a = <div css=@@(\n  /* ramonda-css-ignore */\n  /* ramonda-css-ignore */\n  color: red;\n)>x</div>;\n";
+      "const a = <div css={@@(\n  /* ramonda-css-ignore */\n  /* ramonda-css-ignore */\n  color: red;\n)}>x</div>;\n";
 
     expect(rules(source)).toEqual(["ignore-without-a-reason", "ignore-without-a-reason"]);
   });
@@ -148,7 +148,7 @@ describe("what a run can say about them", () => {
    */
   test("the reason and the line it covers come back", () => {
     const source =
-      "const a = <div css=@@(\n  /* ramonda-css-ignore a vendor sheet defines it */\n  display: flexx;\n)>x</div>;\n";
+      "const a = <div css={@@(\n  /* ramonda-css-ignore a vendor sheet defines it */\n  display: flexx;\n)}>x</div>;\n";
     const { ignored } = checkedSource(source, "C.tsx");
 
     expect(ignored).toHaveLength(1);
@@ -157,6 +157,6 @@ describe("what a run can say about them", () => {
   });
 
   test("a file with none returns none, and pays one substring search", () => {
-    expect(checkedSource("const a = <div css=@@( color: red; )>x</div>;\n", "C.tsx").ignored).toEqual([]);
+    expect(checkedSource("const a = <div css={@@( color: red; )}>x</div>;\n", "C.tsx").ignored).toEqual([]);
   });
 });

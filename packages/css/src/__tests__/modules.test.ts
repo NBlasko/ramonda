@@ -237,7 +237,7 @@ describe("the two maps a named site appears in", () => {
     ["one whose body names nothing", "{base}"],
     ["one whose body names another token", "{other}"],
   ])("a wrong value is refused for %s", (_what, token) => {
-    const source = `${THEME}const a = <div css=@@( ${token}: 12px; )>x</div>;\n`;
+    const source = `${THEME}const a = <div css={@@( ${token}: 12px; )}>x</div>;\n`;
 
     expect(() => transform(source, { filename: "C.tsx" })).toThrow(/registered as .<color>./);
   });
@@ -280,7 +280,7 @@ describe("two named sites with identical bodies", () => {
     const source =
       'export const accent  = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n' +
       'export const surface = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n' +
-      "const card = <div css=@@( {accent}: red; {surface}: blue; )>x</div>;\n";
+      "const card = <div css={@@( {accent}: red; {surface}: blue; )}>x</div>;\n";
     const line =
       transform(source, { filename: "C.tsx" })
         ?.code.split("\n")

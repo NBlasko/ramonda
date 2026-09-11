@@ -13,7 +13,7 @@ import { variablesIn } from "../compiler/variables";
  * this package keeps finding.
  */
 const of = (css: string) => {
-  const source = `<div css=@@(\n${css}\n)>x</div>`;
+  const source = `<div css={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   return variablesIn(readBlock(source, site.open, "C.tsx", { tolerant: true }).block);
 };
@@ -96,14 +96,14 @@ describe("the names a block sets", () => {
  * can be wrong and pass.
  */
 describe("the two ways one walk is asked for", () => {
-  const source = `const a = <div css=@@(\n  dsiplay: flex;\n)>x</div>;\n`;
+  const source = `const a = <div css={@@(\n  dsiplay: flex;\n)}>x</div>;\n`;
 
   test("`checkSource` is `checkedSource` without the variables", () => {
     expect(checkSource(source, "C.tsx")).toEqual(checkedSource(source, "C.tsx").findings);
   });
 
   test("and the variables come from the same walk, not a second parse", () => {
-    const walked = checkedSource(`const a = <div css=@@(\n  --a: 1px;\n  color: var(--b);\n)>x</div>;\n`, "C.tsx");
+    const walked = checkedSource(`const a = <div css={@@(\n  --a: 1px;\n  color: var(--b);\n)}>x</div>;\n`, "C.tsx");
 
     expect(walked.variables.set).toEqual(["--a"]);
     expect(walked.variables.read.map((one) => one.name)).toEqual(["--b"]);

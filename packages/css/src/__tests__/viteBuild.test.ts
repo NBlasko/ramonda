@@ -67,7 +67,7 @@ function project(card: string, entry: string, assets: Record<string, string> = {
   /**
    * A JSX runtime of one line, and the JSX is COMPILED rather than preserved.
    *
-   * Found by getting it wrong: with `jsx: "preserve"` the build failed on the original `css=@@(`,
+   * Found by getting it wrong: with `jsx: "preserve"` the build failed on the original `css={@@(`,
    * because esbuild leaves the JSX in and Rollup cannot parse that either. The error frame showed
    * the author's own line, which was the first accidental proof that the source map composes through
    * a real bundler — but it was measuring the wrong thing. The framework is deliberately not used
@@ -137,7 +137,7 @@ describe("a block, all the way through a production build", () => {
   test("the class reaches the JavaScript AND the stylesheet, and they are the same class", () => {
     const result = build(
       project(
-        `export const accent = "#10b981";\nexport const card = (\n  <div className="lead" css=@@(\n    display: flex;\n    border-left: 4px solid {accent};\n  )>x</div>\n);\n`,
+        `export const accent = "#10b981";\nexport const card = (\n  <div className="lead" css={@@(\n    display: flex;\n    border-left: 4px solid {accent};\n  )}>x</div>\n);\n`,
         `import { card } from "./Card";\nconsole.log(card);\n`,
       ),
     );
@@ -183,7 +183,7 @@ describe("a block, all the way through a production build", () => {
   test("the stylesheet is linked, so a page actually loads it", () => {
     const result = build(
       project(
-        `export const card = <div css=@@( display: flex; )>x</div>;\n`,
+        `export const card = <div css={@@( display: flex; )}>x</div>;\n`,
         `import { card } from "./Card";\nconsole.log(card);\n`,
       ),
     );
@@ -197,7 +197,7 @@ describe("a block, all the way through a production build", () => {
   test("a block it cannot read fails the build, at the author's own line and column", () => {
     const result = build(
       project(
-        `export const card = (\n  <div css=@@(\n    {name}: 24px;\n  )>x</div>\n);\n`,
+        `export const card = (\n  <div css={@@(\n    {name}: 24px;\n  )}>x</div>\n);\n`,
         `import { card } from "./Card";\nconsole.log(card);\n`,
       ),
     );
@@ -399,7 +399,7 @@ test("a `@property` ships as a top-level at-rule holding its descriptors", () =>
   const result = build(
     project(
       `export const ANGLE = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `export const card = (\n  <div className="lead" css=@@(\n    transform: rotate(var({ANGLE}));\n  )>x</div>\n);\n`,
+        `export const card = (\n  <div className="lead" css={@@(\n    transform: rotate(var({ANGLE}));\n  )}>x</div>\n);\n`,
       `import { card, ANGLE } from "./Card";\nconsole.log(card, ANGLE);\n`,
     ),
   );
@@ -430,7 +430,7 @@ test("a token declared in one module and read in another", () => {
   const result = build(
     project(
       `import { accent, gap } from "./theme";\n` +
-        `export const card = (\n  <div className="lead" css=@@(\n    color: var({accent});\n    border-color: var({accent});\n    padding: var({gap});\n  )>x</div>\n);\n`,
+        `export const card = (\n  <div className="lead" css={@@(\n    color: var({accent});\n    border-color: var({accent});\n    padding: var({gap});\n  )}>x</div>\n);\n`,
       `import { card } from "./Card";\nconsole.log(card);\n`,
       {
         "theme.tsx":
@@ -467,7 +467,7 @@ test("a token declared in one module and read in another", () => {
  */
 test("a unit the project's `ramonda.css.ts` does not allow fails the build", () => {
   const root = project(
-    `export const card = <div className="lead" css=@@( padding: 1em; )>x</div>;\n`,
+    `export const card = <div className="lead" css={@@( padding: 1em; )}>x</div>;\n`,
     `import { card } from "./Card";\nconsole.log(card);\n`,
     { "../ramonda.css.ts": `export default { units: ["px", "rem"] };\n` },
   );
@@ -497,7 +497,7 @@ describe("what development-only code costs a visitor", () => {
   test("the order warning's words are in no production asset", () => {
     const root = project(
       `const base = @@(\n  @media (min-width: 1px) {\n    padding: 11px;\n  }\n);\n` +
-        `export const Card = () => <div css=@@(\n  ...{base};\n  padding-left: 4px;\n)>x</div>;\n`,
+        `export const Card = () => <div css={@@(\n  ...{base};\n  padding-left: 4px;\n)}>x</div>;\n`,
       `import { Card } from "./Card";\nconsole.log(Card());\n`,
     );
 
@@ -521,7 +521,7 @@ describe("what development-only code costs a visitor", () => {
    */
   test("and neither is the slot table it compares with", () => {
     const root = project(
-      `export const Card = () => <div css=@@(\n  @media (min-width: 40rem) {\n    gap: 8px;\n  }\n)>x</div>;\n`,
+      `export const Card = () => <div css={@@(\n  @media (min-width: 40rem) {\n    gap: 8px;\n  }\n)}>x</div>;\n`,
       `import { Card } from "./Card";\nconsole.log(Card());\n`,
     );
 
@@ -538,7 +538,7 @@ describe("what development-only code costs a visitor", () => {
 test("zzdiagnose", () => {
   const root = project(
     `const base = @@(\n  @media (min-width: 1px) {\n    padding: 11px;\n  }\n);\n` +
-      `export const Card = () => <div css=@@(\n  ...{base};\n  padding-left: 4px;\n)>x</div>;\n`,
+      `export const Card = () => <div css={@@(\n  ...{base};\n  padding-left: 4px;\n)}>x</div>;\n`,
     `import { Card } from "./Card";\nconsole.log(Card());\n`,
   );
   const result = build(root);

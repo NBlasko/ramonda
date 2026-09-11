@@ -28,10 +28,10 @@ function file(name: string, text: string): string {
 
 const STYLED = `const before = 1;
 const a = (
-  <div css=@@(
+  <div css={@@(
     display: flex;
     gap: 8px;
-  )>x</div>
+  )}>x</div>
 );
 const after = 2;
 `;
@@ -433,19 +433,19 @@ describe("a block the formatter moved out from under", () => {
   const drop = (text: string) => text.replace(/\w+=\{(?:\/\*[^*]*\*\/ 0|`[^`]*`)\}/, "");
 
   test("is refused, and says which file", () => {
-    const source = "const before = 1;\nconst a = (\n  <div css=@@(\n    color: red;\n  )>x</div>\n);\n";
+    const source = "const before = 1;\nconst a = (\n  <div css={@@(\n    color: red;\n  )}>x</div>\n);\n";
 
     expect(() => formatText(source, "Card.tsx", drop)).toThrow(/Card\.tsx/);
   });
 
   test("and the message says what happened, not just that it did", () => {
-    const source = "const a = <div css=@@(\n  color: red;\n)>x</div>;\n";
+    const source = "const a = <div css={@@(\n  color: red;\n)}>x</div>;\n";
 
     expect(() => formatText(source, "Card.tsx", drop)).toThrow(/placeholder/);
   });
 
   test("a formatter that leaves the placeholder alone is unaffected", () => {
-    const source = "const a = <div css=@@(\n  color: red;\n)>x</div>;\n";
+    const source = "const a = <div css={@@(\n  color: red;\n)}>x</div>;\n";
 
     expect(formatText(source, "Card.tsx", (text) => text)).toBe(source);
   });
@@ -462,7 +462,7 @@ describe("a block the formatter moved out from under", () => {
    * fault reached the gate. This asks the same thing of the source.
    */
   test("a tool that refuses keeps its own class on the way out", () => {
-    const source = "const a = <div css=@@(\n  color: red;\n)>x</div>;\n";
+    const source = "const a = <div css={@@(\n  color: red;\n)}>x</div>;\n";
     const refuse = () => {
       throw new ToolFailed("the formatter's own sentence");
     };

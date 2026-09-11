@@ -74,7 +74,7 @@ describe("the bin", () => {
   });
 
   test("says what it checked, and exits 0", () => {
-    const { output, status } = run(project(`const a = <div css=@@( display: flex; )>x</div>;\nexport default a;\n`));
+    const { output, status } = run(project(`const a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n`));
 
     expect(status).toBe(0);
     expect(output).toContain("[ramonda-css]");
@@ -83,7 +83,7 @@ describe("the bin", () => {
 
   test("names the fault at the author's own line, and exits 1", () => {
     const { output, status } = run(
-      project(`const a = (\n  <div css=@@(\n    dsiplay: flex;\n  )>x</div>\n);\nexport default a;\n`),
+      project(`const a = (\n  <div css={@@(\n    dsiplay: flex;\n  )}>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);
@@ -93,7 +93,7 @@ describe("the bin", () => {
 
   test("a block it cannot read is reported alone, and exits 1", () => {
     const { output, status } = run(
-      project(`const a = (\n  <div css=@@(\n    {name}: 24px;\n  )>x</div>\n);\nexport default a;\n`),
+      project(`const a = (\n  <div css={@@(\n    {name}: 24px;\n  )}>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);
@@ -200,7 +200,7 @@ describe("a file bigger than a pipe", () => {
 
   test("comes back whole, not cut at 64KB", () => {
     const text =
-      `const a = <div css=@@( display: flex; )>x</div>;\n` +
+      `const a = <div css={@@( display: flex; )}>x</div>;\n` +
       Array.from({ length: LINES }, (_, index) => `export const n${index} = ${index};`).join("\n") +
       "\n";
 
@@ -284,7 +284,9 @@ describe("an argument that is not a project", () => {
   }
 
   test("a source file is answered by saying what this takes", () => {
-    const { output, status } = runWith(project(`const a = <div css=@@( display: flex; )>x</div>;\n`), ["src/Card.tsx"]);
+    const { output, status } = runWith(project(`const a = <div css={@@( display: flex; )}>x</div>;\n`), [
+      "src/Card.tsx",
+    ]);
 
     expect(status).toBe(1);
     expect(output).toContain("tsconfig");
