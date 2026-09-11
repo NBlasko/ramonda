@@ -14,6 +14,7 @@ import {
   UNITS,
   MEDIA_FEATURES,
   UNIT_TYPE,
+  SELECTORS,
 } from "./keywords.generated";
 import { canonicalPrelude, canonicalValue } from "./normalise";
 import { CONDITION, LINE_COMMENT, SPREAD, closingHole, holeIn, opensAHole } from "./read";
@@ -76,7 +77,7 @@ export const RULE_IDS = [
   "unknown-value",
   "repeated-declaration",
   "hole-out-of-place",
-  "uncolourable-block",
+  "block-as-a-jsx-attribute",
   "run-on-declaration",
   "line-comment",
   "unknown-unit",
@@ -103,6 +104,7 @@ export const RULE_IDS = [
   "ignore-without-a-reason",
   "unknown-prefix",
   "unknown-at-rule",
+  "unknown-selector",
   "unknown-flag",
 ] as const;
 
@@ -118,59 +120,48 @@ const KNOWN = new Set(PROPERTIES);
 const STRINGS_FIT = new Set(STRING_ALLOWED);
 
 /**
- * What an editor will not colour, which is the one thing here a BUILD has no business failing over.
+ * A block written as a bare JSX attribute, which this no longer compiles.
  *
- * An editor stops consulting syntax injections the moment it enters a tag's attribute list, so a
- * bare `css=@@( … )` is coloured only as the FIRST attribute on the tag name's own line. Written
- * anywhere else it compiles, is checked, and looks like an error — with nothing on the screen to say
- * why, because what failed is a grammar nobody can see.
+ * ## Why the spelling went away
  *
- * So it is reported where it can be acted on and nowhere else: the editor plugin draws it as a
- * SUGGESTION. `checkBlock`'s findings stop a build; this one must not, because nothing is wrong.
+ * **A block is a TypeScript value, and a bare attribute is the one spelling that is not one.**
+ * `css={@@( … )}` and `const panel = @@( … )` are expressions; `css=@@( … )` is a shape only JSX has,
+ * and supporting it meant this package extended JSX rather than TypeScript. That was the decision,
+ * and everything below is what it cost while it was allowed:
+ *
+ * - **An editor stops consulting syntax injections the moment it enters a tag's attribute list.**
+ *   Measured with a grammar that does nothing but match one word: it colours a FIRST attribute and
+ *   is never asked about a second. So a bare block was coloured in one position and read as an
+ *   error in every other — with nothing on screen to say why, because what failed is a grammar
+ *   nobody can see.
+ * - **Prettier never offers a plugin the chance to print an attribute value**, so the formatter had
+ *   to hand back the braced spelling anyway. The file a person saved was not the file they wrote.
+ *
+ * This rule is what a reader meets instead, and the fix it names is the whole change: put the block
+ * in the braces JSX already has.
+ *
+ * ## Why it stops a build
+ *
+ * Its predecessor, `uncolourable-block`, was a SUGGESTION the editor drew and the build ignored —
+ * correct while the spelling was supported, because nothing was wrong. It is not a suggestion now:
+ * a spelling this does not compile has to be refused where it is written, not left to produce a
+ * class nobody can read in an editor that will not colour it.
  */
-export function checkSite(source: string, site: BlockSite): Finding[] {
-  if (!site.wrap || firstOnTheTagLine(source, site.start)) return [];
+export function checkSite(_source: string, site: BlockSite): Finding[] {
+  if (!site.wrap) return [];
 
   return [
     {
-      rule: "uncolourable-block",
+      rule: "block-as-a-jsx-attribute",
       at: site.start,
       length: site.name.length,
       message:
-        `an editor colours a bare block only as the first attribute on the tag name's own line — ` +
-        `write it as \`${site.name}={@@( … )}\`, which is the same value and is coloured anywhere.`,
+        `a style block is a TypeScript value, not a JSX attribute — write ` +
+        `\`${site.name}={@@( … )}\`, which is the same value in the braces JSX already has. ` +
+        `The bare spelling could only be coloured as the first attribute on the tag's own line, and ` +
+        `Prettier rewrote it anyway.`,
     },
   ];
-}
-
-/**
- * Whether the name at `start` follows the tag's own name with nothing but spaces between.
- *
- * A newline is enough to lose the colours, which is why this is not `isAttribute` with a flag: that
- * one walks over attributes and line breaks to prove the site is in a tag at all, and here both of
- * those are the answer NO.
- */
-function firstOnTheTagLine(source: string, start: number): boolean {
-  let index = start - 1;
-  while (index >= 0 && (source.charCodeAt(index) === 32 || source.charCodeAt(index) === 9)) index--;
-
-  const end = index + 1;
-  while (index >= 0 && isTagNameCharacter(source.charCodeAt(index))) index--;
-
-  return index >= 0 && end > index + 1 && source.charCodeAt(index) === 60; /* < */
-}
-
-/** A tag name: an identifier, plus the `.` of a member expression and the `-` of a custom element. */
-function isTagNameCharacter(code: number): boolean {
-  return (
-    (code >= 97 && code <= 122) ||
-    (code >= 65 && code <= 90) ||
-    (code >= 48 && code <= 57) ||
-    code === 95 ||
-    code === 36 ||
-    code === 45 ||
-    code === 46
-  );
 }
 
 /**
@@ -1547,6 +1538,84 @@ function propertyNames(item: Declaration, accepted: string, findings: Finding[])
   }
 }
 
+/**
+ * Every pseudo-class and pseudo-element CSS has, lowered, without the `()` a functional one carries.
+ *
+ * **Plus the four CSS2 pseudo-elements written with ONE colon**, which `SELECTORS` holds only in
+ * their modern spelling. `:before`, `:after`, `:first-line` and `:first-letter` are valid CSS —
+ * every browser still accepts them — and reporting one as a name CSS does not have would be refusing
+ * real CSS, the one failure this package may not have. Measured: the gate caught exactly this, on
+ * `non-canonical-spelling`'s own test for `&:before`.
+ *
+ * They are not silent, they belong to a different rule: `non-canonical-spelling` says to write
+ * `&::before`, which is the more useful sentence. One fault, one report.
+ */
+const PSEUDO_NAMES = new Set([
+  ...Object.keys(SELECTORS).map((one) => one.replace(/\(\)$/, "").toLowerCase()),
+  ":before",
+  ":after",
+  ":first-line",
+  ":first-letter",
+]);
+
+/** A `:name` or `::name`, with its argument list left off — what a prelude actually spells. */
+const A_PSEUDO = /::?[a-z-]+(?:\([^)]*\))?/gi;
+
+/**
+ * **A PSEUDO-CLASS THAT DOES NOT EXIST, and it drops the whole rule.**
+ *
+ * `SELECTORS` holds 129 of them with their groups and their MDN links. `normalise.ts` reads it to
+ * canonicalise a prelude and `plugin.ts` reads it to hover one — and **no rule read it at all**,
+ * which is this repository's most common shape of fault: data that exists and nothing asks it.
+ *
+ * So `&:displaydd { … }` was silent. Measured in Chromium, inserting a rule with two declarations
+ * and reading `cssRules` back: a pseudo-class the browser does not know keeps **zero rules**. Not
+ * one dropped declaration — every declaration beside it, gone, with the element left on whatever it
+ * inherited. That is the same cost as `unknown-at-rule` and it is why this one was worth having
+ * first of the six on the list.
+ *
+ * ## Why the TABLE is the oracle here, and not the browser
+ *
+ * The other three generated tables in this package ask the engines, because `mdn-data` was measured
+ * short three times. This one must not. Measured, again in Chromium: **33 of the 129 names it
+ * refuses** — `:left`, `:right` and `:first` are paged-media, `::-ms-*` and `::-moz-*` belong to
+ * other engines, `:buffering`, `:playing` and `:seeking` are media ones it has not shipped. Every
+ * one is a real selector somewhere, and a rule that asked this browser would refuse valid CSS,
+ * which is the one failure this package may not have.
+ *
+ * ## What it deliberately does not read
+ *
+ * The ARGUMENT of a functional one. `:nth-child(2n+1)`, `:not(.a)` and `:has(> img)` each have a
+ * grammar of their own, and getting one of those wrong is a different fault from misspelling the
+ * name. Only the name is checked.
+ *
+ * A VENDOR pseudo is a browser's own, so the prefix is checked and the name after it is not —
+ * exactly as for a property and for an at-rule.
+ */
+function unknownSelector(rule: NestedRule, findings: Finding[]): void {
+  if (rule.prelude.startsWith("@")) return;
+
+  for (const found of rule.prelude.matchAll(A_PSEUDO)) {
+    const written = found[0];
+    const name = written.replace(/\(.*$/, "").toLowerCase();
+    if (PSEUDO_NAMES.has(name)) continue;
+
+    const prefix = /^::?(-[a-z]+-)/.exec(name)?.[1];
+    if (prefix !== undefined && PREFIXES.includes(prefix)) continue;
+
+    const meant = nearest(name, [...PSEUDO_NAMES]);
+    findings.push({
+      rule: "unknown-selector",
+      at: (rule.at ?? 0) + (found.index ?? 0),
+      length: name.length,
+      message:
+        `\`${name}\` is not a pseudo-class or pseudo-element CSS has, so a browser drops the whole ` +
+        `rule — every declaration inside it, not just one. ` +
+        (meant === undefined ? "Check the name." : `Did you mean \`${meant}\`?`),
+    });
+  }
+}
+
 /** The at-rules that name something for the whole stylesheet, so a block may not hold one. */
 const ELSEWHERE = new Set(NOT_IN_A_RULE);
 
@@ -1563,7 +1632,10 @@ const ELSEWHERE = new Set(NOT_IN_A_RULE);
  * `@starting-style` as faults on the day they arrived.
  */
 function atRuleOutOfPlace(rule: NestedRule, findings: Finding[]): void {
-  if (!rule.prelude.startsWith("@")) return;
+  if (!rule.prelude.startsWith("@")) {
+    unknownSelector(rule, findings);
+    return;
+  }
 
   const name = `@${rule.prelude.slice(1).split(/[\s(]/, 1)[0].toLowerCase()}`;
   if (!ELSEWHERE.has(name)) {
