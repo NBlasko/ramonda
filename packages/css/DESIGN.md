@@ -1074,6 +1074,67 @@ name, the fallback and the kind; everything past that is the project's.
   mapping already supports it, since `Segment` keeps `sourceLength` apart from the virtual length and
   `copied` is written rather than inferred. The path is emitted as several runs so completion lands.
 
+### A list of things worth forbidding, and where it should live
+
+The user's idea, in their words: *"verujem ako pogledas stylex tailwind, oni blokiraju mnogo
+besmislenih featurea koje ima CSS jer postoji uvek bolji nacin, pa da vidimo i mi tu listu."*
+
+#### What StyleX actually forbids, read rather than recalled
+
+From their own documentation:
+
+| forbidden | their stated reason |
+|---|---|
+| descendant and sibling combinators — `.x > *`, `.x ~ *`, `.x:hover button` | *"make styles fragile, less predictable and harder to debug. An element could be styled without having any classes applied to it."* |
+| `border` and `background`, entirely | write `borderWidth`, `borderStyle`, `borderColor` instead |
+| multi-value shorthands — `padding: 8px 12px`, `margin`, `borderWidth` | one side per property |
+
+Their principle is one sentence: *"All styles on an element should be caused by class names on that
+element itself."* Their `valid-shorthands` lint rule autofixes every one of these.
+
+**What I could not verify and am not going to guess at:** the complete list of properties they ban.
+Their site documents the rule's OPTIONS rather than its contents, and the rule's source was not where
+the search put it. So the three rows above are what is quoted from their docs, and nothing else here
+is attributed to them.
+
+#### What this package can already say, measured
+
+    828 properties
+    262 vendor-prefixed          webkit 182, ms 48, moz 30, apple 2
+    124 of those have an unprefixed form that ALSO exists
+     98 shorthands
+
+**The 124 is the interesting number.** `-moz-appearance` beside `appearance`, `-webkit-box-flex`
+beside `flex-grow`: writing the prefixed one is not a preference, it is a name that was needed once
+and is not any more. That is a list worth offering, and it is derivable rather than opinionated —
+it is the properties where a standard spelling of the same thing exists.
+
+#### Where it belongs, and why not as a default
+
+The mechanism is already here. `properties: { "-webkit-box-flex": { shorthand: false } }` does not
+apply (it is not a shorthand), so this needs one more key — call it `allowed: false` — or a list of
+its own. Either way it is the same pipeline: the config narrows, codegen writes, the types and the
+completions follow.
+
+**What it must not be is a default of ours.** Three reasons, and the third is the one that decides:
+
+1. *"a better way exists"* is a judgement about somebody else's project. `-webkit-line-clamp` has no
+   standard equivalent that ships everywhere, and a team supporting an old WebKit needs it.
+2. This package's own rule is that refusing correct CSS is the failure it may not have. A blocklist
+   is exactly that, held deliberately — which is fine when a PROJECT holds it and not when we do.
+3. The same argument already settled the narrowing: what CSS allows is this package's to state, and
+   how far a project goes is the project's. A blocklist we ship is that decision taken back.
+
+So the shape is a PRESET: a config a project imports and spreads, published beside this package or
+by anybody else. `DESIGN.md` above already chose design C partly because its merge is well-defined —
+key by key — which is what makes a preset worth starting from rather than a thing to fight.
+
+**Open, and it needs the user's judgement rather than a measurement:** whether this package publishes
+one such preset itself. Shipping `@ramonda/css-strict` is different from making it the default: it is
+opt-in, its contents are arguable in the open, and a project that disagrees with one row overrides
+that row. That is the first thing to decide, because the list's contents only matter once there is
+somewhere for them to live.
+
 ### What is not in dispute
 
 The codegen step is the same in all three: read the config, write a `.d.ts` the project's
