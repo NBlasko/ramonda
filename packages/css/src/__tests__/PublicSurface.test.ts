@@ -38,11 +38,16 @@ const TYPES = [
   "CssTimeUnit",
   "CssUnit",
   "HoleValues",
+  // What `$.color.primary.main` is, for the module codegen writes. A type and nothing else: a
+  // token's runtime value is the string `var(--name)`, written into that module, so importing `$`
+  // pulls in no code from here at all.
+  "Kind",
   "StyleBlock",
   "StyleEntry",
   "StyleMap",
   "StyleValue",
   "StyleVarValue",
+  "Token",
 ];
 
 /** Everything one module exports, values and types alike, through a real program. */

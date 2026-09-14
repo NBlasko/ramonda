@@ -23,6 +23,14 @@ export type {
   CssTimeUnit,
   CssUnit,
 } from "./units.generated";
+/**
+ * What `$.color.primary.main` IS, for the module codegen writes.
+ *
+ * A TYPE and nothing else, which is what lets that module import from here without importing
+ * anything: a token's runtime value is the string `var(--color-primary-main)`, written straight into
+ * the generated file, so there is no factory to call and no code to ship.
+ */
+export type { Kind, Token } from "./declared";
 export type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
 export { block, toStyleObject } from "./value";
 export type { StyleEntry, StyleMap } from "./merge";

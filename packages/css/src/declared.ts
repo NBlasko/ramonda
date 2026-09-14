@@ -115,6 +115,27 @@ export interface Variable<K extends Kind = Kind, V = unknown> {
   readonly value: V;
 }
 
+/**
+ * A declared variable as a VALUE — what `$.color.primary.main` is, once codegen has written it.
+ *
+ * A branded `string`, and each half of that is load-bearing. A string, because its runtime value is
+ * `var(--color-primary-main)` and that has to be usable everywhere a CSS value goes: in a block, in
+ * a hole, in a plain `style={{ … }}`, in a template literal. Branded, because the kind and the
+ * fallback have to survive into the type, or a property narrowed to lengths could not refuse a
+ * colour.
+ *
+ * The brand is REQUIRED rather than optional, which is the difference between a type that can refuse
+ * something and one that cannot: an ordinary string is not a `Token`, so a slot that accepts
+ * `Token<"length", …>` and nothing else can say so.
+ *
+ * It is a phantom: nothing reads `[TOKEN]` at runtime, and nothing is there to read.
+ */
+declare const TOKEN: unique symbol;
+
+export type Token<K extends Kind = Kind, V = unknown> = string & {
+  readonly [TOKEN]: readonly [K, V];
+};
+
 /** Whether a leaf has been declared, asked without depending on how the marker is spelled. */
 export function isVariable(one: unknown): one is Variable {
   return typeof one === "object" && one !== null && (one as Partial<Variable>)[IS_VARIABLE] === true;

@@ -168,7 +168,8 @@ function moduleTree(named: readonly Named[]): string {
     const lines = Object.entries(node).map(([segment, next]) => {
       if (next !== null && typeof next === "object" && "name" in (next as Named)) {
         const one = next as Named;
-        return `${indent}  ${key(segment)}: v(${JSON.stringify(one.name)}, ${JSON.stringify(one.value)}, ${JSON.stringify(one.kind)}),`;
+        const token = `Token<${JSON.stringify(one.kind)}, ${JSON.stringify(one.value)}>`;
+        return `${indent}  ${key(segment)}: ${JSON.stringify(`var(${one.name})`)} as ${token},`;
       }
       return `${indent}  ${key(segment)}: {\n${write(next as Record<string, unknown>, `${indent}  `)}\n${indent}  },`;
     });
@@ -202,9 +203,17 @@ export function generate(declarations: Declarations): Generated {
 
   const css = `${HEADER}\n\n:root {\n${root}\n}\n${registrations === "" ? "" : `\n${registrations}\n`}`;
 
+  /**
+   * A TYPE-ONLY import, and that is the whole runtime cost of `$`: none.
+   *
+   * A variable's value is the string `var(--name)`, written here rather than made by a factory, so
+   * importing `$` pulls in no code at all — the import is erased and what is left is an object of
+   * strings. The kind and the fallback ride in the type, where the checking happens, and a reader
+   * opening this file still sees both.
+   */
   const module =
     `${HEADER}\n\n` +
-    `import { v } from "@ramonda/css";\n\n` +
+    `import type { Token } from "@ramonda/css";\n\n` +
     `/** Every variable this project declares. Reach one by the path it was declared at. */\n` +
     `export const $ = ${moduleTree(named)} as const;\n`;
 
