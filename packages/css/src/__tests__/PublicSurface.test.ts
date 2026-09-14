@@ -31,6 +31,10 @@ const RUNTIME = ["block", "compose", "merge", "toStyleObject"];
  */
 const TYPES = [
   "CssAngleUnit",
+  // A colour, for the declaration that makes one. Ninety-six properties say what they take now, so
+  // a value reaching one through a hole has to say what it is — and this is what says it.
+  "CssColor",
+  "CssColorKeyword",
   "CssDimension",
   "CssFrequencyUnit",
   "CssLengthUnit",

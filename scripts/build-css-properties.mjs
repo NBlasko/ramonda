@@ -126,11 +126,155 @@ const syntaxes = require("mdn-data/css/syntaxes.json");
 function expand(syntax, depth = 0) {
   if (depth > 8) return syntax;
   return syntax.replace(/<([a-zA-Z0-9-]+)>/g, (whole, name) =>
-    syntaxes[name] === undefined ? whole : `[ ${expand(syntaxes[name].syntax, depth + 1)} ]`,
+    PRIMITIVE.has(name) || syntaxes[name] === undefined ? whole : `[ ${expand(syntaxes[name].syntax, depth + 1)} ]`,
   );
 }
 
 const KEYWORD = /^[a-zA-Z][a-zA-Z0-9-]*$/;
+
+/**
+ * The primitives a `@property` can REGISTER, which is the set {@link primitiveOf} stops at.
+ *
+ * Not a vocabulary of ours: these are CSS's own syntax component names, so a property narrowed to
+ * one of them is narrowed to exactly what a declared variable can BE. Expanding them was the first
+ * attempt and it is why `<color>` came out as a complex grammar — its own syntax is six
+ * alternatives, and none of them is the thing anybody means.
+ */
+const PRIMITIVE = new Set([
+  "angle",
+  "color",
+  "custom-ident",
+  "dashed-ident",
+  "image",
+  "integer",
+  "length",
+  "length-percentage",
+  "number",
+  "percentage",
+  "resolution",
+  "string",
+  "time",
+  "transform-function",
+  "transform-list",
+  "url",
+]);
+
+/**
+ * What each primitive becomes as a TYPE, and which declared-variable kinds a slot for it accepts.
+ *
+ * Only the primitives where a type can be both exact and complete are here. `<url>`, `<image>`,
+ * `<string>` and the ident families are left as `CssValue`: a union for them would be a guess about
+ * text CSS lets an author invent, and refusing correct CSS is the one failure a type map may not
+ * have.
+ *
+ * **`<integer>` is here and its type does not refuse a fraction**, because none can — measured,
+ * neither `number` nor `` `${number}` `` refuses `1.5`. It is listed anyway for the half a type CAN
+ * do: accept a variable declared as an integer and refuse one declared as a colour. The fraction
+ * stays the checker's sentence, and the browser's `@property` refuses it at runtime.
+ *
+ * `length-percentage` accepts three kinds, because a length and a percentage are both one.
+ *
+ * **A number admits `` `${number}` `` as well as `number`**, and that was measured rather than
+ * foreseen: `properties.test.ts` refused `-webkit-line-clamp: "2"`, which is correct CSS written as
+ * a string — the one failure this map may not have. `CssDimension` already carries the same
+ * admission for every unit family, which is why only these two needed saying out loud.
+ */
+const NARROW = {
+  angle: { value: "CssDimension<CssAngleUnit>", kinds: ["angle"] },
+  color: { value: "CssColor", kinds: ["color"] },
+  integer: { value: "number | `${number}` | `${string}(${string})`", kinds: ["integer", "number"] },
+  length: { value: "CssDimension<CssLengthUnit>", kinds: ["length"] },
+  "length-percentage": {
+    value: 'CssDimension<CssLengthUnit | "%">',
+    kinds: ["length", "length-percentage", "percentage"],
+  },
+  number: { value: "number | `${number}` | `${string}(${string})`", kinds: ["number", "integer"] },
+  percentage: { value: 'CssDimension<"%">', kinds: ["percentage"] },
+  resolution: { value: "CssDimension<CssResolutionUnit>", kinds: ["resolution"] },
+  time: { value: "CssDimension<CssTimeUnit>", kinds: ["time"] },
+};
+
+/** How many properties this narrowed, for the line the script prints. */
+let narrowed = 0;
+
+/** Top-level alternatives — a `|` inside a group belongs to the group, and `||` is not a split. */
+function alternatives(text) {
+  const parts = [];
+  let depth = 0;
+  let current = "";
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+    if (character === "[" || character === "(") depth++;
+    else if (character === "]" || character === ")") depth--;
+    if (character === "|" && depth === 0) {
+      if (text[index + 1] === "|") {
+        current += "||";
+        index++;
+        continue;
+      }
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  parts.push(current);
+  return parts.map((one) => one.trim()).filter(Boolean);
+}
+
+/** `[ … ]` wrapping, which `expand` puts around every reference it resolves. */
+function unwrap(one) {
+  let text = one.trim();
+  for (;;) {
+    const next = text.replace(/^\[\s*([\s\S]*?)\s*\]$/, "$1").trim();
+    if (next === text) return text;
+    text = next;
+  }
+}
+
+/**
+ * The ONE primitive a property's grammar reaches beside its keywords, or nothing.
+ *
+ * `border-left-color` is `<color>`; `column-gap` is `normal | <length-percentage [0,∞]>`; `z-index`
+ * is `auto | <integer>`. Each of those can say what it takes instead of `string | number`, and — the
+ * reason this exists — each can then accept a declared variable of the MATCHING KIND and refuse one
+ * of any other.
+ *
+ * Anything else is left alone: a grammar with a function, a comma, a multiplier or two primitives is
+ * one a union would refuse correct CSS for, and refusing correct CSS is the one failure a type map
+ * may not have.
+ *
+ * A range — `<length-percentage [0,∞]>` — is dropped rather than treated as complexity. It is a
+ * bound no type can express and it does not change which primitive the value is.
+ */
+function primitiveOf(name) {
+  const raw = properties[name]?.syntax;
+  if (raw === undefined) return undefined;
+
+  const seen = new Set();
+  const walk = (text, depth) => {
+    if (depth > 8) return false;
+    for (const one of alternatives(text)) {
+      const part = unwrap(one);
+      if (KEYWORD.test(part)) continue;
+
+      const type = /^<([a-zA-Z0-9-]+)(?:\s*\[[^\]]*\])?>$/.exec(part);
+      if (type !== null) {
+        seen.add(type[1]);
+        continue;
+      }
+      if (part.includes("|") && !/[(){}+*?,#!]|&&/.test(part)) {
+        if (!walk(part, depth + 1)) return false;
+        continue;
+      }
+      return false;
+    }
+    return true;
+  };
+
+  if (!walk(expand(raw), 0)) return undefined;
+  return seen.size === 1 ? [...seen][0] : undefined;
+}
 
 /**
  * The keywords a property accepts, or `undefined` when it accepts anything else as well.
@@ -729,6 +873,12 @@ const named = [
 freeIsFree();
 
 const rows = [];
+/**
+ * Every bare word the `<color>` grammar reaches, computed once and read from two places: the type
+ * this emits for a colour property, and `values.generated.ts`. One sweep, so they cannot disagree.
+ */
+const colourKeywords = scan("color").words;
+
 const keywordRows = [];
 /**
  * Every bare word a property's grammar reaches, for COMPLETION — a different question from checking.
@@ -776,7 +926,38 @@ for (const name of named) {
   const grammar = keywordsOf(properties[name].syntax);
   const keywords = grammar === undefined ? undefined : [...new Set([...grammar, ...(ENGINE_KEYWORDS[name] ?? [])])];
   const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
-  const type = keywords === undefined ? "CssValue" : `Keyword<${keywords.map((k) => JSON.stringify(k)).join(" | ")}>`;
+  /**
+   * A property whose grammar is keywords plus ONE primitive says so, instead of `string | number`.
+   *
+   * Two things at once, and the second is why this exists now rather than later. It refuses a value
+   * of the wrong shape — `letter-spacing: 12`, `column-gap: 12`, which browsers drop — and it is the
+   * only way a slot can refuse a declared variable of the WRONG KIND, since a token is a branded
+   * string and every property accepting `string` accepts all of them.
+   *
+   * The keywords come from the scan rather than from `keywordsOf`, which answered `undefined` here
+   * precisely because the grammar reaches a type as well. `column-gap: normal` has to keep working.
+   */
+  const narrow = keywords === undefined ? NARROW[primitiveOf(name) ?? ""] : undefined;
+  const type =
+    keywords !== undefined
+      ? `Keyword<${keywords.map((k) => JSON.stringify(k)).join(" | ")}>`
+      : narrow === undefined
+        ? "CssValue"
+        : (() => {
+            /**
+             * The keywords the VALUE type already carries are not written again.
+             *
+             * `<color>`'s bare words are the named colours, and `CssColorKeyword` is that same list
+             * from the same sweep — writing both put 192 strings into every colour property's type,
+             * twice over, for nothing. Measured on `background-color` before this: one declaration
+             * ran to 3.5 KB of source.
+             */
+            const covered = narrow.value === "CssColor" ? new Set(colourKeywords) : new Set();
+            const words = [...new Set(scan(name).words)].filter((one) => !covered.has(one));
+            const head = words.length === 0 ? "never" : words.map((k) => JSON.stringify(k)).join(" | ");
+            return `Narrowed<${head}, ${narrow.value} | Token<${narrow.kinds.map((k) => JSON.stringify(k)).join(" | ")}>>`;
+          })();
+  if (narrow !== undefined) narrowed++;
   rows.push(`${documentation(name)}\n  ${key}: ${type};`);
 
   if (keywords !== undefined) {
@@ -1383,6 +1564,18 @@ if (invented.length > 0) {
 
 const types = `// Generated by scripts/build-css-properties.mjs from mdn-data (CC0-1.0). Do not edit.
 //
+// Type-only imports, so this file still holds no runtime — see \`units.generated.ts\`.
+import type {
+  CssAngleUnit,
+  CssDimension,
+  CssLengthUnit,
+  CssResolutionUnit,
+  CssTimeUnit,
+} from "./units.generated";
+import type { CssColor, CssColorKeyword } from "./values.generated";
+import type { Token } from "./token";
+
+//
 // ${named.length} properties, ${unions} of them a closed keyword set. Everything else is \`string | number\`
 // and its typos belong to the CSS checker — see the script for the measurement behind that split.
 
@@ -1400,6 +1593,21 @@ export type CssValue = string | number;
  * *did you mean* survives.
  */
 export type Keyword<K extends string> = K | CssGlobal | \`var(\${string})\` | \`\${K | CssGlobal} !important\`;
+
+/**
+ * A property whose grammar is keywords plus ONE primitive — the keywords, the values, and a declared
+ * variable of a kind that fits.
+ *
+ * \`!important\` is admitted on anything rather than only on a keyword, which is deliberate: it is an
+ * escape hatch, and a type that refused \`padding: calc(1rem + 2px) !important\` would be refusing
+ * correct CSS to protect a check the author has already opted out of.
+ */
+export type Narrowed<K extends string, V> =
+  | K
+  | V
+  | CssGlobal
+  | \`var(\${string})\`
+  | \`\${string} !important\`;
 
 export interface CssProperties {
 ${rows.join("\n")}
@@ -1700,7 +1908,6 @@ export type CssDimension<Unit extends CssUnit = CssUnit> = \`\${number}\${Unit}\
  * Folded to lower case, like every other word this sweep collects, because the engine folds it too:
  * Chrome round-trips `ButtonText` to `"buttontext"` and `currentColor` to `"currentcolor"`.
  */
-const colourKeywords = scan("color").words;
 
 const values = `// Generated by scripts/build-css-properties.mjs from mdn-data (CC0-1.0). Do not edit.
 //
@@ -1714,6 +1921,22 @@ const values = `// Generated by scripts/build-css-properties.mjs from mdn-data (
  * value the rule accepts in a block and a fallback the config accepts cannot disagree.
  */
 export type CssColorKeyword = ${colourKeywords.map((one) => JSON.stringify(one)).join(" | ")};
+
+/**
+ * A colour, for the declaration that MAKES one rather than for the block — the same argument
+ * \`CssDimension\` is generated for, and the same shape of answer.
+ *
+ * Ninety-six properties say what they take now, so a value reaching one through a hole has to say
+ * what it is. This is what an author writes to say it:
+ *
+ * \`\`\`ts
+ * const accent: CssColor = theme.dark ? "#93c5fd" : "#3b82f6";
+ * \`\`\`
+ *
+ * It admits any call — \`rgb()\`, \`oklch()\`, \`color-mix()\`, \`light-dark()\`, \`var()\` — because
+ * nothing in a type can read inside one, and refusing them would make it useless where it is wanted.
+ */
+export type CssColor = CssColorKeyword | \`#\${string}\` | \`\${string}(\${string})\`;
 `;
 
 const said =
@@ -1721,7 +1944,7 @@ const said =
   `${propertyNamedRows.length} whose value is a property name, ${allUnits.length} units, ` +
   `${NOT_IN_A_RULE.length} at-rules that may not sit in a block, ${shorthandRows.length} shorthands, ` +
   `${valueRows.length} with values to suggest, ${Object.keys(ABBREVIATIONS).length} abbreviated, ` +
-  `${colourKeywords.length} colour keywords`;
+  `${colourKeywords.length} colour keywords, ${narrowed} narrowed to one primitive`;
 
 if (!check) {
   writeFileSync(TYPES, types);

@@ -1,4 +1,5 @@
 import { nearest } from "./compiler/rules";
+import type { Kind } from "./token";
 import type { CssAngleUnit, CssDimension, CssLengthUnit, CssResolutionUnit, CssTimeUnit } from "./units.generated";
 import type { CssColorKeyword } from "./values.generated";
 
@@ -41,7 +42,7 @@ import type { CssColorKeyword } from "./values.generated";
  * reason the `@property` half costs nothing: the kind IS the `syntax` descriptor, so there is no
  * mapping to keep in step and no kind that cannot be registered.
  */
-export const SYNTAX = {
+export const SYNTAX: Record<Kind, string> = {
   angle: "<angle>",
   any: "*",
   color: "<color>",
@@ -59,11 +60,9 @@ export const SYNTAX = {
   url: "<url>",
 } as const;
 
-/** What a variable may be declared as. */
-export type Kind = keyof typeof SYNTAX;
-
 /** The kinds, as a list, for the message a wrong one gets. */
 export const KINDS = Object.keys(SYNTAX) as readonly Kind[];
+export type { Kind, Token } from "./token";
 
 /**
  * What each kind accepts as a FALLBACK.
@@ -130,12 +129,6 @@ export interface Variable<K extends Kind = Kind, V = unknown> {
  *
  * It is a phantom: nothing reads `[TOKEN]` at runtime, and nothing is there to read.
  */
-declare const TOKEN: unique symbol;
-
-export type Token<K extends Kind = Kind, V = unknown> = string & {
-  readonly [TOKEN]: readonly [K, V];
-};
-
 /** Whether a leaf has been declared, asked without depending on how the marker is spelled. */
 export function isVariable(one: unknown): one is Variable {
   return typeof one === "object" && one !== null && (one as Partial<Variable>)[IS_VARIABLE] === true;

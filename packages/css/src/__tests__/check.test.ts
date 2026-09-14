@@ -143,16 +143,27 @@ describe("a project that is not", () => {
    * because the fallback to `CssValue` is exactly what satisfies an open property and stays quiet.
    * One confusing message on a quarter of properties beat a second message on all of them.
    */
-  test("a hole whose type the property cannot take is reported, on the hole and on the property", () => {
+  /**
+   * **This reported twice until ninety-six properties started saying what they take.**
+   *
+   * The pair was `TS2345` on the expression — *boolean is not assignable to `CssValue`* — and
+   * `TS2322` on the property — *`CssValue` is not assignable to `Keyword<…>`*. The note above
+   * weighed that second message against the alternative and kept it, when it reached a quarter of
+   * properties. Narrowing took it to most of them, and the same trade reads differently at that
+   * scale: `CssValue` is this compiler's own fallback, not anything the author wrote, so the second
+   * message asks a person to reason about a type they have never seen.
+   *
+   * One message now, on the author's own expression, and `inOrder` is where the other is dropped.
+   */
+  test("a hole whose type the property cannot take is reported once, on the hole", () => {
     const report = check({
       "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div css={@@( position: {this.wide}; )}>x</div>;\n  }\n}\n`,
     });
 
-    expect(report.findings).toHaveLength(2);
-    expect(report.findings.every((one) => one.line === 4)).toBe(true);
-    const [onTheHole] = report.findings.filter((one) => one.code === 2345);
-    expect(onTheHole.message).toContain("boolean");
-    expect(report.findings.some((one) => one.code === 2322)).toBe(true);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].line).toBe(4);
+    expect(report.findings[0].code).toBe(2345);
+    expect(report.findings[0].message).toContain("boolean");
   });
 
   /** And an OPEN property — 424 of the 551 — reports the hole once, with the type the author wrote. */
@@ -804,13 +815,37 @@ describe("what a hole may evaluate to", () => {
   });
 
   test.each([
-    ["a fallback is written", '  color: {maybe ?? "red"};', "declare const maybe: string | undefined;\n"],
-    ["a plain string", "  color: {s};", "declare const s: string;\n"],
     ["a number", "  opacity: {n};", "declare const n: number;\n"],
     ["a closed property's own keyword", "  position: {k};", 'declare const k: "absolute";\n'],
     ["a string inside a value", "  border-left: {s} solid red;", "declare const s: string;\n"],
+    // Spelled out rather than imported, so this probe resolves nothing: `CssColor` and
+    // `CssDimension` are exported for an author to annotate with, and these are what they mean.
+    ["a colour the author typed as one", "  color: {c};", "declare const c: `#${string}`;\n"],
+    ["a length the author typed as one", "  letter-spacing: {d};", "declare const d: `${number}px`;\n"],
   ])("%s is accepted", (_what, declaration, head) => {
     expect(held(declaration, head).findings).toEqual([]);
+  });
+
+  /**
+   * **A bare `string` into a property that says what it takes, which used to be accepted.**
+   *
+   * The cost of narrowing, and it is the whole cost: a value whose type is `string` could be
+   * anything at run time, and `color` now says it takes a colour. The answer is the one this package
+   * already had for lengths — put the type where the value is MADE — and `CssColor` exists for
+   * exactly this, so the fix is an annotation rather than a cast.
+   *
+   * `border-left` is the control: its grammar is composite, nothing narrowed it, and a `string`
+   * still goes in.
+   */
+  test.each([
+    ["a plain string", "  color: {s};", "declare const s: string;\n"],
+    ["a fallback that widens to string", '  color: {maybe ?? "red"};', "declare const maybe: string | undefined;\n"],
+  ])("%s is refused by a property that says what it takes", (_what, declaration, head) => {
+    const report = held(declaration, head);
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].code).toBe(2322);
+    expect(report.findings[0].message).toContain("CssColor");
   });
 
   /** A guard and a spread are not values, so neither goes through it — each has a type of its own. */

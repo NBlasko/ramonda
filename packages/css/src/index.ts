@@ -23,6 +23,8 @@ export type {
   CssTimeUnit,
   CssUnit,
 } from "./units.generated";
+/** A colour, for the declaration that makes one — see `CssDimension` for the same argument. */
+export type { CssColor, CssColorKeyword } from "./values.generated";
 /**
  * What `$.color.primary.main` IS, for the module codegen writes.
  *
@@ -30,7 +32,7 @@ export type {
  * anything: a token's runtime value is the string `var(--color-primary-main)`, written straight into
  * the generated file, so there is no factory to call and no code to ship.
  */
-export type { Kind, Token } from "./declared";
+export type { Kind, Token } from "./token";
 export type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
 export { block, toStyleObject } from "./value";
 export type { StyleEntry, StyleMap } from "./merge";

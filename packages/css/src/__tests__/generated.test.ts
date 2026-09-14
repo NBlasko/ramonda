@@ -164,3 +164,70 @@ export const outside: string = $.color.primary.main;
     expect(output).toContain("type-check");
   });
 });
+
+/**
+ * The kind check at the USE SITE, which is the reason ninety-six properties were narrowed.
+ *
+ * A token is a branded string, so every property accepting `string` accepts all of them — which is
+ * why this could not work until a property said what it takes. `padding-left` takes a length now,
+ * and a colour is not one.
+ */
+describe("a variable of the wrong kind", () => {
+  const checkedWith = (card: string): string => {
+    const root = project();
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "jsx.d.ts"),
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    );
+    writeFileSync(join(root, "src", "Card.tsx"), `import { $ } from "../ramonda.css.generated";\n\n${card}`);
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          jsx: "preserve",
+          types: [],
+        },
+        include: ["src", "ramonda.css.generated.ts"],
+      }),
+    );
+
+    try {
+      return execFileSync(process.execPath, [join(PACKAGE, "bin.mjs"), "tsconfig.json"], {
+        cwd: root,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      return `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    }
+  };
+
+  test("a colour in a length slot is refused, and the message names both kinds", () => {
+    const output = checkedWith(`export const a = <div css={@@( padding-left: $.color.primary.main; )}>x</div>;\n`);
+
+    expect(output).toContain("problem");
+    expect(output).toMatch(/"color"/);
+    expect(output).toMatch(/"length"/);
+  });
+
+  test("a length in a colour slot is refused", () => {
+    const output = checkedWith(`export const b = <div css={@@( background-color: $.size.control.md; )}>x</div>;\n`);
+
+    expect(output).toContain("problem");
+    expect(output).toMatch(/CssColor|"color"/);
+  });
+
+  test("and the matching kinds still go in, which is the half that must not regress", () => {
+    const output = checkedWith(
+      `export const c = <div css={@@( padding-left: $.size.control.md; background-color: $.color.primary.main; )}>x</div>;\n`,
+    );
+
+    expect(output).not.toContain("problem");
+  });
+});

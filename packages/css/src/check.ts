@@ -226,9 +226,39 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
 function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] {
   const said = new Set(css.map((finding) => at(finding)));
 
-  return [...css, ...types.filter((finding) => !(finding.code === 2353 && said.has(at(finding))))].sort(
-    (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column,
+  /**
+   * A line where a HOLE's own value was refused, so the property's complaint about it is dropped.
+   *
+   * The pair appears the moment a property says what it takes. `__val` constrains a hole to
+   * `CssValue`; when the expression fails that, TypeScript reports it on the expression — the
+   * actionable one — and then falls back to the CONSTRAINT as the call's type, which a narrowed
+   * property refuses in turn. Measured on `color: {maybe}` where `maybe` is `string | undefined`:
+   *
+   *     TS2322 3:3   Type 'CssValue' is not assignable to type 'Narrowed<never, CssColor | …>'
+   *     TS2345 3:11  Argument of type 'undefined' is not assignable to parameter of type 'CssValue'
+   *
+   * Two messages for one mistake, and the first names a type the author never wrote. It is the same
+   * fault `TS2353` had above, arriving from the other direction, so it is answered the same way.
+   *
+   * Matched on the message rather than on position alone, because `Type 'CssValue' is not
+   * assignable` can only come from a hole falling back to its constraint — a value the author wrote
+   * out is reported as its own type, never as `CssValue`.
+   */
+  const holeRefused = new Set(
+    types
+      .filter((finding) => finding.code === 2345 && finding.message.includes("CssValue"))
+      .map((finding) => `${finding.file}:${finding.line}`),
   );
+
+  const kept = types.filter((finding) => {
+    if (finding.code === 2353 && said.has(at(finding))) return false;
+    if (finding.code === 2322 && finding.message.startsWith("Type 'CssValue' is not assignable")) {
+      return !holeRefused.has(`${finding.file}:${finding.line}`);
+    }
+    return true;
+  });
+
+  return [...css, ...kept].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column);
 }
 
 const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.column}`;
