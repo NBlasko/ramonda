@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import { $, type Value } from "../../ramonda.css.generated";
+import { type Value } from "../../ramonda.css.generated";
 
 /**
  * **One block, written to react to every constraint in `ramonda.css.ts`.**
@@ -50,7 +50,7 @@ export default class ConfigPlayground extends Component {
           /* ── `units`: uncomment `"*": { units: ["px", "rem", "%"] }` ───────────────
              `em` is refused then, and the `px` line beside it is not.                  */
           letter-spacing: 0.05em;
-          gap: 8px;
+          gap: 4px $.space.gutter.tight;
 
           /* ── `shorthand`: uncomment `"*": { shorthand: false }` ────────────────────
              `padding` and `background` above stop existing — and are gone from the

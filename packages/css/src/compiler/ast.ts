@@ -99,6 +99,15 @@ export interface VariablePart {
   readonly at?: number;
   /** How far the path runs, so a squiggle covers `$.color.primary.main` and not a character of it. */
   readonly length?: number;
+  /**
+   * Whether the author's last character is a DOT — `$.` or `$.color.`, a path being typed.
+   *
+   * Carried because the virtual file has to emit that dot: without it `$.color.` becomes
+   * `__vars.color` and the language service sees a finished expression rather than a member access
+   * in progress, so it offers nothing. Measured as an empty completion list exactly where the
+   * variable groups belong.
+   */
+  readonly open?: true;
 }
 
 export interface TextPart {

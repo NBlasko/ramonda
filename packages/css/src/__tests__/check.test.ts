@@ -357,10 +357,10 @@ describe("a setup that would otherwise pass silently", () => {
       ),
     );
 
-    // Five, because the virtual file names five types from that module — the block's shape, what a
-    // block IS, composition's two, and what a hole in a value must be. Each missing one is its own
-    // setup fault, and each is reported.
-    expect(report.findings).toHaveLength(5);
+    // Six, because the virtual file names six things from that module — the block's shape, what a
+    // block IS, composition's two, what a hole in a value must be, and `$` for the project's own
+    // variables. Each missing one is its own setup fault, and each is reported.
+    expect(report.findings).toHaveLength(6);
     expect(report.findings.map((one) => one.message).join(" ")).toContain("CssBlockShape");
   });
 

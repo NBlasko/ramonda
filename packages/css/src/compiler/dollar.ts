@@ -32,7 +32,7 @@ export function nameFor(path: string): `--${string}` {
 }
 
 /** Whether a segment can be written after a dot in TypeScript, or needs brackets. */
-function isIdentifier(segment: string): boolean {
+export function isIdentifier(segment: string): boolean {
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(segment);
 }
 
@@ -45,17 +45,28 @@ function isIdentifier(segment: string): boolean {
  * `TS1351: An identifier or keyword cannot immediately follow a numeric literal` — while the
  * bracketed form does.
  *
- * An empty path is `$` alone, which is what a half-typed `$.` in an editor needs: the expression has
- * to be something the language service can offer members on.
+ * An empty path is the root alone, which is what a half-typed `$.` in an editor needs: the
+ * expression has to be something the language service can offer members on.
+ *
+ * `root` is the NAME the virtual file declared for it, which is not `$` — see `virtual.ts`. A block
+ * is this package's language, so `$` inside one needs no import; the virtual file binds it under a
+ * name of its own so an author who also uses `$` for something else is not disturbed.
  */
-export function expressionFor(path: string): string {
-  if (path === "") return "$";
-
-  return path
+export function expressionFor(path: string, root = "$", open = false): string {
+  const written = path
     .split(".")
     .filter((segment) => segment !== "")
     .reduce(
       (so_far, segment) => (isIdentifier(segment) ? `${so_far}.${segment}` : `${so_far}[${JSON.stringify(segment)}]`),
-      "$",
+      root,
     );
+
+  /**
+   * A trailing dot is kept, because it is what an editor is asked about.
+   *
+   * `$.color.` emitted as `__vars.color` is a finished expression, and the language service answers
+   * a finished expression with nothing. With the dot it is a member access in progress and the
+   * members are offered — which is the whole point of the spelling. Measured both ways.
+   */
+  return open ? `${written}.` : written;
 }

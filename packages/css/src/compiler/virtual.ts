@@ -1,7 +1,7 @@
-import type { BlockItem, ValuePart } from "./ast";
+import type { BlockItem, ValuePart, VariablePart } from "./ast";
 import { CONDITION, SPREAD, holeIn } from "./read";
 import { selectorOf } from "./flatten";
-import { expressionFor } from "./dollar";
+import { expressionFor, isIdentifier } from "./dollar";
 import { collapse, propertyName } from "./normalise";
 import type { Span } from "./read";
 import { readBlock } from "./read";
@@ -293,6 +293,30 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * together, each at its own position — and the group's nesting is not needed here at all, because
    * a declaration inside a group is checked exactly like one outside it.
    */
+  /**
+   * `$` — the project's variables, bound under a name of ours so a block needs no import.
+   *
+   * **This replaces requiring the author to import it, and the reason is what TypeScript says when
+   * they have not.** The first design left `$` to ordinary scope, on the argument that
+   * `Cannot find name '$'` is a sentence anybody can act on. Measured, it is not the sentence
+   * TypeScript writes:
+   *
+   *     Cannot find name '$'. Do you need to install type definitions for jQuery?
+   *
+   * A user met that. It names a library nothing here has anything to do with, and completion is dead
+   * beside it because the name resolves to nothing — so the one thing `$` exists for does not work
+   * until an import nobody was told about is written.
+   *
+   * A block is this package's language, and `$` belongs to it the way `@@` does. So it is bound
+   * here, from whichever property map applies, and an author who uses `$` for something else of
+   * their own is untouched: `binding` picks a name their file does not hold.
+   *
+   * A `typeof import( … )` in a type position, for the same reason as the helpers above: an import
+   * STATEMENT would turn a script into a module and change what the author's own code means.
+   */
+  const variables = binding(source, "__vars");
+  write(`declare const ${variables}: typeof import(${from}).$;`);
+
   const condition = binding(source, "__cond");
   const spread = binding(source, "__from");
   write(`declare function ${condition}<T>(condition: import(${from}).CssCondition<T>): never;`);
@@ -331,7 +355,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * 1000 belong. `binding` already picks a name the source does not contain, so nothing of the
    * author's is ever removed by filtering these out.
    */
-  const bindings: string[] = [block, condition, spread, hole];
+  const bindings: string[] = [block, condition, spread, hole, variables];
 
   /**
    * One more declaration per KIND of named site the file holds, and only the kinds it holds.
@@ -622,8 +646,21 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
      * nothing left to judge. Written bare, `color: $.size.control.md` is checked against what `color`
      * accepts — which is the kind check, and it costs nothing to get because the expression is real.
      */
-    if (parts.length === 1 && parts[0].kind === "variable") {
-      derived(expressionFor(parts[0].path), parts[0].at, parts[0].length);
+    /**
+     * The value is ONE variable, with nothing beside it but whitespace.
+     *
+     * Bare rather than wrapped, for two reasons and the second is not cosmetic. Wrapped in a
+     * template literal it would be a `string` and the property's own type would have nothing left to
+     * judge. And a path BEING TYPED carries its trailing dot — `__vars.color.` — which is a syntax
+     * error inside `${ … }`: measured, the whole virtual file then failed to parse and the editor
+     * offered nothing exactly where the variable groups belong.
+     *
+     * Whitespace counts as nothing here because it is: a value is collapsed before it is compared,
+     * so `color: $.color.accent.main ` and the same without the space are one declaration.
+     */
+    const written = parts.filter((part) => part.kind !== "text" || part.text.trim() !== "");
+    if (written.length === 1 && written[0].kind === "variable") {
+      variablePath(written[0]);
       return;
     }
 
@@ -660,10 +697,8 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        * expression, so the language service answers everything about it for free: completion one
        * level at a time, the kind at the use site, go-to-definition, and rename.
        *
-       * `$` is resolved by ORDINARY SCOPE, exactly as a hole's expression is. It is whatever the
-       * file imported — the module codegen wrote — so a project that has not imported it is told
-       * `Cannot find name '$'`, which is a sentence anybody can act on, rather than being handed a
-       * private binding of ours that no other tool would agree about.
+       * `$` is BOUND by the virtual file rather than left to the author's imports — see the
+       * declaration in the preamble for the measurement that settled that.
        *
        * The expression is `derived` rather than copied: `$.space.inline.2xl` is writable in a block
        * and does not parse as TypeScript, so the virtual file spells that segment `["2xl"]` and the
@@ -672,7 +707,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
        */
       if (part.kind === "variable") {
         write("${");
-        derived(expressionFor(part.path), part.at, part.length);
+        variablePath(part);
         write("}");
         continue;
       }
@@ -681,6 +716,64 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       write("}");
     }
     write("`");
+  }
+
+  /**
+   * A `$` path, emitted SEGMENT BY SEGMENT rather than as one run.
+   *
+   * `DESIGN.md` said this and the first implementation did not do it, so every caret inside a path
+   * mapped by raw offset into a virtual string of a different length: `$.color.accent.` is 15
+   * characters and `__vars.color.accent.` is 20, so a caret at the end of the author's text landed
+   * in the middle of `accent` and the editor offered the members of `$.color`. One level too
+   * shallow, silently.
+   *
+   * Each segment is its own run against its own author span, so a caret anywhere in the path maps
+   * where it belongs. The `$` itself is derived — it becomes a name of ours — and so is a segment
+   * that has to be bracketed; the rest is the author's own bytes.
+   */
+  function variablePath(part: VariablePart): void {
+    const at = part.at;
+    if (at === undefined || part.length === undefined) {
+      derived(expressionFor(part.path, variables, part.open === true), at, part.length);
+      return;
+    }
+
+    const written = source.slice(at, at + part.length);
+    derived(variables, at, 1);
+
+    /**
+     * Walked rather than split, because a split loses which dot is which.
+     *
+     * `$.color.accent.` splits to `["", "color", "accent", ""]` and the empty ends are the leading
+     * and trailing dots — indistinguishable from each other once they are array elements, and the
+     * first version emitted two dots for one. Walking keeps every character where it was written.
+     */
+    let index = 1;
+    while (index < written.length) {
+      if (written[index] !== ".") break;
+      const dot = index;
+      index += 1;
+
+      const from = index;
+      while (index < written.length && written[index] !== ".") index += 1;
+
+      /** A dot with nothing after it: the trailing one a path being typed ends with. */
+      if (index === from) {
+        derived(".", at + dot, 1);
+        continue;
+      }
+
+      /**
+       * The dot and its segment are ONE run, because a bracketed segment has no dot in front of it.
+       *
+       * `.2xl` becomes `["2xl"]` — four of the author's characters for seven of ours, and no dot at
+       * all. Emitting the dot separately put one there: `__vars.space.inline.["2xl"]`, which does
+       * not parse.
+       */
+      const segment = written.slice(from, index);
+      const emitted = isIdentifier(segment) ? `.${segment}` : `[${JSON.stringify(segment)}]`;
+      derived(emitted, at + dot, index - dot);
+    }
   }
 
   /**

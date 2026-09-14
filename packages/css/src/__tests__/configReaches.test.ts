@@ -43,13 +43,20 @@ afterEach(() => {
  *
  * So it is a real tree. Slower, and the only arrangement that can fail.
  */
-function editorWith(rules: string, marked: string) {
+function editorWith(rules: string, marked: string, variables: Record<string, string> = {}) {
   const root = mkdtempSync(join(tmpdir(), "ramonda-editor-"));
   roots.push(root);
   symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "package.json"), JSON.stringify({ name: "probe", type: "module", version: "0.0.0" }));
-  writeFileSync(join(root, "ramonda.css.ts"), `export default { properties: ${rules} };\n`);
+  const declared = Object.entries(variables)
+    .map(([name, group]) => `  ${name}: ${group},`)
+    .join("\n");
+  writeFileSync(
+    join(root, "ramonda.css.ts"),
+    `import { kind } from "@ramonda/css/config";\n` +
+      `export default { properties: ${rules}, variables: {\n${declared}\n} };\n`,
+  );
   writeGenerated(root, ts);
   forgetGenerated();
 
@@ -159,5 +166,56 @@ describe("a property narrowed to a list of values", () => {
     const { reported } = editorWith(LIST, `const g = <div css={@@( z-index: 5; )}>x</div>;\n`);
 
     expect(reported()).toEqual([]);
+  });
+});
+
+/**
+ * `$` in a block, with NO import in the file — which is what a user met and what settled the design.
+ *
+ * The first version left `$` to ordinary scope, and TypeScript answered
+ * `Cannot find name '$'. Do you need to install type definitions for jQuery?` — a library nothing
+ * here touches — with completion dead beside it, because the name resolved to nothing. A block is
+ * this package's language and `$` belongs to it, so the virtual file binds it.
+ */
+describe("`$` without an import", () => {
+  const VARS = `{}`;
+
+  test("completes one level at a time", () => {
+    const { offered } = editorWith(VARS, `const a = <div css={@@( color: $./*|*/ )}>x</div>;\n`, {
+      color: `kind("color", { accent: { main: "#10b981" } })`,
+      space: `kind("length", { gutter: { tight: "8px" } })`,
+    });
+
+    expect(offered()).toEqual(expect.arrayContaining(["color", "space"]));
+  });
+
+  test("and the next level down", () => {
+    const { offered } = editorWith(VARS, `const b = <div css={@@( color: $.color.accent./*|*/ )}>x</div>;\n`, {
+      color: `kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } })`,
+    });
+
+    expect(offered()).toEqual(expect.arrayContaining(["main", "quiet"]));
+  });
+
+  test("a path is silent, mixed into a value and alone", () => {
+    const { reported } = editorWith(
+      VARS,
+      `const c = <div css={@@( gap: 4px $.space.gutter.tight; color: $.color.accent.main; )}>x</div>;\n`,
+      {
+        color: `kind("color", { accent: { main: "#10b981" } })`,
+        space: `kind("length", { gutter: { tight: "8px" } })`,
+      },
+    );
+
+    expect(reported()).toEqual([]);
+  });
+
+  test("and nothing names jQuery, whatever else it says", () => {
+    const { reported } = editorWith(VARS, `const d = <div css={@@( color: $.nope.at.all; )}>x</div>;\n`, {
+      color: `kind("color", { accent: { main: "#10b981" } })`,
+    });
+
+    expect(reported().join("\n")).not.toMatch(/jQuery/);
+    expect(reported().join("\n")).toMatch(/nope/);
   });
 });

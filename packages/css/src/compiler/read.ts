@@ -796,7 +796,8 @@ export function readBlock(source: string, open: number, filename: string, option
       break;
     }
 
-    return { kind: "variable", path: segments.join("."), at: start, length: at - start };
+    const open = source.charCodeAt(at - 1) === 46 ? ({ open: true } as const) : undefined;
+    return { kind: "variable", path: segments.join("."), at: start, length: at - start, ...open };
   }
 
   /** A declaration's value: text and holes, up to `;` or whatever closes the block it is in. */

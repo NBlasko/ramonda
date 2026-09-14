@@ -148,28 +148,44 @@ describe("what the virtual file makes of it", () => {
   test("a path alone is written BARE, so the property's own type judges it", () => {
     // Wrapped in a template literal it would be a `string` and `color` would have nothing left to
     // check. Bare, the kind check comes for free — the same reason one hole is written bare.
-    expect(code("color: $.color.primary.main;")).toContain("{color:$.color.primary.main}");
+    //
+    // `__vars` rather than `$`: a block needs no import, so the virtual file binds the project's
+    // variables under a name of its own. See the declaration in `virtual.ts` for what leaving it to
+    // the author's scope was measured to say.
+    expect(code("color: $.color.primary.main;")).toContain("{color:__vars.color.primary.main}");
   });
 
-  test("`$` is ordinary scope — nothing is declared for it", () => {
-    // A project that has not imported `$` is told `Cannot find name '$'`, which is a sentence
-    // anybody can act on. Inventing a binding here would be one no other tool agrees about.
-    expect(code("color: $.color.primary.main;")).not.toContain("declare const $");
+  /**
+   * **`$` is BOUND by the virtual file, and the first design left it to the author's imports.**
+   *
+   * The argument then was that `Cannot find name '$'` is a sentence anybody can act on. Measured, it
+   * is not the sentence TypeScript writes — a user met
+   * `Cannot find name '$'. Do you need to install type definitions for jQuery?`, with completion
+   * dead beside it. A block is this package's language and `$` belongs to it.
+   */
+  test("`$` needs no import, because the virtual file binds it", () => {
+    const written = code("color: $.color.primary.main;");
+
+    expect(written).toContain("declare const __vars: typeof import");
+    // Under a name of ours, so an author who uses `$` for something else is untouched.
+    expect(written).not.toContain("declare const $;");
   });
 
   test("a segment that is not an identifier is bracketed, because THIS half must parse", () => {
-    expect(code("padding: $.space.inline.2xl;")).toContain('$.space.inline["2xl"]');
-    expect(code("z-index: $.layer.0;")).toContain('$.layer["0"]');
+    expect(code("padding: $.space.inline.2xl;")).toContain('__vars.space.inline["2xl"]');
+    expect(code("z-index: $.layer.0;")).toContain('__vars.layer["0"]');
   });
 
-  test("a half-typed path is still an expression, which is what completion needs", () => {
-    expect(code("color: $.;")).toContain("{color:$}");
+  test("a half-typed path keeps its trailing DOT, which is what completion needs", () => {
+    // `__vars` alone is a finished expression and an editor answers one with nothing. With the dot
+    // it is a member access in progress, and the members are the whole point of the spelling.
+    expect(code("color: $.;")).toContain("{color:__vars.}");
   });
 
   test("mixed with text it is one template literal, exactly as a hole is", () => {
     // The space before the expression is folded away, which is what happens to a hole in the same
     // position — `1px solid${__val((accent))}` — so this matches the existing behaviour rather than
     // asserting a nicer one. The EMITTED CSS keeps the space; only the virtual file folds it.
-    expect(code("border: 1px solid $.color.border.strong;")).toContain("`1px solid${$.color.border.strong}`");
+    expect(code("border: 1px solid $.color.border.strong;")).toContain("`1px solid${__vars.color.border.strong}`");
   });
 });

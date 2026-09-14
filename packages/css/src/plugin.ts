@@ -370,8 +370,11 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
            * expression offered CSS words instead of the file's own bindings.
            */
           const inHole = where.holes.some((one) => one.start <= position && position <= one.end);
+          // A `$` path is TypeScript's, for the same reason a hole is: it IS a TypeScript
+          // expression, and the members of the project's variables are the only useful answer.
+          const inPath = where.paths.some((one) => one.start <= position && position <= one.end);
           const words =
-            value === undefined || inHole || !isCss(where, position)
+            value === undefined || inHole || inPath || !isCss(where, position)
               ? undefined
               : valueWords(value.property, projectConfig(fileName));
           if (words !== undefined) {
@@ -1109,6 +1112,7 @@ function regions(text: string, fileName: string, readModule: Imported["read"]): 
   const blocks: Span[] = [];
   const holes: Span[] = [];
   const values: ValueSpan[] = [];
+  const paths: Span[] = [];
   const preludes: PreludeSpan[] = [];
   // A resolved reference is not a hole, so it is not a region TypeScript owns — an editor must not
   // colour `{slide}` as an expression in a place the build writes a name into. Imports included:
@@ -1118,20 +1122,20 @@ function regions(text: string, fileName: string, readModule: Imported["read"]): 
     const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     blocks.push({ start: site.open, end: read.end });
     holes.push(...read.holes);
-    collect(read.block.items, values, preludes);
+    collect(read.block.items, values, preludes, paths);
   }
-  return { blocks, holes, values, preludes };
+  return { blocks, holes, values, paths, preludes };
 }
 
 /** Every declaration's VALUE, with the property it belongs to — see `valueWords`. */
-function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: PreludeSpan[]): void {
+function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: PreludeSpan[], paths?: Span[]): void {
   for (const item of items) {
     if (item.kind === "rule") {
       // The prelude's own span, which a nested rule already carries for the checker's squiggles.
       if (item.at !== undefined && item.preludeEnd !== undefined) {
         preludes?.push({ start: item.at, end: item.preludeEnd, prelude: item.prelude });
       }
-      collect(item.items, out, preludes);
+      collect(item.items, out, preludes, paths);
       continue;
     }
     // A spread has no value and its own marker is what a reader hovers — see `spoken`.
@@ -1146,6 +1150,19 @@ function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: Prelu
      * this could not answer.
      */
     out.push({ start: item.at + item.property.length, end: item.end, property: item.property });
+
+    /**
+     * A `$` path is TypeScript's to complete, exactly as a hole is.
+     *
+     * Without this, a caret inside `$.` was answered with the PROPERTY's own value words — measured,
+     * `color: $.` offered 210 colour keywords where the variable groups belong, because the caret is
+     * in a value and that is all this knew about it.
+     */
+    for (const part of item.value) {
+      if (part.kind === "variable" && part.at !== undefined) {
+        paths?.push({ start: part.at, end: part.at + (part.length ?? 0) });
+      }
+    }
   }
 }
 
@@ -1232,7 +1249,7 @@ function unquoted(name: string): string {
 }
 
 /** Nothing at all, for a file whose regions are not cached. */
-const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [], preludes: [] };
+const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [], paths: [], preludes: [] };
 
 /**
  * What THIS language says about a prelude, which nobody else can.
@@ -1349,6 +1366,13 @@ interface Regions {
   readonly blocks: readonly Span[];
   readonly holes: readonly Span[];
   readonly values: readonly ValueSpan[];
+  /**
+   * Where each `$` path runs — a region TypeScript owns, for the same reason a hole is.
+   *
+   * It IS a TypeScript expression, so the members of the project's variables are the only useful
+   * answer there. Measured without it: `color: $.` offered 210 colour keywords.
+   */
+  readonly paths: readonly Span[];
   /** Where each nested rule's prelude runs — a selector, an at-rule, or a condition. */
   readonly preludes: readonly PreludeSpan[];
 }
