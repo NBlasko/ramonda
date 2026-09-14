@@ -69,19 +69,26 @@ import type { CssProperties, CssValue } from "./properties.generated";
  * Measured, exactly that. One literal per declaration, gathered in an array, gets every fault
  * reported at once, each with its own position and its own suggestion.
  */
-export type CssBlockShape = BlockShapeOf<CssProperties>;
+export type CssBlockShape = Partial<CssProperties> & {
+  [nested: `&${string}`]: CssBlockShape[];
+} & { [at: `@${string}`]: CssBlockShape[] } & { [dashed: `-${string}`]: CssValue };
 
 /**
- * The same shape, over whichever property map applies — which is what lets a PROJECT have its own.
+ * **A PROJECT writes its own copy of this shape, and there is no parameterised version to share.**
  *
- * A project that declares variables gets a property map narrowed by its config, written by codegen,
- * and its blocks are checked against that instead of against this one. The shape around the
- * properties does not change, so it is written once here and parameterised rather than copied into
- * every generated module — where it would be one more thing that can fall out of step.
+ * There was one — `BlockShapeOf<P>` — so the shape around the properties could be stated once and
+ * a generated module could name it. It is gone because it does not work, and the playground found
+ * it on its first run:
+ *
+ *     generic, one level of nesting     accepted
+ *     generic, TWO levels               TS2353: '"& .title"' does not exist in type
+ *     self-referential, two levels      accepted
+ *
+ * A generic recursive type alias stops expanding at depth, and two levels of nesting is ordinary
+ * CSS — `&:hover { & .title { … } }` is written in this repository's own playground. So `codegen.ts`
+ * emits the shape concretely, referring to the project's own `CssBlockShape`, and the duplication is
+ * the price of a type that works at the depth people write.
  */
-export type BlockShapeOf<P> = Partial<P> & {
-  [nested: `&${string}`]: BlockShapeOf<P>[];
-} & { [at: `@${string}`]: BlockShapeOf<P>[] } & { [dashed: `-${string}`]: CssValue };
 
 /**
  * The body of `@@keyframes( … )`: frames, each holding declarations of its own.

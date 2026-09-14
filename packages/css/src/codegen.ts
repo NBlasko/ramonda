@@ -302,7 +302,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
   const rows: string[] = [];
   const removed: string[] = [];
   const closed: string[] = [];
-  const uses = new Set<string>(["BlockShapeOf", "Narrowed", "Token"]);
+  const uses = new Set<string>(["Narrowed", "Token"]);
 
   /**
    * A shorthand this project switched off, which is a REMOVAL rather than a narrowing.
@@ -424,7 +424,7 @@ export function generate(declarations: Declarations, rules?: PropertyRules): Gen
   const module =
     `${HEADER}\n\n` +
     `import type { ${fromPackage} } from "@ramonda/css";\n` +
-    `import type { BlockShapeOf${closed.length === 0 ? "" : ", CssGlobal"}, CssProperties as Base, Narrowed } from "@ramonda/css/properties";\n\n` +
+    `import type { ${closed.length === 0 ? "" : "CssGlobal, "}CssProperties as Base, CssValue, Narrowed } from "@ramonda/css/properties";\n\n` +
     `/** Every variable this project declares. Reach one by the path it was declared at. */\n` +
     `export const $ = ${named.length === 0 ? "{}" : moduleTree(named)} as const;\n\n` +
     `/** The ${rows === "" ? 0 : rows.split("\n").length / 2} properties this project narrows, and what each takes. */\n` +
@@ -436,7 +436,9 @@ export function generate(declarations: Declarations, rules?: PropertyRules): Gen
       : `/** The ${removed.length} shorthand(s) this project switched off — writing one is now an unknown property. */\n` +
         `export type Removed = ${removed.map((one) => JSON.stringify(one)).join(" | ")};\n\n`) +
     `/** The shape of one block here. The virtual file reads this. */\n` +
-    `export type CssBlockShape = BlockShapeOf<CssProperties>;\n` +
+    `export type CssBlockShape = Partial<CssProperties> & {\n` +
+    `  [nested: \`&\${string}\`]: CssBlockShape[];\n` +
+    `} & { [at: \`@\${string}\`]: CssBlockShape[] } & { [dashed: \`-\${string}\`]: CssValue };\n` +
     `export type { CssBlock, CssCondition, CssSpreadable, CssValue } from "@ramonda/css/properties";\n\n` +
     `/** What one property accepts in this project — \`const gap: Value<"padding-left"> = "8px"\`. */\n` +
     `export type Value<P extends keyof CssProperties> = CssProperties[P];\n`;

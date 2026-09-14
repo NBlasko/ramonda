@@ -55,6 +55,12 @@ apps/docs/dist/
 apps/docs/.build/
 apps/docs/src/generated/
 
+# Written by `ramonda-css codegen` from a project's own `ramonda.css.ts`, on every build. Committing
+# them would mean a config and its output drifting apart in review, which is the one thing generated
+# output must never do.
+ramonda.css.generated.ts
+ramonda.css.generated.css
+
 # The packaged editor extension. Built from the folder it sits in, on the way to a marketplace or an
 # editor, and never a source of anything — a committed one is a binary nobody can review or diff.
 *.vsix

@@ -435,3 +435,60 @@ describe("what a project's property rules do", () => {
     expect(output).toContain("problem");
   });
 });
+
+/**
+ * Two levels of nesting, which is ordinary CSS and which a parameterised shape could not do.
+ *
+ * `&:hover { & .title { … } }` is written in this repository's own playground, and it is what found
+ * the fault: `BlockShapeOf<P>` accepted one level and refused two, because a generic recursive type
+ * alias stops expanding at depth. The generated module now writes the shape concretely, and this is
+ * the depth that proves it.
+ */
+describe("a block nested more than once", () => {
+  test("two levels are accepted, in a project with its own property map", () => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-nested-"));
+    projects.push(root);
+    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "probe", type: "module", version: "0.0.0" }));
+    writeFileSync(join(root, "ramonda.css.ts"), `export default { properties: { "z-index": { values: [1] } } };\n`);
+    writeGenerated(root, ts);
+
+    writeFileSync(
+      join(root, "src", "jsx.d.ts"),
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    );
+    writeFileSync(
+      join(root, "src", "Card.tsx"),
+      `export const a = <div css={@@(\n  color: red;\n  &:hover {\n    & .title {\n      color: blue;\n      &::after { content: ""; }\n    }\n  }\n)}>x</div>;\n`,
+    );
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          jsx: "preserve",
+          types: [],
+        },
+        include: ["src", "ramonda.css.generated.ts"],
+      }),
+    );
+
+    let output: string;
+    try {
+      output = execFileSync(process.execPath, [join(PACKAGE, "bin.mjs"), "tsconfig.json"], {
+        cwd: root,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      output = `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    }
+
+    expect(output).not.toContain("problem");
+  });
+});

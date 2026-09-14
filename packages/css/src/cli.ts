@@ -102,6 +102,20 @@ if (argv[0] === "codegen") {
  * JSON reader, which answered `'{' expected.` at line 1 column 1 of the author's own component — a
  * message that says the source is broken when the source is fine.
  */
+/**
+ * Codegen runs BEFORE the check, always, and that is not a convenience.
+ *
+ * The check reads the project's own property map when one is on disk and the shipped map when it is
+ * not — so a generated module that is missing or stale means a weaker check with nothing said. A
+ * fresh clone has none (they are not committed: a config and its output drifting apart in review is
+ * the one thing generated output must never do), and a config edited since the last build has an
+ * old one. Both would have passed while checking against something the project no longer says.
+ *
+ * It is cheap — it writes only when the content differs — and it means `ramonda-css tsconfig.json`
+ * is one command rather than two that must be run in the right order.
+ */
+said(() => writeGenerated(process.cwd(), ts));
+
 const given = argv.find((argument) => !argument.startsWith("-")) ?? "tsconfig.json";
 const tsconfig = statSync(given, { throwIfNoEntry: false })?.isDirectory() ? join(given, "tsconfig.json") : given;
 

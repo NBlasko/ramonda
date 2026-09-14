@@ -111,9 +111,11 @@ describe("naming what a property accepts", () => {
 
     expect(written).toContain("export type Value<P extends keyof CssProperties> = CssProperties[P];");
     expect(written).toContain(
-      'import type { BlockShapeOf, CssProperties as Base, Narrowed } from "@ramonda/css/properties";',
+      'import type { CssProperties as Base, CssValue, Narrowed } from "@ramonda/css/properties";',
     );
     expect(written).toContain("export type CssProperties = Omit<Base, keyof Narrowings> & Narrowings;");
-    expect(written).toContain("export type CssBlockShape = BlockShapeOf<CssProperties>;");
+    // Written out rather than named from the package: a generic recursive alias stops expanding at
+    // depth, and two levels of nesting is ordinary CSS. See the note on `CssBlockShape`.
+    expect(written).toContain("export type CssBlockShape = Partial<CssProperties> & {");
   });
 });
