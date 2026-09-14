@@ -142,7 +142,6 @@ function key(segment: string): string {
 
 /** The emitted module's shape, nested the way the config was written. */
 function moduleTree(named: readonly Named[]): string {
-  type Node = { readonly [segment: string]: Node | Named };
   const root: Record<string, unknown> = {};
 
   for (const one of named) {
