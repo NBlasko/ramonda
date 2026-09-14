@@ -574,16 +574,33 @@ only with the fix in hand:
 - **Turbo remote caching.** Add `TURBO_TOKEN` / `TURBO_TEAM` to share the build
   cache across runs and machines, so `test` and `build` stop rebuilding from
   scratch each job.
-- **The `test` job costs ~10 minutes, and instrumentation is most of it.** Measured
-  2026-09-11: 2438s of CPU work across 15 packages, `@ramonda/css` 836s of it and
-  `@ramonda/core` 593s — and `--coverage` is **4.8x** on css (46.6s to 225.3s). Three
-  things to weigh, in this order:
-  1. **Take coverage off the PR path.** It is paid on all 15 packages on every run and
-     the number is read by Coveralls alone. Running it on `main` only, or in a job that
-     does not block a merge, is roughly a fivefold cut. Read the *Coverage* section
-     first: folding the two tasks into one was deliberate and dropped three test tasks
-     when they were separate. Whatever replaces it must keep `turbo run test` as the
-     gate.
+- **The `test` job costs ~10 minutes.** Measured 2026-09-11: 2438s of CPU work across
+  15 packages, `@ramonda/css` 836s of it and `@ramonda/core` 593s.
+
+  **Instrumentation is NOT most of it, and the first version of this entry said it was.**
+  Measured again 2026-09-14, on an idle machine, one package at a time:
+
+      @ramonda/router    3s uninstrumented    3s with --coverage      1.0x
+      @ramonda/css      49s                 225s                      4.6x
+        of which plugin.test.ts + virtual.test.ts   174s of the 176s
+
+  **Coverage is free everywhere except one package, and inside it two files.** v8's
+  coverage is process-wide — it counts every line of JavaScript executed, and those two
+  files run the TypeScript type checker about 142 times. No other package runs `tsc` at
+  all, which is why router pays nothing.
+
+  Sharing one `ts.DocumentRegistry` across those services was tried and does not help:
+  217s to 210s, and it breaks four tests that are about per-package answers. The cost is
+  type CHECKING, which sharing parsed files does not avoid.
+
+  So the honest size of the prize is **about 3 minutes of 10**, from one package, not the
+  fivefold cut claimed here first. Three things to weigh:
+  1. **Take coverage off the PR path for `@ramonda/css` only.** Surgical rather than a
+     restructure, now that the cost is known to be one package. Read the *Coverage*
+     section first: folding the two tasks into one was deliberate and dropped three test
+     tasks when they were separate. Whatever replaces it must keep `turbo run test` as
+     the gate, and losing the 99% floor on PRs is the real cost — it caught a genuine
+     drop on 2026-09-11.
   2. **Cache `.turbo` between runs.** Only the pnpm store and the Playwright binaries
      are cached today, so every run re-tests every package including untouched ones —
      a PR that edits only `apps/docs` pays for the whole suite. `test` is already
