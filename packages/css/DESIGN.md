@@ -758,49 +758,94 @@ string: **rename-refactor**, because a member has a definition site and a string
 
 #### Decided
 
-**`$` is a superset spelling, and it compiles to `var(--…)`.** Nothing new reaches the browser: the
-stylesheet is the same one a hand-written `var()` produces, so there is no runtime cost, no custom
-property on an element and no render on a change. What `$` adds happens entirely before the build.
+**`$` is a superset spelling, and it compiles to `var(--name, fallback)`.** Nothing new reaches the
+browser and there is no runtime: the stylesheet is what a hand-written `var()` produces. The fallback
+is not decoration — it is what makes the value's type true, because a `var()` with no fallback can
+resolve to nothing and a type that promised a colour would have lied.
 
-**A group is an error, always write a leaf.** `$.color.primary` names three tokens and no value, so
-it cannot stand where a value goes. *Note for the implementation:* left alone, TypeScript's message
-would be `Type '{ main: …; light: … }' is not assignable to type …`, which names the shape instead of
-the mistake. Groups carry a marker so the message says a group was named and a token is wanted.
+**A group is an error; always write a leaf.** `$.color.primary` names three variables and no value.
+Left alone TypeScript would say `Type '{ main: … }' is not assignable`, which names the shape instead
+of the mistake, so groups carry a marker and the message says a group was named.
 
-**A leaf has a kind — colour, length, duration, and so on — and the kind is checked.** `padding:
-$.color.primary.main` is a fault. The table that knows `background` takes a colour is the one the
-strictness work already generates from the engines; `$` rides it rather than declaring a second one.
+**A leaf has a kind, and it is WRITTEN — once per group.** Reading the kind off the fallback was
+tried and refused: a value cannot say whether `"0"` is a length or a number, and guessing is worse
+than asking. But writing it beside every variable is ceremony nobody keeps up. So `kind(…)` wraps a
+GROUP and holds all the way down, and a subgroup may override it.
 
-| question | decided | why |
-|---|---|---|
-| what the config holds for a token | **name, kind AND value** | codegen writes the `:root` stylesheet too, so a token lives in one place. The alternative put the same name in the config and in hand-written CSS — this repository's recurring fault. |
-| a declared token written as `var(--color-primary-main)` | **a rule pushes to `$.…`**, with a fix, silenceable per line | it stays legal CSS and keeps compiling. Without the rule both spellings appear in one file and a reader has to work out why. |
-| is `$` importable into TypeScript | **yes, and the docs must say what it costs** | asked for, to type a value written outside a block. But a token reaching a block through a HOLE becomes a value on the element — 41 bytes and a render, measured — which is the thing `$` inside a block exists to avoid. Same name, two very different costs. |
-| token names that are not identifiers — `2xl`, `space.0` | **written with a dot, bracketed in the virtual file** | the user's point, and it is right: the block is our grammar, so `$.space.inline.2xl` is ours to allow. Only the virtual file must be valid TypeScript. |
-
-That last one is measured rather than assumed — `$.space.inline.2xl` and `$.z.0` do not parse, and
-the bracket form does:
+It earns its place twice. At the use site it is the type; in the config it **narrows the fallback
+while it is being typed**, so the defaults are written against a real type rather than from memory:
 
 ```
-seg.ts(2,25): error TS1005: ',' expected.
-seg.ts(2,27): error TS1351: An identifier or keyword cannot immediately follow a numeric literal.
+kind("color",  { primary: { main: "30px"   } })   TS2322  not assignable to `#${string}` | rgb(…) | …
+kind("length", { control: { md: "#3b82f6" } })    TS2322  not assignable to "0" | `${number}px` | …
+
+$.size.control.sm   in a padding narrowed to 4/8/16/24   ok
+$.size.control.md   the same slot                        TS2345  Var<"length","30px"> is not PaddingScale
+$.color.primary.main                                     TS2345  a colour
 ```
 
-And the virtual file already has the shape for it. A `Segment` records `sourceLength` separately from
-its virtual length precisely because rewritten text does not match the author's, and `copied` says
-which kind a run is — a flag that is WRITTEN rather than inferred, because inferring it from equal
-lengths was measured wrong. So a path is emitted as several runs: `$`, `.color` and `.primary` are
-byte-identical and copied; only `.2xl` is derived. Emitting the whole path as one derived run would
-map every caret in it to the `$`, which is the right highlight for an error and the wrong place for
-completion.
+That last pair is the point of the kind: the narrowing a project sets on a property reaches its
+variables too, and the message names the offending VALUE rather than the variable.
 
-**What a type still cannot promise.** A token typed as a colour is a claim about this project's
-discipline, not about the browser: the cascade lets any rule anywhere set `--color-primary-main` to
-anything. Worth a sentence in the docs; it changes nothing in the design.
+Measured: 5,133 instantiations against 4,776 for an empty program, 0.39s either way.
+`prototype-variable-types.ts` is the probe, and four errors in it are expected.
 
-#### Still open
+#### The config, entire
 
-Only what the decisions above force: a token now carries ONE value, and a theme needs a second.
+```ts
+export default defineConfig({
+  variables: {
+    color: kind("color", {
+      primary: { main: "#3b82f6", light: "#93c5fd" },
+      surface: { base: "#ffffff", sunken: "#f3f4f6" },
+    }),
+    size: kind("length", {
+      control: { sm: "24px", md: "30px" },
+      weight: kind("number", { bold: 700 }),
+    }),
+    motion: kind("duration", { fast: "120ms", slow: "400ms" }),
+  },
+});
+```
+
+A name, a fallback, and a kind per group. Nothing else. The nesting is what gives grouped completion — `$.` then
+`color.` then `primary.` — measured at 6, then 5, then 4 offered, against 88 for a flat union.
+
+This REPLACES `variables: readonly string[]`, which is a hand-written list of names from outside
+(`config.ts:47`). Same key, now carrying a value each: the rule still stops reporting those names,
+and they gain a type and a fallback at the same time.
+
+#### What was tried and dropped, and why
+
+Every one of these was the user refusing a complication, and every one was right.
+
+| tried | why it went |
+|---|---|
+| `{ kind: "color", value: … }` per variable | *"neću pored svakog tokena da pišem njegov kind"*. Answered by declaring it per group instead — not by dropping it. |
+| reading the kind off the fallback value | *"ne možeš da čitaš kind, moraš eksplicitno da ga napišeš"*. `"0"` is a length or a number and the value cannot say which. |
+| `ref("palette.blue.500")` | *"ti to ne možeš da napraviš type safe"*. Measured: `ref("totally.made.up")` and a colour pointing at a length both compiled, unreported. A config literal cannot reference its own paths — the inference is circular. |
+| `when: { "max-width: 600px": "24px" }` | conditions are unbounded, and maintaining a model of them commits us to something we do not understand. |
+| `themes: { dark: { when, values } }` | the same, one level up. Themes are theirs. |
+| a scope list per runtime theme (`owns: […]`) | policy, not types. They write their own logic; we owe them types, not permissions. |
+| reading the project's token stylesheet | it assumed a Figma-shaped export, and it put us in the business of parsing somebody else's CSS. *"zasto bi mi to radili za njih"*. |
+
+The through-line: **we do not model theming.** A variable may be set by a theme, a media query, a
+container query, an ancestor, a tenant's values from a server, or code we never see. We state the
+name, the fallback and the kind; everything past that is the project's.
+
+#### Left to settle
+
+- A property narrowed to a scale that IS a variable group would otherwise be written twice. Proposal:
+  the strictness config names the group (`"space"`) instead of listing values, and codegen refuses an
+  unknown group with a sentence. Checked at build time rather than by `tsc`; not everything has to be
+  a type.
+- Four consumers have to learn `$`: the grammar, the formatter, the checker and the virtual file.
+  Only the last is interesting — a hole there is already a real TypeScript expression, so `$` rides
+  the same machinery for completion while compiling to text rather than to a custom property.
+- Names that are not identifiers (`2xl`, `0`): written with a dot in the block, bracketed in the
+  virtual file. Measured — `$.space.inline.2xl` does not parse (`TS1351`), `["2xl"]` does — and the
+  mapping already supports it, since `Segment` keeps `sourceLength` apart from the virtual length and
+  `copied` is written rather than inferred. The path is emitted as several runs so completion lands.
 
 ### What is not in dispute
 
