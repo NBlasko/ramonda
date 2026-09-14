@@ -5,6 +5,7 @@ import { Sheet, messageFor } from "./compiler/sheet";
 import { checkedSource } from "./compiler/source";
 import { positionOf } from "./compiler/errors";
 import { knownNames, configReader, environmentOf } from "./config";
+import { findConfig } from "./config";
 import { propertiesFor } from "./generate";
 import { readModule } from "./modules";
 import { mayHoldABlock } from "./compiler/scan";
@@ -188,7 +189,27 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     return { files: parsed.fileNames.length, styled: overlays.size, findings: refusals, refused: true, exempted };
   }
 
-  const program = ts.createProgram(parsed.fileNames, { ...parsed.options, noEmit: true }, overlaying(parsed, overlays));
+  /**
+   * **The project's own `ramonda.css.ts` is type-checked, and a `tsconfig` will not have included
+   * it.**
+   *
+   * `defineConfig` exists so that a config is checked as it is written — a property CSS does not
+   * have, an arity CSS does not give, a unit that is not one, each refused on the line. None of that
+   * runs if the file is not in the PROGRAM, and it usually is not: a config sits at the project root
+   * and an ordinary `include` is `["src"]`. Measured on this repository's own playground, where four
+   * deliberately wrong configs were written and every one compiled.
+   *
+   * Reported by the user, in their words: *"ramonda.css.ts fajl nema onaj tipo sto sam zeleo da ne
+   * moram magicno da mislim i pisem konfig."*
+   *
+   * Added here rather than asked of every project's `tsconfig.json`, because a manual step that
+   * every project needs is a step most projects will not have.
+   */
+  const settings = findConfig(dirname(configPath));
+  const roots =
+    settings === undefined || parsed.fileNames.includes(settings) ? parsed.fileNames : [...parsed.fileNames, settings];
+
+  const program = ts.createProgram(roots, { ...parsed.options, noEmit: true }, overlaying(parsed, overlays));
 
   const findings: Finding[] = [];
   /** Setup faults, by message, so a project of any size reports each of them once. */

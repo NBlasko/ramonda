@@ -55,6 +55,14 @@ function rulesWith(css: string, config: import("../config").Config): string[] {
   return checkBlock(read.block, { config }).map((finding) => finding.rule);
 }
 
+/** The same, as messages — for the rules whose WORDING is the thing being asserted. */
+function messagesWith(css: string, config: import("../config").Config): string[] {
+  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const [site] = findBlocks(source);
+  const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+  return checkBlock(read.block, { config }).map((finding) => finding.message);
+}
+
 describe("a property name the types could not suggest", () => {
   /**
    * The types report a dashed name as `TS2353` with no suggestion, because a QUOTED object key gets
@@ -3026,5 +3034,59 @@ describe("more values than this project allows", () => {
 
   test("no arity anywhere is silence", () => {
     expect(rulesWith("padding: 8px 12px 4px 2px;", {})).toEqual([]);
+  });
+});
+
+/**
+ * More values than CSS ITSELF gives the property, which needs no config at all.
+ *
+ * **Reported by a user**, who wrote `padding: 4px 0 0 0 0` — five values where CSS gives four — and
+ * was told nothing, because this rule only ran when a config set an arity. Exceeding CSS's maximum
+ * is not a project's opinion; it is invalid CSS, and the browser drops the declaration.
+ *
+ * The same breath found the second half: `"*": { arity: 4 }` left `padding-block: 1px 2px 3px`
+ * silent, because the sweep's four is higher than the two CSS gives that property. A config may only
+ * ever NARROW, and one `Math.min` answers both.
+ */
+describe("more values than CSS gives the property", () => {
+  test("five values for `padding` are reported with no config at all", () => {
+    expect(rulesWith("padding: 4px 0 0 0 0;", {})).toEqual(["too-many-values"]);
+    expect(messagesWith("padding: 4px 0 0 0 0;", {})[0]).toContain("at most 4 values in CSS");
+  });
+
+  test("four are not, because that is what CSS gives it", () => {
+    expect(rulesWith("padding: 4px 0 0 0;", {})).toEqual([]);
+  });
+
+  test("a property whose CSS maximum is two is held to two", () => {
+    expect(rulesWith("padding-block: 1px 2px;", {})).toEqual([]);
+    expect(rulesWith("padding-block: 1px 2px 3px;", {})).toEqual(["too-many-values"]);
+  });
+
+  test("a config may NARROW the maximum", () => {
+    expect(rulesWith("padding: 4px 0;", { properties: { "*": { arity: 1 } } })).toEqual(["too-many-values"]);
+    expect(messagesWith("padding: 4px 0;", { properties: { "*": { arity: 1 } } })[0]).toContain("in this project");
+  });
+
+  test("and may NOT widen it — the half that was silent", () => {
+    const four = { properties: { "*": { arity: 4 } } } as const;
+
+    // CSS gives `padding-block` two, so the sweep's four does not reach past it.
+    expect(rulesWith("padding-block: 1px 2px 3px;", four)).toEqual(["too-many-values"]);
+    expect(messagesWith("padding-block: 1px 2px 3px;", four)[0]).toContain("in CSS");
+  });
+
+  test("a property with no CSS arity is untouched without a config, as before", () => {
+    expect(rulesWith("border-left: 4px solid red;", {})).toEqual([]);
+    expect(rulesWith("transition: color 150ms ease-in-out;", {})).toEqual([]);
+  });
+
+  /**
+   * A declaration that swallowed the next one belongs to `run-on-declaration`, which names the
+   * actual fault and the missing `;`. Counting its values and speaking as well was a regression the
+   * moment CSS's own maximum started applying with no config — two reports for one mistake.
+   */
+  test("a run-on declaration is left to the rule that explains it", () => {
+    expect(rulesWith("padding: 8px\n  border-left: 4px solid red;", {})).toEqual(["run-on-declaration"]);
   });
 });

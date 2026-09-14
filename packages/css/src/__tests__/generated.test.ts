@@ -492,3 +492,70 @@ describe("a block nested more than once", () => {
     expect(output).not.toContain("problem");
   });
 });
+
+/**
+ * **The config is type-checked, which needs it to be in the PROGRAM — and a tsconfig will not be.**
+ *
+ * `defineConfig` exists so a config is checked as it is written, and none of it runs if the file is
+ * not compiled. A config sits at the project root and an ordinary `include` is `["src"]`, so four
+ * deliberately wrong configs were written against this repository's own playground and every one
+ * compiled. Reported by the user: they wanted the typing they had asked for, rather than writing a
+ * config from memory.
+ */
+describe("a wrong config", () => {
+  const checkedWithConfig = (config: string): string => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-badconfig-"));
+    projects.push(root);
+    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "probe", type: "module", version: "0.0.0" }));
+    writeFileSync(join(root, "ramonda.css.ts"), config);
+    writeFileSync(join(root, "src", "a.ts"), `export const a = 1;\n`);
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          types: [],
+        },
+        // `src` only — which is the ordinary shape, and the reason this was silent.
+        include: ["src"],
+      }),
+    );
+
+    try {
+      return execFileSync(process.execPath, [join(PACKAGE, "bin.mjs"), "tsconfig.json"], {
+        cwd: root,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      return `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    }
+  };
+
+  const wrap = (rules: string) =>
+    `import { defineConfig } from "@ramonda/css/config";\nexport default defineConfig({ properties: ${rules} });\n`;
+
+  test.each([
+    ["a property CSS does not have", `{ "z-indx": { values: [1] } }`, "z-indx"],
+    ["`shorthand` on a longhand", `{ color: { shorthand: false } }`, "shorthand"],
+    ["an arity CSS does not give", `{ padding: { arity: 7 } }`, "'7' is not assignable"],
+    ["a unit that is not one", `{ "*": { units: ["pxx"] } }`, "pxx"],
+  ])("%s is reported", (_what, rules, expected) => {
+    const output = checkedWithConfig(wrap(rules));
+
+    expect(output).toContain("problem");
+    expect(output).toContain(expected);
+  });
+
+  test("and a config that is right is silent, which is the control", () => {
+    expect(checkedWithConfig(wrap(`{ "z-index": { values: [1, 2] }, padding: { arity: 2 } }`))).not.toContain(
+      "problem",
+    );
+  });
+});

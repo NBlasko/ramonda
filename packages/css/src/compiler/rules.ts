@@ -294,7 +294,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
-  if (config?.properties !== undefined) tooManyValues(block, config.properties, findings);
+  tooManyValues(block, config?.properties, findings);
   const silenced = config?.rules;
   const kept = silenced === undefined ? findings : findings.filter((one) => silenced[one.rule] !== "off");
   return kept.sort((a, b) => a.at - b.at);
@@ -318,24 +318,36 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
  * spaces inside a call belong to the call. A hole is one value too: what it evaluates to is decided
  * at render and nothing here knows how many words it will be.
  */
-function tooManyValues(block: Block, rules: PropertyRules, findings: Finding[]): void {
+function tooManyValues(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
   /**
-   * **The wildcard reaches only the properties an arity MEANS something for**, and it did not.
+   * The most values this property may take here: CSS's own maximum, narrowed by what the config
+   * said — and never widened by it.
    *
-   * `border-left` is `<line-width> || <line-style> || <color>` — three different things, so
-   * `4px solid red` is one value made of three parts rather than three values. Under `"*": {arity:
-   * 1}` it was reported, which is refusing correct CSS and is the failure this package may not have.
+   * **CSS's maximum applies with no config at all**, because exceeding it is not a project's
+   * opinion, it is invalid CSS. Reported by a user, who wrote `padding: 4px 0 0 0 0` — five values
+   * where CSS gives four — and was told nothing, because this rule only ran when a config set an
+   * arity.
    *
-   * `ARITY` holds the sixteen that repeat one longhand, which is the whole set where "how many" has
-   * an answer. A property NAMED in the config is different: the config type only lets an arity be
-   * written on those sixteen anyway, so naming one is always meaningful.
+   * **And a config may only narrow.** `"*": { arity: 4 }` left `padding-block: 1px 2px 3px` silent,
+   * because the sweep's four is higher than the two CSS gives that property and nothing clamped it.
+   * Found in the same breath as the first, and the same `Math.min` answers both.
+   *
+   * `ARITY` holds the sixteen properties that repeat one longhand, which is the whole set where
+   * "how many" has an answer. `border-left` is `<line-width> || <line-style> || <color>` — three
+   * different things, so `4px solid red` is one value in three parts. Under `"*": { arity: 1 }` it
+   * was reported once, which is refusing correct CSS.
    */
-  const allowed = (property: string): number | undefined => {
-    const own = (rules[property as keyof PropertyRules] ?? {}) as { arity?: number };
-    if (own.arity !== undefined) return own.arity;
+  const allowed = (property: string): { most: number; whose: "css" | "project" } | undefined => {
+    const css = ARITY[property];
+    const own = (rules?.[property as keyof PropertyRules] ?? {}) as { arity?: number };
+    const sweep = (rules?.["*"] ?? {}) as { arity?: number };
+    // The sweep reaches only the properties CSS gives an arity; a NAMED one is always meaningful,
+    // because the config type permits an arity on those sixteen and nowhere else.
+    const said = own.arity ?? (css === undefined ? undefined : sweep.arity);
 
-    const sweep = (rules["*"] ?? {}) as { arity?: number };
-    return ARITY[property] === undefined ? undefined : sweep.arity;
+    if (css === undefined) return said === undefined ? undefined : { most: said, whose: "project" };
+    if (said === undefined) return { most: css, whose: "css" };
+    return said < css ? { most: said, whose: "project" } : { most: css, whose: "css" };
   };
 
   const walkItems = (items: readonly BlockItem[]): void => {
@@ -346,8 +358,21 @@ function tooManyValues(block: Block, rules: PropertyRules, findings: Finding[]):
       }
 
       const property = propertyName(item.property);
-      const most = allowed(property);
-      if (most === undefined || item.at === undefined) continue;
+      const limit = allowed(property);
+      if (limit === undefined || item.at === undefined) continue;
+
+      /**
+       * A declaration that swallowed the next one is `run-on-declaration`'s to report, not this.
+       *
+       * `padding: 8px border-left: 4px solid red` parses as one declaration with a great many
+       * values, so this counted them and spoke — two reports for one mistake, and the other one
+       * names the actual fault and the missing `;`. Measured as a regression the moment CSS's own
+       * maximum started applying without a config.
+       *
+       * The tell is the same one that rule uses: a bare colon in a value, which CSS values do not
+       * contain.
+       */
+      if (item.value.some((part) => part.kind === "text" && bareColon(part.text) !== -1)) continue;
 
       /** Top-level words: a hole counts as one, and a call's insides are not counted at all. */
       let values = 0;
@@ -372,16 +397,19 @@ function tooManyValues(block: Block, rules: PropertyRules, findings: Finding[]):
         }
       }
 
-      if (values <= most) continue;
+      if (values <= limit.most) continue;
+
+      const takes = limit.most === 1 ? "one value" : `at most ${limit.most} values`;
 
       findings.push({
         rule: "too-many-values",
         at: item.valueAt ?? item.at,
         length: (item.end ?? item.at) - (item.valueAt ?? item.at),
         message:
-          `\`${property}\` takes ${most === 1 ? "one value" : `at most ${most} values`} in this project, ` +
-          `and this is ${values}.` +
-          (most === 1 ? `\n\n        Set each side on its own, or raise \`arity\` in \`ramonda.css.ts\`.` : ""),
+          limit.whose === "css"
+            ? `\`${property}\` takes ${takes} in CSS, and this is ${values}.`
+            : `\`${property}\` takes ${takes} in this project, and this is ${values}.` +
+              `\n\n        Set each side on its own, or raise \`arity\` in \`ramonda.css.ts\`.`,
       });
     }
   };

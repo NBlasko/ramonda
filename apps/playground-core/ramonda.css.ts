@@ -1,4 +1,4 @@
-import { kind } from "@ramonda/css/config";
+import { defineConfig, kind } from "@ramonda/css/config";
 
 /**
  * The playground's own `ramonda.css.ts` — here to be CHANGED.
@@ -11,7 +11,7 @@ import { kind } from "@ramonda/css/config";
  * The rules are deliberately mild, because this is also a real app that has to keep building. The
  * walkthrough's stricter suggestions are the ones worth trying and then undoing.
  */
-export default {
+export default defineConfig({
   /**
    * The variables this project declares — a name, a kind and a fallback each.
    *
@@ -55,4 +55,4 @@ export default {
     // "*": { units: ["px", "rem", "%"] }, // `em`, `vh` and the other 45 are refused
     // "letter-spacing": { units: ["em"] },
   },
-};
+});
