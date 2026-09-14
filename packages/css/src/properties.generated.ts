@@ -30,22 +30,78 @@ export type Keyword<K extends string> = K | CssGlobal | `var(${string})` | `${K 
  */
 /** The properties a project may give an `arity`, and the most CSS gives each. */
 export interface CssArity {
+  "-ms-content-zoom-limit": 1 | 2;
+  "-ms-scroll-limit": 1 | 2 | 3 | 4;
+  "-ms-scroll-snap-x": 1 | 2;
+  "-ms-scroll-snap-y": 1 | 2;
+  "-webkit-border-before-style": 1;
+  "-webkit-border-before-width": 1;
+  "block-size": 1;
+  "border-block": 1;
   "border-block-color": 1 | 2;
+  "border-block-end-color": 1;
+  "border-block-end-style": 1;
+  "border-block-end-width": 1;
+  "border-block-start-color": 1;
+  "border-block-start-style": 1;
+  "border-block-start-width": 1;
   "border-block-style": 1 | 2;
   "border-block-width": 1 | 2;
+  "border-bottom-color": 1;
+  "border-end-end-radius": 1;
+  "border-end-start-radius": 1;
+  "border-inline": 1;
   "border-inline-color": 1 | 2;
+  "border-inline-end-color": 1;
+  "border-inline-end-style": 1;
+  "border-inline-end-width": 1;
+  "border-inline-start-color": 1;
+  "border-inline-start-style": 1;
+  "border-inline-start-width": 1;
   "border-inline-style": 1 | 2;
   "border-inline-width": 1 | 2;
+  "border-start-end-radius": 1;
+  "border-start-start-radius": 1;
+  "column-rule-style": 1;
+  "column-rule-width": 1;
+  "fill-opacity": 1;
+  "flood-opacity": 1;
+  "gap": 1 | 2;
+  "grid-gap": 1 | 2;
+  "inline-size": 1;
   "inset": 1 | 2 | 3 | 4;
   "inset-block": 1 | 2;
+  "inset-block-end": 1;
+  "inset-block-start": 1;
   "inset-inline": 1 | 2;
+  "inset-inline-end": 1;
+  "inset-inline-start": 1;
   "interest-delay": 1 | 2;
   "margin": 1 | 2 | 3 | 4;
   "margin-block": 1 | 2;
+  "margin-block-end": 1;
+  "margin-block-start": 1;
   "margin-inline": 1 | 2;
+  "margin-inline-end": 1;
+  "margin-inline-start": 1;
+  "max-block-size": 1;
+  "max-inline-size": 1;
+  "min-block-size": 1;
+  "min-inline-size": 1;
   "padding": 1 | 2 | 3 | 4;
   "padding-block": 1 | 2;
+  "padding-block-end": 1;
+  "padding-block-start": 1;
   "padding-inline": 1 | 2;
+  "padding-inline-end": 1;
+  "padding-inline-start": 1;
+  "place-content": 1 | 2;
+  "place-items": 1 | 2;
+  "place-self": 1 | 2;
+  "position-try": 1 | 2;
+  "stop-color": 1;
+  "stop-opacity": 1;
+  "stroke-opacity": 1;
 }
 
 /** Every property the engines call a shorthand — the only ones a project may switch off. */

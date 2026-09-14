@@ -559,3 +559,85 @@ describe("a wrong config", () => {
     );
   });
 });
+
+/**
+ * A variable of the wrong kind in a SHORTHAND, which was accepted.
+ *
+ * Reported by the user: `gap: $.color.accent.main` compiled. `gap` was unclassified, so it was
+ * `string | number`, and a token is a branded string. Two things in the grammar walk had to change —
+ * `<'row-gap'>` references are followed now, and a functional type like `<anchor-size()>` no longer
+ * counts as a second primitive — which took the classified set from 96 properties to 149.
+ */
+describe("a shorthand's kind", () => {
+  const checkedWith = (card: string): string => {
+    const root = project();
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "jsx.d.ts"),
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    );
+    writeFileSync(join(root, "src", "Card.tsx"), card);
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          jsx: "preserve",
+          types: [],
+        },
+        include: ["src", "ramonda.css.generated.ts"],
+      }),
+    );
+
+    try {
+      return execFileSync(process.execPath, [join(PACKAGE, "bin.mjs"), "tsconfig.json"], {
+        cwd: root,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      return `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    }
+  };
+
+  test("a colour in a `gap` is refused, naming both kinds", () => {
+    const output = checkedWith(`export const a = <div css={@@( gap: $.color.primary.main; )}>x</div>;\n`);
+
+    expect(output).toMatch(/"color"/);
+    expect(output).toMatch(/"length"/);
+  });
+
+  test("a length in a `gap` goes in", () => {
+    expect(checkedWith(`export const b = <div css={@@( gap: $.size.control.md; )}>x</div>;\n`)).not.toContain(
+      "problem",
+    );
+  });
+
+  /**
+   * **The multi-value half, which classifying a shorthand broke before it was finished.**
+   *
+   * Narrowed to ONE value, `padding: 8px 12px` — correct CSS — was refused. Writing the repeat out
+   * as `` `${V} ${V}` `` cannot ship: measured, at 49 units by four positions TypeScript silently
+   * stops checking. So the type admits a multi-value string, which still refuses a token of the
+   * wrong kind.
+   */
+  test("several values go in where CSS gives several", () => {
+    expect(checkedWith(`export const c = <div css={@@( padding: 8px 12px; )}>x</div>;\n`)).not.toContain("problem");
+    expect(checkedWith(`export const d = <div css={@@( gap: 4px 8px; )}>x</div>;\n`)).not.toContain("problem");
+  });
+
+  /**
+   * A space at a text run's BOUNDARY is meaning, and the virtual file was trimming it: `gap: 4px
+   * $.space.gutter.tight` became `` `4px${…}` ``, one value rather than two. The emitted CSS was
+   * always right; nothing read the virtual file's shape until a multi-value type did.
+   */
+  test("a value mixing text and a variable keeps the space between them", () => {
+    expect(checkedWith(`export const e = <div css={@@( gap: 4px $.size.control.md; )}>x</div>;\n`)).not.toContain(
+      "problem",
+    );
+  });
+});

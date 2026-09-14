@@ -1,5 +1,5 @@
 import { nameFor } from "./compiler/dollar";
-import { KEYWORDS, PRIMITIVE, SHORTHANDS } from "./compiler/keywords.generated";
+import { ARITY, KEYWORDS, PRIMITIVE, SHORTHANDS } from "./compiler/keywords.generated";
 import type { PropertyRules } from "./config";
 import { SYNTAX, type Kind, isVariable } from "./declared";
 
@@ -349,6 +349,24 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     if (narrow === undefined || gone.has(property) || said.has(property)) continue;
 
     const value = withUnits(narrow.value, ruleFor(rules, property).units);
+
+    /**
+     * A property that takes SEVERAL values admits a multi-value string, and the shape is deliberate.
+     *
+     * Classifying `gap` and `padding` narrowed them to ONE value, so `padding: 8px 12px` — correct
+     * CSS — was refused. Writing the repeat out as `` `${V} ${V}` `` was measured instead and cannot
+     * ship: at 49 units by four positions TypeScript silently stops checking, accepting anything.
+     *
+     * `` `${string} ${string}` `` is what is left. It admits every multi-value value, and it still
+     * refuses a TOKEN of the wrong kind — a branded string is not a two-word template — which is the
+     * fault this was reported for: `gap: $.color.accent.main` compiled.
+     *
+     * **The honest loss:** `gap: 8px red` passes. Before any of this it was `string | number` and so
+     * did everything else; the count is the `too-many-values` rule's and the words are
+     * `unknown-value`'s. What the type buys here is the kind of a variable, which is what it was
+     * asked for.
+     */
+    const several = (ARITY[property] ?? 1) > 1 ? " | `${string} ${string}`" : "";
     const words = (KEYWORDS[property] ?? "").split(" ").filter(Boolean);
     const keywords = value.includes("CssColor") ? words.filter((one) => !COLOURS.has(one)) : words;
     const head = keywords.length === 0 ? "never" : keywords.map((one) => JSON.stringify(one)).join(" | ");
@@ -367,7 +385,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
 
     rows.push(
       `  /** \`${property}\` — ${narrow.said}, and this project's variables of that kind. */\n` +
-        `  ${JSON.stringify(property)}: Narrowed<${head}, ${value} | Token<${kinds}>>;`,
+        `  ${JSON.stringify(property)}: Narrowed<${head}, ${value} | Token<${kinds}>${several}>;`,
     );
   }
 

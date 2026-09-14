@@ -196,10 +196,27 @@ const primitiveRows = [];
  * CSS's own maximum, so the config type can refuse `padding: { arity: 7 }` rather than accept a
  * number nothing will honour.
  */
+function arityOf(syntax) {
+  const text = String(syntax).trim();
+
+  /** `<'padding-top'>{1,4}` — one longhand, repeated. */
+  const repeated = /^<'[^']+'>\{1,([1-4])\}$/.exec(text);
+  if (repeated !== null) return Number(repeated[1]);
+
+  /**
+   * `<'row-gap'> <'column-gap'>?` — a juxtaposition of longhand references, each optional after the
+   * first. `gap` is this shape and the repeat pattern above does not see it, so `gap: 1px 2px 3px`
+   * was accepted. Found while answering a user who wrote a colour into a `gap`.
+   */
+  const references = text.match(/<'[^']+'>\??/g);
+  if (references === null || references.join(" ") !== text) return undefined;
+  return references.length <= 4 ? references.length : undefined;
+}
+
 const arityRows = Object.entries(properties)
-  .map(([name, one]) => [name, /^<'[^']+'>\{1,([1-4])\}$/.exec(String(one.syntax).trim())])
-  .filter(([, found]) => found !== null)
-  .map(([name, found]) => `  ${JSON.stringify(name)}: ${found[1]},`);
+  .map(([name, one]) => [name, arityOf(one.syntax)])
+  .filter(([, most]) => most !== undefined)
+  .map(([name, most]) => `  ${JSON.stringify(name)}: ${most},`);
 
 /** How many properties this narrowed, for the line the script prints. */
 let narrowed = 0;
@@ -254,6 +271,62 @@ function unwrap(one) {
  * A range — `<length-percentage [0,∞]>` — is dropped rather than treated as complexity. It is a
  * bound no type can express and it does not change which primitive the value is.
  */
+/**
+ * A grammar with its `<'property'>` references resolved, so a shorthand can be classified.
+ *
+ * `gap` is `<'row-gap'> <'column-gap'>?` and `padding` is `<'padding-top'>{1,4}` — every part is
+ * another property, and without following them neither can be classified at all. Measured before
+ * this: `gap: $.color.accent.main` compiled, because an unclassified property is `string | number`
+ * and a variable is a branded string. Reported by a user.
+ *
+ * Bounded, because a property may refer to itself through a chain.
+ */
+function withReferences(syntax, depth = 0) {
+  if (depth > 6) return syntax;
+  return String(syntax).replace(/<'([a-zA-Z0-9-]+)'>/g, (whole, referenced) => {
+    const target = properties[referenced]?.syntax;
+    return target === undefined ? whole : `[ ${withReferences(target, depth + 1)} ]`;
+  });
+}
+
+/**
+ * A juxtaposition of bracketed groups, each with an optional multiplier — or nothing.
+ *
+ * `[ a ] [ b ]?` and `[ a ]{1,4}` are sequences; `a b` and `[ a ] | b` are not. Returns each group's
+ * INSIDE, so the caller can ask what it reaches.
+ */
+function sequence(text) {
+  const pieces = [];
+  let index = 0;
+
+  while (index < text.length) {
+    while (index < text.length && /\s/.test(text[index])) index += 1;
+    if (index >= text.length) break;
+    if (text[index] !== "[") return undefined;
+
+    let depth = 0;
+    const from = index;
+    for (; index < text.length; index++) {
+      if (text[index] === "[") depth += 1;
+      else if (text[index] === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          index += 1;
+          break;
+        }
+      }
+    }
+    if (depth !== 0) return undefined;
+
+    pieces.push(text.slice(from + 1, index - 1));
+    // The multiplier that may follow: `?`, `*`, `+`, `#`, `{1,4}`.
+    const multiplier = /^(?:[?*+#]|\{\d+(?:,\d*)?\})/.exec(text.slice(index));
+    if (multiplier !== null) index += multiplier[0].length;
+  }
+
+  return pieces.length === 0 ? undefined : pieces;
+}
+
 function primitiveOf(name) {
   const raw = properties[name]?.syntax;
   if (raw === undefined) return undefined;
@@ -265,6 +338,15 @@ function primitiveOf(name) {
       const part = unwrap(one);
       if (KEYWORD.test(part)) continue;
 
+      /**
+       * A FUNCTIONAL type is not a second primitive — `<anchor-size()>`, `<anchor()>`, `<calc()>`.
+       *
+       * Every value type here already admits any call, because nothing in a type can read inside
+       * one. Counting these as primitives is what left `margin-left` unclassified: its grammar is
+       * `<length-percentage> | auto | <anchor-size()>`, which is one primitive and a call.
+       */
+      if (/^<[a-zA-Z0-9-]+\(\)>$/.test(part)) continue;
+
       const type = /^<([a-zA-Z0-9-]+)(?:\s*\[[^\]]*\])?>$/.exec(part);
       if (type !== null) {
         seen.add(type[1]);
@@ -274,12 +356,32 @@ function primitiveOf(name) {
         if (!walk(part, depth + 1)) return false;
         continue;
       }
+
+      /**
+       * A sequence of resolved references — `gap`'s `[ … ] [ … ]?`, `padding`'s `[ … ]{1,4}`.
+       *
+       * Every piece has to reach the SAME primitive, which is what makes a count meaningful there:
+       * `gap` is one or two length-percentages, `padding` one to four. A `border` whose pieces are a
+       * width, a style and a colour fails this and stays unclassified, which is right.
+       *
+       * Parsed rather than measured by length. The first version compared the matched pieces'
+       * length against the part's and let a difference of one through — which classified `margin`
+       * and not `padding`, for no reason but the four characters of `[0,∞]`. A heuristic that gets
+       * two identical grammars different answers is not a heuristic, it is a coin.
+       */
+      const pieces = sequence(part);
+      if (pieces !== undefined) {
+        for (const piece of pieces) {
+          if (!walk(piece, depth + 1)) return false;
+        }
+        continue;
+      }
       return false;
     }
     return true;
   };
 
-  if (!walk(expand(raw), 0)) return undefined;
+  if (!walk(expand(withReferences(raw)), 0)) return undefined;
   return seen.size === 1 ? [...seen][0] : undefined;
 }
 

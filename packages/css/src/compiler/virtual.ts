@@ -670,7 +670,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     }
 
     write("`");
-    for (const part of parts) {
+    for (const [index, part] of parts.entries()) {
       if (part.kind === "text") {
         /**
          * The PART's own position, not the whole value's.
@@ -686,7 +686,25 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
          * author's file that its characters correspond to. See `TextPart.resolved`.
          */
         const own = part.resolved || part.at === undefined;
-        derived(inTemplate(collapse(part.text)), own ? at : part.at, own ? length : part.text.length);
+
+        /**
+         * **A space at a part's BOUNDARY is meaning, and `collapse` trims both ends of what it is
+         * given.**
+         *
+         * Each text run was collapsed on its own, so the space between the text and the expression
+         * beside it disappeared: `border: 1px solid {accent}` became `` `1px solid${x}` ``, which
+         * says the value is `1px solidred`. The emitted CSS was always right — `flatten` collapses
+         * the whole value at once, so that space is interior there — and nothing depended on the
+         * virtual file's version until a property's own type started reading the SHAPE of it.
+         *
+         * Found answering `gap: 4px $.space.gutter.tight`, which a multi-value type refused because
+         * the two values had been run together into one.
+         */
+        const collapsed = collapse(part.text);
+        const before = index > 0 && /^\s/.test(part.text) ? " " : "";
+        const after = index < parts.length - 1 && /\s$/.test(part.text) ? " " : "";
+
+        derived(inTemplate(`${before}${collapsed}${after}`), own ? at : part.at, own ? length : part.text.length);
         continue;
       }
       /**

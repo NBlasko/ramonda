@@ -182,10 +182,16 @@ describe("what the virtual file makes of it", () => {
     expect(code("color: $.;")).toContain("{color:__vars.}");
   });
 
-  test("mixed with text it is one template literal, exactly as a hole is", () => {
-    // The space before the expression is folded away, which is what happens to a hole in the same
-    // position — `1px solid${__val((accent))}` — so this matches the existing behaviour rather than
-    // asserting a nicer one. The EMITTED CSS keeps the space; only the virtual file folds it.
-    expect(code("border: 1px solid $.color.border.strong;")).toContain("`1px solid${__vars.color.border.strong}`");
+  /**
+   * The space before the expression is KEPT, and it was not.
+   *
+   * `collapse` trims both ends of what it is given, and each text run was collapsed on its own — so
+   * `border: 1px solid {accent}` became `` `1px solid${x}` ``, a value that reads `1px solidred`.
+   * The emitted CSS was always right — `flatten` collapses the whole value at once, so that space
+   * is interior there — and nothing depended on the virtual file's version until a property's own
+   * type started reading the SHAPE of it.
+   */
+  test("mixed with text it is one template literal, with the spaces the author wrote", () => {
+    expect(code("border: 1px solid $.color.border.strong;")).toContain("`1px solid ${__vars.color.border.strong}`");
   });
 });
