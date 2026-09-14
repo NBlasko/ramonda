@@ -601,6 +601,29 @@ only with the fix in hand:
      tasks when they were separate. Whatever replaces it must keep `turbo run test` as
      the gate, and losing the 99% floor on PRs is the real cost — it caught a genuine
      drop on 2026-09-11.
+  1b. **`@ramonda/core` spends 82% of its time building jsdom environments, and sharing
+     them is 7x — at a price this cannot pay on its own.** Measured 2026-09-14:
+     `setup 243.9s, environment 243.0s, tests 25.5s`, across 239 test files that each
+     get their own jsdom.
+
+         core, isolated (as configured)   28s   green
+         core, --no-isolate                4s   8 tests fail in 3 files
+
+     Moving tests to the `node` environment is NOT the lever: only **3 of 239** never
+     touch a DOM, which is what a UI framework's tests look like.
+
+     The 7x is real and so is the reason it is refused. Without isolation the files share
+     one `document`, and the failures are what that does — `RangesAmongSiblings` gets
+     `null` from `container.querySelector("#shell")` because another file left the DOM in
+     a state it did not expect. Making those eight pass would not make sharing safe; it
+     would leave every future test carrying an order dependency nobody declared, in a
+     repository that already has a note about global state leaking between tests.
+
+     A middle path exists and is not free either: vitest projects, one isolated and one
+     not, which buys the speed for most files at the cost of a config concept and a list
+     somebody has to keep right. **This is a decision about what a test is allowed to
+     assume, not a performance tweak, so it waits for a person.**
+
   2. **Cache `.turbo` between runs.** Only the pnpm store and the Playwright binaries
      are cached today, so every run re-tests every package including untouched ones —
      a PR that edits only `apps/docs` pays for the whole suite. `test` is already
