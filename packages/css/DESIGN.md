@@ -1018,6 +1018,30 @@ possibility. That limit is only acceptable BECAUSE the hook exists: they replace
 their own function and lose nothing. And a value computed at runtime can never be on the list;
 `@property` stays the net for that.
 
+##### 8. What registering costs, measured on the emitted stylesheet
+
+The generated CSS was fed to Chrome rather than reasoned about, and it does what §4 claims:
+
+    base value reaches a child                       "30px"    inherits
+    an override still works                          "24px"
+    `--size-control-md: crveno`                      "30px"    REFUSED, initial stands
+    `--color-primary-main: 12px`                     refused
+    `any`, which registers nothing                   anything sticks
+    `<integer>` given 1.5                            "2"       refused — the case no type can express
+
+**One thing registering also does, and it had better be written down before somebody meets it.** A
+registered variable's computed value is NORMALISED; an unregistered one reads back verbatim:
+
+    registered    `--x: #10b981`    reads  "rgb(16, 185, 129)"
+    unregistered  `--x: #10b981`    reads  "#10b981"
+    registered    `--x: 2rem`       reads  "32px"
+
+For reading that is usually an improvement — a resolved value rather than a token. But `read` cannot
+promise to hand back the literal that was written, and a length comes back absolutised against the
+element it was read on. `inherits: true` is likewise not a preference: an unregistered custom
+property inherits, so a registration saying otherwise would quietly change how every existing use
+behaves.
+
 #### What was tried and dropped, and why
 
 Every one of these was the user refusing a complication, and every one was right.
