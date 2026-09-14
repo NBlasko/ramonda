@@ -424,6 +424,307 @@ else has to.
 
 ## Open decisions
 
+**0. What a project's config generates, and what it looks like.** OPEN, and the shape is the whole
+question. Three designs below, the same project written in each.
+
+The constraint is not "what CSS allows" — that comes from the grammars and is already measured. It
+is **what THIS project allows**, which is narrower and therefore more expressible. `<integer>` cannot
+be a type: measured, neither `number` nor `` `${number}` `` refuses `1.5`. But `1 | 2 | 5 | 10` — a
+scale a team chose for `z-index` — is a closed union and is exact.
+
+Two constraints, deliberately separate, because `padding` is itself a shorthand and "no shorthands"
+means two different things:
+
+- **shorthand PROPERTIES** — `padding` does not exist; you write `padding-left`. The package already
+  knows which 120 those are, read out of the engines.
+- **ARITY** — `padding` exists and takes one value, so `padding: 8px 12px` is gone.
+
+And the cost is settled: `prototype-strict-types.mjs` measures **+4 instantiations, flat** across 1,
+12, 40 and 80 properties set in a block. The shape must be a WRITTEN-OUT interface — deriving one
+with `Omit<Base, …>` is 2,531 against 30 — which is why the project generates its own file rather
+than narrowing ours.
+
+The three criteria are the user's, and they pull against each other: **quick to configure**
+sometimes, **fine enough to argue about details**, and **shareable** — people publish a config and
+others run codegen against it.
+
+### A. A key per constraint, beside the ones that exist
+
+```ts
+export default {
+  units: ["px", "rem"],
+  shorthands: false,
+  arity: 1,
+  values: { "z-index": [1, 2, 5, 10] },
+};
+```
+
+Exceptions change each key's shape:
+
+```ts
+  shorthands: { allow: ["margin"] },
+  arity: { default: 1, padding: 4 },
+```
+
+Quick, and it matches `units` and `rules` exactly, so nothing new has to be learned. **Its weakness
+is sharing:** a key that is `false | { allow: [] }` merges badly — two shared configs setting
+`shorthands` differently have no obvious answer, and `{...base, ...mine}` silently takes one whole.
+
+### B. Presets and `extends`
+
+```ts
+import { strict } from "@ramonda/css/presets";
+
+export default {
+  extends: [strict],
+  shorthands: { allow: ["margin"] },
+  values: { "z-index": [1, 2, 5, 10] },
+};
+```
+
+The quickest of the three — one word buys a posture — and sharing is the mechanism rather than a
+side effect: a team publishes `@acme/ramonda-strict` and everyone extends it.
+
+**Its weakness is that merge rules become a feature.** What wins, how arrays combine, what a later
+`extends` does to an earlier one: this is the part of eslint people complain about, and it has to be
+answered before the first preset ships, not after.
+
+### C. One map, keyed by property, with a wildcard
+
+```ts
+export default {
+  properties: {
+    "*": { shorthand: false, arity: 1 },
+    margin: { shorthand: true },
+    "z-index": { values: [1, 2, 5, 10] },
+  },
+};
+```
+
+Every per-property constraint in one place, and **the merge is the well-defined one** — two shared
+configs merge key by key, and a project overrides one property without touching the rest.
+
+**Its weakness is the quick path:** `"*"` is the one-line sweep, and it is a convention somebody has
+to know exists. Nothing about the shape suggests it.
+
+### D. A function, and the config author owns the merge
+
+The user's own idea: stop inventing merge rules and let JavaScript do it. The config already supports
+a function form — it is given `{ production }` — so a preset is a value you spread.
+
+```ts
+import { strict } from "@acme/ramonda-strict";
+
+export default ({ production }) => ({
+  ...strict,
+  properties: {
+    ...strict.properties,              // this line carries everything
+    margin: { shorthand: true },
+    "z-index": production ? strict.properties["z-index"] : { values: [1, 2, 5, 10, 9999] },
+  },
+});
+```
+
+Nothing to specify, arbitrary composition, and a preset needs no blessing from this package.
+
+**And the user saw the cost immediately: "ako ga lose napisu, onda je config besmislen."** Worse than
+meaningless — a config that lies. Drop the inner spread and every inherited constraint is gone, the
+codegen writes types, `tsc` passes, and the team believes it has `z-index: 1 | 2 | 5 | 10`:
+
+```ts
+export default () => ({
+  ...strict,
+  properties: {
+    margin: { shorthand: true },       // `...strict.properties` missing — one line
+  },
+});
+```
+
+**This is not hypothetical here. The function form has already produced exactly this failure, twice**
+— both recorded in `config.ts`:
+
+- `export default async () => ({ units: ["px"] })` enforced nothing and said nothing. A Promise is an
+  object, so it passed every check and `Object.keys` of it was empty.
+- `env.production` was wired nowhere, so every environment-dependent config silently took its
+  development branch, production builds included.
+
+Both have the same shape as the missing spread: **a wrong result indistinguishable from a deliberate
+one.** With a declarative merge, not mentioning `properties` means "inherit". With a function, not
+spreading it means "delete", and the two look identical from outside.
+
+**The mitigation is to take away the silence, not the function** — the move
+`ramonda-css-ignore` already makes, printed on every run whether or not anything failed:
+
+```
+[ramonda-css] ramonda.css.ts → src/css.generated.d.ts
+
+  766 properties
+    120 shorthand properties removed        padding, margin, border, …
+    646 limited to one value
+      1 given a value set                   z-index: 1 | 2 | 5 | 10
+```
+
+**Be honest about which half of that is possible.** The counts are arithmetic over what the function
+returned, and they are real. The DIAGNOSIS — "you imported a preset and did not spread its
+properties" — is not: the function has already run, and the preset does not exist as a separate thing
+in its result. So the report can say *this config constrains 1 property out of 766* and let a person
+stop; it cannot say why.
+
+Whether that is enough is the decision. It is the difference between a config that can be wrong
+loudly and one that can be wrong quietly.
+
+### DECIDED: C, with the function as delivery and no `extends`
+
+**C is the shape** — one map keyed by property, `"*"` for the default. Three reasons, the first
+being the only one that is really about the long term:
+
+1. **CSS grows, so the default has to be the strict one.** A deny-list — "forbid `padding`,
+   `margin`" — lets every property CSS adds afterwards escape, silently, and in five years nobody
+   knows how stale the list is. `"*"` says *everything, except these*, and covers a new property the
+   day it lands. Strictness that does not renew itself is a moment, not a posture.
+2. **C is what makes the function form survivable.** The danger of a function config is proportional
+   to how many nested keys must be spread: design A would need `shorthands`, `arity`, `values`,
+   `units` and `rules` — five chances to forget one. C has exactly ONE nested key, `properties`, so
+   there is exactly one spread to get right.
+3. **Presets then need no mechanism.** A preset is `export const strict = { properties: { … } }`, and
+   you import and spread it.
+
+**`extends` is refused**, and not because it is bad: merge rules become permanent public surface that
+cannot be changed afterwards. eslint is the evidence — that part of it is its largest source of
+complaint, and it grew from the same good intention.
+
+**The report is a condition, not a decoration.** Silent loss survives this design: one missing
+`...strict.properties` and the constraints are gone with everything green. The counts are arithmetic
+over what the function returned and are real; the DIAGNOSIS is not, because the function has already
+run and the preset no longer exists as a thing in its result. So the codegen can say *this config
+constrains 1 property out of 766* and let a person stop. It cannot say why.
+
+### The config's own type, and what it has to catch
+
+The type is what guides somebody writing the config, so it is worth being exact. Measured against a
+draft, all three are refused:
+
+```ts
+properties: {
+  "z-indx": { values: [1] },     // TS2353 — not a property CSS has
+  color: { shorthand: false },   // TS2353 — `color` is not a shorthand, so the key cannot exist
+  padding: { arity: 7 },         // TS2322 — CSS gives padding at most four
+}
+```
+
+The shape that does it: `arity` as `1 | 2 | 3 | 4` rather than `number`; `shorthand` only on the 120
+names the engines say ARE shorthands, so the key is absent everywhere else; and the map keyed by the
+generated property union rather than by `string`.
+
+One trap while checking this: **TypeScript reports one excess-property error per object literal**, so
+a literal with several faults appears to miss the first one. It does not — isolate the case before
+concluding the type is loose.
+
+### NO CONFIG IS A SENTENCE, NOT A DEFAULT
+
+The obvious design is a permissive fallback: no `ramonda.css.ts`, no project constraints. **The user
+refused it, and the reason is the one this package is built on:** *"brinem ako imam po defaultu konfig
+koji sve dozvoljava jer ako ga ne setuju kako treba, moci ce da rade sta hoce, umesto da odmah budu
+svesni da nisu setovali config i codegen."*
+
+A permissive default is silent, and silence is what every other mechanism here exists to remove —
+`ramonda-css-ignore` prints on every run, `check-first-publish` stops a release, `check-test-jobs`
+refuses a partition nobody verified.
+
+**And this is the only moment the decision is free: no project uses this package yet.** Requiring a
+config costs nothing today and can never be made to cost nothing again.
+
+So the absence is said out loud, with the command that fixes it, and `create-ramonda` scaffolds one
+so the ordinary path never meets the message. What is still open is only its severity — a refusal, or
+a line printed on every run.
+
+**What the scaffolded config should contain is a separate question**, and the trap in it is real: the
+obvious opinionated default, `"*": { arity: 1 }`, forbids `margin: 0 auto`. A default people delete
+first is not a default.
+
+### The completion table has to move with the types
+
+`plugin.ts` deliberately offers nothing where a property already has a real union, and lets
+TypeScript answer:
+
+```ts
+if (UNION_TYPED.includes(property)) return undefined;
+```
+
+**`UNION_TYPED` is a constant generated from OUR map and shipped in the package.** It knows nothing
+about a project's config — so the moment codegen narrows `z-index` to `1 | 2 | 5 | 10`, the type
+accepts four values while the editor still suggests everything CSS allows. **The editor would offer a
+value the type refuses**, on day one.
+
+It is a small repair and it belongs in the design rather than after it: `UNION_TYPED` stops being a
+constant and becomes a question put to the config — *does this property have a union in THIS
+project*. The plugin already reads the config for `units`, so the path exists.
+
+This is the repository's recurring fault in its purest form: one question — *what may this property
+hold* — with two consumers, the type and the completion, and a design that lets only one of them read
+the answer.
+
+### A `$.color.primary.main` syntax for variables — analysed, NOT YET
+
+The user's proposal: a third spelling for a custom property, `$.color.primary.main` instead of
+`var(--color-primary-main)`, with three reasons. Two of them turn out to stand differently than
+posed.
+
+**"It does not create a hole" is already true of `var()`.** Measured through the real transform:
+
+    var(--accent)   ->  "border-left": "r-bl-4px_solid_var(--accent)"     a class, no value
+    {accent}        ->  ["r-J7FSVc8dZ", accent]                          a class AND a value
+
+So a `var()` costs nothing per element and nothing on a change; the new syntax adds no capability
+there. **The argument survives in a stronger form**, though: a hole costs 41 bytes an element and a
+render, people reach for one anyway, and making the free path the SHORT path is a real lever. That is
+a different claim from "it avoids a hole", and it is the one worth arguing.
+
+**"It is shorter" barely is.** `$.color.primary.main` is 20 characters against 25 for
+`var(--color-primary-main)`. Five characters do not carry a design decision.
+
+**"Types from the config" is real, and has a cheaper route.** Generating the token names into the
+VALUE type needs no new syntax and was measured to work, did-you-mean included:
+
+```
+background: "var(--colr-primary-main)"
+
+TS2820: Did you mean '"var(--color-primary-main)"'?
+```
+
+Because that is a template-literal union, an editor completes inside the string and filters by
+prefix — typing `var(--color-` narrows to the colours, which recovers most of what the nested
+spelling is attractive for.
+
+**The objection is the user's own principle.** This would be the THIRD spelling of one thing:
+
+    var(--color-primary-main)   plain CSS, checked by our rule against every name the build sets
+    var({accent})               a `@@property` binding, checked by TypeScript, compiles to a name
+    $.color.primary.main        proposed
+
+`Why the condition is inside { }` in the docs makes exactly this argument for `if ({ … })`: *the
+moment there are two, every reader has to learn which one a given line is.* Three is worse.
+
+**What only `$` can give, and the user did not raise it:** it is a real object, so rename-refactor
+and go-to-definition work. A string in a union has no definition site, so renaming a token cannot be
+an editor operation. With two hundred tokens that is not nothing.
+
+**Recommendation: generate the tokens into the value types, and leave `$` for later** — because
+types can be tightened afterwards and syntax cannot be withdrawn. If token navigation proves painful
+on a real project of a hundred-odd tokens, `$` arrives then with evidence. Added now and unused, it
+is a third way to write one thing, permanently.
+
+### What is not in dispute
+
+The codegen step is the same in all three: read the config, write a `.d.ts` the project's
+`tsconfig.json` includes. Only what a person writes differs.
+
+**And this makes the config serve two audiences** — the checker reads it at check time, the codegen
+reads it at build time. That is this repository's most common shape of fault, one question with two
+consumers, so whichever design wins has to say out loud which keys the checker honours and which the
+types do, and a key honoured by only one is a key that will surprise somebody.
+
+
 **1. Where a hole may appear.** A custom property holds a *value*. It cannot hold a property name, a
 selector, or a whole declaration:
 

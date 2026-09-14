@@ -1897,6 +1897,51 @@ question, asked mechanically, found reviews 20, 21 and 24 on its own.
   and half the people who install this are on one. `toolIn` and `vscode/locate.js` look for the
   `.cmd` spelling now, but whether `execFileSync` then RUNS a `.cmd` cleanly is a question this
   machine cannot answer. One line of CI turns the reasoning into measurement.
+- **What can actually be forbidden, measured 2026-09-14.** The list the user asked for, and the cost
+  of having it.
+
+  **Today 143 of 766 properties have a closed union; 623 accept `string | number`.** So `gap: 12`,
+  `letter-spacing: 12` and `color: 12px` all compile, and a browser drops each.
+
+  Classified by what each grammar states, after splitting it on top-level `|`:
+
+  | | |
+  |---|---|
+  | keywords + exactly ONE primitive type | **161**, of which **100 are standard and non-vendor** |
+  | genuinely complex grammar — `background`, `font`, `grid-template` | 279 |
+  | no grammar in `mdn-data` at all — the vendor names the engines gave us | 180 |
+  | keywords only, no type | 3 |
+
+  The 100 by primitive, with the ones people write every day first:
+
+  | | |
+  |---|---|
+  | `<length>` 16 | `letter-spacing`, `outline-offset`, `border-spacing`, the `scroll-margin` family |
+  | `<color>` 14 | `background-color`, `border-color`, `accent-color`, each side's own |
+  | `<length-percentage>` 13 | **`row-gap`, `column-gap`** — this is the `gap: 12` case |
+  | `<line-width>` 6 | `border-*-width`, `outline-width` |
+  | `<integer>` 4 | `z-index`, `column-count`, `line-clamp` |
+  | `<number>` 3 | `flex-grow`, `flex-shrink` |
+  | `<corner-shape-value>` 17 | new CSS almost nobody writes — the biggest bucket and the least useful |
+
+  **The cost is four instantiations, and it is FLAT** — `prototype-strict-types.mjs`, 100 properties
+  declared, measured as a block sets more of them:
+
+  ```
+                 1      12      40      80
+  CssValue    4774    4829    4969    5169
+  strict      4778    4833    4973    5173      +4 at every width
+  ```
+
+  So the user's constraint — *"pisi ih performantno … typescript nekada moze biti bottle neck"* — is
+  answered: this shape is not one. The growth is from setting more properties and is identical for
+  the loose map. `CssDimension<Unit>` already exists, generated from the unit table with its own
+  tests; it types HOLES today and nothing in the property map.
+
+  **`<integer>` cannot be a type and has to stay a rule.** Measured: neither `number` nor
+  `` `${number}` `` refuses `1.5`, so `z-index: 1.5` — which a browser drops — needs a sentence
+  rather than a signature. That splits the list across the two mechanisms this package already has.
+
 - **Config-driven strictness through codegen**, which is the user's idea and the one thing that would
   put this ahead of StyleX rather than level with it. The measurements are in the TODO: every
   constraint works as a generated TYPE with instantiations FLAT, the exception being a message inside
