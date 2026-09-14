@@ -159,3 +159,27 @@ describe("with it", () => {
     expect(out).toContain("`@ramonda-css-block:1`");
   });
 });
+
+/**
+ * A declared variable through Prettier, which is the OTHER way a block reaches a formatter.
+ *
+ * Two paths exist and both have to leave a path alone: `ramonda-css format`, which runs the
+ * project's own tool around the block, and this plugin, which is what a Prettier project uses. A
+ * rewritten path would compile to a `var()` into the wrong name, so the claim is asserted on both
+ * rather than on the one that happened to be checked.
+ */
+describe("a declared variable", () => {
+  test("survives, written tightly or loosely", async () => {
+    const source = `const a = <div css={@@( color: $.color.primary.main; padding:$.space.inline.2xl; )}>x</div>;\n`;
+    const out = await format(source);
+
+    expect(out).toContain("$.color.primary.main");
+    expect(out).toContain("$.space.inline.2xl");
+  });
+
+  test("and inside a call, where the arithmetic could invite a rewrite", async () => {
+    const source = `const b = <div css={@@( width: calc($.size.control.md * 2); )}>x</div>;\n`;
+
+    expect(await format(source)).toContain("calc($.size.control.md * 2)");
+  });
+});

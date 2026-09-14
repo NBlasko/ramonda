@@ -718,3 +718,38 @@ describe("what the rule reports, the formatter writes", () => {
     expect(formatText(source, FILE, asIs)).toContain("color: {RED}");
   });
 });
+
+/**
+ * A declared variable through the formatter, which is the one consumer that had nothing to do.
+ *
+ * `$` reaches the grammar, the checker, the compiler and the virtual file, and each had to learn it.
+ * The formatter did not — a block's innards are never reformatted, only put back at the indentation
+ * the project's own tool chose. That is worth ASSERTING rather than leaving as a thing that happens
+ * to be true: it is the kind of claim that stops being true quietly, and a path rewritten by a
+ * formatter would be a compile of `var()` into the wrong name.
+ */
+describe("a declared variable is not a formatter's business", () => {
+  const reindent = (text: string) => text.replace(/^ {2}/gm, "    ");
+  const identity = (text: string) => text;
+
+  test("the path survives byte for byte", () => {
+    const source = `const a = <div css={@@(\n  color: $.color.primary.main;\n)}>x</div>;\n`;
+
+    expect(formatText(source, "X.tsx", identity)).toBe(source);
+  });
+
+  test("even written loosely, because the innards are not reformatted at all", () => {
+    // No space after the colon, and a segment starting with a digit. A formatter that touched the
+    // block would tidy the first and could break the second.
+    const source = `const b = <div css={@@(\n  padding:$.space.inline.2xl;\n)}>x</div>;\n`;
+
+    expect(formatText(source, "X.tsx", identity)).toBe(source);
+  });
+
+  test("and it moves with the block when the formatter re-indents around it", () => {
+    const source = `function C() {\n  return <div css={@@(\n  width: calc($.size.control.md * 2);\n)}>x</div>;\n}\n`;
+    const out = formatText(source, "X.tsx", reindent);
+
+    expect(out).toContain("calc($.size.control.md * 2)");
+  });
+});

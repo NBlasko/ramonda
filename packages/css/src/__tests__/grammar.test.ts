@@ -59,6 +59,11 @@ beforeAll(async () => {
       // Into `source.css` as well: the hole sits inside a CSS declaration's value, and by then the
       // CSS grammar is the one tokenising.
       { ...load("ramonda-css-hole"), name: "ramonda-css-hole", injectTo: ["source.tsx", "source.css"] },
+      {
+        ...load("ramonda-css-variable"),
+        name: "ramonda-css-variable",
+        injectTo: ["source.tsx", "source.css"],
+      },
     ],
   });
 
@@ -644,5 +649,69 @@ describe("the `@@` marker's colour", () => {
   test("and the CSS inside is still CSS", () => {
     expect(scopeOf(CODE, "opacity")).toBe("support.type.property-name.css");
     expect(scopeOf(CODE, "red")).toBe("support.constant.color.w3c-standard-color-name.css");
+  });
+});
+
+/**
+ * `$.color.primary.main` — a declared variable, coloured as one.
+ *
+ * **This exists for a mis-colouring rather than for a missing colour**, which is the worse of the
+ * two. Measured before the grammar was added, on `color: $.color.primary.main`:
+ *
+ *     "$."             meta.property-value.css
+ *     "color"          support.constant.property-value.css     <- the CSS grammar's KEYWORD colour
+ *     ".primary.main"  meta.property-value.css
+ *
+ * A path segment that happens to spell a CSS keyword lit up as one. A reader sees `color` glowing in
+ * the middle of a variable path and has no way to know it means nothing — and `size`, `content`,
+ * `border` and `grid` are all ordinary names for a group of variables.
+ */
+describe("a declared variable in a value", () => {
+  const CODE = `const a = <div css=@@( color: $.color.primary.main; )>x</div>;\n`;
+
+  test("the sigil is this language's marker, exactly as `@@` is", () => {
+    expect(scopeOf(CODE, "$")).toBe("keyword.control.ramonda");
+  });
+
+  test("the path is one token, so no segment can be coloured as something else", () => {
+    expect(scopeOf(CODE, ".color.primary.main")).toBe("variable.other.ramonda");
+  });
+
+  test("the segment `color` is NOT the CSS keyword colour — the fault this was written for", () => {
+    const inside = scopesOf(CODE).filter((token) => token.scope === "support.constant.property-value.css");
+
+    expect(inside).toEqual([]);
+  });
+
+  test("inside `calc()`, which is where half the real uses are", () => {
+    const code = `const b = <div css=@@( width: calc($.size.md * 2); )>x</div>;\n`;
+
+    expect(scopeOf(code, "$")).toBe("keyword.control.ramonda");
+    expect(scopeOf(code, ".size.md")).toBe("variable.other.ramonda");
+    // and calc's own arithmetic still reads as arithmetic
+    expect(scopeOf(code, "*")).toBe("keyword.operator.arithmetic.css");
+  });
+
+  test("a segment that is not an identifier, because the block is our grammar", () => {
+    const code = `const c = <div css=@@( padding: $.space.inline.2xl; )>x</div>;\n`;
+
+    expect(scopeOf(code, ".space.inline.2xl")).toBe("variable.other.ramonda");
+  });
+
+  test("a `$` inside a string is left alone, because it is text there", () => {
+    const code = `const d = <div css=@@( content: "$.not.a.variable"; )>x</div>;\n`;
+    const marked = scopesOf(code).filter((token) => token.scope === "keyword.control.ramonda");
+
+    // Only the block's own `@@`, and nothing from inside the string.
+    expect(marked).toEqual([{ text: "@@", scope: "keyword.control.ramonda" }]);
+  });
+
+  test("ordinary CSS is untouched, which is the control", () => {
+    const code = `const e = <div css=@@( color: red; display: flex; )>x</div>;\n`;
+
+    // `red` gets the NAMED-COLOUR scope rather than the generic value one, which is what the CSS
+    // grammar has always given it — asserted as measured rather than as assumed.
+    expect(scopeOf(code, "red")).toBe("support.constant.color.w3c-standard-color-name.css");
+    expect(scopeOf(code, "flex")).toBe("support.constant.property-value.css");
   });
 });

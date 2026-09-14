@@ -1,0 +1,24 @@
+{
+  "scopeName": "ramonda.css-variable",
+  "comment": "`$.color.primary.main` — a variable the project declared, which compiles to `var(--color-primary-main)`. Its own injection rather than a pattern in the hole grammar, because that file's name would then be wrong about half of what it does; the two share an injection SELECTOR because they are the same position — the things this language puts inside a CSS value. `-string` is not caution: a path is text inside `content: \"…\"`, and the CSS grammar's string scope is still inside a property value, so the injection would otherwise reach in and colour it.",
+  "injectionSelector": "L:meta.embedded.block.css meta.property-value.css -string, L:meta.embedded.block.css meta.property-name.css -string",
+  "patterns": [
+    {
+      "include": "#variable"
+    }
+  ],
+  "repository": {
+    "variable": {
+      "comment": "The whole path is ONE token, and that is the point rather than a shortcut. Measured before this existed, on `color: $.color.primary.main`: the CSS grammar tokenised the segment `color` on its own and gave it `support.constant.property-value.css` — its KEYWORD colour — so a reader saw `color` glowing in the middle of a variable path with no way to know it meant nothing there. `size`, `content`, `border` and `grid` are all ordinary names for a group of variables, so the fault is common rather than contrived. A segment may begin with a digit (`2xl`, `0`): the block is this package's grammar, and only the virtual file has to be TypeScript. The `$` is coloured as this language's marker for the same reason `@@` is — one sigil, one meaning, wherever it appears.",
+      "match": "(\\$)((?:\\.[A-Za-z0-9_-]*)+)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.ramonda"
+        },
+        "2": {
+          "name": "variable.other.ramonda"
+        }
+      }
+    }
+  }
+}
