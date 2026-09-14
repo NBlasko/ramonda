@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
 import { knownNames, configReader, environmentOf } from "./config";
+import { writeGenerated } from "./generate";
 import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
 import { mayHoldABlock } from "./compiler/scan";
@@ -179,6 +180,21 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
     name: "ramonda-css",
 
     setup(build) {
+      /**
+       * Codegen, run once before anything is resolved.
+       *
+       * **Before**, because user code IMPORTS the generated module: run it lazily on the first file and
+       * that import has already failed. So it happens at the start of the build, from the directory the
+       * bundler was invoked in.
+       *
+       * The BUILD's own working directory, not the process's — esbuild already reports every location
+       * relative to it, and asking the process instead would generate into whichever directory the
+       * command happened to start in. Everything else here finds a config by walking up from the
+       * FILE, which is what makes a monorepo work; this is the one question with no file to ask
+       * about, so it asks the build.
+       */
+      writeGenerated(build.initialOptions?.absWorkingDir ?? process.cwd(), ts);
+
       build.onResolve({ filter: /\?ramonda-css\.css$/ }, (args) => ({ path: args.path, namespace: NAMESPACE }));
 
       build.onLoad({ filter: /.*/, namespace: NAMESPACE }, (args) => ({

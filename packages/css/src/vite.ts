@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { knownNames, type Config, configReader, environmentOf } from "./config";
+import { writeGenerated } from "./generate";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
@@ -88,6 +89,8 @@ export interface HotUpdate {
 export interface CssPluginLike {
   name: string;
   enforce: "pre";
+  /** Rollup's own, and the one hook that runs before anything is resolved — see its use below. */
+  buildStart(this: unknown): void;
   config(this: unknown, userConfig: unknown, environment: { mode?: string } | undefined): unknown;
   resolveId(this: unknown, id: string): string | null;
   load(this: unknown, id: string): string | null;
@@ -133,6 +136,8 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    */
   let production: boolean | undefined;
   const configFor = configReader(ts, () => environmentOf(production));
+  /** Where this project is, as Vite reports it. See `buildStart`. */
+  let root = process.cwd();
 
   // Said once, when the built package is behind its sources — see `warnIfStale` for the day it cost.
   // `fileURLToPath`, not a string replace: a `file://` url PERCENT-ENCODES, so a checkout at
@@ -255,6 +260,21 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     name: "ramonda-css",
 
     /**
+     * Codegen, run once before anything is resolved.
+     *
+     * **Before**, because user code IMPORTS the generated module: run it lazily on the first file and
+     * that import has already failed. So it happens at the start of the build, from the directory the
+     * bundler was invoked in.
+     *
+     * From the project ROOT Vite reported, not from the process's directory — everything else here
+     * finds a config by walking up from the FILE, which is what makes a monorepo work, and this is
+     * the one question with no file to ask about. Vite is the thing that knows, so it is asked.
+     */
+    buildStart() {
+      writeGenerated(root, ts);
+    },
+
+    /**
      * The dependency SCAN is a second pass, and it never sees this plugin.
      *
      * Reported from a real `pnpm dev`: the server starts, the first request arrives, and the scan
@@ -268,9 +288,11 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
      * is the imports; a block that the real transform would refuse is left alone rather than thrown
      * from, since a scan is not where an author should meet a diagnostic.
      */
-    config(_userConfig, environment) {
+    config(userConfig, environment) {
       // Vite's own `isProduction` is exactly this, and it is the answer a config asks for.
       production = environment?.mode === "production";
+      // The project's root, for the one question with no file to ask about — see `buildStart`.
+      root = (userConfig as { root?: string } | undefined)?.root ?? root;
       return {
         optimizeDeps: {
           esbuildOptions: {

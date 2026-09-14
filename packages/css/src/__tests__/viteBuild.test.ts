@@ -553,3 +553,31 @@ test("zzdiagnose", () => {
   require("node:fs").writeFileSync("/tmp/zzdiag.txt", lines.join("\n"));
   expect(result.ok).toBe(true);
 });
+
+/**
+ * The same wiring claim, asked of Vite.
+ *
+ * Two plugins run codegen and each could stop doing it on its own, so the claim is made of both
+ * rather than of whichever one was convenient. The mechanism is proven in `generate.test.ts`; what
+ * a real build shows is that somebody calls it, and calls it before anything is resolved.
+ */
+describe("codegen through the vite plugin", () => {
+  test("the pair is written, and a block using `$` compiles to a plain var()", () => {
+    const root = project(
+      `export const Card = () => <div css={@@( color: $.color.primary.main; )}>x</div>;\n`,
+      `import { Card } from "./Card";\nconsole.log(Card);\n`,
+    );
+    writeFileSync(
+      join(root, "ramonda.css.ts"),
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+    );
+
+    const result = build(root);
+
+    expect(result.ok).toBe(true);
+    expect(readFileSync(join(root, "ramonda.css.generated.css"), "utf8")).toContain("--color-primary-main: #3b82f6;");
+    // The emitted rule reads the variable and carries no fallback — the registration is the
+    // guarantee, and it is in the file above.
+    expect(Object.values(result.files).join("\n")).toContain("var(--color-primary-main)");
+  });
+});

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import ts from "typescript";
 import { checkProject } from "./check";
+import { writeGenerated } from "./generate";
 import { ConfigError } from "./config";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
 import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
@@ -38,6 +40,7 @@ const USAGE = `ramonda-css — the tools for a project whose source TypeScript c
   ramonda-css [tsconfig.json]      type-check the project, mapping every diagnostic home
   ramonda-css format <paths…>      format through the project's own biome (--check to report)
   ramonda-css lint <paths…>        lint through the project's own oxlint
+  ramonda-css codegen              write the variables this project declares, and their types
 
 The check takes a PROJECT — a tsconfig, or the directory holding one — because a program is what
 is type-checked. \`format\` and \`lint\` take paths, because a file is what they rewrite and read.`;
@@ -85,6 +88,10 @@ function said<T>(run: () => T): T {
 
 if (argv[0] === "format" || argv[0] === "lint") {
   said(() => runTool(argv[0] as "format" | "lint", argv.slice(1)));
+}
+
+if (argv[0] === "codegen") {
+  said(() => runCodegen());
 }
 
 /**
@@ -301,4 +308,37 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     console.error("");
   }
   process.exit(1);
+}
+
+/**
+ * `ramonda-css codegen`
+ *
+ * Writes the stylesheet that sets this project's declared variables, and the module that reaches
+ * them. Both bundler plugins run it on their own, so this is for the builds that use neither, for
+ * CI, and for a fresh clone where the generated pair is not committed.
+ *
+ * **A project with no config is not a failure.** Blocks work perfectly well without declaring a
+ * variable, and exiting non-zero would break a build for a step it never asked for. It says so and
+ * stops.
+ */
+function runCodegen(): never {
+  const result = writeGenerated(process.cwd(), ts);
+
+  if (result.config === undefined) {
+    console.log(`${TAG} no \`ramonda.css.ts\` in this project, so there are no variables to write.`);
+    process.exit(0);
+  }
+
+  if (result.declared === 0) {
+    console.log(`${TAG} ${where(result.config)} declares no variables, so nothing was written.`);
+    process.exit(0);
+  }
+
+  const changed = result.files.filter((one) => one.changed);
+  const said = changed.length === 0 ? "already up to date" : changed.map((one) => where(one.path)).join(", ");
+
+  console.log(
+    `${TAG} ${result.declared} variable${result.declared === 1 ? "" : "s"} from ${where(result.config)} — ${said}`,
+  );
+  process.exit(0);
 }

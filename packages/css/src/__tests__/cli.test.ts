@@ -351,3 +351,60 @@ describe("an argument that is not a project", () => {
     expect(output).not.toContain("node:fs");
   });
 });
+
+/**
+ * `ramonda-css codegen`, which is the command that makes `$` usable at all.
+ *
+ * A project with no generated module has no `$` to import, so this is not a convenience: it is the
+ * step between a declared variable and a written one. In a bundler it runs on its own; this is for
+ * CI, for a fresh clone, and for a project that builds with neither plugin.
+ */
+describe("codegen", () => {
+  function bare(config: string | undefined): string {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-codegen-"));
+    projects.push(root);
+    if (config !== undefined) writeFileSync(join(root, "ramonda.css.ts"), config);
+    return root;
+  }
+
+  const runIn = (root: string) => {
+    try {
+      return { output: execFileSync(process.execPath, [BIN, "codegen"], { cwd: root, encoding: "utf8" }), status: 0 };
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? -1 };
+    }
+  };
+
+  test("writes the pair, says what it wrote, and exits 0", () => {
+    const root = bare(
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+    );
+    const { output, status } = runIn(root);
+
+    expect(status).toBe(0);
+    expect(output).toContain("1 variable");
+    expect(existsSync(join(root, "ramonda.css.generated.css"))).toBe(true);
+    expect(existsSync(join(root, "ramonda.css.generated.ts"))).toBe(true);
+  });
+
+  test("no config is said plainly, and is not a failure", () => {
+    // A project may use blocks and declare no variables. Exiting non-zero would break its build for
+    // a step it never asked for.
+    const { output, status } = runIn(bare(undefined));
+
+    expect(status).toBe(0);
+    expect(output).toMatch(/no .*ramonda\.css\.ts/i);
+  });
+
+  test("a collision stops it, with both paths named", () => {
+    const root = bare(
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) } };\n`,
+    );
+    const { output, status } = runIn(root);
+
+    expect(status).toBe(1);
+    expect(output).toContain("--a-b-c");
+    expect(existsSync(join(root, "ramonda.css.generated.css"))).toBe(false);
+  });
+});

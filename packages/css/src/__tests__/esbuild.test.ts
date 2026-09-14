@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as esbuild from "esbuild";
@@ -399,5 +399,39 @@ console.log(b);
     const failed = await build(root).catch((error: unknown) => error as esbuild.BuildFailure);
 
     expect(spoken(failed as esbuild.BuildFailure)).not.toContain("filter");
+  });
+});
+
+/**
+ * The plugin running codegen, which is the wiring rather than the mechanism.
+ *
+ * `generate.test.ts` proves the function. This proves somebody CALLS it — the distinction this
+ * repository has already been caught by once, where `environmentOf` was correct, tested, and wired
+ * to nothing, so every config took its development branch in production builds and said nothing.
+ *
+ * It has to happen before anything is resolved, because user code IMPORTS the generated module: run
+ * it on the first file instead and that import has already failed.
+ */
+describe("codegen through the plugin", () => {
+  test("the pair is written into the build's own root, before anything is resolved", async () => {
+    const root = project({
+      "index.tsx": `const a = <div css={@@( color: $.color.primary.main; )}>x</div>;\nexport default a;\n`,
+      "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+    });
+
+    await build(root, { absWorkingDir: root });
+
+    expect(readFileSync(join(root, "ramonda.css.generated.css"), "utf8")).toContain("--color-primary-main: #3b82f6;");
+    expect(readFileSync(join(root, "ramonda.css.generated.ts"), "utf8")).toContain("--color-primary-main");
+  });
+
+  test("a project with no config is built without one being invented", async () => {
+    const root = project({
+      "index.tsx": `const a = <div css={@@( color: red; )}>x</div>;\nexport default a;\n`,
+    });
+
+    await build(root, { absWorkingDir: root });
+
+    expect(existsSync(join(root, "ramonda.css.generated.ts"))).toBe(false);
   });
 });

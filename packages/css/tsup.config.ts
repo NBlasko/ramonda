@@ -27,6 +27,15 @@ export default defineConfig([
      * default is hoisted to be the export itself.
      */
     footer: { js: "module.exports = module.exports.default;" },
+    /**
+     * The clean lives HERE, on the first block, and that is not tidying.
+     *
+     * It was on the ESM block, which is not the first — and tsup runs the blocks concurrently, so
+     * the clean landed after another block had already written its declarations. Measured: tsup
+     * reported `DTS dist/config.d.ts 17.56 KB` and the file was not there afterwards, which is the
+     * worst shape of failure — a build that says it wrote something it did not.
+     */
+    clean: true,
     outDir: "dist",
   },
   {
@@ -42,7 +51,22 @@ export default defineConfig([
     ],
     format: ["esm"],
     dts: true,
-    clean: true,
+    target: "es2022",
+    outDir: "dist",
+  },
+  /**
+   * The config's own entry, in BOTH formats, and the second one is the point.
+   *
+   * A `ramonda.css.ts` is transpiled to CommonJS and `require`d — that is what makes it loadable in
+   * an editor — so anything it imports must be requirable. Measured before this existed: a config
+   * doing `import { kind } from "@ramonda/css"` died with `No "exports" main defined`, in every
+   * project rather than only in a test. The main entry stays ESM-only, because it is what a page
+   * loads and it imports nothing.
+   */
+  {
+    entry: { config: "src/configEntry.ts" },
+    format: ["esm", "cjs"],
+    dts: true,
     target: "es2022",
     outDir: "dist",
   },
