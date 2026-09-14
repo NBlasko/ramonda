@@ -110,6 +110,10 @@ describe("naming what a property accepts", () => {
     const { module: written } = generate(simple);
 
     expect(written).toContain("export type Value<P extends keyof CssProperties> = CssProperties[P];");
-    expect(written).toContain('import type { CssProperties } from "@ramonda/css/properties";');
+    expect(written).toContain(
+      'import type { BlockShapeOf, CssProperties as Base, Narrowed } from "@ramonda/css/properties";',
+    );
+    expect(written).toContain("export type CssProperties = Omit<Base, keyof Narrowings> & Narrowings;");
+    expect(written).toContain("export type CssBlockShape = BlockShapeOf<CssProperties>;");
   });
 });

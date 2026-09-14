@@ -31,7 +31,7 @@
  *
  * Regenerate with `node scripts/build-css-properties.mjs`; `pnpm check` runs it with `--check`.
  */
-export type { CssGlobal, CssProperties, CssValue, Keyword } from "./properties.generated";
+export type { CssGlobal, CssProperties, CssValue, Keyword, Narrowed } from "./properties.generated";
 export type { StyleValue } from "./types";
 
 import type { StyleValue } from "./types";
@@ -69,9 +69,19 @@ import type { CssProperties, CssValue } from "./properties.generated";
  * Measured, exactly that. One literal per declaration, gathered in an array, gets every fault
  * reported at once, each with its own position and its own suggestion.
  */
-export type CssBlockShape = Partial<CssProperties> & {
-  [nested: `&${string}`]: CssBlockShape[];
-} & { [at: `@${string}`]: CssBlockShape[] } & { [dashed: `-${string}`]: CssValue };
+export type CssBlockShape = BlockShapeOf<CssProperties>;
+
+/**
+ * The same shape, over whichever property map applies — which is what lets a PROJECT have its own.
+ *
+ * A project that declares variables gets a property map narrowed by its config, written by codegen,
+ * and its blocks are checked against that instead of against this one. The shape around the
+ * properties does not change, so it is written once here and parameterised rather than copied into
+ * every generated module — where it would be one more thing that can fall out of step.
+ */
+export type BlockShapeOf<P> = Partial<P> & {
+  [nested: `&${string}`]: BlockShapeOf<P>[];
+} & { [at: `@${string}`]: BlockShapeOf<P>[] } & { [dashed: `-${string}`]: CssValue };
 
 /**
  * The body of `@@keyframes( … )`: frames, each holding declarations of its own.

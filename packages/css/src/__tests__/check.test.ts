@@ -827,25 +827,21 @@ describe("what a hole may evaluate to", () => {
   });
 
   /**
-   * **A bare `string` into a property that says what it takes, which used to be accepted.**
+   * **A bare `string` goes in, because this project has no config.**
    *
-   * The cost of narrowing, and it is the whole cost: a value whose type is `string` could be
-   * anything at run time, and `color` now says it takes a colour. The answer is the one this package
-   * already had for lengths — put the type where the value is MADE — and `CssColor` exists for
-   * exactly this, so the fix is an annotation rather than a cast.
+   * Narrowing is a project's own: the config says how far, codegen writes it into that project's
+   * property map, and a project that has written neither is checked against the shipped map, where
+   * a value is `string | number`. These probes have no `ramonda.css.ts`, so this is what they get —
+   * and `generated.test.ts` asserts the other half, in a project that has one.
    *
-   * `border-left` is the control: its grammar is composite, nothing narrowed it, and a `string`
-   * still goes in.
+   * Shipping the narrowing instead was tried for a day. It refused this in every project at once,
+   * config or no config, which is not this package's call to make.
    */
   test.each([
     ["a plain string", "  color: {s};", "declare const s: string;\n"],
     ["a fallback that widens to string", '  color: {maybe ?? "red"};', "declare const maybe: string | undefined;\n"],
-  ])("%s is refused by a property that says what it takes", (_what, declaration, head) => {
-    const report = held(declaration, head);
-
-    expect(report.findings).toHaveLength(1);
-    expect(report.findings[0].code).toBe(2322);
-    expect(report.findings[0].message).toContain("CssColor");
+  ])("%s is accepted where nothing narrowed the property", (_what, declaration, head) => {
+    expect(held(declaration, head).findings).toEqual([]);
   });
 
   /** A guard and a spread are not values, so neither goes through it — each has a type of its own. */

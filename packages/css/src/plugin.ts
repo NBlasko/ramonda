@@ -14,6 +14,7 @@ import { checkedSource } from "./compiler/source";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 import { type Config, configReader, environmentOf } from "./config";
+import { propertiesFor } from "./generate";
 import { warnIfStale } from "./stale";
 import { type Imported, namedSites } from "./compiler/references";
 
@@ -236,7 +237,9 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           text === undefined
             ? undefined
             : virtualFile(text, {
-                properties: properties(info),
+                // The project's own map when it has generated one — the same answer the CLI gives,
+                // so the editor and `ramonda-css check` cannot disagree about what a block accepts.
+                properties: properties(info) ?? propertiesFor(fileName),
                 tolerant: true,
                 filename: fileName,
                 read: readModuleFromEditor,

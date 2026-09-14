@@ -243,3 +243,71 @@ describe("a variable of the wrong kind", () => {
     expect(output).not.toContain("problem");
   });
 });
+
+/**
+ * What narrowing costs, asserted where it applies — in a project that HAS a config.
+ *
+ * `check.test.ts` has the other half: its probes have no `ramonda.css.ts`, so nothing is narrowed
+ * there and a bare `string` goes in. The two files together are the whole claim, which is the point
+ * of the correction that put the narrowing here: it is the project's, not everybody's.
+ */
+describe("a value made outside a block", () => {
+  const checkedWith = (card: string): string => {
+    const root = project();
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "jsx.d.ts"),
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    );
+    writeFileSync(join(root, "src", "Card.tsx"), `import { type Value } from "../ramonda.css.generated";\n\n${card}`);
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          jsx: "preserve",
+          types: [],
+        },
+        include: ["src", "ramonda.css.generated.ts"],
+      }),
+    );
+
+    try {
+      return execFileSync(process.execPath, [join(PACKAGE, "bin.mjs"), "tsconfig.json"], {
+        cwd: root,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      return `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    }
+  };
+
+  test("a bare `string` is refused by a property this project narrowed", () => {
+    const output = checkedWith(
+      `declare const s: string;\nexport const a = <div css={@@( letter-spacing: {s}; )}>x</div>;\n`,
+    );
+
+    expect(output).toContain("problem");
+  });
+
+  test("and `Value` is what an author annotates with to satisfy it", () => {
+    const output = checkedWith(
+      `const spacing: Value<"letter-spacing"> = "0.05em";\nexport const b = <div css={@@( letter-spacing: {spacing}; )}>x</div>;\n`,
+    );
+
+    expect(output).not.toContain("problem");
+  });
+
+  test("a property nothing narrowed still takes a string, because its grammar is composite", () => {
+    const output = checkedWith(
+      `declare const s: string;\nexport const c = <div css={@@( border-left: {s} solid red; )}>x</div>;\n`,
+    );
+
+    expect(output).not.toContain("problem");
+  });
+});

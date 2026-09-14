@@ -160,39 +160,30 @@ const PRIMITIVE = new Set([
 ]);
 
 /**
- * What each primitive becomes as a TYPE, and which declared-variable kinds a slot for it accepts.
+ * The primitives a project MAY narrow a property to, and the list is here because it is CSS's.
  *
- * Only the primitives where a type can be both exact and complete are here. `<url>`, `<image>`,
- * `<string>` and the ident families are left as `CssValue`: a union for them would be a guess about
- * text CSS lets an author invent, and refusing correct CSS is the one failure a type map may not
- * have.
+ * What each becomes as a type — and which declared-variable kinds a slot for it accepts — is
+ * `codegen.ts`'s, because that is a decision of ours rather than a fact about CSS, and because it is
+ * the config that decides how far to take it.
  *
- * **`<integer>` is here and its type does not refuse a fraction**, because none can — measured,
- * neither `number` nor `` `${number}` `` refuses `1.5`. It is listed anyway for the half a type CAN
- * do: accept a variable declared as an integer and refuse one declared as a colour. The fraction
- * stays the checker's sentence, and the browser's `@property` refuses it at runtime.
- *
- * `length-percentage` accepts three kinds, because a length and a percentage are both one.
- *
- * **A number admits `` `${number}` `` as well as `number`**, and that was measured rather than
- * foreseen: `properties.test.ts` refused `-webkit-line-clamp: "2"`, which is correct CSS written as
- * a string — the one failure this map may not have. `CssDimension` already carries the same
- * admission for every unit family, which is why only these two needed saying out loud.
+ * Only the primitives where a type can be both exact and complete. `<url>`, `<image>`, `<string>`
+ * and the ident families are left out: a union for them would be a guess about text CSS lets an
+ * author invent, and refusing correct CSS is the one failure this may not have.
  */
-const NARROW = {
-  angle: { value: "CssDimension<CssAngleUnit>", kinds: ["angle"] },
-  color: { value: "CssColor", kinds: ["color"] },
-  integer: { value: "number | `${number}` | `${string}(${string})`", kinds: ["integer", "number"] },
-  length: { value: "CssDimension<CssLengthUnit>", kinds: ["length"] },
-  "length-percentage": {
-    value: 'CssDimension<CssLengthUnit | "%">',
-    kinds: ["length", "length-percentage", "percentage"],
-  },
-  number: { value: "number | `${number}` | `${string}(${string})`", kinds: ["number", "integer"] },
-  percentage: { value: 'CssDimension<"%">', kinds: ["percentage"] },
-  resolution: { value: "CssDimension<CssResolutionUnit>", kinds: ["resolution"] },
-  time: { value: "CssDimension<CssTimeUnit>", kinds: ["time"] },
-};
+const NARROWABLE = new Set([
+  "angle",
+  "color",
+  "integer",
+  "length",
+  "length-percentage",
+  "number",
+  "percentage",
+  "resolution",
+  "time",
+]);
+
+/** Which property takes which primitive, for codegen to narrow from. */
+const primitiveRows = [];
 
 /** How many properties this narrowed, for the line the script prints. */
 let narrowed = 0;
@@ -927,37 +918,24 @@ for (const name of named) {
   const keywords = grammar === undefined ? undefined : [...new Set([...grammar, ...(ENGINE_KEYWORDS[name] ?? [])])];
   const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
   /**
-   * A property whose grammar is keywords plus ONE primitive says so, instead of `string | number`.
+   * A property whose grammar is keywords plus ONE primitive is RECORDED rather than narrowed here.
    *
-   * Two things at once, and the second is why this exists now rather than later. It refuses a value
-   * of the wrong shape — `letter-spacing: 12`, `column-gap: 12`, which browsers drop — and it is the
-   * only way a slot can refuse a declared variable of the WRONG KIND, since a token is a branded
-   * string and every property accepting `string` accepts all of them.
+   * The narrowing is a project's, not this package's — `DESIGN.md`, and the user said it more than
+   * once: the config makes the types and the completions for the app. What CSS knows is which
+   * primitive a property takes, and that is what ships; how many values, which units and which of
+   * them a project permits is the config's, and codegen writes that into the project's own map.
    *
-   * The keywords come from the scan rather than from `keywordsOf`, which answered `undefined` here
-   * precisely because the grammar reaches a type as well. `column-gap: normal` has to keep working.
+   * Shipping the narrowing was tried and is what this replaces. It refused a `string` reaching a
+   * property through a hole in every project at once, config or no config, which is not this
+   * package's call to make.
    */
-  const narrow = keywords === undefined ? NARROW[primitiveOf(name) ?? ""] : undefined;
-  const type =
-    keywords !== undefined
-      ? `Keyword<${keywords.map((k) => JSON.stringify(k)).join(" | ")}>`
-      : narrow === undefined
-        ? "CssValue"
-        : (() => {
-            /**
-             * The keywords the VALUE type already carries are not written again.
-             *
-             * `<color>`'s bare words are the named colours, and `CssColorKeyword` is that same list
-             * from the same sweep — writing both put 192 strings into every colour property's type,
-             * twice over, for nothing. Measured on `background-color` before this: one declaration
-             * ran to 3.5 KB of source.
-             */
-            const covered = narrow.value === "CssColor" ? new Set(colourKeywords) : new Set();
-            const words = [...new Set(scan(name).words)].filter((one) => !covered.has(one));
-            const head = words.length === 0 ? "never" : words.map((k) => JSON.stringify(k)).join(" | ");
-            return `Narrowed<${head}, ${narrow.value} | Token<${narrow.kinds.map((k) => JSON.stringify(k)).join(" | ")}>>`;
-          })();
-  if (narrow !== undefined) narrowed++;
+  const primitive = keywords === undefined ? primitiveOf(name) : undefined;
+  if (primitive !== undefined && NARROWABLE.has(primitive)) {
+    narrowed++;
+    primitiveRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(primitive)},`);
+  }
+
+  const type = keywords === undefined ? "CssValue" : `Keyword<${keywords.map((k) => JSON.stringify(k)).join(" | ")}>`;
   rows.push(`${documentation(name)}\n  ${key}: ${type};`);
 
   if (keywords !== undefined) {
@@ -1562,24 +1540,8 @@ if (invented.length > 0) {
   process.exit(1);
 }
 
-/**
- * Only the names the rows actually used.
- *
- * Which units appear depends on what `mdn-data` says today: no property narrowed to an angle or a
- * resolution this time, and importing one anyway is an unused import in a file nobody can fix by
- * hand — which the linter reports, rightly. Asked of the text rather than listed, so the day a
- * property gains an angle the import arrives with it.
- */
-const needed = (name) => new RegExp(`\\b${name}\\b`).test(rows.join("\n"));
-const importing = (names, from) => {
-  const used = names.filter(needed);
-  return used.length === 0 ? "" : `import type { ${used.join(", ")} } from ${JSON.stringify(from)};\n`;
-};
-
 const types = `// Generated by scripts/build-css-properties.mjs from mdn-data (CC0-1.0). Do not edit.
-//
-// Type-only imports, so this file still holds no runtime — see \`units.generated.ts\`.
-${importing(["CssAngleUnit", "CssDimension", "CssLengthUnit", "CssResolutionUnit", "CssTimeUnit"], "./units.generated")}${importing(["CssColor", "CssColorKeyword"], "./values.generated")}${importing(["Token"], "./token")}
+
 
 //
 // ${named.length} properties, ${unions} of them a closed keyword set. Everything else is \`string | number\`
@@ -1835,6 +1797,20 @@ ${valueRows.join("\n")}
  * which no table here does.
  */
 export const UNION_TYPED: readonly string[] = ${JSON.stringify(unionTyped.map((one) => JSON.parse(one)))};
+
+/**
+ * Which property takes which PRIMITIVE, for the properties whose grammar is keywords plus one.
+ *
+ * What CSS knows, and all this package ships of it. A project narrows further — an arity, a unit
+ * list, a set of values — and \`codegen.ts\` turns this plus that config into the project's own
+ * property map. Splitting it there rather than here is the point: the narrowing belongs to whoever
+ * wrote the config, not to everybody who installs this.
+ *
+ * ${primitiveRows.length} properties.
+ */
+export const PRIMITIVE: Readonly<Record<string, string>> = {
+${primitiveRows.join("\n")}
+};
 `;
 
 /**
@@ -1950,7 +1926,7 @@ const said =
   `${propertyNamedRows.length} whose value is a property name, ${allUnits.length} units, ` +
   `${NOT_IN_A_RULE.length} at-rules that may not sit in a block, ${shorthandRows.length} shorthands, ` +
   `${valueRows.length} with values to suggest, ${Object.keys(ABBREVIATIONS).length} abbreviated, ` +
-  `${colourKeywords.length} colour keywords, ${narrowed} narrowed to one primitive`;
+  `${colourKeywords.length} colour keywords, ${narrowed} classified by their one primitive`;
 
 if (!check) {
   writeFileSync(TYPES, types);

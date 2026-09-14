@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import type ts from "typescript";
 import { generate, namesIn, verifyNames } from "./codegen";
 import { findConfig, readConfig } from "./config";
@@ -100,4 +100,39 @@ export function writeGenerated(from: string, typescript: typeof ts): CodegenResu
     declared: named.length,
     files: [put(join(beside, "ramonda.css.generated.css"), css), put(join(beside, "ramonda.css.generated.ts"), module)],
   };
+}
+
+/** Where a file's own generated module is, once found, so the walk happens per directory. */
+const beside = new Map<string, string | undefined>();
+
+/**
+ * The specifier a virtual file should import its property map FROM, for one source file.
+ *
+ * A project that has run codegen is checked against its OWN property map — narrowed by its config —
+ * rather than against the shipped one. That map lives beside the config, so the specifier is
+ * relative and differs per file, which is why this is asked per file rather than set once for a
+ * project: a monorepo has a config per package, and a file belongs to the nearest one.
+ *
+ * `undefined` when the project has not generated one, and the caller keeps the shipped default. A
+ * project with no config is not broken by this; it is simply unnarrowed, and told so once.
+ */
+export function propertiesFor(file: string): string | undefined {
+  const directory = dirname(file);
+  if (!beside.has(directory)) {
+    const config = findConfig(directory);
+    const module = config === undefined ? undefined : join(dirname(config), "ramonda.css.generated.ts");
+    beside.set(directory, module !== undefined && existsSync(module) ? module : undefined);
+  }
+
+  const module = beside.get(directory);
+  if (module === undefined) return undefined;
+
+  /** Without the extension, and always explicitly relative — a bare `x` would be a package. */
+  const path = relative(directory, module).replace(/\.ts$/, "");
+  return path.startsWith(".") ? path : `./${path}`;
+}
+
+/** Forgets where the generated modules are, for a watch that has just written one. */
+export function forgetGenerated(): void {
+  beside.clear();
 }

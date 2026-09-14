@@ -5,6 +5,7 @@ import { Sheet, messageFor } from "./compiler/sheet";
 import { checkedSource } from "./compiler/source";
 import { positionOf } from "./compiler/errors";
 import { knownNames, configReader, environmentOf } from "./config";
+import { propertiesFor } from "./generate";
 import { readModule } from "./modules";
 import { mayHoldABlock } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
@@ -130,7 +131,14 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
        * The `filename` goes with it: a relative specifier is resolved against the file holding the
        * import, so a reader with nothing to resolve against reads nothing.
        */
-      const virtual = virtualFile(text, { properties: options.properties, filename: fileName, read: readModule });
+      /**
+       * The project's OWN property map when it has generated one, and the shipped map otherwise.
+       *
+       * An explicit `properties` option still wins — a fixture, a wrapper's own — because a caller
+       * that named one meant it.
+       */
+      const properties = options.properties ?? propertiesFor(fileName);
+      const virtual = virtualFile(text, { properties, filename: fileName, read: readModule });
       // `mayHoldABlock` is allowed to say maybe — a string or a comment can hold the syntax, and
       // a file that turns out to hold no block needs no overlay.
       if (virtual !== undefined) {
