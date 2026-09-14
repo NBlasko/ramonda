@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
-import { configReader, environmentOf } from "./config";
+import { knownNames, configReader, environmentOf } from "./config";
 import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
 import { mayHoldABlock } from "./compiler/scan";
@@ -245,7 +245,7 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         }
 
         styled.add(args.path);
-        sheet.add(args.path, result.blocks, { ...result.variables, known: config.variables });
+        sheet.add(args.path, result.blocks, { ...result.variables, known: knownNames(config) });
         const own = sheet.cssFor(args.path);
         const contents = own === "" ? result.code : `${result.code}\nimport ${JSON.stringify(args.path + SUFFIX)};\n`;
 

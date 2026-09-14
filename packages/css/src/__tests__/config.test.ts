@@ -233,10 +233,15 @@ describe("the project's config", () => {
       ["a rule set to a boolean", `{ rules: { "unknown-unit": false } }`, /unknown-unit/],
       ["a rule set to a word that is not a severity", `{ rules: { "unknown-unit": "quiet" } }`, /quiet/],
       ["variables as a bare string", `{ variables: "--brand" }`, /variables/],
-      ["variables holding a number", `{ variables: [1] }`, /variables/],
+      // The old spelling of this key, which is now `alsoSets` — the message says where the list goes
+      // rather than only that an object was wanted, because a project carrying the old form needs to
+      // be told the destination, not the shape.
+      ["variables as the list it used to be", `{ variables: ["--brand"] }`, /alsoSets/],
+      ["alsoSets as a bare string", `{ alsoSets: "--brand" }`, /alsoSets/],
+      ["alsoSets holding a number", `{ alsoSets: [1] }`, /alsoSets/],
       // A custom property begins with two dashes. `brand` is a property name, and a list of those
       // would silence a rule about names it was never given.
-      ["a variable with no dashes", `{ variables: ["brand"] }`, /two dashes/],
+      ["a name in alsoSets with no dashes", `{ alsoSets: ["brand"] }`, /two dashes/],
     ])("%s is refused, naming what is wrong", (_what, body, says) => {
       expect(refused(body)).toThrow(says);
     });
@@ -261,7 +266,7 @@ describe("the project's config", () => {
 
     test.each([
       ["one unit", `{ units: ["px"] }`],
-      ["a variable this compiler cannot see", `{ variables: ["--brand"] }`],
+      ["a name this compiler cannot see", `{ alsoSets: ["--brand"] }`],
       ["several", `{ units: ["px", "rem", "%"] }`],
       ["a rule silenced", `{ rules: { "unknown-unit": "off" } }`],
       ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],

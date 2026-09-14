@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { generate, namesIn } from "../codegen";
+import { generate, namesIn, verifyNames } from "../codegen";
 import { kind } from "../declared";
 
 /**
@@ -34,9 +34,10 @@ describe("names", () => {
       a: kind("length", { "b-c": "2px" }),
     };
 
-    expect(() => namesIn(clashing)).toThrow(/--a-b-c/);
-    expect(() => namesIn(clashing)).toThrow(/a-b\.c/);
-    expect(() => namesIn(clashing)).toThrow(/a\.b-c/);
+    // The walk answers and `verifyNames` decides — see its note. `generate` runs both.
+    expect(() => verifyNames(namesIn(clashing))).toThrow(/--a-b-c/);
+    expect(() => generate(clashing)).toThrow(/a-b\.c/);
+    expect(() => generate(clashing)).toThrow(/a\.b-c/);
   });
 });
 

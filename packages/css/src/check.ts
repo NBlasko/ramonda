@@ -4,7 +4,7 @@ import { CssBlockError } from "./compiler/errors";
 import { Sheet, messageFor } from "./compiler/sheet";
 import { checkedSource } from "./compiler/source";
 import { positionOf } from "./compiler/errors";
-import { configReader, environmentOf } from "./config";
+import { knownNames, configReader, environmentOf } from "./config";
 import { readModule } from "./modules";
 import { mayHoldABlock } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
@@ -145,7 +145,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
             message: finding.message,
           })),
         );
-        sheet.add(fileName, [], { ...walked.variables, known: config.variables });
+        sheet.add(fileName, [], { ...walked.variables, known: knownNames(config) });
         sources.set(fileName, text);
         for (const one of walked.ignored) exempted.push({ file: fileName, line: one.line, reason: one.reason });
       }

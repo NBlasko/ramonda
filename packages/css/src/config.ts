@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { type Declarations, namesIn } from "./codegen";
 import { RULE_IDS, nearest } from "./compiler/rules";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -32,10 +33,30 @@ export interface Config {
    */
   readonly units?: readonly string[];
   /**
+   * The variables this project DECLARES — a name, a kind and a fallback each.
+   *
+   * ```ts
+   * variables: {
+   *   color: kind("color",  { primary: { main: "#3b82f6" } }),
+   *   size:  kind("length", { control: { md: "30px" } }),
+   * }
+   * ```
+   *
+   * Codegen writes the `:root` that sets them and the `@property` that registers each one, so a
+   * project does not write either. That is what makes the fallback ONE value used twice rather than
+   * a number kept in step by hand.
+   *
+   * `$.color.primary.main` in a block then compiles to `var(--color-primary-main)`, and a path
+   * naming nothing here is reported — see the `unknown-variable` rule, which is the only thing
+   * standing between a typo and a `var()` into a name nothing sets.
+   */
+  readonly variables?: Declarations;
+  /**
    * Custom property names this compiler cannot see, so a `var()` reading one is not reported.
    *
-   * It sees every name a block SETS, anywhere in the build — that is what makes the check exact and
-   * what makes this list short. Two things it cannot see, and both are ordinary:
+   * It sees every name a block SETS, anywhere in the build, and every name {@link variables}
+   * declares — that is what makes the check exact and what makes this list short. Two things it
+   * cannot see, and both are ordinary:
    *
    * - a name set by a stylesheet it does not compile — a third-party theme, a hand-written
    *   `global.css`;
@@ -43,10 +64,32 @@ export interface Config {
    *
    * A name with a FALLBACK needs no entry: `var(--brand, #10b981)` says in CSS's own words that the
    * value may be absent, and is never reported.
+   *
+   * **This was `variables` until that key became the declarations.** `DESIGN.md` has it growing a
+   * reader — a function returning `{ name, value, where }`, so a project's own theme file can be
+   * checked rather than trusted — and a plain list of names is the first form of it.
    */
-  readonly variables?: readonly string[];
+  readonly alsoSets?: readonly string[];
   /** A rule's severity, by id. `"off"` silences it; `"error"` is the default for every rule. */
   readonly rules?: Readonly<Record<string, "error" | "off">>;
+}
+
+/**
+ * Every custom property name a `var()` in this project may read without being reported.
+ *
+ * Two sources and one answer, because there are three callers — the checker and both bundlers — and
+ * a name known to one of them and not the others would be a report in `ramonda-css check` that the
+ * build does not make, or the reverse.
+ *
+ * - what {@link Config.variables} DECLARES, which codegen also writes into the stylesheet;
+ * - what {@link Config.alsoSets} names, which is everything this compiler cannot see.
+ *
+ * The first of those is why declaring a variable no longer means writing its name twice: a name that
+ * is declared is a name `var()` may read, and nothing has to say so a second time.
+ */
+export function knownNames(config: Config): readonly string[] {
+  const declared = config.variables === undefined ? [] : namesIn(config.variables).map((one) => one.name);
+  return [...declared, ...(config.alsoSets ?? [])];
 }
 
 /** What a config may be given, when it is a function rather than an object. */
@@ -87,7 +130,7 @@ export function environmentOf(production?: boolean): ConfigEnvironment {
 const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "layer"]);
 
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
-const KNOWN = new Set(["units", "variables", "rules"]);
+const KNOWN = new Set(["units", "variables", "alsoSets", "rules"]);
 
 /**
  * Keys that were a setting and are not, with the sentence that says where the answer comes from now.
@@ -394,15 +437,37 @@ function validate(config: Record<string, unknown>, path: string): void {
 
   const variables = config.variables;
   if (variables !== undefined) {
-    if (!Array.isArray(variables)) {
-      refuse(`sets \`variables\` to ${describe(variables)}. It takes a list, like ["--brand"].`);
+    /**
+     * A LIST here is the old spelling, and it is worth saying so rather than describing the shape.
+     *
+     * `variables: ["--brand"]` was this key until the declarations took it, and a project carrying
+     * the old form would otherwise be told only that an object was expected — true, and no help at
+     * all about where its list should go now.
+     */
+    if (Array.isArray(variables)) {
+      refuse(
+        `sets \`variables\` to a list. That was its old meaning — names this compiler cannot see — ` +
+          `and those go in \`alsoSets\` now.\n\n` +
+          `        \`variables\` declares what this project OWNS, with a kind and a fallback each:\n` +
+          `        variables: { color: kind("color", { primary: { main: "#3b82f6" } }) }`,
+      );
     }
-    for (const one of variables as unknown[]) {
+    if (typeof variables !== "object" || variables === null) {
+      refuse(`sets \`variables\` to ${describe(variables)}. It takes groups made with \`kind( … )\`.`);
+    }
+  }
+
+  const alsoSets = config.alsoSets;
+  if (alsoSets !== undefined) {
+    if (!Array.isArray(alsoSets)) {
+      refuse(`sets \`alsoSets\` to ${describe(alsoSets)}. It takes a list, like ["--brand"].`);
+    }
+    for (const one of alsoSets as unknown[]) {
       if (typeof one !== "string") {
-        refuse(`lists ${describe(one)} in \`variables\`. Every name is a string, like "--brand".`);
+        refuse(`lists ${describe(one)} in \`alsoSets\`. Every name is a string, like "--brand".`);
       }
       if (!(one as string).startsWith("--")) {
-        refuse(`lists \`${one}\` in \`variables\`. A custom property begins with two dashes, like "--brand".`);
+        refuse(`lists \`${one}\` in \`alsoSets\`. A custom property begins with two dashes, like "--brand".`);
       }
     }
   }

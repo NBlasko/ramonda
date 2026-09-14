@@ -2,7 +2,7 @@ import { CssBlockError } from "./compiler/errors";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { type Config, configReader, environmentOf } from "./config";
+import { knownNames, type Config, configReader, environmentOf } from "./config";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
@@ -229,7 +229,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
      * This used to tell other files too, because ownership moved rules between them; that
      * mechanism could not work and is gone with the ownership that needed it.
      */
-    sheet.add(file, result.blocks, { ...result.variables, known: config.variables });
+    sheet.add(file, result.blocks, { ...result.variables, known: knownNames(config) });
     compiled.set(file, { source: code, config, result });
     return result;
   }

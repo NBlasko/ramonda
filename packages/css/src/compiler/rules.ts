@@ -1,3 +1,5 @@
+import { namesIn } from "../codegen";
+import { nearest } from "./nearest";
 import type { Config } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, widthSlot } from "./flatten";
@@ -106,6 +108,7 @@ export const RULE_IDS = [
   "unknown-at-rule",
   "unknown-selector",
   "unknown-flag",
+  "unknown-variable",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -288,9 +291,94 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
+  if (config !== undefined) unknownVariable(block, config, findings);
   const silenced = config?.rules;
   const kept = silenced === undefined ? findings : findings.filter((one) => silenced[one.rule] !== "off");
   return kept.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * The paths a config declares, worked out once per config rather than once per block.
+ *
+ * A `WeakMap` because a config object outlives no more than the run that made it, and a bundler
+ * holds one per package for the length of a watch.
+ */
+const declaredPaths = new WeakMap<Config, ReadonlySet<string>>();
+
+function pathsDeclaredBy(config: Config): ReadonlySet<string> {
+  const already = declaredPaths.get(config);
+  if (already !== undefined) return already;
+
+  const paths = new Set(config.variables === undefined ? [] : namesIn(config.variables).map((one) => one.path));
+  declaredPaths.set(config, paths);
+  return paths;
+}
+
+/**
+ * `$.a.b.c` naming a variable this project never declared.
+ *
+ * **This is the only thing standing between a typo and a `var()` into nothing.** The compiler emits
+ * `var(--a-b-c)` from the path alone and reads no config to do it — deliberately, so that the CLI,
+ * the bundler and the editor cannot disagree about what a `$` compiles to. The cost of that choice
+ * is that a misspelled path compiles perfectly well, into a name nothing sets. Measured, that is not
+ * a missing value but a wrong one: `height: var(--never-set)` laid an element out at 0px, with
+ * nothing reported anywhere.
+ *
+ * The types say the same thing in an editor, through the generated `$`. This says it in CI, in a
+ * hook, and to a reviewer — none of which run TypeScript over the block.
+ *
+ * ## A group is reported too
+ *
+ * `$.color.primary` names three variables and no value. Left alone it would compile to
+ * `var(--color-primary)`, which nothing sets, so it is the same fault with a better message
+ * available: the path exists, it is just not a leaf.
+ *
+ * ## Declaring nothing is reported, and that is the user's own instruction
+ *
+ * A config that permits everything when it was never written means people can do as they like
+ * without ever learning the config exists. A config OBJECT that declares no variables is therefore
+ * told so. No config object at all is different and stays silent — nobody asked.
+ */
+function unknownVariable(block: Block, config: Config, findings: Finding[]): void {
+  const declared = pathsDeclaredBy(config);
+
+  const groups = new Set<string>();
+  for (const path of declared) {
+    const segments = path.split(".");
+    for (let count = 1; count < segments.length; count++) groups.add(segments.slice(0, count).join("."));
+  }
+
+  const among = [...declared];
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const part of item.value) {
+        if (part.kind !== "variable" || part.at === undefined) continue;
+        if (declared.has(part.path)) continue;
+
+        const written = part.path === "" ? "$." : `$.${part.path}`;
+        const meant = nearest(part.path, among);
+
+        const message =
+          declared.size === 0
+            ? `\`${written}\` names a variable, and this project declares no variables.\n\n` +
+              `        Declare them in \`ramonda.css.ts\`, with a kind and a fallback each:\n` +
+              `        variables: { color: kind("color", { primary: { main: "#3b82f6" } }) }`
+            : groups.has(part.path)
+              ? `\`${written}\` names a group of variables rather than one of them. Write a variable.`
+              : `\`${written}\` is not a variable this project declares.` +
+                (meant === undefined ? "" : ` Did you mean \`$.${meant}\`?`);
+
+        findings.push({ rule: "unknown-variable", at: part.at, length: part.length ?? written.length, message });
+      }
+    }
+  };
+
+  walkItems(block.items);
 }
 
 /**
@@ -2372,85 +2460,5 @@ const isWordCharacter = (code: number) => isWordStart(code) || (code >= 48 && co
 
 /* ── the near miss ─────────────────────────────────────────────────────────────────────────── */
 
-/**
- * The closest name, or nothing when nothing is close.
- *
- * The bound is what keeps the suggestion honest: a name three edits away from `flex-direction` is
- * not a typo of it, and offering one anyway sends a reader to change a line that was right for a
- * different reason. Scaled by length, so a short name needs a closer match than a long one.
- */
-export function nearest(word: string, among: readonly string[]): string | undefined {
-  const bound = Math.min(3, Math.max(1, Math.floor(word.length / 4)));
-  let best: string | undefined;
-  let closest = bound + 1;
-
-  for (const candidate of among) {
-    if (Math.abs(candidate.length - word.length) > closest) continue;
-    const distance = editDistance(word, candidate, closest);
-    if (distance < closest) {
-      closest = distance;
-      best = candidate;
-    }
-  }
-
-  return best;
-}
-
-/**
- * Levenshtein, abandoned as soon as every cell in a row is past the bound.
- *
- * The bound is what makes this affordable: `unknown-value` asks it once per word against a set that
- * can be 160 colours long, and a full matrix per candidate would be the checker's whole cost.
- */
-function editDistance(a: string, b: string, bound: number): number {
-  /** The row before the one before, which is the only thing a swap needs to see. */
-  let twoBack: number[] = [];
-  let previous = Array.from({ length: b.length + 1 }, (_unused, index) => index);
-
-  for (let i = 1; i <= a.length; i++) {
-    const row = [i];
-    let best = i;
-
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
-      let value = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + cost);
-
-      /**
-       * **A SWAPPED PAIR IS ONE EDIT, and plain Levenshtein counts it as two.**
-       *
-       * A swap is the commonest way to mistype a word, and the bound is scaled by length — so for a
-       * six-character name it is 1, and every transposition was out of reach. Found by `@medai`,
-       * which is `@media` with two letters swapped and got no suggestion at all.
-       *
-       * Measured over every single-swap typo of every name in the four vocabularies, and every
-       * single DELETION as well, so the change was measured for what it might break:
-       *
-       *     properties  swap   Levenshtein  right 12978  wrong 88  silent 199
-       *                        this         right 13263  wrong  2  silent   0
-       *     properties  drop   both the same: right 14223, wrong 63, silent 0
-       *     at-rules    swap   157 -> 182 right, 25 silent -> 0
-       *     selectors   swap  1210 -> 1353 right, 141 silent -> 0
-       *
-       * Better in every direction, and FASTER — 0.024 ms against 0.037 ms per word over 828 names,
-       * because a swap costing 1 reaches the abandon bound sooner.
-       */
-      if (
-        i > 1 &&
-        j > 1 &&
-        a.charCodeAt(i - 1) === b.charCodeAt(j - 2) &&
-        a.charCodeAt(i - 2) === b.charCodeAt(j - 1)
-      ) {
-        value = Math.min(value, twoBack[j - 2] + 1);
-      }
-
-      row.push(value);
-      if (value < best) best = value;
-    }
-
-    if (best > bound) return bound + 1;
-    twoBack = previous;
-    previous = row;
-  }
-
-  return previous[b.length];
-}
+/** Re-exported where it has always been imported from. See `./nearest`. */
+export { nearest } from "./nearest";
