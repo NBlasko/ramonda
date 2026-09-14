@@ -664,7 +664,7 @@ This is the repository's recurring fault in its purest form: one question — *w
 hold* — with two consumers, the type and the completion, and a design that lets only one of them read
 the answer.
 
-### A `$.color.primary.main` syntax for variables — analysed, NOT YET
+### A `$.color.primary.main` syntax for variables — OPEN, and better than I first judged
 
 The user's proposal: a third spelling for a custom property, `$.color.primary.main` instead of
 `var(--color-primary-main)`, with three reasons. Two of them turn out to stand differently than
@@ -692,9 +692,21 @@ background: "var(--colr-primary-main)"
 TS2820: Did you mean '"var(--color-primary-main)"'?
 ```
 
-Because that is a template-literal union, an editor completes inside the string and filters by
+~~Because that is a template-literal union, an editor completes inside the string and filters by
 prefix — typing `var(--color-` narrows to the colours, which recovers most of what the nested
-spelling is attractive for.
+spelling is attractive for.~~ **Measured against the language service, and it does not.** On a scale
+of 88 tokens in 6 groups, asked at the position an editor asks:
+
+    a value typed as the flat union, empty string       88 offered
+    the same union, after `var(--color-`                88 offered
+    $.                                                   6 offered   color, font, motion, …
+    $.color.                                             5 offered   border, primary, state, …
+    $.color.primary.                                     4 offered   contrast, dark, light, …
+
+The service returns the whole list at both string positions; the editor narrows what it DISPLAYS by
+what has been typed. That is filtering, and filtering requires already knowing the name. The nested
+object answers the other question — *what exists here at all* — and it is the question somebody
+reaching for a token usually has. At two hundred tokens the gap widens rather than closes.
 
 **The objection is the user's own principle.** This would be the THIRD spelling of one thing:
 
@@ -709,10 +721,46 @@ moment there are two, every reader has to learn which one a given line is.* Thre
 and go-to-definition work. A string in a union has no definition site, so renaming a token cannot be
 an editor operation. With two hundred tokens that is not nothing.
 
-**Recommendation: generate the tokens into the value types, and leave `$` for later** — because
-types can be tightened afterwards and syntax cannot be withdrawn. If token navigation proves painful
-on a real project of a hundred-odd tokens, `$` arrives then with evidence. Added now and unused, it
-is a third way to write one thing, permanently.
+**That recommendation was wrong, and the user overturned it with one question: how dare a type
+report a variable that came from an outer scope?**
+
+A custom property is an OPEN world — that is what inheritance is. A name may be set by an ancestor
+block, by a stylesheet this does not compile, or from JavaScript as `style={{ "--x": … }}`. Measured,
+a type cannot be open and catch a typo at the same time:
+
+    closed  `var(--${Token})`                       typo REPORTED   `var(--row-height)` also reported
+    open    `var(--${Token})` | `var(${string})`    typo silent     `var(--row-height)` fine
+
+The did-you-mean only existed because the union was closed, and closing it refuses correct CSS —
+which is the one failure this package may not have. That is exactly why the current design checks
+variables with a RULE: it sees every name the whole BUILD sets, so a parent setting what a child
+reads needs no ceremony; `variables` in the config covers names from outside; `var(--x, fallback)` is
+CSS's own way of saying the name may be absent; and it can be silenced on one line. A type does none
+of those.
+
+**And this dissolves the objection above rather than the proposal.** `$` and `var()` are not two
+spellings of one thing. They are spellings of two different things:
+
+| | the world | what checks it |
+|---|---|---|
+| `$.color.primary.main` | **closed** — the tokens this project declared | the type: complete, with completion and rename |
+| `var(--anything)` | **open** — including what an ancestor, a foreign stylesheet or JS sets | the rule: knows the whole build, and has an escape |
+
+**The closed case has no spelling today.** `@@property` is the nearest thing and is not it: a
+declaration per token, in a flat namespace, which is far too heavy for a scale of two hundred.
+
+So the question is no longer "is a third spelling worth five characters" — it is whether the project's
+own token scale deserves a closed, navigable namespace of its own, separate from the open world of
+every other custom property. Put that way it is a much better proposal than the one I argued against,
+and the arguments for it are the two that survive, both measured and both impossible through a
+string: **rename-refactor**, because a member has a definition site and a string has none, and
+**progressive completion**, because a union is one flat list however it is filtered.
+
+What still has to be answered before it is built: what `$.color.primary` means when it names a group
+rather than a leaf; whether it is allowed anywhere a value goes or only in a declaration's value; and
+that the grammar, the formatter, the checker and the virtual file each learn it — the last of which
+is where it earns its keep, since a hole already becomes a real expression there and `$` could ride
+the same machinery for completion while compiling to text rather than to a custom property.
 
 ### What is not in dispute
 
