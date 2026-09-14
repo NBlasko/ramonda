@@ -158,9 +158,17 @@ describe("a bare word a property does not accept", () => {
   test.each([
     ["a string where the grammar allows none", `  display: "flexx";`],
     ["an escaped quote inside one", `  display: "a\\"b";`],
-    ["one that is never closed", `  display: "flexx`],
   ])("%s is not a word, and is reported as a string", (_what, css) => {
     expect(rules(css)).toEqual(["string-not-allowed"]);
+  });
+
+  /**
+   * A string that is never closed swallows the rest of the block, and `string-not-allowed` is what
+   * explains that — so `missing-semicolon` stays quiet, as it does wherever another rule has already
+   * spoken about the same declaration.
+   */
+  test("one that is never closed is not a word, and is reported as a string", () => {
+    expect(rules(`  display: "flexx`)).toEqual(["string-not-allowed"]);
   });
 
   /**
@@ -257,7 +265,7 @@ describe("a hole where a custom property cannot go", () => {
    */
   test.each([
     ["a property name", "  {name}: 24px;"],
-    ["a whole declaration", `  {cond ? "display:flex" : ""}`],
+    ["a whole declaration", `  {cond ? "display:flex" : ""};`],
     ["a selector", "  &:{state} { color: red; }"],
   ])("%s is named", (_what, css) => {
     const [only, ...rest] = check(css);
@@ -3088,5 +3096,59 @@ describe("more values than CSS gives the property", () => {
    */
   test("a run-on declaration is left to the rule that explains it", () => {
     expect(rulesWith("padding: 8px\n  border-left: 4px solid red;", {})).toEqual(["run-on-declaration"]);
+  });
+});
+
+/**
+ * A declaration with no `;`, which CSS allows for the last one in a block and this does not.
+ *
+ * **Reported by a user, and the reason is what happens NEXT.** A declaration without its semicolon
+ * swallows whatever is written under it — that is `run-on-declaration` — so a block that is legal
+ * today makes a stranger's next edit report a fault on a line they did not touch:
+ *
+ *     padding: 8px          legal, and silent
+ *     padding: 8px          somebody adds a line under it
+ *     color: red            run-on-declaration, on THEIR line
+ *
+ * Every other declaration needs one and the formatter writes one, so requiring it costs nobody a
+ * keystroke they were not already making.
+ */
+describe("a declaration with no semicolon", () => {
+  test("the last one in a block is reported", () => {
+    expect(rules("  color: red;\n  padding: 8px")).toEqual(["missing-semicolon"]);
+  });
+
+  test("and the last one in a NESTED rule, which is the same next edit", () => {
+    expect(rules("  &:hover { color: red }")).toEqual(["missing-semicolon"]);
+  });
+
+  test("a terminated block is silent, which is the control", () => {
+    expect(rules("  color: red;\n  padding: 8px;")).toEqual([]);
+    expect(rules("  &:hover { color: red; }")).toEqual([]);
+  });
+
+  /**
+   * **Quiet wherever another rule has already spoken about the same declaration.**
+   *
+   * A declaration with no `;` is sometimes wreckage — a run-on, a hole standing where a property
+   * name goes, a string that was never closed and ate the rest of the block. Listing those shapes
+   * was the first attempt and it kept finding another one; asking whether anything has been said
+   * about the same span is the question that was actually being asked.
+   */
+  test.each([
+    ["a run-on", "  padding: 8px\n  border-left: 4px solid red;", "run-on-declaration"],
+    ["a string that is never closed", `  display: "flexx`, "string-not-allowed"],
+    ["a hole where a property name goes", `  {cond ? "display:flex" : ""}`, "hole-out-of-place"],
+  ])("%s is left to the rule that explains it", (_what, css, only) => {
+    expect(rules(css)).toEqual([only]);
+  });
+
+  /**
+   * A declaration with NO VALUE yet is the state an editor is in most — `padding: ` while it is
+   * being typed. Saying so on every keystroke is noise, and the strict read refuses a valueless
+   * declaration outright, so nothing reaches a build this way.
+   */
+  test("a half-typed declaration says nothing", () => {
+    expect(rules("  padding:")).toEqual([]);
   });
 });

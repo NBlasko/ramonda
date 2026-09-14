@@ -107,7 +107,7 @@ describe("what a block becomes", () => {
 
   test("two identical blocks are one rule and one hoisted value", () => {
     const result = emit(
-      `const a = <div css={@@( display: flex; )}>x</div>;\nconst b = <p css={@@(display:flex)}>y</p>;\n`,
+      `const a = <div css={@@( display: flex; )}>x</div>;\nconst b = <p css={@@(display:flex;)}>y</p>;\n`,
     );
 
     expect(result?.blocks).toHaveLength(1);
@@ -442,19 +442,19 @@ describe("what the block's own text may contain", () => {
   });
 
   test("an expression may contain braces, strings and parens of its own", () => {
-    const out = body(`const a = <div css={@@( color: {pick({ on: "}}" })})}>x</div>;\n`);
+    const out = body(`const a = <div css={@@( color: {pick({ on: "}}" })};)}>x</div>;\n`);
 
     expect(out).toContain(`pick({ on: "}}" })`);
   });
 
   test("an expression may be a template literal, substitutions and all", () => {
-    const out = body("const a = <div css={@@( color: {`rgb(${r}, ${g}, 0)`})}>x</div>;\n");
+    const out = body("const a = <div css={@@( color: {`rgb(${r}, ${g}, 0)`};)}>x</div>;\n");
 
     expect(out).toContain("`rgb(${r}, ${g}, 0)`");
   });
 
   test("a comment inside an expression is the expression's own", () => {
-    const out = body(`const a = <div css={@@( color: {/* why */ accent // and this\n})}>x</div>;\n`);
+    const out = body(`const a = <div css={@@( color: {/* why */ accent // and this\n};)}>x</div>;\n`);
 
     expect(out).toContain("/* why */ accent // and this\n");
   });

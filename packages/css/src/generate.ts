@@ -139,3 +139,17 @@ export function propertiesFor(file: string): string | undefined {
 export function forgetGenerated(): void {
   beside.clear();
 }
+
+/**
+ * The stylesheet codegen wrote for a file's project, or nothing when there is none.
+ *
+ * The same walk `propertiesFor` does, and for the same reason: a monorepo has a config per package
+ * and a file belongs to the nearest one.
+ */
+export function variablesSheetFor(file: string): string | undefined {
+  const config = findConfig(dirname(file));
+  if (config === undefined) return undefined;
+
+  const sheet = join(dirname(config), "ramonda.css.generated.css");
+  return existsSync(sheet) ? sheet : undefined;
+}

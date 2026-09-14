@@ -1160,6 +1160,53 @@ question rather than a design one, so it belongs with the documentation work rat
 one row with evidence behind it today is the 124 vendor-prefixed properties whose unprefixed form
 also exists, measured above.
 
+### Two things the user found while using it, both OPEN
+
+#### A token's type carries its declared VALUE, and a theme changes that value
+
+Codegen writes:
+
+```ts
+"main": "var(--color-accent-main)" as Token<"color", "#10b981">
+```
+
+The user's reading of it, and it is right: *"dobra stvar je sto to mogu da procitam, losa strana je
+sto mi mozemo da promenimo vrednost jer kod teme je to i sustina."*
+
+The literal is what makes the narrowing work — a property limited to `4px | 8px` can refuse a
+variable whose value is `12px` only because the value is in the type. But under a theme that value is
+the FALLBACK and nothing more: `[data-theme="dark"]` sets the same name to something else, and the
+type still says `#10b981`.
+
+Three shapes were named, and the choice is not obvious:
+
+1. **The literal stays and means "the declared fallback".** Honest if it is said out loud, and the
+   narrowing keeps working. A reader hovering sees a value that a theme may have replaced.
+2. **The literal goes.** `Token<"color">` alone. Nothing lies, and a property narrowed to a scale can
+   no longer refuse a variable outside it — which is a capability the user asked for by name.
+3. **Two kinds of token.** A fixed one carrying its value and a themed one carrying only its kind,
+   declared differently in the config. The user's own suggestion — *"ili su ovo oni readonly tokeni,
+   a za temu da se prave drugi"* — and it keeps both properties at the cost of a distinction to
+   learn.
+
+**Not decided, and it should not be decided quickly**: it is the first thing in this design where
+being right about themes and being strict about ranges pull against each other. Whatever wins, the
+themed tokens have to be typed too.
+
+#### The path's colouring
+
+`$.space.gutter.wide` colours only `space`, as a property VALUE, and the rest — the `$`, the dots,
+`gutter`, `wide` — comes out as plain text.
+
+**That is the state BEFORE `ramonda.css-variable`, measured and fixed.** The grammar makes the whole
+path one token now, and `grammar.test.ts` asserts it. What the user is seeing is the installed
+extension: the marketplace has `0.1.2`, and the fix is in the `.vsix` that has not been uploaded.
+
+So this is not a bug to fix but a release to make — and the one thing worth deciding with it is the
+SCOPE. It is `variable.other.ramonda` today, which most themes colour as a variable rather than as a
+value. The user asked for the whole path to read as `space` does. Worth checking against two or three
+themes before the upload, because a scope is not a colour and only a theme turns it into one.
+
 ### What is not in dispute
 
 The codegen step is the same in all three: read the config, write a `.d.ts` the project's

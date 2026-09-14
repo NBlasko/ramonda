@@ -1034,8 +1034,17 @@ export function readBlock(source: string, open: number, filename: string, option
       if (!tolerant && value.length === 0) {
         refuse(`\`${property.trim()}\` has no value — a declaration is \`property: value;\`.`, source, from, filename);
       }
-      if (at < source.length && source.charCodeAt(at) === 59) at++;
-      items.push({ kind: "declaration", at: from, valueAt, end, property, value });
+      const terminated = at < source.length && source.charCodeAt(at) === 59;
+      if (terminated) at++;
+      items.push({
+        kind: "declaration",
+        at: from,
+        valueAt,
+        end,
+        property,
+        value,
+        ...(terminated ? ({ terminated: true } as const) : undefined),
+      });
     }
   }
 

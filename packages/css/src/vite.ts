@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { knownNames, type Config, configReader, environmentOf } from "./config";
-import { writeGenerated } from "./generate";
+import { variablesSheetFor, writeGenerated } from "./generate";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
@@ -362,7 +362,24 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
        * about that. Appending leaves every source position — and therefore the map — untouched.
        */
       const own = sheet.cssFor(file);
-      const code2 = own === "" ? result.code : `${result.code}\nimport ${JSON.stringify(file + SUFFIX)};\n`;
+      /**
+       * The import that carries the project's declared VARIABLES, beside the one carrying its rules.
+       *
+       * Reported by the user, who declared variables, wrote `$`, and got a page with no colours: the
+       * generated `:root` was written to disk and nothing imported it, so `var(--color-accent-main)`
+       * resolved to its registered initial value and nothing else. Correct classes, unstyled page.
+       *
+       * Emitted beside the block import rather than asked of the project, for the same reason codegen runs
+       * itself: a line a project has to remember is a line most projects will not have. Both bundlers
+       * dedupe an import by path, so the declarations arrive once however many modules ask for them.
+       */
+      const declared = variablesSheetFor(file);
+      const code2 =
+        own === ""
+          ? result.code
+          : `${result.code}\n` +
+            `${declared === undefined ? "" : `import ${JSON.stringify(declared)};\n`}` +
+            `import ${JSON.stringify(file + SUFFIX)};\n`;
 
       return { code: code2, map: result.map };
     },

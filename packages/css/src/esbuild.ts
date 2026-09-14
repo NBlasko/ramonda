@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
 import { knownNames, configReader, environmentOf } from "./config";
-import { writeGenerated } from "./generate";
+import { variablesSheetFor, writeGenerated } from "./generate";
 import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
 import { mayHoldABlock } from "./compiler/scan";
@@ -263,7 +263,24 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         styled.add(args.path);
         sheet.add(args.path, result.blocks, { ...result.variables, known: knownNames(config) });
         const own = sheet.cssFor(args.path);
-        const contents = own === "" ? result.code : `${result.code}\nimport ${JSON.stringify(args.path + SUFFIX)};\n`;
+        /**
+         * The import that carries the project's declared VARIABLES, beside the one carrying its rules.
+         *
+         * Reported by the user, who declared variables, wrote `$`, and got a page with no colours: the
+         * generated `:root` was written to disk and nothing imported it, so `var(--color-accent-main)`
+         * resolved to its registered initial value and nothing else. Correct classes, unstyled page.
+         *
+         * Emitted beside the block import rather than asked of the project, for the same reason codegen runs
+         * itself: a line a project has to remember is a line most projects will not have. Both bundlers
+         * dedupe an import by path, so the declarations arrive once however many modules ask for them.
+         */
+        const declared = variablesSheetFor(args.path);
+        const contents =
+          own === ""
+            ? result.code
+            : `${result.code}\n` +
+              `${declared === undefined ? "" : `import ${JSON.stringify(declared)};\n`}` +
+              `import ${JSON.stringify(args.path + SUFFIX)};\n`;
 
         return { contents, loader: loaderFor(args.path) };
       });

@@ -46,6 +46,14 @@ export interface Declaration {
    * and kept for a custom property (`--Accent`) because CSS does not.
    */
   readonly property: string;
+  /**
+   * Whether the author wrote the `;`. CSS lets the last one in a block go without.
+   *
+   * Recorded because this package does not: a declaration with no `;` swallows whatever is written
+   * under it next, so a line that is legal today changes the meaning of the line above it tomorrow.
+   * See the `missing-semicolon` rule.
+   */
+  readonly terminated?: true;
   /** The value, split wherever a hole interrupts it. */
   readonly value: readonly ValuePart[];
 }

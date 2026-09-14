@@ -7,7 +7,7 @@ export class EtEtStrict extends Component {
         css={@@(
           background-color: activeborder;
           color: white;
-          padding: $.space.gutter.wide
+          padding: $.space.gutter.wide;
         )}
       >
         Hello

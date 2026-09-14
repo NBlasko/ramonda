@@ -111,6 +111,7 @@ export const RULE_IDS = [
   "unknown-flag",
   "unknown-variable",
   "too-many-values",
+  "missing-semicolon",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -295,6 +296,8 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
   tooManyValues(block, config?.properties, findings);
+  // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
+  missingSemicolon(block, findings);
   const silenced = config?.rules;
   const kept = silenced === undefined ? findings : findings.filter((one) => silenced[one.rule] !== "off");
   return kept.sort((a, b) => a.at - b.at);
@@ -410,6 +413,89 @@ function tooManyValues(block: Block, rules: PropertyRules | undefined, findings:
             ? `\`${property}\` takes ${takes} in CSS, and this is ${values}.`
             : `\`${property}\` takes ${takes} in this project, and this is ${values}.` +
               `\n\n        Set each side on its own, or raise \`arity\` in \`ramonda.css.ts\`.`,
+      });
+    }
+  };
+
+  walkItems(block.items);
+}
+
+/**
+ * A declaration with no `;` after it, which CSS allows for the last one in a block.
+ *
+ * **This package does not, and the reason is what happens NEXT.** A declaration without its
+ * semicolon swallows whatever is written under it — that is `run-on-declaration`, and it reports the
+ * line somebody adds rather than the line that was already wrong. So a block that is legal today
+ * makes a stranger's next edit report a fault they did not write:
+ *
+ *     padding: 8px          legal, and silent
+ *     padding: 8px          somebody adds a line
+ *     color: red            run-on-declaration, on THEIR line
+ *
+ * Reported by a user, who wrote the first shape and asked for it to be refused.
+ *
+ * Every other declaration needs one and the formatter writes one, so requiring it costs nobody a
+ * keystroke they were not already making. A nested rule's last declaration is included: it is the
+ * same shape and the same next edit.
+ */
+function missingSemicolon(block: Block, findings: Finding[]): void {
+  /**
+   * **Quiet wherever another rule has already spoken about this declaration.**
+   *
+   * A declaration with no `;` is usually a declaration, and sometimes it is wreckage: a run-on that
+   * swallowed the next line, a hole standing where a property name goes, a string that was never
+   * closed and ate the rest of the block. Each of those has a rule that explains it, and each leaves
+   * a declaration with no terminator behind — so this spoke second, about a shape somebody is
+   * already being told is wrong.
+   *
+   * Listing the shapes was the first attempt and it kept finding another one. Asking whether
+   * anything has been said about the same span is the question that was actually being asked, and it
+   * is the same one `inOrder` asks of TypeScript's diagnostics for exactly this reason.
+   */
+  const spoken = (item: Declaration): boolean =>
+    item.at !== undefined &&
+    item.end !== undefined &&
+    findings.some((one) => one.at >= item.at! && one.at <= item.end!);
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      if (item.terminated === true || item.end === undefined) continue;
+      // A spread is its own shape and has its own rules; it is not a declaration missing anything.
+      if (item.property.startsWith("...")) continue;
+      /**
+       * A property name holding a BRACE is wreckage, whatever recovered from it.
+       *
+       * A name is an identifier, so a `{` or `}` in one means the parser rebuilt something from a
+       * shape nobody wrote — a hole standing where a property goes, the body a broken selector left
+       * behind. The rule that explains it reports at its own position, which is not always inside
+       * this declaration's span, so `spoken` alone does not see it.
+       */
+      if (item.property.includes("{") || item.property.includes("}")) continue;
+
+      /**
+       * A declaration with NO VALUE yet, which is the state an editor is in most.
+       *
+       * `padding: ` while it is being typed has no value and no `;`, and saying so on every
+       * keystroke is noise. The strict read refuses a valueless declaration outright, so nothing
+       * reaches a build this way — and in the tolerant read it is also what the wreckage of a
+       * malformed selector looks like, which another rule explains.
+       */
+      if (item.value.length === 0) continue;
+
+      if (spoken(item)) continue;
+
+      findings.push({
+        rule: "missing-semicolon",
+        at: item.end,
+        length: 0,
+        message:
+          `this declaration has no \`;\`. CSS lets the last one in a block go without, and this does not:` +
+          `\n\n        a declaration with no \`;\` swallows whatever is written under it next, so the` +
+          `\n        line somebody adds tomorrow is the one that gets reported.`,
       });
     }
   };
