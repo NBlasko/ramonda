@@ -304,8 +304,25 @@ function scan(name, from) {
       return " ";
     });
 
-    // A bare word, and never a function name — `rgb(` is a function, `red` is a keyword.
-    for (const match of rest.matchAll(/(?<![\w-])([a-z][a-z0-9-]*)(?![\w-]*\()/g)) words.add(match[1]);
+    /**
+     * A bare word, and never a function name — `rgb(` is a function, `red` is a keyword.
+     *
+     * **Capitals are matched and then folded, and both halves of that are load-bearing.** CSS
+     * keywords are ASCII case-insensitive, and `mdn-data` prints them the way the specification
+     * does — `currentColor`, and the nineteen `<system-color>` names such as `ButtonText` and
+     * `Canvas`. Matching only `[a-z]` dropped every one of them.
+     *
+     * It also did something worse than dropping: where the keyword STARTS lowercase, the match
+     * stopped at the first capital and kept the prefix. `currentColor` put `current` in the table —
+     * a word CSS does not have. So `color: current` passed and `color: currentcolor` was reported,
+     * which is the wrong answer in both directions on the commonest colour keyword there is.
+     *
+     * Folding to lower case is what the checker compares against, so the table stays in one case
+     * and `ButtonText`, `buttontext` and `BUTTONTEXT` are one entry rather than three.
+     */
+    for (const match of rest.matchAll(/(?<![\w-])([a-zA-Z][a-zA-Z0-9-]*)(?![\w-]*\()/g)) {
+      words.add(match[1].toLowerCase());
+    }
     // The function names on their own, for the completion table only — see `calls` above.
     for (const match of rest.matchAll(/(?<![\w-])([a-z][a-zA-Z0-9-]*)\s*\(/g)) calls.add(match[1]);
   };

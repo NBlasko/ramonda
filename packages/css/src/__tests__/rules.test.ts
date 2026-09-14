@@ -2916,3 +2916,45 @@ describe("the important flag", () => {
     },
   );
 });
+
+/**
+ * Keywords CSS spells with capitals, which the grammar's own table carries and the scanner dropped.
+ *
+ * `mdn-data` writes `currentColor` and the nineteen `<system-color>` names in camel case, because
+ * that is how the specification prints them — and CSS keywords are ASCII case-insensitive, so every
+ * one of them is correct in a stylesheet. The word scanner matched `[a-z][a-z0-9-]*`, which does two
+ * wrong things at once rather than one: it drops the keyword, and where the keyword STARTS lowercase
+ * it keeps the truncated prefix as a keyword of its own.
+ *
+ * Measured before the fix: `color` carried 150 words — the 148 named colours, `transparent`, and
+ * `current`, which is not a CSS keyword at all. So `color: current` passed and `color: currentcolor`
+ * was reported. Exactly backwards, on the most common colour keyword there is.
+ */
+describe("keywords CSS spells with capitals", () => {
+  test("`currentcolor` is accepted, and it is the one this was found through", () => {
+    expect(rules("color: currentcolor;")).toEqual([]);
+    expect(rules("border: 1px solid currentcolor;")).toEqual([]);
+    expect(rules("background-color: currentcolor;")).toEqual([]);
+  });
+
+  test("a system colour is accepted, and lower case is canonical because the ENGINE says so", () => {
+    expect(rules("color: buttontext;")).toEqual([]);
+    expect(rules("background-color: canvas;")).toEqual([]);
+
+    // Chrome round-trips every one of these to lower case — `ButtonText` in, `"buttontext"` out,
+    // and the same for `currentColor` and even `Red`. So the table folds case and this rule agrees
+    // with what the browser will do to the value anyway, rather than with how a spec prints it.
+    expect(rules("color: ButtonText;")).toEqual(["non-canonical-spelling"]);
+    expect(messages("color: ButtonText;")[0]).toContain("buttontext");
+  });
+
+  test("the truncated prefix is NOT a keyword, which is the half a fix could leave behind", () => {
+    expect(rules("color: current;")).toEqual(["unknown-value"]);
+  });
+
+  test("the named colours it always had are untouched", () => {
+    expect(rules("color: rebeccapurple;")).toEqual([]);
+    expect(rules("color: transparent;")).toEqual([]);
+    expect(rules("color: notacolour;")).toEqual(["unknown-value"]);
+  });
+});
