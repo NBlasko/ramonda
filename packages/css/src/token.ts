@@ -1,7 +1,10 @@
+import type { CssAngleUnit, CssDimension, CssLengthUnit, CssResolutionUnit, CssTimeUnit } from "./units.generated";
+import type { CssColor } from "./values.generated";
+
 /**
- * What a declared variable IS, as a value — and a module that imports nothing, which is the point.
+ * What a declared variable IS, as a value — and a module with no RUNTIME, which is the point.
  *
- * `properties.generated.ts` names this type on ninety-six properties, and that file is read by the
+ * `properties.generated.ts` names these types on ninety-six properties, and that file is read by the
  * VIRTUAL program: a `tsc` run with `types: []` over somebody else's source. Taking the type from
  * `declared.ts` put a chain behind it — `declared` to `compiler/rules` to `config` to `node:fs` —
  * and measured, that broke eighty-seven checks with `TS2307: Cannot find module 'node:fs'` in a
@@ -50,3 +53,33 @@ declare const TOKEN: unique symbol;
 export type Token<K extends Kind = Kind, V = unknown> = string & {
   readonly [TOKEN]: readonly [K, V];
 };
+
+/**
+ * What each kind accepts as a FALLBACK.
+ *
+ * Every one of these admits a call — `calc()`, `clamp()`, `var()`, `light-dark()` — because nothing
+ * in a type can read inside one and refusing calls would make the narrowing useless in the place
+ * people reach for it. `CssDimension` already carries that admission; the others say it themselves.
+ *
+ * **`integer` is not expressible and says so here rather than pretending.** Neither `number` nor
+ * `` `${number}` `` refuses `1.5`, measured. What refuses it is the `@property` rule codegen writes,
+ * in the browser — which is the clearest case in this design of the two guarantees being different
+ * guarantees rather than one restated.
+ */
+export interface ValueByKind {
+  angle: CssDimension<CssAngleUnit>;
+  any: string | number;
+  color: CssColor;
+  "custom-ident": string;
+  image: `${string}(${string})`;
+  integer: number | `${number}` | `${string}(${string})`;
+  length: CssDimension<CssLengthUnit>;
+  "length-percentage": CssDimension<CssLengthUnit | "%">;
+  number: number | `${number}` | `${string}(${string})`;
+  percentage: CssDimension<"%">;
+  resolution: CssDimension<CssResolutionUnit>;
+  time: CssDimension<CssTimeUnit>;
+  "transform-function": `${string}(${string})`;
+  "transform-list": string;
+  url: `url(${string})`;
+}

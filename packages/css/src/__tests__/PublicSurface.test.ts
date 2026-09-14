@@ -19,7 +19,16 @@ import * as api from "../index";
  * `class` attribute decides nothing. `compose` is the primitive and composes with itself; `merge` is
  * the boundary and produces the value the framework already takes.
  */
-const RUNTIME = ["block", "compose", "merge", "toStyleObject"];
+const RUNTIME = [
+  "block",
+  "compose",
+  "merge",
+  // A declared variable OUTSIDE a block: setting one for a runtime theme, and reading one back.
+  // Inside a block `$` is compiled away, so these are the only two that ever ship.
+  "read",
+  "toStyle",
+  "toStyleObject",
+];
 
 /**
  * The TYPES the runtime entry exports, which `Object.keys` cannot see.
@@ -49,9 +58,11 @@ const TYPES = [
   "StyleBlock",
   "StyleEntry",
   "StyleMap",
+  "Setting",
   "StyleValue",
   "StyleVarValue",
   "Token",
+  "ValueByKind",
 ];
 
 /** Everything one module exports, values and types alike, through a real program. */

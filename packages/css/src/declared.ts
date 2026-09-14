@@ -1,7 +1,5 @@
 import { nearest } from "./compiler/rules";
-import type { Kind } from "./token";
-import type { CssAngleUnit, CssDimension, CssLengthUnit, CssResolutionUnit, CssTimeUnit } from "./units.generated";
-import type { CssColorKeyword } from "./values.generated";
+import type { Kind, ValueByKind } from "./token";
 
 /**
  * The variables a project DECLARES — their names, their kinds, and the fallback each one carries.
@@ -62,37 +60,7 @@ export const SYNTAX: Record<Kind, string> = {
 
 /** The kinds, as a list, for the message a wrong one gets. */
 export const KINDS = Object.keys(SYNTAX) as readonly Kind[];
-export type { Kind, Token } from "./token";
-
-/**
- * What each kind accepts as a FALLBACK.
- *
- * Every one of these admits a call — `calc()`, `clamp()`, `var()`, `light-dark()` — because nothing
- * in a type can read inside one and refusing calls would make the narrowing useless in the place
- * people reach for it. `CssDimension` already carries that admission; the others say it themselves.
- *
- * **`integer` is not expressible and says so here rather than pretending.** Neither `number` nor
- * `` `${number}` `` refuses `1.5`, measured. What refuses it is the `@property` rule codegen writes,
- * in the browser — which is the clearest case in this design of the two guarantees being different
- * guarantees rather than one restated.
- */
-export interface ValueByKind {
-  angle: CssDimension<CssAngleUnit>;
-  any: string | number;
-  color: CssColorKeyword | `#${string}` | `${string}(${string})`;
-  "custom-ident": string;
-  image: `${string}(${string})`;
-  integer: number | `${string}(${string})`;
-  length: CssDimension<CssLengthUnit>;
-  "length-percentage": CssDimension<CssLengthUnit | "%">;
-  number: number | `${string}(${string})`;
-  percentage: CssDimension<"%">;
-  resolution: CssDimension<CssResolutionUnit>;
-  time: CssDimension<CssTimeUnit>;
-  "transform-function": `${string}(${string})`;
-  "transform-list": string;
-  url: `url(${string})`;
-}
+export type { Kind, Token, ValueByKind } from "./token";
 
 /**
  * The marker on a boxed leaf.

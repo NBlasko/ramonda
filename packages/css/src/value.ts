@@ -1,3 +1,4 @@
+import type { Kind, Token, ValueByKind } from "./token";
 import type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
 
 /**
@@ -116,4 +117,63 @@ function textFor(value: StyleVarValue): string | undefined {
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
   if (typeof value !== "string") return undefined;
   return value.includes(";") ? undefined : value;
+}
+
+/**
+ * A variable to set, and what to set it to — one pair, with the value checked against its KIND.
+ *
+ * A union of per-kind pairs rather than one loose pair, which is what does the checking: a
+ * `[Token<"color">, "30px"]` matches no member, because the colour member wants a colour and every
+ * other member wants a different token.
+ */
+export type Setting = { [K in Kind]: readonly [Token<K>, ValueByKind[K]] }[Kind];
+
+/** `var(--name)` — what codegen writes for a variable, and the only shape this has to read. */
+const NAMED = /^var\((--[^),\s]+)\)$/;
+
+function nameOf(token: string): `--${string}` {
+  const found = NAMED.exec(token);
+  if (found === null) {
+    throw new Error(`[ramonda-css] \`${token}\` is not a variable this package wrote.`);
+  }
+  return found[1] as `--${string}`;
+}
+
+/**
+ * Declared variables and their values, as the custom properties an element carries.
+ *
+ * ```tsx
+ * <div style={toStyle([[$.color.primary.main, tenant.primary]])}>…</div>
+ * ```
+ *
+ * **This is not a theming mechanism and is not trying to be.** A theme may be a media query, an
+ * attribute on `<html>`, a tenant's values from a server or something this package will never see;
+ * whichever it is belongs to the project. What is owed here is that the value a project computes is
+ * checked against the kind the variable was declared as, and lands under the right name.
+ *
+ * The cost is the one every custom property on an element has — bytes on that element, and a render
+ * when it changes — and this is the right place to pay it: once per theme, rather than once per use,
+ * which is what `$` inside a block avoids entirely.
+ */
+export function toStyle(settings: readonly Setting[]): Record<`--${string}`, string> {
+  const style: Record<string, string> = {};
+  for (const [token, value] of settings) style[nameOf(token)] = String(value);
+  return style;
+}
+
+/**
+ * What a declared variable resolves to on an element, right now.
+ *
+ * Rare, and it happens — a chart that needs the accent colour as a value, a measurement that needs a
+ * size. The value comes back COMPUTED rather than as written: measured in Chrome, a registered
+ * variable set to `#10b981` reads as `rgb(16, 185, 129)` and `2rem` reads as `32px`. That is usually
+ * what a reader wants, and it means this cannot promise the literal that was declared.
+ *
+ * **An empty string means the generated stylesheet is not loaded.** It cannot mean "unset": every
+ * declared variable is registered with `@property { initial-value }`, and measured, a registered
+ * variable resolves even when nothing anywhere sets it. So the empty case is a setup fault, and
+ * inventing a value here would hide it.
+ */
+export function read(token: Token, from: Element): string {
+  return getComputedStyle(from).getPropertyValue(nameOf(token)).trim();
 }

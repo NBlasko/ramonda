@@ -123,12 +123,20 @@ describe("the generated module", () => {
     );
     writeFileSync(
       join(root, "src", "Card.tsx"),
-      `import { $ } from "../ramonda.css.generated";
+      `import { read, toStyle } from "@ramonda/css";
+import { $ } from "../ramonda.css.generated";
 
 export const good = <div css={@@( color: $.color.primary.main; )}>x</div>;
 export const inACall = <div css={@@( width: calc($.size.control.md * 2); )}>x</div>;
 export const digits = <div css={@@( padding: $.space.inline.2xl; )}>x</div>;
 export const outside: string = $.color.primary.main;
+
+// The two things a project does with a variable outside a block, against the real generated object.
+export const theme = toStyle([
+  [$.color.primary.main, "#7c3aed"],
+  [$.size.control.md, "24px"],
+]);
+export const now: string = read($.color.primary.main, document.documentElement);
 `,
     );
     writeFileSync(
