@@ -756,11 +756,51 @@ and the arguments for it are the two that survive, both measured and both imposs
 string: **rename-refactor**, because a member has a definition site and a string has none, and
 **progressive completion**, because a union is one flat list however it is filtered.
 
-What still has to be answered before it is built: what `$.color.primary` means when it names a group
-rather than a leaf; whether it is allowed anywhere a value goes or only in a declaration's value; and
-that the grammar, the formatter, the checker and the virtual file each learn it — the last of which
-is where it earns its keep, since a hole already becomes a real expression there and `$` could ride
-the same machinery for completion while compiling to text rather than to a custom property.
+#### Decided
+
+**`$` is a superset spelling, and it compiles to `var(--…)`.** Nothing new reaches the browser: the
+stylesheet is the same one a hand-written `var()` produces, so there is no runtime cost, no custom
+property on an element and no render on a change. What `$` adds happens entirely before the build.
+
+**A group is an error, always write a leaf.** `$.color.primary` names three tokens and no value, so
+it cannot stand where a value goes. *Note for the implementation:* left alone, TypeScript's message
+would be `Type '{ main: …; light: … }' is not assignable to type …`, which names the shape instead of
+the mistake. Groups carry a marker so the message says a group was named and a token is wanted.
+
+**A leaf has a kind — colour, length, duration, and so on — and the kind is checked.** `padding:
+$.color.primary.main` is a fault. The table that knows `background` takes a colour is the one the
+strictness work already generates from the engines; `$` rides it rather than declaring a second one.
+
+| question | decided | why |
+|---|---|---|
+| what the config holds for a token | **name, kind AND value** | codegen writes the `:root` stylesheet too, so a token lives in one place. The alternative put the same name in the config and in hand-written CSS — this repository's recurring fault. |
+| a declared token written as `var(--color-primary-main)` | **a rule pushes to `$.…`**, with a fix, silenceable per line | it stays legal CSS and keeps compiling. Without the rule both spellings appear in one file and a reader has to work out why. |
+| is `$` importable into TypeScript | **yes, and the docs must say what it costs** | asked for, to type a value written outside a block. But a token reaching a block through a HOLE becomes a value on the element — 41 bytes and a render, measured — which is the thing `$` inside a block exists to avoid. Same name, two very different costs. |
+| token names that are not identifiers — `2xl`, `space.0` | **written with a dot, bracketed in the virtual file** | the user's point, and it is right: the block is our grammar, so `$.space.inline.2xl` is ours to allow. Only the virtual file must be valid TypeScript. |
+
+That last one is measured rather than assumed — `$.space.inline.2xl` and `$.z.0` do not parse, and
+the bracket form does:
+
+```
+seg.ts(2,25): error TS1005: ',' expected.
+seg.ts(2,27): error TS1351: An identifier or keyword cannot immediately follow a numeric literal.
+```
+
+And the virtual file already has the shape for it. A `Segment` records `sourceLength` separately from
+its virtual length precisely because rewritten text does not match the author's, and `copied` says
+which kind a run is — a flag that is WRITTEN rather than inferred, because inferring it from equal
+lengths was measured wrong. So a path is emitted as several runs: `$`, `.color` and `.primary` are
+byte-identical and copied; only `.2xl` is derived. Emitting the whole path as one derived run would
+map every caret in it to the `$`, which is the right highlight for an error and the wrong place for
+completion.
+
+**What a type still cannot promise.** A token typed as a colour is a claim about this project's
+discipline, not about the browser: the cascade lets any rule anywhere set `--color-primary-main` to
+anything. Worth a sentence in the docs; it changes nothing in the design.
+
+#### Still open
+
+Only what the decisions above force: a token now carries ONE value, and a theme needs a second.
 
 ### What is not in dispute
 
