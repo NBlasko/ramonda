@@ -869,6 +869,117 @@ read($.color.primary.main, el)   // getPropertyValue, trimmed; "" becomes the de
 which is what makes "never undefined" true in JavaScript too, not only in CSS. `$` is already an
 importable object, so it carries the name and the fallback that this needs.
 
+#### The whole thing end to end
+
+##### 1. What a person writes
+
+One file, `ramonda.css.ts`. The variables half is new; the strictness half already existed.
+
+```ts
+import { defineConfig, kind } from "@ramonda/css/config";
+
+export default defineConfig({
+  variables: {
+    color: kind("color", {
+      primary: { main: "#3b82f6", light: "#93c5fd" },
+      surface: { base: "#ffffff" },
+    }),
+    size: kind("length", { control: { sm: "24px", md: "30px" } }),
+    motion: kind("duration", { fast: "120ms" }),
+  },
+  rules: { /* … as today … */ },
+});
+```
+
+##### 2. When codegen runs
+
+The build plugin runs it on start and whenever `ramonda.css.ts` changes, so the ordinary case needs
+no command. `ramonda-css codegen` exists for CI and for an editor that only watches files. Output
+goes to a directory the project's `tsconfig.json` already includes.
+
+##### 3. What it writes
+
+| artefact | what is in it |
+|---|---|
+| `variables.css` | `:root { --color-primary-main: #3b82f6; … }`, and one `@property` per variable |
+| the `$` module | the object — each leaf carries its NAME and its FALLBACK — plus `Var<kind, value>` types, `toStyle` and `read` |
+| the value types | the narrowed per-property types the virtual file already consumes |
+
+`$.color.primary.main` in a block compiles to `var(--color-primary-main, #3b82f6)`. In TypeScript it
+is a real object, which is what `read` and `toStyle` need.
+
+##### 4. Where a wrong value is caught — and where it is not
+
+This answers the user's question directly: *do we scream at build too, or only at runtime?* Both, but
+not everywhere, and the gap is worth knowing.
+
+| a wrong value written… | caught at build? | by what |
+|---|---|---|
+| in the config — `kind("length", { md: "#3b82f6" })` | **yes** | `tsc`, `TS2322` |
+| in a block — `padding: $.color.primary.main` | **yes** | the types, `TS2345` |
+| in a block — `--size-control-md: crveno` | **yes** | the checker already reads custom properties a block sets |
+| through `toStyle({ "size.control.md": "crveno" })` | **yes** | it is TypeScript |
+| in THEIR own hand-written `.css` file | **no** | it is not a file we compile |
+| from a server, at runtime | there is no build | — |
+
+The last two rows are what `@property` is for, and it is not theoretical. Measured in Chrome:
+
+    registered `syntax: "<length>"`, set to "crveno"    reads back "30px"   — refused, initial-value stands
+    UNregistered, set to "crveno"                       reads back "crveno"
+      and an element sized by it                        height "0px"        — silently collapsed
+
+So the same `kind` the config already requires buys a second guarantee, in the browser, at no cost to
+the person writing it. That is the one idea taken from StyleX, whose `stylex.types.*` emit exactly
+these rules — the difference being that they write the type per variable and we write it per group.
+
+##### 5. Overriding: a recommendation, not a feature
+
+We do not model themes. But the names are readable by design, so overriding is ordinary CSS, and the
+cascade does the work. Measured in Chrome, from weakest to strongest:
+
+    :root { --c: base }                     ->  "base"
+    @media (…) { :root { --c: mode } }      ->  "mode"
+    <html style="--c: …">                   ->  "tenant-on-html"
+    <div style="--c: …">  (a wrapper)       ->  "tenant-on-wrapper"
+
+**The nearest ancestor that sets a name wins.** That single sentence is the whole mental model, and
+it is CSS's, not ours.
+
+##### 6. The complex cases, each one walked
+
+*Light and dark.* Their CSS, their file:
+
+```css
+@media (prefers-color-scheme: dark) { :root { --color-primary-main: #93c5fd; } }
+[data-theme="dark"]                 { --color-primary-main: #93c5fd; }
+```
+
+*A size that changes with the screen — 30px wide, 24px narrow.* The same shape. The config holds the
+base value; a media query overrides it. This is why `when` is not in the config: CSS already has it,
+and ours would have been a worse spelling of it.
+
+```css
+@media (max-width: 600px) { :root { --size-control-md: 24px; } }
+```
+
+*An organisation's theme, arriving from a server.* Values on an element, typed on the way in:
+
+```tsx
+<div style={toStyle({ "color.primary.main": org.primary })}>…</div>
+```
+
+*A user's theme.* The same call, applied wherever it should reach.
+
+*All of them at once.* The cascade resolves it, by the sentence above: base, then the mode's media
+query, then whatever element the tenant's values sit on. **Recommendation: apply a runtime theme to a
+wrapper element rather than to `<html>`, and let it carry values already resolved for the current
+mode.** On `<html>` it competes with the mode's media query on the same element, and inline wins —
+so dark mode would lose. On a wrapper there is no competition, only distance, which is easier to
+reason about and easier to undo.
+
+And if they want their own override file checked rather than trusted, they write it as a block; then
+row three of the table above applies and the checker reads it like any other.
+
 #### What was tried and dropped, and why
 
 Every one of these was the user refusing a complication, and every one was right.
