@@ -980,6 +980,44 @@ reason about and easier to undo.
 And if they want their own override file checked rather than trusted, they write it as a block; then
 row three of the table above applies and the checker reads it like any other.
 
+##### 7. Their own CSS, checked — one hook, and they fill it
+
+The table in §4 has one row where the build is blind: a `.css` file they wrote themselves. The user
+would not leave it there, and proposed the shape: give them an output, let them write the reader,
+and we say in time whether it will pass.
+
+That is the right division, and it is the one this whole design already follows — **they read, we
+check.**
+
+```ts
+export default defineConfig({
+  variables: { … },
+
+  /** Everything else that sets our variables. */
+  alsoSets: fromCss("./src/theme.css"),      // a reader we ship
+});
+```
+
+```ts
+  alsoSets: () => fromWhereverTheyLike(),    // their function, our contract
+```
+
+The contract is small: return `{ name, value, where? }[]`. `where` is what separates a useful report
+from an irritating one — the finding lands on THEIR file and line, not on the config.
+
+For each pair we ask two things: is the name declared (if not, it may be a typo of one that is, which
+is where did-you-mean belongs), and does the value satisfy the written `kind`.
+
+This also absorbs the old `variables: readonly string[]`: a name set from outside is the same
+question asked with no value. One mechanism instead of two.
+
+**Two limits, stated rather than discovered later.** `fromCss` reads a subset and is not a
+spec-complete CSS parser — the existing parser already handles nested rules with a prelude, `@media`
+included, which is the shape a `:root` override has, but a file it cannot read is a real
+possibility. That limit is only acceptable BECAUSE the hook exists: they replace the reader with
+their own function and lose nothing. And a value computed at runtime can never be on the list;
+`@property` stays the net for that.
+
 #### What was tried and dropped, and why
 
 Every one of these was the user refusing a complication, and every one was right.
