@@ -1,4 +1,5 @@
 import type { Block, BlockItem, ValuePart } from "./ast";
+import { nameFor } from "./dollar";
 import { AT_RULE_LINKS, KEYWORDS, MEDIA_FEATURES, PROPERTIES, SELECTORS } from "./keywords.generated";
 
 /**
@@ -80,7 +81,13 @@ export function propertyName(property: string): string {
  */
 function value(parts: readonly ValuePart[]): string {
   let raw = "";
-  for (const part of parts) raw += part.kind === "text" ? part.text : `${HOLE}${part.index}${HOLE}`;
+  for (const part of parts) {
+    if (part.kind === "text") raw += part.text;
+    // A variable is identity by its PATH. Resolving it first would be the same answer — one path is
+    // one custom property — and would make this need the project's declarations, which it must not.
+    else if (part.kind === "variable") raw += nameFor(part.path);
+    else raw += `${HOLE}${part.index}${HOLE}`;
+  }
   return collapse(raw);
 }
 

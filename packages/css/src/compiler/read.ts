@@ -154,6 +154,24 @@ export interface Span {
   readonly end: number;
 }
 
+/**
+ * What a segment of a `$` path may hold.
+ *
+ * Letters, digits, `_` and `-`. Digits FIRST is the case that matters: `2xl` and `0` are ordinary
+ * names in a design system, and the block is this package's grammar, so they are writable here. The
+ * virtual file is the only place that must be TypeScript, and it spells such a segment with
+ * brackets — measured, `$.space.inline.2xl` does not parse as TypeScript and `["2xl"]` does.
+ */
+function isPathCharacter(code: number): boolean {
+  return (
+    (code >= 97 && code <= 122) /* a-z */ ||
+    (code >= 65 && code <= 90) /* A-Z */ ||
+    (code >= 48 && code <= 57) /* 0-9 */ ||
+    code === 45 /* - */ ||
+    code === 95 /* _ */
+  );
+}
+
 const PAREN = 41; /* ) */
 const BRACE = 125; /* } */
 
@@ -751,6 +769,36 @@ export function readBlock(source: string, open: number, filename: string, option
     return text;
   }
 
+  /**
+   * `$` `.` segment ( `.` segment )* — the path, from the `$` to wherever it stops being one.
+   *
+   * A segment is `[A-Za-z0-9_-]`, which admits `2xl` and `0` deliberately: the block is this
+   * package's grammar, so a design system's own names are writable here. Only the VIRTUAL file has
+   * to be TypeScript, and it spells such a segment with brackets.
+   *
+   * A trailing dot is kept in neither the path nor the span's exclusion — `$.color.` reads as
+   * `color` with the dot inside the span, because that is the caret position completion is asked
+   * about.
+   */
+  function pastVariable(): ValuePart {
+    const start = at;
+    at += 2; // `$.`
+
+    const segments: string[] = [];
+    for (;;) {
+      const from = at;
+      while (at < source.length && isPathCharacter(source.charCodeAt(at))) at++;
+      if (at > from) segments.push(source.slice(from, at));
+      if (source.charCodeAt(at) === 46 && at + 1 < source.length) {
+        at++;
+        continue;
+      }
+      break;
+    }
+
+    return { kind: "variable", path: segments.join("."), at: start, length: at - start };
+  }
+
   /** A declaration's value: text and holes, up to `;` or whatever closes the block it is in. */
   function readValue(closer: number): ValuePart[] {
     const parts: ValuePart[] = [];
@@ -780,6 +828,19 @@ export function readBlock(source: string, open: number, filename: string, option
         const close = source.indexOf("*/", at + 2);
         at = close === -1 ? source.length : close + 2;
         text += " ";
+        continue;
+      }
+      /**
+       * `$.color.primary.main` — a declared variable, at any depth, so `calc($.size.md * 2)` works.
+       *
+       * A `$` that is not followed by a dot is ordinary text: CSS values do carry one, and nothing
+       * is being named. A dot with nothing after it IS a variable, with an empty path — see
+       * `VariablePart.path` for why that is what an editor needs.
+       */
+      if (code === 36 && source.charCodeAt(at + 1) === 46) {
+        flush();
+        parts.push(pastVariable());
+        textAt = at;
         continue;
       }
       // Inside a value there is nothing else a `{` could be, so no question is asked here.

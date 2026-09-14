@@ -56,11 +56,26 @@ describe("the stylesheet", () => {
     );
   });
 
-  test("`any` registers nothing, because `*` guarantees nothing", () => {
+  test("`any` registers TOO — `*` refuses nothing, but it still guarantees a value", () => {
     const { css } = generate({ misc: kind("any", { whatever: "anything at all" }) });
 
     expect(css).toContain("--misc-whatever: anything at all;");
-    expect(css).not.toContain("@property");
+    expect(css).toContain(
+      `@property --misc-whatever {\n  syntax: "*";\n  inherits: true;\n  initial-value: anything at all;\n}`,
+    );
+  });
+
+  test("every declared variable is registered, because that is what makes a bare `var()` safe", () => {
+    // `$` compiles to `var(--name)` with no fallback, so the registration is the only thing standing
+    // between a variable nothing sets and a property that silently becomes something else. A kind
+    // that skipped registration would be a hole in that, with nothing to report it.
+    const { css } = generate({
+      a: kind("color", { one: "#fff" }),
+      b: kind("any", { two: "whatever" }),
+      c: kind("number", { three: 1 }),
+    });
+
+    expect(css.match(/@property/g)).toHaveLength(3);
   });
 
   test("no variables is no stylesheet, rather than an empty one", () => {

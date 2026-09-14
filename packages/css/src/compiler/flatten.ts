@@ -1,4 +1,5 @@
 import type { Block, BlockItem } from "./ast";
+import { nameFor } from "./dollar";
 import { HOLE, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, SHORTHANDS } from "./keywords.generated";
 import { widthSlot } from "../conditions";
@@ -344,6 +345,17 @@ function declarationOf(
   for (const part of item.value) {
     if (part.kind === "text") {
       value += part.text;
+      continue;
+    }
+    /**
+     * A declared variable is TEXT here, and is emphatically not a hole.
+     *
+     * A hole becomes a value on the element — a custom property, 41 bytes each, and a render when it
+     * changes. `$` costs neither: it is a `var()` in the stylesheet, so two elements written the same
+     * way share one class and carry nothing. That difference is the whole reason the spelling exists.
+     */
+    if (part.kind === "variable") {
+      value += `var(${nameFor(part.path)})`;
       continue;
     }
     value += `${HOLE}${holes.length}${HOLE}`;

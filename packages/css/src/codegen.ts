@@ -1,3 +1,4 @@
+import { nameFor } from "./compiler/dollar";
 import { SYNTAX, type Kind, isVariable } from "./declared";
 
 /**
@@ -56,7 +57,7 @@ export function namesIn(declarations: Declarations): readonly Named[] {
       const here = [...trail, segment];
 
       if (isVariable(one)) {
-        const name = `--${here.join("-")}` as const;
+        const name = nameFor(here.join("."));
         const already = claimed.get(name);
 
         /**
@@ -99,8 +100,14 @@ export function namesIn(declarations: Declarations): readonly Named[] {
  * on `:root` would stop reaching the elements reading it. The registration exists to add a guarantee,
  * not to alter the cascade.
  *
- * `any` is skipped: its syntax is `*`, which accepts every token sequence, so the rule would cost
- * bytes and refuse nothing.
+ * **`any` is registered too, and my first reason for skipping it was wrong.** `*` accepts every token
+ * sequence, so the rule refuses nothing — that much was right. But refusing is not the only thing a
+ * registration does: `initial-value` is what makes the name resolve when NOTHING sets it, and
+ * measured, `syntax: "*"` with an initial value does exactly that. Two different guarantees, and I
+ * had collapsed them into one.
+ *
+ *     `*` WITH initial-value, never set      reads "anything at all"
+ *     `*` without initial-value, never set   reads ""
  *
  * ## What registering changes besides refusing, measured in Chrome
  *
@@ -119,8 +126,6 @@ export function namesIn(declarations: Declarations): readonly Named[] {
  * to its initial value, measured.
  */
 function registration(one: Named): string {
-  if (one.kind === "any") return "";
-
   return (
     `@property ${one.name} {\n` +
     `  syntax: "${SYNTAX[one.kind]}";\n` +

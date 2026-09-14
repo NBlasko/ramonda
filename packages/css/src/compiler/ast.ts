@@ -66,7 +66,40 @@ export interface NestedRule {
   readonly items: readonly BlockItem[];
 }
 
-export type ValuePart = TextPart | HolePart;
+export type ValuePart = TextPart | HolePart | VariablePart;
+
+/**
+ * `$.color.primary.main` — a variable the PROJECT declared, named by the path it was declared at.
+ *
+ * ## Why this is not resolved text
+ *
+ * A `{{ … }}` naming a `@@property` site becomes a {@link TextPart} with `resolved` set, because
+ * nothing after the parse needs the author's spelling of it again. This is the opposite case: the
+ * virtual file emits `$.color.primary.main` as a REAL TypeScript expression, and that expression is
+ * where completion, the kind check and rename all come from. Flattening it to text here would throw
+ * away the one thing that makes the spelling worth having.
+ *
+ * ## What the parser does NOT do
+ *
+ * Resolve it. A path is a path until something holding the project's declarations says what it
+ * names and what it falls back to — the parser has no config and asks for none, which is what keeps
+ * it usable from the editor, the CLI and the bundler alike.
+ */
+export interface VariablePart {
+  readonly kind: "variable";
+  /**
+   * The path as written, WITHOUT the leading `$.` — `color.primary.main`.
+   *
+   * May be empty. `$.` with nothing after it is the ordinary half-typed state in an editor, and a
+   * part with an empty path is what gives the virtual file somewhere to put the caret; text there
+   * would mean no completion after the dot.
+   */
+  readonly path: string;
+  /** Where the `$` is in the author's file. See {@link Declaration.at}. */
+  readonly at?: number;
+  /** How far the path runs, so a squiggle covers `$.color.primary.main` and not a character of it. */
+  readonly length?: number;
+}
 
 export interface TextPart {
   readonly kind: "text";

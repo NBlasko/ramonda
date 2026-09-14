@@ -1,6 +1,7 @@
 import type { BlockItem, ValuePart } from "./ast";
 import { CONDITION, SPREAD, holeIn } from "./read";
 import { selectorOf } from "./flatten";
+import { expressionFor } from "./dollar";
 import { collapse, propertyName } from "./normalise";
 import type { Span } from "./read";
 import { readBlock } from "./read";
@@ -614,7 +615,19 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
       return;
     }
 
-    if (!parts.some((part) => part.kind === "hole")) {
+    /**
+     * A value that is ONE variable is written bare, for the same reason one hole is.
+     *
+     * Wrapped in a template literal it would be a `string`, and the property's own type would have
+     * nothing left to judge. Written bare, `color: $.size.control.md` is checked against what `color`
+     * accepts — which is the kind check, and it costs nothing to get because the expression is real.
+     */
+    if (parts.length === 1 && parts[0].kind === "variable") {
+      derived(expressionFor(parts[0].path), parts[0].at, parts[0].length);
+      return;
+    }
+
+    if (!parts.some((part) => part.kind === "hole" || part.kind === "variable")) {
       derived(quoted(collapse(parts.map((part) => (part.kind === "text" ? part.text : "")).join(""))), at, length);
       return;
     }
@@ -637,6 +650,30 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
          */
         const own = part.resolved || part.at === undefined;
         derived(inTemplate(collapse(part.text)), own ? at : part.at, own ? length : part.text.length);
+        continue;
+      }
+      /**
+       * `$.color.primary.main` — written as the TypeScript expression it is, inside the template.
+       *
+       * **This is where the spelling earns its keep**, and it is the whole reason a variable reaches
+       * the AST as its own part instead of as resolved text. Here it becomes a real member
+       * expression, so the language service answers everything about it for free: completion one
+       * level at a time, the kind at the use site, go-to-definition, and rename.
+       *
+       * `$` is resolved by ORDINARY SCOPE, exactly as a hole's expression is. It is whatever the
+       * file imported — the module codegen wrote — so a project that has not imported it is told
+       * `Cannot find name '$'`, which is a sentence anybody can act on, rather than being handed a
+       * private binding of ours that no other tool would agree about.
+       *
+       * The expression is `derived` rather than copied: `$.space.inline.2xl` is writable in a block
+       * and does not parse as TypeScript, so the virtual file spells that segment `["2xl"]` and the
+       * two lengths differ. Mapping the whole path to its own span is what puts a diagnostic on the
+       * path and a caret inside it.
+       */
+      if (part.kind === "variable") {
+        write("${");
+        derived(expressionFor(part.path), part.at, part.length);
+        write("}");
         continue;
       }
       write("${");
