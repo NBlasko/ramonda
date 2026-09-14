@@ -161,3 +161,26 @@ misses. Bring evidence, not a preference: take one bad page, have two or three a
 it, and have somebody who does not know the framework read the results cold.
 
 Do not start by rewriting pages. The pages have been rewritten twice already.
+
+## Worked strict configs, instead of a published preset
+
+`@ramonda/css` ships the mechanism for project-level strictness and **no preset** — decided
+2026-09-14, and `packages/css/DESIGN.md` has the argument. What takes a preset's place is pages: a
+few worked `ramonda.css.ts` configs, from mildest to strictest, for somebody who wants to start
+strict and does not want to derive it themselves.
+
+Two things make this worth doing here rather than as a package:
+
+- A copied config is **theirs**. No version to upgrade under them, no spread to forget — which is
+  the silent failure a preset invites and which this design refused once already.
+- A config on a page is **checked**. `check-examples.mjs` type-checks every ```ts and ```tsx fence,
+  so an example is compiled against the real `Config` type on every run: a property that does not
+  exist, an arity CSS does not give, a unit that is not one — each refused before the page ships.
+
+**And the limit of that, which the writing has to cover.** The gate proves an example compiles, not
+that it is good advice — a config forbidding something worth having would pass it. So each row needs
+its argument on the page, not just its syntax. The trap already named in `DESIGN.md` is the one to
+open with: `"*": { arity: 1 }` reads as the obvious strict default and it forbids `margin: 0 auto`.
+
+The one row with evidence behind it today is the 124 vendor-prefixed properties whose unprefixed form
+also exists — `-moz-appearance` beside `appearance` — which is derivable rather than opinionated.

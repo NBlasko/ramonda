@@ -1129,11 +1129,36 @@ So the shape is a PRESET: a config a project imports and spreads, published besi
 by anybody else. `DESIGN.md` above already chose design C partly because its merge is well-defined —
 key by key — which is what makes a preset worth starting from rather than a thing to fight.
 
-**Open, and it needs the user's judgement rather than a measurement:** whether this package publishes
-one such preset itself. Shipping `@ramonda/css-strict` is different from making it the default: it is
-opt-in, its contents are arguable in the open, and a project that disagrees with one row overrides
-that row. That is the first thing to decide, because the list's contents only matter once there is
-somewhere for them to live.
+#### DECIDED: no preset. The mechanism, and worked configs in the documentation.
+
+The user's call, and it is the better of the two for reasons this design had already half-written.
+
+**A published preset is a dependency, and the failure it invites is silent.** Design D above was
+refused for exactly this — one missing `...strict.properties` and the constraints are gone with
+everything green. A preset makes that a permanent shape rather than a thing somebody might write: it
+is spread into a config, it changes under the project when it is upgraded, and the counts codegen
+prints are arithmetic over what the function returned rather than over what anybody intended.
+
+**A config in the documentation is copied, and then it is theirs.** No version, no merge, no spread
+to forget. Every line is editable and the project owns all of them, which is the same reason the
+narrowing was moved out of the shipped types in the first place: how far a project goes is the
+project's.
+
+**And a config in the documentation is CHECKED, which a preset would not need to be.**
+`scripts/check-examples.mjs` type-checks every ```ts and ```tsx fence on every page — `CHECKED` is
+`new Set(["ts", "tsx"])` — so a config example is compiled against the real `Config` type on every
+run. A property that does not exist, an arity CSS does not give, a unit that is not one: each is
+refused before the page can ship. A wrong example in the documentation is the worst kind, because a
+reader trusts it and copies it, and this is the one mechanism that already stops it.
+
+**The honest limit of that:** the gate proves an example COMPILES, not that it is good advice. A
+config that forbids something worth having would pass. So the pages have to argue for each row
+rather than list it — which is what `what-a-page-owes-its-reader` asks of every page anyway.
+
+What the pages should carry, from mildest to strictest, is the open question — and it is a writing
+question rather than a design one, so it belongs with the documentation work rather than here. The
+one row with evidence behind it today is the 124 vendor-prefixed properties whose unprefixed form
+also exists, measured above.
 
 ### What is not in dispute
 
