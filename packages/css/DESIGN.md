@@ -815,6 +815,60 @@ This REPLACES `variables: readonly string[]`, which is a hand-written list of na
 (`config.ts:47`). Same key, now carrying a value each: the rule still stops reporting those names,
 and they gain a type and a fallback at the same time.
 
+#### One source, and the CSS is OUTPUT
+
+The user found the split I had left in: this config declares the variables, but the variables
+themselves live in a `:root` block somewhere — *"ovaj config moraju da održavaju odvojeno od onog
+drugog mesta gde su variable, zar ne?"* They do, and that is two places.
+
+**So they do not write `:root` at all. Codegen emits it from the same object.**
+
+```
+ramonda.css.ts   ->   :root { --color-primary-main: #3b82f6; … }    emitted
+                 ->   $ and the types                               emitted
+                 ->   $.color.primary.main  ->  var(--color-primary-main, #3b82f6)
+```
+
+The fallback is then not a second copy of the value. It is one value, written once, used twice: as
+the declaration codegen emits, and as the fallback every use carries. Their own answer to *"da li bi
+bila preporuka da oni taj CSS napišu neki typescript objekat"* — it already is that object.
+
+A theme is still theirs. `[data-theme="dark"] { --color-primary-main: … }` is CSS they write, in
+their own file, and we know nothing about it. That is the whole reason the fallback exists rather
+than a model of themes.
+
+**The honest cost:** a nested object is less scannable than a stylesheet — the user's word was
+*nepregledan*. `kind(…)` groups keep it shallow and grouped, and the emitted stylesheet is there to
+read; but it is generated, not authored, and that is a real trade rather than a free win.
+
+#### Reading a variable from JavaScript
+
+Rare, and it happens. Measured in Chrome rather than recalled:
+
+    --set-colour                          "#3b82f6"
+    --unset                               ""          typeof "string" — never undefined
+    --spaced (whitespace in the source)   "#10b981"   trimmed
+    set on :root, read on a child         "30px"      inheritance, as expected
+    set from JavaScript, read back        "irrelevant"
+
+    width: var(--set-length)              "30px"
+    width: var(--unset, 42px)             "42px"
+    width: var(--unset)                   "720px"     <- the finding
+
+**That last row is the strongest argument for the fallback in the whole design, and it is not mine.**
+Without one the declaration does not merely miss: it is invalid at computed-value time, `width` falls
+back to `auto`, and the element lays out at 720px. Nothing is reported and nothing looks broken.
+
+And a fallback is **invisible to a read** — `--unset` is still `""` after a property used it with
+one. So a typed read has to apply the fallback itself:
+
+```ts
+read($.color.primary.main, el)   // getPropertyValue, trimmed; "" becomes the declared fallback
+```
+
+which is what makes "never undefined" true in JavaScript too, not only in CSS. `$` is already an
+importable object, so it carries the name and the fallback that this needs.
+
 #### What was tried and dropped, and why
 
 Every one of these was the user refusing a complication, and every one was right.
