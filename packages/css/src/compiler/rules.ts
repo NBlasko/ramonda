@@ -1,11 +1,12 @@
 import { namesIn } from "../codegen";
 import { nearest } from "./nearest";
-import type { Config } from "../config";
+import type { Config, PropertyRules } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, widthSlot } from "./flatten";
 import { holeOutOfPlace } from "./errors";
 import { PREFIXED } from "./prefixed.generated";
 import {
+  ARITY,
   AT_RULE_LINKS,
   DESCRIPTORS,
   KEYWORDS,
@@ -18,7 +19,7 @@ import {
   UNIT_TYPE,
   SELECTORS,
 } from "./keywords.generated";
-import { canonicalPrelude, canonicalValue } from "./normalise";
+import { canonicalPrelude, canonicalValue, propertyName } from "./normalise";
 import { CONDITION, LINE_COMMENT, SPREAD, closingHole, holeIn, opensAHole } from "./read";
 import type { BlockSite } from "./scan";
 
@@ -109,6 +110,7 @@ export const RULE_IDS = [
   "unknown-selector",
   "unknown-flag",
   "unknown-variable",
+  "too-many-values",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -292,9 +294,99 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
+  if (config?.properties !== undefined) tooManyValues(block, config.properties, findings);
   const silenced = config?.rules;
   const kept = silenced === undefined ? findings : findings.filter((one) => silenced[one.rule] !== "off");
   return kept.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * More values than this project allows a property to take — `padding: 8px 12px` under `arity: 1`.
+ *
+ * **A rule rather than a type, and that is measured.** A type for this is a template literal over
+ * the permitted values, and at 49 units by four positions TypeScript SILENTLY STOPS CHECKING — no
+ * `TS2590`, no message, it simply accepts anything:
+ *
+ *     1 unit,   arity 4    refuses `8pxx`
+ *     49 units, arity 2    refuses `8pxx`
+ *     49 units, arity 4    ACCEPTS `8pxx`
+ *
+ * A type that quietly stops checking is worse than no type, because the whole file stays green. The
+ * checker has no such threshold, and the message here is one somebody can act on.
+ *
+ * Counting is by TOP-LEVEL space, so `calc(1rem + 2px)` and `rgb(0 0 0)` are one value each — the
+ * spaces inside a call belong to the call. A hole is one value too: what it evaluates to is decided
+ * at render and nothing here knows how many words it will be.
+ */
+function tooManyValues(block: Block, rules: PropertyRules, findings: Finding[]): void {
+  /**
+   * **The wildcard reaches only the properties an arity MEANS something for**, and it did not.
+   *
+   * `border-left` is `<line-width> || <line-style> || <color>` — three different things, so
+   * `4px solid red` is one value made of three parts rather than three values. Under `"*": {arity:
+   * 1}` it was reported, which is refusing correct CSS and is the failure this package may not have.
+   *
+   * `ARITY` holds the sixteen that repeat one longhand, which is the whole set where "how many" has
+   * an answer. A property NAMED in the config is different: the config type only lets an arity be
+   * written on those sixteen anyway, so naming one is always meaningful.
+   */
+  const allowed = (property: string): number | undefined => {
+    const own = (rules[property as keyof PropertyRules] ?? {}) as { arity?: number };
+    if (own.arity !== undefined) return own.arity;
+
+    const sweep = (rules["*"] ?? {}) as { arity?: number };
+    return ARITY[property] === undefined ? undefined : sweep.arity;
+  };
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+
+      const property = propertyName(item.property);
+      const most = allowed(property);
+      if (most === undefined || item.at === undefined) continue;
+
+      /** Top-level words: a hole counts as one, and a call's insides are not counted at all. */
+      let values = 0;
+      let depth = 0;
+      let inside = false;
+      for (const part of item.value) {
+        if (part.kind !== "text") {
+          if (!inside) values++;
+          inside = true;
+          continue;
+        }
+        for (const character of part.text) {
+          if (character === "(") depth++;
+          else if (character === ")") depth--;
+          else if (depth === 0 && /\s/.test(character)) {
+            inside = false;
+            continue;
+          } else if (depth === 0 && !inside) {
+            inside = true;
+            values++;
+          }
+        }
+      }
+
+      if (values <= most) continue;
+
+      findings.push({
+        rule: "too-many-values",
+        at: item.valueAt ?? item.at,
+        length: (item.end ?? item.at) - (item.valueAt ?? item.at),
+        message:
+          `\`${property}\` takes ${most === 1 ? "one value" : `at most ${most} values`} in this project, ` +
+          `and this is ${values}.` +
+          (most === 1 ? `\n\n        Set each side on its own, or raise \`arity\` in \`ramonda.css.ts\`.` : ""),
+      });
+    }
+  };
+
+  walkItems(block.items);
 }
 
 /**

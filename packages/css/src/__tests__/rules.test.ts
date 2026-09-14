@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import type { Config } from "../config";
 import { ABBREVIATIONS, KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
 import { nearest } from "../compiler/rules";
@@ -45,6 +46,14 @@ function check(css: string): Finding[] {
 
 const rules = (css: string) => check(css).map((finding) => finding.rule);
 const messages = (css: string) => check(css).map((finding) => finding.message);
+
+/** The rule ids for one block, checked with a project config — for the config-driven rules. */
+function rulesWith(css: string, config: import("../config").Config): string[] {
+  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const [site] = findBlocks(source);
+  const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+  return checkBlock(read.block, { config }).map((finding) => finding.rule);
+}
 
 describe("a property name the types could not suggest", () => {
   /**
@@ -2956,5 +2965,66 @@ describe("keywords CSS spells with capitals", () => {
     expect(rules("color: rebeccapurple;")).toEqual([]);
     expect(rules("color: transparent;")).toEqual([]);
     expect(rules("color: notacolour;")).toEqual(["unknown-value"]);
+  });
+});
+
+/**
+ * `arity` — how many values a property may take here, which is a RULE and not a type.
+ *
+ * A type for it is a template literal over the permitted values, and measured, at 49 units by four
+ * positions TypeScript silently stops checking: no `TS2590`, no message, `8pxx` simply accepted. A
+ * type that quietly stops checking is worse than none, because the file stays green. The checker has
+ * no threshold, and the sentence is ours to write.
+ */
+describe("more values than this project allows", () => {
+  const ONE: Config = { properties: { "*": { arity: 1 } } };
+
+  test("one value is silent and two are reported", () => {
+    expect(rulesWith("padding: 8px;", ONE)).toEqual([]);
+    expect(rulesWith("padding: 8px 12px;", ONE)).toEqual(["too-many-values"]);
+  });
+
+  test("a call is ONE value, however many spaces are inside it", () => {
+    expect(rulesWith("padding: calc(1rem + 2px);", ONE)).toEqual([]);
+    expect(rulesWith("color: rgb(0 0 0);", ONE)).toEqual([]);
+  });
+
+  /**
+   * **The wildcard reaches only the sixteen properties an arity means something for.**
+   *
+   * `border-left` is `<line-width> || <line-style> || <color>`, so `4px solid red` is one value in
+   * three parts rather than three values. It was reported under `"*": { arity: 1 }` before this was
+   * narrowed — refusing correct CSS, which is the failure this package may not have.
+   */
+  test("a shorthand whose parts are different things is untouched", () => {
+    expect(rulesWith("border-left: 4px solid red;", ONE)).toEqual([]);
+    expect(rulesWith("background: red url(a.png) no-repeat;", ONE)).toEqual([]);
+  });
+
+  test("a property may be given its own arity, which beats the sweep", () => {
+    const own: Config = { properties: { "*": { arity: 1 }, margin: { arity: 4 } } };
+
+    expect(rulesWith("margin: 0 auto;", own)).toEqual([]);
+    // `0 8px` rather than `0 auto`: `auto` is not a padding value, so that would have reported
+    // `unknown-value` beside this one and the assertion would have been about two rules at once.
+    expect(rulesWith("padding: 0 8px;", own)).toEqual(["too-many-values"]);
+  });
+
+  /**
+   * `margin: 0 auto` under `arity: 1`, which `DESIGN.md` names as the trap in the obvious default.
+   *
+   * Reported, and correctly — the project asked for one value. It is here so that anybody proposing
+   * `"*": { arity: 1 }` as a scaffolded default meets it in a test rather than in their own code.
+   */
+  test("centring with `margin: 0 auto` is reported under an arity of one", () => {
+    expect(rulesWith("margin: 0 auto;", ONE)).toEqual(["too-many-values"]);
+  });
+
+  test("a hole is one value, because what it evaluates to is decided at render", () => {
+    expect(rulesWith("padding: {gap};", ONE)).toEqual([]);
+  });
+
+  test("no arity anywhere is silence", () => {
+    expect(rulesWith("padding: 8px 12px 4px 2px;", {})).toEqual([]);
   });
 });
