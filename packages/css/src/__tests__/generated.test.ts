@@ -311,3 +311,127 @@ describe("a value made outside a block", () => {
     expect(output).not.toContain("problem");
   });
 });
+
+/**
+ * The config's property rules, end to end — written, generated, and met by a real `tsc`.
+ *
+ * This is the claim the whole design rests on and the one a person will check first: what they put
+ * in `ramonda.css.ts` is what their editor and their build enforce. Each case writes a config,
+ * generates, and reads what the real bin says about a real block.
+ */
+describe("what a project's property rules do", () => {
+  const withRules = (rules: string, card: string): string => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-rules-"));
+    projects.push(root);
+    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "probe", type: "module", version: "0.0.0" }));
+    writeFileSync(join(root, "ramonda.css.ts"), `export default { properties: ${rules} };\n`);
+    writeGenerated(root, ts);
+
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "jsx.d.ts"),
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    );
+    writeFileSync(join(root, "src", "Card.tsx"), card);
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          jsx: "preserve",
+          types: [],
+        },
+        include: ["src", "ramonda.css.generated.ts"],
+      }),
+    );
+
+    try {
+      return execFileSync(process.execPath, [join(PACKAGE, "bin.mjs"), "tsconfig.json"], {
+        cwd: root,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      return `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    }
+  };
+
+  test("a shorthand switched off no longer exists, and writing one is reported", () => {
+    const output = withRules(
+      `{ "*": { shorthand: false } }`,
+      `export const a = <div css={@@( padding: 8px; )}>x</div>;\n`,
+    );
+
+    expect(output).toMatch(/padding/);
+    expect(output).not.toContain("TS2304");
+    expect(output).toContain("problem");
+  });
+
+  test("and its longhand still goes in, which is what switching it off is FOR", () => {
+    const output = withRules(
+      `{ "*": { shorthand: false } }`,
+      `export const b = <div css={@@( padding-left: 8px; )}>x</div>;\n`,
+    );
+
+    expect(output).not.toContain("problem");
+  });
+
+  test("one shorthand may be brought back by name", () => {
+    const output = withRules(
+      `{ "*": { shorthand: false }, margin: { shorthand: true } }`,
+      `export const c = <div css={@@( margin: 8px; )}>x</div>;\n`,
+    );
+
+    expect(output).not.toContain("problem");
+  });
+
+  test("a closed list of values refuses everything else", () => {
+    const refused = withRules(
+      `{ "z-index": { values: [1, 2, 5, 10] } }`,
+      `export const d = <div css={@@( z-index: 3; )}>x</div>;\n`,
+    );
+    const accepted = withRules(
+      `{ "z-index": { values: [1, 2, 5, 10] } }`,
+      `export const e = <div css={@@( z-index: 5; )}>x</div>;\n`,
+    );
+
+    // The message has to be ABOUT the property. A generated module that does not compile would
+    // also report a problem, and did once — `CssGlobal` was used and not imported, so this passed
+    // while saying `Cannot find name`. A count is not a reason.
+    // The message has to be ABOUT the value. A generated module that does not compile would also
+    // report a problem, and did once — `CssGlobal` was used and not imported, so this passed while
+    // saying `Cannot find name`. A count is not a reason.
+    expect(refused).toMatch(/'"3"' is not assignable/);
+    expect(refused).not.toContain("TS2304");
+    expect(accepted).not.toContain("problem");
+  });
+
+  test("a unit list refuses a unit outside it, and the property still takes the ones in it", () => {
+    const refused = withRules(
+      `{ "*": { units: ["px"] } }`,
+      `export const f = <div css={@@( letter-spacing: 0.05em; )}>x</div>;\n`,
+    );
+    const accepted = withRules(
+      `{ "*": { units: ["px"] } }`,
+      `export const g = <div css={@@( letter-spacing: 2px; )}>x</div>;\n`,
+    );
+
+    expect(refused).toMatch(/0\.05em/);
+    expect(refused).not.toContain("TS2304");
+    expect(accepted).not.toContain("problem");
+  });
+
+  test("a project with rules and NO variables still gets its module", () => {
+    const output = withRules(
+      `{ "z-index": { values: [1] } }`,
+      `export const h = <div css={@@( z-index: 9; )}>x</div>;\n`,
+    );
+
+    expect(output).toContain("problem");
+  });
+});

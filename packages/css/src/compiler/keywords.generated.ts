@@ -1504,3 +1504,28 @@ export const PRIMITIVE: Readonly<Record<string, string>> = {
   "word-spacing": "length",
   "z-index": "integer",
 };
+
+/**
+ * The most values each of these properties may take — see `arityRows` in the script.
+ *
+ * 16 properties, and a project may narrow one to fewer. Nothing else has an arity
+ * worth asking about: a shorthand whose parts are different things is not "n of something".
+ */
+export const ARITY: Readonly<Record<string, number>> = {
+  "border-block-color": 2,
+  "border-block-style": 2,
+  "border-block-width": 2,
+  "border-inline-color": 2,
+  "border-inline-style": 2,
+  "border-inline-width": 2,
+  "inset": 4,
+  "inset-block": 2,
+  "inset-inline": 2,
+  "interest-delay": 2,
+  "margin": 4,
+  "margin-block": 2,
+  "margin-inline": 2,
+  "padding": 4,
+  "padding-block": 2,
+  "padding-inline": 2,
+};

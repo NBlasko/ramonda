@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type Declarations, namesIn } from "./codegen";
+import type { CssArity, CssProperties, CssShorthand } from "./properties.generated";
+import type { CssUnit } from "./units.generated";
 import { RULE_IDS, nearest } from "./compiler/rules";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -70,6 +72,27 @@ export interface Config {
    * checked rather than trusted — and a plain list of names is the first form of it.
    */
   readonly alsoSets?: readonly string[];
+  /**
+   * How strict this project is about each property — what codegen turns into its own types.
+   *
+   * ```ts
+   * properties: {
+   *   "*": { shorthand: false, arity: 1 },
+   *   margin: { shorthand: true, arity: 4 },
+   *   "z-index": { values: [1, 2, 5, 10] },
+   * }
+   * ```
+   *
+   * **One map keyed by property, with `"*"` as the sweep.** `DESIGN.md` weighs this against three
+   * other designs; what settled it is the merge — two shared configs combine key by key, and a
+   * project overrides one property without disturbing the rest, which is what makes a config
+   * somebody else wrote worth starting from.
+   *
+   * Every constraint reaches BOTH the types and the completions, because codegen writes the property
+   * map this project's blocks are checked against. That is the whole reason it is here rather than
+   * shipped: what CSS allows is this package's to state, and how far a project goes is not.
+   */
+  readonly properties?: PropertyRules;
   /** A rule's severity, by id. `"off"` silences it; `"error"` is the default for every rule. */
   readonly rules?: Readonly<Record<string, "error" | "off">>;
 }
@@ -91,6 +114,55 @@ export function knownNames(config: Config): readonly string[] {
   const declared = config.variables === undefined ? [] : namesIn(config.variables).map((one) => one.name);
   return [...declared, ...(config.alsoSets ?? [])];
 }
+
+/** Every property name, and the wildcard that reaches all of them at once. */
+type PropertyName = keyof CssProperties;
+
+/**
+ * What a project may say about ONE property, with each key ABSENT where it means nothing.
+ *
+ * The absences are the type's work, and the shape is an intersection of the parts that apply rather
+ * than a mapped type with `never` keys — measured, and the difference is the whole message:
+ *
+ *     never key    Type 'false' is not assignable to type 'undefined'
+ *     absent key   TS2353: 'shorthand' does not exist in type …
+ *
+ * The first tells a reader nothing; it names `undefined`, which is not what they wrote or meant. The
+ * second says the key cannot be there, which is the fact. So `shorthand` exists on the 98 names the
+ * engines call shorthands and nowhere else, and `arity` is bounded by what CSS itself gives —
+ * `padding: { arity: 7 }` is refused by the number, not by a rule of ours.
+ */
+export type PropertyRule<P extends PropertyName | "*" = PropertyName | "*"> = (P extends CssShorthand | "*"
+  ? {
+      /**
+       * Whether this shorthand exists at all. `false` removes it, so a project writes `padding-left`.
+       *
+       * On `"*"` it removes every shorthand at once, and naming one with `true` brings that back.
+       */
+      readonly shorthand?: boolean;
+    }
+  : unknown) &
+  (P extends keyof CssArity
+    ? {
+        /**
+         * How many values this property may take, at most — bounded by what CSS itself gives.
+         *
+         * Only the sixteen that repeat one longhand: `padding`, `margin`, `inset` and their block
+         * and inline pairs. A shorthand whose parts are different things has no count worth picking.
+         */
+        readonly arity?: CssArity[P];
+      }
+    : P extends "*"
+      ? { readonly arity?: 1 | 2 | 3 | 4 }
+      : unknown) & {
+    /** The units a value here may carry. Everything else is refused. */
+    readonly units?: readonly CssUnit[];
+    /** The only values this property may take — `z-index: [1, 2, 5, 10]`. A closed list. */
+    readonly values?: readonly (string | number)[];
+  };
+
+/** The map, keyed by property, with `"*"` reaching every one of them. */
+export type PropertyRules = { readonly [P in PropertyName | "*"]?: PropertyRule<P> };
 
 /** What a config may be given, when it is a function rather than an object. */
 export interface ConfigEnvironment {
@@ -130,7 +202,7 @@ export function environmentOf(production?: boolean): ConfigEnvironment {
 const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "layer"]);
 
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
-const KNOWN = new Set(["units", "variables", "alsoSets", "rules"]);
+const KNOWN = new Set(["units", "variables", "alsoSets", "properties", "rules"]);
 
 /**
  * Keys that were a setting and are not, with the sentence that says where the answer comes from now.

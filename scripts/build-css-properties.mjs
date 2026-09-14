@@ -185,6 +185,22 @@ const NARROWABLE = new Set([
 /** Which property takes which primitive, for codegen to narrow from. */
 const primitiveRows = [];
 
+/**
+ * How many values a property may take, for the ones that repeat ONE longhand.
+ *
+ * `padding` is `<'padding-top'>{1,4}`, so `padding: 8px 12px` is two of the same thing. Sixteen
+ * properties are that shape, and they are the only ones where "how many values" is a question with
+ * an answer: `border` takes a width, a style and a colour, which is three DIFFERENT things, and
+ * asking a project to pick a count there would mean nothing.
+ *
+ * CSS's own maximum, so the config type can refuse `padding: { arity: 7 }` rather than accept a
+ * number nothing will honour.
+ */
+const arityRows = Object.entries(properties)
+  .map(([name, one]) => [name, /^<'[^']+'>\{1,([1-4])\}$/.exec(String(one.syntax).trim())])
+  .filter(([, found]) => found !== null)
+  .map(([name, found]) => `  ${JSON.stringify(name)}: ${found[1]},`);
+
 /** How many properties this narrowed, for the line the script prints. */
 let narrowed = 0;
 
@@ -1570,6 +1586,14 @@ export type Keyword<K extends string> = K | CssGlobal | \`var(\${string})\` | \`
  * escape hatch, and a type that refused \`padding: calc(1rem + 2px) !important\` would be refusing
  * correct CSS to protect a check the author has already opted out of.
  */
+/** The properties a project may give an \`arity\`, and the most CSS gives each. */
+export interface CssArity {
+${arityRows.map((one) => one.replace(/: (\d),$/, (_whole, most) => `: ${Array.from({ length: Number(most) }, (_unused, index) => index + 1).join(" | ")};`)).join("\n")}
+}
+
+/** Every property the engines call a shorthand — the only ones a project may switch off. */
+export type CssShorthand = ${shorthandRows.map((one) => one.slice(2, one.indexOf(":"))).join(" | ")};
+
 export type Narrowed<K extends string, V> =
   | K
   | V
@@ -1810,6 +1834,16 @@ export const UNION_TYPED: readonly string[] = ${JSON.stringify(unionTyped.map((o
  */
 export const PRIMITIVE: Readonly<Record<string, string>> = {
 ${primitiveRows.join("\n")}
+};
+
+/**
+ * The most values each of these properties may take — see \`arityRows\` in the script.
+ *
+ * ${arityRows.length} properties, and a project may narrow one to fewer. Nothing else has an arity
+ * worth asking about: a shorthand whose parts are different things is not "n of something".
+ */
+export const ARITY: Readonly<Record<string, number>> = {
+${arityRows.join("\n")}
 };
 `;
 

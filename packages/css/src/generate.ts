@@ -79,8 +79,11 @@ export function writeGenerated(from: string, typescript: typeof ts): CodegenResu
   if (path === undefined) return { config: undefined, declared: 0, files: [] };
 
   const config = readConfig(path, typescript);
-  const declarations = config.variables;
-  if (declarations === undefined) return { config: path, declared: 0, files: [] };
+  const declarations = config.variables ?? {};
+  const rules = config.properties;
+  if (config.variables === undefined && rules === undefined) {
+    return { config: path, declared: 0, files: [] };
+  }
 
   /**
    * Checked before anything is written, so a collision cannot leave half a pair of files behind.
@@ -90,9 +93,9 @@ export function writeGenerated(from: string, typescript: typeof ts): CodegenResu
    */
   const named = namesIn(declarations);
   verifyNames(named);
-  if (named.length === 0) return { config: path, declared: 0, files: [] };
+  if (named.length === 0 && rules === undefined) return { config: path, declared: 0, files: [] };
 
-  const { css, module } = generate(declarations);
+  const { css, module } = generate(declarations, rules);
   const beside = dirname(path);
 
   return {

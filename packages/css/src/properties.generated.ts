@@ -28,6 +28,29 @@ export type Keyword<K extends string> = K | CssGlobal | `var(${string})` | `${K 
  * escape hatch, and a type that refused `padding: calc(1rem + 2px) !important` would be refusing
  * correct CSS to protect a check the author has already opted out of.
  */
+/** The properties a project may give an `arity`, and the most CSS gives each. */
+export interface CssArity {
+  "border-block-color": 1 | 2;
+  "border-block-style": 1 | 2;
+  "border-block-width": 1 | 2;
+  "border-inline-color": 1 | 2;
+  "border-inline-style": 1 | 2;
+  "border-inline-width": 1 | 2;
+  "inset": 1 | 2 | 3 | 4;
+  "inset-block": 1 | 2;
+  "inset-inline": 1 | 2;
+  "interest-delay": 1 | 2;
+  "margin": 1 | 2 | 3 | 4;
+  "margin-block": 1 | 2;
+  "margin-inline": 1 | 2;
+  "padding": 1 | 2 | 3 | 4;
+  "padding-block": 1 | 2;
+  "padding-inline": 1 | 2;
+}
+
+/** Every property the engines call a shorthand — the only ones a project may switch off. */
+export type CssShorthand = "-webkit-border-before" | "-webkit-mask" | "-webkit-mask-position" | "-webkit-text-stroke" | "all" | "animation" | "animation-range" | "background" | "background-position" | "border" | "border-block" | "border-block-color" | "border-block-end" | "border-block-start" | "border-block-style" | "border-block-width" | "border-bottom" | "border-color" | "border-image" | "border-inline" | "border-inline-color" | "border-inline-end" | "border-inline-start" | "border-inline-style" | "border-inline-width" | "border-left" | "border-radius" | "border-right" | "border-spacing" | "border-style" | "border-top" | "border-width" | "column-rule" | "columns" | "contain-intrinsic-size" | "container" | "corner-block-end-shape" | "corner-block-start-shape" | "corner-bottom-shape" | "corner-inline-end-shape" | "corner-inline-start-shape" | "corner-left-shape" | "corner-right-shape" | "corner-shape" | "corner-top-shape" | "flex" | "flex-flow" | "font" | "font-synthesis" | "font-variant" | "gap" | "grid" | "grid-area" | "grid-column" | "grid-gap" | "grid-row" | "grid-template" | "inset" | "inset-block" | "inset-inline" | "interest-delay" | "list-style" | "margin" | "margin-block" | "margin-inline" | "marker" | "mask" | "mask-border" | "mask-position" | "offset" | "outline" | "overflow" | "overscroll-behavior" | "padding" | "padding-block" | "padding-inline" | "perspective-origin" | "place-content" | "place-items" | "place-self" | "position-try" | "scroll-margin" | "scroll-margin-block" | "scroll-margin-inline" | "scroll-padding" | "scroll-padding-block" | "scroll-padding-inline" | "scroll-timeline" | "text-box" | "text-decoration" | "text-emphasis" | "text-wrap" | "timeline-trigger" | "transform-origin" | "transition" | "vertical-align" | "view-timeline" | "white-space";
+
 export type Narrowed<K extends string, V> =
   | K
   | V

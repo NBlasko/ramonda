@@ -1,5 +1,6 @@
 import { nameFor } from "./compiler/dollar";
-import { KEYWORDS, PRIMITIVE } from "./compiler/keywords.generated";
+import { KEYWORDS, PRIMITIVE, SHORTHANDS } from "./compiler/keywords.generated";
+import type { PropertyRules } from "./config";
 import { SYNTAX, type Kind, isVariable } from "./declared";
 
 /**
@@ -255,16 +256,101 @@ const COLOURS = new Set((KEYWORDS.color ?? "").split(" ").filter(Boolean));
  * overridden one loses it. So 732 keep theirs, the 96 narrowed here are given a sentence saying what
  * they now take, and the cost is paid once per program.
  */
-function propertyMap(): { readonly rows: string; readonly uses: ReadonlySet<string> } {
+/**
+ * One property's rule with every key readable, which the config's own type deliberately is not.
+ *
+ * `PropertyRule<P>` hides `shorthand` on a longhand and `arity` where there is no count, so a
+ * person writing a config cannot spell a key that means nothing. Reading them back is the other
+ * direction: here every key may or may not be there, and this is what says so once rather than at
+ * each access.
+ */
+interface AnyRule {
+  readonly shorthand?: boolean;
+  readonly arity?: number;
+  readonly units?: readonly string[];
+  readonly values?: readonly (string | number)[];
+}
+
+/** What a project said about one property, with the wildcard already folded in. */
+function ruleFor(rules: PropertyRules | undefined, property: string): AnyRule {
+  const sweep = (rules?.["*"] ?? {}) as AnyRule;
+  const own = (rules?.[property as keyof PropertyRules] ?? {}) as AnyRule;
+  return { ...sweep, ...own };
+}
+
+/**
+ * A dimension type carrying the project's units, or the shipped one when it said nothing.
+ *
+ * `units: ["px"]` turns `CssDimension<CssLengthUnit>` into `CssDimension<"px">` — the parameter is
+ * already there for exactly this, which is why narrowing units costs nothing to express.
+ */
+function withUnits(value: string, units: readonly string[] | undefined): string {
+  if (units === undefined || units.length === 0 || !value.startsWith("CssDimension<")) return value;
+  return `CssDimension<${units.map((one) => JSON.stringify(one)).join(" | ")}>`;
+}
+
+interface Mapped {
+  readonly rows: string;
+  /** Shorthands this project switched off, dropped from the map rather than narrowed to nothing. */
+  readonly removed: readonly string[];
+  readonly uses: ReadonlySet<string>;
+  /** Properties this project gave a closed list, so the completion table stops offering more. */
+  readonly closed: readonly string[];
+}
+
+function propertyMap(rules: PropertyRules | undefined): Mapped {
   const rows: string[] = [];
+  const removed: string[] = [];
+  const closed: string[] = [];
   const uses = new Set<string>(["BlockShapeOf", "Narrowed", "Token"]);
+
+  /**
+   * A shorthand this project switched off, which is a REMOVAL rather than a narrowing.
+   *
+   * Left in the map as `never` it would say *Type '"8px"' is not assignable to type 'never'*, which
+   * names nothing a person can act on. Dropped from the map it is *'padding' does not exist in
+   * type* — the property is gone, which is what the project asked for and what the message says.
+   * The same choice came up in the config's own type and the same answer won, measured both ways.
+   */
+  for (const property of Object.keys(SHORTHANDS)) {
+    if (ruleFor(rules, property).shorthand === false) removed.push(property);
+  }
+  const gone = new Set(removed);
+
+  /** A closed list is that list, whatever CSS would otherwise allow here. */
+  for (const [property, rule] of Object.entries(rules ?? {})) {
+    if (property === "*" || gone.has(property)) continue;
+    const values = (rule as AnyRule).values;
+    if (values === undefined) continue;
+
+    closed.push(property);
+    /**
+     * A number is written as a number AND as the text it becomes, and the second is not a nicety.
+     *
+     * A block is CSS, so `z-index: 5` reaches the type as the string `"5"` — the virtual file emits
+     * the declaration's value as written. A list of `[1, 2, 5, 10]` therefore refused every one of
+     * its own permitted values, measured, which is refusing correct CSS: the one failure this
+     * package may not have. A project writes the list the way it thinks about it and both spellings
+     * are admitted.
+     */
+    const permitted = values.flatMap((one) =>
+      typeof one === "number" ? [JSON.stringify(one), JSON.stringify(String(one))] : [JSON.stringify(one)],
+    );
+
+    rows.push(
+      `  /** \`${property}\` — only the ${values.length} value(s) this project permits. */\n` +
+        `  ${JSON.stringify(property)}: ${permitted.join(" | ")} | CssGlobal | \`var(\${string})\`;`,
+    );
+  }
+  const said = new Set(closed);
 
   for (const [property, primitive] of Object.entries(PRIMITIVE)) {
     const narrow = NARROW[primitive];
-    if (narrow === undefined) continue;
+    if (narrow === undefined || gone.has(property) || said.has(property)) continue;
 
+    const value = withUnits(narrow.value, ruleFor(rules, property).units);
     const words = (KEYWORDS[property] ?? "").split(" ").filter(Boolean);
-    const keywords = narrow.value === "CssColor" ? words.filter((one) => !COLOURS.has(one)) : words;
+    const keywords = value.includes("CssColor") ? words.filter((one) => !COLOURS.has(one)) : words;
     const head = keywords.length === 0 ? "never" : keywords.map((one) => JSON.stringify(one)).join(" | ");
     const kinds = narrow.kinds.map((one) => JSON.stringify(one)).join(" | ");
 
@@ -276,25 +362,34 @@ function propertyMap(): { readonly rows: string; readonly uses: ReadonlySet<stri
       "CssResolutionUnit",
       "CssTimeUnit",
     ]) {
-      if (narrow.value.includes(name)) uses.add(name);
+      if (value.includes(name)) uses.add(name);
     }
 
     rows.push(
       `  /** \`${property}\` — ${narrow.said}, and this project's variables of that kind. */\n` +
-        `  ${JSON.stringify(property)}: Narrowed<${head}, ${narrow.value} | Token<${kinds}>>;`,
+        `  ${JSON.stringify(property)}: Narrowed<${head}, ${value} | Token<${kinds}>>;`,
     );
   }
 
-  return { rows: rows.join("\n"), uses };
+  return { rows: rows.join("\n"), removed, uses, closed };
 }
 
 const HEADER = "/* Generated by @ramonda/css from ramonda.css.ts. Do not edit. */";
 
-export function generate(declarations: Declarations): Generated {
+export function generate(declarations: Declarations, rules?: PropertyRules): Generated {
   const named = namesIn(declarations);
   verifyNames(named);
 
-  if (named.length === 0) return { css: "", module: "" };
+  /**
+   * Nothing declared AND nothing narrowed is nothing to write.
+   *
+   * Either one on its own is enough, and the second case is real: a project may want strict
+   * properties and no variables at all. Writing the module for the variables alone would have left
+   * that project with a config it wrote and no types from it — silently, which is the shape of
+   * fault this package keeps finding.
+   */
+  const constrained = Object.keys(rules ?? {}).length > 0;
+  if (named.length === 0 && !constrained) return { css: "", module: "" };
 
   const root = named.map((one) => `  ${one.name}: ${one.value};`).join("\n");
   const registrations = named
@@ -302,7 +397,8 @@ export function generate(declarations: Declarations): Generated {
     .filter((one) => one !== "")
     .join("\n\n");
 
-  const css = `${HEADER}\n\n:root {\n${root}\n}\n${registrations === "" ? "" : `\n${registrations}\n`}`;
+  const css =
+    named.length === 0 ? "" : `${HEADER}\n\n:root {\n${root}\n}\n${registrations === "" ? "" : `\n${registrations}\n`}`;
 
   /**
    * A TYPE-ONLY import, and that is the whole runtime cost of `$`: none.
@@ -312,7 +408,7 @@ export function generate(declarations: Declarations): Generated {
    * strings. The kind and the fallback ride in the type, where the checking happens, and a reader
    * opening this file still sees both.
    */
-  const { rows, uses } = propertyMap();
+  const { rows, removed, uses, closed } = propertyMap(rules);
   const fromPackage = [
     "CssColor",
     "CssDimension",
@@ -328,13 +424,17 @@ export function generate(declarations: Declarations): Generated {
   const module =
     `${HEADER}\n\n` +
     `import type { ${fromPackage} } from "@ramonda/css";\n` +
-    `import type { BlockShapeOf, CssProperties as Base, Narrowed } from "@ramonda/css/properties";\n\n` +
+    `import type { BlockShapeOf${closed.length === 0 ? "" : ", CssGlobal"}, CssProperties as Base, Narrowed } from "@ramonda/css/properties";\n\n` +
     `/** Every variable this project declares. Reach one by the path it was declared at. */\n` +
-    `export const $ = ${moduleTree(named)} as const;\n\n` +
+    `export const $ = ${named.length === 0 ? "{}" : moduleTree(named)} as const;\n\n` +
     `/** The ${rows === "" ? 0 : rows.split("\n").length / 2} properties this project narrows, and what each takes. */\n` +
     `interface Narrowings {\n${rows}\n}\n\n` +
     `/** What this project's blocks are checked against — the shipped map, with those replaced. */\n` +
-    `export type CssProperties = Omit<Base, keyof Narrowings> & Narrowings;\n\n` +
+    `export type CssProperties = Omit<Base, keyof Narrowings${removed.length === 0 ? "" : ` | ${removed.map((one) => JSON.stringify(one)).join(" | ")}`}> & Narrowings;\n\n` +
+    (removed.length === 0
+      ? ""
+      : `/** The ${removed.length} shorthand(s) this project switched off — writing one is now an unknown property. */\n` +
+        `export type Removed = ${removed.map((one) => JSON.stringify(one)).join(" | ")};\n\n`) +
     `/** The shape of one block here. The virtual file reads this. */\n` +
     `export type CssBlockShape = BlockShapeOf<CssProperties>;\n` +
     `export type { CssBlock, CssCondition, CssSpreadable, CssValue } from "@ramonda/css/properties";\n\n` +
