@@ -124,7 +124,7 @@ describe("the generated module", () => {
     writeFileSync(
       join(root, "src", "Card.tsx"),
       `import { read, toStyle } from "@ramonda/css";
-import { $ } from "../ramonda.css.generated";
+import { $, type Value } from "../ramonda.css.generated";
 
 export const good = <div css={@@( color: $.color.primary.main; )}>x</div>;
 export const inACall = <div css={@@( width: calc($.size.control.md * 2); )}>x</div>;
@@ -137,6 +137,10 @@ export const theme = toStyle([
   [$.size.control.md, "24px"],
 ]);
 export const now: string = read($.color.primary.main, document.documentElement);
+
+// A value made outside a block, annotated with what the property accepts — the reason Value exists.
+const gap: Value<"padding-left"> = "8px";
+export const spaced = <div css={@@( padding-left: {gap}; )}>x</div>;
 `,
     );
     writeFileSync(

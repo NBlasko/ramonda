@@ -104,3 +104,12 @@ describe("the module", () => {
     expect(written).toContain('"var(--weight-bold)" as Token<"number", 700>');
   });
 });
+
+describe("naming what a property accepts", () => {
+  test("the module exports `Value`, so a hole's value can be annotated", () => {
+    const { module: written } = generate(simple);
+
+    expect(written).toContain("export type Value<P extends keyof CssProperties> = CssProperties[P];");
+    expect(written).toContain('import type { CssProperties } from "@ramonda/css/properties";');
+  });
+});
