@@ -36,7 +36,7 @@ const SKIP = new Set(["node_modules", "dist", "build", ".git", ".turbo", ".next"
  * Every manifest a person reads, at ANY depth.
  *
  * **It walked one level for a while, and the manifest that got away was the worst one to miss.**
- * `packages/css/vscode/package.json` is the VS Code extension's, and its `description` is the
+ * `tools/vscode-css/package.json` is the VS Code extension's, and its `description` is the
  * sentence the marketplace prints under the title. It carried `@@( … )` and an author reading
  * `Nikola Blagojević` — already published, for anyone to read — because the walk stopped one
  * directory above it.

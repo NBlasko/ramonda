@@ -13,7 +13,7 @@ import { createHighlighter } from "shiki";
 
 const grammar = (name) =>
   JSON.parse(
-    readFileSync(new URL(`../../../packages/css/vscode/grammar/${name}.tmLanguage.json`, import.meta.url), "utf8"),
+    readFileSync(new URL(`../../../tools/vscode-css/grammar/${name}.tmLanguage.json`, import.meta.url), "utf8"),
   );
 
 /**

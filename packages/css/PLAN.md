@@ -703,7 +703,7 @@ on the tsx grammar alone, every token of a block came back with the theme's INVA
 did every line BELOW it, to the end of the file. A block on line 243 made `const after = 1;` on line
 259 look broken.
 
-**Two injections, in `packages/css/vscode/grammar/`.** One is aimed at a JSX tag and scopes
+**Two injections, in `tools/vscode-css/grammar/`.** One is aimed at a JSX tag and scopes
 `name=@@( … )` as embedded CSS; the other is aimed at the CSS a block scopes, and gives `{ … }` back
 to TypeScript. **The hole has to be a SEPARATE injection**, because `{` in ordinary JSX is
 `style={…}` — a pattern in the tag-level grammar would colour every inline style object as CSS.
@@ -724,7 +724,7 @@ same colour inside a block as it is in a `css` fence. Verified by unwiring it �
 fail. A hole is not among them: it comes out the theme's plain text colour either way, so its scope
 is asserted in this package instead, where scopes are visible.
 
-**The extension is `packages/css/vscode/`**, linked into an editor by `node vscode/install.mjs`
+**The extension is `tools/vscode-css/`**, linked into an editor by `node vscode/install.mjs`
 rather than copied, so the grammars the tests read are the grammars the editor loads. Its manifest is
 gated too — a `scopeName` is written twice, once in the grammar and once in the contribution, and a
 typo in either installs cleanly, activates cleanly and colours nothing.
@@ -1054,7 +1054,7 @@ depth, and what is asserted is what the RUNTIME does with a shape, so the shape 
 
 The syntax, the three spellings, the build plugins, the language-service plugin, the extension, the
 Prettier plugin, the wrappers, the `useSyntaxServer` setting and the colour limits were spread across
-`packages/css/README.md`, `packages/css/vscode/README.md`, `DESIGN.md`, this file and a docs page that
+`packages/css/README.md`, `tools/vscode-css/README.md`, `DESIGN.md`, this file and a docs page that
 covered only the syntax. Nobody setting up an editor would have found four of those.
 
 `apps/docs/content/style-blocks.md` carries all of it now, and the two READMEs point at it rather than

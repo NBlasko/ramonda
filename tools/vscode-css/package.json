@@ -69,7 +69,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NBlasko/ramonda.git",
-    "directory": "packages/css/vscode"
+    "directory": "tools/vscode-css"
   },
   "homepage": "https://ramonda.dev/style-blocks",
   "bugs": {
@@ -87,7 +87,7 @@
   ],
   "scripts": {
     "install-locally": "node install.mjs",
-    "package": "node ../../../scripts/package-extension.mjs",
+    "package": "node ../../scripts/package-extension.mjs",
     "publish-marketplace": "pnpm dlx @vscode/vsce@3 publish --no-dependencies"
   }
 }

@@ -147,6 +147,12 @@ What is already known about the how, from that week alone:
   ones, and a syntax led with that the project had decided against and never writes.
 - **Every one of the seven checks above passed** on those pages. So did `check-examples`, which
   proves an example COMPILES and nothing else.
+- **A page told the reader what to do with their own machine.** It read *"Never put that line in your
+  user settings"* — about `editor.defaultFormatter`, which is theirs and not ours. The user's
+  objection was the right one: *"zasto im pas kazes nikad, zasto se uopste uplices u to"*. The page
+  says what the setting DOES now, in a table, and the reader decides. The voice rule above is about
+  TENSE and does not name this, which is the point: two voice failures in one week, one of them not
+  on the list.
 
 **The task, and it is a research task first.** Find out what actually produces good documentation
 here — a different model, a different prompt shape, a human pass, a reader-facing test, or the

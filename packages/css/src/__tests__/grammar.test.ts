@@ -27,7 +27,16 @@ import { beforeAll, describe, expect, test } from "vitest";
  * broken — which is exactly what happened, twice.
  */
 
-const GRAMMAR = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "vscode", "grammar");
+const GRAMMAR = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+  "tools",
+  "vscode-css",
+  "grammar",
+);
 
 const load = (name: string) => JSON.parse(readFileSync(join(GRAMMAR, `${name}.tmLanguage.json`), "utf8"));
 

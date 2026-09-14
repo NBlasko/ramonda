@@ -29,7 +29,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const here = join(root, "packages", "css", "vscode");
+const here = join(root, "tools", "vscode-css");
 
 const manifest = JSON.parse(readFileSync(join(here, "package.json"), "utf8"));
 const id = `${manifest.publisher}.${manifest.name}`;
@@ -114,7 +114,7 @@ if (existsSync(join(here, manifest.icon ?? ""))) {
 if (wrong.length > 0) {
   console.error(`\n[extension] This would package, and it would be wrong:\n`);
   for (const one of wrong) console.error(`    • ${one}`);
-  console.error(`\n[extension] Nothing was written. packages/css/vscode/PUBLISHING.md has the whole list.\n`);
+  console.error(`\n[extension] Nothing was written. tools/vscode-css/PUBLISHING.md has the whole list.\n`);
   process.exit(1);
 }
 

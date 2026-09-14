@@ -124,8 +124,7 @@ Prettier plugin, so your usual formatter handles these files with nothing else t
 ```
 
 **Using biome?** biome has no plugin surface for a syntax it cannot parse, so the formatting goes
-through this extension, which runs *your* biome with *your* config. Put it in the **project's own**
-`.vscode/settings.json`:
+through this extension, which runs *your* biome with *your* config:
 
 ```json
 {
@@ -134,17 +133,16 @@ through this extension, which runs *your* biome with *your* config. Put it in th
 }
 ```
 
-**Never put that line in your user settings.** `editor.defaultFormatter` decides which extension VS
-Code ASKS, and it does not fall through to another one:
+**What that setting does, so you can decide where to put it.** `editor.defaultFormatter` names the
+one extension VS Code asks for that language, and it does not fall through to another — so it reaches
+every project it is in scope for:
 
-- In a project without `@ramonda/css`, this extension has no command to run, returns no edits, and
-  **format-on-save silently does nothing** — Prettier and biome are never asked. Nothing is broken
-  and nothing is formatted, which is the worst pair.
-- In a project that formats with Prettier, this runs **biome** instead, because that is what the
-  wrapper wraps. A whole file reformatted by the wrong tool.
+| where the setting is | in a biome project | in a Prettier project | in a project without `@ramonda/css` |
+|---|---|---|---|
+| the project's `.vscode/settings.json` | what you want | — | — |
+| your user settings | what you want | runs **biome**, not Prettier | format-on-save does **nothing**: this extension has no command to run and returns no edits, and Prettier and biome are never asked |
 
-It is a per-project choice about which formatter owns your `.tsx` files, so it belongs in the project
-that made it.
+In a workspace it is also what everyone else on the project gets.
 
 ## Check that it worked
 
