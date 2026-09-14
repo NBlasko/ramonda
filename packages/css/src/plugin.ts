@@ -371,7 +371,9 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
            */
           const inHole = where.holes.some((one) => one.start <= position && position <= one.end);
           const words =
-            value === undefined || inHole || !isCss(where, position) ? undefined : valueWords(value.property);
+            value === undefined || inHole || !isCss(where, position)
+              ? undefined
+              : valueWords(value.property, projectConfig(fileName));
           if (words !== undefined) {
             return {
               isGlobalCompletion: false,
@@ -1165,9 +1167,28 @@ function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: Prelu
  * A property that admits a free identifier — `animation-name`, `font-family` — has no entry and gets
  * nothing, which is right: that name is the author's own and nothing can suggest it.
  */
-function valueWords(property: string): readonly string[] | undefined {
+function valueWords(property: string, config: Config): readonly string[] | undefined {
   // A real union is TypeScript's to offer, and it offers `!important` and `var()` beside each word.
   if (UNION_TYPED.includes(property)) return undefined;
+
+  /**
+   * **A union the PROJECT gave it, which `UNION_TYPED` cannot know about.**
+   *
+   * That constant is generated from the shipped map and ships with the package. The moment a config
+   * narrows `z-index` to `1 | 2 | 5 | 10`, the generated module gives it a real union — and this
+   * went on offering everything CSS allows, so the editor suggested `auto` and `abs()` beside values
+   * the type refuses. Measured, and it is the worst arrangement of the two: a suggestion that does
+   * not compile is worse than no suggestion.
+   *
+   * So the question is put to the config as well. A property with a closed list is TypeScript's to
+   * answer, exactly as a property with a shipped union already was.
+   */
+  if (config.properties?.[property as keyof NonNullable<Config["properties"]>] !== undefined) {
+    const rule = config.properties[property as keyof NonNullable<Config["properties"]>] as
+      | { readonly values?: readonly unknown[] }
+      | undefined;
+    if (rule?.values !== undefined) return undefined;
+  }
 
   const own = VALUE_WORDS[property];
   // A property whose value is a property NAME — `transition-property`, `will-change` — takes any of
