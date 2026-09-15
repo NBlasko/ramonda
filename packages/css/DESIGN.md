@@ -2140,3 +2140,35 @@ fault's extent here.
 
 Three shapes, and the compiler spells each differently: `TS2551` for a near miss, `TS2339` for a
 segment near nothing, `TS2322` for a GROUP, which is a real member whose type no property accepts.
+
+### 3. `padding: 0` refused by `variablesOnly` — FIXED
+
+Measured, `variablesOnly: ["length"]` refused the most common declaration in CSS:
+
+```
+padding-left: 0   →   Type '"0"' is not assignable to type
+                      'Narrowed<never, Token<"length" | "length-percentage" | "percentage">>'
+```
+
+**A bare `0` is not a hardcoded length.** CSS lets a zero length go without a unit, `CssDimension`
+holds `0 | "0"` for exactly that reason, and a project saying *lengths come from variables* is not
+asking anybody to write `$.space.none`. The dimensionless zero went out with the literals because
+the two lived in one type.
+
+Both spellings are admitted: a block is CSS, so `padding-left: 0` reaches the type as the string
+`"0"`, while a hole can hand over the number. It goes in the VALUE slot of `Narrowed<K, V>`, not
+beside the keywords — `K extends string`, and `0` is a number.
+
+Not for `<number>` or `<integer>`. A zero there is a number written out, which is what the setting
+is refusing.
+
+**And the two narrowings disagreed about zero**, which is the shape this review kept finding: `units`
+leaves the literal type in place and swaps only the unit parameter, so `0` always survived it. One
+question, two settings, two answers.
+
+#### Still open, and it is the message rather than the rule
+
+`Narrowed<never, Token<…>>` names neither the project nor `ramonda.css.ts`, and the same fault in a
+composite shorthand gets `literal-not-allowed`, which says both. A doc comment on `Narrowed` would
+show on hover and NOT in the compiler's text, so it is not the fix; what would work is the checker
+recognising this refusal and speaking over it, the way `inOrder` already speaks over `TS2353`.

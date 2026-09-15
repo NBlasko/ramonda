@@ -816,4 +816,59 @@ export default defineConfig({
 
     expect(output).not.toContain("problem");
   });
+
+  /**
+   * A bare `0` under `variablesOnly`, which is the most common declaration in CSS.
+   *
+   * Measured before this, `variablesOnly: ["length"]` refused `padding-left: 0`:
+   *
+   *     Type '"0"' is not assignable to type
+   *     'Narrowed<never, Token<"length" | "length-percentage" | "percentage">>'
+   *
+   * **`0` is not a hardcoded length.** CSS lets a zero length go without a unit, `CssDimension` holds
+   * `0 | "0"` for exactly that reason, and a project saying *lengths come from variables* is not
+   * saying it wants `$.space.none`. The narrowing threw the dimensionless zero out with the literals
+   * because they lived in one type.
+   *
+   * The two spellings both arrive: a block is CSS, so `padding-left: 0` reaches the type as `"0"`,
+   * while a hole can hand it the number.
+   *
+   * Note the other narrowing never had this fault — `units` leaves the literal type in place and only
+   * swaps the unit parameter, so `0` survived it. Two settings, one question, two answers, which is
+   * the shape this review kept finding.
+   */
+  describe("a dimensionless zero, where a kind is variables-only", () => {
+    const CONFIG = `import { kind } from "@ramonda/css/config";
+  export default {
+    variablesOnly: ["length"],
+    variables: { space: kind("length", { gutter: { normal: "16px" } }) },
+  };
+  `;
+
+    test.each([
+      ["a longhand", "padding-left: 0;"],
+      ["another", "margin-top: 0;"],
+      ["an inset", "top: 0;"],
+      ["beside a variable", "padding-left: $.space.gutter.normal; top: 0;"],
+    ])("%s takes a bare zero", (_what, css) => {
+      expect(withBoth(CONFIG, `export const a = <div css={@@( ${css} )}>x</div>;\n`)).not.toContain("problem");
+    });
+
+    test("and a length written out is still refused, which is the whole setting", () => {
+      const output = withBoth(CONFIG, `export const b = <div css={@@( padding-left: 8px; )}>x</div>;\n`);
+
+      expect(output).toContain("problem");
+    });
+
+    /** A zero is dimensionless; a number this project wants from a variable is not. */
+    test("a variables-only NUMBER still refuses a written-out zero", () => {
+      const config = CONFIG.replace('variablesOnly: ["length"]', 'variablesOnly: ["number"]').replace(
+        'kind("length", { gutter: { normal: "16px" } })',
+        'kind("number", { weight: { bold: 700 } })',
+      );
+      const output = withBoth(config, `export const c = <div css={@@( flex-grow: 0; )}>x</div>;\n`);
+
+      expect(output).toContain("problem");
+    });
+  });
 });

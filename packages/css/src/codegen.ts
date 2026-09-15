@@ -467,6 +467,31 @@ function propertyMap(rules: PropertyRules | undefined, variablesOnly: readonly s
      */
     const ranged = ruleFor(rules, property).units === undefined ? "" : `, ${value}`;
 
+    /**
+     * What a variables-only property still takes BESIDE its variables, per primitive.
+     *
+     * `currentcolor` for a colour: it is in the `<color>` grammar's own word list and is filtered
+     * out of the keywords as "a value the value type already covers", but it is not a colour
+     * anybody hardcoded — it is a reference to the inherited one, and refusing it would be refusing
+     * an escape hatch CSS itself provides.
+     *
+     * **A bare `0` wherever the value is a dimension**, and that is a fault this review found.
+     * Measured, `variablesOnly: ["length"]` refused `padding-left: 0` — the most common declaration
+     * in CSS — with `Narrowed<never, Token<…>>`. A zero length needs no unit in CSS, `CssDimension`
+     * holds `0 | "0"` for that reason, and a project saying *lengths come from variables* is not
+     * asking for `$.space.none`. The dimensionless zero went out with the literals because the two
+     * lived in one type.
+     *
+     * Both spellings, because a block is CSS and `padding-left: 0` arrives as the string `"0"`,
+     * while a hole can hand over the number.
+     *
+     * Not for `<number>` or `<integer>`: a zero there is a number written out, which is exactly what
+     * the setting is refusing.
+     *
+     * It goes in the VALUE slot, not beside the keywords: `Narrowed<K extends string, V>` constrains
+     * its first parameter to `string`, and `0` is a number — measured, `TS2344` on every row.
+     */
+    const zero = onlyVariables && value.includes("CssDimension") ? ` | 0 | "0"` : "";
     const kept = onlyVariables
       ? primitive === "color"
         ? `${head === "never" ? "" : `${head} | `}"currentcolor"`
@@ -476,7 +501,7 @@ function propertyMap(rules: PropertyRules | undefined, variablesOnly: readonly s
 
     rows.push(
       `  /** \`${property}\` — ${narrow.said}${onlyVariables ? ", and only as one of this project's variables" : ", and this project's variables of that kind"}. */\n` +
-        `  ${JSON.stringify(property)}: Narrowed<${kept}, ${literals}Token<${kinds}${ranged}>${several}>;`,
+        `  ${JSON.stringify(property)}: Narrowed<${kept}, ${literals}Token<${kinds}${ranged}>${several}${zero}>;`,
     );
   }
 
