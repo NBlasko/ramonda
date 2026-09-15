@@ -360,6 +360,14 @@ describe("the project's config", () => {
       expect(refused(body)).not.toThrow();
     });
 
+    test.each([
+      ["a string", `{ properties: "padding" }`],
+      ["a list", `{ properties: ["padding"] }`],
+      ["null", `{ properties: null }`],
+    ])("`properties` as %s is refused, naming the shape it takes", (_what, body) => {
+      expect(refused(body)).toThrow(/takes a map keyed by property/);
+    });
+
     test("a `properties` key wrapped in angle brackets that is not a kind is refused", () => {
       expect(refused(`{ properties: { "<lenght>": { variablesOnly: true } } }`)).toThrow(/Did you mean `<length>`/);
     });
