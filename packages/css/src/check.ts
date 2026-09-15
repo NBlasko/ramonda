@@ -307,6 +307,22 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
     css.filter((finding) => finding.code === "unknown-variable").map((finding) => `${finding.file}:${finding.line}`),
   );
 
+  /**
+   * A LINE where a literal was refused by `variablesOnly`, so the compiler's word about it goes.
+   *
+   * Both machineries speak here, and both must: the TYPE is what an editor squiggles as you type,
+   * and the RULE is the only one the BUILD runs — vite and esbuild never type-check a block. What
+   * an author must not get is the pair, and measured they did: twelve reports for six faults.
+   *
+   * Ours is kept. `Narrowed<never, 0 | "0" | Token<"length" | "percentage" | …>>` names neither the
+   * project, nor `ramonda.css.ts`, nor the way out; the rule names all three. By line for the same
+   * reason as above — the two land at different columns by construction, ours on the value and the
+   * compiler's on the property.
+   */
+  const literalRefused = new Set(
+    css.filter((finding) => finding.code === "literal-not-allowed").map((finding) => `${finding.file}:${finding.line}`),
+  );
+
   const kept = types.filter((finding) => {
     if (finding.code === 2353 && said.has(at(finding))) return false;
     if (finding.code === 2322 && finding.message.startsWith("Type 'CssValue' is not assignable")) {
@@ -315,6 +331,7 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
     if (finding.code === 2551 || finding.code === 2339 || finding.code === 2322) {
       if (pathRefused.has(`${finding.file}:${finding.line}`)) return false;
     }
+    if (finding.code === 2322 && literalRefused.has(`${finding.file}:${finding.line}`)) return false;
     return true;
   });
 

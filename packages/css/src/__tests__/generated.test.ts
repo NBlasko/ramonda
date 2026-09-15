@@ -5,6 +5,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
+import { readBlock } from "../compiler/read";
+import { checkBlock } from "../compiler/rules";
+import { findBlocks } from "../compiler/scan";
 import { writeGenerated } from "../generate";
 import { builtFromThisSource } from "./built";
 
@@ -916,6 +919,34 @@ export default {
       const output = withBoth(CONFIG, `export const a = <div css={@@( ${css} )}>x</div>;\n`);
 
       expect(output.includes("problem")).toBe(refused);
+    });
+
+    /**
+     * One report per fault, and it is OURS — the sentence, not `Narrowed<never, Token<…>>`.
+     *
+     * Both machineries speak here and both must. The TYPE is what an editor squiggles as you type;
+     * the RULE is the only one the BUILD runs, since vite and esbuild never type-check a block.
+     * Measured before this: twelve reports for six faults, and the compiler's was the worse one.
+     */
+    test("a refused literal is reported once, by the rule that names the project", () => {
+      const output = withBoth(CONFIG, `export const a = <div css={@@( padding-left: 8px; )}>x</div>;\n`);
+
+      expect(output).toMatch(/1 problem\(s\)/);
+      expect(output).toContain("literal-not-allowed");
+      expect(output).toContain("ramonda.css.ts");
+      expect(output).not.toContain("TS2322");
+    });
+
+    /** And the build alone — which runs no TypeScript at all — still catches it. */
+    test("the rules alone catch it, which is all the build ever runs", () => {
+      const source = `<div css={@@(\n  padding-left: 8px;\n)}>x</div>`;
+      const [site] = findBlocks(source);
+      const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+      const found = checkBlock(read.block, {
+        config: { properties: { "<length>": { variablesOnly: true } } },
+      });
+
+      expect(found.map((one) => one.rule)).toEqual(["literal-not-allowed"]);
     });
 
     /** A colour reaches composite shorthands no type describes, which is the rule's half. */

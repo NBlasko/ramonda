@@ -2394,3 +2394,49 @@ is no type of ours to name.
 `range: ["16px"]` is a range that happens to hold one value, and setting the variable to it is a
 thing the project said it may do. `Fixed<V> = V & {…}`, so a marked token is still a token
 everywhere else — it goes into a block, and into a property narrowed to its own value, unchanged.
+
+### 8. `variablesOnly` did not reach the BUILD at all — FIXED
+
+Chasing the bad message found a hole, not a wording problem. The types refused `padding-left: 8px`
+and the RULE said nothing, which read as a division of labour — *one mechanism per property, never
+two for one*, as the rule's own note put it. Measured by asking the rules alone, which is all vite
+and esbuild ever run since neither type-checks a block:
+
+```
+padding-left: 8px       []                      the build compiled it
+width: 200px            []                      and this
+color: red              []                      and this
+border: 1px solid red   [literal-not-allowed]   only the composite was caught
+```
+
+So a project could set `variablesOnly`, watch `ramonda-css check` refuse a file, and watch the dev
+server serve it. **The repository's recurring fault once more** — one rule, three consumers, two of
+them silent.
+
+The rule speaks for every property with a kind now, and `inOrder` drops the compiler's `TS2322` on
+that line. Both machineries are needed and neither is redundant: the TYPE is what an editor squiggles
+as you type, the RULE is the only thing the build runs. What an author must not get is the pair, and
+measured they did — twelve reports for six faults.
+
+Ours is the one kept, which also closes finding 3 for this case:
+
+```
+before   TS2322: Type '"8px"' is not assignable to type
+           'Narrowed<never, 0 | "0" | Token<"length" | "percentage" | "length-percentage">>'
+
+after    literal-not-allowed: `8px` is a length or a percentage written out, and this project
+           takes them only from its own variables.
+
+           Declare it in `ramonda.css.ts` and write `$.…`, or set
+           `"padding-left": { variablesOnly: false }`.
+```
+
+**What is deliberately not a literal.** A CALL is an escape hatch and is not read into —
+`calc($.space.md * 2)` holds a `2` that is not a hardcoded length and nothing here can tell it from
+one that is. A bare `0` needs no unit in CSS. `var()` is what CSS itself provides. A HOLE evaluates
+at render.
+
+**And the top-level value walk is SHARED now.** `too-many-values` counted values inline and this
+needed the same answer; a second scanner agreeing by accident is the fault above in miniature, and
+it is the one that made `variablesOnly` mean something different in the build than in the checker.
+One walk, one answer, both callers.

@@ -1,4 +1,4 @@
-import { namesIn, variablesOnlyKinds } from "../codegen";
+import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
@@ -380,29 +380,7 @@ function tooManyValues(block: Block, rules: PropertyRules | undefined, findings:
        */
       if (item.value.some((part) => part.kind === "text" && bareColon(part.text) !== -1)) continue;
 
-      /** Top-level words: a hole counts as one, and a call's insides are not counted at all. */
-      let values = 0;
-      let depth = 0;
-      let inside = false;
-      for (const part of item.value) {
-        if (part.kind !== "text") {
-          if (!inside) values++;
-          inside = true;
-          continue;
-        }
-        for (const character of part.text) {
-          if (character === "(") depth++;
-          else if (character === ")") depth--;
-          else if (depth === 0 && /\s/.test(character)) {
-            inside = false;
-            continue;
-          } else if (depth === 0 && !inside) {
-            inside = true;
-            values++;
-          }
-        }
-      }
-
+      const values = topLevelValues(item.value).length;
       if (values <= limit.most) continue;
 
       const takes = limit.most === 1 ? "one value" : `at most ${limit.most} values`;
@@ -506,6 +484,57 @@ function missingSemicolon(block: Block, findings: Finding[]): void {
   walkItems(block.items);
 }
 
+/** One top-level value of a declaration, and where it starts. See {@link topLevelValues}. */
+interface TopLevel {
+  /** The text, or `undefined` for a HOLE — whose value is decided at render and is nobody's to read. */
+  readonly text: string | undefined;
+  readonly at: number | undefined;
+}
+
+/**
+ * A declaration's values, separated the way CSS separates them: by a space at depth zero.
+ *
+ * `calc(1rem + 2px)` and `rgb(0 0 0)` are ONE value each — the spaces inside a call belong to the
+ * call. A hole is one value too, and an opaque one: what it evaluates to is decided at render.
+ *
+ * **Shared on purpose.** `too-many-values` counted these inline and this rule needed the same
+ * answer, and a second scanner that agrees by accident is this repository's recurring fault — the
+ * one that made `variablesOnly` mean something different in the build than in the checker. One walk,
+ * one answer, both callers.
+ */
+function topLevelValues(parts: readonly ValuePart[]): TopLevel[] {
+  const out: TopLevel[] = [];
+  let depth = 0;
+  let open: { text: string; at: number | undefined } | undefined;
+
+  const close = (): void => {
+    if (open !== undefined) out.push(open);
+    open = undefined;
+  };
+
+  for (const part of parts) {
+    if (part.kind !== "text") {
+      // A hole glued to text is part of that value; on its own it is a value of its own.
+      if (open === undefined) out.push({ text: undefined, at: undefined });
+      else open = { text: `${open.text}\u0000`, at: open.at };
+      continue;
+    }
+    for (const [index, character] of [...part.text].entries()) {
+      if (character === "(") depth++;
+      else if (character === ")") depth--;
+
+      if (depth === 0 && /\s/.test(character)) {
+        close();
+        continue;
+      }
+      if (open === undefined) open = { text: character, at: part.at === undefined ? undefined : part.at + index };
+      else open = { text: open.text + character, at: open.at };
+    }
+  }
+  close();
+  return out;
+}
+
 /** Every bare word the `<color>` grammar reaches, minus the one that is not a colour anybody wrote. */
 const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== "" && one !== "currentcolor"));
 
@@ -528,7 +557,10 @@ const HEX = /#[0-9a-fA-F]{3,8}(?![\w-])/;
  * `var()` is the escape CSS itself provides. Neither is reported.
  */
 function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
-  if (!variablesOnlyKinds(rules).includes("color")) return;
+  const kinds = variablesOnlyKinds(rules);
+  if (kinds.length === 0) return;
+  dimensionNotAllowed(block, rules, findings);
+  if (!kinds.includes("color")) return;
 
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -569,6 +601,70 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
             `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
             `own variables.\n\n        Declare it in \`ramonda.css.ts\` and write \`$.…\`, or set ` +
             `\`${JSON.stringify(property)}: { variablesOnly: false }\` beside \`"<color>"\`.`,
+        });
+        break;
+      }
+    }
+  };
+
+  walkItems(block.items);
+}
+
+/**
+ * A dimension or a number written out where the project said that kind comes from its variables.
+ *
+ * **The half the BUILD sees, and it saw nothing.** The types refused `padding-left: 8px` and the
+ * rule said nothing, which read as a division of labour and was a hole: vite and esbuild run these
+ * rules over a block and never type-check it, so a project could watch `ramonda-css check` refuse a
+ * file and watch the dev server serve it. Measured, asking the rules alone:
+ *
+ *     padding-left: 8px       []                     compiled
+ *     width: 200px            []                     compiled
+ *     border: 1px solid red   [literal-not-allowed]  only the composite was caught
+ *
+ * It also answers the message. `Narrowed<never, Token<…>>` names neither the project nor the config
+ * file; this names both, and `inOrder` drops the compiler's word where this one has spoken — the
+ * same answer `unknown-variable` got.
+ *
+ * ## What is deliberately NOT a literal
+ *
+ * A CALL is an escape hatch and is not read into: `calc($.space.md * 2)` holds a `2` that is not a
+ * hardcoded length, and nothing here can tell it from one that is. A bare `0` needs no unit in CSS
+ * and is not a value anybody reached for instead of a token. `var()` is what CSS itself provides. A
+ * HOLE evaluates at render and is nobody's to read. A keyword is not a dimension at all.
+ */
+function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+
+      const property = propertyName(item.property);
+      const primitive = PRIMITIVE[property];
+      // No kind, no answer: nothing can say what a composite property's pieces should have been.
+      // A colour inside one is `literalNotAllowed`'s, which reads the value rather than the type.
+      if (primitive === undefined || primitive === "color") continue;
+      const rule = ruleFor(rules, property);
+      if (rule.variablesOnly !== true) continue;
+
+      for (const value of topLevelValues(item.value)) {
+        const text = value.text;
+        if (text === undefined || value.at === undefined) continue;
+        if (!A_DIMENSION.test(text) && !A_NUMBER.test(text)) continue;
+        // A zero needs no unit in CSS and is not a value anybody wrote instead of reaching for one.
+        if (Number(text) === 0) continue;
+
+        findings.push({
+          rule: "literal-not-allowed",
+          at: value.at,
+          length: text.length,
+          message:
+            `\`${text}\` is ${NARROW[primitive]?.said ?? "a value"} written out, and this project takes ` +
+            `them only from its own variables.` +
+            `\n\n        Declare it in \`ramonda.css.ts\` and write \`$.…\`, or set ` +
+            `\`${JSON.stringify(property)}: { variablesOnly: false }\`.`,
         });
         break;
       }

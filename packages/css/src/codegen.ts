@@ -267,7 +267,7 @@ export interface Generated {
  *
  * `length-percentage` accepts three kinds, because a length and a percentage are each one.
  */
-const NARROW: Readonly<
+export const NARROW: Readonly<
   Record<string, { readonly value: string; readonly kinds: readonly Kind[]; readonly said: string }>
 > = {
   angle: { value: "CssDimension<CssAngleUnit>", kinds: ["angle"], said: "an angle" },
@@ -347,7 +347,7 @@ function kindsOf(property: string): readonly string[] {
  * reach `padding-left`. Sorted rather than left to object order so the answer does not depend on
  * which line somebody typed first.
  */
-function ruleFor(rules: PropertyRules | undefined, property: string): AnyRule {
+export function ruleFor(rules: PropertyRules | undefined, property: string): AnyRule {
   if (rules === undefined) return {};
 
   const sweep = (rules["*"] ?? {}) as AnyRule;

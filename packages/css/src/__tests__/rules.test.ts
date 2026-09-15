@@ -3288,3 +3288,99 @@ describe("units, by family", () => {
     expect(under({ angle: [] }, "  padding: 8px;")).toEqual([]);
   });
 });
+
+/**
+ * A literal where the project said that KIND comes from its variables — the half the build sees.
+ *
+ * The types refused `padding-left: 8px` and the RULE said nothing, which read as a division of
+ * labour and was a hole. Measured, asking the rules alone — which is all vite and esbuild ever run,
+ * since neither type-checks a block:
+ *
+ *     padding-left: 8px       []                        the build compiled it
+ *     width: 200px            []                        and this
+ *     color: red              []                        and this
+ *     border: 1px solid red   [literal-not-allowed]     only the composite was caught
+ *
+ * So a project could set `variablesOnly`, watch `ramonda-css check` refuse a file, and watch the
+ * dev server serve it. One rule, three consumers, and two of them silent — the repository's
+ * recurring fault, found once more by asking what a setting means.
+ *
+ * The rule speaks for every property now and `inOrder` drops the compiler's duplicate, which is the
+ * same answer `unknown-variable` got. It also fixes the message: `Narrowed<never, Token<…>>` names
+ * neither the project nor the config file, and this names both.
+ *
+ * **A CALL is an escape hatch and is not read into.** `calc($.space.md * 2)` has a `2` in it that is
+ * not a hardcoded length, and nothing in this rule can tell it from one that is. `var()`, a bare
+ * `0`, the CSS-wide keywords and a property's own keywords are all left alone for the same reason:
+ * none of them is a value somebody wrote out instead of reaching for a token.
+ */
+describe("a literal where the project said that kind comes from variables", () => {
+  /** Declared, because `unknown-variable` would otherwise speak about the `$` paths below. */
+  const VARIABLES = {
+    space: kind("length", { gutter: "16px" }),
+    motion: kind("time", { quick: "120ms" }),
+  };
+
+  const under = (selector: string, decl: string) =>
+    checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {
+      config: { variables: VARIABLES, properties: { [selector]: { variablesOnly: true } } },
+    }).map((one) => one.rule);
+
+  test.each([
+    ["a longhand", "padding-left: 8px"],
+    ["one reached only through the kind", "width: 200px"],
+    ["a negative length", "margin-top: -8px"],
+    ["a shorthand with several", "padding: 8px 16px"],
+    ["a percentage, which this property also takes", "padding-left: 50%"],
+  ])("%s is reported", (_what, decl) => {
+    expect(under("<length>", decl)).toEqual(["literal-not-allowed"]);
+  });
+
+  test.each([
+    ["a bare zero, which needs no unit in CSS", "padding-left: 0"],
+    ["a declared variable, which is the point", "padding-left: $.space.gutter"],
+    ["`var()`, the escape CSS itself provides", "padding-left: var(--x)"],
+    ["a CSS-wide keyword", "padding-left: inherit"],
+    ["the property's own keyword", "width: auto"],
+    ["a call, which may hold a variable and arithmetic", "padding-left: calc(100% - 8px)"],
+    ["a hole, whose value is decided at render", "padding-left: {gap}"],
+  ])("%s is silent", (_what, decl) => {
+    expect(under("<length>", decl)).toEqual([]);
+  });
+
+  test("another kind, said on its own selector", () => {
+    expect(under("<time>", "transition-duration: 200ms")).toEqual(["literal-not-allowed"]);
+    expect(under("<time>", "transition-duration: $.motion.quick")).toEqual([]);
+    // A length is not a time, and this selector said nothing about lengths.
+    expect(under("<time>", "padding-left: 8px")).toEqual([]);
+  });
+
+  test("a property exempting itself by name is left alone", () => {
+    const config: Config = {
+      properties: { "<length>": { variablesOnly: true }, "border-radius": { variablesOnly: false } },
+    };
+    const of = (decl: string) =>
+      checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
+
+    expect(of("border-radius: 4px")).toEqual([]);
+    expect(of("padding-left: 8px")).toEqual(["literal-not-allowed"]);
+  });
+
+  test("the message names the project and the way out", () => {
+    const [found] = checkBlock(readBlock(`@@(\n  padding-left: 8px;\n)`, 2, "C.tsx").block, {
+      config: { properties: { "<length>": { variablesOnly: true } } },
+    });
+
+    expect(found.message).toContain("`8px`");
+    expect(found.message).toContain("ramonda.css.ts");
+    expect(found.message).toContain("variablesOnly");
+  });
+
+  test("and with no `variablesOnly` anywhere, every one of these is silent", () => {
+    const of = (decl: string) => checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {}).map((o) => o.rule);
+
+    for (const decl of ["padding-left: 8px", "width: 200px", "transition-duration: 200ms"]) {
+      expect(of(decl)).toEqual([]);
+    }
+  });
+});
