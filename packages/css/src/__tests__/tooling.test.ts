@@ -754,14 +754,42 @@ describe("what the rule reports, the formatter writes", () => {
     "text-transform: UPPERCASE;",
   ];
 
-  test.each(spellings)("%s is reported, and formatting settles it", (written) => {
+  /**
+   * Every one of them formats to something the checker is silent about. That claim is unchanged.
+   */
+  test.each(spellings)("%s formats to something nothing reports", (written) => {
+    const formatted = formatText(`const a = @@(\n  ${written}\n);\n`, FILE, asIs);
+
+    expect(checkSource(formatted, FILE)).toEqual([]);
+  });
+
+  /**
+   * What is still REPORTED is a difference of more than case — see `onlyCase`, pass 3.
+   *
+   * `2N + 1` is not spelled `2n+1`, which is a real difference and stays a finding. Everything else
+   * in the list above differs only in case and is the formatter's alone now.
+   */
+  test.each(["&:NTH-CHILD(2N + 1) { gap: 8px; }"])("%s is reported, and formatting settles it", (written) => {
     const source = `const a = @@(\n  ${written}\n);\n`;
 
     const before = checkSource(source, FILE).filter((one) => one.rule === "non-canonical-spelling");
     expect(before.length, `nothing reported ${written}`).toBeGreaterThan(0);
+    expect(checkSource(formatText(source, FILE, asIs), FILE)).toEqual([]);
+  });
 
-    const formatted = formatText(source, FILE, asIs);
-    expect(checkSource(formatted, FILE)).toEqual([]);
+  /**
+   * **And the case-only ones are rewritten WITHOUT being reported**, which is the user's own
+   * condition for the report going: *"neka formater obavezno to resava."*
+   *
+   * This is the pairing that matters now — a rule going quiet while the formatter also went quiet
+   * would leave nothing anywhere — so it is asserted in both directions: nothing is said, and the
+   * text still changes.
+   */
+  test.each(spellings.filter((one) => !one.includes("2N")))("%s is rewritten and never reported", (written) => {
+    const source = `const a = @@(\n  ${written}\n);\n`;
+
+    expect(checkSource(source, FILE).filter((one) => one.rule === "non-canonical-spelling")).toEqual([]);
+    expect(formatText(source, FILE, asIs)).not.toContain(written);
   });
 
   /** And formatting twice is formatting once, which is what makes it safe to run on save. */

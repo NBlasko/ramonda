@@ -1414,6 +1414,54 @@ function compositionInANamedBlock(block: Block, at: string, findings: Finding[])
   walkItems(block.items);
 }
 
+/**
+ * Whether two spellings differ only in CASE — in which case nothing is reported, and the FORMATTER
+ * is what settles it.
+ *
+ * Found in review pass 3, by asking what the checker says about correct CSS: it reported
+ * `color: currentColor`, the spelling MDN documents and very nearly everybody writes. Every rule is
+ * an error, so that is a failed build. The forty `<system-color>` names went with it — `Canvas`,
+ * `ButtonFace`, `AccentColor` — each spelled here exactly as the specification prints them.
+ *
+ * ## What the rest of the ecosystem does, measured
+ *
+ * `csstype` is the shared type behind emotion, styled-components, vanilla-extract and StyleX, and
+ * its colour is:
+ *
+ *     type Color = ColorBase | SystemColor | DeprecatedSystemColor | "currentColor" | (string & {});
+ *
+ * It lists `currentColor` in capitals outright, keeps the spec's case for the system colours, and
+ * ends with an escape hatch that admits any string — 529 of those in the file. So none of them can
+ * report a case at all. We were the only tool failing a build on it.
+ *
+ * ## The canonical form does NOT change
+ *
+ * `keywords CSS spells with capitals` measured Chrome: `ButtonText` in, `"buttontext"` out, and the
+ * same for `currentColor`. Lower case is what the browser does to the value anyway, so it stays
+ * what the normaliser writes and what the class is built from.
+ *
+ * ## Why the REPORT goes, and it is not that the ecosystem is laxer
+ *
+ * The rule's own justification is *one spelling is what lets two blocks agree on one class* — and
+ * measured, `canonicalValue` gives the same string for either case already. Identity never depended
+ * on the author being told.
+ *
+ * And the refusal was never argued for. The note above `a keyword written in capitals` says *the
+ * verdict does not change — it is still refused — but the REASON becomes true*: the verdict was
+ * carried over from when this was `unknown-value`, which was a false report. Nobody decided that
+ * correct CSS should fail a build; it was inherited from a bug.
+ *
+ * **`ramonda-css format` still rewrites every one of them**, which is the user's own condition for
+ * this — *"neka formater obavezno to resava"* — and `toolingCli.test.ts` holds it to that through
+ * the real biome, on a value, a pseudo-class, an at-rule name and a media feature at once.
+ *
+ * A difference that is MORE than case is still reported, because it is a real one: `&:before` is a
+ * pseudo-element written with a pseudo-class's colon, and `2n + 1` is not spelled `2n+1`.
+ */
+function onlyCase(written: string, canonical: string): boolean {
+  return written.toLowerCase() === canonical.toLowerCase();
+}
+
 function spelling(block: Block, findings: Finding[]): void {
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -1423,7 +1471,7 @@ function spelling(block: Block, findings: Finding[]): void {
 
       const written = item.prelude.trim();
       const canonical = canonicalPrelude(written);
-      if (canonical === written) continue;
+      if (canonical === written || onlyCase(written, canonical)) continue;
 
       findings.push({
         rule: "non-canonical-spelling",
@@ -2015,12 +2063,15 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
     : undefined;
   if (written === undefined) return;
 
+  const canonical = canonicalValue(item.property, written);
+  if (onlyCase(written, canonical)) return;
+
   findings.push({
     rule: "non-canonical-spelling",
     at: item.valueAt ?? item.at ?? 0,
     length: written.length,
     message:
-      `write this as \`${canonicalValue(item.property, written)}\` — a CSS keyword is ` +
+      `write this as \`${canonical}\` — a CSS keyword is ` +
       `case-insensitive, so the two are the same declaration, and one spelling is what lets two ` +
       `blocks writing it agree on one class. \`ramonda-css format\` fixes it.`,
   });

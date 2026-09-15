@@ -1,6 +1,6 @@
 import type { Block, BlockItem } from "./ast";
 import { nameFor } from "./dollar";
-import { HOLE, collapse, propertyName } from "./normalise";
+import { HOLE, canonicalValue, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, SHORTHANDS } from "./keywords.generated";
 import { widthSlot } from "../conditions";
 import { CONDITION, SPREAD, holeIn } from "./read";
@@ -362,7 +362,27 @@ function declarationOf(
     holes.push(part.index);
   }
 
-  const canonical = `${property}:${collapse(value)};`;
+  /**
+   * The value's KEYWORD CASE is folded here too, because the class name is built from this.
+   *
+   * `normalise.ts` has folded it since it was written, and this built its own text and never called
+   * the same function. Measured through the real transform:
+   *
+   *     color: currentColor;   ->  r-c-currentColor
+   *     color: currentcolor;   ->  r-c-currentcolor
+   *
+   * Two atomic classes with identical CSS, and two hashes with them, because `identity` below is
+   * built from this string. One question — what is this value, canonically — answered in two places,
+   * and only the one nobody looked at reached the class.
+   *
+   * Reported by the user while the case REPORT was being dropped: *"da nemamo razlicit hash i
+   * atomske klase."* The report never protected this; it was a live fault beside it.
+   *
+   * `canonicalValue` folds a word only where the fold names a keyword the property HAS, so a font
+   * family, a custom property's value and a grid-area name keep the case the author gave them —
+   * asserted, because folding those would make two different values one class.
+   */
+  const canonical = `${property}:${canonicalValue(property, collapse(value))};`;
   const sorted = mayBeSorted(conditions) ? [...conditions].sort() : [...conditions];
 
   /**

@@ -138,6 +138,42 @@ describe("format", () => {
   });
 
   /**
+   * A keyword's CASE is the formatter's now, and this is what holds it to that.
+   *
+   * Review pass 3 dropped the case REPORT: `color: currentColor` — the spelling MDN documents — was
+   * failing the build, and `csstype`, the shared type behind emotion, styled-components,
+   * vanilla-extract and StyleX, reports no case at all. The user's condition for dropping it was
+   * exactly this: *"neka formater obavezno to resava."*
+   *
+   * So it is asserted through the REAL biome, on all four shapes at once — a value, a pseudo-class,
+   * an at-rule name and a media feature — because a rule going quiet while the formatter also went
+   * quiet would leave nothing anywhere.
+   */
+  test("the formatter lowers a keyword's case, which is what makes the rule's silence safe", () => {
+    const root = project({
+      "Card.tsx":
+        `export const a = <div css={@@(\n` +
+        `  color: currentColor;\n` +
+        `  background-color: Canvas;\n` +
+        `  display: FLEX;\n` +
+        `  &:HOVER { color: RED; }\n` +
+        `  @MEDIA (MIN-WIDTH: 40rem) { gap: 8px; }\n` +
+        `)}>x</div>;\n`,
+    });
+
+    run(root, ["format", "src/Card.tsx"]);
+    const out = readFileSync(join(root, "src", "Card.tsx"), "utf8");
+
+    expect(out).toContain("color: currentcolor;");
+    expect(out).toContain("background-color: canvas;");
+    expect(out).toContain("display: flex;");
+    expect(out).toContain("&:hover {");
+    expect(out).toContain("@media (min-width: 40rem) {");
+    // Nothing of the author's own case is touched — a font name is not a keyword.
+    expect(out).not.toContain("CurrentColor");
+  });
+
+  /**
    * The question that decides whether this is worth having. The project asks for four spaces; this
    * repository asks for two. A wrapper that lost the project's settings would answer with two.
    */

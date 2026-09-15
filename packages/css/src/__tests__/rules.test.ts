@@ -7,7 +7,9 @@ import { nearest } from "../compiler/rules";
 import { checkSource } from "../compiler/source";
 import { namedSites, syntaxesIn } from "../compiler/references";
 import { type Finding, checkBlock, checkText } from "../compiler/rules";
+import { canonicalValue } from "../compiler/normalise";
 import { findBlocks } from "../compiler/scan";
+import { transform } from "../compiler/transform";
 
 /**
  * The CSS checker: the faults the types deliberately cannot catch.
@@ -2118,18 +2120,31 @@ describe("valid CSS these rules must not report", () => {
  */
 describe("a spelling that is the same CSS and a different class", () => {
   test.each([
-    ["a pseudo-class in capitals", "  &:HOVER { color: red; }", "&:hover"],
     ["a legacy pseudo-element", '  &:before { content: ""; }', "&::before"],
-    ["an at-rule name in capitals", "  @MEDIA print { color: red; }", "@media print"],
-    ["a feature name in capitals", "  @media (MIN-WIDTH: 40rem) { color: red; }", "min-width"],
     ["no space after a feature's colon", "  @media (min-width:40rem) { color: red; }", "min-width: 40rem"],
-    ["a media type in capitals", "  @media PRINT { color: red; }", "@media print"],
     ["a supports declaration", "  @supports (display:grid) { color: red; }", "display: grid"],
   ])("%s is reported, with the spelling to use", (_what, css, expected) => {
     const found = rules(css);
 
     expect(found).toEqual(["non-canonical-spelling"]);
     expect(messages(css)[0]).toContain(expected);
+  });
+
+  /**
+   * A difference of CASE ALONE is not reported — see `onlyCase`, and the formatter still fixes it.
+   *
+   * These four were reported until review pass 3 measured what that cost: `color: currentColor` —
+   * the spelling MDN documents — failed the build, and every rule is an error. The formatter half is
+   * unchanged and is what carries the guarantee now; `toolingCli.test.ts` holds it to that through
+   * the real biome, on all four shapes at once.
+   */
+  test.each([
+    ["a pseudo-class in capitals", "  &:HOVER { color: red; }"],
+    ["an at-rule name in capitals", "  @MEDIA print { color: red; }"],
+    ["a feature name in capitals", "  @media (MIN-WIDTH: 40rem) { color: red; }"],
+    ["a media type in capitals", "  @media PRINT { color: red; }"],
+  ])("%s says nothing, because case alone is the formatter's", (_what, css) => {
+    expect(rules(css)).toEqual([]);
   });
 
   test.each([
@@ -2585,26 +2600,35 @@ describe("a swapped pair of letters", () => {
  * own words above the line that canonicalises a prelude.
  */
 describe("a keyword written in capitals", () => {
+  /**
+   * **And it is not reported at all now** — see `onlyCase`, decided in review pass 3.
+   *
+   * The finding above stands and was the right half of the answer: saying a keyword in capitals
+   * DOES NOT EXIST is a lie. What it kept was the verdict, and its own note says why: *the verdict
+   * does not change — it is still refused — but the REASON becomes true.* The refusal was inherited
+   * from the false report, not argued for.
+   *
+   * Measured in pass 3: `color: currentColor` — the spelling MDN documents — failed the build, and
+   * `csstype`, the shared type behind emotion, styled-components, vanilla-extract and StyleX, lists
+   * `"currentColor"` outright and ends its colour with `(string & {})`, so none of them reports a
+   * case at all.
+   *
+   * The FORMATTER still rewrites every one of these, which is the user's own condition, and
+   * `case and the atomic class` below holds the part that actually mattered: one class either way.
+   */
   test.each([
     ["color", "RED"],
     ["display", "FLEX"],
     ["background-image", "NONE"],
     ["overflow", "Hidden"],
     ["text-transform", "UPPERCASE"],
-  ])("%s: %s is the same CSS, not a value that does not exist", (property, value) => {
-    const found = checkNamedFree(`${property}: ${value};`);
-
-    expect(found).toHaveLength(1);
-    expect(found[0].rule).toBe("non-canonical-spelling");
-    expect(found[0].message).toContain(value.toLowerCase());
+  ])("%s: %s is the same CSS, and is left alone", (property, value) => {
+    expect(checkNamedFree(`${property}: ${value};`)).toEqual([]);
   });
 
   /** Every word in the value, because a shorthand carries several. */
-  test("a shorthand's keywords are all named", () => {
-    const [found] = checkNamedFree("flex-flow: ROW WRAP;");
-
-    expect(found.rule).toBe("non-canonical-spelling");
-    expect(found.message).toContain("row wrap");
+  test("a shorthand's keywords are all left alone", () => {
+    expect(checkNamedFree("flex-flow: ROW WRAP;")).toEqual([]);
   });
 
   /** And a value that really is wrong is still wrong, whatever its case. */
@@ -2970,15 +2994,18 @@ describe("keywords CSS spells with capitals", () => {
     expect(rules("background-color: currentcolor;")).toEqual([]);
   });
 
-  test("a system colour is accepted, and lower case is canonical because the ENGINE says so", () => {
+  test("a system colour is accepted in either case, and lower case is still canonical", () => {
     expect(rules("color: buttontext;")).toEqual([]);
     expect(rules("background-color: canvas;")).toEqual([]);
 
     // Chrome round-trips every one of these to lower case — `ButtonText` in, `"buttontext"` out,
-    // and the same for `currentColor` and even `Red`. So the table folds case and this rule agrees
-    // with what the browser will do to the value anyway, rather than with how a spec prints it.
-    expect(rules("color: ButtonText;")).toEqual(["non-canonical-spelling"]);
-    expect(messages("color: ButtonText;")[0]).toContain("buttontext");
+    // and the same for `currentColor` and even `Red`. So the table folds case and the NORMALISER
+    // agrees with what the browser will do to the value anyway, rather than with how a spec prints
+    // it. What changed in pass 3 is only that the case is no longer REPORTED: the spec spells these
+    // `ButtonText` and `Canvas`, and failing a build on the documented spelling is the fault that
+    // finding was about. `case and the atomic class` holds the guarantee that matters.
+    expect(rules("color: ButtonText;")).toEqual([]);
+    expect(canonicalValue("color", " ButtonText").trim()).toBe("buttontext");
   });
 
   test("the truncated prefix is NOT a keyword, which is the half a fix could leave behind", () => {
@@ -3481,5 +3508,55 @@ describe("a literal that reached the page anyway", () => {
       checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {}).map((one) => one.rule);
 
     for (const decl of ["color: red", "--own: red", "--gap: 8px"]) expect(plain(decl)).toEqual([]);
+  });
+});
+
+/**
+ * A keyword's CASE must not change the atomic class — and it did.
+ *
+ * The user asked for exactly this when the case REPORT was being dropped: *"potrudi se da pri buildu
+ * opet bude lower case ili sta vec, da nemamo razlicit hash i atomske klase."* Measured through the
+ * real transform, before any of it:
+ *
+ *     color: currentColor;   ->  r-c-currentColor
+ *     color: currentcolor;   ->  r-c-currentcolor
+ *
+ * Two atomic classes, identical CSS, shipped side by side. And the hash differs with them, because
+ * `identity` is built from the same text.
+ *
+ * **It was a live fault already**, not something the report was holding back — the report never
+ * touched the build. `normalise.ts` folds a value's case through `canonicalValue`; `flatten.ts`
+ * built its own canonical as `` `${property}:${collapse(value)};` `` and never called it. One
+ * question, two answers, and only the one nobody looked at reached the class name.
+ */
+describe("case and the atomic class", () => {
+  const classesOf = (css: string) => {
+    const result = transform(`const a = <div css={@@(${css})}>x</div>;`, { filename: "C.tsx" });
+    return [...(result?.code ?? "").matchAll(/"(r-[^"]+)"/g)].map((one) => one[1]);
+  };
+
+  test.each([
+    ["a colour keyword", " color: currentColor; ", " color: currentcolor; "],
+    ["a system colour", " background-color: Canvas; ", " background-color: canvas; "],
+    ["an ordinary keyword", " display: FLEX; ", " display: flex; "],
+    ["a shorthand's words", " flex-flow: ROW WRAP; ", " flex-flow: row wrap; "],
+    ["several at once", " color: RED; overflow: Hidden; ", " color: red; overflow: hidden; "],
+  ])("%s gives one class whichever case is written", (_what, written, lowered) => {
+    expect(classesOf(written)).toEqual(classesOf(lowered));
+  });
+
+  test("and the emitted CSS is the same text, not merely the same name", () => {
+    const of = (css: string) => transform(`const a = <div css={@@(${css})}>x</div>;`, { filename: "C.tsx" });
+
+    expect(of(" color: currentColor; ")?.code).toBe(of(" color: currentcolor; ")?.code);
+  });
+
+  /** A value whose case the author OWNS is untouched — a font name is not a keyword. */
+  test.each([
+    ["a font family", " font-family: My Font; ", " font-family: my font; "],
+    ["a custom property's value", " --Brand: Blue; ", " --brand: blue; "],
+    ["a grid area name", " grid-area: Header; ", " grid-area: header; "],
+  ])("%s keeps the author's case, so these stay two classes", (_what, written, lowered) => {
+    expect(classesOf(written)).not.toEqual(classesOf(lowered));
   });
 });
