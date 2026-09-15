@@ -418,10 +418,37 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
   }
   const gone = new Set(removed);
 
+  /**
+   * The properties a closed list could reach — asked per PROPERTY, like every other setting.
+   *
+   * This walked the config's own KEYS, which was invisible while the only keys were property names
+   * and `"*"`. A kind selector broke it three ways at once: `"<time>": { values: [...] }` emitted a
+   * row literally named `"<time>"` and constrained nothing, `"*"` was skipped and so did nothing
+   * silently, and a property with `values` beside `variablesOnly` never consulted the second.
+   *
+   * A name is itself; a kind selector is every property of that kind. `"*"` carrying a closed list
+   * is refused in the config, because a list of permitted values for all 935 properties is not a
+   * thing anybody means — and doing nothing about it quietly was the worse of the two answers.
+   */
+  const candidates = new Set<string>();
+  for (const key of Object.keys(rules ?? {})) {
+    const kind = /^<(.+)>$/.exec(key);
+    if (key === "*") continue;
+    if (kind === null) {
+      candidates.add(key);
+      continue;
+    }
+    if ((rules?.[key as keyof PropertyRules] as AnyRule | undefined)?.values === undefined) continue;
+    for (const property of Object.keys(PRIMITIVE)) {
+      if (kindsOf(property).includes(kind[1])) candidates.add(property);
+    }
+  }
+
   /** A closed list is that list, whatever CSS would otherwise allow here. */
-  for (const [property, rule] of Object.entries(rules ?? {})) {
-    if (property === "*" || gone.has(property)) continue;
-    const values = (rule as AnyRule).values;
+  for (const property of candidates) {
+    if (gone.has(property)) continue;
+    const rule = ruleFor(rules, property);
+    const values = rule.values;
     if (values === undefined) continue;
 
     closed.push(property);
@@ -450,9 +477,26 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     const token = kinds === undefined ? "" : ` | Token<${kinds}, ${permitted.join(" | ")}>`;
     if (kinds !== undefined) uses.add("Token");
 
+    /**
+     * `variablesOnly` removes the LITERAL spelling and nothing else — the list still binds.
+     *
+     * The user's own words, and they settle what the setting means: *"variabla takodje mora da
+     * postuje range. Ako im se ne svidja, pa onda prosiri range."* A variable is checked against
+     * the list by its declared value, through `Token<kind, permitted>`, so this is not a way around
+     * a range. It is the same list with one spelling of it taken away.
+     *
+     * A property with no kind cannot express that — nothing can check a variable into it — so the
+     * literals stay rather than the property being narrowed to nothing a person could write.
+     */
+    const onlyVariables = rule.variablesOnly === true && kinds !== undefined;
+    const written = onlyVariables ? "" : `${permitted.join(" | ")}`;
+    const said = onlyVariables
+      ? `only the ${values.length} value(s) this project permits, and only as one of its variables`
+      : `only the ${values.length} value(s) this project permits`;
+
     rows.push(
-      `  /** \`${property}\` — only the ${values.length} value(s) this project permits. */\n` +
-        `  ${JSON.stringify(property)}: ${permitted.join(" | ")}${token} | CssGlobal | \`var(\${string})\`;`,
+      `  /** \`${property}\` — ${said}. */\n` +
+        `  ${JSON.stringify(property)}: ${written}${written === "" ? token.slice(3) : token} | CssGlobal | \`var(\${string})\`;`,
     );
   }
   const said = new Set(closed);

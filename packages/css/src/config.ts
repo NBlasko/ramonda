@@ -722,6 +722,21 @@ function validate(config: Record<string, unknown>, path: string): void {
       refuse(`sets \`properties\` to ${describe(properties)}. It takes a map keyed by property.`);
     }
     for (const key of Object.keys(properties as Record<string, unknown>)) {
+      /**
+       * A closed list on the SWEEP, refused rather than quietly doing nothing.
+       *
+       * `"*": { values: [...] }` is expressible and meant nothing: a list of permitted values for
+       * all 935 properties is not a thing anybody intends, and the one property it would be right
+       * for is named. It was silently skipped until a review asked what it did.
+       */
+      if (key === "*" && (properties as Record<string, { values?: unknown }>)[key]?.values !== undefined) {
+        refuse(
+          'sets `values` on `"*"`, which cannot mean anything — a closed list of permitted values ' +
+            "belongs to ONE property, or to a kind:\n\n" +
+            '        "z-index": { values: [0, 1, 10] },\n' +
+            '        "<time>": { values: ["120ms", "400ms"] },',
+        );
+      }
       const kind = /^<(.+)>$/.exec(key);
       if (kind === null) continue;
       if (!KINDS.includes(kind[1] as never)) {

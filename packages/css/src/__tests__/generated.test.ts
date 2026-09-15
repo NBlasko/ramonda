@@ -961,5 +961,81 @@ export default {
         "problem",
       );
     });
+
+    /**
+     * A closed `values` list, asked per PROPERTY rather than per config key.
+     *
+     * The branch that writes a closed list walked `Object.entries(rules)` — the keys somebody typed —
+     * while every other setting asks `ruleFor(property)`. That was invisible while the only keys were
+     * property names and `"*"`. Three faults fell out of it the moment a user asked what
+     * `variablesOnly` means beside a range:
+     *
+     *     values + variablesOnly      the literal went in anyway; `variablesOnly` was never consulted
+     *     "<time>": { values: [...] } emitted a row literally NAMED `"<time>"`, constraining nothing
+     *     "*": { values: [...] }      silently did nothing at all
+     *
+     * The user's own position settled the first, and it was already the behaviour everywhere else:
+     * *"variabla takodje mora da postuje range. Ako im se ne svidja, pa onda prosiri range."* A
+     * variable is checked against the list by its declared value — `Token<kind, permitted>` — so
+     * `variablesOnly` only ever removes the LITERAL spelling. It is not a way around a range.
+     */
+    describe("a closed list, and what a variable owes it", () => {
+      const CONFIG = `import { kind } from "@ramonda/css/config";
+export default {
+  variables: { s: kind("length", { ok: "8px", big: "30px" }) },
+  properties: { "padding-left": { values: ["4px", "8px"] } },
+};
+`;
+
+      test.each([
+        ["a value from the list", "padding-left: 8px;", false],
+        ["one outside it", "padding-left: 12px;", true],
+        ["a variable whose value is in the list", "padding-left: $.s.ok;", false],
+        ["a variable whose value is NOT", "padding-left: $.s.big;", true],
+      ])("%s", (_what, css, refused) => {
+        expect(withBoth(CONFIG, `export const a = <div css={@@( ${css} )}>x</div>;\n`).includes("problem")).toBe(
+          refused,
+        );
+      });
+
+      /** `variablesOnly` removes the literal spelling and nothing else. The range still binds. */
+      test.each([
+        ["the literal, which the list permits but the project does not write", "padding-left: 8px;", true],
+        ["the variable, whose value the list permits", "padding-left: $.s.ok;", false],
+        ["the variable whose value it does not", "padding-left: $.s.big;", true],
+      ])("with `variablesOnly` beside the list: %s", (_what, css, refused) => {
+        const config = CONFIG.replace('{ values: ["4px", "8px"] }', '{ values: ["4px", "8px"], variablesOnly: true }');
+
+        expect(withBoth(config, `export const a = <div css={@@( ${css} )}>x</div>;\n`).includes("problem")).toBe(
+          refused,
+        );
+      });
+
+      test("a closed list said on a KIND reaches every property of that kind", () => {
+        const config = `export default { properties: { "<time>": { values: ["120ms", "400ms"] } } };\n`;
+
+        expect(withBoth(config, `export const a = <div css={@@( transition-duration: 300ms; )}>x</div>;\n`)).toContain(
+          "problem",
+        );
+        expect(
+          withBoth(config, `export const b = <div css={@@( transition-duration: 120ms; )}>x</div>;\n`),
+        ).not.toContain("problem");
+      });
+
+      /** And it must not leave a row named after the selector, which is not a property. */
+      test("and writes no property called `<time>`", () => {
+        const root = mkdtempSync(join(tmpdir(), "ramonda-closed-"));
+        projects.push(root);
+        symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+        writeFileSync(join(root, "package.json"), JSON.stringify({ name: "probe", type: "module", version: "0.0.0" }));
+        writeFileSync(
+          join(root, "ramonda.css.ts"),
+          `export default { properties: { "<time>": { values: ["120ms"] } } };\n`,
+        );
+        writeGenerated(root, ts);
+
+        expect(readFileSync(join(root, "ramonda.css.generated.ts"), "utf8")).not.toContain('"<time>":');
+      });
+    });
   });
 });

@@ -2297,3 +2297,45 @@ You declared `$.space.sm` with exactly this value.
 
 So the work is the same either way, and generating leaves the config one key smaller. `reason` goes
 back on the table only if a project wants a sentence we cannot derive.
+
+### 6. What `variablesOnly` MEANS, and the three faults the question exposed
+
+The user asked it plainly, and it is the right question to ask of a setting with two neighbours:
+*"sta znaci variablesOnly? Da samo variable smes da pises za taj property ili su variable nacin da
+zaobidjes range vrednosti za taj property?"*
+
+**It removes the LITERAL spelling and nothing else.** A variable is still checked against the range,
+by its declared value. Their own position — *"variabla takodje mora da postuje range. Ako im se ne
+svidja, pa onda prosiri range."* — was already the behaviour, and measured:
+
+```
+"padding-left": { values: ["4px", "8px"] }
+
+padding-left: 12px      refused    a literal outside the list
+padding-left: $.s.ok    accepted   declared 8px, which the list permits
+padding-left: $.s.big   refused    declared 30px, which it does not
+```
+
+So `variablesOnly` is not a way around a range. It is the same range with one spelling taken away.
+
+**But asking the question found three faults, all one root cause.** The branch that writes a closed
+list walked `Object.entries(rules)` — the keys somebody typed — while every other setting asks
+`ruleFor(property)`. Invisible while the only keys were property names and `"*"`; the kind selector
+broke it three ways at once:
+
+```
+values + variablesOnly        the literal went in anyway — `variablesOnly` was never consulted
+"<time>": { values: [...] }   emitted a row literally NAMED `"<time>"`, constraining nothing
+"*": { values: [...] }        silently did nothing at all, and had since before the selector
+```
+
+The third is the oldest and was never noticed. It is refused now, naming the two places a closed
+list belongs, because a list of permitted values for all 935 properties is not a thing anybody
+means and doing nothing about it quietly was the worse of the two answers.
+
+**This is the repository's recurring fault in its clearest form yet** — one rule, many consumers,
+and one of them asking a different question. Every other setting asks per property; this one asked
+per config key, and agreed with the others only by accident of which keys existed.
+
+A property with NO kind keeps its literals under `variablesOnly`, because nothing can check a
+variable into it: narrowing it to a token it cannot have would leave nothing a person could write.

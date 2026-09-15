@@ -289,6 +289,15 @@ describe("the project's config", () => {
       expect(thrown).toThrow(/"<length>": \{ variablesOnly: true \}/);
     });
 
+    /** A closed list for all 935 properties is not a thing anybody means, and it did nothing. */
+    test("a closed list on the sweep is refused, naming the two places it belongs", () => {
+      const thrown = refused(`{ properties: { "*": { values: ["red"] } } }`);
+
+      expect(thrown).toThrow(/cannot mean anything/);
+      expect(thrown).toThrow(/"z-index": \{ values/);
+      expect(thrown).toThrow(/"<time>": \{ values/);
+    });
+
     test("a `properties` key wrapped in angle brackets that is not a kind is refused", () => {
       expect(refused(`{ properties: { "<lenght>": { variablesOnly: true } } }`)).toThrow(/Did you mean `<length>`/);
     });
