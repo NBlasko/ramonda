@@ -1,5 +1,15 @@
 # Ramonda CSS
 
+## 0.1.5
+
+- **`$.color.primary.main` is coloured as a variable inside a block.** A declared variable is written
+  as a path in `@@( … )` and was coloured as whatever its segments looked like — a property name, a
+  keyword, plain text. It is one token now, with its own scope `ramonda.css-variable`, so a theme
+  colours the whole path as the one thing it is.
+
+  Checked against what the formatters do rather than assumed: neither biome nor prettier touches the
+  spelling, so the colour and the text agree after a format.
+
 ## 0.1.4
 
 - **Corrected the formatter advice, which said the wrong thing about a global setting.** It read
