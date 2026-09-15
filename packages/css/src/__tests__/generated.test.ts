@@ -772,7 +772,9 @@ export default defineConfig({
   test("a variable outside the list is refused, and the message names the VALUE", () => {
     const output = withBoth(CONFIG, `export const a = <div css={@@( letter-spacing: $.size.big; )}>x</div>;\n`);
 
-    expect(output).toMatch(/'"30px"' is not assignable/);
+    // `Fixed<…>` because this variable was declared bare — the mark that it never changes. The
+    // claim is unchanged: the message names the VALUE and the list it failed against, not the kind.
+    expect(output).toMatch(/Fixed<"30px">' is not assignable to type '"8px" \| "4px"'/);
   });
 
   /**
@@ -1035,6 +1037,86 @@ export default {
         writeGenerated(root, ts);
 
         expect(readFileSync(join(root, "ramonda.css.generated.ts"), "utf8")).not.toContain('"<time>":');
+      });
+    });
+
+    /**
+     * What `toStyle` says when a value does not suit the variable — which was `never`, twice.
+     *
+     * The user asked what `Token<"length", "16px">` shows, since an initial value is not a range. The
+     * answer is that it IS the range: a variable declared with a bare value never changes, and one
+     * declared `{ value, range }` carries the range instead. The premise was right and the design
+     * already agreed with it.
+     *
+     * **But asking exposed the message.** Measured, every refused setting came back the same way:
+     *
+     *     toStyle([[$.space.gutter, "24px"]])
+     *     TS2322: Type 'Token<"length", "16px">' is not assignable to type 'never'.
+     *     TS2322: Type 'string' is not assignable to type 'never'.
+     *
+     * Two errors, neither naming the variable, the range, or what to do. And not only for the fixed
+     * case — a variable with a real range said `never` too, so the range check worked and could not
+     * be read. `Permitted` intersected the pair with the permitted pair, and an intersection of two
+     * different literals is `never`.
+     *
+     * The message is the TYPE'S NAME now, which is the one thing TypeScript prints verbatim. It looks
+     * odd in the source and it is deliberate: this is the only channel a type has.
+     */
+    describe("what `toStyle` says when the value does not suit the variable", () => {
+      const CONFIG = `import { kind } from "@ramonda/css/config";
+export default {
+  variables: {
+    fixed: kind("length", { gutter: "16px" }),
+    themed: kind("length", { gutter: { value: "16px", range: ["8px", "16px"] } }),
+    open: kind("length", { gutter: { value: "16px", range: "any" } }),
+  },
+};
+`;
+      /** `$` needs importing here: outside a block this is ordinary TypeScript, not our grammar. */
+      const HEAD = `import { toStyle } from "@ramonda/css";\nimport { $ } from "../ramonda.css.generated";\n`;
+      const setting = (path: string, value: string) =>
+        withBoth(CONFIG, `${HEAD}export const t = toStyle([[${path}, ${JSON.stringify(value)}]]);\n`);
+
+      test("a variable declared with ONE value says so, and says what to do about it", () => {
+        const output = setting("$.fixed.gutter", "24px");
+
+        expect(output).toContain("this_variable_was_declared_with_one_value");
+        expect(output).toContain("give_it_a_range");
+        expect(output).not.toMatch(/assignable to type 'never'/);
+      });
+
+      test("one with a range names the values it may take", () => {
+        const output = setting("$.themed.gutter", "24px");
+
+        expect(output).toContain("this_variable_may_only_be");
+        expect(output).toContain('"16px"');
+        expect(output).toContain('"8px"');
+        expect(output).not.toMatch(/assignable to type 'never'/);
+      });
+
+      test.each([
+        ["a value inside the range", "$.themed.gutter", "16px"],
+        ["any value, where the range is open", "$.open.gutter", "99px"],
+      ])("%s is set without complaint", (_what, path, value) => {
+        expect(setting(path, value)).not.toContain("problem");
+      });
+
+      /** The kind is still checked, which is what `toStyle` did before a range existed at all. */
+      test("and a value of the wrong KIND is still refused", () => {
+        const config = CONFIG.replace(
+          'open: kind("length", { gutter: { value: "16px", range: "any" } }),',
+          'brand: kind("color", { main: { value: "#10b981", range: "any" } }),',
+        );
+        const output = withBoth(config, `${HEAD}export const t = toStyle([[$.brand.main, "30px"]]);\n`);
+
+        expect(output).toContain("problem");
+      });
+
+      /** A marked token is still a token: it goes into a block exactly as it did. */
+      test("a fixed variable still goes into a block", () => {
+        expect(
+          withBoth(CONFIG, `export const a = <div css={@@( padding-left: $.fixed.gutter; )}>x</div>;\n`),
+        ).not.toContain("problem");
       });
     });
   });

@@ -165,7 +165,18 @@ function registration(one: Named): string {
  * a tenant's colour from a server is a colour and nothing narrower can be said about it.
  */
 function rangeOf(one: Named): string {
-  if (one.range === undefined) return JSON.stringify(one.value);
+  /**
+   * A bare declaration is MARKED, because it means the variable never changes.
+   *
+   * The range and the initial coincide here by design — a variable that named one value has a range
+   * of one value — so the type was already right and `toStyle` already refused to set it. What it
+   * said was `not assignable to type 'never'`, which a person who wrote `16px` meaning *the default*
+   * cannot act on. The mark is what lets the refusal name the fix. See `Fixed` in `token.ts`.
+   *
+   * `range: ["16px"]` is NOT marked and must not be: a range that holds one value is a range, and
+   * setting the variable to that value is a thing the project said it may do.
+   */
+  if (one.range === undefined) return `Fixed<${JSON.stringify(one.value)}>`;
   if (one.range === "any") return `ValueByKind[${JSON.stringify(one.kind)}]`;
   return one.range.map((each) => JSON.stringify(each)).join(" | ");
 }
@@ -644,6 +655,8 @@ export function generate(declarations: Declarations, rules?: PropertyRules): Gen
   const { rows, removed, uses, closed } = propertyMap(rules);
   /** `ValueByKind` is named only by a variable whose range is `"any"` — see `rangeOf`. */
   const open = named.some((one) => one.range === "any");
+  /** And `Fixed` only by one declared BARE, which is the mark that it never changes. */
+  const bare = named.some((one) => one.range === undefined);
   const fromPackage = [
     "CssColor",
     "CssDimension",
@@ -651,10 +664,11 @@ export function generate(declarations: Declarations, rules?: PropertyRules): Gen
     "CssLengthUnit",
     "CssResolutionUnit",
     "CssTimeUnit",
+    "Fixed",
     "Token",
     "ValueByKind",
   ]
-    .filter((one) => uses.has(one) || (one === "ValueByKind" && open))
+    .filter((one) => uses.has(one) || (one === "ValueByKind" && open) || (one === "Fixed" && bare))
     .join(", ");
 
   const module =

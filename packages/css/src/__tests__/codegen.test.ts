@@ -88,7 +88,7 @@ describe("the module", () => {
   test("`$` reaches a variable by the path it was declared at", () => {
     const { module: written } = generate(simple);
 
-    expect(written).toContain('"main": "var(--color-primary-main)" as Token<"color", "#3b82f6">');
+    expect(written).toContain('"main": "var(--color-primary-main)" as Token<"color", Fixed<"#3b82f6">>');
     expect(written).toMatch(/export const \$ = Object\.freeze\(\{/);
   });
 
@@ -101,7 +101,7 @@ describe("the module", () => {
   test("a number fallback stays a number, so `number` and `integer` are not stringified", () => {
     const { module: written } = generate({ weight: kind("number", { bold: 700 }) });
 
-    expect(written).toContain('"var(--weight-bold)" as Token<"number", 700>');
+    expect(written).toContain('"var(--weight-bold)" as Token<"number", Fixed<700>>');
   });
 });
 

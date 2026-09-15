@@ -1,4 +1,4 @@
-import type { Kind, Token, ValueByKind } from "./token";
+import type { Fixed, Kind, Token, ValueByKind } from "./token";
 import type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
 
 /**
@@ -139,8 +139,43 @@ export type Setting = { [K in Kind]: readonly [Token<K>, ValueByKind[K]] }[Kind]
  * cannot `infer` from its own position: the pair has to be inferred first and checked second.
  */
 type Permitted<P> = {
-  readonly [I in keyof P]: P[I] extends readonly [Token<infer K, infer R>, unknown] ? readonly [Token<K, R>, R] : never;
+  readonly [I in keyof P]: P[I] extends readonly [Token<infer K, infer R>, infer V]
+    ? [V] extends [R]
+      ? P[I]
+      : readonly [Token<K, R>, Refused<R>]
+    : never;
 };
+
+/**
+ * Why a value was refused, written as a TYPE NAME because that is the only channel a type has.
+ *
+ * It reads oddly in the source and it is deliberate. TypeScript prints a type's name verbatim and
+ * prints nothing else it is given, so a sentence in the name is a sentence the author reads:
+ *
+ *     Type '"24px"' is not assignable to type
+ *       '"24px" & this_variable_may_only_be<"8px" | "16px">'
+ *
+ * **Measured, this was `not assignable to type 'never'` — twice, on one line.** `Permitted` used to
+ * intersect the author's pair with the permitted pair, and an intersection of two different literals
+ * is `never`, so the range check worked and could not be read. It named neither the variable, nor
+ * the values it may take, nor what to do.
+ *
+ * Reported by the user asking what `Token<"length", "16px">` shows, since an initial value is not a
+ * range. It IS the range — a bare declaration means the variable never changes — and the design was
+ * right while the message was unreadable. See {@link Fixed}.
+ */
+interface this_variable_may_only_be<R> {
+  readonly permitted: R;
+}
+
+interface this_variable_was_declared_with_one_value_give_it_a_range_to_set_it_at_run_time {
+  readonly declare: 'kind(…, { gutter: { value: "16px", range: "any" } })';
+}
+
+/** Which sentence this refusal gets: the variable never changes, or the value is outside its range. */
+type Refused<R> = [R] extends [Fixed<unknown>]
+  ? this_variable_was_declared_with_one_value_give_it_a_range_to_set_it_at_run_time
+  : this_variable_may_only_be<R>;
 
 /** `var(--name)` — what codegen writes for a variable, and the only shape this has to read. */
 const NAMED = /^var\((--[^),\s]+)\)$/;

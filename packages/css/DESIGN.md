@@ -2339,3 +2339,58 @@ per config key, and agreed with the others only by accident of which keys existe
 
 A property with NO kind keeps its literals under `variablesOnly`, because nothing can check a
 variable into it: narrowing it to a token it cannot have would leave nothing a person could write.
+
+### 7. `Token<"length", "16px">` — what the second parameter IS, and the message behind it
+
+The user's question: *"sta ces da radis za one primere tipa `as Token<"length", "16px">`, da li tu
+menjamo sta se vidi jer onaj 16px sto je inicijalna vrednost ne znaci sta je range mogucnosti za ovu
+variablu"*
+
+**It is already the range, not the initial.** Measured across the three declaration forms:
+
+```ts
+fixed:  kind("length", { gutter: "16px" })                              Token<"length", "16px">
+themed: kind("length", { gutter: { value: "16px", range: [...] } })     Token<"length", "8px" | "16px" | "24px">
+open:   kind("length", { gutter: { value: "16px", range: "any" } })     Token<"length", ValueByKind["length"]>
+```
+
+All three set `--gutter: 16px` in the stylesheet and register the same `initial-value`. The type
+differs because the RANGE differs. A bare declaration means the variable never changes, so its range
+is one value, and the two coincide on purpose.
+
+**But asking exposed the message, and it was the worst one in the package:**
+
+```
+toStyle([[$.space.gutter, "24px"]])
+
+TS2322: Type 'Token<"length", "16px">' is not assignable to type 'never'.
+TS2322: Type 'string' is not assignable to type 'never'.
+```
+
+Two errors on one line, naming neither the variable, nor the range, nor what to do. And **not only
+for the fixed case** — a variable with a real range said `never` too, so the range check worked and
+could not be read. `Permitted` intersected the author's pair with the permitted pair, and an
+intersection of two different literals is `never`.
+
+Now:
+
+```
+Type '"24px"' is not assignable to type
+  '"24px" & this_variable_was_declared_with_one_value_give_it_a_range_to_set_it_at_run_time'
+
+Type '"24px"' is not assignable to type
+  '"24px" & this_variable_may_only_be<"8px" | "16px">'
+```
+
+One error, and the second names the permitted values.
+
+**The message is the TYPE'S NAME**, which reads oddly in the source and is deliberate: TypeScript
+prints a type's name verbatim and prints nothing else it is handed, so a sentence in the name is the
+only channel a type has. This is the same wall finding 3 hit from the other side — there the answer
+must be the checker speaking over `TS2322`, because the refused thing is a value in a block and there
+is no type of ours to name.
+
+**`Fixed<V>` is written by CODEGEN, not inferred.** Only codegen knows the declaration was bare:
+`range: ["16px"]` is a range that happens to hold one value, and setting the variable to it is a
+thing the project said it may do. `Fixed<V> = V & {…}`, so a marked token is still a token
+everywhere else — it goes into a block, and into a property narrowed to its own value, unchanged.

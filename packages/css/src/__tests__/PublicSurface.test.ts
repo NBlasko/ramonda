@@ -54,6 +54,8 @@ const TYPES = [
   // What `$.color.primary.main` is, for the module codegen writes. A type and nothing else: a
   // token's runtime value is the string `var(--name)`, written into that module, so importing `$`
   // pulls in no code from here at all.
+  // A bare declaration's mark, named by the generated module and so part of the surface.
+  "Fixed",
   "Kind",
   "StyleBlock",
   "StyleEntry",
