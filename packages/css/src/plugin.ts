@@ -352,16 +352,33 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         return text.slice(index, position);
       };
 
-      /** The three names a `@@name( … )` may carry, as completions the editor cannot widen. */
+      /**
+       * The three names a `@@name( … )` may carry — offered, and impossible to commit by accident.
+       *
+       * **The list being right was not enough**, which the user met immediately: narrowed to three,
+       * the first is still preselected, and typing `(` wrote `@@keyframes()` when they meant the
+       * plain `@@( … )`. That is one keystroke producing a block they did not ask for.
+       *
+       * Two statements stop it, and both are true rather than tricks:
+       *
+       * - `isNewIdentifierLocation: true` — after `@@` the author may type something that is NOT in
+       *   this list, namely the `(` of an ordinary block. That is what the flag means, and VS Code's
+       *   TypeScript extension reads it to decide whether to add `(` to the commit characters. With
+       *   it `false`, `(` commits the selection; with it `true`, `(` is just a `(`.
+       * - `commitCharacters: []` per entry — said outright, for the editors that read the entry's
+       *   own list rather than deriving one. Nothing should commit these but a deliberate Enter or
+       *   Tab.
+       */
       const namedSites = (typed: string, position: number): ts.WithMetadata<ts.CompletionInfo> => ({
         isGlobalCompletion: false,
         isMemberCompletion: false,
-        isNewIdentifierLocation: false,
+        isNewIdentifierLocation: true,
         entries: NAMED_BLOCKS.filter((one) => one.startsWith(typed.toLowerCase())).map((one, order) => ({
           name: one,
           kind: tsModule.ScriptElementKind.keyword,
           kindModifiers: "",
           sortText: String(order),
+          commitCharacters: [],
           replacementSpan: { start: position - typed.length, length: typed.length },
         })),
       });

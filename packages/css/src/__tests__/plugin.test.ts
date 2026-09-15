@@ -2139,6 +2139,27 @@ describe("the caret right after `@@`", () => {
     for (const property of SOME_PROPERTIES) expect(got).toContain(property);
   });
 
+  /**
+   * Typing `(` must open a plain block, not commit the first name — which it did.
+   *
+   * The user met it one message after the list was narrowed: `@@` then `(` wrote `@@keyframes()`.
+   * Narrowing the list to three did nothing about this, because the first entry is preselected and
+   * VS Code's TypeScript extension adds `(` to the commit characters whenever the position is NOT a
+   * new-identifier location.
+   *
+   * **What this asserts is the contract, not the editor.** Committing is VS Code's behaviour and
+   * cannot be exercised from a language service; what can be exercised is the two things it reads,
+   * and both are here. `isNewIdentifierLocation` is true because it is TRUE — after `@@` the author
+   * may type the `(` of an ordinary block, which is not in the list.
+   */
+  test("nothing here can be committed by typing, because a `(` is a block and not a name", () => {
+    const { service, caret } = editor(`const a = <div css={@@${CARET}}>x</div>;\n`);
+    const got = service.getCompletionsAtPosition(FILE, caret, undefined);
+
+    expect(got?.isNewIdentifierLocation).toBe(true);
+    for (const entry of got?.entries ?? []) expect(entry.commitCharacters).toEqual([]);
+  });
+
   /** A single `@` is an ordinary decorator and none of this may touch it. */
   test("one `@` is a decorator and is left to TypeScript", () => {
     const got = names(`declare const dec: any;\nclass C {\n  @${CARET}\n}\n`);
