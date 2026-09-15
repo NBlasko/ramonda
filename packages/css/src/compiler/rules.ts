@@ -297,6 +297,14 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (at !== undefined) compositionInANamedBlock(block, at, findings);
   if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
   if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
+  /**
+   * The per-property half, with anything the sweep above already named left out.
+   *
+   * `units` at the top of the config and `units` inside `properties` are different mechanisms with
+   * one name — the design review said so, and pass 4 gave the second one a rule. Setting both then
+   * reported the same value twice. One value, one fault, one report; two different units in one
+   * value are still two.
+   */
   unitNotAllowedPerProperty(block, config?.properties, findings);
   valueNotAllowed(block, config?.properties, findings);
   shorthandNotAllowed(block, config?.properties, findings);
@@ -307,8 +315,22 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   literalNotAllowed(block, config?.properties, findings);
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
   missingSemicolon(block, findings);
+  /**
+   * A block reported for a misplaced HOLE is not also asked about its property names.
+   *
+   * `&:{state} { … }` leaves `state` behind as a declaration's property once the braces are read
+   * off, so widening `unknown-property` in pass 6 reported *`state` is not a CSS property* beside
+   * `hole-out-of-place`. The second is the fault; the first is an artefact of a parse the author is
+   * about to fix.
+   *
+   * **After the walk rather than during it**, and that is measured: the hole is found on a LATER
+   * item than the property, so a guard at the moment of pushing sees nothing to guard against.
+   */
+  const misplaced = findings.some((one) => one.rule === "hole-out-of-place");
+  const named = misplaced ? findings.filter((one) => one.rule !== "unknown-property") : findings;
+
   const silenced = config?.rules;
-  const kept = silenced === undefined ? findings : findings.filter((one) => silenced[one.rule] !== "off");
+  const kept = silenced === undefined ? named : named.filter((one) => silenced[one.rule] !== "off");
   return kept.sort((a, b) => a.at - b.at);
 }
 
@@ -772,6 +794,10 @@ function unitNotAllowedPerProperty(block: Block, rules: PropertyRules | undefine
           // reads as two faults. And a family this property said nothing about is not constrained.
           if (!KNOWN_UNITS.has(unit) || permitted.has(unit)) continue;
           if (![...permitted].some((one) => UNIT_TYPE[one] === UNIT_TYPE[unit])) continue;
+
+          // Said once. The project-wide sweep runs first and may already have named this exact unit
+          // at this exact position — see the note beside the call.
+          if (findings.some((one) => one.rule === "unit-not-allowed" && one.at === found.at)) continue;
 
           findings.push({
             rule: "unit-not-allowed",
@@ -2045,14 +2071,18 @@ function unknownPrefix(item: Declaration, findings: Finding[]): void {
 }
 
 /**
- * A dashed property name that is nearly one CSS has.
+ * A property name CSS does not have.
  *
- * **Bare names are left to the types**, which report them with TypeScript's own *did you mean*. A
- * dashed one cannot be an unquoted object key, and a quoted key gets no suggestion — measured. So
- * this fills exactly that hole and nothing else.
+ * **It was DASHED names only, and the build compiled the rest.** The split was half right: a dashed
+ * name cannot be an unquoted object key and a quoted key gets no *did you mean* — measured — while
+ * a bare name gets `TS2561`, which says it better. But it says it better in the CHECKER. Vite and
+ * esbuild run these rules and no TypeScript at all, so `dsiplay: flex` and even `zzz: flex` reached
+ * the stylesheet with nothing said anywhere. Found in review pass 6, by asking both consumers the
+ * same question about the same file.
  *
- * A name with no near miss is not reported either: the types already said it does not exist, and
- * repeating that with nothing added is noise.
+ * So it speaks for both now, and `inOrder` drops the compiler's word on the line — the arrangement
+ * `unknown-variable` and `variablesOnly` already have. A name with no near miss is reported too,
+ * without a suggestion: the types are not there to say it in the build.
  */
 function unknownProperty(item: Declaration, findings: Finding[], body?: string): void {
   const name = item.property;
@@ -2063,7 +2093,14 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
     unknownPrefix(item, findings);
     return;
   }
-  if (!name.includes("-")) return;
+  /**
+   * It has to LOOK like a property name, and the dash test was doing this by accident.
+   *
+   * Dropping that guard so the build sees a plain typo exposed every shape the parser records as a
+   * declaration without one being there — a spread comes through as `... 0 `, and forty-one tests
+   * went red at once saying it is not a CSS property. True, and not a thing to report.
+   */
+  if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(name)) return;
 
   /**
    * Inside a named block the vocabulary is that at-rule's descriptors, and only those: `src` is not
@@ -2075,7 +2112,7 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
   if (body === undefined && KNOWN.has(name)) return;
 
   const meant = nearest(name, among);
-  if (meant === undefined) return;
+  const said = meant === undefined ? "" : ` Did you mean \`${meant}\`?`;
 
   findings.push({
     rule: "unknown-property",
@@ -2083,8 +2120,8 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
     length: name.length,
     message:
       body === undefined
-        ? `\`${name}\` is not a CSS property. Did you mean \`${meant}\`?`
-        : `\`${name}\` is not a \`@${body}\` descriptor. Did you mean \`${meant}\`?`,
+        ? `\`${name}\` is not a CSS property.${said}`
+        : `\`${name}\` is not a \`@${body}\` descriptor.${said}`,
   });
 }
 

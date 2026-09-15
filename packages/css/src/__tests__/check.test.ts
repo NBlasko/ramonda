@@ -126,7 +126,7 @@ describe("a project that is not", () => {
     expect(only.file).toMatch(/Card\.tsx$/);
     expect(only.line).toBe(3);
     expect(only.column).toBe(5);
-    expect(only.message).toContain("Did you mean to write 'display'?");
+    expect(only.message).toContain("Did you mean `display`?");
   });
 
   /**
@@ -215,9 +215,9 @@ describe("a project that is not", () => {
     });
 
     expect(report.findings.map((f) => f.line)).toEqual([3, 4, 6]);
-    expect(report.findings[0].message).toContain("Did you mean to write 'display'?");
+    expect(report.findings[0].message).toContain("Did you mean `display`?");
     expect(report.findings[1].message).toContain(`Did you mean '"static"'?`);
-    expect(report.findings[2].message).toContain("Did you mean to write 'color'?");
+    expect(report.findings[2].message).toContain("Did you mean `color`?");
   });
 
   test("two files each report their own", () => {
@@ -298,14 +298,25 @@ describe("the CSS rules, beside the type errors", () => {
     expect(report.findings.map((finding) => finding.code)).toEqual(["line-comment"]);
   });
 
-  test("a TS2353 about something no rule named is still reported", () => {
-    // A `@font-face` descriptor that is not one. `DESCRIPTORS` is a near-miss search, and `nope`
-    // is near nothing, so no rule of ours claims it and the compiler's word is all there is.
+  /**
+   * A descriptor that is not one — named ONCE, by us.
+   *
+   * It used to be the compiler's alone: `DESCRIPTORS` was a near-miss search, and `nope` is near
+   * nothing, so no rule claimed it. Since review pass 6 `unknown-property` reports a name CSS does
+   * not have whether or not it has a suggestion, because the BUILD runs no TypeScript and a typo
+   * compiled — so the rule speaks and `inOrder` drops the compiler's `TS2353` on the line.
+   *
+   * What the count is protecting is unchanged: one fault, one report.
+   */
+  test("a descriptor that is not one is reported once, by the rule", () => {
     const report = check({
       "Face.tsx": `const f = @@font-face(\n  src: url(a.woff2);\n  nope: 1;\n);\nexport default f;\n`,
     });
 
-    expect(report.findings.some((finding) => finding.code === 2353)).toBe(true);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].code).toBe("unknown-property");
+    expect(report.findings[0].message).toContain("font-face");
+    expect(report.findings[0].line).toBe(3);
   });
 });
 
@@ -336,8 +347,11 @@ describe("a setup that would otherwise pass silently", () => {
    * diagnostic is dropped, would turn a broken setup into a passing run.
    */
   test("a block shape that does not resolve is reported, not dropped", () => {
+    // CORRECT css, so the only finding can be the setup fault. It used to hold `dsiplay`, which the
+    // types alone reported; since pass 6 the RULE reports a plain property name too — so the block
+    // would carry a fault of its own and the count would stop being about the setup.
     const report = checkProject(
-      project({ "Card.tsx": `const a = <div css={@@( dsiplay: flex; )}>x</div>;\nexport default a;\n` }, null),
+      project({ "Card.tsx": `const a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n` }, null),
     );
 
     expect(report.findings).toHaveLength(1);

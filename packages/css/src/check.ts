@@ -326,7 +326,8 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
           finding.code === "literal-not-allowed" ||
           finding.code === "unit-not-allowed" ||
           finding.code === "value-not-allowed" ||
-          finding.code === "shorthand-not-allowed",
+          finding.code === "shorthand-not-allowed" ||
+          finding.code === "unknown-property",
       )
       .map((finding) => `${finding.file}:${finding.line}`),
   );
@@ -343,7 +344,15 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
      * `TS2353` too, because a shorthand switched off is REMOVED from the map rather than narrowed —
      * so the compiler's word about it is *does not exist in type*, not *is not assignable*.
      */
-    if ((finding.code === 2322 || finding.code === 2353) && literalRefused.has(`${finding.file}:${finding.line}`)) {
+    /**
+     * `TS2561` too, which is the compiler's *did you mean* for a bare property name. `unknown-property`
+     * speaks for those since pass 6, so that the BUILD sees them — and two reports for one typo is
+     * the fault this whole filter exists for.
+     */
+    if (
+      (finding.code === 2322 || finding.code === 2353 || finding.code === 2561) &&
+      literalRefused.has(`${finding.file}:${finding.line}`)
+    ) {
       return false;
     }
     return true;

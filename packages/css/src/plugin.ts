@@ -1298,7 +1298,20 @@ function withoutRepeats(ours: readonly ts.Diagnostic[], theirs: readonly ts.Diag
       .map((diagnostic) => diagnostic.start),
   );
 
-  return theirs.filter((diagnostic) => !(diagnostic.code === 2353 && said.has(diagnostic.start)));
+  /**
+   * `TS2561` too, which is the compiler's *did you mean* for a BARE property name.
+   *
+   * `unknown-property` was dashed names only until review pass 6, because a bare one already had
+   * `TS2561` and a quoted key gets no suggestion at all. That reasoning held in the checker and not
+   * in the BUILD, which runs no TypeScript — so the rule speaks for both now, and the editor has to
+   * drop the compiler's word the same way `check.ts` does.
+   *
+   * Found by this package's own test: `check.ts` got the drop and this did not, which is the
+   * arrangement it keeps finding a fault in — one rule, two consumers, one of them left behind.
+   */
+  return theirs.filter(
+    (diagnostic) => !((diagnostic.code === 2353 || diagnostic.code === 2561) && said.has(diagnostic.start)),
+  );
 }
 
 /** Quick info at a position, or nothing when there is no position to ask about. */

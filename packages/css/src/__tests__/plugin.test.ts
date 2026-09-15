@@ -228,7 +228,10 @@ describe("the red squiggles", () => {
     expect(rest).toEqual([]);
     expect(only.start).toBe(source.indexOf("dsiplay"));
     expect(only.length).toBe("dsiplay".length);
-    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("Did you mean to write 'display'?");
+    // OURS since review pass 6 — the rule reports a bare name too, so the build sees it, and the
+    // compiler's `TS2561` on that position is dropped. One typo, one squiggle.
+    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("[unknown-property]");
+    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("display");
   });
 
   test("an ordinary type error in the same file still arrives, at its own place", () => {

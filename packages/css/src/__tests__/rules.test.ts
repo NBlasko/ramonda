@@ -66,11 +66,17 @@ function messagesWith(css: string, config: import("../config").Config): string[]
   return checkBlock(read.block, { config }).map((finding) => finding.message);
 }
 
-describe("a property name the types could not suggest", () => {
+describe("a property name CSS does not have", () => {
   /**
-   * The types report a dashed name as `TS2353` with no suggestion, because a QUOTED object key gets
-   * none — measured. A bare one gets `TS2561` and TypeScript's own *did you mean*, so it is not
-   * repeated here: one fault, one report.
+   * **It was dashed names only until review pass 6**, and the reason was sound in the checker and
+   * wrong in the build. The types report a dashed name as `TS2353` with no suggestion, because a
+   * QUOTED object key gets none — measured — while a bare one gets `TS2561` and TypeScript's own
+   * *did you mean*. So the rule filled the first hole and left the second.
+   *
+   * The build runs no TypeScript. Measured in pass 6: `dsiplay: flex` and even `zzz: flex` compiled
+   * into the stylesheet with nothing said anywhere. The rule speaks for both now, with or without a
+   * suggestion, and `inOrder` drops the compiler's word on the line — so it is still one fault, one
+   * report.
    */
   test("a dashed near miss is named, with what was meant", () => {
     const [only, ...rest] = check("  flex-dirction: row;");
@@ -81,13 +87,20 @@ describe("a property name the types could not suggest", () => {
     expect(only.message).toContain("flex-direction");
   });
 
-  test("a bare name is left to the types, which say it better", () => {
-    expect(rules("  dsiplay: flex;")).toEqual([]);
+  test("a bare name is named too, so the BUILD sees it", () => {
+    const [only, ...rest] = check("  dsiplay: flex;");
+
+    expect(rest).toEqual([]);
+    expect(only.rule).toBe("unknown-property");
+    expect(only.message).toContain("display");
   });
 
-  test("a dashed name with no near miss at all is still not this rule's to report", () => {
-    // Nothing to suggest means nothing to add to what the types already said.
-    expect(rules("  zzz-qqq-www: 1px;")).toEqual([]);
+  test("a name with no near miss at all is named without one", () => {
+    const [only] = check("  zzz-qqq-www: 1px;");
+
+    expect(only.rule).toBe("unknown-property");
+    expect(only.message).toContain("zzz-qqq-www");
+    expect(only.message).not.toContain("Did you mean");
   });
 
   test.each([
@@ -3664,5 +3677,71 @@ describe("a setting the types enforced and the build did not", () => {
   /** And a project that said nothing gets none of it. */
   test("with no config, all three are silent", () => {
     for (const css of ["padding-left: 2rem", "z-index: 5", "margin: 8px"]) expect(under({}, css)).toEqual([]);
+  });
+});
+
+/**
+ * Two faults where the CLI and the BUNDLERS disagreed — review pass 6.
+ *
+ * Both consumers were asked the same question about the same file, which is the lens four of this
+ * session's findings came through.
+ *
+ * ## A unit reported twice
+ *
+ * `units` at the top of the config and `units` inside `properties` are different mechanisms with one
+ * name — the design review said so — and pass 4 gave the second one a rule. Setting both then
+ * reported the same value twice. One value, one fault, one report.
+ *
+ * ## A property typo the build compiled
+ *
+ * The split was deliberate and half of it was right: a DASHED name — `flex-dirction` — gets
+ * `unknown-property`, because TypeScript offers no *did you mean* for a quoted key; a plain name —
+ * `dsiplay` — was left to `TS2561`, which says it better.
+ *
+ * It says it better in the CHECKER. The build runs no TypeScript, so `dsiplay: flex` and even
+ * `zzz: flex` compiled into the stylesheet with nothing said anywhere. The rule speaks for both
+ * now, and `inOrder` drops the compiler's word on the line — the same arrangement
+ * `unknown-variable` and `variablesOnly` already have.
+ */
+describe("what the bundlers see and the checker saw", () => {
+  const under = (css: string, config: Config = {}) =>
+    checkBlock(readBlock(`@@(\n  ${css};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
+
+  test("a unit is reported once, whichever settings are in play", () => {
+    const both: Config = { units: { length: ["px"] }, properties: { "*": { units: ["px"] } } };
+
+    expect(under("padding-left: 2rem", both)).toEqual(["unit-not-allowed"]);
+    expect(under("padding-left: 2rem", { units: { length: ["px"] } })).toEqual(["unit-not-allowed"]);
+    expect(under("padding-left: 2rem", { properties: { "*": { units: ["px"] } } })).toEqual(["unit-not-allowed"]);
+  });
+
+  test("two different units in one value are still two faults", () => {
+    const both: Config = { units: { length: ["px"] }, properties: { "*": { units: ["px"] } } };
+
+    expect(under("padding: 2rem 3em", both)).toEqual(["unit-not-allowed", "unit-not-allowed"]);
+  });
+
+  test.each([
+    ["a plain name, which the checker left to TypeScript", "dsiplay: flex"],
+    ["one that is near nothing", "zzz: flex"],
+    ["a dashed name, which always spoke", "flex-dirction: row"],
+    ["another", "padding-lefft: 8px"],
+  ])("%s is reported, so the build sees it", (_what, css) => {
+    expect(under(css)).toContain("unknown-property");
+  });
+
+  test("and the suggestion is still there for a plain name", () => {
+    const [found] = checkBlock(readBlock(`@@(\n  dsiplay: flex;\n)`, 2, "C.tsx").block, {});
+
+    expect(found.message).toContain("display");
+  });
+
+  test.each([
+    ["a real property", "display: flex"],
+    ["a vendor prefix", "-webkit-line-clamp: 3"],
+    ["a custom property", "--row-height: 2rem"],
+    ["one CSS added after our table", "-moz-osx-font-smoothing: grayscale"],
+  ])("%s is silent", (_what, css) => {
+    expect(under(css)).toEqual([]);
   });
 });

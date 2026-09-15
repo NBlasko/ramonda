@@ -90,7 +90,7 @@ describe("the bin", () => {
 
     expect(status).toBe(1);
     expect(output).toContain("src/Card.tsx:3:5");
-    expect(output).toContain("Did you mean to write 'display'?");
+    expect(output).toContain("Did you mean `display`?");
   });
 
   test("a block it cannot read is reported alone, and exits 1", () => {
