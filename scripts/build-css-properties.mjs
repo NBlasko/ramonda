@@ -294,10 +294,20 @@ function withReferences(syntax, depth = 0) {
 }
 
 /**
- * A juxtaposition of bracketed groups, each with an optional multiplier — or nothing.
+ * A juxtaposition of groups, each with an optional multiplier — or nothing.
  *
  * `[ a ] [ b ]?` and `[ a ]{1,4}` are sequences; `a b` and `[ a ] | b` are not. Returns each group's
  * INSIDE, so the caller can ask what it reaches.
+ *
+ * **A bare type with a multiplier counts as a group**, and a `/` between groups is a SEPARATOR.
+ * Both are here for one shape: `border-radius` is `<length-percentage>{1,4} [ / <length-percentage>
+ * {1,4} ]?` — four corners, then four again after a slash, one primitive throughout. It read as not
+ * a sequence at all because the first piece has no brackets, so the property a design system
+ * constrains right after padding could not be narrowed at all.
+ *
+ * The slash separates values in CSS and never IS one, so skipping it cannot admit a grammar that
+ * holds two kinds: every piece still has to reach the same primitive, which is what leaves `font`,
+ * `grid` and `border-image` unclassified where they belong.
  */
 function sequence(text) {
   const pieces = [];
@@ -306,7 +316,20 @@ function sequence(text) {
   while (index < text.length) {
     while (index < text.length && /\s/.test(text[index])) index += 1;
     if (index >= text.length) break;
-    if (text[index] !== "[") return undefined;
+
+    // A separator, not a value. `[ / <a> ]` is one group holding one thing.
+    if (text[index] === "/") {
+      index += 1;
+      continue;
+    }
+
+    if (text[index] !== "[") {
+      const bare = /^<[a-zA-Z0-9-]+(?:\s*\[[^\]]*\])?>(?:[?*+#]|\{\d+(?:,\d*)?\})?/.exec(text.slice(index));
+      if (bare === null) return undefined;
+      pieces.push(bare[0].replace(/(?:[?*+#]|\{\d+(?:,\d*)?\})$/, ""));
+      index += bare[0].length;
+      continue;
+    }
 
     let depth = 0;
     const from = index;

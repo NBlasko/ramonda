@@ -335,16 +335,27 @@ describe("which shorthands can be checked at all", () => {
   });
 
   /**
-   * `border-radius` is STILL unclassified, and it is written down rather than left to be rediscovered.
+   * The SLASH form — `<length-percentage>{1,4} [ / <length-percentage>{1,4} ]?`.
    *
-   * `<length-percentage>{1,4} [ / <length-percentage>{1,4} ]?` — one primitive throughout, but the
-   * slash is a separator `sequence` does not read. It is the next one worth doing and it was not
-   * done in the same breath, because the three above share a cause and this does not.
+   * Four corners, then four again after a slash, one primitive throughout. `sequence` wanted every
+   * piece bracketed and the first one is not, so the property a design system constrains right
+   * after padding could not be narrowed at all.
+   *
+   * A `/` separates values in CSS and never IS one, so skipping it cannot admit a grammar holding
+   * two kinds: every piece still has to reach the same primitive, which is what keeps `font`,
+   * `grid` and `border-image` where they belong.
    */
-  test("`border-radius` is one length and still unclassified, because of the slash form", () => {
-    expect(PRIMITIVE["border-radius"]).toBeUndefined();
+  test("`border-radius` is one length, slash form and all", () => {
+    expect(PRIMITIVE["border-radius"]).toBe("length-percentage");
     expect(PRIMITIVE["border-top-left-radius"]).toBe("length-percentage");
   });
+
+  test.each([["font"], ["grid"], ["border-image"], ["mask"], ["grid-area"]])(
+    "%s holds a slash and several kinds, and stays unclassified",
+    (property) => {
+      expect(PRIMITIVE[property]).toBeUndefined();
+    },
+  );
 
   test("and the ones that repeat carry how many CSS gives them", () => {
     expect(ARITY.padding).toBe(4);

@@ -3384,3 +3384,31 @@ describe("a literal where the project said that kind comes from variables", () =
     }
   });
 });
+
+/**
+ * Correct CSS the slash form must not start refusing.
+ *
+ * Teaching `sequence` about `<type>{1,4} [ / <type>{1,4} ]?` classified ten properties, and a
+ * classified property is a NARROWED property — which is where refusing correct CSS becomes
+ * possible. `animation-range-start` came with it, and its value is a keyword and a percentage
+ * together: `entry 50%` is valid and is the shape a narrowing gets wrong.
+ *
+ * Asserted with no config at all, because the shipped types must accept every one of these however
+ * strict a project later chooses to be.
+ */
+describe("the slash form, and the correct CSS it must not refuse", () => {
+  const of = (decl: string) => check(`  ${decl};`).map((one) => one.rule);
+
+  test.each([
+    ["one radius", "border-radius: 4px"],
+    ["two", "border-radius: 4px 8px"],
+    ["four", "border-radius: 4px 8px 12px 16px"],
+    ["the elliptical form", "border-radius: 50% / 20%"],
+    ["and in lengths", "border-radius: 4px / 8px"],
+    ["a keyword and a percentage together", "animation-range-start: entry 50%"],
+    ["its bare keyword", "animation-range-start: normal"],
+    ["two ranges at once", "animation-range: entry 0% exit 100%"],
+  ])("%s is silent", (_what, decl) => {
+    expect(of(decl)).toEqual([]);
+  });
+});

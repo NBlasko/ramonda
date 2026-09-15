@@ -1404,7 +1404,7 @@ export const UNION_TYPED: readonly string[] = ["-moz-float-edge","-moz-orient","
  * property map. Splitting it there rather than here is the point: the narrowing belongs to whoever
  * wrote the config, not to everybody who installs this.
  *
- * 195 properties.
+ * 205 properties.
  */
 export const PRIMITIVE: Readonly<Record<string, string>> = {
   "-moz-border-bottom-colors": "color",
@@ -1442,6 +1442,9 @@ export const PRIMITIVE: Readonly<Record<string, string>> = {
   "animation-delay": "time",
   "animation-duration": "time",
   "animation-iteration-count": "number",
+  "animation-range": "length-percentage",
+  "animation-range-end": "length-percentage",
+  "animation-range-start": "length-percentage",
   "background-color": "color",
   "background-size": "length-percentage",
   "baseline-shift": "length-percentage",
@@ -1467,6 +1470,7 @@ export const PRIMITIVE: Readonly<Record<string, string>> = {
   "border-inline-width": "length",
   "border-left-color": "color",
   "border-left-width": "length",
+  "border-radius": "length-percentage",
   "border-right-color": "color",
   "border-right-width": "length",
   "border-spacing": "length",
@@ -1594,6 +1598,12 @@ export const PRIMITIVE: Readonly<Record<string, string>> = {
   "text-decoration-inset": "length",
   "text-emphasis-color": "color",
   "text-size-adjust": "percentage",
+  "timeline-trigger-exit-range": "length-percentage",
+  "timeline-trigger-exit-range-end": "length-percentage",
+  "timeline-trigger-exit-range-start": "length-percentage",
+  "timeline-trigger-range": "length-percentage",
+  "timeline-trigger-range-end": "length-percentage",
+  "timeline-trigger-range-start": "length-percentage",
   "top": "length-percentage",
   "transition-delay": "time",
   "transition-duration": "time",

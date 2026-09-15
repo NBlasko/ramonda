@@ -2213,11 +2213,6 @@ it and nowhere else.
 
 #### What is still open
 
-`border-radius` stays unclassified: `<length-percentage>{1,4} [ / <length-percentage>{1,4} ]?` is one
-primitive throughout, but the slash is a separator `sequence` does not read. Written down in
-`properties.test.ts` rather than left to be rediscovered, and not done in the same breath because the
-three above share a cause and this does not.
-
 The `--own: red; color: var(--own)` bypass also stands: a custom property set inside a block is not
 checked against `variablesOnly`.
 
@@ -2440,3 +2435,23 @@ at render.
 needed the same answer; a second scanner agreeing by accident is the fault above in miniature, and
 it is the one that made `variablesOnly` mean something different in the build than in the checker.
 One walk, one answer, both callers.
+
+### 9. The slash form — `border-radius` classified
+
+`<length-percentage>{1,4} [ / <length-percentage>{1,4} ]?` — four corners, then four again after a
+slash, one primitive throughout. `sequence` wanted every piece bracketed and the first one is not,
+so the property a design system constrains right after padding could not be narrowed at all.
+
+Two changes, both in `sequence`: a bare type with a multiplier is a group, and a `/` between groups
+is a separator. **The slash separates values in CSS and never IS one**, so skipping it cannot admit
+a grammar holding two kinds — every piece still has to reach the same primitive, which is what keeps
+`font`, `grid`, `border-image` and `mask` unclassified where they belong.
+
+`PRIMITIVE` 195 → 205, nothing lost and nothing reclassified. Ten properties: `border-radius`, and
+the `animation-range` and `timeline-trigger-range` families.
+
+**A classified property is a NARROWED property, which is where refusing correct CSS becomes
+possible.** `animation-range-start` arrived with this and its value is a keyword and a percentage
+together — `entry 50%` — which is exactly the shape a narrowing gets wrong. Measured with no config
+at all and guarded by a test: the elliptical `border-radius: 50% / 20%`, `entry 50%`, and
+`animation-range: entry 0% exit 100%` are all silent.
