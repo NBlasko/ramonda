@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, expectTypeOf, test } from "vitest";
 import type { Token } from "../token";
+import type { CssColor } from "../values.generated";
+import type { CssDimension } from "../units.generated";
 import { read, toStyle } from "../value";
 
 /**
@@ -10,10 +12,17 @@ import { read, toStyle } from "../value";
  * package owes them the names and the types, not the theming.
  */
 
-/** Stand-ins for what codegen writes, which is a branded string and nothing else. */
-const colour = "var(--color-primary-main)" as Token<"color", "#3b82f6">;
-const length = "var(--size-control-md)" as Token<"length", "30px">;
-const digits = "var(--space-inline-2xl)" as Token<"length", "48px">;
+/**
+ * Stand-ins for what codegen writes, which is a branded string and nothing else.
+ *
+ * Their ranges are OPEN — `CssColor`, `CssDimension` — because these stand for variables a project
+ * means to set at run time, and a variable that declared a single value means it never changes.
+ * `toStyle` holds a token to its own range, so a fixed one cannot be set at all, which is the whole
+ * point of declaring it fixed.
+ */
+const colour = "var(--color-primary-main)" as Token<"color", CssColor>;
+const length = "var(--size-control-md)" as Token<"length", CssDimension>;
+const digits = "var(--space-inline-2xl)" as Token<"length", CssDimension>;
 
 describe("toStyle", () => {
   test("turns variables into the custom properties an element carries", () => {
@@ -34,7 +43,7 @@ describe("toStyle", () => {
   });
 
   test('a number is written as one, so `700` does not become `"700"` by accident', () => {
-    const weight = "var(--weight-bold)" as Token<"number", 700>;
+    const weight = "var(--weight-bold)" as Token<"number", number>;
 
     expect(toStyle([[weight, 400]])).toEqual({ "--weight-bold": "400" });
   });
@@ -94,5 +103,34 @@ describe("read", () => {
     stub({ "--color-primary-main": "rgb(0, 0, 0)" });
 
     expectTypeOf(read(colour, {} as Element)).toEqualTypeOf<string>();
+  });
+});
+
+/**
+ * A variable that declared a RANGE is held to it, which is what a range is for.
+ *
+ * Binding the kind alone let any colour into any colour variable. A variable a theme moves between
+ * two colours means those two, and setting a third at run time is the mistake this catches.
+ */
+describe("toStyle against a variable's range", () => {
+  const themed = "var(--color-text-primary)" as Token<"color", "#111827" | "#e5e7eb">;
+  const open = "var(--color-brand-main)" as Token<"color", `#${string}`>;
+
+  test("a value from the range goes in", () => {
+    expect(toStyle([[themed, "#e5e7eb"]])).toEqual({ "--color-text-primary": "#e5e7eb" });
+  });
+
+  test("one outside it does not", () => {
+    // @ts-expect-error — the variable declared two colours and this is a third
+    toStyle([[themed, "#ff0000"]]);
+  });
+
+  test("a variable with an open range takes any value of its kind", () => {
+    expect(toStyle([[open, "#7c3aed"]])).toEqual({ "--color-brand-main": "#7c3aed" });
+  });
+
+  test("and the kind is still checked, which it was before", () => {
+    // @ts-expect-error — a length where a colour was declared
+    toStyle([[themed, "30px"]]);
   });
 });

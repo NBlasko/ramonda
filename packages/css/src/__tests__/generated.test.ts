@@ -44,8 +44,10 @@ function project(): string {
     `import { kind } from "@ramonda/css/config";
 export default {
   variables: {
-    color: kind("color", { primary: { main: "#3b82f6" } }),
-    size: kind("length", { control: { md: "30px" }, weight: kind("number", { bold: 700 }) }),
+    // A range where the project means to set it at run time — a variable declared with one value
+    // says it never changes, and \`toStyle\` holds it to that.
+    color: kind("color", { primary: { main: { value: "#3b82f6", range: "any" } } }),
+    size: kind("length", { control: { md: { value: "30px", range: ["24px", "30px"] } }, weight: kind("number", { bold: 700 }) }),
     space: kind("length", { inline: { "2xl": "48px" } }),
   },
 };

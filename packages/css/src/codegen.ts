@@ -32,7 +32,17 @@ export interface Named {
   /** The custom property, `--color-primary-main`. */
   readonly name: `--${string}`;
   readonly kind: Kind;
+  /** The initial — what `:root` sets and what `@property` registers. */
   readonly value: string | number;
+  /**
+   * Every value it may take, or `"any"`, or nothing when it never changes.
+   *
+   * This is what the TYPE carries, and `value` is what the stylesheet carries. They were one field
+   * until a user asked how a theme is supposed to work: a variable a theme moves between two colours
+   * has one initial and two possible values, and a type claiming only the first is claiming
+   * something the browser will not use.
+   */
+  readonly range?: readonly (string | number)[] | "any";
 }
 
 /** A group of declared variables, as the config holds them. */
@@ -61,7 +71,8 @@ export function namesIn(declarations: Declarations): readonly Named[] {
           path: here.join("."),
           name: nameFor(here.join(".")),
           kind: one.kind,
-          value: one.value as string | number,
+          value: one.value,
+          ...(one.range === undefined ? {} : { range: one.range }),
         });
         continue;
       }
@@ -147,6 +158,18 @@ function registration(one: Named): string {
   );
 }
 
+/**
+ * What a variable may BE, as a type — its range when it declared one, its value when it did not.
+ *
+ * `"any"` becomes the kind's own value type, which is what "it changes and we do not pin it" means:
+ * a tenant's colour from a server is a colour and nothing narrower can be said about it.
+ */
+function rangeOf(one: Named): string {
+  if (one.range === undefined) return JSON.stringify(one.value);
+  if (one.range === "any") return `ValueByKind[${JSON.stringify(one.kind)}]`;
+  return one.range.map((each) => JSON.stringify(each)).join(" | ");
+}
+
 /** The TypeScript identifier-safe spelling of a path segment, for the emitted object. */
 function key(segment: string): string {
   return JSON.stringify(segment);
@@ -170,7 +193,7 @@ function moduleTree(named: readonly Named[]): string {
     const lines = Object.entries(node).map(([segment, next]) => {
       if (next !== null && typeof next === "object" && "name" in (next as Named)) {
         const one = next as Named;
-        const token = `Token<${JSON.stringify(one.kind)}, ${JSON.stringify(one.value)}>`;
+        const token = `Token<${JSON.stringify(one.kind)}, ${rangeOf(one)}>`;
         return `${indent}  ${key(segment)}: ${JSON.stringify(`var(${one.name})`)} as ${token},`;
       }
       return `${indent}  ${key(segment)}: Object.freeze({\n${write(next as Record<string, unknown>, `${indent}  `)}\n${indent}  }),`;
@@ -479,6 +502,8 @@ export function generate(declarations: Declarations, rules?: PropertyRules): Gen
    * opening this file still sees both.
    */
   const { rows, removed, uses, closed } = propertyMap(rules);
+  /** `ValueByKind` is named only by a variable whose range is `"any"` — see `rangeOf`. */
+  const open = named.some((one) => one.range === "any");
   const fromPackage = [
     "CssColor",
     "CssDimension",
@@ -487,8 +512,9 @@ export function generate(declarations: Declarations, rules?: PropertyRules): Gen
     "CssResolutionUnit",
     "CssTimeUnit",
     "Token",
+    "ValueByKind",
   ]
-    .filter((one) => uses.has(one))
+    .filter((one) => uses.has(one) || (one === "ValueByKind" && open))
     .join(", ");
 
   const module =

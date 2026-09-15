@@ -75,12 +75,30 @@ export type { Kind, Token, ValueByKind } from "./token";
  */
 export const IS_VARIABLE: unique symbol = Symbol.for("ramonda.css.variable");
 
-/** One declared variable: what it is, and what it falls back to. */
+/**
+ * One declared variable: what it is, what it starts as, and what it may become.
+ *
+ * `V` is everything the variable MAY BE, which is the range when one is declared and the single
+ * declared value otherwise. That is the type a property's narrowing is checked against and the one
+ * `toStyle` accepts — so a variable a theme moves between two colours is honest about both, and one
+ * that never moves is exact.
+ *
+ * `value` is separate and is always the single initial: `:root` sets it and `@property` registers it
+ * as the `initial-value`. The two were one field until a user asked how a theme is supposed to work,
+ * and the answer was that they are two questions.
+ */
 export interface Variable<K extends Kind = Kind, V = unknown> {
   readonly [IS_VARIABLE]: true;
   readonly kind: K;
-  readonly value: V;
+  /** The initial — what the stylesheet sets and what `@property` registers. */
+  readonly value: string | number;
+  /** Every value it may take, or `"any"`. Absent means it never changes. */
+  readonly range?: readonly (string | number)[] | "any";
+  /** Phantom: `V` is what it may BE, and nothing reads this. */
+  readonly [RANGE]?: V;
 }
+
+declare const RANGE: unique symbol;
 
 /**
  * A declared variable as a VALUE — what `$.color.primary.main` is, once codegen has written it.
@@ -118,12 +136,20 @@ type Group = { readonly [name: string]: unknown };
  * message: `Type '"30px"' is not assignable to type … ` beside `main`, rather than a paragraph about
  * the shape of the whole group.
  */
+/** The long form: an initial value and what the variable may become. */
+interface Ranged<V> {
+  readonly value: V;
+  readonly range: readonly V[] | "any";
+}
+
 type Leaves<K extends Kind, T> = {
   readonly [N in keyof T]: T[N] extends Variable
     ? T[N]
     : T[N] extends string | number
       ? ValueByKind[K]
-      : Leaves<K, T[N]>;
+      : T[N] extends { readonly value: unknown }
+        ? Ranged<ValueByKind[K]>
+        : Leaves<K, T[N]>;
 };
 
 /**
@@ -138,7 +164,13 @@ export type Declared<K extends Kind, T> = {
     ? Variable<VK, VV>
     : T[N] extends string | number
       ? Variable<K, T[N]>
-      : Declared<K, T[N]>;
+      : T[N] extends { readonly range: infer R }
+        ? R extends "any"
+          ? Variable<K, ValueByKind[K]>
+          : R extends readonly (infer One)[]
+            ? Variable<K, One>
+            : never
+        : Declared<K, T[N]>;
 };
 
 /** Where a bad leaf was, spelled the way the author wrote it, so a message can point at it. */
@@ -183,6 +215,37 @@ export function kind<const K extends Kind, const T extends Group>(of: K, group: 
     if (isVariable(one)) return one;
     if (typeof one === "string" || typeof one === "number") {
       return { [IS_VARIABLE]: true, kind: of, value: one } satisfies Variable<K, typeof one>;
+    }
+
+    /**
+     * The long form — an initial value and what the variable may become.
+     *
+     * Both halves are checked here rather than only by the type, because a config is JavaScript by
+     * the time it runs and a wrong one is better met as a sentence than as whatever happens next. A
+     * range that does not hold the initial is two values disagreeing about the same variable; an
+     * empty one permits nothing, which cannot be what anybody meant.
+     */
+    if (typeof one === "object" && one !== null && !Array.isArray(one) && "value" in one) {
+      const { value, range } = one as { value: string | number; range?: readonly (string | number)[] | "any" };
+
+      if (Array.isArray(range)) {
+        if (range.length === 0) {
+          refuse(`\`${pathOf(trail)}\` has an empty \`range\`, which permits no value at all.`);
+        }
+        if (!range.includes(value)) {
+          refuse(
+            `\`${pathOf(trail)}\` starts as ${JSON.stringify(value)}, which its own \`range\` does not hold.` +
+              `\n\n        The range is every value it may take, so it has to include the one it takes first.`,
+          );
+        }
+      }
+
+      return {
+        [IS_VARIABLE]: true,
+        kind: of,
+        value,
+        ...(range === undefined ? {} : { range }),
+      } as Variable<K, unknown>;
     }
     if (typeof one !== "object" || one === null || Array.isArray(one)) {
       refuse(

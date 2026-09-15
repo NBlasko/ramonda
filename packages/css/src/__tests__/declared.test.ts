@@ -12,7 +12,10 @@ import { IS_VARIABLE, isVariable, kind } from "../declared";
  */
 
 /** What a boxed leaf holds, read without depending on the symbol's spelling. */
-const seen = (leaf: unknown) => (isVariable(leaf) ? { kind: leaf.kind, value: leaf.value } : leaf);
+const seen = (leaf: unknown) =>
+  isVariable(leaf)
+    ? { kind: leaf.kind, value: leaf.value, ...(leaf.range === undefined ? {} : { range: leaf.range }) }
+    : leaf;
 
 describe("kind()", () => {
   test("boxes every leaf of a flat group with the kind it was given", () => {
@@ -63,5 +66,48 @@ describe("kind()", () => {
 
   test("the marker is a registered symbol, so two copies of this package agree", () => {
     expect(IS_VARIABLE).toBe(Symbol.for("ramonda.css.variable"));
+  });
+});
+
+/**
+ * A variable that says what it MAY BE, beside what it starts as.
+ *
+ * The user's question, and the last hole in the theme story: a variable declared with one value has
+ * that value in its type, and a theme replaces it — so the type claims something the browser will
+ * not use. `{ value, range }` splits the two. `value` is what `:root` and `@property` get; `range`
+ * is what the type carries, and therefore what a property's narrowing is checked against and what
+ * `toStyle` will accept.
+ */
+describe("a variable with a range", () => {
+  test("the initial value and the range are both kept", () => {
+    const group = kind("color", {
+      text: { primary: { value: "#111827", range: ["#111827", "#e5e7eb"] } },
+    });
+
+    expect(seen(group.text.primary)).toEqual({
+      kind: "color",
+      value: "#111827",
+      range: ["#111827", "#e5e7eb"],
+    });
+  });
+
+  test("`any` is a range too — it changes, and we do not pin it", () => {
+    const group = kind("color", { brand: { main: { value: "#10b981", range: "any" } } });
+
+    expect(seen(group.brand.main)).toEqual({ kind: "color", value: "#10b981", range: "any" });
+  });
+
+  test("a bare value still means it never changes", () => {
+    expect(seen(kind("color", { fixed: "#fff" }).fixed)).toEqual({ kind: "color", value: "#fff" });
+  });
+
+  test("the range must hold the initial value, or the two disagree", () => {
+    expect(() => kind("color", { text: { primary: { value: "#111827", range: ["#e5e7eb"] } } } as never)).toThrow(
+      /text\.primary/,
+    );
+  });
+
+  test("an empty range is refused, because it permits nothing at all", () => {
+    expect(() => kind("color", { a: { value: "#fff", range: [] } } as never)).toThrow(/a\b/);
   });
 });

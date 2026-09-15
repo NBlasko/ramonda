@@ -128,6 +128,20 @@ function textFor(value: StyleVarValue): string | undefined {
  */
 export type Setting = { [K in Kind]: readonly [Token<K>, ValueByKind[K]] }[Kind];
 
+/**
+ * The same pairs, with each value checked against what ITS OWN variable may be.
+ *
+ * `Setting` alone binds the kind and leaves the value to the kind's whole type, so any colour went
+ * into any colour variable. A variable that declared a range means to take only those values — that
+ * is what a range IS — and this is where setting one at run time is held to it.
+ *
+ * Written as an intersection over the tuple rather than inside `Setting`, because a union member
+ * cannot `infer` from its own position: the pair has to be inferred first and checked second.
+ */
+type Permitted<P> = {
+  readonly [I in keyof P]: P[I] extends readonly [Token<infer K, infer R>, unknown] ? readonly [Token<K, R>, R] : never;
+};
+
 /** `var(--name)` — what codegen writes for a variable, and the only shape this has to read. */
 const NAMED = /^var\((--[^),\s]+)\)$/;
 
@@ -155,9 +169,9 @@ function nameOf(token: string): `--${string}` {
  * when it changes — and this is the right place to pay it: once per theme, rather than once per use,
  * which is what `$` inside a block avoids entirely.
  */
-export function toStyle(settings: readonly Setting[]): Record<`--${string}`, string> {
+export function toStyle<const P extends readonly Setting[]>(settings: P & Permitted<P>): Record<`--${string}`, string> {
   const style: Record<string, string> = {};
-  for (const [token, value] of settings) style[nameOf(token)] = String(value);
+  for (const [token, value] of settings as readonly Setting[]) style[nameOf(token)] = String(value);
   return style;
 }
 
