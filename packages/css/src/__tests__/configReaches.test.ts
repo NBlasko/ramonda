@@ -250,3 +250,47 @@ describe("`$` without an import", () => {
     expect(reported().join("\n")).toMatch(/nope/);
   });
 });
+
+/**
+ * A kind the project takes only from its variables is not OFFERED as a literal.
+ *
+ * The trap `DESIGN.md` named before any of this was built: *"the offer has to match what the rule
+ * accepts, or the editor suggests what the checker reports."* Measured, it had gone wrong here:
+ * `"<color>": { variablesOnly: true }` and typing `color: ` still offered all 210 colour keywords —
+ * every one of which `literal-not-allowed` then refuses.
+ *
+ * What stays is what the setting itself leaves alone: `currentcolor`, which is a reference to the
+ * inherited colour rather than a colour anybody wrote, and the CSS-wide keywords.
+ */
+describe("a kind this project takes only from variables", () => {
+  const ONLY = `{ "<color>": { variablesOnly: true } }`;
+  const VARIABLES = { brand: `kind("color", { main: "#10b981" })` };
+
+  test("its keywords are not offered", () => {
+    const { offered } = editorWith(ONLY, `const a = <div css={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
+    const names = offered();
+
+    expect(names).not.toContain("rebeccapurple");
+    expect(names).not.toContain("red");
+  });
+
+  test("but what the setting leaves alone still is", () => {
+    const { offered } = editorWith(ONLY, `const a = <div css={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
+    const names = offered();
+
+    expect(names).toContain("currentcolor");
+    expect(names).toContain("inherit");
+  });
+
+  test("and a property of another kind is untouched", () => {
+    const { offered } = editorWith(ONLY, `const a = <div css={@@( position: /*|*/ )}>x</div>;\n`, VARIABLES);
+
+    expect(offered()).toContain("absolute");
+  });
+
+  test("with no such setting, the colours are offered as they always were", () => {
+    const { offered } = editorWith(`{}`, `const b = <div css={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
+
+    expect(offered()).toContain("rebeccapurple");
+  });
+});

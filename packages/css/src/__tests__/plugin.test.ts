@@ -1325,12 +1325,28 @@ describe("a value that is a function", () => {
     expect(entry?.insertText).toBe("translate(");
   });
 
+  /**
+   * Asserted as an ORDER rather than as a literal `sortText`, which is what the claim is.
+   *
+   * It read `"0"` and `"1"` until a vendor prefix earned a digit of its own — `&::` was offering
+   * eight `-moz-` and `-ms-` pseudo-elements ahead of `before`. A test that names the encoding
+   * fails when the encoding grows, and says nothing about whether the order is right.
+   */
   test("and a keyword sorts above a function, because it is the shorter answer", () => {
     const { service, caret } = editor(`const a = <div css={@@( transform: ${CARET} )}>x</div>;\n`);
     const entries = service.getCompletionsAtPosition(FILE, caret, undefined)?.entries ?? [];
+    const sortOf = (name: string) => entries.find((one) => one.name === name)?.sortText ?? "";
 
-    expect(entries.find((one) => one.name === "none")?.sortText).toBe("0");
-    expect(entries.find((one) => one.name === "rotate()")?.sortText).toBe("1");
+    expect(sortOf("none")).not.toBe("");
+    expect(sortOf("none") < sortOf("rotate()")).toBe(true);
+  });
+
+  test("and a vendor-prefixed name sorts below both", () => {
+    const { service, caret } = editor(`const a = <div css={@@(\n  &::${CARET}\n)}>x</div>;\n`);
+    const entries = service.getCompletionsAtPosition(FILE, caret, undefined)?.entries ?? [];
+    const sortOf = (name: string) => entries.find((one) => one.name === name)?.sortText ?? "";
+
+    expect(sortOf("before") < sortOf("-moz-progress-bar")).toBe(true);
   });
 
   test("`var()` is offered everywhere, because every property takes it", () => {
@@ -2233,6 +2249,39 @@ describe("a caret in a nested rule's prelude", () => {
 
     for (const property of SOME_PROPERTIES) expect(got).toContain(property);
     expect(got).not.toContain("hover");
+  });
+
+  /**
+   * A VENDOR-PREFIXED name sorts last, and it was sorting first.
+   *
+   * Measured in a real project: `&::` offered eight `-moz-` and `-ms-` pseudo-elements before any
+   * real one, because the list is alphabetical and a dash sorts before a letter. Somebody typing
+   * `&::` wants `before` or `after`; `-moz-progress-bar` is a name they will never reach for.
+   *
+   * `entryFor` already sorts a function call after a bare word for the same reason — the ordinary
+   * answer first — and a prefix is the same judgement one step further.
+   */
+  test("`&::` offers the ordinary pseudo-elements first", () => {
+    const got = names(`const a = <div css={@@(\n  &::${CARET}\n)}>x</div>;\n`);
+    const first = got.slice(0, 8);
+
+    expect(first).toContain("before");
+    expect(first).toContain("after");
+    expect(first.every((one) => !one.startsWith("-"))).toBe(true);
+  });
+
+  test("and a prefixed one is still offered, at the end", () => {
+    const got = names(`const a = <div css={@@(\n  &::${CARET}\n)}>x</div>;\n`);
+
+    expect(got).toContain("-moz-progress-bar");
+    expect(got.indexOf("-moz-progress-bar")).toBeGreaterThan(got.indexOf("before"));
+  });
+
+  test("the same for a pseudo-class", () => {
+    const got = names(`const a = <div css={@@(\n  &:${CARET}\n)}>x</div>;\n`);
+
+    expect(got.slice(0, 8).every((one) => !one.startsWith("-"))).toBe(true);
+    expect(got).toContain("hover");
   });
 
   /**

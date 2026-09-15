@@ -2,6 +2,7 @@ import type ts from "typescript";
 import type { BlockItem } from "./compiler/ast";
 import {
   PROPERTIES,
+  PRIMITIVE,
   PROPERTY_NAMED,
   UNION_TYPED,
   VALUE_WORDS,
@@ -10,6 +11,7 @@ import {
 } from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
 import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding, checkSite } from "./compiler/rules";
+import { variablesOnlyKinds } from "./codegen";
 import { checkedSource } from "./compiler/source";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
@@ -1472,7 +1474,16 @@ function selectorsFor(colons: 1 | 2, typed: string): readonly string[] {
     .filter((one) => (colons === 2 ? one.startsWith("::") : !one.startsWith("::")))
     .map((one) => one.slice(wanted.length));
 
-  return names.filter((one) => one.startsWith(typed.toLowerCase())).sort();
+  /**
+   * Unprefixed FIRST, then alphabetical — which the plain sort got backwards.
+   *
+   * Measured: `&::` offered eight `-moz-` and `-ms-` names ahead of any real one, because a dash
+   * sorts before a letter. `entryFor` says the same thing in `sortText`, and both are here so the
+   * list reads right whether a consumer sorts it or takes it as it comes.
+   */
+  return names
+    .filter((one) => one.startsWith(typed.toLowerCase()))
+    .sort((a, b) => Number(a.startsWith("-")) - Number(b.startsWith("-")) || a.localeCompare(b));
 }
 
 /** Every declaration's VALUE, with the property it belongs to — see `valueWords`. */
@@ -1561,10 +1572,26 @@ function valueWords(property: string, config: Config): readonly string[] | undef
   const named = PROPERTY_NAMED[property] === undefined ? [] : PROPERTIES;
   if (own === undefined && named.length === 0) return undefined;
 
-  // Every property takes these, whatever else it takes.
+  /**
+   * A kind this project takes only from its VARIABLES offers none of that kind's literals.
+   *
+   * The trap `DESIGN.md` named before any of this was built: *"the offer has to match what the rule
+   * accepts, or the editor suggests what the checker reports."* Measured, it had gone wrong exactly
+   * here — `"<color>": { variablesOnly: true }` and typing `color: ` still offered all 210 colour
+   * keywords, every one of which `literal-not-allowed` then refuses.
+   *
+   * What stays is what the SETTING itself leaves alone, so the two agree by construction rather
+   * than by a second list: `currentcolor` is a reference to the inherited colour rather than one
+   * anybody wrote, and the CSS-wide keywords below are not values either.
+   */
+  const kinds = variablesOnlyKinds(config.properties);
+  const primitive = PRIMITIVE[property];
+  const literal =
+    primitive !== undefined && kinds.includes(primitive) ? (word: string) => word === "currentcolor" : () => true;
+
   return [
-    ...(own === undefined ? [] : own.split(" ").filter(Boolean)),
-    ...named,
+    ...(own === undefined ? [] : own.split(" ").filter(Boolean).filter(literal)),
+    ...named.filter(literal),
     "var()",
     "inherit",
     "initial",
@@ -1583,10 +1610,21 @@ function valueWords(property: string, config: Config): readonly string[] | undef
  */
 function entryFor(name: string): ts.CompletionEntry {
   const call = name.endsWith("()");
+  /**
+   * A VENDOR-PREFIXED name sorts last, and it was sorting FIRST.
+   *
+   * Measured: `&::` offered eight `-moz-` and `-ms-` pseudo-elements ahead of any real one, because
+   * the list is alphabetical and a dash sorts before a letter. Somebody typing `&::` wants `before`
+   * or `after`; `-moz-progress-bar` is a name they will never reach for.
+   *
+   * The same judgement as the call below, one step further: the ordinary answer first. Both stay in
+   * the list — a project supporting an old engine needs them, and they are one keystroke away.
+   */
+  const prefixed = name.startsWith("-");
   return {
     name,
     kind: "string" as ts.ScriptElementKind,
-    sortText: call ? "1" : "0",
+    sortText: `${prefixed ? "2" : "0"}${call ? "1" : "0"}`,
     ...(call ? { insertText: name.slice(0, -1) } : {}),
   };
 }
