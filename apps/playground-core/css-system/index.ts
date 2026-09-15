@@ -42,11 +42,8 @@ export const $ = Object.freeze({
 interface Narrowings {
   /**
    * `z-index` — only the 5 value(s) this project permits.
-   *
-   * Written either way: a block is CSS, so `z-index: 0` reaches this as the string
-   * `"0"`. Both are the same declaration.
    */
-  "z-index": 0 | "0" | 1 | "1" | 10 | "10" | 100 | "100" | 1000 | "1000" | Token<"integer" | "number", 0 | "0" | 1 | "1" | 10 | "10" | 100 | "100" | 1000 | "1000"> | CssGlobal | `var(${string})`;
+  "z-index": 0 | 1 | 10 | 100 | 1000 | Token<"integer" | "number", 0 | 1 | 10 | 100 | 1000> | CssGlobal | `var(${string})`;
   /** `-moz-border-bottom-colors` — a colour, and this project's variables of that kind. */
   "-moz-border-bottom-colors": Narrowed<"none", CssColor | Token<"color">>;
   /** `-moz-border-left-colors` — a colour, and this project's variables of that kind. */

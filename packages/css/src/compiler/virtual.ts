@@ -1042,6 +1042,7 @@ function homeOf(segments: readonly Segment[], offset: number): number | undefine
 }
 
 function quoted(text: string): string {
+  if (/^-?\d+(?:\.\d+)?$/.test(text.trim())) return text.trim();
   return JSON.stringify(text);
 }
 

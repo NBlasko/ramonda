@@ -180,9 +180,12 @@ describe("a property narrowed to a list of values", () => {
   test.each([
     ["a unit", `<div css={@@( letter-spacing: 2rem; )}>x</div>`, "[unit-not-allowed]"],
     ["a shorthand", `<div css={@@( margin: 8px; )}>x</div>`, "[shorthand-not-allowed]"],
+    // A quoted value where the property takes a number: the quotes are the fault and the rule says
+    // so, while the type refuses `"\"1\""` in terms nobody can act on.
+    ["a quoted value", `<div css={@@( z-index: "1"; )}>x</div>`, "[string-not-allowed]"],
   ])("%s is reported once too", (_what, written, said) => {
     const reported = editorWith(
-      `{ "*": { units: ["px"] }, margin: { shorthand: false } }`,
+      `{ "*": { units: ["px"] }, margin: { shorthand: false }, "z-index": { values: [0, 1] } }`,
       `const h = ${written};\n`,
     ).reported();
 

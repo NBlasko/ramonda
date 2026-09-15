@@ -1554,6 +1554,12 @@ export const SPEAKS_OVER_TYPES: readonly RuleId[] = [
   "value-not-allowed",
   "shorthand-not-allowed",
   "unknown-property",
+  /**
+   * A quoted value, where the type's own word is unreadable: measured, `z-index: "1"` gives
+   * *Type '"\"1\""' is not assignable* — the author's quotes escaped inside the compiler's own
+   * quotes. The rule says the quotes are part of a CSS string and a browser drops the declaration.
+   */
+  "string-not-allowed",
 ];
 
 /** The compiler codes those rules replace. See {@link SPEAKS_OVER_TYPES}. */

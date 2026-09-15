@@ -580,15 +580,21 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     /**
      * A number is written as a number AND as the text it becomes, and the second is not a nicety.
      *
-     * A block is CSS, so `z-index: 5` reaches the type as the string `"5"` — the virtual file emits
-     * the declaration's value as written. A list of `[1, 2, 5, 10]` therefore refused every one of
-     * its own permitted values, measured, which is refusing correct CSS: the one failure this
-     * package may not have. A project writes the list the way it thinks about it and both spellings
-     * are admitted.
+     * A block is CSS, so `z-index: 5` used to reach the type as the STRING `"5"` — the virtual file
+     * emitted every declaration's value quoted. A list of `[1, 2, 5, 10]` therefore refused every
+     * one of its own permitted values, and the fix was to admit both spellings.
+     *
+     * **That fix was the wrong half, and a user found it by hovering.** The type then listed
+     * `"0" | "1" | "10"` beside the numbers — values a person cannot write, because
+     * `string-not-allowed` refuses quotes in CSS and is right to: the quotes are part of a CSS
+     * string and a browser drops the declaration. So the type said `"1"` was permitted and the
+     * checker refused it, which is a contradiction no amount of explaining fixes.
+     *
+     * `quoted` in `virtual.ts` emits a numeric value as a NUMBER now, so the type carries only what
+     * a person may write. A hole handing over either is unaffected — TypeScript widens `"1"` to
+     * `string`, which no narrowed property accepts, and a numeric hole is a number.
      */
-    const permitted = values.flatMap((one) =>
-      typeof one === "number" ? [JSON.stringify(one), JSON.stringify(String(one))] : [JSON.stringify(one)],
-    );
+    const permitted = values.map((one) => JSON.stringify(one));
 
     /**
      * **A variable of the right kind goes in too, and none did.**
@@ -630,9 +636,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
      * Said in the doc comment rather than left to be worked out from the union, because the union is
      * what an editor shows and the union is what looked like a contradiction.
      */
-    const spellings =
-      `\n   *\n   * Written either way: a block is CSS, so \`${property}: ${values[0]}\` reaches this as ` +
-      `the string\n   * \`${JSON.stringify(String(values[0]))}\`. Both are the same declaration.`;
+    const spellings = "";
 
     rows.push(
       `  /**\n   * \`${property}\` — ${said}.${spellings}\n   */\n` +
