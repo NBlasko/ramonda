@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { Config } from "../config";
+import { kind } from "../declared";
 import { ABBREVIATIONS, KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
 import { nearest } from "../compiler/rules";
@@ -3150,5 +3151,60 @@ describe("a declaration with no semicolon", () => {
    */
   test("a half-typed declaration says nothing", () => {
     expect(rules("  padding:")).toEqual([]);
+  });
+});
+
+/**
+ * A colour written out where the project takes colours only from its own variables.
+ *
+ * Asked for by the user: *"za boje moze reci da hoce samo kroz tokene i variable da radi, nece
+ * hardcoded values."* A closed list of every permitted colour is not that — a palette is fifty
+ * values that change, and pinning them in a property's type puts it in two places.
+ *
+ * **This is the half a type cannot do.** Sixty-three properties accept a colour; forty say so in
+ * their grammar and the generated types refuse a literal there. The other twenty-three are composite
+ * — their value is `string | number`, because a union narrow enough to refuse `red` would refuse
+ * `4px solid red` as well. So this reads those, and only those: one mechanism per property.
+ */
+describe("a colour written out, where the project said variables only", () => {
+  const ONLY: Config = { variablesOnly: ["color"] };
+
+  test.each([
+    ["a named colour inside a shorthand", "  border-left: 4px solid red;"],
+    ["a hex", "  box-shadow: 0 1px 2px #00000022;"],
+    ["a colour function", "  background: linear-gradient(rgb(0 0 0), white);"],
+  ])("%s is reported", (_what, css) => {
+    expect(rulesWith(css, ONLY)).toEqual(["literal-not-allowed"]);
+  });
+
+  test("a variable is what it is asking for, and says nothing", () => {
+    // Declared, because `unknown-variable` would otherwise speak about the path and this test would
+    // be measuring that rule instead of this one.
+    const declared: Config = { ...ONLY, variables: { color: kind("color", { accent: { main: "#10b981" } }) } };
+
+    expect(rulesWith("  border-left: 4px solid $.color.accent.main;", declared)).toEqual([]);
+  });
+
+  test("`currentcolor` and `var()` go in, because neither is a colour somebody wrote out", () => {
+    expect(rulesWith("  border-left: 4px solid currentcolor;", ONLY)).toEqual([]);
+    expect(rulesWith("  border-left: 4px solid var(--brand);", ONLY)).toEqual([]);
+  });
+
+  /**
+   * A property whose grammar SAYS it takes a colour is the TYPES' to refuse — measured, they do, and
+   * saying it twice for one mistake is the fault this repository keeps finding.
+   */
+  test("a property the types already refuse is left to them", () => {
+    expect(rulesWith("  color: red;", ONLY)).toEqual([]);
+    expect(rulesWith("  background-color: #fff;", ONLY)).toEqual([]);
+  });
+
+  test("a property that takes no colour has nothing to find", () => {
+    expect(rulesWith("  padding: 8px;", ONLY)).toEqual([]);
+    expect(rulesWith('  grid-template-areas: "a b";', ONLY)).toEqual([]);
+  });
+
+  test("and with no `variablesOnly` at all, none of this happens", () => {
+    expect(rulesWith("  border-left: 4px solid red;", {})).toEqual([]);
   });
 });

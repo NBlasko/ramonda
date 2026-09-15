@@ -81,7 +81,7 @@ export function writeGenerated(from: string, typescript: typeof ts): CodegenResu
   const config = readConfig(path, typescript);
   const declarations = config.variables ?? {};
   const rules = config.properties;
-  if (config.variables === undefined && rules === undefined) {
+  if (config.variables === undefined && rules === undefined && config.variablesOnly === undefined) {
     return { config: path, declared: 0, files: [] };
   }
 
@@ -93,9 +93,11 @@ export function writeGenerated(from: string, typescript: typeof ts): CodegenResu
    */
   const named = namesIn(declarations);
   verifyNames(named);
-  if (named.length === 0 && rules === undefined) return { config: path, declared: 0, files: [] };
+  if (named.length === 0 && rules === undefined && config.variablesOnly === undefined) {
+    return { config: path, declared: 0, files: [] };
+  }
 
-  const { css, module } = generate(declarations, rules);
+  const { css, module } = generate(declarations, rules, config.variablesOnly);
   const beside = dirname(path);
 
   return {

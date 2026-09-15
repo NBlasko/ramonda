@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type Declarations, namesIn } from "./codegen";
+import { KINDS } from "./declared";
+import type { Kind } from "./token";
 import type { CssArity, CssProperties, CssShorthand } from "./properties.generated";
 import type { CssUnit } from "./units.generated";
 import { RULE_IDS, nearest } from "./compiler/rules";
@@ -92,6 +94,26 @@ export interface Config {
    * map this project's blocks are checked against. That is the whole reason it is here rather than
    * shipped: what CSS allows is this package's to state, and how far a project goes is not.
    */
+  /**
+   * Kinds that may only be written as a declared VARIABLE, never as a literal value.
+   *
+   * ```ts
+   * variablesOnly: ["color"],
+   * ```
+   *
+   * Asked for by the user, in their words: *"za boje moze reci da hoce samo kroz tokene i variable
+   * da radi, nece hardcoded values."* A closed list of every permitted colour is not that — a
+   * palette is fifty values that change, and pinning them in a property's type puts it in two
+   * places.
+   *
+   * **By KIND rather than by property**, because a colour reaches sixty-three properties and nobody
+   * is going to list them. Forty of those say what they take and the TYPE refuses a literal there;
+   * the other twenty-three are composite — `border-left: 4px solid red` — and the rule reads those.
+   *
+   * `currentcolor`, the CSS-wide keywords and `var()` still go in: none of them is a colour somebody
+   * hardcoded, and refusing them would be refusing the escape hatches CSS itself provides.
+   */
+  readonly variablesOnly?: readonly Kind[];
   readonly properties?: PropertyRules;
   /** A rule's severity, by id. `"off"` silences it; `"error"` is the default for every rule. */
   readonly rules?: Readonly<Record<string, "error" | "off">>;
@@ -202,7 +224,7 @@ export function environmentOf(production?: boolean): ConfigEnvironment {
 const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "layer"]);
 
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
-const KNOWN = new Set(["units", "variables", "alsoSets", "properties", "rules"]);
+const KNOWN = new Set(["units", "variables", "alsoSets", "properties", "variablesOnly", "rules"]);
 
 /**
  * Keys that were a setting and are not, with the sentence that says where the answer comes from now.
@@ -540,6 +562,18 @@ function validate(config: Record<string, unknown>, path: string): void {
       }
       if (!(one as string).startsWith("--")) {
         refuse(`lists \`${one}\` in \`alsoSets\`. A custom property begins with two dashes, like "--brand".`);
+      }
+    }
+  }
+
+  const variablesOnly = config.variablesOnly;
+  if (variablesOnly !== undefined) {
+    if (!Array.isArray(variablesOnly)) {
+      refuse(`sets \`variablesOnly\` to ${describe(variablesOnly)}. It takes a list of kinds, like ["color"].`);
+    }
+    for (const one of variablesOnly as unknown[]) {
+      if (typeof one !== "string" || !KINDS.includes(one as never)) {
+        refuse(`lists ${describe(one)} in \`variablesOnly\`. The kinds are CSS's own: ${KINDS.join(", ")}.`);
       }
     }
   }

@@ -18,6 +18,7 @@ import {
   MEDIA_FEATURES,
   UNIT_TYPE,
   SELECTORS,
+  PRIMITIVE,
 } from "./keywords.generated";
 import { canonicalPrelude, canonicalValue, propertyName } from "./normalise";
 import { CONDITION, LINE_COMMENT, SPREAD, closingHole, holeIn, opensAHole } from "./read";
@@ -112,6 +113,7 @@ export const RULE_IDS = [
   "unknown-variable",
   "too-many-values",
   "missing-semicolon",
+  "literal-not-allowed",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -296,6 +298,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
   tooManyValues(block, config?.properties, findings);
+  if (config?.variablesOnly !== undefined) literalNotAllowed(block, config.variablesOnly, findings);
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
   missingSemicolon(block, findings);
   const silenced = config?.rules;
@@ -501,6 +504,74 @@ function missingSemicolon(block: Block, findings: Finding[]): void {
   };
 
   walkItems(block.items);
+}
+
+/** Every bare word the `<color>` grammar reaches, minus the one that is not a colour anybody wrote. */
+const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== "" && one !== "currentcolor"));
+
+/** The functions that produce a colour — `rgb()`, `oklch()`, `color-mix()`. */
+const COLOUR_CALL = /(?<![\w-])(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\s*\(/i;
+
+/** A hex colour, in every length CSS allows. */
+const HEX = /#[0-9a-fA-F]{3,8}(?![\w-])/;
+
+/**
+ * A colour written as a literal where the project said colours come from variables only.
+ *
+ * **This is the half a type cannot do.** Sixty-three properties accept a colour; forty say so in
+ * their grammar and the generated types refuse a literal there outright. The other twenty-three are
+ * composite — `border-left: 4px solid red`, `background`, `box-shadow` — and their value is
+ * `string | number` because a union narrow enough to refuse `red` would refuse `4px solid red` as
+ * well. So the rule reads those, and only those: one mechanism per property, never two for one.
+ *
+ * `currentcolor` is not a colour somebody hardcoded, it is a reference to the inherited one, and
+ * `var()` is the escape CSS itself provides. Neither is reported.
+ */
+function literalNotAllowed(block: Block, kinds: readonly string[], findings: Finding[]): void {
+  if (!kinds.includes("color")) return;
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+
+      const property = propertyName(item.property);
+      // A property whose grammar SAYS it takes a colour is the types' to refuse — see above.
+      if (PRIMITIVE[property] === "color") continue;
+      // One that does not accept a colour at all has nothing here to find.
+      if (!(KEYWORDS[property] ?? "").split(" ").includes("rebeccapurple")) continue;
+
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+
+        const found = HEX.exec(part.text) ?? COLOUR_CALL.exec(part.text) ?? namedColour(part.text);
+        if (found === null) continue;
+
+        findings.push({
+          rule: "literal-not-allowed",
+          at: part.at + found.index,
+          length: found[0].length,
+          message:
+            `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
+            `own variables.\n\n        Declare it in \`ramonda.css.ts\` and write \`$.…\`, or drop ` +
+            `\`"color"\` from \`variablesOnly\`.`,
+        });
+        break;
+      }
+    }
+  };
+
+  walkItems(block.items);
+}
+
+/** The first bare word in a value that is a named colour, with where it starts. */
+function namedColour(text: string): RegExpExecArray | null {
+  for (const match of text.matchAll(/(?<![\w-])([a-zA-Z][a-zA-Z0-9-]*)(?![\w-]*\()/g)) {
+    if (COLOUR_WORDS.has(match[1].toLowerCase())) return match as RegExpExecArray;
+  }
+  return null;
 }
 
 /**

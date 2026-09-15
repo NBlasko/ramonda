@@ -1369,6 +1369,26 @@ system — variables set from a block, a dozen properties written —
 
 Instantiations do not move with the range at all. A union of string literals is the cheap kind.
 
+### `@@` and the editor's own completion — reported, not diagnosed
+
+The user, typing: *"kada napisem `css={@@` i krenem da kucam `(` desi se `css={@@Component()}` … je
+mnogo iritantno."*
+
+What is happening is the editor's ordinary completion: after `@@` the caret is in an expression
+position TypeScript knows nothing special about, so it offers every symbol in scope, `Component`
+among them — and `(` is a commit character, so typing the very next character of the block ACCEPTS
+the highlighted one.
+
+**Not diagnosed, and worth saying so:** the `@` is not the problem in itself, and this is very
+probably not VS Code deciding anything about decorators. It is a completion list that should not be
+there at all, and the plugin already owns `getCompletionsAtPosition` — it returns its own list inside
+a value and drops the virtual file's own bindings everywhere. A caret between `@@` and its `(` is a
+position where the answer is NOTHING, and saying so is the same shape of fix.
+
+To confirm before building: whether the list is TypeScript's or the editor's word-based fallback,
+because the two are answered in different places. Measure it the way `configReaches.test.ts` does —
+a real project, the real plugin, the caret exactly there.
+
 ### Completion after a `:` — asked for, not built
 
 The user, while using it: *"voleo bih kada napisem `:` da imam autocomplete za `&:hover` i ostale."*
