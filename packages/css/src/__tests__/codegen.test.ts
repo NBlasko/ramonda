@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { generate, namesIn, verifyNames } from "../codegen";
+import { type Declarations, generate, namesIn, verifyNames } from "../codegen";
 import { kind } from "../declared";
 
 /**
@@ -138,5 +138,82 @@ describe("what the module refuses at run time", () => {
     expect(written).toContain("export const $ = Object.freeze({");
     expect(written).toContain('"color": Object.freeze({');
     expect(written).toContain('"primary": Object.freeze({');
+  });
+});
+
+/**
+ * A declared name or value that breaks the STYLESHEET — none of it was checked.
+ *
+ * Found by review pass 2, by handing codegen declarations it does not expect. The module it emits
+ * parses in every case; the CSS does not, and two of these are worse than not parsing:
+ *
+ *     value `a;b`   ->  `--a-b: a;b;`     the `;` ends the declaration, `b;` is left over
+ *     value `a}b`   ->  `--a-b: a}b;`     the `}` CLOSES `:root`, and the rest escapes the rule
+ *     a newline     ->  `--a-b: a`        the value is cut in half
+ *     name `b"c`    ->  `--a-b"c: 8px;`   not a custom property name at all
+ *     name `b*c`    ->  `--a-b*c: 8px;`   nor this one
+ *
+ * The name half has an answer already written down elsewhere: the editor's grammar matches a `$`
+ * path as `(?:\.[A-Za-z0-9_-]*)+`, so a segment outside that set is a variable `$` can never reach.
+ * Codegen was emitting one anyway. One rule, two consumers, and only one of them knew it.
+ */
+describe("a declaration that would break the stylesheet", () => {
+  const of = (declarations: Declarations) => () => generate(declarations);
+
+  test.each([
+    ["a semicolon, which ends the declaration", "a;b"],
+    ["a closing brace, which closes `:root`", "a}b"],
+    ["an opening brace", "a{b"],
+    ["a newline, which cuts the value in half", "a\nb"],
+  ])("a value holding %s is refused", (_what, value) => {
+    expect(of({ space: kind("custom-ident", { gutter: value }) })).toThrow(/value/i);
+  });
+
+  test.each([
+    ["a quote", 'b"c'],
+    ["a star", "b*c"],
+    ["a space", "b c"],
+    ["a brace", "b}c"],
+  ])("a name holding %s is refused", (_what, name) => {
+    expect(of({ space: kind("length", { [name]: "8px" }) })).toThrow(/name|segment/i);
+  });
+
+  /**
+   * A DOT in a key is not a fault — it reads as nesting, and reaching it works.
+   *
+   * `{ "b.c": "8px" }` becomes the path `space.b.c`, so `$` emits `space: { b: { c } }` and
+   * `$.space.b.c` reaches it. Written down because it looks like a hole in the set above and is
+   * not: the one thing it could go wrong as — meeting a real `{ b: { c } }` — is a collision, and
+   * `verifyNames` has refused those since before this.
+   */
+  test("a dot reads as nesting, and colliding with real nesting is still refused", () => {
+    expect(of({ space: kind("length", { "b.c": "8px" }) })).not.toThrow();
+    expect(of({ space: kind("length", { "b.c": "8px", b: { c: "4px" } }) })).toThrow(/one custom property/);
+  });
+
+  test("the message names the segment and says what a name may hold", () => {
+    expect(of({ space: kind("length", { "b*c": "8px" }) })).toThrow(/b\*c/);
+  });
+
+  /** Everything a `$` path can reach is still accepted, which is the whole permitted set. */
+  test.each([
+    ["letters", "gutter"],
+    ["a dash", "gutter-wide"],
+    ["an underscore", "gutter_wide"],
+    ["digits", "gutter2"],
+    ["starting with a digit, which CSS allows after `--`", "2xl"],
+    ["capitals", "Gutter"],
+  ])("a name of %s goes in", (_what, name) => {
+    expect(of({ space: kind("length", { [name]: "8px" }) })).not.toThrow();
+  });
+
+  test.each([
+    ["a call", "calc(1rem + 2px)"],
+    ["a var()", "var(--other, 8px)"],
+    ["a comma", "0 0 4px rgba(0, 0, 0, 0.5)"],
+    ["a quoted string", '"a b"'],
+    ["a url", "url(a.png)"],
+  ])("a value holding %s goes in", (_what, value) => {
+    expect(of({ space: kind("custom-ident", { gutter: value }) })).not.toThrow();
   });
 });

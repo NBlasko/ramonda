@@ -102,6 +102,52 @@ export function verifyNames(named: readonly Named[]): void {
   const claimed = new Map<string, string>();
 
   for (const one of named) {
+    /**
+     * A segment outside what a `$` path can reach — refused, because the stylesheet takes anything.
+     *
+     * Measured in review pass 2: a name of `b*c` became `--a-b*c: 8px;`, which is not a custom
+     * property name, and a name with a quote the same. The module still parsed, so nothing anywhere
+     * said a word.
+     *
+     * The permitted set is not invented here. The editor's grammar matches a `$` path as
+     * `(?:\.[A-Za-z0-9_-]*)+`, so a segment outside it is a variable `$` can never reach — codegen
+     * was writing one anyway. One rule, two consumers, and only one of them knew it.
+     */
+    for (const segment of one.path.split(".")) {
+      if (!/^[A-Za-z0-9_-]+$/.test(segment)) {
+        refuse(
+          `\`${segment}\` cannot be part of a variable's name.\n\n` +
+            `        A name holds letters, digits, \`-\` and \`_\` — that is what \`$.\u2026\` can ` +
+            `reach, and\n        what a custom property may be called. Declared at \`${one.path}\`.`,
+        );
+      }
+    }
+
+    /**
+     * And a VALUE that would end the declaration or leave the rule.
+     *
+     * The stylesheet is `:root { --name: value; }` and these are its punctuation, so a value holding
+     * one does not mean what it says:
+     *
+     *     `a;b`   ->  `--a-b: a;b;`   the `;` ends it, `b;` is left over as a broken declaration
+     *     `a}b`   ->  `--a-b: a}b;`   the `}` CLOSES `:root`, and everything after escapes the rule
+     *     a newline   ->  the value is cut in half
+     *
+     * The second is the one that decides: the rest of a project's variables land outside the rule
+     * that was meant to carry them, and the page renders without any of them.
+     */
+    const value = String(one.value);
+    const broken = /[;{}]/.exec(value) ?? /[\r\n]/.exec(value);
+    if (broken !== null) {
+      const said = broken[0] === "\n" || broken[0] === "\r" ? "a line break" : `\`${broken[0]}\``;
+      refuse(
+        `\`${one.path}\` has a value holding ${said}, which cannot go in a stylesheet.\n\n` +
+          `        A variable is written as \`--name: value;\` inside \`:root\`, so a \`;\`, a brace ` +
+          `or a\n        line break ends the declaration or leaves the rule. The value was ` +
+          `\`${value.replace(/[\r\n]/g, "\u23ce").slice(0, 40)}\`.`,
+      );
+    }
+
     const already = claimed.get(one.name);
     if (already !== undefined) {
       refuse(
