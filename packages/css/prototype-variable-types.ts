@@ -27,10 +27,10 @@ type LengthUnit = "px" | "rem" | "em" | "vh" | "vw" | "ch";
 
 /** What each kind accepts as a fallback. One place; the config and the value slots both read it. */
 interface ValueByKind {
-  "color": `#${string}` | `rgb(${string})` | `oklch(${string})`;
-  "length": `${number}${LengthUnit}` | "0";
-  "duration": `${number}ms` | `${number}s`;
-  "number": number;
+  color: `#${string}` | `rgb(${string})` | `oklch(${string})`;
+  length: `${number}${LengthUnit}` | "0";
+  duration: `${number}ms` | `${number}s`;
+  number: number;
   "font-family": string;
 }
 type Kind = keyof ValueByKind;
@@ -47,11 +47,7 @@ type Written<V> = V | AnyVar | { readonly [name: string]: Written<V> };
 
 /** The same tree with every bare value boxed as a variable of `K`. A nested group keeps its own. */
 type Box<K extends Kind, T> = {
-  readonly [N in keyof T]: T[N] extends AnyVar
-    ? T[N]
-    : T[N] extends string | number
-      ? Var<K, T[N]>
-      : Box<K, T[N]>;
+  readonly [N in keyof T]: T[N] extends AnyVar ? T[N] : T[N] extends string | number ? Var<K, T[N]> : Box<K, T[N]>;
 };
 
 /**
@@ -62,10 +58,7 @@ type Box<K extends Kind, T> = {
  * do, so it is written per GROUP and holds all the way down. It also narrows what may be written
  * below, so the fallbacks are checked while they are typed.
  */
-declare function kind<const K extends Kind, const T extends Written<ValueByKind[K]>>(
-  of: K,
-  group: T,
-): Box<K, T>;
+declare function kind<const K extends Kind, const T extends Written<ValueByKind[K]>>(of: K, group: T): Box<K, T>;
 
 /* ── the config a person writes ─────────────────────────────────────────────────────────── */
 
@@ -88,19 +81,23 @@ const variables = {
 
 const a: Var<"color", "#3b82f6"> = variables.color.primary.main;
 const b: Var<"length", "30px"> = variables.size.control.md;
-const c: Var<"number", 700> = variables.size.weight.bold;     // the nested override
+const c: Var<"number", 700> = variables.size.weight.bold; // the nested override
 const d: Var<"duration", "120ms"> = variables.motion.fast;
-void a; void b; void c; void d;
+void a;
+void b;
+void c;
+void d;
 
 /* ── faults, each one expected ──────────────────────────────────────────────────────────── */
 
-const wrong = kind("color", { primary: { main: "30px" } });            // FAULT: not a colour
-const alsoWrong = kind("length", { control: { md: "#3b82f6" } });      // FAULT: not a length
-void wrong; void alsoWrong;
+const wrong = kind("color", { primary: { main: "30px" } }); // FAULT: not a colour
+const alsoWrong = kind("length", { control: { md: "#3b82f6" } }); // FAULT: not a length
+void wrong;
+void alsoWrong;
 
 /** A narrowed property still refuses a variable by naming the value, not the variable. */
 type PaddingScale = "4px" | "8px" | "16px" | "24px";
 declare function __padding(v: PaddingScale | Var<"length", PaddingScale>): string;
-__padding(variables.size.control.sm);      // ok — 24px is in the scale
-__padding(variables.size.control.md);      // FAULT: 30px is not
-__padding(variables.color.primary.main);   // FAULT: a colour
+__padding(variables.size.control.sm); // ok — 24px is in the scale
+__padding(variables.size.control.md); // FAULT: 30px is not
+__padding(variables.color.primary.main); // FAULT: a colour

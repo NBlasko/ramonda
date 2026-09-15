@@ -2166,12 +2166,12 @@ is refusing.
 leaves the literal type in place and swaps only the unit parameter, so `0` always survived it. One
 question, two settings, two answers.
 
-#### Still open, and it is the message rather than the rule
+#### The message was the other half, and finding 8 answered it
 
-`Narrowed<never, Token<…>>` names neither the project nor `ramonda.css.ts`, and the same fault in a
-composite shorthand gets `literal-not-allowed`, which says both. A doc comment on `Narrowed` would
-show on hover and NOT in the compiler's text, so it is not the fix; what would work is the checker
-recognising this refusal and speaking over it, the way `inOrder` already speaks over `TS2353`.
+`Narrowed<never, Token<…>>` names neither the project nor `ramonda.css.ts`. A doc comment on
+`Narrowed` would show on hover and NOT in the compiler's text, so that was never the fix. What
+worked is the one written there: the rule speaks for every property with a kind, and `inOrder` drops
+the compiler's word on that line.
 
 ### 4. `variablesOnly` covered a list nobody could see — MOSTLY FIXED
 
@@ -2210,8 +2210,6 @@ gains one property and quietly moves another is worse than one that gains nothin
 A fourth attempt was REVERTED. Stripping the range annotation from the syntax up front looked
 equivalent and lost `animation-duration`, so the range is ignored inside the one test that misread
 it and nowhere else.
-
-#### What is still open
 
 #### What StyleX does here, read rather than recalled
 
