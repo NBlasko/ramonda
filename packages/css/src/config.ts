@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type Declarations, namesIn } from "./codegen";
 import { KINDS } from "./declared";
+import { UNIT_TYPE } from "./compiler/keywords.generated";
 import type { Kind } from "./token";
 import type { CssArity, CssProperties, CssShorthand } from "./properties.generated";
-import type { CssUnit } from "./units.generated";
+import type { CssUnit, CssUnitFamily } from "./units.generated";
 import { RULE_IDS, nearest } from "./compiler/rules";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -30,12 +31,37 @@ import type ts from "typescript";
  */
 export interface Config {
   /**
-   * The units a value may use — everything else is reported.
+   * The units a value may use, **by family** — a family not named here is not constrained.
+   *
+   * ```ts
+   * units: { length: ["px", "rem"] }            // lengths are these two; times, angles untouched
+   * units: { length: ["px"], time: ["ms"] }     // two families, said separately
+   * units: { flex: [] }                         // `fr` is not used in this project at all
+   * ```
    *
    * A project rule rather than a CSS one: `em` is valid CSS and a team may still have decided
    * against it. Absent, every unit CSS has is fine.
+   *
+   * **Keyed by family because a flat list could not say what anybody meant.** `units: ["px", "rem"]`
+   * was this key, and it meant *every unit in CSS and nothing else* — so measured, a project stating
+   * the one rule it wanted got four reports on ordinary CSS it had no opinion about:
+   *
+   *     transition: all 200ms ease      ms is a time
+   *     width: 50%                      % is a percentage
+   *     rotate: 45deg                   deg is an angle
+   *     grid-template-columns: 1fr      fr is a flex
+   *
+   * To say "lengths are px and rem" you had to enumerate the units of five other families. The
+   * families come from `UNIT_TYPE`, generated with an assertion that every unit lands in exactly
+   * one, so a unit CSS adds fails the build until somebody classifies it.
+   *
+   * **This is the project-wide sweep, and it is read by a RULE.** Its namesake inside
+   * {@link PropertyRule} is a different thing wearing the same word: that one is per property and
+   * reaches the TYPES, so it can only bind a property whose value is a dimension. This one reads
+   * every value in every block, including the ones no type describes — `transition`, `rotate`,
+   * `grid-template-columns`. Neither can do the other's job, which is why both exist.
    */
-  readonly units?: readonly string[];
+  readonly units?: UnitsByFamily;
   /**
    * The variables this project DECLARES — a name, a kind and a fallback each.
    *
@@ -136,6 +162,17 @@ export function knownNames(config: Config): readonly string[] {
   const declared = config.variables === undefined ? [] : namesIn(config.variables).map((one) => one.name);
   return [...declared, ...(config.alsoSets ?? [])];
 }
+
+/**
+ * What {@link Config.units} is — the permitted units of a family, for the families a project names.
+ *
+ * Its own name because three consumers hold it: the rule that reads it, the config validator that
+ * refuses the old flat form, and this interface.
+ */
+export type UnitsByFamily = Readonly<Partial<Record<CssUnitFamily, readonly CssUnit[]>>>;
+
+/** The unit families, derived from the table rather than written twice. */
+const UNIT_FAMILIES: ReadonlySet<string> = new Set(Object.values(UNIT_TYPE));
 
 /** Every property name, and the wildcard that reaches all of them at once. */
 type PropertyName = keyof CssProperties;
@@ -523,9 +560,44 @@ function validate(config: Record<string, unknown>, path: string): void {
 
   const units = config.units;
   if (units !== undefined) {
-    if (!Array.isArray(units)) refuse(`sets \`units\` to ${describe(units)}. It takes a list, like ["px", "rem"].`);
-    for (const one of units as unknown[]) {
-      if (typeof one !== "string") refuse(`lists ${describe(one)} in \`units\`. Every unit is a string, like "px".`);
+    /**
+     * A LIST is the old spelling, and it MUST be refused rather than reinterpreted.
+     *
+     * `units: ["px", "rem"]` meant every unit in CSS and nothing else; keyed by family the same
+     * words mean lengths only. Accepting the list and reading it as `{ length: [...] }` would be a
+     * project's rules quietly getting weaker on an upgrade — `200ms` and `45deg` stop being reported
+     * and nothing says so. A config that stops loading is a minute's work; a check that stops
+     * checking is found in production.
+     */
+    if (Array.isArray(units)) {
+      refuse(
+        `sets \`units\` to a list. That was its old meaning — every unit in CSS and nothing else — ` +
+          `and it is keyed by FAMILY now, so a family you do not name is not constrained.\n\n` +
+          `        units: { length: ${JSON.stringify(units)} }\n\n` +
+          `        The list form reported \`200ms\`, \`50%\`, \`45deg\` and \`1fr\` as faults, which is ` +
+          `why it changed.`,
+      );
+    }
+    if (typeof units !== "object" || units === null) {
+      refuse(`sets \`units\` to ${describe(units)}. It takes families, like { length: ["px", "rem"] }.`);
+    }
+    for (const [family, list] of Object.entries(units as Record<string, unknown>)) {
+      if (!UNIT_FAMILIES.has(family)) {
+        const meant = nearest(family, [...UNIT_FAMILIES]);
+        refuse(
+          `keys \`units\` by \`${family}\`, which is not a unit family.` +
+            (meant === undefined ? "" : ` Did you mean \`${meant}\`?`) +
+            ` The families are ${[...UNIT_FAMILIES].sort().join(", ")}.`,
+        );
+      }
+      if (!Array.isArray(list)) {
+        refuse(`sets \`units.${family}\` to ${describe(list)}. It takes a list, like ["px", "rem"].`);
+      }
+      for (const one of list as unknown[]) {
+        if (typeof one !== "string") {
+          refuse(`lists ${describe(one)} in \`units.${family}\`. Every unit is a string, like "px".`);
+        }
+      }
     }
   }
 

@@ -294,8 +294,11 @@ describe("which config a file is measured against", () => {
     roots.push(repo);
     mkdirSync(join(repo, ".git"), { recursive: true });
     for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
-    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
-    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px", "em"] };\n`);
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
+    writeFileSync(
+      join(repo, "packages", "admin", "ramonda.css.ts"),
+      `export default { units: { length: ["px", "em"] } };\n`,
+    );
     const app = `const a = <div css={@@(\n  padding: 1em;\n)}>x</div>;\nexport default a;\n`;
     for (const name of ["web", "admin"]) writeFileSync(join(repo, "packages", name, "index.tsx"), app);
     return repo;

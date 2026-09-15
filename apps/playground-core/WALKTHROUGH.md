@@ -70,6 +70,29 @@ stops checking is worse than none.
 
 ## 3. Limit the units
 
+### Project-wide, by family
+
+```ts
+units: { length: ["px", "rem"], percentage: ["%"] },
+```
+
+This one sits at the TOP level of the config, not inside `properties`, and the checker reads it —
+so it reaches values no type describes: `transition`, `rotate`, `grid-template-columns`.
+
+**What should happen.** `padding: 2em` is reported. `transition: all 200ms ease` and `rotate: 45deg`
+are not — `time` and `angle` are families this config says nothing about, so it constrains neither.
+
+**Why it is keyed by family.** It used to be a flat list, `units: ["px", "rem"]`, and that meant
+*every unit in CSS and nothing else*. Measured, a project stating the one rule it wanted got four
+reports on ordinary CSS: `200ms`, `50%`, `45deg`, `1fr`. To say "lengths are px and rem" you had to
+enumerate the units of five families you had no opinion about. Try it — write the flat list, and the
+config refuses to load with the family form written out for you.
+
+An empty list bans a family outright: `units: { flex: [] }` says this project does not use `fr`.
+
+### Per property, through the types
+
+
 ```ts
 "*": { units: ["px", "rem", "%"] },
 ```

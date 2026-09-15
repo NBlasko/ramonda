@@ -1057,9 +1057,9 @@ describe("which config a file is checked against", () => {
 
   test("each package's own, inside one project", () => {
     const report = check({
-      "web/ramonda.css.ts": `export default { units: ["px"] };\n`,
+      "web/ramonda.css.ts": `export default { units: { length: ["px"] } };\n`,
       "web/Card.tsx": SOURCE,
-      "admin/ramonda.css.ts": `export default { units: ["px", "em"] };\n`,
+      "admin/ramonda.css.ts": `export default { units: { length: ["px", "em"] } };\n`,
       "admin/Card.tsx": SOURCE,
     });
 
@@ -1071,7 +1071,7 @@ describe("which config a file is checked against", () => {
   /** And the shared one above them still governs a package that has none of its own. */
   test("the root's config, for a package that does not have one", () => {
     const report = check({
-      "ramonda.css.ts": `export default { units: ["px"] };\n`,
+      "ramonda.css.ts": `export default { units: { length: ["px"] } };\n`,
       "web/Card.tsx": SOURCE,
     });
 

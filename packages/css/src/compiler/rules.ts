@@ -1,6 +1,6 @@
 import { namesIn } from "../codegen";
 import { nearest } from "./nearest";
-import type { Config, PropertyRules } from "../config";
+import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, widthSlot } from "./flatten";
 import { holeOutOfPlace } from "./errors";
@@ -2410,13 +2410,26 @@ function* unitsIn(text: string, at: number): Generator<{ unit: string; at: numbe
  * decided against it — the fault is local to a project, so the list comes from `ramonda.css.ts` and
  * there is no default: a project that says nothing gets every unit CSS has.
  *
+ * **Asked per FAMILY, and a family the config does not name is not constrained.** The setting was a
+ * flat list and meant *every unit in CSS and nothing else*, which measured reported four things
+ * nobody writing `units: ["px", "rem"]` intends — `200ms`, `50%`, `45deg`, `1fr`. A project could
+ * not state the rule it wanted without enumerating five families it had no opinion about. Keyed by
+ * family, the rule it wanted is the rule it writes.
+ *
+ * An EMPTY list is a family banned outright, which is a thing somebody may well mean: `flex: []`
+ * says this project does not use `fr`. So the test is whether the family was NAMED, never whether
+ * its list has anything in it.
+ *
  * It runs BESIDE `unknown-unit` rather than instead of it. A unit that is not a unit is a typo
  * wherever it is written; a unit the project has banned is a different sentence, and reading both on
  * one declaration would be two faults where there is one — so a unit CSS does not have is skipped
  * here and left to the rule that names it.
  */
-function unitNotAllowed(block: Block, allowed: readonly string[], findings: Finding[]): void {
-  const permitted = new Set(allowed.map((one) => one.toLowerCase()));
+function unitNotAllowed(block: Block, allowed: UnitsByFamily, findings: Finding[]): void {
+  /** By family, lower-cased once, so the walk below asks a set rather than a list. */
+  const permitted = new Map<string, ReadonlySet<string>>(
+    Object.entries(allowed).map(([family, units]) => [family, new Set((units ?? []).map((one) => one.toLowerCase()))]),
+  );
 
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -2429,15 +2442,20 @@ function unitNotAllowed(block: Block, allowed: readonly string[], findings: Find
 
         for (const found of unitsIn(part.text, part.at)) {
           const unit = found.unit.toLowerCase();
-          if (permitted.has(unit) || !KNOWN_UNITS.has(unit)) continue;
+          if (!KNOWN_UNITS.has(unit)) continue;
 
+          const family = UNIT_TYPE[unit];
+          const allowedHere = family === undefined ? undefined : permitted.get(family);
+          if (allowedHere === undefined || allowedHere.has(unit)) continue;
+
+          const listed = [...allowedHere].sort().join(", ");
           findings.push({
             rule: "unit-not-allowed",
             at: found.at,
             length: found.length,
             message:
-              `\`${found.unit}\` is a CSS unit this project does not use. \`ramonda.css.ts\` allows ` +
-              `${[...permitted].sort().join(", ")}.`,
+              `\`${found.unit}\` is a ${family} this project does not use. \`ramonda.css.ts\` allows ` +
+              `${listed === "" ? `no ${family} at all` : listed}.`,
           });
         }
       }

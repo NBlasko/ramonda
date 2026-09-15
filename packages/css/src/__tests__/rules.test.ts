@@ -2046,7 +2046,9 @@ describe("valid CSS these rules must not report", () => {
       const source = `<div css={@@(\n${css}\n)}>x</div>`;
       const [site] = findBlocks(source);
       const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
-      return checkBlock(read.block, { config: { units: ["px", "rem"] } }).map((one) => one.rule);
+      return checkBlock(read.block, { config: { units: { length: ["px", "rem"], percentage: ["%"] } } }).map(
+        (one) => one.rule,
+      );
     };
 
     test.each([
@@ -2067,8 +2069,13 @@ describe("valid CSS these rules must not report", () => {
       expect(withUnits(`  --a: "12em" 4em;`)).toEqual(["unit-not-allowed"]);
     });
 
+    /**
+     * One report, not two: `%` is a percentage and this fixture constrains percentages to `%`, so
+     * only the `em` is a fault. It is INSIDE the call, which is the whole claim — were the call's
+     * interior skipped the way a string's is, this would be silent.
+     */
     test("and a unit inside an ordinary call still is too", () => {
-      expect(withUnits(`  width: calc(100% - 4em);`)).toEqual(["unit-not-allowed", "unit-not-allowed"]);
+      expect(withUnits(`  width: calc(100% - 4em);`)).toEqual(["unit-not-allowed"]);
     });
 
     test("`unknown-unit` has the same blind spot and the same fix", () => {
@@ -3206,5 +3213,78 @@ describe("a colour written out, where the project said variables only", () => {
 
   test("and with no `variablesOnly` at all, none of this happens", () => {
     expect(rulesWith("  border-left: 4px solid red;", {})).toEqual([]);
+  });
+});
+
+/**
+ * `units` constrains a FAMILY, because a project that says "px and rem" is talking about lengths.
+ *
+ * The flat list said *every unit in CSS and nothing else*, and measured, that reported four things
+ * nobody writing `units: ["px", "rem"]` means:
+ *
+ *     transition: all 200ms ease        ms is a time
+ *     width: 50%                        % is a percentage
+ *     rotate: 45deg                     deg is an angle
+ *     grid-template-columns: 1fr        fr is a flex
+ *
+ * So a project could not state the one rule it actually wanted without enumerating the units of five
+ * families it had no opinion about. A family it does not name is a family it does not constrain,
+ * which is what makes the setting sayable.
+ *
+ * The families come from `UNIT_TYPE`, generated with an assertion that every unit lands in exactly
+ * one — so a unit CSS adds fails the build until somebody says what it is.
+ */
+describe("units, by family", () => {
+  const under = (units: Config["units"], css: string) => {
+    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, { config: { units } }).map((one) => one.rule);
+  };
+
+  const lengths = { length: ["px", "rem"] } as const;
+
+  test.each([
+    ["a time", "  transition: all 200ms ease;"],
+    ["a percentage", "  width: 50%;"],
+    ["an angle", "  rotate: 45deg;"],
+    ["a flex", "  grid-template-columns: repeat(3, 1fr);"],
+    ["a resolution", "  --a: 2dppx;"],
+    ["a frequency", "  --a: 40hz;"],
+  ])("%s is untouched when only lengths were constrained", (_what, css) => {
+    expect(under(lengths, css)).toEqual([]);
+  });
+
+  test.each([
+    ["one this project allows", "  padding: 8px;", []],
+    ["the other one it allows", "  padding: 1rem;", []],
+    ["one it does not", "  padding: 2em;", ["unit-not-allowed"]],
+    ["one it does not, inside a call", "  width: calc(100% - 4em);", ["unit-not-allowed"]],
+    ["a bare zero, which has no family at all", "  padding: 0;", []],
+  ])("%s", (_what, css, expected) => {
+    expect(under(lengths, css)).toEqual(expected);
+  });
+
+  test("a second family is constrained independently", () => {
+    const both = { length: ["px"], time: ["ms"] } as const;
+
+    expect(under(both, "  transition: all 200ms ease;")).toEqual([]);
+    expect(under(both, "  transition: all 2s ease;")).toEqual(["unit-not-allowed"]);
+    expect(under(both, "  rotate: 45deg;")).toEqual([]);
+  });
+
+  test("the message names the family, so the fix is the one the author meant", () => {
+    const source = `<div css={@@(\n  padding: 2em;\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    const [found] = checkBlock(read.block, { config: { units: lengths } });
+
+    expect(found.message).toContain("`em` is a length this project does not use");
+    expect(found.message).toContain("px, rem");
+  });
+
+  test("an empty list for a family permits nothing of it, which is how a family is banned outright", () => {
+    expect(under({ angle: [] }, "  rotate: 45deg;")).toEqual(["unit-not-allowed"]);
+    expect(under({ angle: [] }, "  padding: 8px;")).toEqual([]);
   });
 });

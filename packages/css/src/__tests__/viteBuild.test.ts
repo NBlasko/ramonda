@@ -469,14 +469,14 @@ test("a unit the project's `ramonda.css.ts` does not allow fails the build", () 
   const root = project(
     `export const card = <div className="lead" css={@@( padding: 1em; )}>x</div>;\n`,
     `import { card } from "./Card";\nconsole.log(card);\n`,
-    { "../ramonda.css.ts": `export default { units: ["px", "rem"] };\n` },
+    { "../ramonda.css.ts": `export default { units: { length: ["px", "rem"] } };\n` },
   );
 
   const result = build(root);
   expect(result.ok).toBe(false);
   // The refusal is the message, not the rule id — a build says what to change, and `ramonda-check`
   // is where a fault is listed under its id.
-  expect(result.output).toContain("a CSS unit this project does not use");
+  expect(result.output).toContain("a length this project does not use");
   expect(result.output).toContain("px, rem");
 });
 

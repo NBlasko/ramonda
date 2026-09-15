@@ -37,18 +37,18 @@ describe("the project's config", () => {
   };
 
   test("a plain object", () => {
-    const dir = project({ "ramonda.css.ts": `export default { units: ["px", "rem"] };\n` });
+    const dir = project({ "ramonda.css.ts": `export default { units: { length: ["px", "rem"] } };\n` });
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px", "rem"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px", "rem"] } });
   });
 
   test("a function of the environment, which is why it is not JSON", () => {
     const dir = project({
-      "ramonda.css.ts": `export default (env: { production: boolean }) => ({\n  units: env.production ? ["px"] : ["px", "rem"],\n});\n`,
+      "ramonda.css.ts": `export default (env: { production: boolean }) => ({\n  units: { length: env.production ? ["px"] : ["px", "rem"] },\n});\n`,
     });
 
-    expect(readConfig(findConfig(dir), ts, { production: true })).toEqual({ units: ["px"] });
-    expect(readConfig(findConfig(dir), ts, { production: false })).toEqual({ units: ["px", "rem"] });
+    expect(readConfig(findConfig(dir), ts, { production: true })).toEqual({ units: { length: ["px"] } });
+    expect(readConfig(findConfig(dir), ts, { production: false })).toEqual({ units: { length: ["px", "rem"] } });
   });
 
   /**
@@ -89,14 +89,14 @@ describe("the project's config", () => {
 
   test("TypeScript that is not erasable, which type stripping would refuse", () => {
     const dir = project({
-      "ramonda.css.ts": `enum Unit { px = "px" }\nexport default { units: [Unit.px] };\n`,
+      "ramonda.css.ts": `enum Unit { px = "px" }\nexport default { units: { length: [Unit.px] } };\n`,
     });
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 
   test("found by walking up, the way a tool run from a subdirectory needs", () => {
-    const dir = project({ "ramonda.css.ts": `export default { units: ["px"] };\n` });
+    const dir = project({ "ramonda.css.ts": `export default { units: { length: ["px"] } };\n` });
 
     expect(findConfig(join(dir, "src", "deep"))).toBe(join(dir, "ramonda.css.ts"));
   });
@@ -115,7 +115,7 @@ describe("the project's config", () => {
    */
   describe("how far up it looks", () => {
     test("stops at the repository root, and does not read what is above it", () => {
-      const outer = project({ "ramonda.css.ts": `export default { units: ["cm"] };\n` });
+      const outer = project({ "ramonda.css.ts": `export default { units: { length: ["cm"] } };\n` });
       const repo = join(outer, "repo");
       mkdirSync(join(repo, ".git"), { recursive: true });
       mkdirSync(join(repo, "src"), { recursive: true });
@@ -128,17 +128,17 @@ describe("the project's config", () => {
       const repo = join(outer, "repo");
       mkdirSync(join(repo, ".git"), { recursive: true });
       mkdirSync(join(repo, "packages", "web"), { recursive: true });
-      writeFileSync(join(repo, "ramonda.css.ts"), `export default { units: ["px"] };\n`);
+      writeFileSync(join(repo, "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
 
       expect(findConfig(join(repo, "packages", "web"))).toBe(join(repo, "ramonda.css.ts"));
     });
 
     test("and a package's own config still wins over the root's", () => {
-      const repo = project({ "ramonda.css.ts": `export default { units: ["px"] };\n` });
+      const repo = project({ "ramonda.css.ts": `export default { units: { length: ["px"] } };\n` });
       mkdirSync(join(repo, ".git"), { recursive: true });
       const inner = join(repo, "packages", "web");
       mkdirSync(inner, { recursive: true });
-      writeFileSync(join(inner, "ramonda.css.ts"), `export default { units: ["rem"] };\n`);
+      writeFileSync(join(inner, "ramonda.css.ts"), `export default { units: { length: ["rem"] } };\n`);
 
       expect(findConfig(inner)).toBe(join(inner, "ramonda.css.ts"));
     });
@@ -149,7 +149,7 @@ describe("the project's config", () => {
       mkdirSync(join(repo, ".git"), { recursive: true });
       const dep = join(repo, "node_modules", "some-package");
       mkdirSync(dep, { recursive: true });
-      writeFileSync(join(dep, "ramonda.css.ts"), `export default { units: ["cm"] };\n`);
+      writeFileSync(join(dep, "ramonda.css.ts"), `export default { units: { length: ["cm"] } };\n`);
 
       expect(findConfig(dep)).toBeUndefined();
     });
@@ -226,8 +226,10 @@ describe("the project's config", () => {
 
     test.each([
       ["units as a bare string", `{ units: "px" }`, /units/],
-      ["units holding a number", `{ units: [1] }`, /units/],
       ["units as null", `{ units: null }`, /units/],
+      ["units holding a number", `{ units: { length: [1] } }`, /units\.length/],
+      ["a family that is not one", `{ units: { lenght: ["px"] } }`, /lenght/],
+      ["a family whose value is not a list", `{ units: { length: "px" } }`, /units\.length/],
       ["rules as null", `{ rules: null }`, /rules/],
       ["rules as an array", `{ rules: ["unknown-unit"] }`, /rules/],
       ["a rule set to a boolean", `{ rules: { "unknown-unit": false } }`, /unknown-unit/],
@@ -246,9 +248,30 @@ describe("the project's config", () => {
       expect(refused(body)).toThrow(says);
     });
 
+    /**
+     * The old flat spelling, refused rather than reinterpreted.
+     *
+     * `units: ["px", "rem"]` meant every unit in CSS and nothing else; keyed by family the same
+     * words mean lengths only. Reading the list as `{ length: [...] }` would be a project's rules
+     * quietly getting weaker on an upgrade — `200ms` and `45deg` stop being reported and nothing
+     * says so. A config that stops loading is a minute's work; a check that stops checking is found
+     * in production.
+     */
+    test("the old flat list is refused, and the message writes out the family form", () => {
+      const thrown = refused(`{ units: ["px", "rem"] }`);
+
+      expect(thrown).toThrow(/keyed by FAMILY/);
+      expect(thrown).toThrow(/units: \{ length: \["px","rem"\] \}/);
+      expect(thrown).toThrow(/200ms/);
+    });
+
     /** A rule id that does not exist is a typo, and a typo that is ignored is invisible. */
     test("a misspelled rule id is refused, with the nearest real one", () => {
       expect(refused(`{ rules: { "unkown-unit": "off" } }`)).toThrow(/unknown-unit/);
+    });
+
+    test("and a misspelled unit family is too", () => {
+      expect(refused(`{ units: { lenght: ["px"] } }`)).toThrow(/Did you mean/);
     });
 
     /**
@@ -265,9 +288,10 @@ describe("the project's config", () => {
     });
 
     test.each([
-      ["one unit", `{ units: ["px"] }`],
+      ["one unit", `{ units: { length: ["px"] } }`],
       ["a name this compiler cannot see", `{ alsoSets: ["--brand"] }`],
-      ["several", `{ units: ["px", "rem", "%"] }`],
+      ["several families", `{ units: { length: ["px", "rem"], time: ["ms"] } }`],
+      ["a family banned outright", `{ units: { flex: [] } }`],
       ["a rule silenced", `{ rules: { "unknown-unit": "off" } }`],
       ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],
       ["an empty object", `{}`],
@@ -289,11 +313,11 @@ describe("what the config does to the rules", () => {
     checkBlock(readBlock(`@@(\n  ${declaration};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
 
   test("a unit the project does not allow", () => {
-    expect(of("padding: 1em", { units: ["px", "rem"] })).toEqual(["unit-not-allowed"]);
+    expect(of("padding: 1em", { units: { length: ["px", "rem"] } })).toEqual(["unit-not-allowed"]);
   });
 
   test("and one it does", () => {
-    expect(of("padding: 1rem", { units: ["px", "rem"] })).toEqual([]);
+    expect(of("padding: 1rem", { units: { length: ["px", "rem"] } })).toEqual([]);
   });
 
   test("with no `units` at all, every unit CSS has is fine", () => {
@@ -305,12 +329,12 @@ describe("what the config does to the rules", () => {
    * both on one declaration would be two faults where there is one.
    */
   test("a unit CSS does not have is left to the rule that names it", () => {
-    expect(of("padding: 10pxx", { units: ["px"] })).toEqual(["unknown-unit"]);
+    expect(of("padding: 10pxx", { units: { length: ["px"] } })).toEqual(["unknown-unit"]);
   });
 
   test("the message says what the project allows", () => {
     const [only] = checkBlock(readBlock(`@@(\n  padding: 1em;\n)`, 2, "C.tsx").block, {
-      config: { units: ["px", "rem"] },
+      config: { units: { length: ["px", "rem"] } },
     });
 
     expect(only.message).toContain("px, rem");
@@ -349,8 +373,11 @@ describe("which config governs a file", () => {
     const repo = mkdtempSync(join(tmpdir(), "ramonda-reader-"));
     mkdirSync(join(repo, ".git"), { recursive: true });
     for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
-    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
-    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["rem"] };\n`);
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
+    writeFileSync(
+      join(repo, "packages", "admin", "ramonda.css.ts"),
+      `export default { units: { length: ["rem"] } };\n`,
+    );
     return repo;
   };
 
@@ -369,8 +396,8 @@ describe("which config governs a file", () => {
     const read = configReader(ts);
 
     inside(join(repo, "packages", "web"), () => {
-      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: ["px"] });
-      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: ["rem"] });
+      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: { length: ["px"] } });
+      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: { length: ["rem"] } });
     });
   });
 
@@ -379,8 +406,8 @@ describe("which config governs a file", () => {
     const read = configReader(ts);
 
     inside(join(repo, "packages", "admin"), () => {
-      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: ["px"] });
-      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: ["rem"] });
+      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: { length: ["px"] } });
+      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: { length: ["rem"] } });
     });
   });
 
@@ -401,10 +428,10 @@ describe("which config governs a file", () => {
     const file = join(repo, "packages", "web", "Card.tsx");
     const read = configReader(ts);
 
-    expect(read(file)).toEqual({ units: ["px"] });
-    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["ch"] };\n`);
+    expect(read(file)).toEqual({ units: { length: ["px"] } });
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["ch"] } };\n`);
 
-    expect(read(file)).toEqual({ units: ["ch"] });
+    expect(read(file)).toEqual({ units: { length: ["ch"] } });
   });
 
   test("and a config WRITTEN while it runs is found", () => {
@@ -414,9 +441,9 @@ describe("which config governs a file", () => {
     const read = configReader(ts);
 
     expect(read(file)).toEqual({});
-    writeFileSync(join(repo, "packages", "late", "ramonda.css.ts"), `export default { units: ["vh"] };\n`);
+    writeFileSync(join(repo, "packages", "late", "ramonda.css.ts"), `export default { units: { length: ["vh"] } };\n`);
 
-    expect(read(file)).toEqual({ units: ["vh"] });
+    expect(read(file)).toEqual({ units: { length: ["vh"] } });
   });
 
   /**
@@ -427,7 +454,10 @@ describe("which config governs a file", () => {
   test("one config, transpiled once however many files ask", () => {
     const repo = monorepo();
     const counting = join(repo, "packages", "web", "ramonda.css.ts");
-    writeFileSync(counting, `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: ["px"] };\n`);
+    writeFileSync(
+      counting,
+      `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: { length: ["px"] } };\n`,
+    );
     (globalThis as unknown as { runs: number }).runs = 0;
     const read = configReader(ts);
 
@@ -440,7 +470,7 @@ describe("which config governs a file", () => {
     const repo = monorepo();
     const counting = join(repo, "packages", "web", "ramonda.css.ts");
     const body = (unit: string) =>
-      `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: ["${unit}"] };\n`;
+      `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: { length: ["${unit}"] } };\n`;
     writeFileSync(counting, body("px"));
     (globalThis as unknown as { runs: number }).runs = 0;
     const read = configReader(ts);
@@ -461,16 +491,16 @@ describe("which config governs a file", () => {
     const repo = monorepo();
     writeFileSync(
       join(repo, "packages", "web", "ramonda.css.ts"),
-      `export default (env: { production: boolean }) => ({ units: env.production ? ["px"] : ["px", "em"] });\n`,
+      `export default (env: { production: boolean }) => ({ units: { length: env.production ? ["px"] : ["px", "em"] } });\n`,
     );
     let production: boolean | undefined;
     const read = configReader(ts, () => environmentOf(production));
     const file = join(repo, "packages", "web", "Card.tsx");
 
     production = true;
-    expect(read(file)).toEqual({ units: ["px"] });
+    expect(read(file)).toEqual({ units: { length: ["px"] } });
     production = false;
-    expect(read(file)).toEqual({ units: ["px", "em"] });
+    expect(read(file)).toEqual({ units: { length: ["px", "em"] } });
   });
 
   test("a config that throws is reported, and reported again on the next file", () => {
@@ -478,8 +508,8 @@ describe("which config governs a file", () => {
     writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: "px" };\n`);
     const read = configReader(ts);
 
-    expect(() => read(join(repo, "packages", "web", "A.tsx"))).toThrow(/It takes a list/);
-    expect(() => read(join(repo, "packages", "web", "B.tsx"))).toThrow(/It takes a list/);
+    expect(() => read(join(repo, "packages", "web", "A.tsx"))).toThrow(/It takes families/);
+    expect(() => read(join(repo, "packages", "web", "B.tsx"))).toThrow(/It takes families/);
   });
 });
 
@@ -504,16 +534,18 @@ describe("what a config is allowed to use", () => {
    */
   test("a default import of a CommonJS module", () => {
     const dir = project(
-      `import path from "node:path";\nexport default { units: [path.sep === "/" ? "px" : "rem"] };\n`,
+      `import path from "node:path";\nexport default { units: { length: [path.sep === "/" ? "px" : "rem"] } };\n`,
     );
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 
   test("and a named import, which always worked", () => {
-    const dir = project(`import { sep } from "node:path";\nexport default { units: [sep === "/" ? "px" : "rem"] };\n`);
+    const dir = project(
+      `import { sep } from "node:path";\nexport default { units: { length: [sep === "/" ? "px" : "rem"] } };\n`,
+    );
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 
   /**
@@ -523,10 +555,10 @@ describe("what a config is allowed to use", () => {
    */
   test("`__dirname`, which is the config's own directory", () => {
     const dir = project(
-      `export default { units: [__dirname.split("/").pop()!.startsWith("ramonda") ? "px" : "rem"] };\n`,
+      `export default { units: { length: [__dirname.split("/").pop()!.startsWith("ramonda") ? "px" : "rem"] } };\n`,
     );
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 
   /**
@@ -535,7 +567,7 @@ describe("what a config is allowed to use", () => {
    *
    * A Promise is an object, so the shape check let it through, `Object.keys` of it is empty, every
    * validation passed over nothing, and what came back was `{}`. Measured: `export default async ()
-   * => ({ units: ["px"] })` gave the empty config, so the units were not enforced and nothing said
+   * => ({ units: { length: ["px"] } })` gave the empty config, so the units were not enforced and nothing said
    * so — the exact failure this file exists to refuse, since "a tool that quietly ran with defaults
    * because somebody's config had a typo would be the worst of both".
    *
@@ -544,9 +576,9 @@ describe("what a config is allowed to use", () => {
    * is refused, with the reason.
    */
   test.each([
-    ["an async function", `export default async () => ({ units: ["px"] });\n`],
-    ["a function returning a promise", `export default () => Promise.resolve({ units: ["px"] });\n`],
-    ["a promise directly", `export default Promise.resolve({ units: ["px"] });\n`],
+    ["an async function", `export default async () => ({ units: { length: ["px"] } });\n`],
+    ["a function returning a promise", `export default () => Promise.resolve({ units: { length: ["px"] } });\n`],
+    ["a promise directly", `export default Promise.resolve({ units: { length: ["px"] } });\n`],
   ])("%s is refused rather than silently ignored", (_what, body) => {
     const dir = project(body);
 
@@ -554,8 +586,10 @@ describe("what a config is allowed to use", () => {
   });
 
   test("and `__filename`, which is the config itself", () => {
-    const dir = project(`export default { units: [__filename.endsWith("ramonda.css.ts") ? "px" : "rem"] };\n`);
+    const dir = project(
+      `export default { units: { length: [__filename.endsWith("ramonda.css.ts") ? "px" : "rem"] } };\n`,
+    );
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 });

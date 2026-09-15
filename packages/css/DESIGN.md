@@ -2054,3 +2054,58 @@ of the work above, arriving early and uninvited — and a reminder that "the edi
 that opens the file, not just the one with the squiggles.
 
 Nothing here is started.
+
+---
+
+## The design review, and what it changed
+
+The feature was finished and green before this: `$`, `kind()`, codegen, the checker, the grammar,
+the formatter, `toStyle`/`read`. The user then asked for a review of the DESIGN rather than the code
+— *"razmisli da li smo nesto nepotrebno ukomplikovali, nesto sto ce praviti vise problema nego
+koristi"* — and every finding below was MEASURED against the real checker rather than recalled.
+
+Three claims survived every probe and are worth naming, because a review that only lists faults
+misreports the thing it reviewed:
+
+- **The merge is real.** `"*": { units, arity }` plus `"padding-left": { values }` stacks; each
+  constraint fires on its own. `"*": { shorthand: false }` with `padding: { shorthand: true }` brings
+  exactly one back. Presets — design C's whole reason — will work.
+- **A token is not a hole in the strictness.** `padding-left: $.rems.big.one` is refused where the
+  property is px-only; `z-index: $.space.gutter.normal` is refused because a length is not an
+  integer.
+- **`$` earns the virtual file.** `$.space.gutter.norml` gets *Did you mean 'normal'?* from
+  TypeScript itself, with rename and go-to-definition for free.
+
+### 1. `units` meant two different things — FIXED
+
+Measured, the two keys spelled `units` disagreed about scope, not just about mechanism:
+
+| written | `units: [...]` | `properties["*"].units: [...]` |
+|---|---|---|
+| `transition: all 200ms ease` | reported | accepted |
+| `width: 50%` | reported | accepted |
+| `rotate: 45deg` | reported | accepted |
+| `repeat(3, 1fr)` | reported | accepted |
+| `letter-spacing: 0.05em` | reported | reported |
+
+Same name, same value shape, and `width: 50%` refused by one and accepted by the other. Setting
+both — which the docs invited — reported one mistake twice.
+
+The top-level key is read by a RULE and sees every value. The property-level key reaches the TYPES
+and can only bind a property whose value is a dimension. Neither can do the other's job, so both
+must exist; what was wrong was that a flat list could not say what anybody meant.
+
+**`units` is keyed by FAMILY now.** `units: { length: ["px", "rem"] }` — and a family the config does
+not name is not constrained, so `200ms`, `45deg` and `1fr` are nobody's business but the project's.
+An empty list bans a family outright: `{ flex: [] }`. The families come from `UNIT_TYPE`, generated
+with an assertion that every unit lands in exactly one, so a unit CSS adds fails the build until
+somebody classifies it. `CssUnitFamily` is generated beside it.
+
+**The flat list is refused, not reinterpreted**, and that is the decision worth recording. Reading
+`["px", "rem"]` as `{ length: [...] }` would be a project's rules quietly getting weaker on an
+upgrade — `200ms` stops being reported and nothing says so. The `ConfigError` writes out the family
+form with the project's own units in it. A config that stops loading is a minute's work; a check that
+stops checking is found in production.
+
+This was agreed with the user in an earlier session as "a later version" and the review is what made
+it urgent: `units` reached only the checker then, and it reaches the types now.

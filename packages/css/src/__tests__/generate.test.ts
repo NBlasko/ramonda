@@ -93,7 +93,7 @@ describe("running codegen", () => {
   });
 
   test("a config that declares no variables writes nothing rather than two empty files", () => {
-    write("ramonda.css.ts", `export default { units: ["px"] };\n`);
+    write("ramonda.css.ts", `export default { units: { length: ["px"] } };\n`);
     const result = writeGenerated(project, ts);
 
     expect(result.config).toBeDefined();

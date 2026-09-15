@@ -38,6 +38,18 @@ export default defineConfig({
   },
 
   /**
+   * The units this project uses, **by family** — a family not named here is not constrained.
+   *
+   * This is the project-wide sweep, read by the checker, and it reaches values no type describes:
+   * `transition`, `rotate`, `grid-template-columns`. Its namesake inside `properties` is a different
+   * thing — per property, and it reaches the types.
+   *
+   * Note `%` is its own family. That is the point of the shape: saying lengths are `px` and `rem`
+   * must not make `width: 50%` a fault.
+   */
+  // units: { length: ["px", "rem"], percentage: ["%"] },
+
+  /**
    * What this project permits per property.
    *
    * `z-index` is the one real constraint here, and it is the shape most projects want first: a

@@ -249,8 +249,8 @@ describe("a config this cannot use", () => {
 
   test.each([
     ["a rule id that is not one", 'export default { rules: { "unknown-vlaue": "off" } };', "Did you mean"],
-    ["an async config", 'export default async () => ({ units: ["px"] });', "is async"],
-    ["units as a string", 'export default { units: "px" };', "takes a list"],
+    ["an async config", 'export default async () => ({ units: { length: ["px"] } });', "is async"],
+    ["units as a string", 'export default { units: "px" };', "takes families"],
     ["a setting that is not one", 'export default { unitz: ["px"] };', "not a setting"],
     ["exporting a number", "export default 5;", "must export an object"],
   ])("%s is said as a sentence, not thrown", (_what, config, expected) => {
