@@ -1389,7 +1389,7 @@ To confirm before building: whether the list is TypeScript's or the editor's wor
 because the two are answered in different places. Measure it the way `configReaches.test.ts` does —
 a real project, the real plugin, the caret exactly there.
 
-### Completion after a `:` — asked for, not built
+### Completion after a `:` — BUILT, and it found a second fault beside it
 
 The user, while using it: *"voleo bih kada napisem `:` da imam autocomplete za `&:hover` i ostale."*
 
@@ -1398,13 +1398,30 @@ A caret in a PRELUDE gets nothing today. The data is there — `SELECTORS` holds
 same shape as `valueWords`: a region the plugin knows it is in, answered from the table the checker
 already asks.
 
-Two things to get right when it is built, both already learned here:
+Both things this said to get right were right, and both bit:
 
-- **A caret in empty space belongs to no run yet.** Measured on values: a caret after `color: ` was
-  answered with the property names, because that is what the position mapped to. A prelude will have
-  the same state, and `&` with nothing after it is exactly where somebody asks.
-- **The offer has to match what the rule accepts**, or the editor suggests what the checker reports.
-  That pair has gone wrong once already, with `UNION_TYPED` against a project's own config.
+- **A caret in empty space belongs to no run yet** — and to the WRONG one. Measured, `&:` is read as
+  a declaration whose property is `&`, so the value region CLAIMED the caret and the first version of
+  the fix never ran. The text decides instead: a prelude starts with `&`, which `CssBlockShape`'s
+  `` `&${string}` `` key makes a fact rather than a convention, and the run is bounded by `;`, a
+  brace, or just past the block's `(` — that last bound measured too, because stopping ON the paren
+  put it at the head of the run and nothing matched.
+- **The offer matches what the rule accepts**, asserted: every name offered is a key of `SELECTORS`,
+  which is the table `unknown-selector` reads.
+
+**And the same probe found a second fault, in the mapping.** `position: ` with the caret after the
+space — a union-typed property, whose words are deliberately TypeScript's to offer:
+
+```
+author 36 (the caret)    ->  virtual 783   between `},{` and `},]`
+author 37 (the newline)  ->  virtual 778   between the quotes of `position:""`
+```
+
+One character apart, and the first is the key position of the NEXT declaration — which is why the
+answer was the 828 property names. So `position: stat` worked and `position: ` did not: the answer
+arrived only once you had typed enough not to need it. TypeScript is asked at the value region's own
+end where nothing is typed yet, which is the same fact the property is read from rather than a
+second guess at where the value lives.
 
 ### What is not in dispute
 

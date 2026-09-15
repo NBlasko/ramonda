@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { virtualFile } from "../compiler/virtual";
+import { SELECTORS } from "../compiler/keywords.generated";
 import { init } from "../plugin";
 
 const require = createRequire(import.meta.url);
@@ -2165,5 +2166,86 @@ describe("the caret right after `@@`", () => {
     const got = names(`declare const dec: any;\nclass C {\n  @${CARET}\n}\n`);
 
     expect(got).not.toEqual(["font-face", "keyframes", "property"]);
+  });
+});
+
+/**
+ * A caret in a nested rule's PRELUDE — `&:` — where the pseudo-classes belong.
+ *
+ * **Asked for by the user while using it**: *"voleo bih kada napisem `:` da imam autocomplete za
+ * `&:hover` i ostale."* Measured before this, `&:` was answered with **828 property names** — the
+ * key position's list, in a position where no property can stand. The same fault the `@@` opener
+ * had, and the same one `valueWords` exists to fix in a value: the caret maps somewhere TypeScript
+ * has an answer for, and the answer is about the wrong thing.
+ *
+ * The data was already here. `SELECTORS` holds 129 names and `unknown-selector` reads it, so what
+ * is offered and what is accepted come from ONE table — which is the trap named in `DESIGN.md`
+ * before this was built: an editor that suggests what the checker then reports is worse than one
+ * that suggests nothing.
+ *
+ * A prelude in this language starts with `&` — `CssBlockShape` says so, the key is
+ * `` `&${string}` `` — and that is what separates `&:ho` from `color: ho`, whose `:` looks the same
+ * from the caret backwards.
+ */
+describe("a caret in a nested rule's prelude", () => {
+  test("`&:` offers the pseudo-classes, not the property names", () => {
+    const got = names(`const a = <div css={@@(\n  color: red;\n  &:${CARET}\n)}>x</div>;\n`);
+
+    expect(got).toContain("hover");
+    expect(got).toContain("focus");
+    expect(got).toContain("first-child");
+    expect(got).not.toContain("display");
+    expect(got).not.toContain("padding");
+  });
+
+  test("half typed, it narrows", () => {
+    const got = names(`const a = <div css={@@(\n  &:ho${CARET}\n)}>x</div>;\n`);
+
+    expect(got).toContain("hover");
+    expect(got).not.toContain("focus");
+  });
+
+  test("`&::` offers the pseudo-ELEMENTS, which are a different set", () => {
+    const got = names(`const a = <div css={@@(\n  &::${CARET}\n)}>x</div>;\n`);
+
+    expect(got).toContain("before");
+    expect(got).toContain("after");
+    // A one-colon pseudo-class is not a pseudo-element, and offering it here would be a report.
+    expect(got).not.toContain("hover");
+  });
+
+  /**
+   * The control that matters: a DECLARATION's colon looks identical from the caret backwards.
+   * What separates them is the `&` at the head of the run.
+   */
+  test("a declaration's colon is untouched, and still answers about values", () => {
+    const got = names(`const a = <div css={@@(\n  position: ${CARET}\n)}>x</div>;\n`);
+
+    for (const value of POSITION_VALUES) expect(got).toContain(value);
+    expect(got).not.toContain("hover");
+  });
+
+  test("and inside the rule's BODY it is the properties again", () => {
+    const got = names(`const a = <div css={@@(\n  &:hover { ${CARET} }\n)}>x</div>;\n`);
+
+    for (const property of SOME_PROPERTIES) expect(got).toContain(property);
+    expect(got).not.toContain("hover");
+  });
+
+  /**
+   * Everything offered comes from the table the CHECKER reads — one table, both halves.
+   *
+   * The trap named in `DESIGN.md` before this was built: *"the offer has to match what the rule
+   * accepts, or the editor suggests what the checker reports."* It has gone wrong here once already,
+   * with `UNION_TYPED` against a project's own config.
+   */
+  test.each([
+    ["a pseudo-class", ":", `&:`],
+    ["a pseudo-element", "::", `&::`],
+  ])("every %s offered is a key of SELECTORS", (_what, colons, written) => {
+    const got = names(`const a = <div css={@@(\n  ${written}${CARET}\n)}>x</div>;\n`);
+
+    expect(got).not.toEqual([]);
+    for (const one of got) expect(Object.keys(SELECTORS)).toContain(`${colons}${one}`);
   });
 });

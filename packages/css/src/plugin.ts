@@ -411,7 +411,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         const at = file.virtualOf(position);
         if (at === undefined) return undefined;
 
-        const got = service.getCompletionsAtPosition(fileName, at, options, settings);
+        let got = service.getCompletionsAtPosition(fileName, at, options, settings);
 
         /**
          * Nothing from TypeScript, in a value it has no union for — see {@link valueWords}.
@@ -430,6 +430,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
            * else is ours.
            */
           const where = cache.get(fileName)?.where ?? EMPTY_REGIONS;
+          /** The author's own text, for the two carets the parse has no run for — see below. */
+          const written = snapshot?.getText(0, snapshot.getLength()) ?? "";
           const value = where.values.find((one) => one.start < position && position <= one.end);
           /**
            * A caret at a hole's closing `}}` is still in the hole — you are typing at the end of the
@@ -441,10 +443,68 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           // A `$` path is TypeScript's, for the same reason a hole is: it IS a TypeScript
           // expression, and the members of the project's variables are the only useful answer.
           const inPath = where.paths.some((one) => one.start <= position && position <= one.end);
+          /**
+           * A caret in EMPTY SPACE belongs to no parsed run — and to the WRONG one in a prelude.
+           *
+           * The regions above come from the parse, and a half-written line has not parsed into
+           * anything yet. Measured, both of the moments a person actually asks:
+           *
+           *     position: |     828 property names, where the values belong
+           *     &:|             828 property names, where a pseudo-class belongs
+           *
+           * `position: stat|` works, because by then there IS a value run. So the answer appeared
+           * only once you had typed enough not to need it.
+           *
+           * Read from the TEXT, bounded by the block. What separates the two is the `&` at the head
+           * of the run: a prelude in this language starts with one — `CssBlockShape` says so — and
+           * `color:` and `&:` look identical from the caret backwards.
+           *
+           * **Asked BEFORE the parse's own answer, not after.** Measured, `&:` is read as a
+           * declaration whose property is `&`, so `where.values` claims the caret and the first
+           * version of this never ran. A run headed by `&` is a prelude whatever the parse made of
+           * it, and the text is what says so.
+           */
+          const typing = !inHole && !inPath && isCss(where, position) ? caretIn(written, position, where) : undefined;
+
+          if (typing?.kind === "prelude") {
+            return {
+              isGlobalCompletion: false,
+              isMemberCompletion: false,
+              isNewIdentifierLocation: true,
+              entries: selectorsFor(typing.colons, typing.typed).map(entryFor),
+            };
+          }
+
+          /**
+           * An EMPTY value maps past the declaration, so TypeScript is asked where the value IS.
+           *
+           * Measured on `position: ` with the caret after the space — a union-typed property, whose
+           * words are deliberately TypeScript's to offer:
+           *
+           *     author 36 (the caret)   ->  virtual 783   between `},{` and `},]`
+           *     author 37 (the newline) ->  virtual 778   between the quotes of `position:""`
+           *
+           * One character apart, and the first is the key position of the NEXT declaration — which
+           * is why the answer was the 828 property names. So `position: stat` worked and
+           * `position: ` did not: the answer arrived only once you had typed enough not to need it.
+           *
+           * Re-asked only where NOTHING is typed yet, which is the whole of the fault and keeps this
+           * off every path that already works. The region's own end is the value's extent, and it is
+           * what the property above is read from, so this is the same fact used twice rather than a
+           * second guess at where the value lives.
+           */
+          if (typing?.kind === "value" && typing.typed === "" && value !== undefined) {
+            const inValue = file.virtualOf(value.end);
+            if (inValue !== undefined && inValue !== at) {
+              got = service.getCompletionsAtPosition(fileName, inValue, options, settings) ?? got;
+            }
+          }
+
+          const property = value?.property ?? (typing?.kind === "value" ? typing.property : undefined);
           const words =
-            value === undefined || inHole || inPath || !isCss(where, position)
+            property === undefined || inHole || inPath || !isCss(where, position)
               ? undefined
-              : valueWords(value.property, projectConfig(fileName));
+              : valueWords(property, projectConfig(fileName));
           if (words !== undefined) {
             return {
               isGlobalCompletion: false,
@@ -1296,6 +1356,71 @@ function regions(text: string, fileName: string, readModule: Imported["read"]): 
     collect(read.block.items, values, preludes, paths);
   }
   return { blocks, holes, values, paths, preludes };
+}
+
+/**
+ * What the caret is in the middle of writing, read from the TEXT — a prelude, a value, or neither.
+ *
+ * The regions the plugin holds come from the PARSE, and a half-written line has not parsed into
+ * anything. Measured, that is exactly the moment somebody asks: `position: ` and `&:` were both
+ * answered with the 828 property names, and `position: stat` — where you no longer need the help —
+ * was answered correctly.
+ *
+ * ## What separates a prelude from a declaration
+ *
+ * Nothing, from the caret backwards: `color:` and `&:` end the same way. What separates them is the
+ * head of the run, and a nested rule's prelude starts with `&` in this language — `CssBlockShape`'s
+ * key is `` `&${string}` ``, so that is a fact rather than a convention.
+ *
+ * The run is bounded by `;`, `{`, `}` and the block's own start, which is what keeps
+ * `&:hover { color: ` a VALUE: the `{` ends the prelude's run before the `&` is reached.
+ */
+function caretIn(
+  text: string,
+  position: number,
+  where: Regions,
+): { kind: "prelude"; colons: 1 | 2; typed: string } | { kind: "value"; property: string; typed: string } | undefined {
+  const block = where.blocks.find((one) => one.start <= position && position <= one.end);
+  if (block === undefined) return undefined;
+
+  /** The word being typed, which is what a completion replaces. */
+  let head = position;
+  while (head > block.start && /[a-zA-Z-]/.test(text[head - 1])) head--;
+  const typed = text.slice(head, position);
+
+  /**
+   * Back to the start of this run: a `;`, a brace, or just past the block's own opening.
+   *
+   * `block.start + 1` and not `block.start`, which is the `(` itself — measured, stopping on it put
+   * the paren at the head of the run, so `&` was not first and `position` was not a name. The first
+   * declaration in a block is the one that has no `;` before it, which is every case somebody types
+   * into an empty block.
+   */
+  let from = head;
+  while (from > block.start + 1 && !/[;{}]/.test(text[from - 1])) from--;
+  const run = text.slice(from, head);
+
+  if (run.trimStart().startsWith("&")) {
+    const colons = run.endsWith("::") ? 2 : run.endsWith(":") ? 1 : undefined;
+    // Only right after the colons. A caret elsewhere in a prelude is a combinator or a class name,
+    // and this has no list for those — offering the pseudo-classes there would be a worse answer.
+    return colons === undefined ? undefined : { kind: "prelude", colons, typed };
+  }
+
+  const colon = run.lastIndexOf(":");
+  if (colon === -1) return undefined;
+  const property = run.slice(0, colon).trim();
+  return /^-{0,2}[a-zA-Z][\w-]*$/.test(property) ? { kind: "value", property, typed } : undefined;
+}
+
+/** The pseudo-classes or the pseudo-elements, without the colons the author has already typed. */
+function selectorsFor(colons: 1 | 2, typed: string): readonly string[] {
+  const wanted = colons === 2 ? "::" : ":";
+  const names = Object.keys(SELECTORS)
+    .filter((one) => (colons === 2 ? one.startsWith("::") : !one.startsWith("::")))
+    .map((one) => one.slice(wanted.length));
+
+  return names.filter((one) => one.startsWith(typed.toLowerCase())).sort();
 }
 
 /** Every declaration's VALUE, with the property it belongs to — see `valueWords`. */
