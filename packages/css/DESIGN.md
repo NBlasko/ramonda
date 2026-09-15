@@ -2172,3 +2172,69 @@ question, two settings, two answers.
 composite shorthand gets `literal-not-allowed`, which says both. A doc comment on `Narrowed` would
 show on hover and NOT in the compiler's text, so it is not the fix; what would work is the checker
 recognising this refusal and speaking over it, the way `inOrder` already speaks over `TS2353`.
+
+### 4. `variablesOnly` covered a list nobody could see — MOSTLY FIXED
+
+Measured on seven hardcoded lengths in one component, under `variablesOnly: ["length"]`:
+
+```
+padding-left: 8px;      reported          width: 200px;        SILENT
+margin-top: 16px;       reported          border-radius: 4px;  SILENT
+gap: 8px;               reported          max-width: 320px;    SILENT
+                                          flex-basis: 240px;   SILENT
+```
+
+Three of seven. A team turns the rule on, fixes three places, sees green, and concludes hardcoded
+lengths are gone. Four remain in the same file. **A rule that looks enforced and is not is worse
+than no rule** — without it the team would at least know to watch.
+
+The user's instinct was right and my first reading was wrong: there was no design reason `width`
+could not be narrowed exactly like `padding-left`. `auto` was never the problem — a classified
+property already puts its keywords in the `Narrowed<K, V>` keyword slot, so `width: auto` passes and
+`width: 200px` does not, which is precisely what was wanted. `width` simply never reached the
+classifier.
+
+**Three faults in `primitiveOf`, every one a SPELLING rather than a grammar:**
+
+```
+fit-content(<length-percentage>)    a call written out, where `<calc-size()>` was skipped
+[ auto | … | fit-content(…) ]       parens disqualified an alternation `alternatives` splits safely
+<length-percentage [0,∞]>           the range's comma read as a comma in the grammar
+```
+
+`PRIMITIVE` went from 172 to 195 — `width`, `height`, every `min-`/`max-`, the logical `inline-size`
+and `block-size` families, `flex-basis`, the logical `margin-` and `inset-` longhands. **Nothing
+lost, nothing reclassified**, asserted against the whole map before and after: a classifier that
+gains one property and quietly moves another is worse than one that gains nothing.
+
+A fourth attempt was REVERTED. Stripping the range annotation from the syntax up front looked
+equivalent and lost `animation-duration`, so the range is ignored inside the one test that misread
+it and nowhere else.
+
+#### What is still open
+
+`border-radius` stays unclassified: `<length-percentage>{1,4} [ / <length-percentage>{1,4} ]?` is one
+primitive throughout, but the slash is a separator `sequence` does not read. Written down in
+`properties.test.ts` rather than left to be rediscovered, and not done in the same breath because the
+three above share a cause and this does not.
+
+The `--own: red; color: var(--own)` bypass also stands: a custom property set inside a block is not
+checked against `variablesOnly`.
+
+#### What StyleX does here, read rather than recalled
+
+Their `@stylexjs/valid-styles` rule takes a `propLimits` map, keyed by property name or glob, and
+each entry is a `limit` plus a **`reason`**:
+
+```json
+"padding": { "limit": [0, 4, 8, 16, 32, 64], "reason": "Use a padding that conforms to the design system" }
+```
+
+`limit` is `null` (ban the property), `"string"`, `"number"`, one constant, or a list of them.
+**There is no rule of theirs that forbids literals in favour of tokens generally** — a project
+enumerates the properties and the permitted values itself. So `variablesOnly`, keyed by KIND and
+reaching sixty-odd properties from one word, is a thing their design does not offer.
+
+**Their `reason` is worth taking.** It is the config author's own sentence, carried into the
+message, and it answers finding 3 from the other direction: we cannot make TypeScript say why a
+project refused a value, but a project could say it once and have the checker repeat it.

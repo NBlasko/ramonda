@@ -300,6 +300,52 @@ describe("which shorthands can be checked at all", () => {
     },
   );
 
+  /**
+   * The properties a design system constrains FIRST, and every one of them was unclassified.
+   *
+   * Found by a design review asking why `variablesOnly: ["length"]` reported `padding-left: 8px`
+   * and said nothing about `width: 200px`. Both are one length; only one was classified, and the
+   * config author had no way to see which.
+   *
+   * Three faults in the walk, each a SPELLING rather than a grammar:
+   *
+   *     fit-content(<length-percentage>)   a call written out, where `<calc-size()>` was skipped
+   *     [ auto | … | fit-content(…) ]      parens disqualified an alternation `alternatives` splits
+   *     <length-percentage [0,∞]>          the range's comma read as a comma in the grammar
+   *
+   * Twenty-three properties classified once all three were answered, none lost and none changed
+   * kind — asserted against the whole map, because a classifier that gains one property and quietly
+   * moves another is worse than one that gains nothing.
+   */
+  test.each([
+    ["width", "length-percentage"],
+    ["height", "length-percentage"],
+    ["min-width", "length-percentage"],
+    ["max-width", "length-percentage"],
+    ["min-height", "length-percentage"],
+    ["max-height", "length-percentage"],
+    ["inline-size", "length-percentage"],
+    ["block-size", "length-percentage"],
+    ["max-inline-size", "length-percentage"],
+    ["flex-basis", "length-percentage"],
+    ["margin-inline-start", "length-percentage"],
+    ["inset-block-end", "length-percentage"],
+  ])("%s is one length, however its grammar spells its calls", (property, primitive) => {
+    expect(PRIMITIVE[property]).toBe(primitive);
+  });
+
+  /**
+   * `border-radius` is STILL unclassified, and it is written down rather than left to be rediscovered.
+   *
+   * `<length-percentage>{1,4} [ / <length-percentage>{1,4} ]?` — one primitive throughout, but the
+   * slash is a separator `sequence` does not read. It is the next one worth doing and it was not
+   * done in the same breath, because the three above share a cause and this does not.
+   */
+  test("`border-radius` is one length and still unclassified, because of the slash form", () => {
+    expect(PRIMITIVE["border-radius"]).toBeUndefined();
+    expect(PRIMITIVE["border-top-left-radius"]).toBe("length-percentage");
+  });
+
   test("and the ones that repeat carry how many CSS gives them", () => {
     expect(ARITY.padding).toBe(4);
     expect(ARITY["border-color"]).toBe(4);

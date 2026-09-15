@@ -352,6 +352,21 @@ function primitiveOf(name) {
       if (/^<[a-zA-Z0-9-]+\(\)>$/.test(part)) continue;
 
       /**
+       * The SAME thing spelled without angle brackets — `fit-content(<length-percentage>)`.
+       *
+       * `mdn-data` writes a call two ways: `<calc-size()>` names the type, and `fit-content(…)`
+       * writes the call out with its argument. The rule above caught only the first, so one
+       * alternative out of eight left `width` unclassified — and with it `height`, `max-width`,
+       * `min-width` and their block/inline relatives, every one of them a length property a design
+       * system constrains first. Found by a design review asking why `variablesOnly: ["length"]`
+       * reported `padding-left: 8px` and said nothing about `width: 200px`.
+       *
+       * A call is a call: nothing in a type can read inside one, so it is not a second primitive
+       * however it is written.
+       */
+      if (/^[a-zA-Z][a-zA-Z0-9-]*\(.*\)$/.test(part)) continue;
+
+      /**
        * A type REPEATED — `border-color` is `<color>{1,4}`, four of one thing.
        *
        * The sequence test below reads bracketed groups, which is what a resolved `<'property'>`
@@ -364,7 +379,22 @@ function primitiveOf(name) {
         seen.add(type[1]);
         continue;
       }
-      if (part.includes("|") && !/[(){}+*?,#!]|&&/.test(part)) {
+      /**
+       * A plain alternation, recursed into. Parens are NOT disqualifying: `alternatives` splits at
+       * depth zero, so a `|` inside `fit-content(…)` was never a split point, and the call itself is
+       * skipped above. Leaving `(` in this guard is what kept `<'width'>` — and so `inline-size`,
+       * `block-size` and `flex-basis` — unclassified once the reference was resolved.
+       */
+      /**
+       * A RANGE is not grammar — `<length-percentage [0,∞]>` is a length-percentage with a bound,
+       * and the type test above already tolerates one. Its comma is the only comma in most of these
+       * grammars, and read as a grammar comma it disqualified the whole alternation: `<'width'>`
+       * resolved to a group this walk then refused, leaving `inline-size`, `block-size` and their
+       * min/max relatives unclassified. Ignored HERE rather than stripped from the syntax, because
+       * stripping it up front lost `animation-duration` — measured.
+       */
+      const grammar = part.replace(/\s*\[[^\]]*\](?=>)/g, "");
+      if (grammar.includes("|") && !/[{}+*?,#!]|&&/.test(grammar)) {
         if (!walk(part, depth + 1)) return false;
         continue;
       }
