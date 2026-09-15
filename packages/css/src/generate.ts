@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type ts from "typescript";
 import { generate, namesIn, verifyNames } from "./codegen";
-import { findConfig, readConfig } from "./config";
+import { ConfigError, findConfig, readConfig } from "./config";
 
 /**
  * Codegen, actually run — the step that turns everything else about `$` into something a project
@@ -60,6 +60,30 @@ function put(path: string, text: string): Written {
   }
 
   if (already === text) return { path, changed: false };
+
+  /**
+   * A file at this name that is NOT ours is kept, and the run stops.
+   *
+   * Found by probing what each writer is willing to overwrite: this wrote straight over a
+   * hand-written file and said nothing. The loss is unrecoverable, because
+   * `ramonda.css.generated.*` is in `.gitignore` by this package's own instruction — there is no
+   * copy to go back to.
+   *
+   * The name carries `generated` and the convention is plain, which is the argument for writing
+   * anyway. It is the same argument `restore` refused to accept about a block a formatter had
+   * eaten: an inconvenience is survivable and somebody's work is not. Looking at the target before
+   * overwriting it costs one read, and the read was already happening.
+   *
+   * LOOSELY, on the package's name rather than the whole sentence, so a file written by an older
+   * version is still ours and is still replaced.
+   */
+  if (already !== undefined && !already.includes("@ramonda/css")) {
+    throw new ConfigError(
+      `${path} was not written by this package, and codegen would overwrite it.\n\n` +
+        `        That name belongs to \`ramonda-css codegen\`, which writes it from ` +
+        `\`ramonda.css.ts\`.\n        Move it, rename it, or delete it — nothing was written.`,
+    );
+  }
 
   writeFileSync(path, text);
   return { path, changed: true };

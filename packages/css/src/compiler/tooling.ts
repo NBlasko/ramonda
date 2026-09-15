@@ -259,6 +259,27 @@ function restore(
     }
 
     /**
+     * And a placeholder that came back TWICE, which left ours in the author's file.
+     *
+     * The same fault from the other side, and it was not refused: `exec` finds the first match, the
+     * block went back there, and the second kept the marker — this package's own internal text,
+     * written to somebody's component. Found by probing what `restore` does when the text it gets
+     * back is not the text it handed over.
+     *
+     * No formatter measured here duplicates code. That is exactly the argument the missing case
+     * refused to accept, for the reason written above it: there is no correct output to fall back
+     * to, so there is no output.
+     */
+    if (placeholder.test(out.slice(found.index + found[0].length))) {
+      throw new Error(
+        "[@ramonda/css] the formatter left more than one copy of the placeholder standing in for a " +
+          "style block, so there is no one place to put the block back and nothing was written. " +
+          "This is a formatter this package has not been measured against — please report it with " +
+          "the file.",
+      );
+    }
+
+    /**
      * The formatter's own indentation, copied rather than counted.
      *
      * It may have chosen tabs, and a block re-laid with spaces inside a tabbed file is a file the

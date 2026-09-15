@@ -829,3 +829,44 @@ describe("a declared variable is not a formatter's business", () => {
     expect(out).toContain("calc($.size.control.md * 2)");
   });
 });
+
+/**
+ * A formatter that DUPLICATED a placeholder — which left ours in the author's file.
+ *
+ * Found by probing what `restore` does when the text it gets back is not the text it handed over.
+ * The missing case was already refused, and refused for the right reason: *a formatter that eats a
+ * block is unrecoverable work, and it was doing it silently.* The duplicate case is the same fault
+ * from the other side and was not:
+ *
+ *     const a = <div css={@@( color: red; )}>x</div>;
+ *     const a = <div css={/*@ramonda-css:0*\/ 0}>x</div>;
+ *
+ * The first got its block, the second kept the marker — this package's own internal text, written
+ * to disk in somebody's component. `exec` finds the first match and nothing looked for a second.
+ *
+ * No formatter measured here duplicates code. That is exactly the argument the missing case did not
+ * accept, and the reason is the same: there is no correct output to fall back to, so there is no
+ * output.
+ */
+describe("a placeholder that comes back more than once", () => {
+  const source = `const a = <div css={@@( color: red; )}>x</div>;\n`;
+
+  test("is refused, rather than leaving our marker in the file", () => {
+    const held = placehold(source);
+
+    expect(() => held?.restore(`${held.text}${held.text}`)).toThrow(/placeholder/);
+  });
+
+  test("and the message says nothing was written, the same as a missing one", () => {
+    const held = placehold(source);
+
+    expect(() => held?.restore(`${held.text}${held.text}`)).toThrow(/nothing was written/);
+  });
+
+  /** One is still one, which is the whole of the ordinary path. */
+  test("exactly one is put back as it always was", () => {
+    const held = placehold(source);
+
+    expect(held?.restore(held.text)).toBe(source);
+  });
+});
