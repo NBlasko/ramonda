@@ -2097,3 +2097,52 @@ describe("an edit an editor would apply", () => {
     expect(found?.length).toBe(2);
   });
 });
+
+/**
+ * The caret right after `@@`, where NOTHING TypeScript knows can stand.
+ *
+ * **Reported by a user**, twice: *"kada napisem `css={@@` i krenem da kucam `(` desi se
+ * `css={@@Component()}`"*, and later the same with `$` at the top of the list. Measured, the list
+ * held **1003 entries** — every global, every local, every keyword — because `css={@@}` holds no
+ * parens yet, so `findBlocks` sees no site, no overlay is built, and the question goes to
+ * TypeScript against the author's own text, where the caret is an expression position.
+ *
+ * The first entry is preselected, so the next keystroke commits it and writes a name the author
+ * never typed into the one place a block was about to be.
+ *
+ * Only four things can follow `@@`: a `(`, or one of the three named sites this compiles. So that
+ * is the list, and the rest is refused rather than filtered — `isGlobalCompletion: false` tells the
+ * editor not to fall back to its own word list either.
+ */
+describe("the caret right after `@@`", () => {
+  test("offers the named sites, and nothing else", () => {
+    expect(names(`const a = <div css={@@${CARET}}>x</div>;\n`).sort()).toEqual(["font-face", "keyframes", "property"]);
+  });
+
+  test("a name half typed narrows to what it could still be", () => {
+    expect(names(`const a = <div css={@@key${CARET}}>x</div>;\n`)).toEqual(["keyframes"]);
+  });
+
+  test("and a name that could be none of them offers none", () => {
+    expect(names(`const a = <div css={@@zzz${CARET}}>x</div>;\n`)).toEqual([]);
+  });
+
+  /** The globals are GONE, which is the fault — not merely reordered. */
+  test.each([["Component"], ["$"], ["abstract"], ["AbortController"]])("%s is not offered", (name) => {
+    expect(names(`const a = <div css={@@${CARET}}>x</div>;\n`)).not.toContain(name);
+  });
+
+  /** And once the block is open, the caret is inside CSS and the property names come back. */
+  test("inside an opened block it is the properties again, unchanged", () => {
+    const got = names(`const a = <div css={@@( ${CARET} )}>x</div>;\n`);
+
+    for (const property of SOME_PROPERTIES) expect(got).toContain(property);
+  });
+
+  /** A single `@` is an ordinary decorator and none of this may touch it. */
+  test("one `@` is a decorator and is left to TypeScript", () => {
+    const got = names(`declare const dec: any;\nclass C {\n  @${CARET}\n}\n`);
+
+    expect(got).not.toEqual(["font-face", "keyframes", "property"]);
+  });
+});

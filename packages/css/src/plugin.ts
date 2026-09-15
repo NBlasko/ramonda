@@ -9,7 +9,7 @@ import {
   AT_RULE_LINKS,
 } from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
-import { type Finding, checkSite } from "./compiler/rules";
+import { NAMED_BLOCKS, type Finding, checkSite } from "./compiler/rules";
 import { checkedSource } from "./compiler/source";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
@@ -336,7 +336,58 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        */
       const proxy: ts.LanguageService = Object.create(service);
 
+      /**
+       * The word typed so far after a `@@` that has not been opened with a `(` — or nothing.
+       *
+       * Deliberately narrow. A `(` anywhere between the `@@` and the caret means the block is open
+       * and the caret is in CSS, which every other branch already handles; a character that cannot
+       * be part of a site's name means this is not a site being typed.
+       */
+      const openerAt = (text: string, position: number): string | undefined => {
+        let index = position;
+        while (index > 0 && /[a-zA-Z-]/.test(text[index - 1])) index--;
+        if (index < 2 || text[index - 1] !== "@" || text[index - 2] !== "@") return undefined;
+        // `@@@x` is not an opener, and `a@@x` is not one either — the scanner wants the pair alone.
+        if (index > 2 && text[index - 3] === "@") return undefined;
+        return text.slice(index, position);
+      };
+
+      /** The three names a `@@name( … )` may carry, as completions the editor cannot widen. */
+      const namedSites = (typed: string, position: number): ts.WithMetadata<ts.CompletionInfo> => ({
+        isGlobalCompletion: false,
+        isMemberCompletion: false,
+        isNewIdentifierLocation: false,
+        entries: NAMED_BLOCKS.filter((one) => one.startsWith(typed.toLowerCase())).map((one, order) => ({
+          name: one,
+          kind: tsModule.ScriptElementKind.keyword,
+          kindModifiers: "",
+          sortText: String(order),
+          replacementSpan: { start: position - typed.length, length: typed.length },
+        })),
+      });
+
       proxy.getCompletionsAtPosition = (fileName, position, options, settings) => {
+        /**
+         * The caret right after `@@`, where nothing TypeScript knows can stand.
+         *
+         * **Reported by a user twice**: typing `css={@@` and then `(` produced `css={@@Component()}`,
+         * and later the same with `$` at the head of the list. Measured, **1003 entries** — every
+         * global, every local, every keyword. `css={@@}` holds no parens yet, so `findBlocks` sees no
+         * site and no overlay is built; the question reaches TypeScript against the author's own
+         * text, where that caret is an ordinary expression position and the answer is the world.
+         *
+         * The first entry is preselected, so the next keystroke commits a name the author never
+         * typed into the one place a block was about to be.
+         *
+         * Answered BEFORE the overlay for the same reason the fault exists: at this point there is
+         * no block to overlay. Four things can follow `@@` — a `(`, or one of the three named sites
+         * this compiles — so that is the list.
+         */
+        const snapshot = readSnapshot(fileName);
+        const opener =
+          snapshot === undefined ? undefined : openerAt(snapshot.getText(0, snapshot.getLength()), position);
+        if (opener !== undefined) return namedSites(opener, position);
+
         const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getCompletionsAtPosition(fileName, position, options, settings);
 
