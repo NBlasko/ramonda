@@ -1342,6 +1342,50 @@ What it buys, and each is something the design cannot do now:
 The cost is one object form beside the bare value, written only where a variable actually changes —
 which in a real design system is the semantic colours and the responsive sizes, not the palette.
 
+**And most of it should not be written at all.** The user's correction: *"neke vrednosti dolaze
+kasnije, ne mogu odmah ovde da ih upisem. Zapravo, mogu, ako imaju CSS fajl, oni pozovu neki parser i
+izvuku za odredjen token sve moguce vrednosti, zar ne?"*
+
+Yes — and the hook for it is already designed. `alsoSets` returns `{ name, value, where }` from
+whatever a project reads, so a theme file setting `--color-text-primary: #e5e7eb` hands codegen that
+value. **The range is then the declared initial plus everything anything else sets for that name**,
+and nobody writes it twice.
+
+What stays hand-written is only the two cases no file can answer:
+
+    range: "any"       the value arrives from a server and no stylesheet holds it
+    range: [ … ]       pinned deliberately, with no file to read it from
+
+`alsoSets` has only its name-list form today; the reader is designed and not built. Until it is, a
+range is written by hand or left open.
+
+**Cost, measured, because the question was asked:** none. On a program shaped like a real design
+system — variables set from a block, a dozen properties written —
+
+    200 variables x 1 value    18,104 types   5,742 instantiations   0.41s
+    200 variables x 3 values   19,104         5,742                  0.44s
+    200 variables x 8 values   21,104         5,742                  0.41s
+    500 variables x 3 values   22,704         6,942                  0.42s
+
+Instantiations do not move with the range at all. A union of string literals is the cheap kind.
+
+### Completion after a `:` — asked for, not built
+
+The user, while using it: *"voleo bih kada napisem `:` da imam autocomplete za `&:hover` i ostale."*
+
+A caret in a PRELUDE gets nothing today. The data is there — `SELECTORS` holds 129 names and the
+`unknown-selector` rule already reads it, including the four one-colon CSS2 forms — so this is the
+same shape as `valueWords`: a region the plugin knows it is in, answered from the table the checker
+already asks.
+
+Two things to get right when it is built, both already learned here:
+
+- **A caret in empty space belongs to no run yet.** Measured on values: a caret after `color: ` was
+  answered with the property names, because that is what the position mapped to. A prelude will have
+  the same state, and `&` with nothing after it is exactly where somebody asks.
+- **The offer has to match what the rule accepts**, or the editor suggests what the checker reports.
+  That pair has gone wrong once already, with `UNION_TYPED` against a project's own config.
+
 ### What is not in dispute
 
 The codegen step is the same in all three: read the config, write a `.d.ts` the project's

@@ -8,6 +8,9 @@ export class EtEtStrict extends Component {
           background-color: activeborder;
           color: white;
           padding: $.space.gutter.normal;
+          &:hover {
+            color: $.color.accent.main;
+          }
         )}
       >
         Hello
