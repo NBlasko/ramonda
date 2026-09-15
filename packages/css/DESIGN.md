@@ -2534,3 +2534,75 @@ silences `literal-not-allowed`, which this config turned on itself with
 **Only the contradiction.** `rules: { "literal-not-allowed": "off" }` in a config that never turned
 it on is fine, and so is `too-many-values` off where no `arity` is set — that rule also reports CSS's
 own maximum, which is a report a project may genuinely not want.
+
+---
+
+## For the NEXT pull request — asked for, measured where possible, not built
+
+None of these blocks the merge. Each is written down with what was measured, so the next session
+starts from a fact rather than from a recollection.
+
+### 1. Two rules on one fault, since passes 4 and 6
+
+Measured after both passes, on a config that narrows several things at once:
+
+```
+letter-spacing: 2rem   →  literal-not-allowed + unit-not-allowed
+margin: 8px            →  shorthand-not-allowed + literal-not-allowed
+padding: 1px 2px       →  too-many-values + literal-not-allowed
+```
+
+Each of those is ONE mistake. `literal-not-allowed` is the widest of the rules — it fires on any
+written-out value of a variables-only kind — so it lands beside every narrower one that also fired.
+
+This is the repository's recurring fault in a new place, and it is the shape `inOrder` already
+answers for the compiler's word: the most SPECIFIC finding at a position should be the one kept.
+`unit-not-allowed` says which unit; `literal-not-allowed` says the kind comes from variables. Both
+are true; only one is the thing to fix first.
+
+### 2. Class names — shorter, more readable, and one approach rather than two
+
+The user's words: *"mislim da neke mogu da budu jos krace ili citljvije"*, and — the part that
+decides — *"mislim da cemo morati da iskljucimo onu opciju da ih generisemo sa hash uvek."*
+
+**The reason is packaging, and it is a good one.** People will build a component library in one
+package and consume it BUILT in another. Two naming modes means two packages can name the same
+declaration differently, and nothing at consume time can notice: the CSS is already emitted. One
+approach, always, is what makes a built package composable with a source one.
+
+`CONTRACT.md` §3 already fixes the prefix for this exact reason, and `config.ts` refuses `names`,
+`hash` and `prefix` as settings because identity is the one thing every consumer must agree about.
+The `names: "hash"` bundler option is the remaining way to disagree.
+
+### 3. A manifest carrying what a package REQUIRES — measured, and it does not exist
+
+The user remembered a Ramonda build step writing a manifest that carries the app tree, and asked
+whether it could carry a package's required variables too.
+
+Measured: there is no such thing today. `apps/docs/scripts/build-manifest.mjs` is the docs app's own
+script and maps lazily-imported modules to chunk URLs — *"the piece nothing at runtime can know"* —
+and `@ramonda/build` exports bundler settings and nothing else. No package emits a manifest.
+
+So this is a design question rather than a change: a built package that uses `$.color.accent.main`
+needs the consuming app to declare that variable, and nothing carries that requirement across the
+package boundary today. The `@property` registration in the built stylesheet is the nearest thing —
+it declares the name and its initial — which may be the whole answer, or may need a manifest beside
+it. Not decided.
+
+### 4. An unclosed call eats the block's closer
+
+Measured twice, in an earlier review and again in pass 3, unchanged:
+
+```
+content: url(;
+
+unknown-value: `content` does not accept `Hello`.
+unknown-value: `content` does not accept `div`.
+```
+
+Two words out of the author's own JSX, reported as CSS values — the value ran past `)}` into the
+markup, because `readValue` counts parens and a block's closer is a `)` like any other. The real
+fault, a missing `)`, is never named.
+
+The parens are BALANCED, so a cheap check does not exist, and the value scanner is what all 39 rules
+read. This one needs a design before code.
