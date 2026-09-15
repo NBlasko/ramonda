@@ -3198,12 +3198,19 @@ describe("a colour written out, where the project said variables only", () => {
   });
 
   /**
-   * A property whose grammar SAYS it takes a colour is the TYPES' to refuse — measured, they do, and
-   * saying it twice for one mistake is the fault this repository keeps finding.
+   * A property whose grammar SAYS it takes a colour is read HERE TOO, and used not to be.
+   *
+   * This asserted the opposite, and its reason was *the types refuse it, and saying it twice for one
+   * mistake is the fault this repository keeps finding*. The first half was true of the checker and
+   * false of the BUILD: vite and esbuild run these rules and never type-check a block, so `color:
+   * red` compiled. The count was never two — it was one in the checker and ZERO where it shipped.
+   *
+   * Both speak now and `inOrder` drops the compiler's word, which is what the second half of that
+   * reason was really asking for.
    */
-  test("a property the types already refuse is left to them", () => {
-    expect(rulesWith("  color: red;", ONLY)).toEqual([]);
-    expect(rulesWith("  background-color: #fff;", ONLY)).toEqual([]);
+  test("a property whose grammar says it takes a colour is read here too", () => {
+    expect(rulesWith("  color: red;", ONLY)).toEqual(["literal-not-allowed"]);
+    expect(rulesWith("  background-color: #fff;", ONLY)).toEqual(["literal-not-allowed"]);
   });
 
   test("a property that takes no colour has nothing to find", () => {
@@ -3410,5 +3417,69 @@ describe("the slash form, and the correct CSS it must not refuse", () => {
     ["two ranges at once", "animation-range: entry 0% exit 100%"],
   ])("%s is silent", (_what, decl) => {
     expect(of(decl)).toEqual([]);
+  });
+});
+
+/**
+ * The two ways a literal still reached the page after `variablesOnly` was said.
+ *
+ * **A colour LONGHAND did not reach the build.** The dimension half was extended and the colour
+ * half was not: `literalNotAllowed` skipped a property whose grammar says `<color>` as *the types'
+ * to refuse*, which was true of the checker and false of vite and esbuild. Forty properties, and
+ * `color: red` the first of them.
+ *
+ * **And a custom property set in the block was an open door.** `--own: red; color: var(--own)` is
+ * two declarations this compiler reads, and neither was looked at — so the rule a project turned on
+ * could be walked around in one line, by accident as easily as on purpose.
+ *
+ * A custom property has NO KIND, which is what makes this narrow: a bare `3` is not a length and
+ * `"red"` inside quotes is not a colour. Only a value that can be nothing else is reported — a hex,
+ * a colour function, a named colour, or a number carrying a unit.
+ */
+describe("a literal that reached the page anyway", () => {
+  const ONLY: Config = {
+    variables: { brand: kind("color", { main: "#10b981" }), space: kind("length", { sm: "8px" }) },
+    properties: { "<color>": { variablesOnly: true }, "<length>": { variablesOnly: true } },
+  };
+  const of = (decl: string) =>
+    checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, { config: ONLY }).map((one) => one.rule);
+
+  test.each([
+    ["a colour longhand, which the build never saw", "color: red"],
+    ["a hex in one", "background-color: #ff0000"],
+    ["a colour function", "border-top-color: rgb(255 0 0)"],
+  ])("%s is reported", (_what, decl) => {
+    expect(of(decl)).toEqual(["literal-not-allowed"]);
+  });
+
+  test.each([
+    ["a colour put into a custom property", "--own: red"],
+    ["a hex put into one", "--own: #ff0000"],
+    ["a length put into one", "--gap: 8px"],
+  ])("%s is reported", (_what, decl) => {
+    expect(of(decl)).toEqual(["literal-not-allowed"]);
+  });
+
+  test("the whole bypass, which is what this is for", () => {
+    expect(of("--own: red; color: var(--own)")).toEqual(["literal-not-allowed"]);
+  });
+
+  test.each([
+    ["a declared variable, which is the point", "--own: $.brand.main"],
+    ["a colour word inside a STRING, which is text", '--label: "red"'],
+    ["a bare number, which has no kind at all", "--n: 3"],
+    ["a keyword", "--mode: dark"],
+    ["`var()`, the escape CSS itself provides", "--own: var(--theme)"],
+    ["a zero", "--gap: 0"],
+  ])("%s is silent", (_what, decl) => {
+    expect(of(decl)).toEqual([]);
+  });
+
+  /** And none of it happens to a project that said nothing. */
+  test("with no `variablesOnly`, every one of these is silent", () => {
+    const plain = (decl: string) =>
+      checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {}).map((one) => one.rule);
+
+    for (const decl of ["color: red", "--own: red", "--gap: 8px"]) expect(plain(decl)).toEqual([]);
   });
 });

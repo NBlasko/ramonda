@@ -634,6 +634,8 @@ function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findi
  * HOLE evaluates at render and is nobody's to read. A keyword is not a dimension at all.
  */
 function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  const kinds = variablesOnlyKinds(rules);
+
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
       if (item.kind === "rule") {
@@ -642,17 +644,68 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
       }
 
       const property = propertyName(item.property);
+
+      /**
+       * A CUSTOM PROPERTY has no kind, so only a value that can be nothing else is read.
+       *
+       * `--own: red; color: var(--own)` walked around the whole setting in one line — two
+       * declarations this compiler reads and neither was looked at. But a custom property holds
+       * anything: `--n: 3` is not a length and `--label: "red"` is text. So a bare number is left
+       * alone and a quoted string never matches, because `topLevelValues` keeps the quotes.
+       *
+       * Reported against EVERY forbidden kind at once, since nothing here says which was meant.
+       */
+      if (property.startsWith("--")) {
+        for (const value of topLevelValues(item.value)) {
+          const text = value.text;
+          if (text === undefined || value.at === undefined) continue;
+
+          const unit = A_DIMENSION.exec(text)?.[2]?.toLowerCase();
+          const family = unit === undefined ? undefined : UNIT_TYPE[unit];
+          const dimension = family !== undefined && kinds.includes(family) ? family : undefined;
+          const colour =
+            kinds.includes("color") && (HEX.test(text) || COLOUR_CALL.test(text) || COLOUR_WORDS.has(text))
+              ? "color"
+              : undefined;
+          const found = colour ?? dimension;
+          if (found === undefined || Number(text) === 0) continue;
+
+          findings.push({
+            rule: "literal-not-allowed",
+            at: value.at,
+            length: text.length,
+            message:
+              `\`${text}\` is ${NARROW[found]?.said ?? "a value"} written out, and this project takes ` +
+              `them only from its own variables.` +
+              `\n\n        A custom property set here is still a value this project ships. Declare it in ` +
+              `\n        \`ramonda.css.ts\` and write \`$.…\`.`,
+          });
+          break;
+        }
+        continue;
+      }
+
       const primitive = PRIMITIVE[property];
       // No kind, no answer: nothing can say what a composite property's pieces should have been.
-      // A colour inside one is `literalNotAllowed`'s, which reads the value rather than the type.
-      if (primitive === undefined || primitive === "color") continue;
+      // A colour inside one is the colour walk's, which reads the value rather than the type.
+      if (primitive === undefined) continue;
       const rule = ruleFor(rules, property);
       if (rule.variablesOnly !== true) continue;
 
       for (const value of topLevelValues(item.value)) {
         const text = value.text;
         if (text === undefined || value.at === undefined) continue;
-        if (!A_DIMENSION.test(text) && !A_NUMBER.test(text)) continue;
+
+        /**
+         * A colour LONGHAND is read here too, and was not.
+         *
+         * `literalNotAllowed` skipped a property whose grammar says `<color>` as *the types' to
+         * refuse* — true of the checker and false of the BUILD, which runs no TypeScript. Forty
+         * properties, `color: red` the first of them, compiled by vite and esbuild.
+         */
+        const isColour = primitive === "color" && (HEX.test(text) || COLOUR_CALL.test(text) || COLOUR_WORDS.has(text));
+        if (!isColour && !A_DIMENSION.test(text) && !A_NUMBER.test(text)) continue;
+        if (primitive === "color" && !isColour) continue;
         // A zero needs no unit in CSS and is not a value anybody wrote instead of reaching for one.
         if (Number(text) === 0) continue;
 

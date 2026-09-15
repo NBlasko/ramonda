@@ -2213,9 +2213,6 @@ it and nowhere else.
 
 #### What is still open
 
-The `--own: red; color: var(--own)` bypass also stands: a custom property set inside a block is not
-checked against `variablesOnly`.
-
 #### What StyleX does here, read rather than recalled
 
 Their `@stylexjs/valid-styles` rule takes a `propLimits` map, keyed by property name or glob, and
@@ -2455,3 +2452,35 @@ possible.** `animation-range-start` arrived with this and its value is a keyword
 together — `entry 50%` — which is exactly the shape a narrowing gets wrong. Measured with no config
 at all and guarded by a test: the elliptical `border-radius: 50% / 20%`, `entry 50%`, and
 `animation-range: entry 0% exit 100%` are all silent.
+
+### 10. The two ways a literal still reached the page
+
+**A colour LONGHAND did not reach the build**, and that is a miss in finding 8's own fix. The
+dimension half was extended and the colour half was not: `literalNotAllowed` skipped a property
+whose grammar says `<color>` as *the types' to refuse*. A test asserted exactly that, with the
+reason *saying it twice for one mistake is the fault this repository keeps finding*.
+
+The first half of that reason was true of the checker and false of the build. **The count was never
+two — it was one in the checker and ZERO where it ships.** Forty properties, `color: red` the first
+of them, compiled by vite and esbuild. Both speak now and `inOrder` drops the compiler's word, which
+is what the second half of the reason was really asking for.
+
+**And a custom property set in the block was an open door.** `--own: red; color: var(--own)` is two
+declarations this compiler reads and neither was looked at, so a rule a project turned on could be
+walked around in one line — by accident as easily as on purpose.
+
+A custom property has NO KIND, which is what keeps this narrow. Only a value that can be nothing
+else is reported:
+
+```
+--own: red          reported      a named colour and nothing else
+--own: #ff0000      reported      a hex
+--gap: 8px          reported      a number carrying a unit
+--n: 3              silent        a bare number is not a length
+--label: "red"      silent        quoted, so it is text — `topLevelValues` keeps the quotes
+--own: var(--x)     silent        the escape CSS itself provides
+--gap: 0            silent        a zero needs no unit
+```
+
+It is reported against every forbidden kind at once, because nothing in a custom property says which
+was meant.
