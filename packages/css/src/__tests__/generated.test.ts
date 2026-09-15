@@ -1150,5 +1150,74 @@ export default {
         ).not.toContain("problem");
       });
     });
+
+    /**
+     * `Var<K>` — a type for "any variable of this kind", which a project needs and could not write.
+     *
+     * **Asked for by the user**, in their words: *"zapravo ideja je da toggleujem token na osnovu
+     * neke vrednosti i da ga spustim u rupu posle … `const colorVal: Token<"color", Fixed<"Ne znam
+     * sta ovde">>`"*. The annotation they were reaching for cannot be written: the second parameter
+     * is the variable's RANGE, and a value toggled between two variables has two ranges, neither of
+     * which the author should have to name.
+     *
+     * Inference already handles the local case — `const tone = toggle ? $.a : $.b` needs no
+     * annotation and goes into a hole. `Var<K>` is for the places inference cannot reach: a class
+     * field, a function parameter, a return type.
+     *
+     * Written as an interface keyed by kind rather than a conditional over a union, so hovering it
+     * shows the variables themselves.
+     */
+    describe("`Var<K>`, for a value toggled between variables", () => {
+      const CONFIG = `import { kind } from "@ramonda/css/config";
+export default {
+  variables: {
+    color: kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } }),
+    size: kind("length", { radius: { pill: "999px" } }),
+  },
+};
+`;
+      const HEAD = `import { $, type Var } from "../ramonda.css.generated";\ndeclare const toggle: boolean;\n`;
+
+      test("a value toggled between two variables of a kind", () => {
+        const output = withBoth(
+          CONFIG,
+          `${HEAD}const tone: Var<"color"> = toggle ? $.color.accent.quiet : $.color.accent.main;\n` +
+            `export const a = <div css={@@( color: {tone}; )}>x</div>;\n`,
+        );
+
+        expect(output).not.toContain("problem");
+      });
+
+      /** Asserted on the REASON: both of these were refused before `Var` existed, for not existing. */
+      test("and a variable of the WRONG kind is refused by it, as a kind", () => {
+        const output = withBoth(CONFIG, `${HEAD}const tone: Var<"color"> = $.size.radius.pill;\n`);
+
+        expect(output).toMatch(/Type '"length"' is not assignable to type '"color"'/);
+      });
+
+      test("a kind this project declares nothing of is not a key", () => {
+        const output = withBoth(CONFIG, `${HEAD}const t: Var<"time"> = $.color.accent.main;\n`);
+
+        expect(output).toMatch(/'"time"'.*(?:not assignable|does not satisfy)/);
+      });
+
+      test("it survives a class field, which is where inference cannot help", () => {
+        const output = withBoth(CONFIG, `${HEAD}export class Box {\n  tone: Var<"color"> = $.color.accent.main;\n}\n`);
+
+        expect(output).not.toContain("problem");
+      });
+
+      /** And the plain case still needs no annotation at all, which is the advice to give first. */
+      test("inference alone carries the local case", () => {
+        const output = withBoth(
+          CONFIG,
+          `import { $ } from "../ramonda.css.generated";\ndeclare const toggle: boolean;\n` +
+            `const tone = toggle ? $.color.accent.quiet : $.color.accent.main;\n` +
+            `export const a = <div css={@@( color: {tone}; )}>x</div>;\n`,
+        );
+
+        expect(output).not.toContain("problem");
+      });
+    });
   });
 });

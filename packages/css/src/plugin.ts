@@ -491,6 +491,109 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         };
       };
 
+      /**
+       * Where a virtual offset belongs in the author's file — with one allowance, for an INSERTION.
+       *
+       * An import goes ABOVE everything, and above everything in the virtual file is this package's
+       * own preamble: the declarations that give a block its `@@`, its `$` and its holes. That text
+       * has no home, so mapping it gives nothing and the import was dropped — measured, which is why
+       * the user saw the editor put it wherever it liked.
+       *
+       * A zero-length insertion is different from every other span in one way that settles this: it
+       * writes BEFORE a position rather than over a range, so the question is not *what character is
+       * this* but *what does it come before*. So the scan walks forward to the first offset that does
+       * have a home, and that is the answer — the author's own first character, for an import.
+       *
+       * Only for an insertion. A span that REPLACES text and maps nowhere is text of ours, and
+       * moving it somewhere plausible is how a file gets destroyed; that one is still dropped.
+       */
+      const homeFor = (file: VirtualFile, offset: number, inserting: boolean): number | undefined => {
+        const home = file.homeOf(offset);
+        if (home !== undefined || !inserting) return home;
+
+        const length = file.code.length;
+        for (let ahead = offset + 1; ahead <= length; ahead++) {
+          const found = file.homeOf(ahead);
+          if (found !== undefined) return found;
+        }
+        return undefined;
+      };
+
+      /**
+       * The DETAILS of a completion — and accepting one that needs an import WRITES to the file.
+       *
+       * **Reported by a user**, who put it down to VS Code: an accepted auto-import landed at the
+       * END of their `.tsx` file, and went to the top the moment they deleted the `@@` block.
+       *
+       * `getCompletionsAtPosition` above is proxied and maps the caret into the virtual file. This
+       * was not proxied at all, so TypeScript got the AUTHOR's position against the VIRTUAL text —
+       * a different place entirely. Measured, it returned `undefined`: the editor is handed an entry
+       * it can offer and cannot resolve, and what it writes then is nobody's decision.
+       *
+       * The same shape as the rename fault below — an unmapped span an editor writes at — and it
+       * differs in what to do about it. Refusing is right for a rename, which is a convenience.
+       * An import is not: without it the completion list is offering something it cannot deliver.
+       * So the spans are mapped HOME, and a code action holding one that maps nowhere is dropped
+       * whole rather than applied in part.
+       */
+      proxy.getCompletionEntryDetails = (fileName, position, entryName, formatOptions, source, preferences, data) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) {
+          return service.getCompletionEntryDetails(
+            fileName,
+            position,
+            entryName,
+            formatOptions,
+            source,
+            preferences,
+            data,
+          );
+        }
+
+        const at = file.virtualOf(position);
+        if (at === undefined) return undefined;
+
+        const got = service.getCompletionEntryDetails(
+          fileName,
+          at,
+          entryName,
+          formatOptions,
+          source,
+          preferences,
+          data,
+        );
+        if (got?.codeActions === undefined) return got;
+
+        /**
+         * A change in this file is mapped; one in ANOTHER file is already in its own coordinates
+         * and is left alone — unless that file carries a block too, in which case it is mapped by
+         * its own overlay.
+         */
+        const homeward = (change: ts.FileTextChanges): ts.FileTextChanges | undefined => {
+          const its = overlay(change.fileName, readSnapshot);
+          if (its === undefined) return change;
+
+          const textChanges: ts.TextChange[] = [];
+          for (const one of change.textChanges) {
+            const start = homeFor(its, one.span.start, one.span.length === 0);
+            const end = one.span.length === 0 ? start : its.homeOf(one.span.start + one.span.length);
+            if (start === undefined || end === undefined || end < start) return undefined;
+            textChanges.push({ newText: one.newText, span: { start, length: end - start } });
+          }
+          return { ...change, textChanges };
+        };
+
+        const codeActions: ts.CodeAction[] = [];
+        for (const action of got.codeActions) {
+          const changes = action.changes.map(homeward);
+          // All or nothing: half an import is worse than none, and this is a span an editor WRITES at.
+          if (changes.some((one) => one === undefined)) continue;
+          codeActions.push({ ...action, changes: changes as ts.FileTextChanges[] });
+        }
+
+        return { ...got, codeActions };
+      };
+
       proxy.getQuickInfoAtPosition = (fileName, position) => {
         const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getQuickInfoAtPosition(fileName, position);

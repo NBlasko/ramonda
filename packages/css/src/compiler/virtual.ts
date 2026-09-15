@@ -315,7 +315,23 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * STATEMENT would turn a script into a module and change what the author's own code means.
    */
   const variables = binding(source, "__vars");
-  write(`declare const ${variables}: typeof import(${from}).$;`);
+  /**
+   * The fallback is written INLINE rather than imported, so nothing has to export a `$`.
+   *
+   * It used to read `typeof import(from).$`, which meant `@ramonda/css/properties` had to export one
+   * — and an export is an AUTO-IMPORT suggestion. Reported by a user: typing `$` in ordinary
+   * TypeScript offered `import { $ } from "@ramonda/css/properties"`, a type that exists only to
+   * carry a sentence, beside the real `$` from their own generated module.
+   *
+   * The conditional keeps both cases in one line: a generated module HAS a `$` and that is the
+   * project's own object; the shipped map has none and the sentence stands in. The sentence is a
+   * type rather than `never` for the reason measured in `properties.ts` — `never` says *Property
+   * 'color' does not exist on type 'never'*, and this says what to do.
+   */
+  write(
+    `declare const ${variables}: typeof import(${from}) extends { $: infer V } ? V : ` +
+      `"Declare your variables in ramonda.css.ts, then run \`ramonda-css codegen\`.";`,
+  );
 
   const condition = binding(source, "__cond");
   const spread = binding(source, "__from");

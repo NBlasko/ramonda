@@ -69,22 +69,6 @@ import type { CssProperties, CssValue } from "./properties.generated";
  * Measured, exactly that. One literal per declaration, gathered in an array, gets every fault
  * reported at once, each with its own position and its own suggestion.
  */
-/**
- * `$` for a project that has not declared any variables — a value whose TYPE is the sentence.
- *
- * The virtual file declares `$` from whichever property map applies, so that writing
- * `$.color.primary.main` in a block needs no import and completes. When a project has generated its
- * own map, that is the real object. When it has not, this stands in — and the type is a message
- * rather than `never`, because of what the alternative was measured to say:
- *
- *     no `$` at all        Cannot find name '$'. Do you need to install type definitions for jQuery?
- *     `never`              Property 'color' does not exist on type 'never'.
- *     this                 Property 'color' does not exist on type 'Declare your variables in …'
- *
- * The first is TypeScript's own suggestion and it is actively misleading — reported by a user who
- * met it. The third puts the answer in the message, which is the only one of the three that helps.
- */
-export declare const $: "Declare your variables in ramonda.css.ts, then run `ramonda-css codegen`.";
 
 export type CssBlockShape = Partial<CssProperties> & {
   [nested: `&${string}`]: CssBlockShape[];

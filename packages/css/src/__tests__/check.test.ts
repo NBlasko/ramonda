@@ -357,10 +357,14 @@ describe("a setup that would otherwise pass silently", () => {
       ),
     );
 
-    // Six, because the virtual file names six things from that module — the block's shape, what a
-    // block IS, composition's two, what a hole in a value must be, and `$` for the project's own
-    // variables. Each missing one is its own setup fault, and each is reported.
-    expect(report.findings).toHaveLength(6);
+    // Five, because the virtual file names five things from that module — the block's shape, what a
+    // block IS, composition's two, and what a hole in a value must be. Each missing one is its own
+    // setup fault, and each is reported.
+    //
+    // It was SIX, and `$` was the sixth. The fallback is written inline now rather than imported,
+    // so that no module has to export a `$` — an export is an auto-import suggestion, and a user
+    // met `import { $ } from "@ramonda/css/properties"` offered beside their own generated one.
+    expect(report.findings).toHaveLength(5);
     expect(report.findings.map((one) => one.message).join(" ")).toContain("CssBlockShape");
   });
 
