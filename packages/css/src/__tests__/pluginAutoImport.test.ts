@@ -118,6 +118,39 @@ describe("accepting an auto-import in a file that carries a block", () => {
     expect(change.newText).toContain("theme");
   });
 
+  /**
+   * A file that ALREADY has imports — where TypeScript inserts after the last one.
+   *
+   * The insertion point is then inside the author's own region rather than before it, so it maps
+   * directly and the forward scan never runs. Both paths are exercised because they are different
+   * code, and the one that is not measured is the one that breaks.
+   */
+  test("after the last existing import, when there is one", () => {
+    const source = `import { join } from "node:path";
+const gap = join("a", "b");
+export const a = <div css={@@( padding: 8px; )}>x</div>;
+export const b = palette;
+`;
+    const [change] = importFor(source);
+
+    expect(change.span.start).toBeGreaterThan(0);
+    // On the line after the existing import, never inside the block or past the end.
+    expect(change.span.start).toBeLessThanOrEqual(source.indexOf("const gap"));
+    expect(source.slice(0, change.span.start)).not.toContain("@@");
+  });
+
+  /** A block BEFORE the caret is the shape that shifts every offset — the user's own file. */
+  test("a block above the import site does not move it", () => {
+    const source = `import { join } from "node:path";
+export const a = <div css={@@( padding: 8px; color: red; )}>x</div>;
+const gap = join("a", "b");
+export const b = palette;
+`;
+    const [change] = importFor(source);
+
+    expect(source.slice(0, change.span.start)).not.toContain("@@");
+  });
+
   /** And it must never land past the author's own text, which is what the user saw. */
   test("never past the end of the file", () => {
     for (const change of importFor(WITH_A_BLOCK)) {

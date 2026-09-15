@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,8 @@ beforeAll(builtFromThisSource);
 
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BIN = join(PACKAGE, "bin.mjs");
+/** For a fixture whose `ramonda.css.ts` imports `@ramonda/css/config`. */
+const REPO = resolve(PACKAGE, "..", "..");
 
 const projects: string[] = [];
 afterEach(() => {
@@ -406,5 +408,104 @@ describe("codegen", () => {
     expect(status).toBe(1);
     expect(output).toContain("--a-b-c");
     expect(existsSync(join(root, "ramonda.css.generated.css"))).toBe(false);
+  });
+});
+
+/**
+ * `ramonda-css explain` — what the config does to one property, and which line decided it.
+ *
+ * The config grew a third selector and the user said what that cost: *"sada imam samo jos jedno
+ * pitanje jer smo toliko ukomplikovali da mi je tesko da pratim."* Knowing what applies to
+ * `border-radius` means reading three entries and holding CSS's own classification in your head.
+ *
+ * `explain.test.ts` holds the claim that matters — that this agrees with what is ENFORCED. These
+ * are about the command: that it runs, that it names the deciding selector, and that the two ways of
+ * asking it wrongly are said rather than crashed.
+ */
+describe("`explain`", () => {
+  const withConfig = (config: string, argument: string) => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-explain-"));
+    projects.push(root);
+    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "p", type: "module", version: "0.0.0" }));
+    writeFileSync(join(root, "ramonda.css.ts"), config);
+
+    try {
+      return {
+        output: execFileSync(process.execPath, [BIN, "explain", argument], { cwd: root, encoding: "utf8" }),
+        status: 0,
+      };
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? 1 };
+    }
+  };
+
+  const CONFIG = `export default {
+  properties: {
+    "*": { shorthand: false, arity: 1 },
+    "<length>": { variablesOnly: true, units: ["px", "rem"] },
+    "border-radius": { variablesOnly: false },
+  },
+};
+`;
+
+  test("names the selector that decided each setting, and the one it overrode", () => {
+    const { output, status } = withConfig(CONFIG, "border-radius");
+
+    expect(status).toBe(0);
+    expect(output).toContain('"*"');
+    expect(output).toContain('"<length>"');
+    expect(output).toContain('overriding "<length>"');
+    expect(output).toContain("px, rem");
+  });
+
+  test("a property the kind reaches but the config never names", () => {
+    const { output } = withConfig(CONFIG, "padding-left");
+
+    expect(output).toContain('"<length>"');
+    expect(output).not.toContain("overriding");
+  });
+
+  test("a property CSS does not have is said, with the nearest one", () => {
+    const { output, status } = withConfig(CONFIG, "pading-left");
+
+    expect(status).toBe(1);
+    expect(output).toContain("padding-left");
+  });
+
+  test("no property at all is said rather than crashed", () => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-explain-"));
+    projects.push(root);
+    let out = "";
+    let status = 0;
+    try {
+      out = execFileSync(process.execPath, [BIN, "explain"], { cwd: root, encoding: "utf8" });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      out = `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+      status = failed.status ?? 1;
+    }
+
+    expect(status).toBe(1);
+    expect(out).toContain("takes a property");
+    expect(out).not.toContain("throw new Error");
+  });
+
+  test("a project with no config is told so rather than shown an empty table", () => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-explain-"));
+    projects.push(root);
+    writeFileSync(join(root, ".git"), "");
+
+    const output = execFileSync(process.execPath, [BIN, "explain", "padding-left"], { cwd: root, encoding: "utf8" });
+
+    expect(output).toContain("nothing is narrowed");
+  });
+
+  /** `--help` must never do work — the rule the formatter learned the hard way. */
+  test("`--help` prints the usage, which now lists this command", () => {
+    const output = execFileSync(process.execPath, [BIN, "explain", "--help"], { cwd: PACKAGE, encoding: "utf8" });
+
+    expect(output).toContain("ramonda-css explain");
   });
 });

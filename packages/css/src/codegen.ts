@@ -360,6 +360,66 @@ export function ruleFor(rules: PropertyRules | undefined, property: string): Any
   return Object.assign({}, sweep, ...byKind, own) as AnyRule;
 }
 
+/** One setting that applies to a property, and the selector that decided it. */
+export interface Setting {
+  readonly name: string;
+  readonly value: unknown;
+  /** The selector it came from: `"*"`, a `"<kind>"`, or the property's own name. */
+  readonly from: string;
+  /** The selector it overrode, when a looser one had also said something. */
+  readonly overriding?: string;
+}
+
+export interface Explained {
+  readonly property: string;
+  /** Whether CSS has a property by this name at all. */
+  readonly known: boolean;
+  /** What its value IS, when CSS classifies it — what a `"<kind>"` selector matches on. */
+  readonly kind: string | undefined;
+  /** Every setting that applies, in the order the selectors bind. */
+  readonly settings: readonly Setting[];
+}
+
+/**
+ * What a project said about ONE property, with the selector that decided each setting.
+ *
+ * The config is keyed by three things and each binds more tightly than the one before, so knowing
+ * what applies to `border-radius` means reading three entries and holding CSS's own classification
+ * in your head. The user's words: *"sada imam samo jos jedno pitanje jer smo toliko ukomplikovali da
+ * mi je tesko da pratim."*
+ *
+ * **It walks the same selectors as {@link ruleFor}, in the same order, and must not become a second
+ * opinion.** An explanation that agreed with what is enforced by accident would be worse than none,
+ * because it would be believed. `explain.test.ts` asserts that what this reports, flattened, IS
+ * `ruleFor`'s answer — over every property CSS classifies, since drift would appear in whichever one
+ * nobody thought to check.
+ */
+export function explain(rules: PropertyRules | undefined, property: string): Explained {
+  const kind = PRIMITIVE[property];
+  const known = kind !== undefined || property in SHORTHANDS || KEYWORDS[property] !== undefined;
+
+  const selectors = [
+    "*",
+    ...kindsOf(property)
+      .map((one) => `<${one}>`)
+      .sort(),
+    property,
+  ];
+
+  /** By name, so a tighter selector replaces a looser one and keeps what it replaced. */
+  const found = new Map<string, Setting>();
+  for (const selector of selectors) {
+    const said = (rules?.[selector as keyof PropertyRules] ?? {}) as Record<string, unknown>;
+    for (const [name, value] of Object.entries(said)) {
+      if (value === undefined) continue;
+      const before = found.get(name);
+      found.set(name, { name, value, from: selector, ...(before === undefined ? {} : { overriding: before.from }) });
+    }
+  }
+
+  return { property, known, kind, settings: [...found.values()] };
+}
+
 /**
  * The kinds this project takes only from its variables, for the RULE — which reads composite
  * properties no type describes.

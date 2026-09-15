@@ -3,8 +3,11 @@ import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { checkProject } from "./check";
+import { NARROW, explain } from "./codegen";
+import { PRIMITIVE } from "./compiler/keywords.generated";
+import { nearest } from "./compiler/nearest";
 import { writeGenerated } from "./generate";
-import { ConfigError } from "./config";
+import { ConfigError, environmentOf, findConfig, readConfig } from "./config";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
 import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
 
@@ -41,6 +44,7 @@ const USAGE = `ramonda-css — the tools for a project whose source TypeScript c
   ramonda-css format <paths…>      format through the project's own biome (--check to report)
   ramonda-css lint <paths…>        lint through the project's own oxlint
   ramonda-css codegen              write the variables this project declares, and their types
+  ramonda-css explain <property>   what your config does to one property, and which line decided it
 
 The check takes a PROJECT — a tsconfig, or the directory holding one — because a program is what
 is type-checked. \`format\` and \`lint\` take paths, because a file is what they rewrite and read.`;
@@ -92,6 +96,10 @@ if (argv[0] === "format" || argv[0] === "lint") {
 
 if (argv[0] === "codegen") {
   said(() => runCodegen());
+}
+
+if (argv[0] === "explain") {
+  said(() => runExplain(argv[1]));
 }
 
 /**
@@ -354,5 +362,69 @@ function runCodegen(): never {
   console.log(
     `${TAG} ${result.declared} variable${result.declared === 1 ? "" : "s"} from ${where(result.config)} — ${said}`,
   );
+  process.exit(0);
+}
+
+/**
+ * What this project's config does to ONE property, and which selector decided each part.
+ *
+ * ```
+ * $ ramonda-css explain border-radius
+ *
+ *   border-radius        a length or a percentage
+ *
+ *     shorthand      false        "*"
+ *     units          px, rem      "<length>"
+ *     variablesOnly  false        "border-radius"   overriding "<length>"
+ * ```
+ *
+ * **Asked for because the config grew a third selector.** `properties` is keyed by the sweep, by a
+ * kind, and by a name, and each binds more tightly than the one before — so knowing what applies to
+ * one property means reading three entries and holding CSS's own classification in your head. The
+ * user's words: *"sada imam samo jos jedno pitanje jer smo toliko ukomplikovali da mi je tesko da
+ * pratim."*
+ *
+ * It reads {@link explain}, which walks the same selectors as `ruleFor` in the same order — see its
+ * note for why an explanation that agreed by accident would be worse than none.
+ */
+function runExplain(property: string | undefined): never {
+  if (property === undefined || property.startsWith("--") || property === "-h") {
+    console.error(`\n${TAG} \`explain\` takes a property — \`ramonda-css explain padding-left\`.\n`);
+    process.exit(1);
+  }
+
+  const path = findConfig(process.cwd());
+  const config = readConfig(path, ts, environmentOf());
+  const said = explain(config.properties, property);
+
+  if (!said.known) {
+    const meant = nearest(property, Object.keys(PRIMITIVE));
+    console.error(
+      `\n${TAG} CSS has no \`${property}\`.` + (meant === undefined ? "" : ` Did you mean \`${meant}\`?`) + "\n",
+    );
+    process.exit(1);
+  }
+
+  const lines: string[] = [
+    "",
+    `  ${property}${said.kind === undefined ? "" : `   ${NARROW[said.kind]?.said ?? said.kind}`}`,
+    "",
+  ];
+
+  if (path === undefined) {
+    lines.push("  no `ramonda.css.ts` in this project, so nothing is narrowed.", "");
+  } else if (said.settings.length === 0) {
+    lines.push(`  ${where(path)} says nothing about it, so it takes whatever CSS allows.`, "");
+  } else {
+    const width = Math.max(...said.settings.map((one) => one.name.length));
+    for (const one of said.settings) {
+      const value = Array.isArray(one.value) ? one.value.join(", ") : String(one.value);
+      const overriding = one.overriding === undefined ? "" : `   overriding ${JSON.stringify(one.overriding)}`;
+      lines.push(`    ${one.name.padEnd(width)}  ${value.padEnd(12)} ${JSON.stringify(one.from)}${overriding}`);
+    }
+    lines.push("", `  from ${where(path)}`, "");
+  }
+
+  console.log(lines.join("\n"));
   process.exit(0);
 }
