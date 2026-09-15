@@ -13,6 +13,7 @@ import {
   NOT_IN_A_RULE,
   PROPERTIES,
   PROPERTY_NAMED,
+  SHORTHANDS,
   STRING_ALLOWED,
   UNITS,
   MEDIA_FEATURES,
@@ -97,6 +98,8 @@ export const RULE_IDS = [
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
+  "value-not-allowed",
+  "shorthand-not-allowed",
   "string-not-allowed",
   "property-not-a-name",
   "non-canonical-spelling",
@@ -294,6 +297,9 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (at !== undefined) compositionInANamedBlock(block, at, findings);
   if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
   if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
+  unitNotAllowedPerProperty(block, config?.properties, findings);
+  valueNotAllowed(block, config?.properties, findings);
+  shorthandNotAllowed(block, config?.properties, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
@@ -724,6 +730,147 @@ function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, fin
     }
   };
 
+  walkItems(block.items);
+}
+
+/**
+ * The three settings the TYPES enforced and the BUILD did not — units, values, shorthand.
+ *
+ * Found by review pass 4, which swept every setting against every consumer. Vite and esbuild run
+ * these rules over a block and never type-check it, so a setting that only reaches the types is a
+ * setting the dev server ignores:
+ *
+ *     properties["*"].units         padding-left: 2rem    checker refuses, build serves
+ *     properties["z-index"].values  z-index: 5            checker refuses, build serves
+ *     properties["*"].shorthand     padding: 8px          checker refuses, build serves
+ *
+ * The project-wide `units`, `arity` and `variablesOnly` already spoke in both. So half the config
+ * was enforced everywhere and half in one place, with nothing saying which half.
+ *
+ * `inOrder` drops the compiler's word on a line one of these reports, so an author still meets one
+ * report rather than two — the same arrangement `variablesOnly` already has.
+ */
+function unitNotAllowedPerProperty(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  if (rules === undefined) return;
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      const allowed = ruleFor(rules, property).units;
+      if (allowed === undefined) continue;
+
+      const permitted = new Set(allowed.map((one) => one.toLowerCase()));
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+        for (const found of unitsIn(part.text, part.at)) {
+          const unit = found.unit.toLowerCase();
+          // A unit CSS does not have is `unknown-unit`'s, which names it — two rules on one fault
+          // reads as two faults. And a family this property said nothing about is not constrained.
+          if (!KNOWN_UNITS.has(unit) || permitted.has(unit)) continue;
+          if (![...permitted].some((one) => UNIT_TYPE[one] === UNIT_TYPE[unit])) continue;
+
+          findings.push({
+            rule: "unit-not-allowed",
+            at: found.at,
+            length: found.length,
+            message:
+              `\`${found.unit}\` is a unit \`${property}\` does not take in this project. ` +
+              `\`ramonda.css.ts\` allows ${[...permitted].sort().join(", ")}.`,
+          });
+        }
+      }
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A value outside the closed list a project gave this property — `z-index: 5` under `[0, 1, 10]`.
+ *
+ * `var()` and the CSS-wide keywords go in, because neither is a value somebody chose: one is the
+ * escape CSS itself provides and the others mean *inherit this* rather than *be this*. A value
+ * carrying a HOLE is left alone, for the reason written above `non-canonical-spelling`: what the
+ * hole evaluates to is not the text the author wrote.
+ */
+function valueNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  if (rules === undefined) return;
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      const values = ruleFor(rules, property).values;
+      if (values === undefined || item.value.some((part) => part.kind !== "text")) continue;
+
+      const written = item.value
+        .map((part) => (part.kind === "text" ? part.text : ""))
+        .join("")
+        .trim();
+      if (written === "" || GLOBAL.has(written.toLowerCase()) || written.startsWith("var(")) continue;
+      // Both spellings, because a block is CSS: `z-index: 5` arrives as the string `"5"`.
+      if (values.some((one) => String(one) === written)) continue;
+
+      findings.push({
+        rule: "value-not-allowed",
+        at: item.valueAt ?? item.at ?? 0,
+        length: written.length,
+        message:
+          `\`${property}\` takes only ${values.map((one) => String(one)).join(", ")} in this project, ` +
+          `and this is \`${written}\`.\n\n        Add it to \`values\` in \`ramonda.css.ts\`, or use ` +
+          `one of those.`,
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A shorthand this project switched off — `margin: 8px` under `"*": { shorthand: false }`.
+ *
+ * The message names the longhands, because that is the whole of the fix and the project chose this
+ * setting to be asked for them.
+ */
+function shorthandNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  if (rules === undefined) return;
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      if (ruleFor(rules, property).shorthand !== false || SHORTHANDS[property] === undefined) continue;
+
+      /**
+       * A few of the longhands and the count, rather than all of them or an arbitrary four.
+       *
+       * `SHORTHANDS` holds every longhand a shorthand sets, TRANSITIVELY and sorted — `margin` has
+       * ten, and the first four alphabetically are the logical ones rather than the four sides
+       * somebody is looking for. Naming three and the number is honest about both: what to write,
+       * and that there is more to choose from.
+       */
+      const all = SHORTHANDS[property];
+      const shown = all.slice(0, 3).join(", ");
+      const rest = all.length > 3 ? ` and ${all.length - 3} more` : "";
+
+      findings.push({
+        rule: "shorthand-not-allowed",
+        at: item.at ?? 0,
+        length: item.property.length,
+        message:
+          `\`${property}\` is a shorthand this project does not use.\n\n        Write a longhand ` +
+          `instead — ${shown}${rest} — or name it in \`properties\` with \`shorthand: true\`.`,
+      });
+    }
+  };
   walkItems(block.items);
 }
 

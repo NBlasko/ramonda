@@ -287,6 +287,8 @@ const CSS_LINES = {
   "unknown-frame": "a keyframe selector that is not one",
   "unknown-named-block": "`@@name( … )` where the name is not a site this compiles",
   "unit-not-allowed": "a unit your `ramonda.css.ts` does not allow",
+  "value-not-allowed": "a value outside the closed list your `ramonda.css.ts` gave this property",
+  "shorthand-not-allowed": "a shorthand your `ramonda.css.ts` switched off — write its longhands",
   "literal-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from variables",
   "unknown-variable": "`$.…` naming a variable your `ramonda.css.ts` does not declare",
   "too-many-values": "more values than the property takes — in CSS, or in your `ramonda.css.ts`",

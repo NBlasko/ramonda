@@ -3560,3 +3560,109 @@ describe("case and the atomic class", () => {
     expect(classesOf(written)).not.toEqual(classesOf(lowered));
   });
 });
+
+/**
+ * Three settings the TYPES enforced and the BUILD did not.
+ *
+ * Review pass 4 swept every setting against every consumer, which is the shape four of this
+ * session's faults had. Vite and esbuild run these rules over a block and never type-check it, so a
+ * setting that only reaches the types is a setting the dev server ignores:
+ *
+ *     properties["*"].units         padding-left: 2rem    checker refuses, build serves
+ *     properties["z-index"].values  z-index: 5            checker refuses, build serves
+ *     properties["*"].shorthand     padding: 8px          checker refuses, build serves
+ *
+ * The other three — the project-wide `units`, `arity` and `variablesOnly` — already spoke in both.
+ * So half the config was enforced everywhere and half in one place, with nothing saying which.
+ *
+ * The precedent is the one `variablesOnly` set: *a project could watch `ramonda-css check` refuse a
+ * file and watch the dev server serve it.* `inOrder` drops the compiler's word where these speak, so
+ * an author still meets one report rather than two.
+ */
+describe("a setting the types enforced and the build did not", () => {
+  const under = (config: Config, css: string) =>
+    checkBlock(readBlock(`@@(\n  ${css};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
+
+  describe("a unit said on a property", () => {
+    const config: Config = { properties: { "*": { units: ["px"] } } };
+
+    test.each([
+      ["a unit the project does not use", "padding-left: 2rem"],
+      ["one inside a call", "width: calc(100% - 2rem)"],
+    ])("%s is reported", (_what, css) => {
+      expect(under(config, css)).toEqual(["unit-not-allowed"]);
+    });
+
+    test.each([
+      ["a unit it does use", "padding-left: 8px"],
+      ["a bare zero, which has no unit", "padding-left: 0"],
+      ["a family it said nothing about", "transition-duration: 200ms"],
+    ])("%s is silent", (_what, css) => {
+      expect(under(config, css)).toEqual([]);
+    });
+
+    test("one property's units do not reach another", () => {
+      const only: Config = { properties: { "letter-spacing": { units: ["em"] } } };
+
+      expect(under(only, "letter-spacing: 2px")).toEqual(["unit-not-allowed"]);
+      expect(under(only, "padding-left: 2px")).toEqual([]);
+    });
+  });
+
+  describe("a closed list of values", () => {
+    const config: Config = { properties: { "z-index": { values: [0, 1, 10] } } };
+
+    test.each([
+      ["a value outside it", "z-index: 5"],
+      ["a keyword outside it", "z-index: auto"],
+    ])("%s is reported", (_what, css) => {
+      expect(under(config, css)).toEqual(["value-not-allowed"]);
+    });
+
+    test.each([
+      ["one from the list", "z-index: 10"],
+      ["`var()`, the escape CSS provides", "z-index: var(--layer)"],
+      ["a CSS-wide keyword", "z-index: inherit"],
+      ["another property entirely", "order: 5"],
+    ])("%s is silent", (_what, css) => {
+      expect(under(config, css)).toEqual([]);
+    });
+
+    test("the message names the list", () => {
+      expect(under(config, "z-index: 5")).toEqual(["value-not-allowed"]);
+      const [found] = checkBlock(readBlock(`@@(\n  z-index: 5;\n)`, 2, "C.tsx").block, { config });
+
+      expect(found.message).toContain("0, 1, 10");
+    });
+  });
+
+  describe("a shorthand switched off", () => {
+    const config: Config = { properties: { "*": { shorthand: false }, padding: { shorthand: true } } };
+
+    test.each([
+      ["one the project switched off", "margin: 8px"],
+      ["another", "background: red"],
+    ])("%s is reported", (_what, css) => {
+      expect(under(config, css)).toEqual(["shorthand-not-allowed"]);
+    });
+
+    test.each([
+      ["the one it kept", "padding: 8px"],
+      ["a longhand, which is the point", "margin-top: 8px"],
+    ])("%s is silent", (_what, css) => {
+      expect(under(config, css)).toEqual([]);
+    });
+
+    test("the message names longhands to write, and how many there are", () => {
+      const [found] = checkBlock(readBlock(`@@(\n  margin: 8px;\n)`, 2, "C.tsx").block, { config });
+
+      expect(found.message).toContain("margin-block");
+      expect(found.message).toContain("7 more");
+    });
+  });
+
+  /** And a project that said nothing gets none of it. */
+  test("with no config, all three are silent", () => {
+    for (const css of ["padding-left: 2rem", "z-index: 5", "margin: 8px"]) expect(under({}, css)).toEqual([]);
+  });
+});

@@ -320,7 +320,15 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
    * compiler's on the property.
    */
   const literalRefused = new Set(
-    css.filter((finding) => finding.code === "literal-not-allowed").map((finding) => `${finding.file}:${finding.line}`),
+    css
+      .filter(
+        (finding) =>
+          finding.code === "literal-not-allowed" ||
+          finding.code === "unit-not-allowed" ||
+          finding.code === "value-not-allowed" ||
+          finding.code === "shorthand-not-allowed",
+      )
+      .map((finding) => `${finding.file}:${finding.line}`),
   );
 
   const kept = types.filter((finding) => {
@@ -331,7 +339,13 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
     if (finding.code === 2551 || finding.code === 2339 || finding.code === 2322) {
       if (pathRefused.has(`${finding.file}:${finding.line}`)) return false;
     }
-    if (finding.code === 2322 && literalRefused.has(`${finding.file}:${finding.line}`)) return false;
+    /**
+     * `TS2353` too, because a shorthand switched off is REMOVED from the map rather than narrowed —
+     * so the compiler's word about it is *does not exist in type*, not *is not assignable*.
+     */
+    if ((finding.code === 2322 || finding.code === 2353) && literalRefused.has(`${finding.file}:${finding.line}`)) {
+      return false;
+    }
     return true;
   });
 

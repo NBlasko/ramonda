@@ -469,14 +469,18 @@ describe("what a project's property rules do", () => {
       `export const e = <div css={@@( z-index: 5; )}>x</div>;\n`,
     );
 
-    // The message has to be ABOUT the property. A generated module that does not compile would
-    // also report a problem, and did once — `CssGlobal` was used and not imported, so this passed
-    // while saying `Cannot find name`. A count is not a reason.
     // The message has to be ABOUT the value. A generated module that does not compile would also
     // report a problem, and did once — `CssGlobal` was used and not imported, so this passed while
     // saying `Cannot find name`. A count is not a reason.
-    expect(refused).toMatch(/'"3"' is not assignable/);
+    //
+    // It is the RULE's message since review pass 4, which gave `values` a rule so the BUILD sees it
+    // too — vite and esbuild never type-check a block. `inOrder` drops the compiler's `TS2322` on
+    // the line, so an author meets one report rather than two.
+    expect(refused).toContain("value-not-allowed");
+    expect(refused).toMatch(/takes only 1, 2, 5, 10/);
+    expect(refused).toContain("`3`");
     expect(refused).not.toContain("TS2304");
+    expect(refused).not.toContain("TS2322");
     expect(accepted).not.toContain("problem");
   });
 
@@ -490,7 +494,10 @@ describe("what a project's property rules do", () => {
       `export const g = <div css={@@( letter-spacing: 2px; )}>x</div>;\n`,
     );
 
-    expect(refused).toMatch(/0\.05em/);
+    // The RULE's message since review pass 4, for the reason above: a unit said on a property
+    // reaches the build now, and the compiler's word on that line is dropped.
+    expect(refused).toContain("unit-not-allowed");
+    expect(refused).toMatch(/0\.05em|`em`/);
     expect(refused).not.toContain("TS2304");
     expect(accepted).not.toContain("problem");
   });
