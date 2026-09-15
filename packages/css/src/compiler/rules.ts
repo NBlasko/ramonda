@@ -840,6 +840,19 @@ function valueNotAllowed(block: Block, rules: PropertyRules | undefined, finding
         .join("")
         .trim();
       if (written === "" || GLOBAL.has(written.toLowerCase()) || written.startsWith("var(")) continue;
+      /**
+       * A QUOTED value is `string-not-allowed`'s, and this one used to speak beside it.
+       *
+       * Reported by the user, who read the type and the rule together and saw a contradiction:
+       * `z-index: "1"` gave two findings, and the second said *takes only 0, 1, 10 … and this is
+       * `"1"`* — naming a value that IS in the list. The fault is the quoting, not the number, and
+       * the other rule says exactly that.
+       *
+       * The string spellings in the TYPE are a different thing and are not a widening of what the
+       * project permitted: a block is CSS, so `z-index: 1` reaches the type as `"1"`. Both
+       * spellings mean one declaration, and a hole may hand over either.
+       */
+      if (written.startsWith('"') || written.startsWith("'")) continue;
       // Both spellings, because a block is CSS: `z-index: 5` arrives as the string `"5"`.
       if (values.some((one) => String(one) === written)) continue;
 

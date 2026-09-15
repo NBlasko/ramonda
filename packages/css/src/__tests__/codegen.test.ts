@@ -217,3 +217,28 @@ describe("a declaration that would break the stylesheet", () => {
     expect(of({ space: kind("custom-ident", { gutter: value }) })).not.toThrow();
   });
 });
+
+/**
+ * The count in the module's own header, which a formatting change broke.
+ *
+ * It was `rows.split("\n").length / 2` — every row assumed to be a one-line doc comment and a
+ * declaration. Giving the closed-list rows a longer comment made it read **207.5 properties**, in a
+ * sentence a reader sees. A count a formatting change can break is not a count.
+ */
+describe("the header's count", () => {
+  test("is a whole number, whatever shape the rows take", () => {
+    const { module } = generate({}, { "z-index": { values: [0, 1] }, "*": { arity: 1 } });
+    const said = /The (\S+) properties this project narrows/.exec(module);
+
+    expect(said).not.toBeNull();
+    expect(Number.isInteger(Number(said?.[1]))).toBe(true);
+  });
+
+  test("and it counts the rows, not the lines", () => {
+    const { module } = generate({}, { "z-index": { values: [0, 1] } });
+    const said = Number(/The (\S+) properties/.exec(module)?.[1]);
+    const declared = [...module.matchAll(/^ {2}"[^"]+"\??:/gm)].length;
+
+    expect(said).toBe(declared);
+  });
+});

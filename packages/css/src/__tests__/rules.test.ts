@@ -3652,6 +3652,27 @@ describe("a setting the types enforced and the build did not", () => {
       expect(under(config, css)).toEqual([]);
     });
 
+    /**
+     * A QUOTED value is `string-not-allowed`'s, and this one stayed out of it.
+     *
+     * **Reported by the user**, who read the two together and saw a contradiction: the type offers
+     * `"1"` and the rule refuses it. Measured, `z-index: "1"` gave two findings, and the second was
+     * worse than redundant — *takes only 0, 1, 10 … and this is `"1"`* names a value that IS in the
+     * list. The fault is the quoting, not the number.
+     *
+     * The string spellings in the type are not a widening of what the project permitted. A block is
+     * CSS, so `z-index: 1` reaches the type as the string `"1"` — `a closed list` above was written
+     * for exactly that, because a list of numbers used to refuse its own permitted values. A hole
+     * may hand over either, and both mean the same declaration.
+     */
+    test("a quoted value is reported once, by the rule about quotes", () => {
+      expect(under(config, 'z-index: "1"')).toEqual(["string-not-allowed"]);
+    });
+
+    test("and a quoted value that is not in the list is still just the quoting", () => {
+      expect(under(config, 'z-index: "5"')).toEqual(["string-not-allowed"]);
+    });
+
     test("the message names the list", () => {
       expect(under(config, "z-index: 5")).toEqual(["value-not-allowed"]);
       const [found] = checkBlock(readBlock(`@@(\n  z-index: 5;\n)`, 2, "C.tsx").block, { config });

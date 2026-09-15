@@ -509,6 +509,14 @@ function kindsFor(property: string): string | undefined {
 
 interface Mapped {
   readonly rows: string;
+  /**
+   * How many properties `rows` describes — counted, not derived from its shape.
+   *
+   * It was `rows.split("\n").length / 2`, which assumed every row is a one-line doc comment and a
+   * declaration. Giving the closed-list rows a longer comment made that `207.5`, in a sentence a
+   * reader sees. A count a formatting change can break is not a count.
+   */
+  readonly narrowed: number;
   /** Shorthands this project switched off, dropped from the map rather than narrowed to nothing. */
   readonly removed: readonly string[];
   readonly uses: ReadonlySet<string>;
@@ -610,9 +618,24 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     const said = onlyVariables
       ? `only the ${values.length} value(s) this project permits, and only as one of its variables`
       : `only the ${values.length} value(s) this project permits`;
+    /**
+     * The quoted spellings, explained where a reader meets them — which is on HOVER.
+     *
+     * Reported by the user, who configured `values: [0, 1, 10]` and hovered to find `"0" | "1" |
+     * "10"` beside the numbers: *"za z-index smo dozvolili samo number, a onaj narrow vidim da
+     * kreira i stringove."* They are not a widening. A block is CSS, so `z-index: 1` reaches the
+     * type as the string `"1"` — a list of numbers used to refuse its own permitted values, which is
+     * why both are there — and a hole may hand over either.
+     *
+     * Said in the doc comment rather than left to be worked out from the union, because the union is
+     * what an editor shows and the union is what looked like a contradiction.
+     */
+    const spellings =
+      `\n   *\n   * Written either way: a block is CSS, so \`${property}: ${values[0]}\` reaches this as ` +
+      `the string\n   * \`${JSON.stringify(String(values[0]))}\`. Both are the same declaration.`;
 
     rows.push(
-      `  /** \`${property}\` — ${said}. */\n` +
+      `  /**\n   * \`${property}\` — ${said}.${spellings}\n   */\n` +
         `  ${JSON.stringify(property)}: ${written}${written === "" ? token.slice(3) : token} | CssGlobal | \`var(\${string})\`;`,
     );
   }
@@ -721,7 +744,7 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
     );
   }
 
-  return { rows: rows.join("\n"), removed, uses, closed };
+  return { rows: rows.join("\n"), narrowed: rows.length, removed, uses, closed };
 }
 
 /**
@@ -801,7 +824,7 @@ export function generate(declarations: Declarations, rules?: PropertyRules): Gen
    * strings. The kind and the fallback ride in the type, where the checking happens, and a reader
    * opening this file still sees both.
    */
-  const { rows, removed, uses, closed } = propertyMap(rules);
+  const { rows, narrowed, removed, uses, closed } = propertyMap(rules);
   /** `ValueByKind` is named only by a variable whose range is `"any"` — see `rangeOf`. */
   const open = named.some((one) => one.range === "any");
   /** And `Fixed` only by one declared BARE, which is the mark that it never changes. */
@@ -832,7 +855,7 @@ export function generate(declarations: Declarations, rules?: PropertyRules): Gen
      * come from, and `Object.freeze` returns `Readonly<T>` — so a group is readonly too.
      */
     `export const $ = ${named.length === 0 ? "Object.freeze({})" : moduleTree(named)};\n\n` +
-    `/** The ${rows === "" ? 0 : rows.split("\n").length / 2} properties this project narrows, and what each takes. */\n` +
+    `/** The ${narrowed} properties this project narrows, and what each takes. */\n` +
     `interface Narrowings {\n${rows}\n}\n\n` +
     `/** What this project's blocks are checked against — the shipped map, with those replaced. */\n` +
     `export type CssProperties = Omit<Base, keyof Narrowings${removed.length === 0 ? "" : ` | ${removed.map((one) => JSON.stringify(one)).join(" | ")}`}> & Narrowings;\n\n` +
