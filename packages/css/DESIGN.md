@@ -2606,3 +2606,54 @@ fault, a missing `)`, is never named.
 
 The parens are BALANCED, so a cheap check does not exist, and the value scanner is what all 39 rules
 read. This one needs a design before code.
+
+---
+
+## `css-system/`, committed — and the argument that was wrong
+
+The generated files were `ramonda.css.generated.ts` and `.css` beside the config, both gitignored.
+The user asked about both halves at once: *"gledam playground i ovi generisani fajlovi su
+gitignorisani. Ja mislim da to ne treba da bude ignorisano, kao sto se i ostale codegen stvari ne
+ignorisu. Samo je pitanje da li je bolje da ove generisane stvari imaju svoj folder."*
+
+**The reason for ignoring them was written down and it was wrong.** It said committing would let a
+config and its output drift apart in review. That is the right worry and the wrong answer, and this
+repository already answers it the other way for its own generator: `keywords.generated.ts` is in the
+tree and `build-css-properties.mjs --check` fails when it is stale. Hiding a file does not stop it
+drifting — it stops anybody SEEING that it has. And it costs a fresh clone its `$` until something
+builds, which an editor meets before any build runs.
+
+So `check-css-system.mjs` runs codegen and compares, and is wired into `pnpm check` beside the other
+cheap read-only checks. Seen to fail: one hand-edited line and it names the file.
+
+### The name
+
+`.ramonda/` was proposed and refused by the user, for a reason worth keeping: **a leading dot reads
+as *not committed*,** and these are. The name had to be agnostic besides — `@ramonda/css` is usable
+outside Ramonda, where a folder named after the framework says nothing, and inside one where it says
+nothing either.
+
+`css-system/` says what is in it and names neither framework nor tool. The nearest precedent is
+Panda CSS's `styled-system/`: committed, framework-agnostic, and a shape people recognise.
+
+```
+ramonda.css.ts          the config
+css-system/
+  index.ts              `$`, `Value`, `Var`, and this project's narrowed property map
+  variables.css         `:root`, and an `@property` for each
+```
+
+`index.ts` so an import writes the folder and no filename — `import { $ } from "../../css-system"`.
+
+### `outDir`, and why it is read from the TEXT
+
+The user asked for it to be configurable, and the reason is concrete: a project may already have a
+folder called `css-system`, and a generated one landing silently beside it is worse than a key.
+
+`propertiesFor` and `variablesSheetFor` are asked PER FILE — they run inside an editor, on every
+keystroke's worth of work — so they read the key out of the config's text with a regex rather than
+transpiling it. A config that computes the name falls back to the default for those two lookups and
+is still written correctly by `writeGenerated`, which has the real config. That is a mismatch a
+project can see and fix; a transpile per file to close it would be the worse trade.
+
+A path that climbs out of the project, or starts at the root, is refused.

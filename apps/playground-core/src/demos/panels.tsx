@@ -13,7 +13,7 @@ import {
   interval,
   timeout,
 } from "@ramonda/core";
-import type { Value } from "../../ramonda.css.generated";
+import type { Value } from "../../css-system";
 
 /* ── Nested hooks: CounterHook uses HistoryHook (hook-of-a-hook) ────────── */
 class HistoryHook extends Hook<{ value: number }> {
@@ -255,7 +255,7 @@ export class StyleBlock extends Component {
      *
      * **`Value<…>` is the annotation, and without it these do not compile.** `padding-left` says it
      * takes a length in this project, and a bare template literal is a `string` — which could be
-     * anything at run time. The name comes from `ramonda.css.generated`, so if the config ever
+     * anything at run time. The name comes from `css-system`, so if the config ever
      * narrows the units, this line moves with it and nothing here has to be edited.
      */
     const border: Value<"border-left-width"> = `${this.weight}px`;

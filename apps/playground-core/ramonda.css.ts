@@ -15,9 +15,9 @@ export default defineConfig({
   /**
    * The variables this project declares — a name, a kind and a fallback each.
    *
-   * Codegen writes `ramonda.css.generated.css`, which sets them, and
-   * `ramonda.css.generated.ts`, which is where `$` comes from. Neither is committed: they are
-   * written on every build and on `ramonda-css codegen`.
+   * Codegen writes `css-system/variables.css`, which sets them, and `css-system/index.ts`, which
+   * is where `$` comes from. Both are COMMITTED — codegen output like any other — and rewritten on
+   * every build and on `ramonda-css codegen`. `outDir` renames the folder.
    */
   variables: {
     color: kind("color", {

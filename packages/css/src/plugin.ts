@@ -9,7 +9,7 @@ import {
   AT_RULE_LINKS,
 } from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
-import { NAMED_BLOCKS, type Finding, checkSite } from "./compiler/rules";
+import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding, checkSite } from "./compiler/rules";
 import { checkedSource } from "./compiler/source";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
@@ -778,7 +778,11 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         return [
           ...ours,
           ...hintsFor(fileName),
-          ...withoutRepeats(ours, mapped(file, service.getSemanticDiagnostics(fileName))),
+          ...withoutRepeats(
+            ours,
+            mapped(file, service.getSemanticDiagnostics(fileName)),
+            readSnapshot(fileName)?.getText(0, readSnapshot(fileName)?.getLength() ?? 0) ?? "",
+          ),
         ];
       };
 
@@ -1291,11 +1295,48 @@ function ours(
  * Matched on POSITION, the way the command does it: the same fault at the same character is the same
  * fault, and a `TS2353` about a nested rule's key is at a position no property rule names.
  */
-function withoutRepeats(ours: readonly ts.Diagnostic[], theirs: readonly ts.Diagnostic[]): ts.Diagnostic[] {
+function withoutRepeats(
+  ours: readonly ts.Diagnostic[],
+  theirs: readonly ts.Diagnostic[],
+  text: string,
+): ts.Diagnostic[] {
+  /**
+   * Every rule that says what the TYPES also refuse, from the list both consumers read.
+   *
+   * It was `[unknown-property]` alone, and `check.ts` had the full list — so the editor showed TWO
+   * messages for one fault on every setting pass 4 gave a rule. Reported by the user, who hovered a
+   * narrowed `z-index` and read the rule's sentence beside a raw `Narrowed<…>`: the type lists the
+   * string spellings a block arrives as, the rule says the value is not permitted, and together
+   * they read as a contradiction.
+   *
+   * One list in `rules.ts`, both consumers, so the next rule added cannot reach one and not the
+   * other — which is precisely how this drifted.
+   */
+  /**
+   * By LINE, counted from the TEXT — which is how `check.ts` does it, and the reason for both halves.
+   *
+   * By line, because the two land at different offsets by construction: `unknown-property` points
+   * at the property name and the compiler's `TS2561` does too, which is why matching on `start`
+   * worked for it alone — but `value-not-allowed` points at the VALUE while `TS2322` points
+   * elsewhere in the declaration. Measured, matched on `start`, every one still came back twice. A
+   * declaration does not span lines, so the line is the fault's own extent here.
+   *
+   * From the text rather than from `diagnostic.file`, because ours carry whatever source file the
+   * cache held and a harness need not provide one — measured, `undefined` there made every line
+   * `-1` and the set matched nothing.
+   */
+  const lineOf = (diagnostic: ts.Diagnostic) => {
+    const at = diagnostic.start;
+    if (at === undefined) return -1;
+    let line = 0;
+    for (let index = 0; index < at && index < text.length; index++) if (text.charCodeAt(index) === 10) line++;
+    return line;
+  };
+
   const said = new Set(
     ours
-      .filter((diagnostic) => String(diagnostic.messageText).startsWith("[unknown-property]"))
-      .map((diagnostic) => diagnostic.start),
+      .filter((diagnostic) => SPEAKS_OVER_TYPES.some((rule) => String(diagnostic.messageText).startsWith(`[${rule}]`)))
+      .map(lineOf),
   );
 
   /**
@@ -1309,9 +1350,7 @@ function withoutRepeats(ours: readonly ts.Diagnostic[], theirs: readonly ts.Diag
    * Found by this package's own test: `check.ts` got the drop and this did not, which is the
    * arrangement it keeps finding a fault in — one rule, two consumers, one of them left behind.
    */
-  return theirs.filter(
-    (diagnostic) => !((diagnostic.code === 2353 || diagnostic.code === 2561) && said.has(diagnostic.start)),
-  );
+  return theirs.filter((diagnostic) => !(REPLACED_CODES.includes(diagnostic.code) && said.has(lineOf(diagnostic))));
 }
 
 /** Quick info at a position, or nothing when there is no position to ask about. */

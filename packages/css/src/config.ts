@@ -121,6 +121,24 @@ export interface Config {
    * shipped: what CSS allows is this package's to state, and how far a project goes is not.
    */
   readonly properties?: PropertyRules;
+  /**
+   * Where `ramonda-css codegen` writes, relative to this file. `"css-system"` unless said.
+   *
+   * ```ts
+   * outDir: "design-system",
+   * ```
+   *
+   * The folder holds `index.ts` — the `$` object, `Value`, `Var` and this project's narrowed
+   * property map — and `variables.css`, which sets them. Both are meant to be COMMITTED: they are
+   * codegen output like any other, and this repository's own `keywords.generated.ts` is committed
+   * with a gate catching drift, which is what prevents drift rather than hiding the file.
+   *
+   * A name is offered because a project may already have a folder called `css-system`, and a
+   * generated one silently landing beside it is worse than a key. It is read from this file's TEXT
+   * by the per-file lookups, which run on every keystroke's worth of work in an editor — so it has
+   * to be a plain string literal there, and a computed one falls back to the default for those.
+   */
+  readonly outDir?: string;
   /** A rule's severity, by id. `"off"` silences it; `"error"` is the default for every rule. */
   readonly rules?: Readonly<Record<string, "error" | "off">>;
 }
@@ -304,7 +322,7 @@ export function environmentOf(production?: boolean): ConfigEnvironment {
 const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "layer"]);
 
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
-const KNOWN = new Set(["units", "variables", "alsoSets", "properties", "rules"]);
+const KNOWN = new Set(["units", "variables", "alsoSets", "properties", "outDir", "rules"]);
 
 /** Keys that were a setting and are one somewhere ELSE now. `validate` writes out where. */
 const MOVED = new Set(["variablesOnly"]);
@@ -747,6 +765,20 @@ function validate(config: Record<string, unknown>, path: string): void {
             ` The kinds are CSS's own: ${KINDS.join(", ")}.`,
         );
       }
+    }
+  }
+
+  const outDir = config.outDir;
+  if (outDir !== undefined) {
+    if (typeof outDir !== "string" || outDir === "") {
+      refuse(`sets \`outDir\` to ${describe(outDir)}. It takes a folder name, like "css-system".`);
+    }
+    // A path that climbs out or starts at the root writes somewhere the config does not own.
+    if (/^[/\\]|^[A-Za-z]:|(^|[/\\])\.\.([/\\]|$)/.test(outDir as string)) {
+      refuse(
+        `sets \`outDir\` to \`${outDir}\`, which leaves this project.\n\n        It is a folder ` +
+          `beside \`ramonda.css.ts\`, like "css-system" or "src/css-system".`,
+      );
     }
   }
 

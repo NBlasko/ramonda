@@ -575,7 +575,9 @@ describe("codegen through the vite plugin", () => {
     const result = build(root);
 
     expect(result.ok).toBe(true);
-    expect(readFileSync(join(root, "ramonda.css.generated.css"), "utf8")).toContain("--color-primary-main: #3b82f6;");
+    expect(readFileSync(join(root, join("css-system", "variables.css")), "utf8")).toContain(
+      "--color-primary-main: #3b82f6;",
+    );
     // The emitted rule reads the variable and carries no fallback — the registration is the
     // guarantee, and it is in the file above.
     expect(Object.values(result.files).join("\n")).toContain("var(--color-primary-main)");

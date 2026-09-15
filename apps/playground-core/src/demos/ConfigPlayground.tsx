@@ -1,5 +1,5 @@
 import { Component } from "@ramonda/core";
-import { type Value } from "../../ramonda.css.generated";
+import { type Value } from "../../css-system";
 
 /**
  * **One block, written to react to every constraint in `ramonda.css.ts`.**

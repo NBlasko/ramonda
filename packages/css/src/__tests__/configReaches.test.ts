@@ -156,10 +156,38 @@ describe("a property narrowed to a list of values", () => {
     expect(names).not.toContain("3");
   });
 
-  test("a value outside the list is reported", () => {
+  /**
+   * ONE message, and it is ours — the editor was showing two.
+   *
+   * **Reported by the user**, who hovered a narrowed `z-index` and read the rule's sentence beside
+   * the raw type: *"i dalje ne dozvoljava string"*. The type lists `"0" | "1" | …` because a block
+   * is CSS and `z-index: 1` reaches it as a string; the rule says the value is not permitted. Both
+   * true, shown together, and together they read as a contradiction.
+   *
+   * Measured: every setting given a rule in pass 4 came back twice in the EDITOR, because `check.ts`
+   * got the drop and `plugin.ts` did not. The recurring fault, in the consumer a person actually
+   * looks at.
+   */
+  test("a value outside the list is reported once, by the rule", () => {
     const { reported } = editorWith(LIST, `const f = <div css={@@( z-index: 3; )}>x</div>;\n`);
+    const said = reported();
 
-    expect(reported().join("\n")).toMatch(/'"3"' is not assignable/);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain("[value-not-allowed]");
+    expect(said.join("\n")).not.toMatch(/is not assignable/);
+  });
+
+  test.each([
+    ["a unit", `<div css={@@( letter-spacing: 2rem; )}>x</div>`, "[unit-not-allowed]"],
+    ["a shorthand", `<div css={@@( margin: 8px; )}>x</div>`, "[shorthand-not-allowed]"],
+  ])("%s is reported once too", (_what, written, said) => {
+    const reported = editorWith(
+      `{ "*": { units: ["px"] }, margin: { shorthand: false } }`,
+      `const h = ${written};\n`,
+    ).reported();
+
+    expect(reported).toHaveLength(1);
+    expect(reported[0]).toContain(said);
   });
 
   test("and one inside it is silent", () => {

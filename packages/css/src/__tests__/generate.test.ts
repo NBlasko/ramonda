@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { writeGenerated } from "../generate";
@@ -36,26 +36,34 @@ export default {
 
 const write = (name: string, text: string) => writeFileSync(join(project, name), text);
 
+/** Into the generated folder, made first — which is what codegen does before it writes. */
+const writeInto = (folder: string, name: string, text: string) => {
+  mkdirSync(join(project, folder), { recursive: true });
+  writeFileSync(join(project, folder, name), text);
+};
+
 describe("running codegen", () => {
   test("writes both files beside the config", () => {
     write("ramonda.css.ts", CONFIG);
     const result = writeGenerated(project, ts);
 
     expect(result.files.map((one) => one.path)).toEqual([
-      join(project, "ramonda.css.generated.css"),
-      join(project, "ramonda.css.generated.ts"),
+      join(project, join("css-system", "variables.css")),
+      join(project, join("css-system", "index.ts")),
     ]);
-    expect(readFileSync(join(project, "ramonda.css.generated.css"), "utf8")).toContain(
+    expect(readFileSync(join(project, join("css-system", "variables.css")), "utf8")).toContain(
       "--color-primary-main: #3b82f6;",
     );
-    expect(readFileSync(join(project, "ramonda.css.generated.ts"), "utf8")).toContain("--color-primary-main");
+    expect(readFileSync(join(project, join("css-system", "index.ts")), "utf8")).toContain("--color-primary-main");
   });
 
   test("every declared variable is registered, which is what makes a bare `var()` safe", () => {
     write("ramonda.css.ts", CONFIG);
     writeGenerated(project, ts);
 
-    expect(readFileSync(join(project, "ramonda.css.generated.css"), "utf8").match(/@property/g)).toHaveLength(2);
+    expect(readFileSync(join(project, join("css-system", "variables.css")), "utf8").match(/@property/g)).toHaveLength(
+      2,
+    );
   });
 
   /**
@@ -66,12 +74,12 @@ describe("running codegen", () => {
   test("a second run with nothing changed writes nothing at all", () => {
     write("ramonda.css.ts", CONFIG);
     writeGenerated(project, ts);
-    const stamped = statSync(join(project, "ramonda.css.generated.ts")).mtimeMs;
+    const stamped = statSync(join(project, join("css-system", "index.ts"))).mtimeMs;
 
     const again = writeGenerated(project, ts);
 
     expect(again.files.every((one) => !one.changed)).toBe(true);
-    expect(statSync(join(project, "ramonda.css.generated.ts")).mtimeMs).toBe(stamped);
+    expect(statSync(join(project, join("css-system", "index.ts"))).mtimeMs).toBe(stamped);
   });
 
   test("a changed config is written through", () => {
@@ -82,7 +90,7 @@ describe("running codegen", () => {
     const again = writeGenerated(project, ts);
 
     expect(again.files.some((one) => one.changed)).toBe(true);
-    expect(readFileSync(join(project, "ramonda.css.generated.css"), "utf8")).toContain("#10b981");
+    expect(readFileSync(join(project, join("css-system", "variables.css")), "utf8")).toContain("#10b981");
   });
 
   test("no config is no files, and it says which it was", () => {
@@ -135,15 +143,15 @@ export default { variables: { space: kind("length", { sm: "8px" }) } };
 
   test("one that is not ours is refused, and kept", () => {
     write("ramonda.css.ts", declaring);
-    write("ramonda.css.generated.ts", "export const mine = 1; // a year of work\n");
+    writeInto("css-system", "index.ts", "export const mine = 1; // a year of work\n");
 
-    expect(() => writeGenerated(project, ts)).toThrow(/ramonda\.css\.generated\.ts/);
-    expect(readFileSync(join(project, "ramonda.css.generated.ts"), "utf8")).toContain("a year of work");
+    expect(() => writeGenerated(project, ts)).toThrow(/index\.ts/);
+    expect(readFileSync(join(project, join("css-system", "index.ts")), "utf8")).toContain("a year of work");
   });
 
   test("the message says what to do about it", () => {
     write("ramonda.css.ts", declaring);
-    write("ramonda.css.generated.ts", "export const mine = 1;\n");
+    writeInto("css-system", "index.ts", "export const mine = 1;\n");
 
     expect(() => writeGenerated(project, ts)).toThrow(/move it|rename|delete/i);
   });
@@ -151,16 +159,16 @@ export default { variables: { space: kind("length", { sm: "8px" }) } };
   test("one of OURS is replaced, which is every ordinary run", () => {
     write("ramonda.css.ts", declaring);
     writeGenerated(project, ts);
-    const first = readFileSync(join(project, "ramonda.css.generated.ts"), "utf8");
+    const first = readFileSync(join(project, join("css-system", "index.ts")), "utf8");
 
     // Again, over what the first run wrote — the path every watch and every build takes.
     expect(() => writeGenerated(project, ts)).not.toThrow();
-    expect(readFileSync(join(project, "ramonda.css.generated.ts"), "utf8")).toBe(first);
+    expect(readFileSync(join(project, join("css-system", "index.ts")), "utf8")).toBe(first);
   });
 
   test("one written by an older version is still ours", () => {
     write("ramonda.css.ts", declaring);
-    write("ramonda.css.generated.ts", "/* Generated by @ramonda/css — an older sentence. */\nexport const $ = {};\n");
+    writeInto("css-system", "index.ts", "/* Generated by @ramonda/css — an older sentence. */\nexport const $ = {};\n");
 
     expect(() => writeGenerated(project, ts)).not.toThrow();
   });
@@ -168,9 +176,76 @@ export default { variables: { space: kind("length", { sm: "8px" }) } };
   /** The stylesheet is the other half, and it is written by the same call. */
   test("and the same is true of the stylesheet", () => {
     write("ramonda.css.ts", declaring);
-    write("ramonda.css.generated.css", ".mine { color: red; }\n");
+    writeInto("css-system", "variables.css", ".mine { color: red; }\n");
 
-    expect(() => writeGenerated(project, ts)).toThrow(/ramonda\.css\.generated\.css/);
-    expect(readFileSync(join(project, "ramonda.css.generated.css"), "utf8")).toContain(".mine");
+    expect(() => writeGenerated(project, ts)).toThrow(/variables\.css/);
+    expect(readFileSync(join(project, join("css-system", "variables.css")), "utf8")).toContain(".mine");
+  });
+});
+
+/**
+ * The generated files live in a FOLDER, and a project may name it.
+ *
+ * They were `css-system/index.ts` and `.css` beside the config, gitignored. The user asked for
+ * both halves of this: *"ja mislim da to ne treba da bude ignorisano, kao sto se i ostale codegen
+ * stvari ne ignorisu"* — and the repo's own practice agrees, since `keywords.generated.ts` is
+ * committed and a gate catches drift — and *"da li je bolje da ove generisane stvari imaju svoj
+ * folder, da bude cistiji setup u aplikaciji."*
+ *
+ * `.ramonda/` was proposed and refused, for a reason worth keeping: a leading dot reads as *not
+ * committed*, and these are. The name had to be agnostic too — `@ramonda/css` is usable outside
+ * Ramonda, and a folder named after the framework says nothing there and is redundant here.
+ *
+ * `css-system/` is what was chosen, with `outDir` to rename it. The nearest precedent is Panda CSS's
+ * `styled-system/`: committed, framework-agnostic, and a shape people recognise.
+ */
+describe("where the generated files go", () => {
+  const declaring = `import { kind } from "@ramonda/css/config";
+export default { variables: { space: kind("length", { sm: "8px" }) } };
+`;
+
+  test("into `css-system/` beside the config, by default", () => {
+    write("ramonda.css.ts", declaring);
+    const result = writeGenerated(project, ts);
+
+    expect(result.files.map((one) => relative(project, one.path)).sort()).toEqual([
+      join("css-system", "index.ts"),
+      join("css-system", "variables.css"),
+    ]);
+    expect(existsSync(join(project, "css-system", "index.ts"))).toBe(true);
+  });
+
+  test("the module is reachable as the folder, which is what an import writes", () => {
+    write("ramonda.css.ts", declaring);
+    writeGenerated(project, ts);
+
+    // `css-system/index.ts` resolves as `css-system`, so a project writes the folder and no filename.
+    expect(readFileSync(join(project, "css-system", "index.ts"), "utf8")).toContain("export const $");
+  });
+
+  test("the stylesheet is beside it, under a name that says what it holds", () => {
+    write("ramonda.css.ts", declaring);
+    writeGenerated(project, ts);
+
+    expect(readFileSync(join(project, "css-system", "variables.css"), "utf8")).toContain("--space-sm");
+  });
+
+  test("`outDir` renames the folder", () => {
+    write("ramonda.css.ts", `${declaring.replace("export default {", 'export default {\n  outDir: "design-system",')}`);
+    const result = writeGenerated(project, ts);
+
+    expect(result.files.map((one) => relative(project, one.path)).sort()).toEqual([
+      join("design-system", "index.ts"),
+      join("design-system", "variables.css"),
+    ]);
+  });
+
+  test("a folder that is not ours is still refused, the same as a file was", () => {
+    write("ramonda.css.ts", declaring);
+    mkdirSync(join(project, "css-system"), { recursive: true });
+    writeFileSync(join(project, "css-system", "index.ts"), "export const mine = 1; // a year of work\n");
+
+    expect(() => writeGenerated(project, ts)).toThrow(/css-system/);
+    expect(readFileSync(join(project, "css-system", "index.ts"), "utf8")).toContain("a year of work");
   });
 });

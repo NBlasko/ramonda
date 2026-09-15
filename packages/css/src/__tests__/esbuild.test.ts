@@ -424,8 +424,10 @@ describe("codegen through the plugin", () => {
 
     await build(root, { absWorkingDir: root });
 
-    expect(readFileSync(join(root, "ramonda.css.generated.css"), "utf8")).toContain("--color-primary-main: #3b82f6;");
-    expect(readFileSync(join(root, "ramonda.css.generated.ts"), "utf8")).toContain("--color-primary-main");
+    expect(readFileSync(join(root, join("css-system", "variables.css")), "utf8")).toContain(
+      "--color-primary-main: #3b82f6;",
+    );
+    expect(readFileSync(join(root, join("css-system", "index.ts")), "utf8")).toContain("--color-primary-main");
   });
 
   test("a project with no config is built without one being invented", async () => {
@@ -435,6 +437,6 @@ describe("codegen through the plugin", () => {
 
     await build(root, { absWorkingDir: root });
 
-    expect(existsSync(join(root, "ramonda.css.generated.ts"))).toBe(false);
+    expect(existsSync(join(root, join("css-system", "index.ts")))).toBe(false);
   });
 });

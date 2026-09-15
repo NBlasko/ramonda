@@ -62,7 +62,7 @@ export default {
 
 describe("the generated module", () => {
   test("imports nothing at runtime, which is what `$` costs to use", () => {
-    const text = readFileSync(join(project(), "ramonda.css.generated.ts"), "utf8");
+    const text = readFileSync(join(project(), join("css-system", "index.ts")), "utf8");
     const imports = [...text.matchAll(/^import .*$/gm)].map((one) => one[0]);
 
     // Every import is type-only, so the whole module erases to an object of strings.
@@ -71,7 +71,7 @@ describe("the generated module", () => {
   });
 
   test("and the type it does import is really exported", async () => {
-    const text = readFileSync(join(project(), "ramonda.css.generated.ts"), "utf8");
+    const text = readFileSync(join(project(), join("css-system", "index.ts")), "utf8");
 
     // Asked of the built declarations rather than of the source, because that is what a project
     // resolves. A type that is not exported is `TS2307` in somebody else's editor.
@@ -87,7 +87,7 @@ describe("the generated module", () => {
     const root = project();
     // Rewritten to import the built package by path, so this measures the module rather than the
     // resolver — what the import SAYS is the test above.
-    const text = readFileSync(join(root, "ramonda.css.generated.ts"), "utf8").replace(
+    const text = readFileSync(join(root, join("css-system", "index.ts")), "utf8").replace(
       `"@ramonda/css"`,
       JSON.stringify(join(PACKAGE, "dist", "index.js")),
     );
@@ -129,7 +129,7 @@ describe("the generated module", () => {
     writeFileSync(
       join(root, "src", "Card.tsx"),
       `import { read, toStyle } from "@ramonda/css";
-import { $, type Value } from "../ramonda.css.generated";
+import { $, type Value } from "../css-system";
 
 export const good = <div css={@@( color: $.color.primary.main; )}>x</div>;
 export const inACall = <div css={@@( width: calc($.size.control.md * 2); )}>x</div>;
@@ -160,7 +160,7 @@ export const spaced = <div css={@@( padding-left: {gap}; )}>x</div>;
           jsx: "preserve",
           types: [],
         },
-        include: ["src", "ramonda.css.generated.ts"],
+        include: ["src", join("css-system", "index.ts")],
       }),
     );
 
@@ -224,7 +224,7 @@ export const spaced = <div css={@@( padding-left: {gap}; )}>x</div>;
           jsx: "preserve",
           types: [],
         },
-        include: ["src", "ramonda.css.generated.ts"],
+        include: ["src", join("css-system", "index.ts")],
       }),
     );
 
@@ -261,7 +261,7 @@ describe("a variable of the wrong kind", () => {
       join(root, "src", "jsx.d.ts"),
       `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
-    writeFileSync(join(root, "src", "Card.tsx"), `import { $ } from "../ramonda.css.generated";\n\n${card}`);
+    writeFileSync(join(root, "src", "Card.tsx"), `import { $ } from "../css-system";\n\n${card}`);
     writeFileSync(
       join(root, "tsconfig.json"),
       JSON.stringify({
@@ -274,7 +274,7 @@ describe("a variable of the wrong kind", () => {
           jsx: "preserve",
           types: [],
         },
-        include: ["src", "ramonda.css.generated.ts"],
+        include: ["src", join("css-system", "index.ts")],
       }),
     );
 
@@ -328,7 +328,7 @@ describe("a value made outside a block", () => {
       join(root, "src", "jsx.d.ts"),
       `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
-    writeFileSync(join(root, "src", "Card.tsx"), `import { type Value } from "../ramonda.css.generated";\n\n${card}`);
+    writeFileSync(join(root, "src", "Card.tsx"), `import { type Value } from "../css-system";\n\n${card}`);
     writeFileSync(
       join(root, "tsconfig.json"),
       JSON.stringify({
@@ -341,7 +341,7 @@ describe("a value made outside a block", () => {
           jsx: "preserve",
           types: [],
         },
-        include: ["src", "ramonda.css.generated.ts"],
+        include: ["src", join("css-system", "index.ts")],
       }),
     );
 
@@ -415,7 +415,7 @@ describe("what a project's property rules do", () => {
           jsx: "preserve",
           types: [],
         },
-        include: ["src", "ramonda.css.generated.ts"],
+        include: ["src", join("css-system", "index.ts")],
       }),
     );
 
@@ -550,7 +550,7 @@ describe("a block nested more than once", () => {
           jsx: "preserve",
           types: [],
         },
-        include: ["src", "ramonda.css.generated.ts"],
+        include: ["src", join("css-system", "index.ts")],
       }),
     );
 
@@ -665,7 +665,7 @@ describe("a shorthand's kind", () => {
           jsx: "preserve",
           types: [],
         },
-        include: ["src", "ramonda.css.generated.ts"],
+        include: ["src", join("css-system", "index.ts")],
       }),
     );
 
@@ -757,7 +757,7 @@ describe("a variable against a property's range", () => {
           jsx: "preserve",
           types: [],
         },
-        include: ["src", "ramonda.css.generated.ts"],
+        include: ["src", join("css-system", "index.ts")],
       }),
     );
 
@@ -1074,7 +1074,7 @@ export default {
         );
         writeGenerated(root, ts);
 
-        expect(readFileSync(join(root, "ramonda.css.generated.ts"), "utf8")).not.toContain('"<time>":');
+        expect(readFileSync(join(root, join("css-system", "index.ts")), "utf8")).not.toContain('"<time>":');
       });
     });
 
@@ -1111,7 +1111,7 @@ export default {
 };
 `;
       /** `$` needs importing here: outside a block this is ordinary TypeScript, not our grammar. */
-      const HEAD = `import { toStyle } from "@ramonda/css";\nimport { $ } from "../ramonda.css.generated";\n`;
+      const HEAD = `import { toStyle } from "@ramonda/css";\nimport { $ } from "../css-system";\n`;
       const setting = (path: string, value: string) =>
         withBoth(CONFIG, `${HEAD}export const t = toStyle([[${path}, ${JSON.stringify(value)}]]);\n`);
 
@@ -1183,7 +1183,7 @@ export default {
   },
 };
 `;
-      const HEAD = `import { $, type Var } from "../ramonda.css.generated";\ndeclare const toggle: boolean;\n`;
+      const HEAD = `import { $, type Var } from "../css-system";\ndeclare const toggle: boolean;\n`;
 
       test("a value toggled between two variables of a kind", () => {
         const output = withBoth(
@@ -1218,7 +1218,7 @@ export default {
       test("inference alone carries the local case", () => {
         const output = withBoth(
           CONFIG,
-          `import { $ } from "../ramonda.css.generated";\ndeclare const toggle: boolean;\n` +
+          `import { $ } from "../css-system";\ndeclare const toggle: boolean;\n` +
             `const tone = toggle ? $.color.accent.quiet : $.color.accent.main;\n` +
             `export const a = <div css={@@( color: {tone}; )}>x</div>;\n`,
         );

@@ -1535,6 +1535,30 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
  * came to be type-checked as an ORDINARY block: no surface meant no named check, and the ordinary
  * one took over. `SURFACES` reads this, and so does the rule below.
  */
+/**
+ * The rules that say what the TYPES also refuse, and the compiler codes they speak over.
+ *
+ * Both the checker and the editor have to drop the compiler's word where one of these has spoken,
+ * and they had drifted: `check.ts` had the list and `plugin.ts` had only `unknown-property`, so the
+ * editor showed two messages for one fault on every setting pass 4 gave a rule. Reported by the
+ * user, who read a rule's sentence beside a raw `Narrowed<…>` and saw a contradiction.
+ *
+ * One list, both consumers, so the next rule added here cannot reach one and not the other.
+ *
+ * `TS2353` is *does not exist in type*, which a REMOVED shorthand gets rather than *is not
+ * assignable*; `TS2561` is the compiler's own *did you mean* for a bare property name.
+ */
+export const SPEAKS_OVER_TYPES: readonly RuleId[] = [
+  "literal-not-allowed",
+  "unit-not-allowed",
+  "value-not-allowed",
+  "shorthand-not-allowed",
+  "unknown-property",
+];
+
+/** The compiler codes those rules replace. See {@link SPEAKS_OVER_TYPES}. */
+export const REPLACED_CODES: readonly number[] = [2322, 2353, 2561];
+
 export const NAMED_BLOCKS = ["keyframes", "font-face", "property"] as const;
 
 /**

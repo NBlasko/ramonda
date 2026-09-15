@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import type ts from "typescript";
 import { generate, namesIn, verifyNames } from "./codegen";
@@ -17,8 +17,19 @@ import { ConfigError, findConfig, readConfig } from "./config";
  *
  * Beside the config, named after it:
  *
- *     ramonda.css.ts   ->   ramonda.css.generated.ts    the `$` object and its types
- *                      ->   ramonda.css.generated.css   `:root`, and an `@property` for each
+ *     ramonda.css.ts   ->   css-system/index.ts       the `$` object and its types
+ *                      ->   css-system/variables.css  `:root`, and an `@property` for each
+ *
+ * **A folder, committed, and its name is the project's.** They were two files beside the config and
+ * gitignored; the user asked for both halves — *"ja mislim da to ne treba da bude ignorisano, kao
+ * sto se i ostale codegen stvari ne ignorisu"*, and the repo agrees with itself there, since
+ * `keywords.generated.ts` is committed and a gate catches drift.
+ *
+ * `.ramonda/` was proposed and refused: a leading dot reads as *not committed*, and these are. The
+ * name had to be agnostic besides — `@ramonda/css` is usable outside Ramonda, where a folder named
+ * after the framework says nothing, and inside one where it says nothing either. `css-system/` is
+ * the shape Panda CSS's `styled-system/` made familiar, and `outDir` renames it for a project that
+ * already has something there.
  *
  * The config is already found by walking up from a file, which is what decides WHICH project a file
  * belongs to in a monorepo — so putting the output beside it means a package's own variables land in
@@ -28,6 +39,29 @@ import { ConfigError, findConfig, readConfig } from "./config";
  * bundler machinery this package already has; a file is better, because it works in every bundler,
  * in none, and in a test — and because a reader can open it.
  */
+
+/** Where the generated files go, unless a project says otherwise with `outDir`. */
+export const OUT_DIR = "css-system";
+
+/**
+ * The folder a config names, read from its TEXT rather than by transpiling it.
+ *
+ * `propertiesFor` and `variablesSheetFor` are asked per file and must not pay for a transpile to
+ * learn one string — they run inside an editor, on every keystroke's worth of work. The key is a
+ * plain literal in a config people write by hand, so reading it is reading it.
+ *
+ * A config that computes it falls back to the default here and is still written correctly by
+ * `writeGenerated`, which has the real config. That is a mismatch a project can see and fix; paying
+ * a transpile per file to close it would be the worse trade.
+ */
+function outDirFor(config: string): string {
+  try {
+    const said = /\boutDir\s*:\s*["'`]([^"'`]+)["'`]/.exec(readFileSync(config, "utf8"));
+    return said?.[1] ?? OUT_DIR;
+  } catch {
+    return OUT_DIR;
+  }
+}
 
 /** One file this wrote, and whether writing it changed anything. */
 export interface Written {
@@ -122,12 +156,13 @@ export function writeGenerated(from: string, typescript: typeof ts): CodegenResu
   }
 
   const { css, module } = generate(declarations, rules);
-  const beside = dirname(path);
+  const out = join(dirname(path), config.outDir ?? OUT_DIR);
+  mkdirSync(out, { recursive: true });
 
   return {
     config: path,
     declared: named.length,
-    files: [put(join(beside, "ramonda.css.generated.css"), css), put(join(beside, "ramonda.css.generated.ts"), module)],
+    files: [put(join(out, "variables.css"), css), put(join(out, "index.ts"), module)],
   };
 }
 
@@ -149,7 +184,7 @@ export function propertiesFor(file: string): string | undefined {
   const directory = dirname(file);
   if (!beside.has(directory)) {
     const config = findConfig(directory);
-    const module = config === undefined ? undefined : join(dirname(config), "ramonda.css.generated.ts");
+    const module = config === undefined ? undefined : join(dirname(config), outDirFor(config), "index.ts");
     beside.set(directory, module !== undefined && existsSync(module) ? module : undefined);
   }
 
@@ -176,6 +211,6 @@ export function variablesSheetFor(file: string): string | undefined {
   const config = findConfig(dirname(file));
   if (config === undefined) return undefined;
 
-  const sheet = join(dirname(config), "ramonda.css.generated.css");
+  const sheet = join(dirname(config), outDirFor(config), "variables.css");
   return existsSync(sheet) ? sheet : undefined;
 }

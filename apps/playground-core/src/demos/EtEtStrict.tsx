@@ -1,5 +1,5 @@
 import { Component, RamondaNode } from "@ramonda/core";
-import { $, Var } from "../../ramonda.css.generated";
+import { $, Var } from "../../css-system";
 export class EtEtStrict extends Component {
   toggle = false;
   public override render(): RamondaNode {

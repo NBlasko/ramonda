@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
+import { REPLACED_CODES, SPEAKS_OVER_TYPES } from "./compiler/rules";
 import { Sheet, messageFor } from "./compiler/sheet";
 import { checkedSource } from "./compiler/source";
 import { positionOf } from "./compiler/errors";
@@ -321,14 +322,7 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
    */
   const literalRefused = new Set(
     css
-      .filter(
-        (finding) =>
-          finding.code === "literal-not-allowed" ||
-          finding.code === "unit-not-allowed" ||
-          finding.code === "value-not-allowed" ||
-          finding.code === "shorthand-not-allowed" ||
-          finding.code === "unknown-property",
-      )
+      .filter((finding) => (SPEAKS_OVER_TYPES as readonly string[]).includes(String(finding.code)))
       .map((finding) => `${finding.file}:${finding.line}`),
   );
 
@@ -350,7 +344,8 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
      * the fault this whole filter exists for.
      */
     if (
-      (finding.code === 2322 || finding.code === 2353 || finding.code === 2561) &&
+      typeof finding.code === "number" &&
+      REPLACED_CODES.includes(finding.code) &&
       literalRefused.has(`${finding.file}:${finding.line}`)
     ) {
       return false;

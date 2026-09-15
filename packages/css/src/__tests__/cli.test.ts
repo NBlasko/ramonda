@@ -386,8 +386,8 @@ describe("codegen", () => {
 
     expect(status).toBe(0);
     expect(output).toContain("1 variable");
-    expect(existsSync(join(root, "ramonda.css.generated.css"))).toBe(true);
-    expect(existsSync(join(root, "ramonda.css.generated.ts"))).toBe(true);
+    expect(existsSync(join(root, join("css-system", "variables.css")))).toBe(true);
+    expect(existsSync(join(root, join("css-system", "index.ts")))).toBe(true);
   });
 
   test("no config is said plainly, and is not a failure", () => {
@@ -407,7 +407,7 @@ describe("codegen", () => {
 
     expect(status).toBe(1);
     expect(output).toContain("--a-b-c");
-    expect(existsSync(join(root, "ramonda.css.generated.css"))).toBe(false);
+    expect(existsSync(join(root, join("css-system", "variables.css")))).toBe(false);
   });
 });
 
