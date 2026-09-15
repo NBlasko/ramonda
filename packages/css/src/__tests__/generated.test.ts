@@ -641,3 +641,113 @@ describe("a shorthand's kind", () => {
     );
   });
 });
+
+/**
+ * A variable's VALUE against the range a property permits — a capability this had and did not use.
+ *
+ * The emitted slot wrote `Token<"length">`, leaving the value unconstrained, so a variable declared
+ * `30px` went into a property narrowed to four values. The user pushed back on my claim that a range
+ * over a variable is impossible: for the TYPE it is not, measured. For the browser it is — the
+ * spec restricts `@property`'s `syntax` to data type names and custom idents, so `4px | 8px` cannot
+ * be written there at all.
+ *
+ * What it checks is the DECLARED value, which under a theme is the fallback rather than what the
+ * browser will use. That limit is narrow and is the honest one: a variable themed into a different
+ * range is a different variable.
+ */
+describe("a variable against a property's range", () => {
+  const withBoth = (config: string, card: string): string => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-range-"));
+    projects.push(root);
+    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "probe", type: "module", version: "0.0.0" }));
+    writeFileSync(join(root, "ramonda.css.ts"), config);
+    writeGenerated(root, ts);
+    writeFileSync(
+      join(root, "src", "jsx.d.ts"),
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    );
+    writeFileSync(join(root, "src", "Card.tsx"), card);
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          jsx: "preserve",
+          types: [],
+        },
+        include: ["src", "ramonda.css.generated.ts"],
+      }),
+    );
+
+    try {
+      return execFileSync(process.execPath, [join(PACKAGE, "bin.mjs"), "tsconfig.json"], {
+        cwd: root,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      return `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    }
+  };
+
+  const CONFIG = `import { defineConfig, kind } from "@ramonda/css/config";
+export default defineConfig({
+  variables: { size: kind("length", { big: "30px", small: "8px" }) },
+  properties: { "letter-spacing": { values: ["4px", "8px"] }, "z-index": { values: [1, 2] } },
+});
+`;
+
+  test("a variable outside the list is refused, and the message names the VALUE", () => {
+    const output = withBoth(CONFIG, `export const a = <div css={@@( letter-spacing: $.size.big; )}>x</div>;\n`);
+
+    expect(output).toMatch(/'"30px"' is not assignable/);
+  });
+
+  /**
+   * **A closed list had no `Token` in it at all**, so no variable went in — however right. The user
+   * met it: `z-index: $.layer.modal` refused with the project's own list in the message.
+   */
+  test("a variable INSIDE the list goes in, which no variable did", () => {
+    const output = withBoth(CONFIG, `export const b = <div css={@@( letter-spacing: $.size.small; )}>x</div>;\n`);
+
+    expect(output).not.toContain("problem");
+  });
+
+  test("the value written out is unaffected", () => {
+    const output = withBoth(CONFIG, `export const c = <div css={@@( letter-spacing: 8px; )}>x</div>;\n`);
+
+    expect(output).not.toContain("problem");
+  });
+
+  test("and the wrong KIND is still refused by its kind, not by its value", () => {
+    const config = CONFIG.replace(
+      'size: kind("length", { big: "30px", small: "8px" })',
+      'c: kind("color", { a: "#fff" })',
+    );
+    const output = withBoth(config, `export const d = <div css={@@( letter-spacing: $.c.a; )}>x</div>;\n`);
+
+    expect(output).toMatch(/'"color"' is not assignable/);
+  });
+
+  /**
+   * `units` narrows the UNIT, not the value set — so `30px` in a `px`-only property is right and
+   * passes. Asserted because the two read alike and do different things.
+   */
+  test("`units` is not a range: a px value goes into a px-only property", () => {
+    const config = `import { defineConfig, kind } from "@ramonda/css/config";
+export default defineConfig({
+  variables: { size: kind("length", { big: "30px" }) },
+  properties: { "letter-spacing": { units: ["px"] } },
+});
+`;
+    const output = withBoth(config, `export const e = <div css={@@( letter-spacing: $.size.big; )}>x</div>;\n`);
+
+    expect(output).not.toContain("problem");
+  });
+});

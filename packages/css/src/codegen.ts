@@ -173,12 +173,24 @@ function moduleTree(named: readonly Named[]): string {
         const token = `Token<${JSON.stringify(one.kind)}, ${JSON.stringify(one.value)}>`;
         return `${indent}  ${key(segment)}: ${JSON.stringify(`var(${one.name})`)} as ${token},`;
       }
-      return `${indent}  ${key(segment)}: {\n${write(next as Record<string, unknown>, `${indent}  `)}\n${indent}  },`;
+      return `${indent}  ${key(segment)}: Object.freeze({\n${write(next as Record<string, unknown>, `${indent}  `)}\n${indent}  }),`;
     });
     return lines.join("\n");
   };
 
-  return `{\n${write(root, "")}\n}`;
+  /**
+   * **Frozen at every level, and `as const` is not enough.**
+   *
+   * `as const` makes TypeScript refuse `$.color.accent.main = "…"`, which catches every reasonable
+   * way somebody could do it. A cast walks past that — and this repository's own rule is to prove it
+   * statically AND stop it anyway, because a type is not a defence.
+   *
+   * Mutating `$` would be the worst kind of change: the value is written into the stylesheet at build
+   * time, so assigning to it changes what one module reads and nothing else, and the page keeps the
+   * old value. The way to change a variable is `toStyle`, where the new value is checked against the
+   * kind and lands on an element.
+   */
+  return `Object.freeze({\n${write(root, "")}\n})`;
 }
 
 /** What one run of codegen produces. Empty strings when a project declares nothing. */
@@ -289,6 +301,17 @@ function withUnits(value: string, units: readonly string[] | undefined): string 
   return `CssDimension<${units.map((one) => JSON.stringify(one)).join(" | ")}>`;
 }
 
+/**
+ * Which declared-variable kinds fit a property, for one the project gave a closed list.
+ *
+ * The same table the narrowing uses. A property CSS cannot classify has no answer here, and a
+ * variable cannot be checked into it — which is right: nothing knows what kind belongs there.
+ */
+function kindsFor(property: string): string | undefined {
+  const narrow = NARROW[PRIMITIVE[property] ?? ""];
+  return narrow === undefined ? undefined : narrow.kinds.map((one) => JSON.stringify(one)).join(" | ");
+}
+
 interface Mapped {
   readonly rows: string;
   /** Shorthands this project switched off, dropped from the map rather than narrowed to nothing. */
@@ -337,9 +360,21 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
       typeof one === "number" ? [JSON.stringify(one), JSON.stringify(String(one))] : [JSON.stringify(one)],
     );
 
+    /**
+     * **A variable of the right kind goes in too, and none did.**
+     *
+     * A closed list had no `Token` in it at all, so `z-index: $.layer.modal` was refused — with the
+     * project's own list in the message — however right the variable was. Measured; the user met it.
+     * A declared variable IS one of these values when its own range fits inside the list, which is
+     * what `Token<kind, permitted>` says.
+     */
+    const kinds = kindsFor(property);
+    const token = kinds === undefined ? "" : ` | Token<${kinds}, ${permitted.join(" | ")}>`;
+    if (kinds !== undefined) uses.add("Token");
+
     rows.push(
       `  /** \`${property}\` — only the ${values.length} value(s) this project permits. */\n` +
-        `  ${JSON.stringify(property)}: ${permitted.join(" | ")} | CssGlobal | \`var(\${string})\`;`,
+        `  ${JSON.stringify(property)}: ${permitted.join(" | ")}${token} | CssGlobal | \`var(\${string})\`;`,
     );
   }
   const said = new Set(closed);
@@ -383,9 +418,26 @@ function propertyMap(rules: PropertyRules | undefined): Mapped {
       if (value.includes(name)) uses.add(name);
     }
 
+    /**
+     * **The permitted values reach the TOKEN too, wherever the project set a range.**
+     *
+     * `Token<"length">` leaves the value unconstrained, so a variable declared `30px` went into a
+     * property narrowed to `px` and to four values alike — measured, and it is a capability this
+     * already had and was not using. With the range in the slot, a variable whose own value falls
+     * outside what the property permits is refused by the value, not by the kind.
+     *
+     * Only where a range EXISTS: `units` or `values` on the property. Nowhere else is there anything
+     * to check against, so nowhere else can this get in the way.
+     *
+     * What it checks is the variable's DECLARED value, which under a theme is the fallback rather
+     * than what the browser will use. That is the honest limit, and it is narrow: a variable themed
+     * into a different range is a different variable.
+     */
+    const ranged = ruleFor(rules, property).units === undefined ? "" : `, ${value}`;
+
     rows.push(
       `  /** \`${property}\` — ${narrow.said}, and this project's variables of that kind. */\n` +
-        `  ${JSON.stringify(property)}: Narrowed<${head}, ${value} | Token<${kinds}>${several}>;`,
+        `  ${JSON.stringify(property)}: Narrowed<${head}, ${value} | Token<${kinds}${ranged}>${several}>;`,
     );
   }
 
@@ -444,7 +496,13 @@ export function generate(declarations: Declarations, rules?: PropertyRules): Gen
     `import type { ${fromPackage} } from "@ramonda/css";\n` +
     `import type { ${closed.length === 0 ? "" : "CssGlobal, "}CssProperties as Base, CssValue, Narrowed } from "@ramonda/css/properties";\n\n` +
     `/** Every variable this project declares. Reach one by the path it was declared at. */\n` +
-    `export const $ = ${named.length === 0 ? "{}" : moduleTree(named)} as const;\n\n` +
+    /**
+     * No `as const`: it is only legal on a literal, and `Object.freeze( … ) as const` is `TS1355`.
+     *
+     * Nothing is lost. Every leaf carries its own `as Token< … >`, which is where the literal types
+     * come from, and `Object.freeze` returns `Readonly<T>` — so a group is readonly too.
+     */
+    `export const $ = ${named.length === 0 ? "Object.freeze({})" : moduleTree(named)};\n\n` +
     `/** The ${rows === "" ? 0 : rows.split("\n").length / 2} properties this project narrows, and what each takes. */\n` +
     `interface Narrowings {\n${rows}\n}\n\n` +
     `/** What this project's blocks are checked against — the shipped map, with those replaced. */\n` +

@@ -89,13 +89,13 @@ describe("the module", () => {
     const { module: written } = generate(simple);
 
     expect(written).toContain('"main": "var(--color-primary-main)" as Token<"color", "#3b82f6">');
-    expect(written).toMatch(/export const \$ = \{/);
+    expect(written).toMatch(/export const \$ = Object\.freeze\(\{/);
   });
 
   test("it keeps the shape rather than flattening it", () => {
     const { module: written } = generate(simple);
 
-    expect(written).toMatch(/"color":\s*\{\s*"primary":\s*\{/);
+    expect(written).toMatch(/"color": Object\.freeze\(\{\s*"primary": Object\.freeze\(\{/);
   });
 
   test("a number fallback stays a number, so `number` and `integer` are not stringified", () => {
@@ -117,5 +117,26 @@ describe("naming what a property accepts", () => {
     // Written out rather than named from the package: a generic recursive alias stops expanding at
     // depth, and two levels of nesting is ordinary CSS. See the note on `CssBlockShape`.
     expect(written).toContain("export type CssBlockShape = Partial<CssProperties> & {");
+  });
+});
+
+describe("what the module refuses at run time", () => {
+  /**
+   * **Frozen at every level, and `as const` is not enough.**
+   *
+   * `as const` makes TypeScript refuse an assignment, which catches every reasonable way somebody
+   * could do it — and a cast walks past that. The rule in this repository is to prove it statically
+   * AND stop it anyway.
+   *
+   * Mutating `$` would be the worst kind of change: a variable's value is written into the
+   * stylesheet at build time, so assigning to it changes what one module reads and nothing else, and
+   * the page keeps the old value. `toStyle` is the way to change one.
+   */
+  test("`$` cannot be mutated, at the top or at any level", () => {
+    const { module: written } = generate(simple);
+
+    expect(written).toContain("export const $ = Object.freeze({");
+    expect(written).toContain('"color": Object.freeze({');
+    expect(written).toContain('"primary": Object.freeze({');
   });
 });
