@@ -2109,3 +2109,34 @@ stops checking is found in production.
 
 This was agreed with the user in an earlier session as "a later version" and the review is what made
 it urgent: `units` reached only the checker then, and it reaches the types now.
+
+### 2. One typo, two squiggles — FIXED
+
+A mistyped `$` path was reported twice, at two columns, with the same suggestion in each:
+
+```
+unknown-variable  `$.space.gutter.norml` is not a variable this project declares.
+                  Did you mean `$.space.gutter.normal`?
+TS2551            Property 'norml' does not exist on type
+                  'Readonly<{ normal: Token<"length", "16px">; }>'. Did you mean 'normal'?
+```
+
+**The first idea was to delete the rule, and it was wrong.** The rule's own note said the types say
+this in an editor and the rule says it "in CI, in a hook, and to a reviewer — none of which run
+TypeScript over the block." Measured, that is only half true: `ramonda-css check` DOES run TypeScript
+over the block, which is where the double report came from. But the BUILD does not — vite and
+esbuild run these rules and never type-check — so deleting the rule would leave a `var()` into a name
+nothing sets compiling clean in the one place that ships.
+
+So the fault was never the rule; it was two consumers speaking where one fault existed. `inOrder`
+already drops the compiler's word where a rule of ours said it better, and this is that mechanism
+widened once more: a `TS2551`, `TS2339` or `TS2322` on a LINE where `unknown-variable` already spoke
+is the same fault, and goes.
+
+By line rather than by character, which is the one place this departs from `inOrder`'s own principle.
+The two land at different columns by construction — ours spans the whole path from the `$`, the
+compiler's sits on the segment that failed — and a `$` path does not span lines, so the line is the
+fault's extent here.
+
+Three shapes, and the compiler spells each differently: `TS2551` for a near miss, `TS2339` for a
+segment near nothing, `TS2322` for a GROUP, which is a real member whose type no property accepts.

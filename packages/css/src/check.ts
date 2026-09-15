@@ -279,10 +279,41 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
       .map((finding) => `${finding.file}:${finding.line}`),
   );
 
+  /**
+   * A LINE where a `$` path was refused by a rule of ours, so the compiler's word about it goes.
+   *
+   * Measured, one typo came back twice, at two columns, with the same suggestion in each:
+   *
+   *     unknown-variable  `$.space.gutter.norml` is not a variable this project declares.
+   *                       Did you mean `$.space.gutter.normal`?
+   *     TS2551            Property 'norml' does not exist on type
+   *                       'Readonly<{ normal: Token<"length", "16px">; }>'. Did you mean 'normal'?
+   *
+   * Ours is the one kept: it names the whole path the author wrote and says *this project*, where
+   * the compiler names the last segment and a generated type. Three shapes of the same fault, and
+   * the compiler spells each differently — `TS2551` for a near miss, `TS2339` for a segment near
+   * nothing, `TS2322` for a GROUP, which is a real member whose type no property accepts.
+   *
+   * **By line, not by character**, which is the one place this departs from the note above. The two
+   * land at different columns by construction: ours spans the whole path from the `$`, the
+   * compiler's sits on the segment that failed. A `$` path does not span lines, so the line is the
+   * fault's own extent here.
+   *
+   * **And the rule is not deleted**, which was the first idea and would have been wrong. It is the
+   * only thing that speaks in the BUILD — vite and esbuild run these rules over a block and never
+   * run TypeScript over it, so a `var()` into a name nothing sets would compile clean.
+   */
+  const pathRefused = new Set(
+    css.filter((finding) => finding.code === "unknown-variable").map((finding) => `${finding.file}:${finding.line}`),
+  );
+
   const kept = types.filter((finding) => {
     if (finding.code === 2353 && said.has(at(finding))) return false;
     if (finding.code === 2322 && finding.message.startsWith("Type 'CssValue' is not assignable")) {
       return !holeRefused.has(`${finding.file}:${finding.line}`);
+    }
+    if (finding.code === 2551 || finding.code === 2339 || finding.code === 2322) {
+      if (pathRefused.has(`${finding.file}:${finding.line}`)) return false;
     }
     return true;
   });

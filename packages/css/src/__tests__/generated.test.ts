@@ -177,6 +177,70 @@ export const spaced = <div css={@@( padding-left: {gap}; )}>x</div>;
     expect(output).not.toMatch(/problem\(s\)/);
     expect(output).toContain("type-check");
   });
+
+  /**
+   * A mistyped `$` path, reported ONCE.
+   *
+   * The rule and the types both see it, and measured, both spoke — two squiggles at two columns,
+   * with the same suggestion in each:
+   *
+   *     unknown-variable  `$.size.control.mdd` is not a variable this project declares.
+   *                       Did you mean `$.size.control.md`?
+   *     TS2551            Property 'mdd' does not exist on type
+   *                       'Readonly<{ md: Token<"length", "30px">; }>'. Did you mean 'md'?
+   *
+   * One typo is one fault. Ours is the message kept, because it names the whole path the author
+   * wrote and says *this project* — the compiler's names the last segment and a generated type.
+   *
+   * **The rule is not deleted, which was the first idea.** It is the only thing that speaks in the
+   * BUILD: vite and esbuild run these rules over a block and never run TypeScript over it, so
+   * dropping the rule would leave a `var()` into a name nothing sets compiling clean. What was
+   * wrong was only that two consumers both spoke where one fault existed.
+   */
+  test.each([
+    ["a mistyped leaf", "$.size.control.mdd"],
+    ["a path naming nothing at all", "$.nothing.like.it"],
+    ["a group, which is a path with no value", "$.size.control"],
+  ])("%s is reported once, by the rule that names the project", (_what, path) => {
+    const root = project();
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(
+      join(root, "src", "jsx.d.ts"),
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    );
+    writeFileSync(join(root, "src", "Card.tsx"), `export const a = <div css={@@( padding-left: ${path}; )}>x</div>;\n`);
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          jsx: "preserve",
+          types: [],
+        },
+        include: ["src", "ramonda.css.generated.ts"],
+      }),
+    );
+
+    let output: string;
+    try {
+      output = execFileSync(process.execPath, [join(PACKAGE, "bin.mjs"), "tsconfig.json"], {
+        cwd: root,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      output = `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    }
+
+    expect(output).toContain("unknown-variable");
+    expect(output).toMatch(/1 problem\(s\)/);
+    // The compiler's word about the same path is gone, whichever shape it took.
+    expect(output).not.toMatch(/TS2551|TS2339|TS2322/);
+  });
 });
 
 /**
