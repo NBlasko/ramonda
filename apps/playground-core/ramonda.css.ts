@@ -62,9 +62,16 @@ export default defineConfig({
 
     // Try these one at a time. Each is explained in WALKTHROUGH.md.
     //
-    // "*": { shorthand: false },          // `padding` stops existing; write `padding-left`
-    // "*": { arity: 1 },                  // one value per property — and `margin: 0 auto` goes
-    // "*": { units: ["px", "rem", "%"] }, // `em`, `vh` and the other 45 are refused
+    // The map is keyed by three things, each binding more tightly than the one before:
+    // `"*"` is every property, `"<length>"` is every property whose value is that kind, and a
+    // name is that property alone.
+    //
+    // "*": { shorthand: false },             // `padding` stops existing; write `padding-left`
+    // "*": { arity: 1 },                     // one value per property — and `margin: 0 auto` goes
+    // "*": { units: ["px", "rem", "%"] },    // `em`, `vh` and the other 45 are refused
+    // "<color>": { variablesOnly: true },    // every colour comes from `$` — 40 properties, one line
+    // "<length>": { variablesOnly: true },   // and every length — 127 properties
+    // "border-radius": { variablesOnly: false },  // …except this one
     // "letter-spacing": { units: ["em"] },
   },
 });

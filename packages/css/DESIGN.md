@@ -1277,7 +1277,7 @@ permitted colour is not it. It needs its own spelling, and by KIND rather than b
 colour reaches fourteen properties:
 
 ```ts
-variablesOnly: ["color"],   // proposed; not built
+"<color>": { variablesOnly: true },   // proposed; built, and as a selector
 ```
 
 #### 4. Arity — the one most projects should NOT set
@@ -2238,3 +2238,62 @@ reaching sixty-odd properties from one word, is a thing their design does not of
 **Their `reason` is worth taking.** It is the config author's own sentence, carried into the
 message, and it answers finding 3 from the other direction: we cannot make TypeScript say why a
 project refused a value, but a project could say it once and have the checker repeat it.
+
+### 5. `variablesOnly` moved inside `properties`, as a KIND selector
+
+The user's question, and it was about the config's SIZE rather than about the setting: *"mene brine
+koliko je nas konfig komplikovan. Da li ima smisla da taj deo bude tamo gde je padding."*
+
+`variablesOnly` was a top-level list of kinds. That made it **the one setting keyed by kind while
+every other was keyed by property** — the inconsistency this review opened with.
+
+Moving it per property alone was measured and cannot work: `<color>` reaches 40 properties and
+`<length>` 127. Nobody lists those.
+
+**So `properties` got a third selector.** It already had one — `"*"` is not a property name, it is
+*every property* — and the middle rung was missing:
+
+```ts
+properties: {
+  "*":             { shorthand: false },      // every property
+  "<length>":      { variablesOnly: true },   // every property whose value is that kind
+  "border-radius": { variablesOnly: false },  // that property, overriding the kind
+}
+```
+
+Each binds more tightly than the one before, which is the shape CSS itself has. Merged key by key,
+so a kind can say `variablesOnly` while the property beneath it says `values` and both apply — and
+so two shared configs still combine, which is what design C was chosen for.
+
+**Nothing new to learn.** `<length>` is the same word already written in `kind("length", …)` and
+registered in `@property { syntax }`. The angle brackets are CSS's own notation for a type and keep
+a kind apart from a property name.
+
+**What it gains that the list could not express: the exemption.** `variablesOnly: ["length"]` was
+all-or-nothing per kind, so a project could not say *lengths from variables, except `border-radius`*.
+
+Top-level keys: six to five. The old key is refused with the selector written out from its own list,
+by `validate` rather than by the unknown-key check — a key that MOVED needs to be told where it went,
+and *"which is not a setting"* loses exactly that.
+
+Both machineries follow the selector. A property that says what it takes is narrowed by its TYPE; a
+composite one — `border-left: 4px solid red` — has no type worth narrowing and the
+`literal-not-allowed` rule reads its value. The rule asks the KIND selectors what is variables-only,
+because a composite property has no kind of its own, and asks the property by NAME whether it is
+exempt, because only its own entry can speak for it.
+
+#### `reason` was considered and NOT added
+
+StyleX carries the config author's own sentence into the message. It does not fit here, and the
+reason is worth writing down: the message for `padding-left: 8px` is TypeScript's `TS2322`, and
+nothing a project writes can get inside it. A `reason` would need the checker to recognise that
+refusal and speak over it first — and once that machinery exists, the sentence can be GENERATED from
+what is already known, including a suggestion of the declared variable whose value matches:
+
+```
+`8px` is a length written out, and this project takes lengths only from its own variables.
+You declared `$.space.sm` with exactly this value.
+```
+
+So the work is the same either way, and generating leaves the config one key smaller. `reason` goes
+back on the table only if a project wants a sentence we cannot derive.

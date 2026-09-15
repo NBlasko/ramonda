@@ -120,26 +120,6 @@ export interface Config {
    * map this project's blocks are checked against. That is the whole reason it is here rather than
    * shipped: what CSS allows is this package's to state, and how far a project goes is not.
    */
-  /**
-   * Kinds that may only be written as a declared VARIABLE, never as a literal value.
-   *
-   * ```ts
-   * variablesOnly: ["color"],
-   * ```
-   *
-   * Asked for by the user, in their words: *"za boje moze reci da hoce samo kroz tokene i variable
-   * da radi, nece hardcoded values."* A closed list of every permitted colour is not that — a
-   * palette is fifty values that change, and pinning them in a property's type puts it in two
-   * places.
-   *
-   * **By KIND rather than by property**, because a colour reaches sixty-three properties and nobody
-   * is going to list them. Forty of those say what they take and the TYPE refuses a literal there;
-   * the other twenty-three are composite — `border-left: 4px solid red` — and the rule reads those.
-   *
-   * `currentcolor`, the CSS-wide keywords and `var()` still go in: none of them is a colour somebody
-   * hardcoded, and refusing them would be refusing the escape hatches CSS itself provides.
-   */
-  readonly variablesOnly?: readonly Kind[];
   readonly properties?: PropertyRules;
   /** A rule's severity, by id. `"off"` silences it; `"error"` is the default for every rule. */
   readonly rules?: Readonly<Record<string, "error" | "off">>;
@@ -191,7 +171,10 @@ type PropertyName = keyof CssProperties;
  * engines call shorthands and nowhere else, and `arity` is bounded by what CSS itself gives —
  * `padding: { arity: 7 }` is refused by the number, not by a rule of ours.
  */
-export type PropertyRule<P extends PropertyName | "*" = PropertyName | "*"> = (P extends CssShorthand | "*"
+export type PropertyRule<P extends PropertyName | "*" | KindSelector = PropertyName | "*" | KindSelector> = (P extends
+  | CssShorthand
+  | "*"
+  | KindSelector
   ? {
       /**
        * Whether this shorthand exists at all. `false` removes it, so a project writes `padding-left`.
@@ -211,17 +194,77 @@ export type PropertyRule<P extends PropertyName | "*" = PropertyName | "*"> = (P
          */
         readonly arity?: CssArity[P];
       }
-    : P extends "*"
+    : P extends "*" | KindSelector
       ? { readonly arity?: 1 | 2 | 3 | 4 }
       : unknown) & {
     /** The units a value here may carry. Everything else is refused. */
     readonly units?: readonly CssUnit[];
     /** The only values this property may take — `z-index: [1, 2, 5, 10]`. A closed list. */
     readonly values?: readonly (string | number)[];
+    /**
+     * Whether a value here may only be a declared VARIABLE, never a literal.
+     *
+     * ```ts
+     * "<color>": { variablesOnly: true },      // no colour is written out anywhere
+     * "border":  { variablesOnly: false },     // except in this one
+     * ```
+     *
+     * Asked for by the user, in their words: *"za boje moze reci da hoce samo kroz tokene i
+     * variable da radi, nece hardcoded values."* A closed list of every permitted colour is not
+     * that — a palette is fifty values that change, and pinning them in a property's type puts it
+     * in two places.
+     *
+     * **Usually written on a KIND**, because a colour reaches 40 properties and a length 127.
+     * Written on a property it is the exemption, which is the thing the old top-level list could
+     * not express.
+     *
+     * Two machineries answer it and both are needed. A property that says what it takes is narrowed
+     * by its TYPE, which is exact. A composite one — `border-left: 4px solid red` — has no type
+     * worth narrowing, and the `literal-not-allowed` rule reads its value instead.
+     *
+     * `currentcolor`, a bare `0`, the CSS-wide keywords and `var()` all still go in: none of them is
+     * a value somebody hardcoded, and refusing them would be refusing what CSS itself provides.
+     */
+    readonly variablesOnly?: boolean;
   };
 
-/** The map, keyed by property, with `"*"` reaching every one of them. */
-export type PropertyRules = { readonly [P in PropertyName | "*"]?: PropertyRule<P> };
+/**
+ * A KIND, written the way CSS writes a type — `"<length>"`, `"<color>"`.
+ *
+ * The middle selector. It reaches every property whose value IS that kind, which is what makes a
+ * setting like `variablesOnly` sayable at all: a colour reaches 40 properties and a length 127, and
+ * nobody is going to list them.
+ *
+ * Not a vocabulary of ours. `<length>` is the same word already written in `kind("length", …)` and
+ * registered in `@property { syntax }`, so a project that has declared a variable has already used
+ * it. The angle brackets are CSS's own notation for a type and keep it apart from a property name.
+ *
+ * A kind matches a property through the SAME table the narrowing uses, so `"<length>"` reaches
+ * `padding-left`, whose grammar is `<length-percentage>`. A project saying *lengths* means lengths.
+ */
+export type KindSelector = `<${Kind}>`;
+
+/**
+ * The map, keyed by three things: every property, every property of a kind, and one property.
+ *
+ * ```ts
+ * properties: {
+ *   "*":             { shorthand: false },      // every property
+ *   "<length>":      { variablesOnly: true },   // every property whose value is a length
+ *   "border-radius": { variablesOnly: false },  // this one, overriding the kind
+ * }
+ * ```
+ *
+ * **In that order, each binding more tightly than the one before**, which is the same shape CSS
+ * itself has and the reason the selectors are spelled the way they are. See {@link rulesFor} for
+ * the merge, which is key by key so two shared configs still combine.
+ *
+ * `"*"` was the only selector, and `variablesOnly` was a top-level key listing kinds — the one
+ * setting keyed by kind while every other was keyed by property. Asked by the user, whose worry was
+ * the config growing: this is one key fewer at the top, and it gains the exemption the top-level
+ * list could not express.
+ */
+export type PropertyRules = { readonly [P in PropertyName | "*" | KindSelector]?: PropertyRule<P> };
 
 /** What a config may be given, when it is a function rather than an object. */
 export interface ConfigEnvironment {
@@ -261,7 +304,10 @@ export function environmentOf(production?: boolean): ConfigEnvironment {
 const IDENTITY = new Set(["prefix", "hash", "normalise", "normalize", "names", "layer"]);
 
 /** Everything a config may hold. An unknown key is a typo, and a typo that is ignored is invisible. */
-const KNOWN = new Set(["units", "variables", "alsoSets", "properties", "variablesOnly", "rules"]);
+const KNOWN = new Set(["units", "variables", "alsoSets", "properties", "rules"]);
+
+/** Keys that were a setting and are one somewhere ELSE now. `validate` writes out where. */
+const MOVED = new Set(["variablesOnly"]);
 
 /**
  * Keys that were a setting and are not, with the sentence that says where the answer comes from now.
@@ -529,6 +575,14 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
     if (elsewhere !== undefined) {
       throw new ConfigError(`${path} sets \`${key}\`, and ${elsewhere}.`);
     }
+    /**
+     * A key that MOVED is refused by `validate`, which can read its value and write the replacement.
+     *
+     * Skipped here rather than listed in `KNOWN`, because it is not a setting any more and saying
+     * so generically — *"which is not a setting"* — would lose the one thing its author needs,
+     * which is where it went.
+     */
+    if (MOVED.has(key)) continue;
     if (!KNOWN.has(key)) {
       throw new ConfigError(`${path} sets \`${key}\`, which is not a setting. It holds ${[...KNOWN].join(", ")}.`);
     }
@@ -638,14 +692,45 @@ function validate(config: Record<string, unknown>, path: string): void {
     }
   }
 
+  /**
+   * The old top-level key, refused with the kind selector written out.
+   *
+   * `variablesOnly: ["color"]` was a list of kinds at the top of the config, which made it the one
+   * setting keyed by kind while every other was keyed by property. It is a selector inside
+   * `properties` now — same reach, one key fewer, and a property may exempt itself.
+   *
+   * Named rather than merely unknown, because somebody who wrote it was told it was a setting. The
+   * replacement is mechanical, so the message writes it.
+   */
   const variablesOnly = config.variablesOnly;
   if (variablesOnly !== undefined) {
-    if (!Array.isArray(variablesOnly)) {
-      refuse(`sets \`variablesOnly\` to ${describe(variablesOnly)}. It takes a list of kinds, like ["color"].`);
+    const kinds = Array.isArray(variablesOnly)
+      ? (variablesOnly as unknown[]).filter((one) => typeof one === "string")
+      : [];
+    const written = (kinds.length === 0 ? ["color"] : kinds).map(
+      (one) => `          "<${one}>": { variablesOnly: true },`,
+    );
+    refuse(
+      `sets \`variablesOnly\`, which is a selector inside \`properties\` now — same reach, and a ` +
+        `property may exempt itself from it:\n\n        properties: {\n${written.join("\n")}\n        },`,
+    );
+  }
+
+  const properties = config.properties;
+  if (properties !== undefined) {
+    if (typeof properties !== "object" || properties === null || Array.isArray(properties)) {
+      refuse(`sets \`properties\` to ${describe(properties)}. It takes a map keyed by property.`);
     }
-    for (const one of variablesOnly as unknown[]) {
-      if (typeof one !== "string" || !KINDS.includes(one as never)) {
-        refuse(`lists ${describe(one)} in \`variablesOnly\`. The kinds are CSS's own: ${KINDS.join(", ")}.`);
+    for (const key of Object.keys(properties as Record<string, unknown>)) {
+      const kind = /^<(.+)>$/.exec(key);
+      if (kind === null) continue;
+      if (!KINDS.includes(kind[1] as never)) {
+        const meant = nearest(kind[1], KINDS as readonly string[]);
+        refuse(
+          `keys \`properties\` by \`${key}\`, which is not a kind.` +
+            (meant === undefined ? "" : ` Did you mean \`<${meant}>\`?`) +
+            ` The kinds are CSS's own: ${KINDS.join(", ")}.`,
+        );
       }
     }
   }

@@ -108,7 +108,40 @@ Narrow one property instead of all of them:
 
 Now `em` is the only unit it takes, and every other property is unchanged.
 
-## 4. Limit the values outright
+## 4. Take a whole kind from variables only
+
+```ts
+"<color>": { variablesOnly: true },
+```
+
+**What should happen.** `color: red` and `border: 1px solid red` are both reported. `$.color.accent.main`
+is not, and neither is `currentcolor`, `inherit` or `var(--anything)` — none of those is a colour
+somebody hardcoded.
+
+`"<color>"` is a SELECTOR, not a property. `properties` is keyed by three things, each binding more
+tightly than the one before:
+
+```
+"*"              every property
+"<color>"        every property whose value is that kind
+"border-radius"  that property
+```
+
+A colour reaches 40 properties and a length 127, which is why this is said by kind. The word
+`<color>` is the same one already written in `kind("color", …)`.
+
+Now exempt one:
+
+```ts
+"<length>": { variablesOnly: true },
+"border-radius": { variablesOnly: false },
+```
+
+Every length comes from `$`, except `border-radius`. A bare `0` always goes in — a zero length needs
+no unit in CSS and is not a value anybody hardcoded.
+
+## 5. Limit the values outright
+
 
 `z-index` already has this, and it is the shape most projects want first:
 
@@ -128,7 +161,7 @@ Now `em` is the only unit it takes, and every other property is unchanged.
 Both spellings of a number work: the list is written `[0, 1, 10]` and a block is CSS, so the value
 arrives as the text `"10"`. Writing the list the way you think about it is enough.
 
-## 5. Add a variable and use it
+## 6. Add a variable and use it
 
 In `variables`:
 
@@ -149,7 +182,7 @@ color: kind("color", {
 - `$.color.accent.lodu` is reported with *Did you mean* — twice, once by the type and once by the
   checker, which is deliberate: the type answers in the editor and the rule answers in CI.
 
-## 6. What no config at all does
+## 7. What no config at all does
 
 Rename `ramonda.css.ts` and run the check. Blocks still work; nothing is narrowed, `$` does not
 exist, and a value typed `string` goes into any property. That is the honest state of a project that

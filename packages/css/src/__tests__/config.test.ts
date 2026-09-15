@@ -275,6 +275,39 @@ describe("the project's config", () => {
     });
 
     /**
+     * The old top-level `variablesOnly`, refused with its replacement written out.
+     *
+     * It was a list of kinds at the top of the config — the one setting keyed by kind while every
+     * other was keyed by property. It is a selector inside `properties` now: same reach, one key
+     * fewer, and a property may exempt itself from it, which the list could not express.
+     */
+    test("the old top-level `variablesOnly` is refused, and the message writes the selector", () => {
+      const thrown = refused(`{ variablesOnly: ["color", "length"] }`);
+
+      expect(thrown).toThrow(/selector inside/);
+      expect(thrown).toThrow(/"<color>": \{ variablesOnly: true \}/);
+      expect(thrown).toThrow(/"<length>": \{ variablesOnly: true \}/);
+    });
+
+    test("a `properties` key wrapped in angle brackets that is not a kind is refused", () => {
+      expect(refused(`{ properties: { "<lenght>": { variablesOnly: true } } }`)).toThrow(/Did you mean `<length>`/);
+    });
+
+    test.each([
+      ["a kind selector", `{ properties: { "<color>": { variablesOnly: true } } }`],
+      [
+        "one beside a property exempting itself",
+        `{ properties: { "<length>": { variablesOnly: true }, "border-radius": { variablesOnly: false } } }`,
+      ],
+      [
+        "the sweep, a kind and a property at once",
+        `{ properties: { "*": { shorthand: false }, "<length>": { arity: 1 }, "z-index": { values: [1] } } }`,
+      ],
+    ])("%s is accepted", (_what, body) => {
+      expect(refused(body)).not.toThrow();
+    });
+
+    /**
      * `format: { indent }` was accepted, validated and documented in its own type, and NOTHING read
      * it: a person could set it, be told nothing, and get two spaces. A review found it.
      *

@@ -1,4 +1,4 @@
-import { namesIn } from "../codegen";
+import { namesIn, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
@@ -298,7 +298,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
   tooManyValues(block, config?.properties, findings);
-  if (config?.variablesOnly !== undefined) literalNotAllowed(block, config.variablesOnly, findings);
+  literalNotAllowed(block, config?.properties, findings);
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
   missingSemicolon(block, findings);
   const silenced = config?.rules;
@@ -527,8 +527,8 @@ const HEX = /#[0-9a-fA-F]{3,8}(?![\w-])/;
  * `currentcolor` is not a colour somebody hardcoded, it is a reference to the inherited one, and
  * `var()` is the escape CSS itself provides. Neither is reported.
  */
-function literalNotAllowed(block: Block, kinds: readonly string[], findings: Finding[]): void {
-  if (!kinds.includes("color")) return;
+function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  if (!variablesOnlyKinds(rules).includes("color")) return;
 
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -542,6 +542,18 @@ function literalNotAllowed(block: Block, kinds: readonly string[], findings: Fin
       if (PRIMITIVE[property] === "color") continue;
       // One that does not accept a colour at all has nothing here to find.
       if (!(KEYWORDS[property] ?? "").split(" ").includes("rebeccapurple")) continue;
+      /**
+       * Exempted by its own name, which is the thing the top-level list could not express.
+       *
+       * Asked of the property rather than of the kind, because a composite property HAS no kind —
+       * `border` is a width, a style and a colour at once, so `"<color>"` never reaches it and only
+       * `border: { variablesOnly: false }` can speak for it.
+       */
+      if (
+        (rules?.[property as keyof PropertyRules] as { variablesOnly?: boolean } | undefined)?.variablesOnly === false
+      ) {
+        continue;
+      }
 
       for (const part of item.value) {
         if (part.kind !== "text" || part.at === undefined) continue;
@@ -555,8 +567,8 @@ function literalNotAllowed(block: Block, kinds: readonly string[], findings: Fin
           length: found[0].length,
           message:
             `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
-            `own variables.\n\n        Declare it in \`ramonda.css.ts\` and write \`$.…\`, or drop ` +
-            `\`"color"\` from \`variablesOnly\`.`,
+            `own variables.\n\n        Declare it in \`ramonda.css.ts\` and write \`$.…\`, or set ` +
+            `\`${JSON.stringify(property)}: { variablesOnly: false }\` beside \`"<color>"\`.`,
         });
         break;
       }

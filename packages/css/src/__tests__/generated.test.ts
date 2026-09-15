@@ -820,7 +820,7 @@ export default defineConfig({
   /**
    * A bare `0` under `variablesOnly`, which is the most common declaration in CSS.
    *
-   * Measured before this, `variablesOnly: ["length"]` refused `padding-left: 0`:
+   * Measured before this, a variables-only `<length>` refused `padding-left: 0`:
    *
    *     Type '"0"' is not assignable to type
    *     'Narrowed<never, Token<"length" | "length-percentage" | "percentage">>'
@@ -840,8 +840,8 @@ export default defineConfig({
   describe("a dimensionless zero, where a kind is variables-only", () => {
     const CONFIG = `import { kind } from "@ramonda/css/config";
   export default {
-    variablesOnly: ["length"],
     variables: { space: kind("length", { gutter: { normal: "16px" } }) },
+    properties: { "<length>": { variablesOnly: true } },
   };
   `;
 
@@ -862,13 +862,104 @@ export default defineConfig({
 
     /** A zero is dimensionless; a number this project wants from a variable is not. */
     test("a variables-only NUMBER still refuses a written-out zero", () => {
-      const config = CONFIG.replace('variablesOnly: ["length"]', 'variablesOnly: ["number"]').replace(
+      const config = CONFIG.replace('"<length>"', '"<number>"').replace(
         'kind("length", { gutter: { normal: "16px" } })',
         'kind("number", { weight: { bold: 700 } })',
       );
       const output = withBoth(config, `export const c = <div css={@@( flex-grow: 0; )}>x</div>;\n`);
 
       expect(output).toContain("problem");
+    });
+  });
+
+  /**
+   * `variablesOnly` said as a SELECTOR inside `properties`, which is where it belongs.
+   *
+   * It was a top-level key listing kinds — `variablesOnly: ["length"]` — which made it the one
+   * setting keyed by kind while every other was keyed by property. The user asked whether it could
+   * live beside `values` and `arity` instead, and named the cost themselves: a colour reaches 40
+   * properties and a length 127, so writing it per property is not a thing anybody will do.
+   *
+   * A third selector answers both. `properties` already had one — `"*"` is not a property name, it
+   * is *every property* — so the map is keyed by three things now, in order of how tightly each
+   * binds:
+   *
+   *     "*"              every property
+   *     "<length>"       every property whose value IS that kind
+   *     "padding-left"   that property
+   *
+   * Nothing new to learn: `<length>` is the same word already written in `kind("length", …)`, and
+   * the merge is the key-by-key merge presets already depend on. What it buys that the top-level
+   * key could not is the EXEMPTION — `variablesOnly` was all-or-nothing per kind, so a project
+   * could not say *lengths from variables, except `border-radius`*.
+   */
+  describe("`variablesOnly` as a selector inside `properties`", () => {
+    const CONFIG = `import { kind } from "@ramonda/css/config";
+export default {
+  variables: { space: kind("length", { sm: "8px" }) },
+  properties: {
+    "<length>": { variablesOnly: true },
+    "border-radius": { variablesOnly: false },
+  },
+};
+`;
+
+    test.each([
+      ["a length written out", "padding-left: 8px;", true],
+      ["another, reached only by the kind", "max-width: 320px;", true],
+      ["the variable it wanted", "padding-left: $.space.sm;", false],
+      ["a dimensionless zero", "padding-left: 0;", false],
+      ["the property exempted by name", "border-radius: 4px;", false],
+    ])("%s", (_what, css, refused) => {
+      const output = withBoth(CONFIG, `export const a = <div css={@@( ${css} )}>x</div>;\n`);
+
+      expect(output.includes("problem")).toBe(refused);
+    });
+
+    /** A colour reaches composite shorthands no type describes, which is the rule's half. */
+    test("a kind selector drives the RULE too, where a property has no type to narrow", () => {
+      const config = `import { kind } from "@ramonda/css/config";
+export default {
+  variables: { brand: kind("color", { main: "#10b981" }) },
+  properties: { "<color>": { variablesOnly: true } },
+};
+`;
+      const output = withBoth(config, `export const a = <div css={@@( border: 1px solid red; )}>x</div>;\n`);
+
+      expect(output).toContain("literal-not-allowed");
+    });
+
+    test("and a composite property exempted by name is left alone", () => {
+      const config = `import { kind } from "@ramonda/css/config";
+export default {
+  variables: { brand: kind("color", { main: "#10b981" }) },
+  properties: { "<color>": { variablesOnly: true }, border: { variablesOnly: false } },
+};
+`;
+      const output = withBoth(config, `export const a = <div css={@@( border: 1px solid red; )}>x</div>;\n`);
+
+      expect(output).not.toContain("problem");
+    });
+
+    /** The three selectors on one property, each overriding the one before. */
+    test("`*` is overridden by the kind, and the kind by the property's own name", () => {
+      const config = `import { kind } from "@ramonda/css/config";
+export default {
+  variables: { space: kind("length", { sm: "8px" }) },
+  properties: {
+    "*": { variablesOnly: false },
+    "<length>": { variablesOnly: true },
+    "padding-left": { variablesOnly: false },
+  },
+};
+`;
+
+      // `*` says no and the kind says yes: the kind binds more tightly.
+      expect(withBoth(config, `export const a = <div css={@@( margin-top: 8px; )}>x</div>;\n`)).toContain("problem");
+      // the kind says yes and the name says no: the name binds more tightly still.
+      expect(withBoth(config, `export const b = <div css={@@( padding-left: 8px; )}>x</div>;\n`)).not.toContain(
+        "problem",
+      );
     });
   });
 });

@@ -3174,7 +3174,7 @@ describe("a declaration with no semicolon", () => {
  * `4px solid red` as well. So this reads those, and only those: one mechanism per property.
  */
 describe("a colour written out, where the project said variables only", () => {
-  const ONLY: Config = { variablesOnly: ["color"] };
+  const ONLY: Config = { properties: { "<color>": { variablesOnly: true } } };
 
   test.each([
     ["a named colour inside a shorthand", "  border-left: 4px solid red;"],
@@ -3211,7 +3211,7 @@ describe("a colour written out, where the project said variables only", () => {
     expect(rulesWith('  grid-template-areas: "a b";', ONLY)).toEqual([]);
   });
 
-  test("and with no `variablesOnly` at all, none of this happens", () => {
+  test("and with no `variablesOnly` anywhere, none of this happens", () => {
     expect(rulesWith("  border-left: 4px solid red;", {})).toEqual([]);
   });
 });
