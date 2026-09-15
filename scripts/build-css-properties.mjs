@@ -203,6 +203,10 @@ function arityOf(syntax) {
   const repeated = /^<'[^']+'>\{1,([1-4])\}$/.exec(text);
   if (repeated !== null) return Number(repeated[1]);
 
+  /** `<color>{1,4}` — a bare type repeated, which `border-color` is. */
+  const repeatedType = /^<[a-zA-Z0-9-]+(?:\s*\[[^\]]*\])?>\{1,([1-4])\}$/.exec(text);
+  if (repeatedType !== null) return Number(repeatedType[1]);
+
   /**
    * `<'row-gap'> <'column-gap'>?` — a juxtaposition of longhand references, each optional after the
    * first. `gap` is this shape and the repeat pattern above does not see it, so `gap: 1px 2px 3px`
@@ -347,7 +351,15 @@ function primitiveOf(name) {
        */
       if (/^<[a-zA-Z0-9-]+\(\)>$/.test(part)) continue;
 
-      const type = /^<([a-zA-Z0-9-]+)(?:\s*\[[^\]]*\])?>$/.exec(part);
+      /**
+       * A type REPEATED — `border-color` is `<color>{1,4}`, four of one thing.
+       *
+       * The sequence test below reads bracketed groups, which is what a resolved `<'property'>`
+       * reference becomes; a bare type with a multiplier never gets brackets and was missed. Same
+       * family as the two gaps a user already found, and the same answer: what repeats is still one
+       * primitive.
+       */
+      const type = /^<([a-zA-Z0-9-]+)(?:\s*\[[^\]]*\])?>(?:[?*+#]|\{\d+(?:,\d*)?\})?$/.exec(part);
       if (type !== null) {
         seen.add(type[1]);
         continue;

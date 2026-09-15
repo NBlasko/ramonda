@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { positionOf } from "../compiler/errors";
-import { KEYWORDS } from "../compiler/keywords.generated";
+import { ARITY, KEYWORDS, PRIMITIVE } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
 import { checkBlock } from "../compiler/rules";
 import { virtualFile } from "../compiler/virtual";
@@ -264,5 +264,46 @@ describe("properties whose grammar mentions a url or a string", () => {
     "font-feature-settings: normol",
   ])("%s is reported", (declaration) => {
     expect(of(declaration).map((one) => one.rule)).toEqual(["unknown-value"]);
+  });
+});
+
+/**
+ * A shorthand whose parts are ONE kind is classified; one whose parts differ is not.
+ *
+ * That line is derivable rather than opinion, and it is the one a project should draw when deciding
+ * which shorthands to switch off: `padding`, `margin`, `gap`, `inset`, `border-color` and
+ * `border-width` are n of a thing and can be checked; `background`, `border` and `transition` are a
+ * width and a style and a colour at once, and nothing can say whether their value is right.
+ *
+ * Three shapes reached this table late, each found by a user writing ordinary CSS:
+ *
+ *     gap           <'row-gap'> <'column-gap'>?    a property REFERENCE, not followed
+ *     margin-left   … | <anchor-size()>            a FUNCTIONAL type counted as a second primitive
+ *     border-color  <color>{1,4}                   a bare type with a MULTIPLIER
+ */
+describe("which shorthands can be checked at all", () => {
+  test.each([
+    ["padding", "length-percentage"],
+    ["margin", "length-percentage"],
+    ["gap", "length-percentage"],
+    ["inset", "length-percentage"],
+    ["border-color", "color"],
+    ["border-width", "length"],
+  ])("%s is n of one thing", (property, primitive) => {
+    expect(PRIMITIVE[property]).toBe(primitive);
+  });
+
+  test.each([["background"], ["border"], ["transition"], ["animation"], ["font"]])(
+    "%s is several different things, and stays unclassified",
+    (property) => {
+      expect(PRIMITIVE[property]).toBeUndefined();
+    },
+  );
+
+  test("and the ones that repeat carry how many CSS gives them", () => {
+    expect(ARITY.padding).toBe(4);
+    expect(ARITY["border-color"]).toBe(4);
+    expect(ARITY.gap).toBe(2);
+    expect(ARITY["padding-block"]).toBe(2);
   });
 });
