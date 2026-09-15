@@ -2657,3 +2657,14 @@ is still written correctly by `writeGenerated`, which has the real config. That 
 project can see and fix; a transpile per file to close it would be the worse trade.
 
 A path that climbs out of the project, or starts at the root, is refused.
+
+### 5. One more review, before licences and docs
+
+Asked for by the user at the end of the session, and the reason is the session itself: seven passes
+closed, and then a great deal changed after them — `css-system/`, a numeric value becoming a number
+in the type, `SPEAKS_OVER_TYPES`, two completion faults, and the editor fixes before those.
+
+Every one of those was measured, and several were found only by asking a question nobody had asked
+before — what the BUILD sees against what the CHECKER sees, what a REAL project's completions offer
+against what a unit harness offers. Changes made under a review deserve the same treatment as the
+code the review was about.
