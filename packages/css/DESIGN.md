@@ -1207,6 +1207,141 @@ SCOPE. It is `variable.other.ramonda` today, which most themes colour as a varia
 value. The user asked for the whole path to read as `space` does. Worth checking against two or three
 themes before the upload, because a scope is not a colour and only a theme turns it into one.
 
+### A worked config: what is worth forbidding, what is worth narrowing
+
+Asked for by the user. Every row has its reason, because a row without one is a row somebody deletes
+the first time it is in their way — and because the documentation gate proves an example COMPILES,
+not that it is good advice.
+
+#### 1. Shorthands whose parts are different things
+
+**The line is derivable, not an opinion.** A shorthand is either n of ONE thing or several different
+things at once, and only the first can be checked:
+
+    n of one thing, checkable     20   padding, margin, gap, inset, border-color, border-width, …
+    several different things      69   background, border, transition, animation, font, …
+
+`background: red` also resets `background-image`, `background-repeat` and six more to their initial
+values. Nothing in a type or a rule can say that is wrong, because it is legal CSS doing exactly what
+it says. A longhand cannot do it.
+
+So forbid the 69 and keep the 20 — `padding: 8px 12px` is four lengths and is checked already.
+
+```ts
+properties: {
+  "*": { shorthand: false },
+  // Back, by name: these are n of one thing and are checked.
+  padding: { shorthand: true },
+  margin: { shorthand: true },
+  gap: { shorthand: true },
+  inset: { shorthand: true },
+  "border-color": { shorthand: true },
+  "border-width": { shorthand: true },
+  // … and the fourteen block/inline pairs of the same shape.
+}
+```
+
+**Twenty lines is the honest cost of the config as it stands**, and it is worth noticing: the package
+knows which twenty, and saying so for a project would be deciding for them. A `shorthand: "checkable"`
+on `"*"` would spell the same fact in one line and is NOT policy — it is the mechanism's own
+classification. Worth building; not built.
+
+#### 2. Units — narrow, and it costs nothing
+
+```ts
+"*": { units: ["px", "rem", "%"] },
+```
+
+Forty-nine length units exist and a team uses three. This is the cheapest row in any config: the unit
+parameter is already in `CssDimension`, so it is a type substitution rather than a new check.
+
+**`units` is not a range.** It narrows which units may appear, not which values — `30px` passes a
+`px`-only property, correctly.
+
+#### 3. Values — narrow where a scale exists, and nowhere else
+
+```ts
+"z-index": { values: [0, 1, 10, 100, 1000] },
+```
+
+A layering scale is the case every project has and nobody writes down. The type refuses `z-index: 5`
+and the editor stops offering `auto`.
+
+**Not for colours, and the user is right about why:** *"tesko mi je da poverujem da ce neko zeleti
+odredjene vrednosti boje u tipu, to mi deluje kao overkill."* A palette is fifty values, they change,
+and pinning them in a property's type puts the palette in two places.
+
+What a project wants for colours is a different thing: *"za boje moze reci da hoce samo kroz tokene i
+variable da radi, nece hardcoded values."* **That cannot be said today** — a closed list of every
+permitted colour is not it. It needs its own spelling, and by KIND rather than by property, since a
+colour reaches fourteen properties:
+
+```ts
+variablesOnly: ["color"],   // proposed; not built
+```
+
+#### 4. Arity — the one most projects should NOT set
+
+```ts
+"*": { arity: 1 },
+```
+
+Reads as the obvious strict default and forbids `margin: 0 auto`. Set it per property where a team
+means it, and leave the sweep alone.
+
+#### What a project does NOT have to decide
+
+CSS's own maximum applies with no config at all — `padding: 4px 0 0 0 0` is five values where CSS
+gives four, and that is reported without anybody asking. A config narrows from there and can never
+widen past it.
+
+### A variable's DEFAULT and its RANGE, which is one thing today and should be two
+
+The user's question, and it is the last hole in the theme story: *"kako to u configu da uradimo, da
+zna sta je default vrednost, ali da kasnije zadrzi range ako zelis da menjas vrednost te variable."*
+
+Today a variable declares one value, and it is both the initial and the whole of its type:
+
+```ts
+size: kind("length", { control: { md: "30px" } })
+```
+
+That value goes into `:root`, into `@property`'s `initial-value`, and into `Token<"length", "30px">`.
+Under a theme the first two are right and the third is a claim about a value the theme replaces.
+
+**Proposed: a variable may declare what it MAY BE, beside what it starts as.**
+
+```ts
+size: kind("length", {
+  control: { md: { value: "30px", range: ["24px", "30px", "36px"] } },
+}),
+color: kind("color", {
+  text: { primary: { value: "#111827", range: ["#111827", "#e5e7eb"] } },
+  brand: { main: { value: "#10b981", range: "any" } },
+}),
+```
+
+Three states, and each says something different:
+
+| written | the type carries | what it means |
+|---|---|---|
+| `"30px"` | `"30px"` | this never changes |
+| `{ value, range: [ … ] }` | the list | it may be any of these — light and dark, wide and narrow |
+| `{ value, range: "any" }` | the kind alone | it changes and we do not pin it — a tenant's colour from a server |
+
+What it buys, and each is something the design cannot do now:
+
+- The range is what a property's narrowing is checked against, so the check is about what the
+  variable may BE rather than what it happens to start as. The theme hole closes.
+- `toStyle` accepts only values from the range. Setting a variable at run time becomes checked
+  instead of being a string.
+- A reader hovering sees the range, which is more useful than one value that a theme replaces.
+- **It is the user's own "readonly tokens versus themed tokens" distinction**, expressed as data on
+  the variable rather than as two kinds to learn.
+
+The cost is one object form beside the bare value, written only where a variable actually changes —
+which in a real design system is the semantic colours and the responsive sizes, not the palette.
+
 ### What is not in dispute
 
 The codegen step is the same in all three: read the config, write a `.d.ts` the project's
