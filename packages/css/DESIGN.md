@@ -2484,3 +2484,38 @@ else is reported:
 
 It is reported against every forbidden kind at once, because nothing in a custom property says which
 was meant.
+
+### 11. `rules: off` silenced half of what the config turned on
+
+Three settings reach both a rule and a type, and a rule severity can only reach the rule. Measured:
+
+```
+"*": { arity: 1 }                     too-many-values off      accepted
+"<length>": { variablesOnly: true }   literal-not-allowed off  TS2322, still refused
+"<length>": { units: ["px"] }         unit-not-allowed off     TS2322, still refused
+```
+
+**Worse than a gap: it is a trap.** An author with a file full of errors silences the rule to ship,
+and is not unblocked — the error stays, and the message gets WORSE, because ours names the project
+and `ramonda.css.ts` while `Narrowed<never, Token<…>>` names neither. Only `arity`, the one setting
+with no type behind it, silences completely, so the same gesture means two different things
+depending on which setting it lands on.
+
+The other direction cannot be built: codegen would have to write a narrowing and then unwrite it.
+
+So the contradiction is refused, and the message names the switch that works:
+
+```
+silences `literal-not-allowed`, which this config turned on itself with
+`properties["<length>"].variablesOnly`.
+
+    `rules` is for a report you did not ask for. This one you did, and silencing it
+    would not even lift it — the same constraint reaches the TYPES, which no rule
+    severity can reach. Change the setting instead:
+
+    properties: { "<length>": { variablesOnly: false } }
+```
+
+**Only the contradiction.** `rules: { "literal-not-allowed": "off" }` in a config that never turned
+it on is fine, and so is `too-many-values` off where no `arity` is set — that rule also reports CSS's
+own maximum, which is a report a project may genuinely not want.

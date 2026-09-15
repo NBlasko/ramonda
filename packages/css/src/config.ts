@@ -763,8 +763,75 @@ function validate(config: Record<string, unknown>, path: string): void {
       if (severity !== "off" && severity !== "error") {
         refuse(`sets \`${id}\` to ${describe(severity)}. A rule is "error" or "off".`);
       }
+      if (severity === "off") {
+        const turnedOn = whatTurnedOn(id, config);
+        if (turnedOn !== undefined) {
+          refuse(
+            `silences \`${id}\`, which this config turned on itself with \`${turnedOn.setting}\`.` +
+              `\n\n        \`rules\` is for a report you did not ask for. This one you did, and ` +
+              `silencing it\n        would not even lift it — the same constraint reaches the TYPES, ` +
+              `which no rule\n        severity can reach. Change the setting instead:\n\n` +
+              `        ${turnedOn.instead}`,
+          );
+        }
+      }
     }
   }
+}
+
+/**
+ * The setting that turned a rule on, when the project's own config did — or nothing.
+ *
+ * **Three settings reach both a rule and a type, and `rules: "off"` can only silence the rule.**
+ * Measured, that makes the same gesture mean two different things:
+ *
+ *     "*": { arity: 1 }                    too-many-values off  ->  accepted
+ *     "<length>": { variablesOnly: true }  literal-not-allowed off  ->  TS2322, still refused
+ *     "<length>": { units: ["px"] }        unit-not-allowed off  ->  TS2322, still refused
+ *
+ * So an author who silences one to ship is not unblocked: the error stays and the MESSAGE GETS
+ * WORSE, because ours names the project and the config file while `Narrowed<never, Token<…>>` names
+ * neither. Only `arity`, the one setting with no type behind it, silences completely.
+ *
+ * Refused rather than documented, because the author reaching for this has a file full of errors and
+ * needs the switch that works, not a footnote. The other direction — making `off` reach the types —
+ * cannot be built: codegen would have to write a narrowing and then unwrite it.
+ */
+function whatTurnedOn(id: string, config: Record<string, unknown>): { setting: string; instead: string } | undefined {
+  const properties = (config.properties ?? {}) as Record<string, Record<string, unknown>>;
+  const entries = Object.entries(properties);
+  const wherever = (key: string) =>
+    entries.find(([, rule]) => rule !== null && typeof rule === "object" && rule[key] !== undefined);
+
+  if (id === "literal-not-allowed") {
+    const found = entries.find(([, rule]) => rule !== null && typeof rule === "object" && rule.variablesOnly === true);
+    if (found === undefined) return undefined;
+    return {
+      setting: `properties[${JSON.stringify(found[0])}].variablesOnly`,
+      instead: `properties: { ${JSON.stringify(found[0])}: { variablesOnly: false } }`,
+    };
+  }
+
+  if (id === "unit-not-allowed") {
+    if (config.units !== undefined) return { setting: "units", instead: "drop `units` from ramonda.css.ts" };
+    const found = wherever("units");
+    if (found === undefined) return undefined;
+    return {
+      setting: `properties[${JSON.stringify(found[0])}].units`,
+      instead: `drop \`units\` from properties[${JSON.stringify(found[0])}]`,
+    };
+  }
+
+  if (id === "too-many-values") {
+    const found = wherever("arity");
+    if (found === undefined) return undefined;
+    return {
+      setting: `properties[${JSON.stringify(found[0])}].arity`,
+      instead: `raise or drop \`arity\` in properties[${JSON.stringify(found[0])}]`,
+    };
+  }
+
+  return undefined;
 }
 
 /** What a wrong value IS, for a message that can be acted on without opening the source. */

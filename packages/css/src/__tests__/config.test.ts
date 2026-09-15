@@ -298,6 +298,68 @@ describe("the project's config", () => {
       expect(thrown).toThrow(/"<time>": \{ values/);
     });
 
+    /**
+     * Silencing a rule the project's OWN config turned on — refused, naming the real switch.
+     *
+     * Measured, and it is worse than it looks. Three settings reach both a rule and a type, and
+     * `rules: "off"` can only silence the rule:
+     *
+     *     "*": { arity: 1 }                   too-many-values OFF  ->  accepted
+     *     "<length>": { variablesOnly: true } literal-not-allowed OFF -> TS2322, still refused
+     *     "<length>": { units: ["px"] }       unit-not-allowed OFF ->  TS2322, still refused
+     *
+     * So an author who turns the rule off to ship is not unblocked: the error stays and the message
+     * gets WORSE, because ours named the project and `Narrowed<never, Token<…>>` names nothing. And
+     * `arity`, the one setting with no type behind it, silences completely — so the same gesture
+     * means two different things depending on which setting it lands on.
+     *
+     * `rules` is for a report the project did not ask for. Undoing what the project DID ask for is
+     * an edit to that setting, and the message says which.
+     */
+    test.each([
+      [
+        "`literal-not-allowed`, against `variablesOnly`",
+        `{ properties: { "<length>": { variablesOnly: true } }, rules: { "literal-not-allowed": "off" } }`,
+        /variablesOnly/,
+      ],
+      [
+        "`unit-not-allowed`, against a property's `units`",
+        `{ properties: { "<length>": { units: ["px"] } }, rules: { "unit-not-allowed": "off" } }`,
+        /units/,
+      ],
+      [
+        "`unit-not-allowed`, against the project-wide `units`",
+        `{ units: { length: ["px"] }, rules: { "unit-not-allowed": "off" } }`,
+        /units/,
+      ],
+      [
+        "`too-many-values`, against `arity`",
+        `{ properties: { "*": { arity: 1 } }, rules: { "too-many-values": "off" } }`,
+        /arity/,
+      ],
+    ])("%s is refused", (_what, body, says) => {
+      const thrown = refused(body);
+
+      expect(thrown).toThrow(says);
+      expect(thrown).toThrow(/turned on/);
+    });
+
+    test.each([
+      ["one nothing in this config turned on", `{ rules: { "literal-not-allowed": "off" } }`],
+      ["`too-many-values` where no `arity` is set", `{ rules: { "too-many-values": "off" } }`],
+      [
+        "a rule that reads no config at all",
+        `{ properties: { "<length>": { variablesOnly: true } }, rules: { "unknown-unit": "off" } }`,
+      ],
+      ["the setting on its own", `{ properties: { "<length>": { variablesOnly: true } } }`],
+      [
+        "the rule set to error, which changes nothing",
+        `{ properties: { "*": { arity: 1 } }, rules: { "too-many-values": "error" } }`,
+      ],
+    ])("%s is accepted", (_what, body) => {
+      expect(refused(body)).not.toThrow();
+    });
+
     test("a `properties` key wrapped in angle brackets that is not a kind is refused", () => {
       expect(refused(`{ properties: { "<lenght>": { variablesOnly: true } } }`)).toThrow(/Did you mean `<length>`/);
     });
