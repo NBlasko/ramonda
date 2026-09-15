@@ -3606,10 +3606,21 @@ describe("a setting the types enforced and the build did not", () => {
       expect(under(config, css)).toEqual(["unit-not-allowed"]);
     });
 
+    /**
+     * A family the list says nothing about is not constrained — found by MUTATION.
+     *
+     * Review pass 7 broke `const family = UNIT_TYPE[unit]` on purpose and the whole suite stayed
+     * green: one case named a time, and a time is not a length, so it would have been silent either
+     * way. What was never asked is whether a unit of ANOTHER family is silent because of its family
+     * or by accident — so all four are here, one per family a project might meet.
+     */
     test.each([
       ["a unit it does use", "padding-left: 8px"],
       ["a bare zero, which has no unit", "padding-left: 0"],
-      ["a family it said nothing about", "transition-duration: 200ms"],
+      ["a time, where the list holds lengths", "transition-duration: 200ms"],
+      ["an angle", "rotate: 45deg"],
+      ["a percentage, which is its own family", "width: 50%"],
+      ["a flex", "grid-template-columns: repeat(3, 1fr)"],
     ])("%s is silent", (_what, css) => {
       expect(under(config, css)).toEqual([]);
     });
