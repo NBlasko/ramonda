@@ -105,6 +105,39 @@ describe("format", () => {
   });
 
   /**
+   * A hole's expression through the project's own biome — and twice, which is what a formatter owes.
+   *
+   * **Reported by a user**: *"formating unutar rupe ne radi"*, on
+   * `color: {this.toggle ? $.color.accent.quiet    : $.color.accent.main}`. The braces were closed
+   * up and the interior was untouched, so the one part of a block that IS ordinary TypeScript was
+   * the one part escaping the formatter.
+   *
+   * Run TWICE on purpose. A formatter that is not idempotent is an edit that never settles, and a
+   * hole — stepped over as one unit by the CSS layout — is where that would be hardest to notice.
+   */
+  test("a hole's expression is laid out by the project's own formatter, and settles", () => {
+    const root = project({
+      "Card.tsx":
+        `export const a = <div css={@@(\n` +
+        `  color: {t ? one    : two};\n` +
+        `  padding-left: {gap   +   2}px;\n` +
+        `  content: {items.map((one)=>one.name).join( 'x' )};\n` +
+        `)}>x</div>;\n`,
+    });
+
+    run(root, ["format", "src/Card.tsx"]);
+    const once = readFileSync(join(root, "src", "Card.tsx"), "utf8");
+
+    expect(once).toContain("{t ? one : two}");
+    expect(once).toContain("{gap + 2}px");
+    expect(once).toContain("{items.map((one) => one.name).join(");
+
+    run(root, ["format", "src/Card.tsx"]);
+
+    expect(readFileSync(join(root, "src", "Card.tsx"), "utf8")).toBe(once);
+  });
+
+  /**
    * The question that decides whether this is worth having. The project asks for four spaces; this
    * repository asks for two. A wrapper that lost the project's settings would answer with two.
    */

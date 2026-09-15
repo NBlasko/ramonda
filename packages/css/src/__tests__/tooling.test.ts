@@ -306,16 +306,92 @@ describe("the CSS inside a block", () => {
   });
 
   /**
-   * A hole's own spacing is its expression's, and the BRACES are not part of the expression.
+   * With NO formatter, a hole's own spacing is its expression's and stays.
    *
-   * The whitespace inside `a  ?  "red"` is the author's and stays; the whitespace between `{` and
-   * `a` is a delimiter's and is closed up, because a hole is the escape JSX already uses in the same
-   * place and JSX writes it tight. See `tightened`, and the one shape that keeps its space above.
+   * The whitespace between `{` and `a` is a delimiter's and is closed up, because a hole is the
+   * escape JSX already uses in the same place and JSX writes it tight. What is inside is TypeScript,
+   * and nothing here has an opinion about TypeScript — see the block below for who does.
    */
   test("a hole keeps the spacing inside its expression, and loses it at the braces", () => {
     expect(laid(`const a = <div css={@@(\n  color: { a  ?  "red"  :  "blue" };\n)}>x</div>;\n`)).toBe(
       `const a = <div css={@@(\n  color: {a  ?  "red"  :  "blue"};\n)}>x</div>;\n`,
     );
+  });
+
+  /**
+   * A hole's expression goes through the PROJECT's formatter, which is the only thing entitled to
+   * lay out TypeScript.
+   *
+   * **Reported by a user**: *"formating unutar rupe ne radi"*, on
+   * `color: {this.toggle ? $.color.accent.quiet    : $.color.accent.main}`. They were right, and it
+   * was the one part of the file that is ordinary TypeScript escaping the formatter entirely —
+   * `ramonda-css format` exists precisely so a file carrying blocks is laid out by the project's own
+   * tools.
+   *
+   * The expression is handed over ALONE rather than the file being formatted twice: what reaches
+   * biome is `(\n<expression>\n);` and what comes back is the statement, unwrapped. The hole is
+   * still stepped over as one unit by the layout above; only its contents are replaced.
+   */
+  describe("a hole's expression, through the project's formatter", () => {
+    /** Stands in for biome: collapses runs of spaces, which is what the user's example needed. */
+    const squeeze = (text: string) => text.replace(/ {2,}/g, " ");
+
+    const through = (source: string) => {
+      const held = placehold(source, { expression: squeeze });
+      return held?.restore(held.text);
+    };
+
+    test("the user's own example", () => {
+      expect(through(`const a = <div css={@@(\n  color: {t ? $.a.b    : $.a.c};\n)}>x</div>;\n`)).toBe(
+        `const a = <div css={@@(\n  color: {t ? $.a.b : $.a.c};\n)}>x</div>;\n`,
+      );
+    });
+
+    test("and the braces are still closed up, which was already right", () => {
+      expect(through(`const a = <div css={@@(\n  color: {  t ? $.a.b    : $.a.c  };\n)}>x</div>;\n`)).toBe(
+        `const a = <div css={@@(\n  color: {t ? $.a.b : $.a.c};\n)}>x</div>;\n`,
+      );
+    });
+
+    test("a hole beside text keeps the text exactly", () => {
+      expect(through(`const a = <div css={@@(\n  padding-left: {this.gap   +   2}px;\n)}>x</div>;\n`)).toBe(
+        `const a = <div css={@@(\n  padding-left: {this.gap + 2}px;\n)}>x</div>;\n`,
+      );
+    });
+
+    /**
+     * A formatter that would BREAK THE LINE is declined, and the author's own text is kept.
+     *
+     * The layout above puts one declaration on a line and steps over a hole whole; a hole holding a
+     * newline would be spliced into the middle of a line and the result would not be the author's
+     * code. So a multi-line answer means this expression is not one this can lay out.
+     */
+    test("a result that spans lines is declined, and the author's text stays", () => {
+      const across = () => "a\n  ? b\n  : c";
+      const source = `const a = <div css={@@(\n  color: {t ?   b :   c};\n)}>x</div>;\n`;
+
+      expect(placehold(source, { expression: across })?.restore(placehold(source, { expression: across })!.text)).toBe(
+        source,
+      );
+    });
+
+    /** A formatter that throws is a broken setup, not a reason to lose the author's expression. */
+    test("a formatter that throws leaves the hole alone", () => {
+      const throws = () => {
+        throw new Error("no");
+      };
+      const source = `const a = <div css={@@(\n  color: {t ?   b :   c};\n)}>x</div>;\n`;
+
+      expect(placehold(source, { expression: throws })?.restore(placehold(source, { expression: throws })!.text)).toBe(
+        source,
+      );
+    });
+
+    test("an expression that begins or ends with a brace keeps its spaces, as it did", () => {
+      const source = `const a = <div css={@@(\n  color: {{ x["}"] }};\n)}>x</div>;\n`;
+
+      expect(through(source)).toBe(source);
+    });
   });
 
   /**

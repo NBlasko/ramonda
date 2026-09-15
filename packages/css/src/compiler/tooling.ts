@@ -18,12 +18,52 @@ import { findBlocks, mayHoldABlock } from "./scan";
  * brace, where trimming would produce `{{` or `}}` — a reader meeting that, in a language whose
  * holes were spelled `{{ }}` until this morning, deserves better than two characters saved.
  */
-function tightened(hole: string): string {
+function tightened(hole: string, expression: PlaceholdOptions["expression"]): string {
   const inner = hole.slice(1, -1);
   const trimmed = inner.trim();
-  if (trimmed === inner) return hole;
+  // An expression that itself begins or ends with a brace keeps every space it has — see above.
   if (trimmed.startsWith("{") || trimmed.endsWith("}")) return hole;
-  return `{${trimmed}}`;
+
+  const laid = expression === undefined ? trimmed : formattedExpression(trimmed, expression);
+  return laid === inner ? hole : `{${laid}}`;
+}
+
+/**
+ * One hole's expression, laid out by the PROJECT's formatter — or exactly as the author wrote it.
+ *
+ * **Reported by a user**: *"formating unutar rupe ne radi"*, on
+ * `color: {this.toggle ? $.color.accent.quiet    : $.color.accent.main}`. The braces were closed up
+ * and the interior was untouched, so the one part of a block that IS ordinary TypeScript was the
+ * one part escaping the formatter — while `ramonda-css format` exists precisely so a file carrying
+ * blocks is laid out by the project's own tools.
+ *
+ * Handed over ALONE rather than formatting the file twice, because the expression is not a file: it
+ * is wrapped as a statement, formatted, and unwrapped. The parens are what make an expression a
+ * statement whatever it is — an object literal at the start of a line is a block otherwise.
+ *
+ * ## The two answers that are declined, and why declining is right
+ *
+ * **A result that spans lines.** The layout above puts one declaration on a line and steps over a
+ * hole as one unit, so a newline inside one would be spliced into the middle of a line — the
+ * author's code, rearranged into something they did not write. A formatter breaking a long ternary
+ * across lines is doing its job; this simply cannot place the answer.
+ *
+ * **A formatter that throws.** A broken `biome.json` is a setup fault the CLI already says out loud.
+ * Losing the author's expression over it would be this tool doing damage while reporting nothing.
+ */
+function formattedExpression(text: string, format: (text: string) => string): string {
+  let out: string;
+  try {
+    out = format(`(\n${text}\n);\n`);
+  } catch {
+    return text;
+  }
+
+  const trimmed = out.trim().replace(/;$/, "").trim();
+  const unwrapped = trimmed.startsWith("(") && trimmed.endsWith(")") ? trimmed.slice(1, -1).trim() : trimmed;
+
+  if (unwrapped === "" || /[\r\n]/.test(unwrapped)) return text;
+  return unwrapped;
 }
 
 /**
@@ -72,6 +112,15 @@ export interface PlaceholdOptions {
    * and prints the block in its place, which needs a node rather than a comment on one.
    */
   stands?(index: number, multiline: boolean): string;
+  /**
+   * How to format ONE hole's expression — the project's own formatter, given a wrapped statement.
+   *
+   * Absent, a hole's interior is left exactly as the author wrote it, which is what every caller but
+   * `formatText` wants: a checker, a linter and the editor all read the author's text and must not
+   * see it rewritten. Only the command whose job is to format has an opinion here, and the opinion
+   * it has is the project's.
+   */
+  expression?(text: string): string;
   /**
    * Whether a bare JSX attribute keeps the braces the placeholder needs.
    *
@@ -149,11 +198,15 @@ export function placehold(source: string, options: PlaceholdOptions = {}): Place
   return {
     text,
     blocks: blocks.map((held) => held.block),
-    restore: (formatted) => restore(formatted, blocks),
+    restore: (formatted) => restore(formatted, blocks, options.expression),
   };
 }
 
-function restore(formatted: string, blocks: readonly { text: string; wrap: boolean; held: string }[]): string {
+function restore(
+  formatted: string,
+  blocks: readonly { text: string; wrap: boolean; held: string }[],
+  expression: PlaceholdOptions["expression"],
+): string {
   let out = formatted;
   /**
    * The ending the FORMATTER chose, which is the one the whole file now uses.
@@ -216,7 +269,9 @@ function restore(formatted: string, blocks: readonly { text: string; wrap: boole
     const inner = outer + (outer.includes("\t") ? "\t" : spaces);
 
     out =
-      out.slice(0, found.index) + relaid(block.text, outer, inner, newline) + out.slice(found.index + found[0].length);
+      out.slice(0, found.index) +
+      relaid(block.text, outer, inner, newline, expression) +
+      out.slice(found.index + found[0].length);
   }
 
   return out;
@@ -297,7 +352,13 @@ function stepOf(text: string): string {
  * block, a diff on every line and a lint failure in most setups. Nothing here is a decision about
  * which ending a file should use.
  */
-function relaid(block: string, outer: string, inner: string, chosen: string | undefined): string {
+function relaid(
+  block: string,
+  outer: string,
+  inner: string,
+  chosen: string | undefined,
+  expression: PlaceholdOptions["expression"],
+): string {
   // The file's own ending — see `restore`, which reads it off what the formatter handed back. Only a
   // file with no newline at all falls back to the block's, because there the formatter said nothing.
   const newline = chosen ?? (block.includes("\r\n") ? "\r\n" : "\n");
@@ -307,7 +368,7 @@ function relaid(block: string, outer: string, inner: string, chosen: string | un
   const step = inner.slice(outer.length);
   const body = lines.slice(1, -1).join(newline);
 
-  return [lines[0], ...layout(body, inner, step), outer + lines[lines.length - 1].trim()].join(newline);
+  return [lines[0], ...layout(body, inner, step, expression), outer + lines[lines.length - 1].trim()].join(newline);
 }
 
 /**
@@ -326,7 +387,7 @@ function relaid(block: string, outer: string, inner: string, chosen: string | un
  * which is also what keeps `{{ … }}` byte-for-byte: the expression inside it is TypeScript and none
  * of this may touch it.
  */
-function layout(body: string, indent: string, step: string): string[] {
+function layout(body: string, indent: string, step: string, expression: PlaceholdOptions["expression"]): string[] {
   const out: string[] = [];
   let line = "";
   let depth = 0;
@@ -400,7 +461,7 @@ function layout(body: string, indent: string, step: string): string[] {
     if (code === 123 /* { */ && opensAHole(line)) {
       const close = closingHole(body, index);
       const stop = close === -1 ? body.length : close;
-      line += tightened(body.slice(index, stop));
+      line += tightened(body.slice(index, stop), expression);
       index = stop - 1;
       continue;
     }
