@@ -4,6 +4,9 @@ import { PROPERTIES } from "../compiler/keywords.generated";
 import { NAME_BUDGET, classNameFor, nameFor } from "../compiler/names";
 import { readBlock } from "../compiler/read";
 import { findBlocks } from "../compiler/scan";
+import { transform } from "../compiler/transform";
+import type { Config } from "../config";
+import { kind } from "../declared";
 
 /**
  * A class name a person can read, and the hash underneath it.
@@ -382,4 +385,50 @@ describe("a readable name is injective over identities", () => {
     expect(a.identity).not.toBe(b.identity);
     expect(nameFor(a)).not.toBe(nameFor(b));
   });
+});
+
+/**
+ * A class name is the same in every project, whatever their configs disagree about.
+ *
+ * **This is the guarantee packaging rests on**, and it is the user's own reason for asking that
+ * there be one naming approach rather than two: people build a component library in one package and
+ * consume it BUILT in another. If two projects could name one declaration differently, the consuming
+ * side has no way to notice — the CSS is already emitted.
+ *
+ * `CONTRACT.md` §3 fixes the prefix and `config.ts` refuses `names`, `hash`, `prefix` and `layer` as
+ * settings, so the ways to disagree on purpose are closed. This asks the other half: whether a
+ * setting a project IS allowed to make can move a name by accident.
+ *
+ * A config that refuses the declaration outright is skipped rather than counted — a project that
+ * will not compile it says nothing about what it would have called it.
+ */
+describe("what a project's config may not change", () => {
+  const CONFIGS: (Config | undefined)[] = [
+    undefined,
+    { units: { length: ["px"] } },
+    { properties: { "<color>": { variablesOnly: true } } },
+    { variables: { color: kind("color", { accent: "#10b981" }) } },
+    { properties: { "*": { shorthand: false } } },
+    { rules: { "unknown-unit": "off" } },
+    { outDir: "somewhere-else" },
+  ];
+
+  test.each([["padding-left: 40px"], ["color: white"], ["display: flex"], ["margin: 0 auto"]])(
+    "`%s` is one class name across every config",
+    (css) => {
+      const names = new Set<string>();
+      for (const config of CONFIGS) {
+        try {
+          const out = transform(`const a = <div css={@@( ${css}; )}>x</div>;\n`, { filename: "C.tsx", config })?.code;
+          const found = /"(r-[^"]+)"/.exec(out ?? "")?.[1];
+          if (found !== undefined) names.add(found);
+        } catch {
+          // A config that REFUSES this declaration never names it. Not a disagreement.
+        }
+      }
+
+      // The control: something was measured, so an empty set cannot pass for free.
+      expect(names.size).toBe(1);
+    },
+  );
 });

@@ -2572,7 +2572,33 @@ approach, always, is what makes a built package composable with a source one.
 
 `CONTRACT.md` §3 already fixes the prefix for this exact reason, and `config.ts` refuses `names`,
 `hash` and `prefix` as settings because identity is the one thing every consumer must agree about.
-The `names: "hash"` bundler option is the remaining way to disagree.
+
+#### CLOSED — measured, and nothing was left to build
+
+**There is one approach already.** The `names: "hash"` bundler option this note called *the remaining
+way to disagree* does not exist: both plugins take `runtime`, and esbuild also takes `filter`. A name
+is readable when it can be and a hash when it cannot, and the five cases that force a hash are
+properties of the declaration rather than of anybody's settings — a hole, no spelling for the
+context, a character a class name cannot hold, an underscore the author wrote, or a name over
+`NAME_BUDGET`.
+
+**The packaging worry is answered, and is now a test.** The same declaration compiled under seven
+configs that disagree about units, kinds, shorthands, variables, silenced rules and `outDir` comes
+out as ONE class name each time. `what a project's config may not change` in `nameFor.test.ts` holds
+it; seen to fail by making a name depend on `units`.
+
+**Shorter is measured and has no defensible change.** Over forty declarations a real app writes:
+
+```
+38 readable, 2 hashed          the two are a `linear-gradient(…)` and a quoted font stack
+shortest 6   median 12   longest 30   (budget 32)
+```
+
+The long ones are long because their VALUES are — `r-anim-spin_1s_linear_infinite` is thirty
+characters and twenty-three of them are the author's own text. Every unabbreviated property that
+turned up (`text-overflow`, `scroll-margin-top`, `will-change`, `object-fit`) is one with no
+conventional short spelling, and the abbreviation table's own note answers that: *an abbreviation
+nobody recognises is worse than the property's own name — it is shorter and it has to be learned.*
 
 ### 3. A manifest carrying what a package REQUIRES — measured, and it does not exist
 
