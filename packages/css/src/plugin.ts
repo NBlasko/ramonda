@@ -184,12 +184,33 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        * cache was fixed for. An editor session is a development session — see `environmentOf`.
        */
       const readProjectConfig = configReader(tsModule, environmentOf(false));
+
+      /**
+       * Why a config this cannot read is REMEMBERED rather than only survived.
+       *
+       * Returning an empty config is right and stays: a broken one must not take the editor's
+       * completions with it, and measured, it does not — 828 property names are still offered.
+       *
+       * What it also took was every RULE, in silence. Measured across nine broken configs, with a
+       * block breaking two of the project's own settings:
+       *
+       *     GOOD             [unit-not-allowed] … | [literal-not-allowed] …
+       *     a syntax error   (nothing)
+       *     units: "px"      (nothing)            … and six more, every one silent
+       *
+       * The author wrote those settings. A green file is a claim, and with no config loaded the
+       * tool cannot support it — so the reason is kept and said once, on a file that holds a block.
+       * The note here used to send a reader to `ramonda-css lint`, which is not a command anybody
+       * runs to find out their config broke.
+       */
+      const configFailure = new Map<string, string>();
       const projectConfig = (fileName: string): Config => {
         try {
-          return readProjectConfig(fileName);
-        } catch {
-          // A broken config must not take the editor's completions with it. `ramonda-css lint` is
-          // where it is reported, with the file and the reason.
+          const config = readProjectConfig(fileName);
+          configFailure.delete(fileName);
+          return config;
+        } catch (error) {
+          configFailure.set(fileName, error instanceof Error ? error.message : String(error));
           return {};
         }
       };
@@ -767,6 +788,41 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         return home === undefined ? undefined : { ...read, textSpan: home };
       };
 
+      /**
+       * One diagnostic saying the project's config did not load, or nothing.
+       *
+       * Only reached for a file that HOLDS a block — `getSemanticDiagnostics` has already returned
+       * the inner service's answer for anything else — because a file with no CSS in it is not
+       * affected by the config and marking it would be noise on every file in the project.
+       *
+       * On the first block's opener, so it sits where the missing rules would have spoken. A
+       * zero-width span is a squiggle nobody can see; see `Finding.length` in `rules.ts`.
+       */
+      const brokenConfig = (fileName: string): ts.Diagnostic[] => {
+        const why = configFailure.get(fileName);
+        if (why === undefined) return [];
+
+        const text = readSnapshot(fileName);
+        const source = text?.getText(0, text.getLength()) ?? "";
+        const [site] = findBlocks(source);
+        if (site === undefined) return [];
+
+        return [
+          {
+            file: cache.get(fileName)?.author,
+            start: site.start,
+            length: site.open - site.start + 1,
+            category: tsModule.DiagnosticCategory.Error,
+            // Zero, for the reason `ours` gives: this is not TypeScript's, and the id is in the text.
+            code: 0,
+            messageText:
+              `[config-not-read] ${why}\n\n` +
+              "        Until it reads, none of this project's rules are running — this block is not " +
+              "being\n        checked against them, and a build will refuse before it gets here.",
+          },
+        ];
+      };
+
       proxy.getSemanticDiagnostics = (fileName) => {
         const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getSemanticDiagnostics(fileName);
@@ -778,6 +834,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          */
         const ours = cssFor(fileName);
         return [
+          ...brokenConfig(fileName),
           ...ours,
           ...hintsFor(fileName),
           ...withoutRepeats(

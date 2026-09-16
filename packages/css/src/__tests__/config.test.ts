@@ -235,6 +235,49 @@ describe("the project's config", () => {
    * defaults because somebody's config had a typo would be the worst of both — the settings are not
    * applied, and nothing says so.*
    */
+  /**
+   * A refusal raised while the config RUNS — `kind()` checking a declaration it was handed.
+   *
+   * Those carry a careful sentence and no file, because nothing down there knows the path. Wrapping
+   * the whole thing gave the tag twice and a claim that is untrue:
+   *
+   *     [ramonda-css] …/ramonda.css.ts could not be read: [ramonda-css] `b` has an empty `range`…
+   *
+   * It read perfectly well; a value in it is wrong, which is a different thing to be told.
+   */
+  describe("a declaration the config itself refuses", () => {
+    const refused = (body: string) => {
+      const dir = project({ "ramonda.css.ts": body });
+      return () => readConfig(findConfig(dir), ts);
+    };
+
+    /**
+     * The tagged throw `kind()` raises, written out — this is about the WRAPPER that presents it.
+     * `cli.test.ts` runs the real `kind` through the real binary for the other half.
+     */
+    const declaring = (says: string) =>
+      `export default (() => { throw new Error(${JSON.stringify(`[ramonda-css] ${says}`)}); })();\n`;
+
+    test("says what is wrong ONCE, with the file and without the tag twice", () => {
+      let message = "";
+      try {
+        refused(declaring("`b` has an empty `range`, which permits no value at all."))();
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).toContain("ramonda.css.ts");
+      expect(message).toContain("empty `range`");
+      // The two faults the wrapper used to add: its own tag a second time, and an untrue sentence.
+      expect(message).not.toContain("[ramonda-css]");
+      expect(message).not.toContain("could not be read");
+    });
+
+    test("and a failure that is NOT ours still says it could not be read", () => {
+      expect(refused(`export default (() => { throw new Error("boom"); })();\n`)).toThrow(/could not be read: boom/);
+    });
+  });
+
   describe("a config that does not parse", () => {
     const refused = (body: string) => {
       const dir = project({ "ramonda.css.ts": body });

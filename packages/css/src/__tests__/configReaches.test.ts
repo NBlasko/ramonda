@@ -54,10 +54,18 @@ function editorWith(rules: string, marked: string, variables: Record<string, str
     .join("\n");
   writeFileSync(
     join(root, "ramonda.css.ts"),
-    `import { kind } from "@ramonda/css/config";\n` +
-      `export default { properties: ${rules}, variables: {\n${declared}\n} };\n`,
+    // `RAW:` hands the config text over whole, for the probes whose SUBJECT is a config that is
+    // wrong — the shape below can only build one that is right.
+    rules.startsWith("RAW:")
+      ? rules.slice(4)
+      : `import { kind } from "@ramonda/css/config";\n` +
+          `export default { properties: ${rules}, variables: {\n${declared}\n} };\n`,
   );
-  writeGenerated(root, ts);
+  try {
+    writeGenerated(root, ts);
+  } catch {
+    // Codegen refusing a deliberately broken config is the point of those probes, not a failure.
+  }
   forgetGenerated();
 
   const FILE = join(root, "src", "Card.tsx");
@@ -109,6 +117,55 @@ function editorWith(rules: string, marked: string, variables: Record<string, str
       service.getSemanticDiagnostics(FILE).map((one) => ts.flattenDiagnosticMessageText(one.messageText, " ")),
   };
 }
+
+/**
+ * A config the editor could NOT read, which was silence — and silence here reads as approval.
+ *
+ * Keeping the completions alive is right: a broken config must not take the whole language service
+ * with it, and it does not. But it took every RULE with it and said nothing anywhere. Measured, a
+ * block breaking two of the project's own settings, under nine broken configs:
+ *
+ *     GOOD             [unit-not-allowed] … | [literal-not-allowed] …
+ *     a syntax error   (nothing)            828 completions, as if all were well
+ *     units: "px"      (nothing)            828 completions
+ *     … and six more, every one of them silent
+ *
+ * The author set those rules. A file that is not being checked has to say so, or the green file is
+ * a claim the tool cannot support. One diagnostic, and only on a file that holds a block — a file
+ * with no CSS in it is not affected by the config and should not be marked.
+ */
+describe("a config the editor cannot read", () => {
+  const BROKEN = `RAW:export default { units: "px" };\n`;
+  const CARD = `const a = <div css={@@( padding-left: 2rem; )}>x</div>;\nexport default a;\n`;
+
+  test("is reported, naming the config and saying the rules are not running", () => {
+    const { reported } = editorWith(BROKEN, CARD);
+    const said = reported();
+
+    expect(said.length).toBeGreaterThan(0);
+    expect(said.join(" ")).toContain("ramonda.css.ts");
+    expect(said.join(" ")).toMatch(/none of this project's rules are running/i);
+  });
+
+  test("and the completions still work, which is what the silence was protecting", () => {
+    const { offered } = editorWith(BROKEN, `const a = <div css={@@( pad/*|*/ )}>x</div>;\n`);
+
+    expect(offered()).toContain("padding-left");
+  });
+
+  test("a file with no block is not marked, because the config does not reach it", () => {
+    const { reported } = editorWith(BROKEN, `export const n = 1;\n`);
+
+    expect(reported()).toEqual([]);
+  });
+
+  test("and a config that reads fine says nothing, which is the control", () => {
+    const { reported } = editorWith(`{ "padding-left": { units: ["px"] } }`, CARD);
+
+    // `unit-not-allowed` names the config in its own sentence, so the control asks for THIS one.
+    expect(reported().join(" ")).not.toMatch(/none of this project's rules are running/i);
+  });
+});
 
 describe("a property this project switched off", () => {
   const OFF = `{ "*": { shorthand: false }, margin: { shorthand: true } }`;

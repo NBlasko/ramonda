@@ -464,6 +464,64 @@ describe("codegen", () => {
     expect(output).toContain("--a-b-c");
     expect(existsSync(join(root, join("css-system", "variables.css")))).toBe(false);
   });
+
+  /**
+   * SAID, not thrown — and the assertion above could not tell the difference.
+   *
+   * The note above `said` in `cli.ts` claims this: *all six ways `ramonda.css.ts` can be wrong
+   * reached a person as a Node crash — `throw new Error(…)`, a caret, and a stack — while the
+   * sentence inside each was careful and right.* It was made true for `ConfigError` and left false
+   * for the two `refuse` helpers in `codegen.ts` and `declared.ts`, which still threw a raw one:
+   *
+   *     file:///…/dist/chunk-U7N5QK5K.js:1620
+   *       throw new Error(`[ramonda-css] ${message}`);
+   *             ^
+   *     Error: [ramonda-css] `a}b` cannot be part of a variable's name.
+   *         at refuse (…)  at verifyNames (…)  at writeGenerated (…)
+   *
+   * A crash exits 1 and prints its message too, so every assertion on status and wording passed
+   * over it. The frames are the thing that separates the two, and the file's own name is what a
+   * person needs: measured, the Vite build reported this fault and named no config at all.
+   */
+  /**
+   * The other half of the same sentence: a refusal `kind()` raises while the config RUNS.
+   *
+   * It carries the tag and no file, because nothing that deep knows the path, so `load` adds one —
+   * and it used to add both a second tag and a claim that is untrue:
+   *
+   *     [ramonda-css] …/ramonda.css.ts could not be read: [ramonda-css] `b` has an empty `range`…
+   *
+   * The file read perfectly well. A value in it is wrong, which is a different thing to be told.
+   */
+  test("a declaration `kind` refuses is said once, with the file and the reason", () => {
+    const root = bare(
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { a: kind("length", { b: { value: "8px", range: [] } }) } };\n`,
+    );
+    const { output, status } = runIn(root);
+
+    expect(status).toBe(1);
+    expect(output).toContain("empty `range`");
+    expect(output).toContain("ramonda.css.ts");
+    expect(output).not.toContain("could not be read");
+    // The tag once, from the CLI that prints it — not again from inside the sentence.
+    expect(output.match(/\[ramonda-css\]/g)).toHaveLength(1);
+  });
+
+  test.each([
+    ["a name the stylesheet cannot hold", `{ "a}b": kind("color", { c: "red" }) }`],
+    ["a value that would close the rule", `{ a: kind("color", { c: "red; }" }) }`],
+    [
+      "two variables spelling one custom property",
+      `{ "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) }`,
+    ],
+  ])("%s is SAID, with no stack and with the config named", (_what, variables) => {
+    const root = bare(`import { kind } from "@ramonda/css/config";\nexport default { variables: ${variables} };\n`);
+    const { output, status } = runIn(root);
+
+    expect(status).toBe(1);
+    expect(output).not.toMatch(/\bat \w+ \(|node:internal|\.js:\d+:\d+/);
+    expect(output).toContain("ramonda.css.ts");
+  });
 });
 
 /**

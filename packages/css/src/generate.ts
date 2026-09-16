@@ -187,12 +187,12 @@ export function writeGenerated(
    * `verifyNames` for why the walk and the verdict are separate to begin with.
    */
   const named = namesIn(declarations);
-  verifyNames(named);
+  verifyNames(named, path);
   if (named.length === 0 && rules === undefined) {
     return { config: path, declared: 0, files: [] };
   }
 
-  const { css, module } = generate(declarations, rules);
+  const { css, module } = generate(declarations, rules, path);
   const folder = config.outDir ?? OUT_DIR;
   agreeOnTheFolder(path, folder);
   const out = join(dirname(path), folder);

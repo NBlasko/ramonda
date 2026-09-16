@@ -527,6 +527,9 @@ export function configReader(
   };
 }
 
+/** The tag this package puts on a refusal it raises from inside a config that is RUNNING. */
+const OURS = "[ramonda-css]";
+
 /** One frozen object for every file with no config above it, so nobody can write into a shared answer. */
 const EMPTY: Config = Object.freeze({});
 
@@ -602,7 +605,19 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
     // A `ConfigError` raised in there is already the sentence this would write, with the place in
     // it — wrapping it again reads as two faults: `could not be read: … does not parse: …`.
     if (error instanceof ConfigError) throw error;
-    throw new ConfigError(`${path} could not be read: ${error instanceof Error ? error.message : String(error)}`);
+
+    const said = error instanceof Error ? error.message : String(error);
+    /**
+     * A refusal THIS package raised while the config ran — `kind()` checking a declaration — wants
+     * the file and nothing else. It carries the tag already, and wrapping it whole produced both
+     * the tag twice and a sentence that is untrue:
+     *
+     *     [ramonda-css] …/ramonda.css.ts could not be read: [ramonda-css] `b` has an empty `range`…
+     *
+     * It read perfectly well. A value in it is wrong, which is a different thing to be told.
+     */
+    const mine = said.startsWith(`${OURS} `);
+    throw new ConfigError(mine ? `${path} ${said.slice(OURS.length + 1)}` : `${path} could not be read: ${said}`);
   }
 
   if (exported === undefined) {
