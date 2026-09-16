@@ -304,6 +304,29 @@ describe("a variable of the wrong kind", () => {
     expect(output).toMatch(/CssColor|"color"/);
   });
 
+  /**
+   * TWO faults on ONE line, and the second one is the compiler's alone.
+   *
+   * The drops above are keyed on the LINE, which was right while a line held one declaration. It
+   * does not, and measured, `padding-left: $.size.control.mdd; color: $.size.control.md;` reported
+   * ONE problem: the typo. The kind mismatch beside it vanished — and nothing else catches it,
+   * because a kind is a TYPE, not a rule the build runs, so the fault left the tool entirely.
+   *
+   * A declaration is the fault's extent, not the line. Both of ours sit inside one — ours on the
+   * value, the compiler's on the property — and a second declaration on the same line is a second
+   * fault that has to survive.
+   */
+  test.each([
+    ["a mistyped path beside it", `padding-left: $.size.control.mdd; background-color: $.size.control.md;`],
+    ["a quoted value beside it", `z-index: "1"; background-color: $.size.control.md;`],
+    ["a property typo beside it", `dsiplay: flex; background-color: $.size.control.md;`],
+  ])("%s is one fault, and the kind mismatch sharing its line is another", (_what, block) => {
+    const output = checkedWith(`export const d = <div css={@@( ${block} )}>x</div>;\n`);
+
+    expect(output).toMatch(/2 problem\(s\)/);
+    expect(output).toMatch(/CssColor|"color"/);
+  });
+
   test("and the matching kinds still go in, which is the half that must not regress", () => {
     const output = checkedWith(
       `export const c = <div css={@@( padding-left: $.size.control.md; background-color: $.color.primary.main; )}>x</div>;\n`,

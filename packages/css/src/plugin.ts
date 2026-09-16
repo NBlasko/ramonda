@@ -1315,30 +1315,38 @@ function withoutRepeats(
    * other — which is precisely how this drifted.
    */
   /**
-   * By LINE, counted from the TEXT — which is how `check.ts` does it, and the reason for both halves.
+   * By DECLARATION, read off the TEXT — which is how `check.ts` does it, and the reason for both halves.
    *
-   * By line, because the two land at different offsets by construction: `unknown-property` points
+   * Not by offset, because the two land at different ones by construction: `unknown-property` points
    * at the property name and the compiler's `TS2561` does too, which is why matching on `start`
    * worked for it alone — but `value-not-allowed` points at the VALUE while `TS2322` points
-   * elsewhere in the declaration. Measured, matched on `start`, every one still came back twice. A
-   * declaration does not span lines, so the line is the fault's own extent here.
+   * elsewhere in the declaration. Measured, matched on `start`, every one still came back twice.
+   *
+   * It was the LINE next, and a line is too much: an author puts as much on one as they like, and
+   * measured, a one-line component swallowed `const n: number = "no"` because the block beside it
+   * had a property typo. The declaration is the fault's own extent — the text back to the last `;`
+   * or line break. A brace is NOT a boundary: a hole is written in braces, and counting them would
+   * split one fault's two messages apart again.
    *
    * From the text rather than from `diagnostic.file`, because ours carry whatever source file the
-   * cache held and a harness need not provide one — measured, `undefined` there made every line
+   * cache held and a harness need not provide one — measured, `undefined` there made every key
    * `-1` and the set matched nothing.
    */
-  const lineOf = (diagnostic: ts.Diagnostic) => {
+  const declarationOf = (diagnostic: ts.Diagnostic) => {
     const at = diagnostic.start;
     if (at === undefined) return -1;
-    let line = 0;
-    for (let index = 0; index < at && index < text.length; index++) if (text.charCodeAt(index) === 10) line++;
-    return line;
+    let start = 0;
+    for (let index = 0; index < at && index < text.length; index++) {
+      const code = text.charCodeAt(index);
+      if (code === 59 || code === 10) start = index + 1;
+    }
+    return start;
   };
 
   const said = new Set(
     ours
       .filter((diagnostic) => SPEAKS_OVER_TYPES.some((rule) => String(diagnostic.messageText).startsWith(`[${rule}]`)))
-      .map(lineOf),
+      .map(declarationOf),
   );
 
   /**
@@ -1352,7 +1360,9 @@ function withoutRepeats(
    * Found by this package's own test: `check.ts` got the drop and this did not, which is the
    * arrangement it keeps finding a fault in — one rule, two consumers, one of them left behind.
    */
-  return theirs.filter((diagnostic) => !(REPLACED_CODES.includes(diagnostic.code) && said.has(lineOf(diagnostic))));
+  return theirs.filter(
+    (diagnostic) => !(REPLACED_CODES.includes(diagnostic.code) && said.has(declarationOf(diagnostic))),
+  );
 }
 
 /** Quick info at a position, or nothing when there is no position to ask about. */

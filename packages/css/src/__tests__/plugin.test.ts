@@ -243,6 +243,25 @@ describe("the red squiggles", () => {
   });
 
   /**
+   * An ordinary type error SHARING the line with a block whose fault a rule of ours speaks for.
+   *
+   * The drop was keyed on the LINE, and a line holds as much as an author puts on it — measured, a
+   * one-line component swallowed `const n: number = "no"` because the block beside it had a
+   * property typo. The unit is the declaration, not the line, exactly as in `check.ts`.
+   */
+  test("a type error sharing the line with a block's own fault still arrives", () => {
+    const marked = `const n: number = "no"; const a = <div css={@@( dsiplay: flex; )}>x</div>;\nexport default [n, a];\n`;
+    const { service, source } = editor(marked);
+
+    const found = service.getSemanticDiagnostics(FILE);
+    expect(found.map((one) => one.start)).toContain(source.indexOf("n: number"));
+    expect(found.map((one) => ts.flattenDiagnosticMessageText(one.messageText, " "))).toContainEqual(
+      expect.stringContaining("[unknown-property]"),
+    );
+    expect(found).toHaveLength(2);
+  });
+
+  /**
    * A project-wide setup fault — the block shape not resolving — is deliberately NOT surfaced here.
    * An editor would show it on every file the author opens; `ramonda-css` says it once.
    *

@@ -224,7 +224,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   return {
     files: parsed.fileNames.length,
     styled: overlays.size,
-    findings: [...setup.values(), ...inOrder(css, findings)],
+    findings: [...setup.values(), ...inOrder(css, findings, sources)],
     refused: false,
     exempted,
   };
@@ -253,8 +253,9 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
  * comment is the one that doubled — so this is a widening of the same rule rather than a case for
  * `//`, because the next rule to land on a key would have doubled too.
  */
-function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] {
+function inOrder(css: readonly Finding[], types: readonly Finding[], sources: ReadonlyMap<string, string>): Finding[] {
   const said = new Set(css.map((finding) => at(finding)));
+  const where = declarations(sources);
 
   /**
    * A line where a HOLE's own value was refused, so the property's complaint about it is dropped.
@@ -275,9 +276,7 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
    * out is reported as its own type, never as `CssValue`.
    */
   const holeRefused = new Set(
-    types
-      .filter((finding) => finding.code === 2345 && finding.message.includes("CssValue"))
-      .map((finding) => `${finding.file}:${finding.line}`),
+    types.filter((finding) => finding.code === 2345 && finding.message.includes("CssValue")).map(where),
   );
 
   /**
@@ -304,9 +303,7 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
    * only thing that speaks in the BUILD — vite and esbuild run these rules over a block and never
    * run TypeScript over it, so a `var()` into a name nothing sets would compile clean.
    */
-  const pathRefused = new Set(
-    css.filter((finding) => finding.code === "unknown-variable").map((finding) => `${finding.file}:${finding.line}`),
-  );
+  const pathRefused = new Set(css.filter((finding) => finding.code === "unknown-variable").map(where));
 
   /**
    * A LINE where a literal was refused by `variablesOnly`, so the compiler's word about it goes.
@@ -321,18 +318,16 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
    * compiler's on the property.
    */
   const literalRefused = new Set(
-    css
-      .filter((finding) => (SPEAKS_OVER_TYPES as readonly string[]).includes(String(finding.code)))
-      .map((finding) => `${finding.file}:${finding.line}`),
+    css.filter((finding) => (SPEAKS_OVER_TYPES as readonly string[]).includes(String(finding.code))).map(where),
   );
 
   const kept = types.filter((finding) => {
     if (finding.code === 2353 && said.has(at(finding))) return false;
     if (finding.code === 2322 && finding.message.startsWith("Type 'CssValue' is not assignable")) {
-      return !holeRefused.has(`${finding.file}:${finding.line}`);
+      return !holeRefused.has(where(finding));
     }
     if (finding.code === 2551 || finding.code === 2339 || finding.code === 2322) {
-      if (pathRefused.has(`${finding.file}:${finding.line}`)) return false;
+      if (pathRefused.has(where(finding))) return false;
     }
     /**
      * `TS2353` too, because a shorthand switched off is REMOVED from the map rather than narrowed —
@@ -346,7 +341,7 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
     if (
       typeof finding.code === "number" &&
       REPLACED_CODES.includes(finding.code) &&
-      literalRefused.has(`${finding.file}:${finding.line}`)
+      literalRefused.has(where(finding))
     ) {
       return false;
     }
@@ -357,6 +352,53 @@ function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] 
 }
 
 const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.column}`;
+
+/**
+ * Where a finding sits, as the DECLARATION that holds it rather than as the line.
+ *
+ * The three sets above drop the compiler's word where a rule of ours already spoke for the same
+ * fault, and they cannot use the position: the two land at different columns by construction — ours
+ * on the value or on the whole `$` path, the compiler's on the property or on the segment that
+ * failed. The line was the next thing up, and it was too much. A line holds as many declarations as
+ * an author cares to write, and measured, `padding-left: $.size.control.mdd; color: $.size.control.md;`
+ * reported ONE problem: the typo suppressed the KIND mismatch beside it, which nothing else catches
+ * — a kind is a type, not a rule the build runs, so that fault left the tool altogether.
+ *
+ * A declaration is the extent a fault really has. Both messages about one fault fall inside one;
+ * the next declaration on the same line is a different fault and keeps its own.
+ *
+ * **A declaration that SPANS lines is not joined up here**, so a property on one line and its value
+ * on the next get both messages. That is what the line key did too — it is left as it was rather
+ * than widened blind, because the shapes this exists for (`$` paths, quoted values, property names)
+ * cannot span lines.
+ */
+function declarations(sources: ReadonlyMap<string, string>): (finding: Finding) => string {
+  const lines = new Map<string, readonly string[]>();
+
+  return (finding) => {
+    let split = lines.get(finding.file);
+    if (split === undefined) {
+      split = sources.get(finding.file)?.split("\n") ?? [];
+      lines.set(finding.file, split);
+    }
+
+    const line = split[finding.line - 1] ?? "";
+    let start = 0;
+    /**
+     * The last `;` BEFORE the finding opens the declaration it is in.
+     *
+     * A brace is NOT a separator here, though a nested rule uses one: a HOLE is written in braces
+     * too, and measured, counting them split one fault's two messages into two declarations — the
+     * `TS2345` inside `color: {this.maybe}` landed after the brace and the property's `TS2322`
+     * before it, so the pair this filter exists to collapse came back. A `;` ends every declaration
+     * a nested rule holds, so the brace earns nothing the semicolon does not already give.
+     */
+    for (let index = 0; index < finding.column - 1 && index < line.length; index++) {
+      if (line[index] === ";") start = index + 1;
+    }
+    return `${finding.file}:${finding.line}:${start}`;
+  };
+}
 
 /**
  * One diagnostic, in the author's own coordinates — or nothing, when it belongs to the file this
