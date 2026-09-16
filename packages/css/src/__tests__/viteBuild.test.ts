@@ -55,7 +55,15 @@ function project(card: string, entry: string, assets: Record<string, string> = {
   for (const [name, contents] of Object.entries(assets)) writeFileSync(join(root, "src", name), contents);
 
   // Vite has to resolve its own runtime imports from somewhere. This package's own tree has it.
-  symlinkSync(join(PACKAGE, "node_modules"), join(root, "node_modules"));
+  /**
+   * The REPOSITORY's `node_modules`, not the package's — a package does not contain itself, and a
+   * project whose `ramonda.css.ts` imports `@ramonda/css/config` has to resolve it. It resolved
+   * through `NODE_PATH` before, which pnpm points at its hoisted `.pnpm/node_modules`: an artefact
+   * of one machine's install history, absent from a clean checkout.
+   *
+   * Vite's own runtime imports resolve from here too, which is what this line was added for.
+   */
+  symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
   writeFileSync(
     join(root, "package.json"),
     JSON.stringify({ name: "probe", private: true, type: "module", version: "0.0.0" }),

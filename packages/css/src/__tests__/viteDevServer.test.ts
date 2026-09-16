@@ -1,6 +1,19 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** The repository, whose `node_modules` a temp project resolves the package through. */
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 import { createServer, type ViteDevServer } from "vite";
 import { afterEach, expect, test } from "vitest";
 import { ramondaCss } from "../vite";
@@ -37,6 +50,14 @@ async function serve(source: string, config?: string, alongside?: string) {
    */
   const root = realpathSync(mkdtempSync(join(tmpdir(), "ramonda-css-hmr-")));
   roots.push(root);
+  /**
+   * A config's `import { kind } from "@ramonda/css/config"` is RUN, so it has to resolve.
+   *
+   * It used to resolve through `NODE_PATH`, which pnpm points at its hoisted `.pnpm/node_modules` —
+   * an artefact of one machine's install history that a clean checkout does not have. The
+   * REPOSITORY's, not the package's: a package does not contain itself.
+   */
+  symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
   mkdirSync(join(root, "src"), { recursive: true });
   const runtime = join(root, "runtime.js");
   writeFileSync(runtime, "export const block = (...a) => a;\nexport const merge = (...a) => a;\n");

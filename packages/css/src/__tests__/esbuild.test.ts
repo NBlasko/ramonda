@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 import { afterAll, describe, expect, test } from "vitest";
 import { ramondaCss } from "../esbuild";
@@ -16,12 +17,22 @@ import { ramondaCss } from "../esbuild";
  * itself would assert what this package believes and nothing about what esbuild does.
  */
 
+/** The repository, whose `node_modules` a temp project resolves the package through. */
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+
 const roots: string[] = [];
 
 /** A throwaway project, so a build has real files to resolve. */
 function project(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "ramonda-css-esbuild-"));
   roots.push(root);
+  /**
+   * A `ramonda.css.ts` here is RUN, and its `import { kind } from "@ramonda/css/config"` has to
+   * resolve. It used to, through `NODE_PATH` — which pnpm points at its hoisted
+   * `.pnpm/node_modules`, an artefact of one machine's install history that a clean checkout does
+   * not have. The REPOSITORY's, because a package does not contain itself.
+   */
+  symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
   for (const [name, contents] of Object.entries(files)) writeFileSync(join(root, name), contents);
   return root;
 }

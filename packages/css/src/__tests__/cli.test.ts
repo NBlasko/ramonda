@@ -365,6 +365,7 @@ describe("codegen", () => {
   function bare(config: string | undefined): string {
     const root = mkdtempSync(join(tmpdir(), "ramonda-css-codegen-"));
     projects.push(root);
+    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
     if (config !== undefined) writeFileSync(join(root, "ramonda.css.ts"), config);
     return root;
   }

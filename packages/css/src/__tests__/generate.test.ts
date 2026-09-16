@@ -1,6 +1,16 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { writeGenerated } from "../generate";
@@ -16,8 +26,21 @@ import { writeGenerated } from "../generate";
 
 let project: string;
 
+/**
+ * `node_modules`, because a config's own `import { kind } from "@ramonda/css/config"` is RUN.
+ *
+ * Without it the specifier resolved through `NODE_PATH`, which pnpm points at its hoisted
+ * `.pnpm/node_modules` — so the tests were passing on an artefact of one machine's install history.
+ * A clean checkout does not have `@ramonda/css` hoisted there, and the branch's first CI run failed
+ * 27 tests with `Cannot find module '@ramonda/css/config'`.
+ *
+ * The REPOSITORY's, not the package's: a package does not contain itself.
+ */
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+
 beforeEach(() => {
   project = mkdtempSync(join(tmpdir(), "ramonda-codegen-"));
+  symlinkSync(join(REPO, "node_modules"), join(project, "node_modules"));
 });
 
 afterEach(() => {
