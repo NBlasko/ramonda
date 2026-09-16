@@ -28,7 +28,7 @@ afterEach(async () => {
 const named = (code: string) => [...code.matchAll(/"(r-[\w-]+)"/g)].map((each) => each[1]);
 const defined = (code: string) => [...code.matchAll(/\.(r-[\w-]+)/g)].map((each) => each[1]);
 
-async function serve(source: string, config?: string) {
+async function serve(source: string, config?: string, alongside?: string) {
   /**
    * `realpathSync`, and it had to be measured: on macOS a temporary directory is `/var/…`, which is
    * a symlink to `/private/var/…`. Vite resolves the id through the real path and then checks it
@@ -44,6 +44,8 @@ async function serve(source: string, config?: string) {
   writeFileSync(file, source);
   const configPath = join(root, "ramonda.css.ts");
   if (config !== undefined) writeFileSync(configPath, config);
+  const second = join(root, "src", "second.ts");
+  if (alongside !== undefined) writeFileSync(second, alongside);
 
   const server = await createServer({
     root,
@@ -134,7 +136,7 @@ async function serve(source: string, config?: string) {
     return /--space-gutter:\s*([^;]+)/.exec(readFileSync(sheet, "utf8"))?.[1] ?? "(not in it)";
   };
 
-  return { save, saveConfig, variable, firstLoad, fetchBoth, server };
+  return { save, saveConfig, variable, firstLoad, fetchBoth, server, second };
 }
 
 const withDisplay = (display: string) =>
@@ -228,6 +230,99 @@ test("and a config that is saved with a fault in it does not take the server dow
 
   // Half-typed, which is what a config looks like for most of the time it is being edited.
   await expect(saveConfig(`export default { units: {{{ };\n`)).resolves.toBeUndefined();
+});
+
+/**
+ * TWO files, which every test above is not — each of them saves one file and asks about it.
+ *
+ * A shared atom is where review passes 10 and 11 both found a fault: two files naming
+ * `display: flex` mean ONE rule, and what happens to it when one of them stops naming it is not a
+ * question a single-file test can ask. It is right, and these are here so it stays right.
+ */
+test("a file keeps a rule another file has stopped naming", async () => {
+  const { server, save, second } = await serve(
+    `const a = @@( display: flex; color: red; );\nexport default a;\n`,
+    undefined,
+    `const b = @@( display: flex; color: blue; );\nexport default b;\n`,
+  );
+
+  /**
+   * The JS FIRST, then its stylesheet — and that order is not a convenience.
+   *
+   * The transform appends `import "<absolute path>?ramonda-css.css"`, so a client learns the
+   * stylesheet's URL only by reading the JavaScript. Asking for the URL before the JS has ever been
+   * transformed hits `load` with an id Vite has not resolved to a path, and the sheet has nothing
+   * under that key — which measured as an empty stylesheet and looked exactly like a bug. It is a
+   * request a browser cannot make.
+   */
+  const ask = async (name: string) => {
+    await server.transformRequest(`/src/${name}`);
+    return defined((await server.transformRequest(`/src/${name}?ramonda-css.css`))?.code ?? "");
+  };
+
+  expect(await ask("main.ts")).toEqual(["r-disp-flex", "r-c-red"]);
+  expect(await ask("second.ts")).toEqual(["r-disp-flex", "r-c-blue"]);
+
+  // The first file stops using the shared atom. The second still needs it.
+  await save(`const a = @@( display: grid; color: red; );\nexport default a;\n`);
+  expect(await ask("main.ts")).toEqual(["r-disp-grid", "r-c-red"]);
+  expect(await ask("second.ts")).toEqual(["r-disp-flex", "r-c-blue"]);
+
+  // And it survives the first file losing its block altogether.
+  await save(`export default 1;\n`);
+  expect(await ask("main.ts")).toEqual([]);
+  expect(await ask("second.ts")).toEqual(["r-disp-flex", "r-c-blue"]);
+  void second;
+});
+
+/**
+ * A long editing session, which is the shape a stale rule hides in.
+ *
+ * Every save makes a new atom and abandons the last one, and a page still carrying `padding: 0px`
+ * from forty saves ago is the kind of wrong nobody suspects the tool for.
+ *
+ * **What this asserts is what a file SERVES**, which is `byFile` being replaced on each save rather
+ * than added to — measured by breaking that line, which fails this and the test above. It does NOT
+ * assert that the sheet's own `rules` map is bounded: breaking the withdraw loop leaves dead entries
+ * there and every file still serves the right CSS. That is a memory question and it needs the sheet
+ * asked directly, which `sheet.test.ts` is the place for.
+ */
+test("fifty saves leave a file serving its own two rules and no more", async () => {
+  const { server, save, fetchBoth, firstLoad } = await serve(
+    `const a = @@( padding: 0px; color: red; );\nexport default a;\nif (import.meta.hot) import.meta.hot.accept();\n`,
+  );
+  await firstLoad();
+
+  for (let n = 1; n <= 50; n++) {
+    await save(
+      `const a = @@( padding: ${n}px; color: red; );\nexport default a;\nif (import.meta.hot) import.meta.hot.accept();\n`,
+    );
+    await server.transformRequest("/src/main.ts");
+  }
+
+  const { css } = await fetchBoth();
+  expect(css).toEqual(["r-p-50px", "r-c-red"]);
+});
+
+test("a file that gains its first block is picked up", async () => {
+  const { save, firstLoad, server } = await serve(`export default 1;\n`);
+
+  /**
+   * The JavaScript ONLY, because a file with no block has no stylesheet to ask for.
+   *
+   * `firstLoad` asks for both, and asking for a stylesheet nothing imports is a request a browser
+   * cannot make — the URL is only ever learnt from the `import` the transform appends. Measured, it
+   * creates the module empty and Vite caches that, so the save afterwards looked like it had been
+   * missed. The fault was in the asking.
+   */
+  expect(named((await server.transformRequest("/src/main.ts"))?.code ?? "")).toEqual([]);
+
+  await save(`const a = @@( color: green; );\nexport default a;\nif (import.meta.hot) import.meta.hot.accept();\n`);
+  // `firstLoad`'s order, because that is what a client does here: it has never seen this file's
+  // stylesheet and can only learn the URL from the JavaScript it is about to fetch.
+  const both = await firstLoad();
+  expect(both.js).toEqual(["r-c-green"]);
+  expect(both.css).toEqual(["r-c-green"]);
 });
 
 test("a change to a file that is not source is left alone", async () => {
