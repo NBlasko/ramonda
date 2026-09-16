@@ -2955,3 +2955,64 @@ the control rather than trusting the measurement.
 It asserts what a file SERVES. Breaking the sheet's withdraw loop instead leaves dead entries in its
 `rules` map while every file still serves the right CSS — so it does not bound memory. Written into
 the test rather than left for its name to imply.
+
+### 11. Review pass 13 — the esbuild adapter
+
+Every earlier pass measured Vite. This package ships two bundler adapters and they are one rule with
+two consumers, which is the arrangement this repository keeps finding a fault in — so the pass was
+one question asked twice: *does esbuild do what Vite does, given the same input?*
+
+#### The finding: it did not know which build it was running
+
+A config may be written `env.production ? ["px"] : ["px", "rem"]`, and that dependence is the whole
+reason it is TypeScript rather than JSON. Vite is handed its mode and passes it on. The esbuild
+adapter read `NODE_ENV` alone and said why — *esbuild is not told which build this is*. It is told,
+twice:
+
+```
+config   units: env.production ? ["px"] : ["px", "rem"]
+block    padding-left: 2rem
+
+vite,    --mode production, NODE_ENV unset    refused
+esbuild, minify: true,      NODE_ENV unset    BUILT — `2rem` went in
+```
+
+`environmentOf` in `config.ts` records this exact failure and calls it fixed — *it silently took the
+development branch of every such config, in production builds included*. Fixed for Vite; this
+consumer was left behind.
+
+`define: { "process.env.NODE_ENV": … }` decides it first, because that is a STATEMENT — esbuild
+rewrites it into the bundle, so a project setting it has said which build this is out loud, and
+somebody minifying a development build has to be able to say so or the escape hatch is not one.
+`minify` next, an inference but a strong one. `NODE_ENV` last.
+
+**The asymmetry settles the order of the last two.** Reading a build as production when it is not
+gives stricter rules than the author wanted, which arrives as a refusal they can see and argue with.
+Reading it as development when it is not ships the loose half, silently, to real users.
+
+#### What the two adapters agree about, measured
+
+The same source built both ways: **every class identical**, across a plain block, a nested rule, a
+`@media`, a shorthand pair, a hole, a `$` variable, a `@@keyframes` and a vendor-prefixed pair. The
+stylesheets hold the same twelve rules in the same twelve layers and differ only in minification.
+
+All ten broken configs from review pass 9's matrix are refused here too, each naming the config
+file, none crashing. Those fixes live in `config.ts`, so they reached this consumer for free — which
+is the argument for where they were put, and the reason the adapters agree about everything except
+the one thing each was asked separately.
+
+#### One flake, unreproduced, written down rather than guessed at
+
+`pnpm check` went red once during this pass, in `grammar.test.ts`, with a crash inside shiki's own
+tokenizer — `TypeError: Cannot read properties of undefined (reading 'startIndex')` in
+`_tokenizeWithTheme`. Nothing to do with the change under review.
+
+It did not reproduce: the file alone three times, the failing test alone five times, the whole
+package's suite, and `pnpm check` a second time — all green. The two highlighters are built once in
+`beforeAll` and shared by all sixty-nine tests, which is the shape a load-dependent fault takes, and
+it is the same shape the dev-server harness already records for chokidar.
+
+**Not fixed, because it was not understood.** A repair aimed at a cause nobody has measured is the
+mistake that harness note records making once already: *the first repair was a longer wait, which is
+what one reaches for when the cause is a guess. It made the window smaller and left the race.* If it
+returns, the thing to measure first is whether shiki's registry is safe to share across tests at all.
