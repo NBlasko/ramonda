@@ -218,6 +218,42 @@ describe("the project's config", () => {
    * Nothing types this file — the documented example is a bare object literal — so a wrong value is
    * not exotic. `units: "px"` is the obvious thing to write when the list has one entry.
    */
+  /**
+   * A config that does not PARSE, which loaded as an empty one and said nothing.
+   *
+   * TypeScript's error recovery is the trap. `transpileModule` does not report a syntax error
+   * unless it is asked to, and it emits whatever it managed to build — measured,
+   *
+   *     export default { variables: {{{ };     →     exports.default = { variables: {} };
+   *
+   * so the config LOADED, valid and empty. Nothing threw, nothing was undefined, and every consumer
+   * that does not type-check `ramonda.css.ts` ran with no settings at all. Measured through a real
+   * Vite build, which exited 0 and emitted `.r-pl-2rem` and `.r-c-\#ff0000` — the unit and the
+   * hardcoded colour that very config forbids.
+   *
+   * `readConfig`'s own note names this exact failure and refuses it: *a tool that quietly ran with
+   * defaults because somebody's config had a typo would be the worst of both — the settings are not
+   * applied, and nothing says so.*
+   */
+  describe("a config that does not parse", () => {
+    const refused = (body: string) => {
+      const dir = project({ "ramonda.css.ts": body });
+      return () => readConfig(findConfig(dir), ts);
+    };
+
+    test.each([
+      ["a brace that never opens an object", `export default { variables: {{{ };\n`],
+      ["a string that is never closed", `export default { outDir: "css-system };\n`],
+      ["a bracket left open", `export default { properties: { "z-index": { values: [1, 2 } };\n`],
+    ])("%s is refused, not loaded as an empty config", (_what, body) => {
+      expect(refused(body)).toThrow(/does not parse|TS\d/);
+    });
+
+    test("and the message says WHERE, because a parse error is a place", () => {
+      expect(refused(`export default {\n  variables: {{{ };\n`)).toThrow(/ramonda\.css\.ts/);
+    });
+  });
+
   describe("a key whose value is the wrong shape", () => {
     const refused = (body: string) => {
       const dir = project({ "ramonda.css.ts": `export default ${body};\n` });

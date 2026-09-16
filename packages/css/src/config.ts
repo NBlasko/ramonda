@@ -429,6 +429,31 @@ export function readConfig(
   return load(path, textOf(path), typescript, environment);
 }
 
+/**
+ * A config the parser could not read, said with the place and with what the silence would have cost.
+ *
+ * Its own function because the sentence is the whole point: a parse error is the one fault where
+ * doing nothing looks exactly like success, so the message has to say that the settings would have
+ * been dropped rather than only that a brace is missing.
+ */
+function doesNotParse(path: string, source: string, first: ts.Diagnostic, typescript: typeof ts): string {
+  const file = typescript.createSourceFile(path, source, typescript.ScriptTarget.ES2022, true);
+  const at =
+    first.start === undefined
+      ? ""
+      : (({ line, character }) => `:${line + 1}:${character + 1}`)(
+          typescript.getLineAndCharacterOfPosition(file, first.start),
+        );
+
+  return (
+    `${path}${at} does not parse: TS${first.code}: ` +
+    `${typescript.flattenDiagnosticMessageText(first.messageText, " ")}\n\n` +
+    "        TypeScript recovers from this and hands back whatever it could build — which is an\n" +
+    "        EMPTY config that loads cleanly. Every setting in this file would be dropped in\n" +
+    "        silence, and the build would ship without them."
+  );
+}
+
 /** A config that cannot be READ says so with its own name in the message, the same as one that throws. */
 function textOf(path: string): string {
   try {
@@ -512,7 +537,7 @@ const EMPTY: Config = Object.freeze({});
 function load(path: string, source: string, typescript: typeof ts, environment: ConfigEnvironment): Config {
   let exported: unknown;
   try {
-    const javascript = typescript.transpileModule(source, {
+    const transpiled = typescript.transpileModule(source, {
       compilerOptions: {
         module: typescript.ModuleKind.CommonJS,
         target: typescript.ScriptTarget.ES2022,
@@ -526,7 +551,36 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
         esModuleInterop: true,
       },
       fileName: path,
-    }).outputText;
+      /**
+       * Asked for, because TypeScript's error RECOVERY hides a broken config completely.
+       *
+       * `transpileModule` reports nothing unless this is set, and it emits whatever it managed to
+       * build from the wreckage. Measured:
+       *
+       *     export default { variables: {{{ };     →     exports.default = { variables: {} };
+       *
+       * So the config LOADED — valid, empty, and nobody's. Nothing threw and nothing was undefined,
+       * so every consumer that does not type-check `ramonda.css.ts` ran with no settings at all: a
+       * real Vite build exited 0 and shipped `.r-pl-2rem` and `.r-c-#ff0000`, the unit and the
+       * hardcoded colour that very config forbids. Only `ramonda-css check` caught it, because it
+       * alone type-checks the file.
+       *
+       * The note above {@link readConfig} names this exact failure — *a tool that quietly ran with
+       * defaults because somebody's config had a typo* — so it is refused here, where every
+       * consumer goes through.
+       *
+       * Syntactic diagnostics only, which is the right severity: this says the file does not PARSE,
+       * never that a value has the wrong type. Measured clean on every valid config in this
+       * repository and on four more shapes, including `as const`, a type annotation, and one
+       * reading a file beside itself.
+       */
+      reportDiagnostics: true,
+    });
+
+    const [broken] = transpiled.diagnostics ?? [];
+    if (broken !== undefined) throw new ConfigError(doesNotParse(path, source, broken, typescript));
+
+    const javascript = transpiled.outputText;
 
     const holder: { exports: Record<string, unknown> } = { exports: {} };
     const require = createRequire(path);
@@ -545,6 +599,9 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
     );
     exported = holder.exports.default;
   } catch (error) {
+    // A `ConfigError` raised in there is already the sentence this would write, with the place in
+    // it — wrapping it again reads as two faults: `could not be read: … does not parse: …`.
+    if (error instanceof ConfigError) throw error;
     throw new ConfigError(`${path} could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
 
