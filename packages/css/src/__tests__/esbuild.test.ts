@@ -49,6 +49,75 @@ const spoken = (failure: esbuild.BuildFailure) =>
 const outputs = (result: esbuild.BuildResult) =>
   Object.fromEntries((result.outputFiles ?? []).map((file) => [file.path.split(".").pop(), file.text]));
 
+/**
+ * WHICH BUILD THIS IS, which the config may be a function of.
+ *
+ * The note on `environmentOf` in `config.ts` records this exact failure and says it was fixed: a
+ * config written `env.production ? ["px"] : ["px", "rem"]` *silently took the development branch of
+ * every such config, in production builds included*. It was fixed for Vite, which is told its mode,
+ * and left here — the adapter said *esbuild is not told which build this is*.
+ *
+ * It is told, twice, and both are how esbuild's own users say it. Measured, the same config and the
+ * same block:
+ *
+ *     vite,    --mode production, NODE_ENV unset    refused
+ *     esbuild, minify: true,      NODE_ENV unset    BUILT — `2rem` went in
+ *
+ * A project that builds with esbuild and does not set `NODE_ENV` shipped the loose half of its own
+ * rules, with nothing said anywhere.
+ */
+describe("which build this is", () => {
+  /** A config that is a function of the environment — the reason it is TypeScript rather than JSON. */
+  const CONFIG = `export default (env) => ({ units: { length: env.production ? ["px"] : ["px", "rem"] } });\n`;
+  /** Permitted in development, refused in production. */
+  const APP = `const a = <div css={@@( padding-left: 2rem; )}>x</div>;\nexport default a;\n`;
+
+  const underEsbuild = async (options: Parameters<typeof esbuild.build>[0], env: string | undefined) => {
+    const root = project({ "index.tsx": APP, "ramonda.css.ts": CONFIG });
+    const was = process.env.NODE_ENV;
+    if (env === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = env;
+    try {
+      await build(root, { absWorkingDir: root, ...options });
+      return "built";
+    } catch (failure) {
+      return spoken(failure as esbuild.BuildFailure).includes("unit-not-allowed") ? "refused" : "refused (other)";
+    } finally {
+      if (was === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = was;
+    }
+  };
+
+  test("`minify` is a production build, which is what esbuild's own users mean by it", async () => {
+    expect(await underEsbuild({ minify: true }, undefined)).toBe("refused");
+  });
+
+  test("and so is `define` saying so, which is the unambiguous way to say it", async () => {
+    expect(await underEsbuild({ define: { "process.env.NODE_ENV": '"production"' } }, undefined)).toBe("refused");
+  });
+
+  test("`NODE_ENV` still answers when the build says nothing", async () => {
+    expect(await underEsbuild({}, "production")).toBe("refused");
+    expect(await underEsbuild({}, "development")).toBe("built");
+  });
+
+  test("and a plain build with nothing set is development, which is the control", async () => {
+    expect(await underEsbuild({}, undefined)).toBe("built");
+  });
+
+  /**
+   * `define` OVERRIDES `minify`, because one is a statement and the other is an inference.
+   *
+   * Somebody minifying a development build has said `development` out loud, and this has to believe
+   * them — otherwise the escape hatch is not one.
+   */
+  test("`define` saying development beats `minify`", async () => {
+    expect(await underEsbuild({ minify: true, define: { "process.env.NODE_ENV": '"development"' } }, undefined)).toBe(
+      "built",
+    );
+  });
+});
+
 describe("a build", () => {
   const APP = `const a = <div css={@@(\n  display: flex;\n  gap: 8px;\n)}>x</div>;\nexport default a;\n`;
 
