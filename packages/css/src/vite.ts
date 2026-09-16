@@ -1,9 +1,10 @@
 import { CssBlockError } from "./compiler/errors";
 import { readFileSync } from "node:fs";
+import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { knownNames, type Config, configReader, environmentOf } from "./config";
-import { variablesSheetFor, writeGenerated } from "./generate";
+import { forgetGenerated, variablesSheetFor, writeGenerated } from "./generate";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
@@ -83,6 +84,20 @@ interface ScanBuild {
 export interface HotUpdate {
   readonly file: string;
   read(): string | Promise<string>;
+  /**
+   * The running server, which only the CONFIG path needs — see `reconfigure`.
+   *
+   * Declared optional because both hooks this is the parameter of are handed slightly different
+   * shapes by Vite, and because a test may call the hook with neither. Nothing else here asks for
+   * it: an ordinary save invalidates itself through the module Vite already knows changed.
+   */
+  readonly server?: { moduleGraph?: ModuleGraphLike };
+}
+
+/** What `reconfigure` needs of Vite's module graph, and nothing more. */
+interface ModuleGraphLike {
+  getModuleById(id: string): unknown;
+  invalidateModule(mod: never): void;
 }
 
 /** What Vite is handed. Only the hooks this uses are declared. */
@@ -242,6 +257,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   /** What both hot-update hooks do. See where they are returned for why there are two of them. */
   async function recompile(context: HotUpdate): Promise<void> {
     const file = context.file;
+    if (basename(file) === "ramonda.css.ts") return reconfigure(file, context);
     if (!SOURCE.test(file) || file.includes("node_modules")) return;
 
     const code = await context.read();
@@ -253,6 +269,52 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     } catch {
       // Swallowed on purpose — see the hooks. The memo still holds the last compile that worked,
       // and its source is not this one, so the transform will compile again and report.
+    }
+  }
+
+  /**
+   * The project's config was SAVED, so everything it decided has to be decided again.
+   *
+   * It reached here and returned at the first line: `recompile` takes files that hold a block, and a
+   * config holds none. Measured on a running server, both halves were stale and both were silent:
+   *
+   * - `css-system/variables.css` is written by `buildStart` and never again, so a token changed from
+   *   `16px` to `40px` still served `16px`. It is a plain stylesheet the project imports once —
+   *   nothing else was ever going to regenerate it.
+   * - every already-compiled file kept the rules the OLD config gave it, so a narrowed `units` or a
+   *   property switched off was not enforced until each file happened to be touched.
+   *
+   * The page is simply wrong, with no word anywhere, and a restart is the only cure. The config is
+   * the file this package tells people to edit, so that is the one save that must not be dropped.
+   *
+   * A config that does not READ is swallowed, exactly as a block that does not compile is on the
+   * line below: a half-typed config is what one looks like for most of the time it is being edited,
+   * and the transform reports it properly the moment anything asks for a file.
+   */
+  async function reconfigure(file: string, context: HotUpdate): Promise<void> {
+    try {
+      forgetGenerated();
+      writeGenerated(dirname(file), ts);
+    } catch {
+      // Swallowed on purpose — see above. Nothing is invalidated, because nothing could be read.
+      return;
+    }
+
+    /**
+     * Every compiled file is DROPPED rather than recompiled here.
+     *
+     * Recompiling would mean deciding what to do with one that no longer compiles, in a hook whose
+     * errors are swallowed — which is how a fault becomes invisible. Dropping is the same shape the
+     * memo already has for a source save: the next transform compiles against the new config and
+     * reports at the author's own line, which is where a diagnostic belongs.
+     */
+    for (const each of compiled.keys()) compiled.delete(each);
+
+    const graph = context.server?.moduleGraph;
+    if (graph === undefined) return;
+    for (const each of styled) {
+      const found = graph.getModuleById(each);
+      if (found !== undefined && found !== null) graph.invalidateModule(found as never);
     }
   }
 

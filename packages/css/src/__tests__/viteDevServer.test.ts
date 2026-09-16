@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type ViteDevServer } from "vite";
@@ -28,7 +28,7 @@ afterEach(async () => {
 const named = (code: string) => [...code.matchAll(/"(r-[\w-]+)"/g)].map((each) => each[1]);
 const defined = (code: string) => [...code.matchAll(/\.(r-[\w-]+)/g)].map((each) => each[1]);
 
-async function serve(source: string) {
+async function serve(source: string, config?: string) {
   /**
    * `realpathSync`, and it had to be measured: on macOS a temporary directory is `/var/…`, which is
    * a symlink to `/private/var/…`. Vite resolves the id through the real path and then checks it
@@ -42,6 +42,8 @@ async function serve(source: string) {
   writeFileSync(runtime, "export const block = (...a) => a;\nexport const merge = (...a) => a;\n");
   const file = join(root, "src", "main.ts");
   writeFileSync(file, source);
+  const configPath = join(root, "ramonda.css.ts");
+  if (config !== undefined) writeFileSync(configPath, config);
 
   const server = await createServer({
     root,
@@ -108,7 +110,31 @@ async function serve(source: string) {
     return { css: defined(css?.code ?? ""), js: named(js?.code ?? "") };
   }
 
-  return { save, firstLoad, fetchBoth, server };
+  /**
+   * A save of `ramonda.css.ts`, through the WATCHER — so the server's own plugin instance handles
+   * it, which is the whole point.
+   *
+   * Calling `ramondaCss(…).handleHotUpdate` directly was the first version and it measured nothing:
+   * a fresh plugin has an empty memo, so it regenerated the stylesheet (which is filesystem state)
+   * and invalidated no module (which is instance state). The test passed the half it could not have
+   * failed and failed the half that works.
+   */
+  async function saveConfig(next: string) {
+    writeFileSync(configPath, next);
+    server.watcher.emit("change", configPath);
+    // The config path is not in the module graph, so no payload is sent and there is nothing to
+    // wait for by counting one. The hook is awaited by the server before it returns from the event.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  /** What `css-system/variables.css` currently says one variable is. */
+  const variable = () => {
+    const sheet = join(root, "css-system", "variables.css");
+    if (!existsSync(sheet)) return "(no file)";
+    return /--space-gutter:\s*([^;]+)/.exec(readFileSync(sheet, "utf8"))?.[1] ?? "(not in it)";
+  };
+
+  return { save, saveConfig, variable, firstLoad, fetchBoth, server };
 }
 
 const withDisplay = (display: string) =>
@@ -149,6 +175,59 @@ test("a save that cannot compile is not reported by the watcher, and is reported
 
   // The transform is, at the author's own line.
   await expect(server.transformRequest("/src/main.ts")).rejects.toThrow();
+});
+
+/**
+ * SAVING `ramonda.css.ts` while the server is running.
+ *
+ * The config is the file the playground's own copy calls *here to be CHANGED* — a variable's value,
+ * a unit list, a property switched off. Measured, saving it did NOTHING: `recompile` takes only
+ * files that hold a block, and a config holds none, so it returned at the first line.
+ *
+ * Two halves, and the second is the sharp one:
+ *
+ * - every already-compiled file keeps the rules the OLD config gave it, so a narrowed `units` or a
+ *   newly forbidden property is not enforced until each file is touched by hand;
+ * - `css-system/variables.css` is written by codegen at `buildStart` and never again, so a design
+ *   token changed from `16px` to `40px` still served `16px`. That file is a plain stylesheet the
+ *   project imports once — nothing else was ever going to regenerate it.
+ *
+ * Both are invisible: the page is simply wrong, and a restart is the only thing that fixes it.
+ */
+test("saving the config regenerates the variables stylesheet", async () => {
+  const gutter = (value: string) =>
+    `import { kind } from "@ramonda/css/config";\n` +
+    `export default { variables: { space: kind("length", { gutter: "${value}" }) } };\n`;
+
+  const { saveConfig, firstLoad, variable } = await serve(withDisplay("flex"), gutter("16px"));
+  await firstLoad();
+  expect(variable()).toBe("16px");
+
+  await saveConfig(gutter("40px"));
+  expect(variable()).toBe("40px");
+});
+
+test("and every file already compiled is checked against the new config", async () => {
+  const units = (unit: string) => `export default { units: { length: ["${unit}"] } };\n`;
+  const block = `const a = @@( padding: 2rem; );\nexport default a;\nif (import.meta.hot) import.meta.hot.accept();\n`;
+
+  const { saveConfig, firstLoad, server } = await serve(block, units("rem"));
+  // It compiles under the config it was written for, which is the control.
+  expect((await firstLoad()).js).toEqual(["r-p-2rem"]);
+
+  await saveConfig(units("px"));
+
+  // `2rem` is not permitted any more, and the author is told at their own line rather than on a
+  // page that quietly kept the old rule.
+  await expect(server.transformRequest("/src/main.ts")).rejects.toThrow(/unit-not-allowed/);
+});
+
+test("and a config that is saved with a fault in it does not take the server down", async () => {
+  const { saveConfig, firstLoad } = await serve(withDisplay("flex"), `export default { units: { length: ["px"] } };\n`);
+  await firstLoad();
+
+  // Half-typed, which is what a config looks like for most of the time it is being edited.
+  await expect(saveConfig(`export default { units: {{{ };\n`)).resolves.toBeUndefined();
 });
 
 test("a change to a file that is not source is left alone", async () => {
