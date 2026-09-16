@@ -397,6 +397,7 @@ describe("the project's config", () => {
       ["units holding a number", `{ properties: { "padding-left": { units: [1] } } }`, /units/],
       ["values as a bare string", `{ properties: { "z-index": { values: "1" } } }`, /values/],
       ["values as an object", `{ properties: { "z-index": { values: { a: 1 } } } }`, /values/],
+      ["values holding something that is neither", `{ properties: { "z-index": { values: [1, true] } } }`, /values/],
       ["shorthand as a word", `{ properties: { "padding": { shorthand: "no" } } }`, /shorthand/],
       ["variablesOnly as a word", `{ properties: { "<color>": { variablesOnly: "yes" } } }`, /variablesOnly/],
       ["arity as a string", `{ properties: { "padding": { arity: "2" } } }`, /arity/],

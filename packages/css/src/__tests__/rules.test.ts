@@ -3777,3 +3777,76 @@ describe("what the bundlers see and the checker saw", () => {
     expect(under(css)).toEqual([]);
   });
 });
+
+/**
+ * Every rule a project's CONFIG turns on, measured INSIDE a nested rule.
+ *
+ * Found by coverage, and it was six lines in a row: each of these rules walks a block and recurses
+ * into a nested one, and not one of those recursions had ever run in a test. The rules are the six
+ * review pass 4 added and reworked — the whole config-driven half — so the question the gap asked
+ * was whether a project's settings reach `&:hover { … }` at all, or stop at the top level where
+ * every test happened to put them.
+ *
+ * **They reach it, at any depth**, which is what these assert. A nested rule is where a hover
+ * colour and a focus ring are written, so a `variablesOnly` that stopped at the top level would
+ * have exempted the declarations most likely to hold a hardcoded one.
+ */
+describe("a config rule inside a nested rule", () => {
+  const config: Config = {
+    units: { length: ["px"] },
+    properties: {
+      "<color>": { variablesOnly: true },
+      "<length>": { variablesOnly: true },
+      "z-index": { values: [0, 1] },
+      padding: { shorthand: false },
+      "padding-left": { units: ["px"] },
+    },
+    variables: { color: kind("color", { primary: { main: "#3b82f6" } }) },
+  };
+
+  const under = (css: string) => {
+    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, { config }).map((one) => one.rule);
+  };
+
+  test.each([
+    ["a colour written out", "color: #ff0000;", "literal-not-allowed"],
+    ["a length written out", "padding-top: 8px;", "literal-not-allowed"],
+    ["a value outside the closed list", "z-index: 5;", "value-not-allowed"],
+    ["a shorthand switched off", "padding: 8px;", "shorthand-not-allowed"],
+    ["a unit this property does not take", "padding-left: 2rem;", "unit-not-allowed"],
+    ["a unit the project does not take", "margin-top: 2rem;", "unit-not-allowed"],
+  ])("%s is reported at the top level, one deep and two deep", (_what, css, rule) => {
+    // The top level first, so a config that reached nothing would not pass the two below for free.
+    expect(under(`  ${css}`)).toContain(rule);
+    expect(under(`  &:hover {\n    ${css}\n  }`)).toContain(rule);
+    expect(under(`  &:hover {\n    &:focus {\n      ${css}\n    }\n  }`)).toContain(rule);
+  });
+
+  /**
+   * A custom property nested too, which is the walk `dimensionNotAllowed` has of its own.
+   *
+   * `--own: red; color: var(--own)` walks around `variablesOnly` in one line, and a nested rule is
+   * exactly where somebody would set one.
+   */
+  test("a custom property holding a forbidden value is read inside a nested rule", () => {
+    expect(under(`  &:hover {\n    --own: #ff0000;\n  }`)).toContain("literal-not-allowed");
+  });
+
+  /**
+   * The two silences, which are DELIBERATE and are asserted so they stay that way.
+   *
+   * A bare zero needs no unit in CSS and is nobody's hardcoded value; a non-colour in a colour
+   * property is not what `variablesOnly` is for, and the types refuse it anyway.
+   */
+  test.each([
+    ["a bare zero", "padding-top: 0;"],
+    ["a value that is not of the forbidden kind", "color: 2px;"],
+    ["a variable, which is the point of the setting", "color: $.color.primary.main;"],
+    ["a `var()` call", "color: var(--anything);"],
+  ])("%s stays silent inside a nested rule too", (_what, css) => {
+    expect(under(`  &:hover {\n    ${css}\n  }`)).toEqual([]);
+  });
+});
