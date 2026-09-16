@@ -435,6 +435,32 @@ describe("the VS Code extension", () => {
   }
 
   /**
+   * The DOCS SITE loads every grammar the extension ships, and it loaded two of four.
+   *
+   * Both render the same `@@( … )`, so a reader who learns the colours in their editor and then
+   * reads a page is being shown a different thing. Measured before this test existed, on
+   * `const b = @@keyframes( from { opacity: 0; } )`:
+   *
+   *     editor   `@@` keyword.control.ramonda   `color` support.type.property-name.css
+   *     the site `@@` meta.embedded.expression  `color` variable.parameter.tsx
+   *
+   * `ramonda-css` injects into `meta.tag`, so it covers `css={@@( … )}` and nothing else — a block
+   * written outside a tag is `ramonda-css-value`'s, and a `$` path is `ramonda-css-variable`'s.
+   * Those are the two spellings the pages teach most, and neither was loaded.
+   *
+   * By NAME rather than by count, so adding a fifth grammar to the extension fails here until the
+   * site loads it too.
+   */
+  test("the docs site loads every grammar the extension ships", () => {
+    const site = readFileSync(resolve(EXTENSION, "..", "..", "apps", "docs", "scripts", "highlighter.mjs"), "utf8");
+
+    for (const grammar of contributed) {
+      const file = grammar.path.split("/").pop()?.replace(".tmLanguage.json", "") ?? "";
+      expect({ grammar: file, loaded: site.includes(`grammar("${file}")`) }).toEqual({ grammar: file, loaded: true });
+    }
+  });
+
+  /**
    * The formatter half, and the reason it is in the extension at all: measured, the Biome extension
    * does nothing with a file holding a block — it is excluded from `biome.json` — and with the
    * exclusion lifted biome answers *"Code formatting aborted due to parsing errors"*.

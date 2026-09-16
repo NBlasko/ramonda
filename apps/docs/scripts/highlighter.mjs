@@ -43,5 +43,22 @@ export const highlighter = await createHighlighter({
       name: "ramonda-css-hole",
       injectTo: ["source.tsx", "source.ts", "source.css"],
     },
+    /**
+     * A block written OUTSIDE a tag, and a `$` path — the two the site was missing.
+     *
+     * `ramonda-css` injects into `meta.tag`, so it colours `css={@@( … )}` and nothing else. A
+     * `const panel = @@( … )` is not in a tag and `@@keyframes( … )` never is, so both came out as
+     * TypeScript trying to read a parameter list: `color` as `variable.parameter.tsx`, the `:` as a
+     * type annotation. Those are the two spellings the pages teach most.
+     *
+     * The list is now the extension's own, and `grammar.test.ts` holds it to that — an editor and
+     * this site colouring one block differently is a difference a reader cannot resolve.
+     */
+    { ...grammar("ramonda-css-value"), name: "ramonda-css-value", injectTo: ["source.tsx", "source.ts"] },
+    {
+      ...grammar("ramonda-css-variable"),
+      name: "ramonda-css-variable",
+      injectTo: ["source.tsx", "source.ts", "source.css"],
+    },
   ],
 });
