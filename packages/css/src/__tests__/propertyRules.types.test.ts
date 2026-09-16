@@ -61,4 +61,35 @@ describe("what it accepts", () => {
   test("a wildcard on its own, which is the one-line sweep", () => {
     defineConfig({ properties: { "*": { units: ["px"] } } });
   });
+
+  /**
+   * `values` on a property CSS measures in NUMBERS takes numbers, and nothing else.
+   *
+   * The user's words, reading their own config: *"z-index u values sme da napise samo brojeve, a ne
+   * stringove."* It took `readonly (string | number)[]` for every property, so
+   * `values: ["1", "10"]` type-checked — and every one of those is refused at the use site, because
+   * a quoted value is `string-not-allowed`. A config that passes and then refuses everything it
+   * permits is the worst shape a setting can have.
+   *
+   * The twenty-one properties CSS gives a `<number>` or an `<integer>` are the ones this narrows,
+   * read from the same grammar the rules use. Everything else still takes either, because a time is
+   * `"120ms"` and a colour is `"#10b981"`.
+   */
+  test("`values` on a numeric property refuses a string", () => {
+    // @ts-expect-error — `z-index` is an integer, so `"1"` is not one of its values
+    defineConfig({ properties: { "z-index": { values: [0, "1"] } } });
+
+    // @ts-expect-error — and `flex-grow` is a number
+    defineConfig({ properties: { "flex-grow": { values: ["1"] } } });
+  });
+
+  test("and the same property still takes numbers, which is the control", () => {
+    defineConfig({ properties: { "z-index": { values: [0, 1, 10, 100] } } });
+    defineConfig({ properties: { order: { values: [-1, 0, 1] } } });
+  });
+
+  test("a property CSS does not measure in numbers still takes either", () => {
+    defineConfig({ properties: { "transition-duration": { values: ["120ms", "400ms"] } } });
+    defineConfig({ properties: { "<color>": { values: ["#10b981"] } } });
+  });
 });

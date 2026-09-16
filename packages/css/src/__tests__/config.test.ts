@@ -475,6 +475,16 @@ describe("the project's config", () => {
       ["units as a bare string", `{ properties: { "padding-left": { units: "px" } } }`, /units/],
       ["units holding a number", `{ properties: { "padding-left": { units: [1] } } }`, /units/],
       ["values as a bare string", `{ properties: { "z-index": { values: "1" } } }`, /values/],
+      /**
+       * A QUOTED number where CSS measures the property in numbers.
+       *
+       * The type refuses it — `values` is `readonly number[]` for the twenty-one properties CSS
+       * gives a `<number>` or an `<integer>` — and nothing type-checks a config in the BUILD, so it
+       * went in. Then every use site refused it, because a quoted value is `string-not-allowed`: a
+       * setting that permits what the checker will not take.
+       */
+      ["a quoted number on a numeric property", `{ properties: { "z-index": { values: ["1", "10"] } } }`, /z-index/],
+      ["the same on `flex-grow`", `{ properties: { "flex-grow": { values: [1, "2"] } } }`, /flex-grow/],
       ["values as an object", `{ properties: { "z-index": { values: { a: 1 } } } }`, /values/],
       ["values holding something that is neither", `{ properties: { "z-index": { values: [1, true] } } }`, /values/],
       ["shorthand as a word", `{ properties: { "padding": { shorthand: "no" } } }`, /shorthand/],

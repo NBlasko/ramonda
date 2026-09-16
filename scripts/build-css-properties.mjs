@@ -222,6 +222,20 @@ const arityRows = Object.entries(properties)
   .filter(([, most]) => most !== undefined)
   .map(([name, most]) => `  ${JSON.stringify(name)}: ${most},`);
 
+/**
+ * The properties whose one primitive is a `<number>` or an `<integer>`, for {@link CssNumeric}.
+ *
+ * From `primitiveOf`, which is what `PRIMITIVE` is built from — so the type a config is held to and
+ * the rule that checks a use site cannot disagree about which properties these are.
+ */
+const numericRows = Object.entries(properties)
+  .filter(([name]) => {
+    const primitive = primitiveOf(name);
+    return primitive === "number" || primitive === "integer";
+  })
+  .map(([name]) => JSON.stringify(name))
+  .sort();
+
 /** How many properties this narrowed, for the line the script prints. */
 let narrowed = 0;
 
@@ -1757,6 +1771,15 @@ export type Keyword<K extends string> = K | CssGlobal | \`var(\${string})\` | \`
 export interface CssArity {
 ${arityRows.map((one) => one.replace(/: (\d),$/, (_whole, most) => `: ${Array.from({ length: Number(most) }, (_unused, index) => index + 1).join(" | ")};`)).join("\n")}
 }
+
+/**
+ * The properties CSS measures in a plain number, so a project's closed list of them holds numbers.
+ *
+ * A quoted number on one of these used to type-check and then be refused at every use site, because
+ * a quoted value is not a number — so the config permitted what the checker would not take. Read
+ * from the same grammar the rules read, rather than listed by hand.
+ */
+export type CssNumeric = ${numericRows.length === 0 ? "never" : numericRows.join(" | ")};
 
 /** Every property the engines call a shorthand — the only ones a project may switch off. */
 export type CssShorthand = ${shorthandRows.map((one) => one.slice(2, one.indexOf(":"))).join(" | ")};

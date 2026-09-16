@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type Declarations, namesIn } from "./codegen";
 import { KINDS } from "./declared";
-import { PROPERTIES, UNIT_TYPE } from "./compiler/keywords.generated";
+import { PRIMITIVE, PROPERTIES, UNIT_TYPE } from "./compiler/keywords.generated";
 import type { Kind } from "./token";
-import type { CssArity, CssProperties, CssShorthand } from "./properties.generated";
+import type { CssArity, CssNumeric, CssProperties, CssShorthand } from "./properties.generated";
 import type { CssUnit, CssUnitFamily } from "./units.generated";
 import { RULE_IDS, nearest } from "./compiler/rules";
 import { createRequire } from "node:module";
@@ -217,8 +217,19 @@ export type PropertyRule<P extends PropertyName | "*" | KindSelector = PropertyN
       : unknown) & {
     /** The units a value here may carry. Everything else is refused. */
     readonly units?: readonly CssUnit[];
-    /** The only values this property may take — `z-index: [1, 2, 5, 10]`. A closed list. */
-    readonly values?: readonly (string | number)[];
+    /**
+     * The only values this property may take — `z-index: [1, 2, 5, 10]`. A closed list.
+     *
+     * **Numbers alone where CSS measures the property in numbers.** It took either for every
+     * property, so `values: ["1", "10"]` on `z-index` type-checked and was then refused at every use
+     * site, because a quoted value is `string-not-allowed`. A setting that permits what the checker
+     * will not take is worse than one that refuses outright.
+     *
+     * The twenty-one properties CSS gives a `<number>` or an `<integer>` are {@link CssNumeric},
+     * generated from the same grammar the rules read. Everything else still takes either, because a
+     * time is `"120ms"` and a colour is `"#10b981"`.
+     */
+    readonly values?: P extends CssNumeric ? readonly number[] : readonly (string | number)[];
     /**
      * Whether a value here may only be a declared VARIABLE, never a literal.
      *
@@ -756,9 +767,31 @@ function settings(key: string, entry: unknown, refuse: (says: string) => never):
       if (!Array.isArray(value)) {
         refuse(`sets \`${at}\` to ${describe(value)}. It takes a closed list, like [0, 1, 10].`);
       }
+      /**
+       * A QUOTED number where CSS measures the property in numbers, which the TYPE refuses and the
+       * build could not.
+       *
+       * `values: ["1", "10"]` on `z-index` type-checks nowhere and ran everywhere: nothing
+       * type-checks a config in the build, so it went in — and then every use site refused it,
+       * because a quoted value is `string-not-allowed`. A setting that permits what the checker will
+       * not take is worse than one that refuses outright.
+       *
+       * Asked of `PRIMITIVE`, which is what the use-site rules read, so the type, the validator and
+       * the rule cannot disagree about which properties these are.
+       */
+      const numeric = PRIMITIVE[key] === "number" || PRIMITIVE[key] === "integer";
+
       for (const one of value as unknown[]) {
         if (typeof one !== "string" && typeof one !== "number") {
           refuse(`lists ${describe(one)} in \`${at}\`. Every value is a string or a number.`);
+        }
+        if (numeric && typeof one === "string") {
+          refuse(
+            `lists ${describe(one)} in \`${at}\`, and CSS measures \`${key}\` in numbers — so write ` +
+              `${one.trim() === "" || Number.isNaN(Number(one)) ? "a number" : Number(one)}.\n\n` +
+              `        A quoted value is a CSS string, which a browser drops, so every use of it ` +
+              `would be refused.`,
+          );
         }
       }
     }
