@@ -109,7 +109,9 @@ try {
       "html,body{margin:0;padding:0;background:#24292e}" +
       "pre{margin:0;padding:28px 32px;font:15px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;background:#24292e!important}" +
       "#shot{display:inline-block;border-radius:10px;overflow:hidden}" +
-      "</style><div id=\"shot\">" + html + "</div>",
+      '</style><div id="shot">' +
+      html +
+      "</div>",
   );
   await page.locator("#shot").screenshot({ path: pngPath });
 } finally {
