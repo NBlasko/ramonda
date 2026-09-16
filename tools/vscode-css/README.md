@@ -6,6 +6,13 @@ A **style block** is `@@( … )`, and what goes inside it is CSS — properties,
 at-rules — with `{ … }` holes for TypeScript expressions. This extension colours them, and formats
 them on save.
 
+![A style block coloured by this extension: properties, values, a nested rule, a `$` variable and a
+TypeScript hole, each its own colour](https://raw.githubusercontent.com/NBlasko/ramonda/main/tools/vscode-css/preview.png)
+
+*The picture is here because the code below cannot be: this page is rendered by the marketplace's own
+highlighter, which has no way to load the grammars this extension is made of. It is generated from
+those grammars, so it cannot drift from what you get.*
+
 ```tsx
 <div css={@@(
   display: flex;

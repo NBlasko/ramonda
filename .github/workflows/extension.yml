@@ -45,6 +45,12 @@ jobs:
       # package — it is installed by linking, and nothing in it is published to npm — so
       # `pnpm --filter ramonda-css-vscode …` matched no project at all and both of these steps
       # failed before they ran. Measured, on the day the publisher was being created.
+      # The marketplace page's picture is a claim about the grammars beside it, and an image cannot
+      # be diffed — so this asks the only question that goes wrong: was it made from these.
+      - name: The preview picture matches the grammars
+        working-directory: tools/vscode-css
+        run: node build-preview.mjs --check
+
       - name: Package
         working-directory: tools/vscode-css
         run: pnpm run package

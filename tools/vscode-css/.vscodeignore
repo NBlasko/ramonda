@@ -6,9 +6,14 @@
 
 install.mjs
 # For whoever publishes it, not for whoever installs it.
+build-preview.mjs
+preview.png.stamp
+# The picture on the marketplace page is served from GitHub — the marketplace does not resolve a
+# relative path in a README — so neither the generator nor the file itself belongs in the download.
 PUBLISHING.md
 .vscodeignore
 node_modules/**
 **/*.map
 **/tsconfig.json
 **/*.test.*
+preview.png

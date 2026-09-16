@@ -1,5 +1,13 @@
 # Ramonda CSS
 
+## 0.1.6
+
+- **The page now shows what a block looks like.** A marketplace page is rendered by the marketplace's
+  own highlighter, which has no way to load the grammars an extension is made of — so the example
+  above was being coloured as ordinary TypeScript, which is the one thing this extension exists to
+  change. There is a picture now, generated from these grammars rather than screenshotted, and CI
+  fails if the two stop agreeing.
+
 ## 0.1.5
 
 - **`$.color.primary.main` is coloured as a variable inside a block.** A declared variable is written
