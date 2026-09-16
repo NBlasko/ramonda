@@ -117,10 +117,9 @@ variable, so the kind is declared to the engine too:
 ```
 
 A registered custom property set to something that is not of its syntax falls back to
-`initial-value` instead of poisoning the declaration that reads it. Measured in Chrome: an
-**unregistered** `--size` set to `not-a-length` and read by `height` laid the element out at `0px`,
-silently. Registered, the same value is ignored, `height` gets the `16px` the registration declares,
-and the page keeps working.
+`initial-value` instead of poisoning the declaration that reads it. An **unregistered** `--size` set
+to `not-a-length` and read by `height` lays the element out at `0px`, silently. Registered, the same
+value is ignored, `height` gets the `16px` the registration declares, and the page keeps working.
 
 ## A range, when the value is meant to move
 
@@ -260,9 +259,9 @@ It is tempting, because a hole and a `var()` are the same thing underneath — a
 `var(--r-<hash>-0)` and the element carries the value. The difference is **who sets it**, and it
 decides the cost.
 
-Measured on a server render of 500 rows with one themed value: through a hole the markup went from
-19.4 KB to **39.9 KB** — 41 bytes on every element, for one themed value. Through `var()` it is
-nothing, because the value is on `:root` and each element inherits it.
+A hole's value travels in the markup, once per element: on a server-rendered list of 500 rows, one
+themed value is **41 bytes on every one of them**, and doubles the HTML. Through `var()` it costs
+nothing at all, because the value is on `:root` and each element inherits it.
 
 And a theme switch through a hole is a **render**. A hole's value belongs to the render that
 produced it, so every element carrying it has to render again to change it. A `var()` changes when
@@ -277,10 +276,10 @@ not. A theme is the opposite of that.
 :root { --accent: red; }        ✗  inside a block
 ```
 
-It compiles, and then does nothing. Measured through the same CSS compiler a build uses, it flattens
-to `.r-… :root` — a descendant selector, and `:root` is the `<html>` element, which is nobody's
-descendant. A theme's own declarations belong in a stylesheet, and this project's own belong in
-`ramonda.css.ts`.
+It compiles, and then does nothing. A block is one element's rule, so everything in it is nested
+inside that rule — and `:root` there flattens to `.r-… :root`, a descendant selector. `:root` is the
+`<html>` element, which is nobody's descendant. A theme's own declarations belong in a stylesheet,
+and this project's own belong in `ramonda.css.ts`.
 
 ## Next
 

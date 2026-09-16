@@ -22,25 +22,24 @@ class in a stylesheet and each carried expression becomes a CSS custom property 
 > [root README](https://github.com/NBlasko/ramonda#readme).
 
 ```sh
-npm install @ramonda/css typescript
+npm install @ramonda/css
 ```
 
 Documentation: **[ramonda.dev/style-blocks](https://ramonda.dev/style-blocks)**
 
 [readme:end]: #
 
-## Two places it goes
+## A block is a value
 
-A block is a **value**, so it goes anywhere a value goes:
+So it goes wherever a value goes — in the attribute, or in a binding you name and use later:
 
 ```tsx
-<div css={@@( display: flex; )}>…</div>          in the braces JSX already has
-const panel = @@( display: flex; );              a value, outside JSX
+<div css={@@( display: flex; )}>…</div>          inline
+const panel = @@( display: flex; );              named, and reusable
 ```
 
-Same class, same hash, same holes — only what is replaced differs. Nothing about a block requires
-JSX: **this extends TypeScript, not JSX**, and a block in a `.ts` file with no markup works the same
-way.
+Nothing about a block requires JSX: **this extends TypeScript, not JSX**, and a block in a `.ts`
+file with no markup works the same way.
 
 `css=@@( … )` — a bare JSX attribute, with no braces — was a third spelling and is refused now, with
 a message naming the one to write. It could only be coloured as the first attribute on the tag's own

@@ -35,12 +35,12 @@ change if you never install this.
 ## Install
 
 ```sh
-npm install @ramonda/css typescript
+npm install @ramonda/css
 ```
 
-TypeScript is a peer dependency because the checking is TypeScript's own: the package writes a
-virtual file your compiler reads, so a fault in a block arrives as a normal `tsc` diagnostic rather
-than as a report from a tool you have to run separately.
+The checking is TypeScript's own, so the package needs yours — it writes a virtual file your compiler
+reads, and a fault in a block arrives as an ordinary `tsc` diagnostic rather than as a report from a
+tool you have to run separately. Any TypeScript 5 will do.
 
 ## One plugin in the build
 
@@ -81,8 +81,8 @@ and `--check` fails in CI when what is committed no longer matches the config be
 
 A route that is already code-split gets its own stylesheet, without being asked. A block belongs to
 the module it was written in and each module imports its own CSS, so splitting is a decision the
-bundler was making anyway. Measured on a real build: a lazily-loaded module produced its own `.css`
-asset, carrying that module's rules and not the entry's.
+bundler was making anyway: a lazily-loaded module gets its own `.css` asset, carrying that module's
+rules and not the entry's.
 
 ## Three things in your editor
 
@@ -172,7 +172,7 @@ being asked — that is the setting above.
 
 ## Where to go next
 
-- **[Writing a block](/style-blocks/writing)** — the two spellings, holes for values that change,
+- **[Writing a block](/style-blocks/writing)** — where a block goes, holes for values that change,
   nesting and conditions.
 - **[What is checked](/style-blocks/checking)** — every rule, what it catches, and how to silence one
   that is wrong.

@@ -67,10 +67,9 @@ and the check follows that:
 A hole may not go in one of these at all: a hole is a custom property **on an element**, and these
 name something the whole stylesheet uses, so there is no element for the value to come from.
 
-**A media feature that will never match is the row worth pausing on**, because it is not invalid CSS.
-Measured in Chromium, `@media (min-widht: 40rem)` survives a parse with its text intact — the browser
-keeps the rule and simply never matches it, so every declaration inside is silently inert. Nothing
-but this reports it.
+**A media feature that will never match is the row worth pausing on**, because it is not invalid
+CSS. A browser reads `@media (min-widht: 40rem)`, keeps the rule, and never matches it — so every
+declaration inside is inert and nothing else has any reason to complain.
 
 ## When a rule is wrong
 

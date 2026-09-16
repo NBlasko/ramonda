@@ -54,9 +54,10 @@ class Button extends Component {
 
 Both are arguments of the same merge, in the order you wrote them.
 
-**There is no `@else`, and what replaces it is better.** Spreading a *lookup* gives you
-exhaustiveness: add a third variant to the union above and forget the map, and TypeScript reports it.
-For a two-way choice of a single *value*, a hole with a ternary is still the answer.
+**There is no `@else`.** For a choice between several blocks, spread a *lookup* — the one above,
+keyed by the variant. TypeScript then checks the map covers the union, so adding a third variant and
+forgetting the map is reported. For a two-way choice of a single *value*, write a hole with a
+ternary.
 
 ## Why the condition is inside `{ }`
 
@@ -125,8 +126,8 @@ Every rule is emitted inside `@layer ramonda`, and **a layer is the one thing he
 differently from CSS written by hand.** It is worth two minutes, because it decides who wins.
 
 A layer is a bucket, and buckets are ranked ahead of everything else — a rule in no bucket beats a
-rule in one, and that is decided **before** specificity is looked at. Measured in Chromium, the same
-two declarations five ways:
+rule in one, and that is decided **before** specificity is looked at. The same two declarations,
+five ways:
 
 ```
 .a { color: red }  .b { color: blue }                  blue    the later one wins
@@ -155,13 +156,13 @@ stronger — the block is in a layer and `app.css` is not.
 make you fight your own stylesheet: nothing has to be rewritten and no `!important` appears. What it
 costs is CSS's own answer, where those two would be settled by whichever was written later.
 
-The alternative was measured and is worse: with no layer, the winner is whichever stylesheet your
-bundler happens to emit last — which you do not choose, and which can differ between a dev server and
-a build. **A predictable answer that is not CSS's beats CSS's answer to a question you cannot see.**
+Without the layer there is no stable answer to give. Which of the two wins would depend on which
+stylesheet your bundler emits last — something you do not choose, and which can differ between a dev
+server and a build. The layer replaces that with a rule you can read here.
 
 ## Letting a block win
 
-Put your own CSS in a layer too, and say which order the layers go in. Measured, the same
+Put your own CSS in a layer too, and say which order the layers go in. The same
 `.panel { padding: 0 }` against the same block:
 
 ```
