@@ -2837,3 +2837,64 @@ generated from unprefixed names, so `-webkit-border-radius` was recorded as clea
 The probe was wrong twice, and the CONTROL row caught it both times — once a bad `node_modules`
 symlink, once a page asserting a class combination the runtime does not produce. A matrix whose
 control does not pass is measuring itself.
+
+### 9. Review pass 11 — the runtime, and a tie the bands never closed
+
+Two halves. The runtime was the half nothing had swept; the finding came from the browser oracle
+pass 10 built, pointed at the shape people actually write.
+
+#### The finding: two conditions that can both hold
+
+`widthSlot` ranks a breakpoint by its width and everything else by a small table of bands — and two
+different conditions inside one band TIE. A tie is settled by the sheet's position, which is the
+order the build happened to meet them:
+
+```
+@supports (display: grid) { color: red; } @supports (display: flex) { color: blue; }
+
+alone in the file                     blue — what plain CSS says
+interfering block in ANOTHER file     RED
+interfering block in the SAME file    RED
+```
+
+Both queries hold in every browser that can read this stylesheet, so the page depended on what
+another component wrote.
+
+**The same fault is recorded twice already, and both records said it was closed.** `widthSlot`'s note
+describes it for breakpoints — *the sheet fell back to the order the file happened to write them in,
+which another file re-emitting one of the two then reversed; 280 of 750 load orders wrong* — and the
+bands are what fixed it. Inside a band it was never fixed. And `sheet.test.ts` claimed it could not
+happen at all: *within one file the author's order and the rank cannot disagree, because
+`override-out-of-order` refuses the block where they would.* True where the ranks DIFFER. The rule
+said nothing about a tie, and a production build puts every file's rules in one sheet where a shared
+atom keeps the position of whoever claimed it first — so the per-file order that note is about never
+reaches a build.
+
+There is no order to give such a pair that is CSS's: one sheet, one position, two blocks each
+wanting a different one. So it is refused, which is where this package puts a difference that cannot
+be written. Conditions that EXCLUDE each other still tie and still say nothing — a colour scheme, an
+orientation, a medium, which is most of what anybody writes. `exclusive` is conservative on purpose:
+`@supports` asks what a browser CAN do rather than what is true now, so two of them never exclude
+each other.
+
+#### The runtime, and it is sound
+
+- An empty hole — `undefined`, `null`, `""` — drops its declaration, and the declaration it was
+  written to override with it. That looks alarming and is exactly right: measured in Chromium
+  against hand-written `color: blue; color: var(--missing)`, both give the inherited colour, and
+  both give `0px` for a non-inherited property. `@@` and `var()` agree.
+- `false` and `NaN` reach the sheet as values. The TYPES refuse them — `TS2345: Argument of type
+  'string | boolean' is not assignable to parameter of type 'CssValue'` — which is the designed
+  place, since no rule can know what an expression will evaluate to.
+- Two holes in one declaration drop together, because half a value is not CSS. A hole in a nested
+  rule or under a `@media` drops only its own declaration. Composition with `...{}` and
+  `if ({}) {}` gives later-wins in all four arrangements.
+- `merge.ts`, `conditions.ts`, `token.ts`, `modules.ts`, `stale.ts` and `declared.ts` have no
+  uncovered lines at all, so coverage had nothing left to point at here.
+
+#### Two suspicions that were wrong, and how they were caught
+
+Both were about to become findings. The empty-hole one dissolved when the hand-written control was
+written — `var()` does the same thing. The other was a report that a shorthand written after a
+longhand loses; the runtime clears it, and the first probe had hardcoded a class combination the
+runtime never emits. **Write the control before believing the measurement.**
