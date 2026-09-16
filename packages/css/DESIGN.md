@@ -2898,3 +2898,60 @@ Both were about to become findings. The empty-hole one dissolved when the hand-w
 written — `var()` does the same thing. The other was a report that a shorthand written after a
 longhand loses; the runtime clears it, and the first probe had hardcoded a class combination the
 runtime never emits. **Write the control before believing the measurement.**
+
+### 10. Review pass 12 — the dev server
+
+Four dev-server tests existed and every one of them saves the same single source file. Two things
+had never been asked here: what a save of the CONFIG does, and what two files sharing an atom do.
+
+#### The finding: saving `ramonda.css.ts` did nothing
+
+The hot-update hook takes files that hold a block, and a config holds none, so it returned at its
+first line. Measured on a running server, both halves of what the config decides were stale and both
+were silent:
+
+```
+a token changed 16px → 40px     css-system/variables.css still said 16px
+units narrowed rem → px         a block writing 2rem still compiled
+```
+
+The first is the sharper one. `variables.css` is written by `buildStart` and never again, and it is
+a plain stylesheet the project imports once — nothing else was ever going to regenerate it. The page
+is wrong, nothing says so, and a restart is the only cure, on the file the playground's own copy
+calls *here to be CHANGED*.
+
+Codegen re-runs now and every file holding a block is invalidated. They are DROPPED from the memo
+rather than recompiled in the hook, because recompiling would mean deciding what to do with one that
+no longer compiles inside a hook whose errors are swallowed — which is how a fault becomes
+invisible. The next transform compiles against the new config and reports at the author's own line.
+
+A config saved half-typed is swallowed exactly as a block that does not compile is; that test passed
+before the change and still does.
+
+#### What was measured and found right
+
+Two files naming `display: flex` are ONE rule, and the second keeps it when the first stops naming
+it — through a value change and through the first losing its block altogether. Fifty saves leave a
+file serving its own two rules. A file that gains its first block is picked up.
+
+#### Two harness faults, and both looked like findings
+
+**A fresh plugin measures nothing.** The first `saveConfig` called `ramondaCss(…).handleHotUpdate`
+directly. A new instance has an empty memo, so it regenerated the stylesheet — filesystem state,
+which passes — and invalidated no module — instance state, which fails. It passed the half it could
+not have failed. It goes through the watcher now, so the server's own instance handles it.
+
+**A request a browser cannot make.** A file gaining its first block measured as *the JavaScript
+names a class the stylesheet does not define*, which is precisely the fault the first test in that
+file exists for. The transform appends `import "<absolute path>?ramonda-css.css"`, so a client
+learns that URL only by reading the JavaScript; asking for it first hits `load` with an id Vite has
+not resolved, creates the module empty, and Vite caches that. Tracing `load` is what settled it.
+
+That is the third false report in three passes, and all three were caught the same way: by building
+the control rather than trusting the measurement.
+
+#### And what the leak test does not say
+
+It asserts what a file SERVES. Breaking the sheet's withdraw loop instead leaves dead entries in its
+`rules` map while every file still serves the right CSS — so it does not bound memory. Written into
+the test rather than left for its name to imply.
