@@ -2,7 +2,16 @@ import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
-import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, standardFormOf, widthSlot } from "./flatten";
+import {
+  conflict,
+  covers,
+  exclusive,
+  flatten,
+  onlyTheModeDecides,
+  sheetRank,
+  standardFormOf,
+  widthSlot,
+} from "./flatten";
 import { holeOutOfPlace } from "./errors";
 import { PREFIXED } from "./prefixed.generated";
 import {
@@ -1815,6 +1824,46 @@ function overrideOutOfOrder(block: Block, findings: Finding[]): void {
        */
       const sameContext = earlier.conditions.join("|") === later.conditions.join("|");
       if (sameContext && covers(later.property, earlier.property)) continue;
+
+      /**
+       * A TIE, which the sheet settles by position — so by the order the build met the two files.
+       *
+       * The bands in `widthSlot` rank a breakpoint by its width and everything else by a small
+       * table, and two conditions inside one band tie. Measured in Chromium through a real Vite
+       * build, the same block each time:
+       *
+       *     @supports (display: grid) { color: red; } @supports (display: flex) { color: blue; }
+       *
+       *     alone in the file                          blue — what plain CSS says
+       *     after a block with the same two, reversed  RED
+       *     after a block naming only the flex query   RED
+       *
+       * Both queries hold in every browser that can read the sheet, so the page depended on what
+       * another component wrote. There is no order to give them that is CSS's — one sheet, one
+       * position, and the author's two blocks each want a different one — so the shape is refused.
+       *
+       * `widthSlot`'s own note records this fault for breakpoints and the bands are what fixed it;
+       * inside a band it was never fixed. Conditions that EXCLUDE each other still tie and still
+       * say nothing, because no element is ever matched by both — which is a colour scheme, an
+       * orientation and a medium, and most of what anybody writes.
+       */
+      if (
+        sheetRank(later) === sheetRank(earlier) &&
+        later.conditions.join("|") !== earlier.conditions.join("|") &&
+        !exclusive(earlier.conditions, later.conditions)
+      ) {
+        findings.push({
+          rule: "override-out-of-order",
+          at: later.at ?? 0,
+          length: later.property.length,
+          message:
+            `\`${earlier.conditions.join(" ") || earlier.property}\` and \`${later.conditions.join(" ") || later.property}\` ` +
+            `can both hold at once, and the stylesheet cannot be ordered for both — it has one ` +
+            `position for each rule, and\n        whichever the build reads first would win. Put ` +
+            `\`${later.property}\` under one condition, or combine them with \`and\`.`,
+        });
+        return;
+      }
 
       if (sheetRank(later) >= sheetRank(earlier)) continue;
 

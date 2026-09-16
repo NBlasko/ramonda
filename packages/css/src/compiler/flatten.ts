@@ -98,7 +98,7 @@ function breadthOf(declaration: { property?: string }): number {
   return covered?.length ?? 0;
 }
 
-export { widthSlot } from "../conditions";
+export { exclusive, widthSlot } from "../conditions";
 
 /**
  * Where a declaration's rule goes in the stylesheet, and it is a RULE rather than an accident.

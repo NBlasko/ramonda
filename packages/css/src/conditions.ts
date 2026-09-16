@@ -163,6 +163,49 @@ const AFTER_WIDTHS = WIDEST_MIN + WIDEST + 1;
  * not know both land in the last slot, where they tie with each other the way everything conditional
  * used to. Two of THOSE against each other is what is still open; see `PLAN.md`.
  */
+/**
+ * Whether two sets of conditions can BOTH hold for one element.
+ *
+ * Asked where two rules tie in the bands below: a tie is settled by the sheet's position, which is
+ * the order the build happened to meet them, and that is what the bands exist to stop. Where only
+ * one of the two can ever apply the tie has never mattered and must stay silent — a colour scheme,
+ * an orientation and a medium are most of what anybody writes.
+ *
+ * Exclusive means the same media FEATURE stated with different values (`prefers-color-scheme: dark`
+ * against `light`), or two different media TYPES (`print` against `screen`). Everything else may
+ * hold at once, `@supports` above all: it asks what the browser CAN do, not what is true now, so
+ * two of them are almost always both true.
+ *
+ * Conservative on purpose. Saying two conditions exclude each other when they do not would leave a
+ * page whose appearance depends on which file the build read first — the fault this answers.
+ */
+export function exclusive(a: readonly string[], b: readonly string[]): boolean {
+  const one = a.join(" ");
+  const other = b.join(" ");
+  // `@supports` asks about capability, so two of them hold together however they are written.
+  if (/@supports\b/.test(one) || /@supports\b/.test(other)) return false;
+
+  const typeOf = (text: string) => /@media[^(]*\b(print|screen|speech|all)\b/.exec(text)?.[1];
+  const first = typeOf(one);
+  const second = typeOf(other);
+  if (first !== undefined && second !== undefined && first !== second) return true;
+
+  const featuresOf = (text: string) =>
+    new Map(
+      [...text.matchAll(/\(\s*([a-z-]+)\s*:\s*([^)]+)\)/gi)].map(([, name, value]) => [
+        name.toLowerCase(),
+        value.trim(),
+      ]),
+    );
+  const mine = featuresOf(one);
+  const theirs = featuresOf(other);
+  for (const [name, value] of mine) {
+    const against = theirs.get(name);
+    if (against !== undefined && against !== value) return true;
+  }
+  return false;
+}
+
 export function widthSlot(conditions: readonly string[] | undefined): number {
   if (conditions === undefined || conditions.length === 0) return 0;
 

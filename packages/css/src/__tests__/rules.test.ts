@@ -1177,6 +1177,67 @@ describe("an override the sheet's order will not honour", () => {
     expect(checkNamedFree("-webkit-transform: scale(7);\ntransform: scale(3);")).toHaveLength(0);
   });
 
+  /**
+   * TWO CONDITIONS THE SHEET CANNOT ORDER, both of which may hold at once.
+   *
+   * `widthSlot` ranks a breakpoint by its width and everything else by a small table of bands — and
+   * inside a band, two different conditions TIE. A tie is settled by the sheet's position, which is
+   * the order the build happened to meet them, which is exactly what the bands exist to stop. The
+   * note on `widthSlot` records the same fault for breakpoints: *the sheet fell back to the order the
+   * file happened to write them in — which another file re-emitting one of the two then reversed.*
+   *
+   * Measured in Chromium through a real Vite build, the same block each time:
+   *
+   *     @supports (display: grid) { color: red; } @supports (display: flex) { color: blue; }
+   *
+   *     alone in the file                          blue — what plain CSS says
+   *     after a block with the same two, reversed  RED
+   *     after a block naming only the flex query   RED
+   *
+   * Both queries are true in every browser that can read the sheet, so the page depended on what
+   * another component wrote. There is no order to give them that is CSS's, so the shape is refused.
+   */
+  test.each([
+    [
+      "two `@supports`, both true",
+      `@supports (display: grid) { color: red; }\n@supports (display: flex) { color: blue; }`,
+    ],
+    [
+      "two feature queries on different features",
+      `@media (hover: hover) { color: red; }\n@media (pointer: fine) { color: blue; }`,
+    ],
+    [
+      "a feature query and a height",
+      `@media (hover: hover) { color: red; }\n@media (min-height: 40rem) { color: blue; }`,
+    ],
+  ])("%s setting one property is refused", (_what, css) => {
+    const found = checkNamedFree(css);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("override-out-of-order");
+    expect(found[0].message).toMatch(/both|either|cannot be ordered/i);
+  });
+
+  /**
+   * And conditions that EXCLUDE each other are silent, because only one of them ever applies.
+   *
+   * This is most of what people write: a colour scheme, an orientation, a medium. They tie in the
+   * band too, and the tie has never mattered — no element is ever matched by both.
+   */
+  test.each([
+    [
+      "a colour scheme",
+      `@media (prefers-color-scheme: dark) { color: red; }\n@media (prefers-color-scheme: light) { color: blue; }`,
+    ],
+    [
+      "an orientation",
+      `@media (orientation: portrait) { color: red; }\n@media (orientation: landscape) { color: blue; }`,
+    ],
+    ["a medium", `@media print { color: red; }\n@media screen { color: blue; }`],
+  ])("%s is silent, because only one of them ever applies", (_what, css) => {
+    expect(checkNamedFree(css)).toHaveLength(0);
+  });
+
   /** A prefixed name with no standard form fights nobody, and two unrelated ones are not a pair. */
   test("a prefixed name that stands alone is not reported", () => {
     expect(checkNamedFree("-moz-osx-font-smoothing: grayscale;\ncolor: red;")).toHaveLength(0);

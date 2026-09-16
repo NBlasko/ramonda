@@ -700,7 +700,8 @@ describe("verifying a readable class", () => {
  * stylesheet came out in the FIRST one's order, and compiled alone it came out in its own. Both
  * ranks are equal — `sheetRank` separates conditional from unconditional and broad from narrow, not
  * one condition from another — so the stable sort kept an order that belonged to another file, and
- * `override-out-of-order` could not report it because there was nothing about the ranks to report.
+ * `override-out-of-order` could not report it because there was nothing about the ranks to report —
+ * which it does now, for a tie both conditions can win; see its own note.
  *
  * The declaration that loses is silently the wrong one, and which one it is depends on build order.
  *
@@ -712,27 +713,34 @@ describe("the order one file's stylesheet comes out in", () => {
   /**
    * Two conditions the sheet CANNOT order, which is the case this is about.
    *
-   * `min-height` and `hover` are conditions the mode table does not list, so both land in its last
-   * slot and rank the same — see `widthSlot`. Two breakpoints, or two modes the table knows, are
-   * ordered by it now and would not ask this question at all.
+   * Both colour schemes land in one slot and rank the same — see `widthSlot` — so nothing about the
+   * ranks says which rule goes first. Two breakpoints, or two modes the table separates, are
+   * ordered by it and would not ask this question at all.
+   *
+   * They EXCLUDE each other, which is why this pair and not the `min-height`/`hover` one it used to
+   * use: a tie between two conditions that can both hold is refused now, because the sheet has one
+   * position for each rule and a production build merges every file into one. See
+   * `override-out-of-order`. A tie that can never be met by the same element still needs an order to
+   * be emitted in, and that is what this is about.
    */
   const CONDITIONS = (first: "height" | "hover") => {
-    const h = `  @media (min-height: 40rem) { color: blue; }\n`;
-    const p = `  @media (hover: hover) { color: green; }\n`;
+    const h = `  @media (prefers-color-scheme: dark) { color: blue; }\n`;
+    const p = `  @media (prefers-color-scheme: light) { color: green; }\n`;
     return `const a = <div css={@@(\n${first === "height" ? h + p : p + h})}>x</div>;\n`;
   };
 
   const blocksOf = (code: string, file: string) => transform(code, { filename: file })?.blocks ?? [];
   // The `@media`, not the class name — a class is named after its condition and holds the word too.
-  const conditionsIn = (css: string) => [...css.matchAll(/@media \((min-height|hover)/g)].map((found) => found[1]);
+  const conditionsIn = (css: string) =>
+    [...css.matchAll(/prefers-color-scheme:\s*(dark|light)/g)].map((found) => found[1]);
 
   test("its own, whatever another file claimed the same classes first", () => {
     const sheet = new Sheet();
     sheet.add("/a.tsx", blocksOf(CONDITIONS("height"), "/a.tsx"));
     sheet.add("/b.tsx", blocksOf(CONDITIONS("hover"), "/b.tsx"));
 
-    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["min-height", "hover"]);
-    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["hover", "min-height"]);
+    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["dark", "light"]);
+    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["light", "dark"]);
   });
 
   test("and the same as it would be compiled alone, which is the point", () => {
@@ -751,8 +759,8 @@ describe("the order one file's stylesheet comes out in", () => {
     sheet.add("/b.tsx", blocksOf(CONDITIONS("hover"), "/b.tsx"));
     sheet.add("/a.tsx", blocksOf(CONDITIONS("height"), "/a.tsx"));
 
-    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["min-height", "hover"]);
-    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["hover", "min-height"]);
+    expect(conditionsIn(sheet.cssFor("/a.tsx"))).toEqual(["dark", "light"]);
+    expect(conditionsIn(sheet.cssFor("/b.tsx"))).toEqual(["light", "dark"]);
   });
 
   /**
@@ -765,6 +773,13 @@ describe("the order one file's stylesheet comes out in", () => {
    *
    * So the rank is not being overruled here. It orders what the author's order leaves undecided,
    * across files and within one; the change is only about which file's order that is.
+   *
+   * **That claim was only true where the ranks DIFFER**, and review pass 11 measured the hole: two
+   * conditions inside one band tie, the rule said nothing about a tie, and a production build puts
+   * every file's rules in ONE sheet where a shared atom keeps the position of whoever claimed it
+   * first. Measured in Chromium, the same block each time, with the interfering block in another
+   * file and in the same one — wrong both ways. A tie both conditions can win is refused now, so
+   * the sentence above holds for every pair rather than for most of them.
    */
   test("a file whose own order contradicts the rank does not compile at all", () => {
     const source =
