@@ -4096,3 +4096,60 @@ describe("a call that is never closed", () => {
     expect(under(css).map((one) => one.rule)).not.toContain("unclosed-call");
   });
 });
+
+/**
+ * A NUMBER written where only keywords go — the fault review pass 8 measured and left open.
+ *
+ * Every misspelled keyword was caught and a number was not, inconsistently: `position: 1` was
+ * reported and `display: 1` was not. Both have a keyword set; what separated them was `PRIMITIVE`,
+ * which `position` is in and `display` is not — so only one got a narrowed type refusing a number.
+ *
+ * **The gap could not be the rule's key.** Absence from `PRIMITIVE` means *the grammar was not
+ * reduced*, not *this takes no number*, and `aspect-ratio`, `line-height` and `background-position`
+ * are in the same gap with a bare number being correct CSS. So the fact is measured instead:
+ * `NUMBERLESS` is the properties every one of Chromium, Firefox and WebKit refuses every bare
+ * number for — 241 of them, an INTERSECTION because this says a number is wrong.
+ */
+describe("a number where only keywords go", () => {
+  const under = (css: string) => {
+    const source = `<div css={@@(\n  ${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {});
+  };
+
+  test.each([
+    ["display", "display: 1;"],
+    ["position", "position: 0;"],
+    ["overflow", "overflow: 1;"],
+    ["white-space", "white-space: 2;"],
+    ["cursor", "cursor: 1;"],
+    ["float", "float: 1;"],
+  ])("`%s` takes no number, and says so", (property, css) => {
+    const found = under(css);
+
+    expect(found.map((one) => one.rule)).toContain("unknown-value");
+    expect(found[0].message).toContain(property);
+  });
+
+  /** A number that is CORRECT stays silent — the half a rule keyed on the gap would have broken. */
+  test.each([
+    ["a ratio", "aspect-ratio: 1;"],
+    ["a line height", "line-height: 1.5;"],
+    ["a weight", "font-weight: 700;"],
+    ["a layer", "z-index: 10;"],
+    ["a grow factor", "flex-grow: 1;"],
+    ["an opacity", "opacity: 0.5;"],
+    ["a count", "column-count: 3;"],
+  ])("%s is still silent", (_what, css) => {
+    expect(under(css)).toEqual([]);
+  });
+
+  /** And a keyword each of them does take is untouched, which is the control. */
+  test.each([["display: flex;"], ["position: absolute;"], ["overflow: hidden;"], ["cursor: pointer;"]])(
+    "`%s` is silent",
+    (css) => {
+      expect(under(css)).toEqual([]);
+    },
+  );
+});

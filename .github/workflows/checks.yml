@@ -153,6 +153,7 @@ jobs:
           node scripts/build-prefixed-properties.mjs --check
           node scripts/build-shorthand-leaves.mjs --check
           node scripts/build-engine-keywords.mjs --check
+          node scripts/build-numberless-properties.mjs --check
 
       - name: Build the playground
         run: pnpm exec turbo run build --filter=playground-core

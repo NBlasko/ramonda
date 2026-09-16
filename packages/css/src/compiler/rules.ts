@@ -13,6 +13,7 @@ import {
   widthSlot,
 } from "./flatten";
 import { holeOutOfPlace } from "./errors";
+import { NUMBERLESS } from "./numberless.generated";
 import { PREFIXED } from "./prefixed.generated";
 import {
   ARITY,
@@ -2349,6 +2350,8 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
   const names = PROPERTY_NAMED[item.property];
   if (names !== undefined) return propertyNames(item, names, findings);
 
+  numberWhereKeywordsGo(item, findings);
+
   const accepted = KEYWORDS[item.property];
   if (accepted === undefined) return;
 
@@ -3184,6 +3187,55 @@ function stringNotAllowed(item: Declaration, findings: Finding[]): void {
       }
     }
   }
+}
+
+/**
+ * A bare NUMBER written where the property takes only keywords.
+ *
+ * Every misspelled keyword was already caught and a number was not, inconsistently: `position: 1`
+ * was reported — its grammar reduced to a primitive, so the TYPE refused it — and `display: 1` was
+ * not, because `display` is `[ <display-outside> || <display-inside> ] | …`, which the generator
+ * could not reduce. Two properties that take no number, one reported.
+ *
+ * **The gap could not be the key.** Absence from `PRIMITIVE` means the grammar was not reduced, and
+ * `aspect-ratio`, `line-height` and `background-position` are absent too with a bare number being
+ * correct CSS. `NUMBERLESS` is the positive fact instead: the properties every one of Chromium,
+ * Firefox and WebKit refuses every bare number for. See `build-numberless-properties.mjs`.
+ *
+ * A HOLE is left alone, for the reason `non-canonical-spelling` gives: what a hole evaluates to is
+ * not text the author wrote, and the types are what answer for it.
+ */
+function numberWhereKeywordsGo(item: Declaration, findings: Finding[]): void {
+  if (!NUMBERLESS.includes(item.property)) return;
+
+  /**
+   * Only when the number is the WHOLE value, and that is the measurement's own boundary.
+   *
+   * `NUMBERLESS` records that a bare number alone is refused — `CSS.supports("box-shadow", "1")` is
+   * false in all three engines. It says nothing about a number INSIDE a longer value, and measured,
+   * `box-shadow: 0 0 1px red` is accepted by all three: the `0` there is a length, and the same is
+   * true of `transform: scale(2)` and every call's argument.
+   *
+   * So a value with anything else in it is left to the walk below, which asks about its WORDS. A
+   * number standing alone is the only shape this measurement licenses a word about.
+   */
+  const only = item.value.filter((part) => part.kind === "text" && !part.resolved);
+  if (only.length !== item.value.length || only.length !== 1) return;
+
+  const part = only[0];
+  if (part.kind !== "text" || part.at === undefined) return;
+
+  const text = part.text.slice(0, terminator(part.text)).trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(text)) return;
+
+  findings.push({
+    rule: "unknown-value",
+    at: part.at + part.text.indexOf(text),
+    length: text.length,
+    message:
+      `\`${item.property}\` does not accept \`${text}\`. It takes a keyword, and no browser measured ` +
+      `takes a number here.`,
+  });
 }
 
 /**
