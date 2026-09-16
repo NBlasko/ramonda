@@ -2652,9 +2652,20 @@ folder called `css-system`, and a generated one landing silently beside it is wo
 
 `propertiesFor` and `variablesSheetFor` are asked PER FILE — they run inside an editor, on every
 keystroke's worth of work — so they read the key out of the config's text with a regex rather than
-transpiling it. A config that computes the name falls back to the default for those two lookups and
-is still written correctly by `writeGenerated`, which has the real config. That is a mismatch a
-project can see and fix; a transpile per file to close it would be the worse trade.
+transpiling it. A transpile per file to close that would be the worse trade.
+
+**The two readings are compared, and a disagreement is REFUSED.** This said the mismatch was one *a
+project can see and fix*, and review pass 8 measured what a project actually sees: the files land in
+one folder, everything that reads them looks in another, and the author is told
+
+```
+TS2339  Property 'size' does not exist on type
+        '"Declare your variables in ramonda.css.ts, then run `ramonda-css …`"'
+```
+
+advice they have just followed. Running it again writes the same two files and changes nothing. A
+comment that merely MENTIONS the key causes it, because the text reader takes the first `outDir:` in
+the file. Codegen has both readings, so it compares them and refuses with both folders named.
 
 A path that climbs out of the project, or starts at the root, is refused.
 
@@ -2668,3 +2679,35 @@ Every one of those was measured, and several were found only by asking a questio
 before — what the BUILD sees against what the CHECKER sees, what a REAL project's completions offer
 against what a unit harness offers. Changes made under a review deserve the same treatment as the
 code the review was about.
+
+
+### 6. Open after review pass 8 — a number where only keywords go
+
+**Measured, and left open on purpose.** Sweeping values after a numeric value became a number in the
+type, twenty-nine wrong declarations on closed-keyword properties went in and nineteen came back:
+
+```
+  caught     display: flexx;    overflow: scrol;   cursor: poitner;   line-height: red;
+  caught     position: 1;       float: 1;          text-align: 1;     visibility: 1;
+  SILENT     display: 1;        overflow: 1;       white-space: 1;    cursor: 1;
+  SILENT     opacity: 50px;     opacity: 1px;      line-height: 1px2; font-weight: -5;
+```
+
+Every MISSPELLED keyword is caught — `unknown-value` walks the words in a value and does its job.
+What is silent is a NUMBER where only keywords go, and it is silent inconsistently: `position: 1` is
+reported and `display: 1` is not.
+
+The cause is not the rule. `unknown-value` reads `KEYWORDS`, which has a set for both; `position` is
+also in `PRIMITIVE` and `display` is not, so only `position` gets a narrowed type that refuses a
+number. 373 properties have a keyword set and 226 of them — 205 unprefixed — are absent from
+`PRIMITIVE`, because the generator could not reduce their grammar: `display` is
+`[ <display-outside> || <display-inside> ] | …`, a combination rather than a plain alternation.
+
+**Why no rule was written for it.** Absence from `PRIMITIVE` means *the grammar was not resolved*,
+not *this takes no number*. Among the same 205 are `aspect-ratio`, `background-position`,
+`border-image-slice` and `line-height`, where a bare number is correct CSS. A rule keyed on the
+absence would report those, and a checker that cries wolf is one people switch off — which this
+package has already measured once, with `background-image: url("a.png")`.
+
+So the fix belongs in the GENERATOR: a positive fact saying a property's grammar admits no primitive
+at all, which is a measurement against the engines rather than a guess from a gap.
