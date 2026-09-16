@@ -253,6 +253,28 @@ const card = @@(
 
 The values on `:root` come from `variables.css`, so the override is the only CSS you write.
 
+### `light-dark()` resolves where the variable is set
+
+A declared variable is registered with `@property`, which gives it a type and a computed value —
+and that is what makes `light-dark()` behave differently here than in a hand-written stylesheet. The
+pair is resolved on the element that **sets** the variable, and every descendant inherits the
+answer. A `color-scheme` further down does not change it:
+
+```css
+:root  { color-scheme: light dark; --color-surface: light-dark(#ffffff, #0b0b0b); }
+.panel { color-scheme: dark; }   /* the surface inside this is still the light one */
+```
+
+So a region that forces a scheme sets the values it wants, rather than switching the scheme and
+expecting the pair to follow:
+
+```css
+[data-scheme="dark"] { --color-surface: #0b0b0b; }
+```
+
+That is also the form that works for every kind. `light-dark()` is colour only — a length written
+that way is dropped, and the variable keeps its `initial-value`.
+
 ### A hole is not a theme
 
 It is tempting, because a hole and a `var()` are the same thing underneath — a hole compiles to
