@@ -2780,3 +2780,60 @@ the config and marking it would be noise on every file in the project.
 config does to one property, and a bad variable name does not change that answer. The build reports
 one fault per file where the checker lists them all — deliberate, and written down where it happens:
 a build stops at one anyway, and `ramonda-css check` is what enumerates.
+
+### 8. Review pass 10 — the stylesheet in a real browser
+
+Nine passes had asked whether the tool agrees with itself: rules against types, config against
+consumers, one reader against another. The one thing none of them could find is a shared wrong
+assumption — where both halves agree and both are wrong. Only an engine answers that, and measuring
+it was easy to justify: the package compares its output against hand-written CSS in several tests,
+but as TEXT. Nothing had ever rendered.
+
+So: a real Vite build, the emitted stylesheet and the class list the RUNTIME produces, loaded in
+headless Chromium beside hand-written CSS with the same declarations in the same order, comparing
+`getComputedStyle` property by property.
+
+#### The finding: a vendor prefix was ordered by the build, not by the sheet
+
+`-webkit-box-shadow` and `box-shadow` are one property to the engine and two names to the model.
+Both clear nothing, so both got the same breadth and the same cascade layer — and inside a layer the
+sort is stable, so the winner was whichever the build emitted first:
+
+```
+-webkit-box-shadow: 0 0 1px red; box-shadow: 0 0 9px blue;   ← the same block every time
+
+alone in the file                            blue   — what plain CSS says
+after a block with the same two, reversed    RED
+after a block naming only `box-shadow`       RED
+after a block naming only the prefixed one   blue
+```
+
+The page depended on what another component wrote. That is worse than a divergence — it is invisible
+from the block, it moves when somebody edits an unrelated file, and there is no answer to learn.
+
+`sheetRank` puts the prefixed form first now, so the standard property wins wherever both appear and
+wins identically in every build. That is also what a prefixed fallback means, and nothing that can
+read this stylesheet needs one: it is built on `@layer`, and every engine with cascade layers has
+the unprefixed `transform`, `box-shadow`, `user-select` and `appearance`. The other order is a
+stable divergence and is REPORTED, which keeps the count in the rule above at one.
+
+The same test found a prefixed SHORTHAND sitting in its longhands' layer: the shorthand table is
+generated from unprefixed names, so `-webkit-border-radius` was recorded as clearing nothing.
+
+#### What the browser confirmed, and it is most of it
+
+- **26 shorthand/longhand pairs, 13 families, both orders** — every one agrees with hand-written
+  CSS. The merge's clear-list settles them exactly as its note claims, and a suspicion that it did
+  not was a FALSE report caught before it was made: the first probe hardcoded both classes, which
+  the runtime never emits together.
+- `!important` both ways, nested rules, `:not()` specificity, custom properties read after and
+  before they are set, `all: unset`, inheritance — all agree.
+- **All six generated `@property` registrations are accepted by Chromium**, and an invalid value
+  falls back to the declared initial in every kind. That guarantee is the whole reason `$` compiles
+  to a bare `var()` with no fallback, and it had never been put to an engine.
+
+#### The method note worth keeping
+
+The probe was wrong twice, and the CONTROL row caught it both times — once a bad `node_modules`
+symlink, once a page asserting a class combination the runtime does not produce. A matrix whose
+control does not pass is measuring itself.
