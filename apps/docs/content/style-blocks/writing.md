@@ -171,7 +171,9 @@ reported — a unit, a suffix, a `#` in front, on either side.
 Write the hole wherever you need the value. That is the whole answer for almost every block:
 
 ```tsx
-declare const accent: string;
+import type { Value } from "../css-system";
+
+declare const accent: Value<"color">;
 
 const card = @@(
   border-left: 4px solid {accent};

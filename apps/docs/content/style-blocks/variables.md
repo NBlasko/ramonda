@@ -1,6 +1,6 @@
 ---
 title: Names the stylesheet sees
-description: Custom properties with names TypeScript checks, keyframes and font faces as blocks of their own, and why a theme is var() and not a hole.
+description: Variables declared in ramonda.css.ts and read with $, keyframes and font faces as blocks of their own, and why a theme is var() and not a hole.
 section: Style blocks
 order: 109
 ---
@@ -20,107 +20,135 @@ that — and written inside a block it compiles, nests inside the class rule, an
 @property --brand { … }             ✗  reported
 ```
 
-The last three get a block of their own, with the at-rule written into the opening:
+The last three have somewhere else to go, and a variable has two.
+
+## A variable your project declares
+
+Declare it in `ramonda.css.ts` and read it with `$`:
+
+```ts
+// ramonda.css.ts
+import { kind } from "@ramonda/css/config";
+
+export default {
+  variables: {
+    color: kind("color", { accent: "#10b981", surface: "#ffffff" }),
+    space: kind("length", { gutter: "16px" }),
+  },
+};
+```
 
 ```tsx
-const slide = @@keyframes(
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
-);
-
 const card = @@(
-  animation: {slide} 240ms ease-out;
+  background: $.color.surface;
+  border-left: 4px solid $.color.accent;
+  padding: $.space.gutter;
 );
 ```
 
-**The rule goes to the stylesheet and the site becomes its name.** The name is a hash, because a
-whole `@keyframes` has no short spelling the way one declaration does — so the same animation written
-in two files is one rule.
+`$.color.accent` compiles to `var(--color-accent)`. The name is the path, so the stylesheet is
+readable, and the path is the only spelling — there is no string to get wrong.
 
-`slide` is then an ordinary binding, and that is what makes the reference checkable: a typo is an
-unresolved identifier, and TypeScript reports it with its own *did you mean*. Written in a stylesheet
-instead, the name would be a string on both sides and `animation: slidein` would be one typo away
-from silence.
+### Where `$` needs importing, and where it does not
 
-A reference resolves **when the file compiles**, not on the element, so `{slide}` costs no custom
-property. It has to: `var()` takes a literal name, and a reference that stayed a hole would compile
-to `var(var(--…))`, which resolves to nothing.
-
-## A variable with a name TypeScript checks
-
-A named `@@property` block is a binding like any other, so a variable is declared once, typed, and
-read wherever it is imported:
+A block is CSS, not TypeScript, and the compiler puts `$` in scope while it checks one. So **in a
+declaration's value you write it bare**, with no import anywhere in the file:
 
 ```tsx
-export const accent = @@property(
+const card = @@(
+  color: $.color.accent;
+);
+```
+
+**Inside a hole it is ordinary TypeScript**, because that is what a hole is — a piece of your
+program written inside the template. TypeScript resolves the name there the way it resolves every
+other name, so it has to be imported:
+
+```tsx
+import { $ } from "../css-system";
+
+const card = (dark: boolean) => @@(
+  color: {dark ? $.color.accent : $.color.surface};
+);
+```
+
+The same goes for `$` anywhere else in the file — a lookup table of values, an argument you pass
+around. The rule is one line: **inside the CSS, no import; inside a `{ }`, the import**.
+
+Forget it and TypeScript says `Cannot find name '$'` — and then, because a bare `$` is jQuery to
+most of the world, offers to install `@types/jquery`. The name it cannot find is this one.
+
+**`css-system/` is written by the compiler**, and it is where `$` comes from. Run
+`npx ramonda-css codegen` once, or let the build plugin do it; either way the folder holds
+`index.ts` (the `$` object and this project's types) and `variables.css` (the values). Import the
+stylesheet once, wherever your app's CSS goes:
+
+```ts
+import "../css-system/variables.css";
+```
+
+Commit that folder. It is generated, and it is also what your editor reads to check a block, so a
+fresh clone that has not built anything yet still gets the checking.
+
+## What `kind` buys, and it is not only spelling
+
+The kind is what the checker knows the variable IS, and it works in two directions.
+
+**A variable of the wrong kind is refused where it is used**, before anything runs:
+
+```tsx expect-error
+const wrong = @@(
+  padding-left: $.color.accent;
+);
+```
+
+> Type `Token<"color", Fixed<"#10b981">>` is not assignable to type
+> `Narrowed<never, CssDimension<…> | Token<"length" | "percentage" | "length-percentage">>`
+
+**And the browser holds the same line.** `codegen` writes an `@property` registration for every
+variable, so the kind is declared to the engine too:
+
+```css
+@property --color-accent {
   syntax: "<color>";
   inherits: true;
   initial-value: #10b981;
-);
-
-const card = @@(
-  {accent}: #f05;
-  background: var({accent});
-);
+}
 ```
 
-A misspelling is not a CSS problem here, it is an unresolved name: `var({ackcent})` is *Cannot find
-name 'ackcent'. Did you mean 'accent'?*, from TypeScript, with the suggestion it already knows how to
-make.
+A registered custom property set to something that is not of its syntax falls back to
+`initial-value` instead of poisoning the declaration that reads it. Measured in Chrome: an
+unregistered `--size` set to `crveno` and read by `height` laid the element out at `0px`, silently;
+registered, the same thing reads back `30px` and the page keeps working.
 
-## A theme is a module of these
+## A range, when the value is meant to move
 
-Put the tokens in their own file and import them. That is the whole of it — there is no `@@theme`,
-because a file of `@@property` sites already is one:
+A variable declared with one value says it never changes, and the checker holds you to that. When a
+theme moves it at run time, say what it may become:
 
-```tsx module:./theme
-// theme.tsx
-export const accent = @@property(
-  syntax: "<color>";
-  inherits: true;
-  initial-value: #10b981;
-);
-
-export const gap = @@property(
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 12px;
-);
+```ts
+export default {
+  variables: {
+    color: kind("color", {
+      accent: { value: "#10b981", range: "any" },
+    }),
+    space: kind("length", {
+      gutter: { value: "16px", range: ["8px", "16px", "24px"] },
+    }),
+  },
+};
 ```
+
+`value` is the initial value — what the registration carries and what the browser falls back to.
+`range` is what the TYPE permits: `"any"` for a value only the run time knows, or the closed list
+when there are three sizes and no fourth.
+
+## One variable without a config
+
+A `@@property` block declares a variable on its own, and it is a binding like any other:
 
 ```tsx
-import { accent, gap } from "./theme";
-
-const card = @@(
-  color: var({accent});
-  border-color: var({accent});
-  padding: var({gap});
-);
-```
-
-**One variable per token, and none on the element.** Measured through a production build: those three
-declarations became three classes reading two custom properties — `color` and `border-color` share
-`accent`'s — and the element carries no inline style at all. Every block in the app that reads
-`accent` gets the same class, so the rules are shared too.
-
-The rule that registers a token travels with whoever reads it, so a theme module needs no other
-reason to be in your bundle: the name is derived from the module's text, so every reader emits the
-same registration and the stylesheet keeps one.
-
-**A theme swap is then CSS, not a render.** The value is an ordinary custom property, so setting it
-again on an ancestor changes everything below. Put `data-theme` on `<html>` and nothing re-renders —
-the browser recomputes styles, which is what it is for.
-
-## A font, and a property you can animate
-
-```tsx
-const brand = @@font-face(
-  font-family: "Brand";
-  src: url("/brand.woff2") format("woff2");
-  font-display: swap;
-);
-
-const angle = @@property(
+export const angle = @@property(
   syntax: "<angle>";
   inherits: false;
   initial-value: 0deg;
@@ -137,10 +165,52 @@ const dial = @@(
 );
 ```
 
-`@@font-face` names nothing — the `font-family` inside it is the handle, and that is the string other
-rules match on, so its block is written for its own sake. The other two name something, and
+**Reach for this when the registration is the point.** `<angle>` above is the reason `rotate()` can
+be animated at all — an unregistered custom property is a string to the engine and does not
+interpolate — and `inherits: false` is a choice `$` does not offer, because a design token that does
+not inherit is not a design token.
+
+It is also the shorter road when there is one variable, local to one file, and no config yet.
+
+A misspelling is not a CSS problem here, it is an unresolved name: `var({ackcent})` is *Cannot find
+name 'ackcent'. Did you mean 'accent'?*, from TypeScript, with the suggestion it already knows how
+to make.
+
+## A font, and an animation
+
+```tsx
+const brand = @@font-face(
+  font-family: "Brand";
+  src: url("/brand.woff2") format("woff2");
+  font-display: swap;
+);
+
+const slide = @@keyframes(
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+);
+
+const panel = @@(
+  font-family: "Brand", sans-serif;
+  animation: {slide} 240ms ease-out;
+);
+```
+
+**The rule goes to the stylesheet and the site becomes its name.** The name is a hash, because a
+whole `@keyframes` has no short spelling the way one declaration does — so the same animation
+written in two files is one rule.
+
+`slide` is then an ordinary binding, and that is what makes the reference checkable: a typo is an
+unresolved identifier. Written in a stylesheet instead, the name would be a string on both sides and
+`animation: slidein` would be one typo away from silence.
+
+A reference resolves **when the file compiles**, not on the element, so `{slide}` costs no custom
+property.
+
+`@@font-face` names nothing — the `font-family` inside it is the handle, and that is the string
+other rules match on, so its block is written for its own sake. The other two name something, and
 `@@property` names a **custom** property, so what it compiles to is `--r-…` with the dashes: that is
-the one name a hole may stand in, which is how the frames above set it.
+the one name a hole may stand in, which is how the frames in the previous example set it.
 
 ## A name nothing sets
 
@@ -155,7 +225,7 @@ const row = @@( height: var(--row-height); );
 A name nothing sets is reported, with the four things that would make it exist:
 
 > nothing in this build sets `--brnad`. Did you mean `--brand`?
-> Set it in a block, register it with `@@property`, add it to `variables` in `ramonda.css.ts` if it
+> Set it in a block, register it with `@@property`, add it to `alsoSets` in `ramonda.css.ts` if it
 > comes from a stylesheet this does not compile, or give it a fallback — `var(--brnad, <value>)` —
 > which says it may be absent.
 
@@ -164,25 +234,24 @@ A fallback is the answer most of the time, and it is CSS you would write anyway.
 ## Theming
 
 **A theme is custom properties, and a block reads them.** Nothing here is a theme system, which is
-the same position [styling](/styling) takes: the theme lives in an ordinary stylesheet, and switching
-it is one attribute on `<html>` — no render, no JavaScript per element, and the block does not know a
-theme exists.
+the same position [styling](/styling) takes: switching a theme is one attribute on `<html>` — no
+render, no JavaScript per element, and the block does not know a theme exists.
+
+Declare the tokens with a `range` that admits what the theme sets, and override them in an ordinary
+stylesheet:
 
 ```css
-:root                  { --accent: #10b981; --surface: #ffffff; }
-[data-theme="dark"]    { --accent: #34d399; --surface: #0b0b0b; }
+[data-theme="dark"] { --color-accent: #34d399; --color-surface: #0b0b0b; }
 ```
 
 ```tsx
 const card = @@(
-  background: var(--surface);
-  border-left: 4px solid var(--accent);
-
-  @media (prefers-color-scheme: dark) {
-    border-left-color: var(--accent, #34d399);
-  }
+  background: $.color.surface;
+  border-left: 4px solid $.color.accent;
 );
 ```
+
+The values on `:root` come from `variables.css`, so the override is the only CSS you write.
 
 ### A hole is not a theme
 
@@ -194,12 +263,12 @@ Measured on a server render of 500 rows with one themed value: through a hole th
 19.4 KB to **39.9 KB** — 41 bytes on every element, for one themed value. Through `var()` it is
 nothing, because the value is on `:root` and each element inherits it.
 
-And a theme switch through a hole is a **render**. A hole's value belongs to the render that produced
-it, so every element carrying it has to render again to change it. A `var()` changes when the
-attribute on `<html>` changes, which is not a render at all.
+And a theme switch through a hole is a **render**. A hole's value belongs to the render that
+produced it, so every element carrying it has to render again to change it. A `var()` changes when
+the attribute on `<html>` changes, which is not a render at all.
 
-A hole is for what varies per **instance** — a value this element has and the one beside it does not.
-A theme is the opposite of that.
+A hole is for what varies per **instance** — a value this element has and the one beside it does
+not. A theme is the opposite of that.
 
 ## `:root` does not work inside a block
 
@@ -209,10 +278,12 @@ A theme is the opposite of that.
 
 It compiles, and then does nothing. Measured through the same CSS compiler a build uses, it flattens
 to `.r-… :root` — a descendant selector, and `:root` is the `<html>` element, which is nobody's
-descendant. The theme's own declarations belong in a stylesheet.
+descendant. A theme's own declarations belong in a stylesheet, and this project's own belong in
+`ramonda.css.ts`.
 
 ## Next
 
-- **[Composing](/style-blocks/composing)** — reusing a block, conditions, and which declaration wins.
-- **[Project settings](/style-blocks/settings)** — telling the checker about names that come from a
-  stylesheet it does not compile.
+- **[The config file](/style-blocks/config)** — everything else `ramonda.css.ts` holds, including
+  what a project can forbid.
+- **[Composing](/style-blocks/composing)** — reusing a block, conditions, and which declaration
+  wins.

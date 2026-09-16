@@ -901,8 +901,21 @@ describe("a variable nothing sets", () => {
     expect(message).toContain("nothing in this build sets `--brand`");
     expect(message).toContain("Set it in a block");
     expect(message).toContain("@@property");
-    expect(message).toContain("variables");
     expect(message).toContain("var(--brand, <value>)");
+
+    /**
+     * `alsoSets`, and the key it used to name REFUSES what this sends there.
+     *
+     * The route for a name that comes from a stylesheet this does not compile was `variables`, and
+     * that key became the declarations `$` is built from. An author following this message wrote
+     * `variables: ["--brand"]` and was told *that was its old meaning … those go in `alsoSets` now* —
+     * so the tool sent them somewhere that turned them away, and the refusal did the teaching.
+     *
+     * Asserting `alsoSets` alone would pass on a message that still ALSO says `variables`, which is
+     * the shape this was in, so both halves are asserted.
+     */
+    expect(message).toContain("alsoSets");
+    expect(message).not.toMatch(/\bvariables\b/);
   });
 
   test("a name another FILE sets is known, which is the whole reason this is asked here", () => {

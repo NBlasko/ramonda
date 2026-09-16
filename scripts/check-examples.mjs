@@ -26,7 +26,8 @@
  */
 import { analyzeProgram } from "@ramonda/check";
 import { checkSource, mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, globSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync, globSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -368,7 +369,16 @@ function shape(code) {
    * malformed block must be caught, and the tolerant reading would quietly accept `disp`.
    */
   if (mayHoldABlock(code)) {
-    const virtual = virtualFile(code, { properties: "@ramonda/css/properties" });
+    /**
+     * The project's OWN property map when there is one, and the shipped one when there is not.
+     *
+     * It was pinned to the shipped map, and that is what a project WITHOUT a config is checked
+     * against — so `$.color.accent` on a page about declaring variables came back
+     * `Property 'color' does not exist on type '"Declare your variables in ramonda.css.ts…"'`. The
+     * examples were being checked as a project that had never run codegen, which is not the project
+     * any page here describes.
+     */
+    const virtual = virtualFile(code, { properties: generated ?? "@ramonda/css/properties" });
     if (virtual !== undefined) code = virtual.code;
   }
 
@@ -502,6 +512,34 @@ const files = [
 ].filter((f) => !filter || f.includes(filter));
 
 const work = mkdtempSync(join(tmpdir(), "ramonda-examples-"));
+
+/**
+ * The docs' own `ramonda.css.ts`, carried into the work directory and generated from.
+ *
+ * Every block is checked here rather than where the page lives, so a config beside the page is
+ * nowhere the checker would walk up to. Without it `$.color.accent` is
+ * `Property 'color' does not exist on type '"Declare your variables in ramonda.css.ts…"'` — the
+ * message this package shows a project that has not declared anything, shown to a page ABOUT
+ * declaring things.
+ *
+ * Copied rather than reinvented, so the examples are checked against a config a reader could
+ * actually write, and a variable a page uses without declaring is still the page being wrong.
+ */
+/** The generated property map every block on this site is checked against — see `shape`. */
+let generated;
+
+const cssConfig = join(repo, "apps", "docs", "ramonda.css.ts");
+if (existsSync(cssConfig)) {
+  writeFileSync(join(work, "ramonda.css.ts"), readFileSync(cssConfig, "utf8"));
+  // The config is RUN, not read, so its `import { kind } from "@ramonda/css/config"` has to
+  // resolve — and a fresh temp directory has nothing to resolve it from.
+  symlinkSync(join(repo, "node_modules"), join(work, "node_modules"));
+  execFileSync(process.execPath, [join(repo, "packages", "css", "bin.mjs"), "codegen"], {
+    cwd: work,
+    stdio: "ignore",
+  });
+  if (existsSync(join(work, "css-system", "index.ts"))) generated = join(work, "css-system", "index.ts");
+}
 
 /**
  * `./routes` — the module every routed app has, so an example can import from it and be checked.
