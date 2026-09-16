@@ -2600,20 +2600,88 @@ turned up (`text-overflow`, `scroll-margin-top`, `will-change`, `object-fit`) is
 conventional short spelling, and the abbreviation table's own note answers that: *an abbreviation
 nobody recognises is worse than the property's own name — it is shorter and it has to be learned.*
 
-### 3. A manifest carrying what a package REQUIRES — measured, and it does not exist
+### 3. `ramonda.graph.json` — a build artefact saying what a package needs and gives
 
-The user remembered a Ramonda build step writing a manifest that carries the app tree, and asked
-whether it could carry a package's required variables too.
+**Not built. Measured, scoped, and then widened by the user in a way that changes the shape** — so
+this is the record a next session starts from, and the shape below is not final.
 
-Measured: there is no such thing today. `apps/docs/scripts/build-manifest.mjs` is the docs app's own
-script and maps lazily-imported modules to chunk URLs — *"the piece nothing at runtime can know"* —
-and `@ramonda/build` exports bundler settings and nothing else. No package emits a manifest.
+The user's own words for what it is for: *"neki json ili slicno nesto sto ramonda build bi trebalo
+da kreira, kako bi smo mogli to da damo drugim paketima koji se reuzaju da mogu da sastave citav
+graf"*.
 
-So this is a design question rather than a change: a built package that uses `$.color.accent.main`
-needs the consuming app to declare that variable, and nothing carries that requirement across the
-package boundary today. The `@property` registration in the built stylesheet is the nearest thing —
-it declares the name and its initial — which may be the whole answer, or may need a manifest beside
-it. Not decided.
+#### What it does not exist today
+
+`@ramonda/build` exports bundler settings and two adapters, and nothing else — no package emits any
+artefact of this kind. `apps/docs/scripts/build-manifest.mjs` is the docs app's own script mapping
+lazily-imported modules to chunk URLs, which is a different question.
+
+#### The three things measured to be missing, each by a failure
+
+A library `@acme/ui` whose block writes `color: var(--acme-accent)`, published as `dist`:
+
+| what is missing | what happens today |
+|---|---|
+| **`requires`** — names the package reads and does not set | the page renders with the variable unset and NOTHING anywhere says so |
+| **`provides`** — names the package sets | the consuming app is **refused**: *nothing in this build sets `--acme-radius`* — a false report, worked around by listing the name by hand in `alsoSets` |
+| **`values`** — where the values are | a library declaring `$` produces `css-system/variables.css` holding `:root { --acme-accent: … }`, its `files` is `["dist"]` so it does not ship, and the consumer has no way to know it must import it |
+
+The `provides` row is the sharpest: it is not a silent fault but a build that **stops**, and the cure
+is hand-maintaining a list the package already computed.
+
+**And the build KNOWS all of it.** Measured on that library's own transform:
+
+```
+the file SETS:  []
+the file READS: ["--acme-accent"]
+```
+
+That is computed, used for one check, and thrown away.
+
+#### One thing measured and ruled OUT
+
+The cascade layers do not need carrying. Two packages' emitted stylesheets declare an identical
+nineteen-layer statement, so there is nothing for a consumer to reconcile.
+
+#### The shape as it stood before the last measurement
+
+```json
+{
+  "ramonda": 1,
+  "name": "@acme/ui",
+  "css": {
+    "requires": ["--acme-accent"],
+    "provides": ["--acme-radius"],
+    "values": "./css-system/variables.css"
+  }
+}
+```
+
+#### What widened it, and why the shape above is not final
+
+**The user raised injected dependencies**, and they are right that it changes this: *"zamisli da imas
+paket koji ocekuje funkciju foo, ali ta funkcija se kreira u drugom paketu i potrebno je
+injectovati."*
+
+A package expecting a value another package creates is the SAME question as a package expecting a
+custom property another package sets — `requires` and `provides`, for values rather than for names
+in a stylesheet. So the file is not a CSS artefact with a `css` key bolted on; it is a
+requires/provides record of which CSS is one kind.
+
+Today the mechanism for receiving something from elsewhere is `createContext`, exported from
+`@ramonda/core`. Whether a context is the thing to declare, and whether a package can know statically
+which ones it needs, is **unmeasured** — and it has to be measured before this file is designed,
+because it decides whether the CSS half can be written first without the shape moving under it.
+
+#### The rule that governs building it, whenever that is
+
+**No producer without a consumer.** This repository already has one of those written down: `format:
+{ indent }` was accepted, validated and documented in its own type, and NOTHING read it — a person
+could set it, be told nothing, and get two spaces. A `ramonda.graph.json` that nothing reads is the
+same fault in new packaging.
+
+So whatever is built first ships with the side that FAILS: an app installing a package with an
+unmet requirement hears about it at build time, with the package named, and an app reading a name an
+installed package provides stops being refused for it.
 
 ### 4. An unclosed call eats the block's closer
 
