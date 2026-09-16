@@ -97,6 +97,22 @@ And every one is printed on every run, whether or not anything failed:
 That is what makes it a record rather than a silence. A reason that has stopped being true is one
 somebody meets, instead of one they would have to go looking for.
 
+## What your project adds to that
+
+Everything above is CSS being checked against itself, and it needs no config. A
+[`ramonda.css.ts`](/style-blocks/config) adds reports that are yours rather than CSS's — a unit this
+project does not use, a value outside a list it gave, a shorthand it switched off, a colour written
+out where it takes colours from variables, a `$` path it does not declare. Each is a row in the
+table below, and each fails the build the same way.
+
+**If that file cannot be read, your editor says so on the block.** The completions keep working, but
+nothing is being checked against rules that did not load, and a green file would be a claim the tool
+cannot support:
+
+> `[config-not-read]` … does not parse: TS1136: Property assignment expected.
+> Until it reads, none of this project's rules are running — this block is not being checked
+> against them, and a build will refuse before it gets here.
+
 ## Every rule
 
 A typo in one of these ids is caught too: writing `unknown-unti` in
@@ -152,6 +168,6 @@ Every one of them fails the build. 39 of them, and each is a key you can switch 
 
 ## Next
 
-- **[Project settings](/style-blocks/settings)** — switching a rule off, and making the rest
+- **[The config file](/style-blocks/config)** — switching a rule off, and making the rest
   stricter than CSS is.
 - **[Tooling](/style-blocks/tooling)** — what your formatter and linter can and cannot read.

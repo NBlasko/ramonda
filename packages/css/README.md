@@ -48,6 +48,43 @@ line, because an editor stops consulting syntax injections the moment it enters 
 and Prettier rewrote it to the braced form anyway, so the file you saved was not the file you
 wrote.
 
+## Variables a project declares
+
+Declare them once, in a `ramonda.css.ts` beside your `tsconfig.json`, and read them by path:
+
+```ts
+import { kind } from "@ramonda/css/config";
+
+export default {
+  variables: {
+    color: kind("color", { accent: "#10b981" }),
+    space: kind("length", { gutter: "16px" }),
+  },
+};
+```
+
+```tsx
+const card = @@(
+  color: $.color.accent;
+  padding: $.space.gutter;
+);
+```
+
+`$.color.accent` compiles to `var(--color-accent)` — the path is the name, so there is no string to
+misspell, and a typo is a TypeScript error with the suggestion it already knows how to make.
+
+The **kind** is checked in both directions. `padding-left: $.color.accent` is refused before
+anything runs; and `codegen` writes an `@property` registration for every variable, so a value the
+browser cannot use falls back to the declared one instead of collapsing the element that reads it.
+
+`npx ramonda-css codegen` writes `css-system/` beside the config — the `$` object, this project's
+narrowed types, and a `variables.css` your app imports once. Both bundler plugins run it for you.
+Commit the folder: your editor reads it, so a fresh clone is checked before anything is built.
+
+The same file is where a project narrows what a block may say at all — which units, which values,
+whether a colour may be written out rather than named. See
+[the config file](https://ramonda.dev/style-blocks/config).
+
 ## Builds
 
 Vite is where dev and HMR live:
@@ -277,6 +314,8 @@ The formatter and the linter cannot read the syntax either, and a suppression co
 ```
 ramonda-css format src        # --check to report instead of writing
 ramonda-css lint src
+ramonda-css codegen           # --check to report a stale css-system/
+ramonda-css explain padding   # what the config does to one property, and which line decided it
 ```
 
 Neither reimplements anything — the project's own biome and oxlint do the work, with their own

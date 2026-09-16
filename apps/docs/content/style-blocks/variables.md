@@ -118,8 +118,9 @@ variable, so the kind is declared to the engine too:
 
 A registered custom property set to something that is not of its syntax falls back to
 `initial-value` instead of poisoning the declaration that reads it. Measured in Chrome: an
-unregistered `--size` set to `crveno` and read by `height` laid the element out at `0px`, silently;
-registered, the same thing reads back `30px` and the page keeps working.
+**unregistered** `--size` set to `not-a-length` and read by `height` laid the element out at `0px`,
+silently. Registered, the same value is ignored, `height` gets the `16px` the registration declares,
+and the page keeps working.
 
 ## A range, when the value is meant to move
 

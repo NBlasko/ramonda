@@ -278,6 +278,35 @@ One looseness, on purpose: **any call is admitted.** `calc()`, `min()`, `clamp()
 each produce any dimension and nothing in a type can read inside one, so `calc(1rem + 2px)` passes
 `CssDimension<"px">`. Refusing calls would make the type useless in the one place you reach for it.
 
+### In a project with a config, name the property instead
+
+`CssDimension` says *a length*. When your project has a
+[`ramonda.css.ts`](/style-blocks/config), it can say *whatever this property takes here* — units
+narrowed, closed lists, `variablesOnly` and all:
+
+```tsx
+import type { Value } from "../css-system";
+
+declare const n: number;
+
+const gap: Value<"gap"> = `${n}px`;
+```
+
+One property, one name, and the answer moves when the config does. `Value<"color">` is what the hole
+example above is annotated with, for the same reason.
+
+And `Var<"color">` is *any variable this project declares of that kind* — which is what you want
+when a function chooses between them:
+
+```tsx
+import { $ } from "../css-system";
+import type { Var } from "../css-system";
+
+declare const loud: boolean;
+
+const pick = (): Var<"color"> => (loud ? $.color.accent : $.color.surface);
+```
+
 ## Comments
 
 A block is CSS, so its comment is CSS's, and it is stripped from the emitted rule:

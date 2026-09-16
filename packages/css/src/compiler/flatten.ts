@@ -56,8 +56,9 @@ export interface AtomicDeclaration {
 /**
  * The distinct breadths a property can have, WIDEST first — the sheet's minor order.
  *
- * From the generated shorthand table, so it is known before a build: twelve of them. `all` covers
- * 41 properties and comes first; a longhand covers none and comes last.
+ * From the generated shorthand table, so it is known before a build — one for each distinct number
+ * of properties a shorthand clears, and the count moves with the table rather than being written
+ * here. `all` covers the most and comes first; a longhand covers none and comes last.
  */
 const BREADTHS: readonly number[] = (() => {
   const found = new Set<number>([0]);

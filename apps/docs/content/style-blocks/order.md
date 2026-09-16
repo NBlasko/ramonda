@@ -20,6 +20,7 @@ In this order:
 2  a longhand beats its shorthand          padding: 8px          then  padding-left: 40px
 3  a narrower max-width beats a wider one  max-width: 64rem      then  max-width: 40rem
 4  a wider min-width beats a narrower one  min-width: 40rem      then  min-width: 64rem
+5  a standard property beats its prefix    -webkit-box-shadow    then  box-shadow
 ```
 
 So this does what you meant, and the order you wrote the two breakpoints in does not matter:
@@ -41,6 +42,54 @@ refused rather than quietly ignored:
 > `padding` is written to override `@media (min-width: 64rem)` above it, and it will not — the
 > stylesheet emits the rule that applies to a wider viewport first, so the earlier one wins wherever
 > both apply. Write it above, or put it under the same condition.
+
+## A prefix is a fallback, so it goes first
+
+`-webkit-box-shadow` and `box-shadow` are the **same property** to the engine, so one of them has to
+be written first and the other wins. The sheet always puts the prefixed one first, which is what a
+prefixed fallback means and is the order you would write by hand:
+
+```tsx
+const card = @@(
+  -webkit-box-shadow: 0 0 1px #0003;
+  box-shadow: 0 0 9px #0003;
+);
+```
+
+Written the other way round it is refused, because the sheet cannot give that order:
+
+> `-webkit-box-shadow` is written to override `box-shadow` above it, and it will not — the
+> stylesheet emits a vendor prefix before the standard property it is another name for, so the
+> earlier one wins wherever both apply.
+
+You rarely need one. This stylesheet is built on `@layer`, and every engine that has cascade layers
+already has the unprefixed `transform`, `box-shadow`, `user-select` and `appearance`.
+
+## Two conditions that can both be true
+
+A stylesheet has one position for each rule, and two conditions that may hold at the same time each
+want a different one. There is no order to give them, so it is refused:
+
+```tsx expect-report:override-out-of-order
+const card = @@(
+  @supports (display: grid) { color: red; }
+  @supports (display: flex) { color: blue; }
+);
+```
+
+> `@supports (display: grid)` and `@supports (display: flex)` can both hold at once, and the
+> stylesheet cannot be ordered for both — it has one position for each rule, and whichever the
+> build reads first would win.
+
+Conditions that **exclude** each other are fine, and they are most of what anybody writes — a colour
+scheme, an orientation, a medium. No element is ever matched by both, so nothing has to be ordered:
+
+```tsx
+const card = @@(
+  @media (prefers-color-scheme: light) { color: #111; }
+  @media (prefers-color-scheme: dark) { color: #eee; }
+);
+```
 
 ## A mode is not a size
 
@@ -125,9 +174,9 @@ than emitted and quietly wrong.
 You will see numbered layers inside `ramonda`:
 
 ```css
-@layer ramonda.u00, …, ramonda.u11, ramonda.c;
+@layer ramonda.u00, …, ramonda.u17, ramonda.c;
 @layer ramonda {
-  @layer u03 { .r-p-8px { padding: 8px; } }
+  @layer u09 { .r-p-8px { padding: 8px; } }
   @layer c { … @media (min-width: 40rem) { … } … }
 }
 ```

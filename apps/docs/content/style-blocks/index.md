@@ -44,8 +44,9 @@ than as a report from a tool you have to run separately.
 
 ## One plugin in the build
 
-There is no stylesheet to import. The CSS is a module the bundler already knows about, and it
-follows the JavaScript chunk it belongs to.
+The CSS a block compiles to is a module the bundler already knows about, and it follows the
+JavaScript chunk it belongs to — so there is nothing to import for it. (A project that declares
+[variables](/style-blocks/variables) imports one stylesheet, once, for those.)
 
 ```ts
 import { ramondaCss } from "@ramonda/css/vite";
@@ -64,6 +65,19 @@ export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
 **Set `filter` on esbuild.** esbuild hands a plugin a *path* rather than the code, so a file has to
 be read before it can be asked whether it holds a block — measured at 17 µs a file. Pointing the
 plugin at the tree that holds them means nothing else is opened at all.
+
+### If you declare variables
+
+Nothing above changes, and one thing is added: the plugin writes a `css-system/` folder beside
+`ramonda.css.ts` holding `$` and the values, and your app imports the stylesheet once.
+
+```ts
+import "./css-system/variables.css";
+```
+
+Commit that folder. It is generated, and it is also what your editor reads, so a fresh clone that
+has not built anything yet is still checked. `npx ramonda-css codegen` writes it without a build,
+and `--check` fails in CI when what is committed no longer matches the config beside it.
 
 A route that is already code-split gets its own stylesheet, without being asked. A block belongs to
 the module it was written in and each module imports its own CSS, so splitting is a decision the
@@ -162,11 +176,13 @@ being asked — that is the setting above.
   nesting and conditions.
 - **[What is checked](/style-blocks/checking)** — every rule, what it catches, and how to silence one
   that is wrong.
-- **[Names the stylesheet sees](/style-blocks/variables)** — custom properties, `@@property`,
-  keyframes, and what a theme is.
+- **[Names the stylesheet sees](/style-blocks/variables)** — declaring variables and reading them
+  with `$`, keyframes and font faces, and what a theme is.
 - **[Which declaration wins](/style-blocks/order)** — two declarations of one property, and the rule
   that decides between them.
 - **[Composing](/style-blocks/composing)** — reusing a block, conditions, and your own stylesheet.
-- **[Project settings](/style-blocks/settings)** — `ramonda.css.ts`, and making the rules stricter.
+- **[The config file](/style-blocks/config)** — `ramonda.css.ts` end to end, and what a project can
+  decide not to allow.
+- **[Project settings](/style-blocks/settings)** — the names a block emits, and who reads them.
 - **[Tooling](/style-blocks/tooling)** — formatters, linters, other JSX libraries, and what this
   does not do.

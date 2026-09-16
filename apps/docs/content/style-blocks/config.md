@@ -46,21 +46,27 @@ shipping without them.
 
 `properties` is keyed three ways, and each binds more tightly than the one before:
 
-```ts
-properties: {
-  "*":             { shorthand: false },      // every property
-  "<length>":      { variablesOnly: true },   // every property that takes a length
-  "padding-left":  { units: ["px"] },         // this one
-}
+```ts alternatives
+export default {
+  properties: {
+    "*": { shorthand: false }, // every property
+    "<length>": { variablesOnly: true }, // every property that takes a length
+    "padding-left": { units: ["px"] }, // this one
+  },
+};
 ```
 
 A `<kind>` is CSS's own classification — `<color>`, `<length>`, `<time>`, `<angle>` and the rest.
 Naming a property directly wins over naming its kind, which wins over the sweep, so an exemption is
 written where the exception is:
 
-```ts
-"<length>":      { variablesOnly: true },
-"border-radius": { variablesOnly: false },    // except here
+```ts alternatives
+export default {
+  properties: {
+    "<length>": { variablesOnly: true },
+    "border-radius": { variablesOnly: false }, // except here
+  },
+};
 ```
 
 **Ask the tool rather than working it out.** `ramonda-css explain` reads the same answer the checker
