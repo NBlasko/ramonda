@@ -9,7 +9,7 @@ export class EtEtStrict extends Component {
         css={@@(
           background-color: yellowgreen;
           color: white;
-          padding: $.space.gutter.normal;
+          padding: $.color.accent.main;
           &:hover {
             color: {colorVal};
             cursor: pointer;

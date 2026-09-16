@@ -870,6 +870,55 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         return { ...got, spans: home(file, got.spans, span, cache.get(fileName)?.where ?? EMPTY_REGIONS) };
       };
 
+      /**
+       * THE DIMMING, which is a diagnostic nobody thinks of as one.
+       *
+       * VS Code fades unused code out, and what it fades is this list — a third one beside the
+       * semantic and syntactic diagnostics. It was not proxied, so it came straight off the VIRTUAL
+       * file with virtual positions, and an editor applied them to the author's text at face value:
+       *
+       *     TS6133 at 200+6   lands on "olor: "   '__vars' is declared but its value is never read
+       *     TS6133 at 397+6   past the end        '__cond' …
+       *     TS6133 at 519+6   past the end        '__from' …
+       *
+       * Two faults in one. The positions are somebody else's, which is why a word came out half
+       * coloured; and the subject is scaffolding this package wrote, which is why hovering a `<div>`
+       * said `'__cond' is declared but its value is never read`. Reported by the user, who found it
+       * by deleting a line and watching the colours come right.
+       *
+       * `mapped` is the whole fix: a diagnostic about the author's own text keeps its place, and one
+       * about the preamble maps to nothing and is dropped — so an unused name they really did write
+       * is still faded, which is the half a blanket `return []` would have broken.
+       */
+      proxy.getSuggestionDiagnostics = (fileName) => {
+        const file = overlay(fileName, readSnapshot);
+        return file === undefined
+          ? service.getSuggestionDiagnostics(fileName)
+          : mapped(file, service.getSuggestionDiagnostics(fileName));
+      };
+
+      /**
+       * The TODO list, which is a position and was somebody else's.
+       *
+       * Found by sweeping the language service for every method that answers with a position and
+       * asking which are proxied — 42 of 48 were, and this was one of the six. Measured, a `// TODO`
+       * the author wrote came back at offset 838 in a file barely a hundred characters long.
+       *
+       * The same `back` the diagnostics use, so a comment in the author's text keeps its place and
+       * one the preamble happens to contain is dropped.
+       */
+      proxy.getTodoComments = (fileName, descriptors) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getTodoComments(fileName, descriptors);
+
+        const out: ts.TodoComment[] = [];
+        for (const one of service.getTodoComments(fileName, descriptors)) {
+          const span = back(file, { start: one.position, length: one.message.length });
+          if (span !== undefined) out.push({ ...one, position: span.start });
+        }
+        return out;
+      };
+
       /** Folding, and the outline that feeds the breadcrumbs — both are spans and both were wrong. */
       proxy.getOutliningSpans = (fileName) => {
         const file = overlay(fileName, readSnapshot);

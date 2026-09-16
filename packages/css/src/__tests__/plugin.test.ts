@@ -262,6 +262,66 @@ describe("the red squiggles", () => {
   });
 
   /**
+   * THE DIMMING, which is a diagnostic nobody thinks of as one.
+   *
+   * VS Code fades unused code out, and what it fades is `getSuggestionDiagnostics` — a third list
+   * beside the semantic and syntactic ones. It was not proxied, so it came straight off the VIRTUAL
+   * file with virtual positions, and an editor applied them to the author's text at face value.
+   *
+   * Reported by the user, who saw a word half-coloured and hovered a `<div>` they wrote:
+   *
+   *     TS6133 at 200+6   lands on "olor: "   '__vars' is declared but its value is never read
+   *     TS6133 at 397+6   past the end        '__cond' …
+   *     TS6133 at 519+6   past the end        '__from' …
+   *
+   * Two faults in one: the positions are somebody else's, and the subject is scaffolding this
+   * package wrote. `__vars`, `__cond` and `__from` are names no author can act on.
+   *
+   * It is the same fault the semantic-token note below records — a list of SPANS handed over
+   * unmapped — which is why this is a class and not an oversight: every method that answers with a
+   * position has to be mapped or dropped, and the next one added will be too.
+   */
+  test("the unused-code dimming is the author's own, or is not shown", () => {
+    const marked =
+      `export class Card {\n  toggle = true;\n  render() {\n` +
+      `    const shade = this.toggle ? "red" : "blue";\n` +
+      `    return (\n      <div\n        css={@@(\n          color: white;\n` +
+      `          &:hover { color: {shade}; }\n        )}\n      >x</div>\n    );\n  }\n}\n`;
+    const { service } = editor(marked);
+
+    for (const one of service.getSuggestionDiagnostics(FILE)) {
+      const said = ts.flattenDiagnosticMessageText(one.messageText, " ");
+      // Nothing about the scaffolding: those are names the author never wrote.
+      expect(said).not.toMatch(/__vars|__cond|__from|__block|__val/);
+    }
+  });
+
+  test("and an unused name the author DID write is still dimmed, which is the control", () => {
+    const marked = `const spare = 1;\nconst a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n`;
+    const { service, source } = editor(marked);
+
+    const found = service.getSuggestionDiagnostics(FILE).filter((one) => one.code === 6133);
+    expect(found).toHaveLength(1);
+    expect(source.slice(found[0].start ?? 0, (found[0].start ?? 0) + (found[0].length ?? 0))).toBe("spare");
+  });
+
+  /**
+   * A `// TODO` the author wrote, at the place they wrote it.
+   *
+   * Found by the same sweep as the dimming: every method that answers with a POSITION has to be
+   * mapped or dropped, and this one was neither. Measured, a comment on line five came back at
+   * offset 838 of a file a hundred characters long.
+   */
+  test("a TODO comment keeps the author's own position", () => {
+    const marked = `const a = <div css={@@( color: white; )}>x</div>;\n// TODO: one the author wrote\nexport default a;\n`;
+    const { service, source } = editor(marked);
+
+    const found = service.getTodoComments(FILE, [{ text: "TODO", priority: 1 }]);
+    expect(found).toHaveLength(1);
+    expect(source.slice(found[0].position, found[0].position + 4)).toBe("TODO");
+  });
+
+  /**
    * A project-wide setup fault — the block shape not resolving — is deliberately NOT surfaced here.
    * An editor would show it on every file the author opens; `ramonda-css` says it once.
    *
