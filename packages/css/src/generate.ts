@@ -117,7 +117,7 @@ export interface CodegenResult {
  * change is a rebuild; the rebuild runs the plugin. Comparing first is what ends that loop, and it
  * is the only thing that does — a timestamp would still change on an identical write.
  */
-function put(path: string, text: string): Written {
+function put(path: string, text: string, write: boolean): Written {
   let already: string | undefined;
   try {
     already = readFileSync(path, "utf8");
@@ -151,7 +151,7 @@ function put(path: string, text: string): Written {
     );
   }
 
-  writeFileSync(path, text);
+  if (write) writeFileSync(path, text);
   return { path, changed: true };
 }
 
@@ -164,7 +164,12 @@ function put(path: string, text: string): Written {
  * Writes nothing at all when there is no config, or when the config declares no variables: two empty
  * files would be noise a reader has to dismiss, and the result says which case it was.
  */
-export function writeGenerated(from: string, typescript: typeof ts): CodegenResult {
+export function writeGenerated(
+  from: string,
+  typescript: typeof ts,
+  options: { readonly write?: boolean } = {},
+): CodegenResult {
+  const write = options.write ?? true;
   const path = findConfig(from);
   if (path === undefined) return { config: undefined, declared: 0, files: [] };
 
@@ -191,12 +196,12 @@ export function writeGenerated(from: string, typescript: typeof ts): CodegenResu
   const folder = config.outDir ?? OUT_DIR;
   agreeOnTheFolder(path, folder);
   const out = join(dirname(path), folder);
-  mkdirSync(out, { recursive: true });
+  if (write) mkdirSync(out, { recursive: true });
 
   return {
     config: path,
     declared: named.length,
-    files: [put(join(out, "variables.css"), css), put(join(out, "index.ts"), module)],
+    files: [put(join(out, "variables.css"), css, write), put(join(out, "index.ts"), module, write)],
   };
 }
 

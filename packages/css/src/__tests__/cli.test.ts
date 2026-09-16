@@ -369,9 +369,12 @@ describe("codegen", () => {
     return root;
   }
 
-  const runIn = (root: string) => {
+  const runIn = (root: string, ...flags: string[]) => {
     try {
-      return { output: execFileSync(process.execPath, [BIN, "codegen"], { cwd: root, encoding: "utf8" }), status: 0 };
+      return {
+        output: execFileSync(process.execPath, [BIN, "codegen", ...flags], { cwd: root, encoding: "utf8" }),
+        status: 0,
+      };
     } catch (error) {
       const failed = error as { stdout?: string; stderr?: string; status?: number };
       return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? -1 };
@@ -397,6 +400,58 @@ describe("codegen", () => {
 
     expect(status).toBe(0);
     expect(output).toMatch(/no .*ramonda\.css\.ts/i);
+  });
+
+  /**
+   * `--check` is what a repository that COMMITS the generated pair asks in CI.
+   *
+   * The gate that wanted it was re-deriving the whole answer: it read both files, ran codegen over
+   * the author's tree and compared — so a red run left the working copy modified and then told the
+   * reader to run the command it had just run for them, and it carried a second copy of the
+   * `outDir` regex to find the folder at all. Codegen already knows both halves, because `put`
+   * compares before writing for an unrelated reason.
+   */
+  describe("`--check`", () => {
+    const declaring = `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`;
+
+    test("a project with no generated pair at all is stale, and nothing is written", () => {
+      const root = bare(declaring);
+      const { output, status } = runIn(root, "--check");
+
+      expect(status).toBe(1);
+      expect(output).toContain("css-system");
+      // The half that makes it a CHECK rather than a fix: the tree it was asked about is untouched.
+      expect(existsSync(join(root, join("css-system", "index.ts")))).toBe(false);
+    });
+
+    test("a pair codegen has just written agrees, and exits 0", () => {
+      const root = bare(declaring);
+      runIn(root);
+
+      expect(runIn(root, "--check").status).toBe(0);
+    });
+
+    test("an output edited by hand is stale, and is NOT repaired", () => {
+      const root = bare(declaring);
+      runIn(root);
+      const path = join(root, "css-system", "index.ts");
+      writeFileSync(path, `${readFileSync(path, "utf8")}\n// @ramonda/css — edited by hand\n`);
+
+      const { output, status } = runIn(root, "--check");
+
+      expect(status).toBe(1);
+      expect(output).toContain("index.ts");
+      expect(readFileSync(path, "utf8")).toContain("edited by hand");
+    });
+
+    test("a config it refuses is said in its own words, not as a crash", () => {
+      const root = bare(`// outDir: "elsewhere"\n${declaring}`);
+      const { output, status } = runIn(root, "--check");
+
+      expect(status).toBe(1);
+      expect(output).toContain("outDir");
+      expect(output).toContain("elsewhere");
+    });
   });
 
   test("a collision stops it, with both paths named", () => {

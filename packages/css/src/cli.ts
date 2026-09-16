@@ -44,6 +44,7 @@ const USAGE = `ramonda-css — the tools for a project whose source TypeScript c
   ramonda-css format <paths…>      format through the project's own biome (--check to report)
   ramonda-css lint <paths…>        lint through the project's own oxlint
   ramonda-css codegen              write the variables this project declares, and their types
+                                   (--check reports a stale css-system instead of writing)
   ramonda-css explain <property>   what your config does to one property, and which line decided it
 
 The check takes a PROJECT — a tsconfig, or the directory holding one — because a program is what
@@ -95,7 +96,7 @@ if (argv[0] === "format" || argv[0] === "lint") {
 }
 
 if (argv[0] === "codegen") {
-  said(() => runCodegen());
+  said(() => runCodegen(argv.includes("--check")));
 }
 
 if (argv[0] === "explain") {
@@ -343,8 +344,8 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
  * variable, and exiting non-zero would break a build for a step it never asked for. It says so and
  * stops.
  */
-function runCodegen(): never {
-  const result = writeGenerated(process.cwd(), ts);
+function runCodegen(only: boolean): never {
+  const result = writeGenerated(process.cwd(), ts, { write: !only });
 
   if (result.config === undefined) {
     console.log(`${TAG} no \`ramonda.css.ts\` in this project, so there are no variables to write.`);
@@ -357,6 +358,33 @@ function runCodegen(): never {
   }
 
   const changed = result.files.filter((one) => one.changed);
+
+  /**
+   * `--check` writes NOTHING and exits non-zero when the pair is stale.
+   *
+   * The generated files are committed, so something has to say when they stop matching the config
+   * beside them — and the repository already answers that question this way for
+   * `keywords.generated.ts`. The gate that asked for this had been re-deriving it instead: it read
+   * both files, RAN codegen over the author's tree, and compared — so a red run left the working
+   * copy modified, and it carried its own copy of the `outDir` regex to find the folder at all.
+   *
+   * Asking codegen is the same answer with none of that. It knows what it would write and whether
+   * that differs, because `put` compares before writing for an unrelated reason.
+   */
+  if (only) {
+    if (changed.length === 0) {
+      console.log(`${TAG} ${where(result.config)} and its generated files agree`);
+      process.exit(0);
+    }
+
+    console.error(
+      `\n${TAG} ${changed.length} generated file(s) no longer match ${where(result.config)}:\n\n` +
+        `${changed.map((one) => `  - ${where(one.path)}`).join("\n")}\n\n` +
+        "        Run `ramonda-css codegen` here and commit the result. Nothing was written.\n",
+    );
+    process.exit(1);
+  }
+
   const said = changed.length === 0 ? "already up to date" : changed.map((one) => where(one.path)).join(", ");
 
   console.log(

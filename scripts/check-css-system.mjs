@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 /**
@@ -16,11 +16,20 @@ import { join, relative } from "node:path";
  * file is in the tree and `build-css-properties.mjs --check` fails when it is stale. One argument,
  * one answer, and this is it for the second generator.
  *
- * ## What it does
+ * ## What it does, and what it stopped doing
  *
- * Runs codegen into memory and compares. A difference means somebody edited the config and did not
- * re-run it, or edited the output by hand — both of which a reviewer should see as a diff rather
- * than discover at run time.
+ * It asks `ramonda-css codegen --check`, which writes nothing and exits non-zero when the pair no
+ * longer matches. That is one question to the tool that owns the answer.
+ *
+ * It used to re-derive all of it here: read both files, RUN codegen over the author's tree, and
+ * compare. Three faults came with that, and each one was measured.
+ *
+ *   - A red run left the working copy MODIFIED, then told the reader to run the command it had
+ *     just run for them.
+ *   - It carried its own copy of the `outDir` regex to find the folder — a third reader of a
+ *     setting, and the arrangement this repository keeps finding a fault in.
+ *   - `stdio: "ignore"` with no `try`, so a config codegen REFUSES killed the gate with a raw Node
+ *     stack trace and a `status: 1` object, and threw away the sentence explaining why.
  */
 
 const root = join(import.meta.dirname, "..");
@@ -37,44 +46,24 @@ function projects(from, found = []) {
   return found;
 }
 
-const stale = [];
-for (const project of projects(root)) {
-  const out = /\boutDir\s*:\s*["'`]([^"'`]+)["'`]/.exec(readFileSync(join(project, "ramonda.css.ts"), "utf8"));
-  const folder = join(project, out?.[1] ?? "css-system");
+const found = projects(root);
+let refused = 0;
 
-  const before = new Map();
-  for (const name of ["index.ts", "variables.css"]) {
-    try {
-      before.set(name, readFileSync(join(folder, name), "utf8"));
-    } catch {
-      before.set(name, undefined);
-    }
-  }
-
-  execFileSync(process.execPath, [join(root, "packages", "css", "bin.mjs"), "codegen"], {
-    cwd: project,
-    stdio: "ignore",
-  });
-
-  for (const [name, was] of before) {
-    let now;
-    try {
-      now = readFileSync(join(folder, name), "utf8");
-    } catch {
-      now = undefined;
-    }
-    if (was !== now) stale.push(relative(root, join(folder, name)));
+for (const project of found) {
+  const where = relative(root, project) || ".";
+  try {
+    execFileSync(process.execPath, [join(root, "packages", "css", "bin.mjs"), "codegen", "--check"], {
+      cwd: project,
+      stdio: ["ignore", "ignore", "inherit"],
+    });
+  } catch {
+    // Codegen has already said what is wrong, on stderr, in its own words — a stale pair or a
+    // config it refuses. Naming the project is the only thing this can add.
+    console.error(`${TAG} ${where}\n`);
+    refused++;
   }
 }
 
-if (stale.length > 0) {
-  console.error(
-    `\n${TAG} ${stale.length} generated file(s) do not match the config beside them:\n\n` +
-      stale.map((one) => `  - ${one}`).join("\n") +
-      `\n\n  Run \`ramonda-css codegen\` in that project and commit the result. These files are\n` +
-      `  committed on purpose — the gate is what keeps them honest, not hiding them.\n`,
-  );
-  process.exit(1);
-}
+if (refused > 0) process.exit(1);
 
-console.log(`${TAG} every committed css-system matches its config`);
+console.log(`${TAG} ${found.length} project(s) — every committed css-system matches its config`);
