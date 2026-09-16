@@ -3893,13 +3893,19 @@ describe("what the bundlers see and the checker saw", () => {
  */
 describe("a config rule inside a nested rule", () => {
   const config: Config = {
-    units: { length: ["px"] },
+    /**
+     * `time` as well as `length`, so a unit can be refused on a property whose KIND this config does
+     * not also take from variables — otherwise `literal-not-allowed` answers first and the unit
+     * rules below would be asserting something else's presence. See "a declaration that breaks more
+     * than one of a project's rules".
+     */
+    units: { length: ["px"], time: ["ms"] },
     properties: {
       "<color>": { variablesOnly: true },
       "<length>": { variablesOnly: true },
       "z-index": { values: [0, 1] },
       padding: { shorthand: false },
-      "padding-left": { units: ["px"] },
+      "transition-duration": { units: ["ms"] },
     },
     variables: { color: kind("color", { primary: { main: "#3b82f6" } }) },
   };
@@ -3916,8 +3922,8 @@ describe("a config rule inside a nested rule", () => {
     ["a length written out", "padding-top: 8px;", "literal-not-allowed"],
     ["a value outside the closed list", "z-index: 5;", "value-not-allowed"],
     ["a shorthand switched off", "padding: 8px;", "shorthand-not-allowed"],
-    ["a unit this property does not take", "padding-left: 2rem;", "unit-not-allowed"],
-    ["a unit the project does not take", "margin-top: 2rem;", "unit-not-allowed"],
+    ["a unit this property does not take", "transition-duration: 2s;", "unit-not-allowed"],
+    ["a unit the project does not take", "animation-duration: 2s;", "unit-not-allowed"],
   ])("%s is reported at the top level, one deep and two deep", (_what, css, rule) => {
     // The top level first, so a config that reached nothing would not pass the two below for free.
     expect(under(`  ${css}`)).toContain(rule);
@@ -3948,5 +3954,83 @@ describe("a config rule inside a nested rule", () => {
     ["a `var()` call", "color: var(--anything);"],
   ])("%s stays silent inside a nested rule too", (_what, css) => {
     expect(under(`  &:hover {\n    ${css}\n  }`)).toEqual([]);
+  });
+});
+
+/**
+ * ONE mistake, ONE finding — when a project narrows several things at once.
+ *
+ * `literal-not-allowed` is the widest of the config's rules: it fires on any written-out value of a
+ * kind taken from variables, so it landed beside every narrower rule that also fired. Measured under
+ * a config narrowing units, shorthands, arity and a kind at the same time:
+ *
+ *     letter-spacing: 2rem     literal-not-allowed + unit-not-allowed
+ *     margin: 8px              shorthand-not-allowed + literal-not-allowed
+ *     padding-left: 1px 2px    too-many-values + literal-not-allowed
+ *
+ * Each is one gesture by the author, and two reports for one gesture is what the whole `inOrder`
+ * machinery exists to stop on the other side of the tool.
+ *
+ * **The order is the order the fixes nest in**, which is what makes it one principle rather than a
+ * table of pairs. A declaration is decided outside in: WHICH property, then HOW MANY values, then
+ * WHERE the value comes from, then HOW it is spelt. Each later answer is a detail of the earlier
+ * one, so the outermost unanswered question is the one to ask.
+ *
+ *     shorthand-not-allowed   the property itself
+ *     too-many-values         how many values it takes
+ *     literal-not-allowed     where the value comes from
+ *     unit-not-allowed        how that value is spelt
+ *
+ * Reading `unit-not-allowed` first is the case that shows why: it sends the author to `2px`, which
+ * their own config still refuses — a round trip that ends where `literal-not-allowed` would have
+ * started them.
+ */
+describe("a declaration that breaks more than one of a project's rules", () => {
+  const config: Config = {
+    units: { length: ["px"] },
+    properties: {
+      "<length>": { variablesOnly: true },
+      "<color>": { variablesOnly: true },
+      "*": { shorthand: false },
+      // Exempt, so `too-many-values` can be reached without `shorthand-not-allowed` answering first.
+      padding: { shorthand: true, arity: 1 },
+      "z-index": { values: [0, 1] },
+    },
+    variables: { space: kind("length", { gutter: "16px" }) },
+  };
+
+  const under = (css: string) => {
+    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, { config }).map((one) => one.rule);
+  };
+
+  test.each([
+    ["a forbidden unit on a kind taken from variables", "  letter-spacing: 2rem;", "literal-not-allowed"],
+    ["a shorthand that is switched off", "  margin: 8px;", "shorthand-not-allowed"],
+    ["more values than the project allows", "  padding: 1px 2px;", "too-many-values"],
+  ])("%s is one finding, the outermost", (_what, css, rule) => {
+    expect(under(css)).toEqual([rule]);
+  });
+
+  /** Each alone is untouched — the collapse may not cost a report that stands on its own. */
+  test.each([
+    ["a colour written out", "  color: #ff0000;", "literal-not-allowed"],
+    ["a value outside a closed list", "  z-index: 5;", "value-not-allowed"],
+    ["a shorthand with a variable in it", "  margin: $.space.gutter;", "shorthand-not-allowed"],
+  ])("%s is still reported on its own", (_what, css, rule) => {
+    expect(under(css)).toEqual([rule]);
+  });
+
+  /** And two faults in two DECLARATIONS are still two, which is the line this must not cross. */
+  test("a second declaration keeps its own finding", () => {
+    expect(under("  margin: 8px;\n  color: #ff0000;")).toEqual(["shorthand-not-allowed", "literal-not-allowed"]);
+  });
+
+  /** A unit refused where the kind is NOT taken from variables still says which unit. */
+  test("a forbidden unit alone still names the unit", () => {
+    expect(under("  transition-duration: 2s;")).toEqual([]);
+    expect(under("  letter-spacing: $.space.gutter;")).toEqual([]);
   });
 });

@@ -337,10 +337,72 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
    */
   const misplaced = findings.some((one) => one.rule === "hole-out-of-place");
   const named = misplaced ? findings.filter((one) => one.rule !== "unknown-property") : findings;
+  const once = outermost(block, named);
 
   const silenced = config?.rules;
-  const kept = silenced === undefined ? named : named.filter((one) => silenced[one.rule] !== "off");
+  const kept = silenced === undefined ? once : once.filter((one) => silenced[one.rule] !== "off");
   return kept.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * The rules a project's CONFIG turns on, in the order the fixes they ask for NEST.
+ *
+ * A declaration is decided outside in — which property, then how many values, then where the value
+ * comes from, then how it is spelt — and each later answer is a detail of the earlier one. So when
+ * more than one of these fires on one declaration, the outermost unanswered question is the one to
+ * ask, and the rest are about a declaration the author is still deciding the shape of.
+ *
+ * Reading them the other way round is the case that shows why this is an order and not a
+ * preference: `letter-spacing: 2rem` under `units: { length: ["px"] }` and a `<length>` taken from
+ * variables reports the unit AND the literal. Following the unit gives `2px`, which the same config
+ * still refuses — a round trip ending where the other message would have started them.
+ */
+const NESTED: readonly RuleId[] = [
+  "shorthand-not-allowed",
+  "too-many-values",
+  "literal-not-allowed",
+  "unit-not-allowed",
+];
+
+/**
+ * One finding per declaration among {@link NESTED}, and every other finding untouched.
+ *
+ * **Per DECLARATION, which is the unit review pass 8 arrived at for the same question** on the other
+ * side of the tool: a line holds as many declarations as an author cares to write, and two faults on
+ * one line are two faults. The positions do not line up either — `shorthand-not-allowed` sits on the
+ * property and `literal-not-allowed` on the value — so nothing narrower than the declaration could
+ * group them.
+ *
+ * Anything outside this list is left alone on purpose. These four are the ones a project SWITCHED
+ * ON, so they overlap by construction; CSS's own rules do not.
+ */
+function outermost(block: Block, findings: readonly Finding[]): Finding[] {
+  if (findings.length < 2) return [...findings];
+
+  const dropped = new Set<Finding>();
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      if (item.at === undefined || item.end === undefined) continue;
+
+      const here = findings.filter((one) => NESTED.includes(one.rule) && one.at >= item.at! && one.at <= item.end!);
+      if (here.length < 2) continue;
+
+      const keep = here.reduce((a, b) => (NESTED.indexOf(a.rule) <= NESTED.indexOf(b.rule) ? a : b));
+      /**
+       * Only a DIFFERENT rule is dropped. Two findings of the SAME one are two faults, not two words
+       * about one — measured, `padding: 2rem 3em` names both units, and collapsing them would fix
+       * one and re-report the other on the next save.
+       */
+      for (const one of here) if (one.rule !== keep.rule) dropped.add(one);
+    }
+  };
+
+  walkItems(block.items);
+  return findings.filter((one) => !dropped.has(one));
 }
 
 /**
