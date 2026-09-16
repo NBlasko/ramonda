@@ -4153,3 +4153,55 @@ describe("a number where only keywords go", () => {
     },
   );
 });
+
+/**
+ * A PROPERTY NAME in the wrong case, which is the same CSS and was called a typo.
+ *
+ * `unknownValue`'s own note settled this for VALUES and its words are the argument here too: *a
+ * keyword in the wrong CASE is the same CSS, and saying it does not exist is a lie the author cannot
+ * act on.* The verdict it reached — still refused, under `non-canonical-spelling`, because a
+ * repository wants one spelling and the formatter writes it — was never applied to the name half.
+ *
+ * Measured in Chromium, Firefox and WebKit: `COLOR: red` sets `color` to red in all three, and
+ * `CSS.supports("COLOR", "red")` is true in all three. Property names are case-insensitive in CSS.
+ *
+ * So `COLOR` was reported as `unknown-property` — *`COLOR` is not a CSS property* — with no
+ * suggestion, because `nearest` measures a distance and the distance from `COLOR` to `color` is
+ * five substitutions.
+ */
+describe("a property name in the wrong case", () => {
+  const under = (css: string) => {
+    const source = `<div css={@@(\n  ${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {});
+  };
+
+  test.each([["COLOR: red;"], ["PADDING-LEFT: 8px;"], ["Display: flex;"]])(
+    "`%s` is one spelling of correct CSS, not an unknown property",
+    (css) => {
+      const found = under(css);
+
+      expect(found.map((one) => one.rule)).toEqual(["non-canonical-spelling"]);
+      expect(found[0].message).not.toContain("is not a CSS property");
+    },
+  );
+
+  test("and the message says which spelling to write", () => {
+    const [found] = under("COLOR: red;");
+
+    expect(found.message).toContain("color");
+  });
+
+  /** A real typo is still a real typo, whatever its case — the half this must not cost. */
+  test.each([
+    ["dsiplay: flex;", "display"],
+    ["DSIPLAY: flex;", "display"],
+    ["colr: red;", "color"],
+  ])("`%s` is still reported as unknown, with the near miss", (css, meant) => {
+    const found = under(css);
+
+    expect(found.map((one) => one.rule)).toEqual(["unknown-property"]);
+    expect(found[0].message).toContain(meant);
+  });
+});

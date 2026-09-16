@@ -2276,7 +2276,41 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
   if (among === undefined || among.includes(name)) return;
   if (body === undefined && KNOWN.has(name)) return;
 
-  const meant = nearest(name, among);
+  /**
+   * A name whose only fault is its CASE is the same CSS, and `unknownValue`'s note already settled
+   * what to do about that: *saying it does not exist is a lie the author cannot act on.* That was
+   * applied to a value's keywords and not to the name beside them.
+   *
+   * Measured in Chromium, Firefox and WebKit: `COLOR: red` sets `color` to red in all three, and
+   * `CSS.supports("COLOR", "red")` is true in all three. So the verdict is the one that half
+   * reached — still refused, because a repository wants one spelling, and `non-canonical-spelling`
+   * is the id whose formatter rewrites it.
+   *
+   * **Before `nearest`, and that is not an ordering detail.** A distance measured in substitutions
+   * puts `COLOR` five away from `color`, so a mis-cased name got `is not a CSS property` with no
+   * suggestion at all — the least useful message of the two.
+   */
+  const lowered = name.toLowerCase();
+  if (lowered !== name && (body === undefined ? KNOWN.has(lowered) : among.includes(lowered))) {
+    findings.push({
+      rule: "non-canonical-spelling",
+      at: item.at,
+      length: name.length,
+      message:
+        `\`${name}\` and \`${lowered}\` are the same property to a browser. Write \`${lowered}\`, which ` +
+        `is the spelling this project uses — \`ramonda-css format\` does it for you.`,
+    });
+    return;
+  }
+
+  /**
+   * The near miss is measured against the LOWER-CASED name, so a typo shouted still gets one.
+   *
+   * `DSIPLAY` is six substitutions from `display` and none from `dsiplay`, so it came back with no
+   * suggestion while the same typo in lower case got one. The name in the message stays as the
+   * author wrote it.
+   */
+  const meant = nearest(lowered, among);
   const said = meant === undefined ? "" : ` Did you mean \`${meant}\`?`;
 
   findings.push({

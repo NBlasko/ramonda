@@ -32,12 +32,18 @@ in a block arrives as an ordinary `tsc` diagnostic, on the character you wrote, 
 ## One spelling
 
 Two spellings of the same CSS are two things to search for and two to keep in step. Where a
-declaration, a condition or a selector has a canonical form, the other one is reported and the
-formatter writes the canonical one:
+declaration, a condition or a selector has a canonical form, the other one is reported and
+`ramonda-css format` writes the canonical one:
 
 ```tsx expect-report:non-canonical-spelling
-const card = @@( COLOR: RED; );
+const card = @@(
+  COLOR: red;
+  @media (min-width:40rem) { color: blue; }
+);
 ```
+
+Both of those are correct CSS — a browser reads `COLOR` and `color` as one property, and a media
+query with no space after the colon is the same query. What they cost is a second thing to grep for.
 
 CSS does not mind either. Your repository does.
 
