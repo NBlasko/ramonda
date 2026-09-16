@@ -310,4 +310,29 @@ describe("a call that is never closed", () => {
   test("and a closed one is read as it always was", () => {
     expect(refused(`const a = <div css={@@(\n  content: url(a.png);\n)}>x</div>;\n`)).toBe("(not refused)");
   });
+
+  /**
+   * A paren inside a STRING is text, and the count has to know — both ways round.
+   *
+   * These are the rows a naive count gets backwards, which is what makes the string skip the thing
+   * under test rather than an implementation detail. `url("a(b.png")` is CLOSED: the `(` inside the
+   * quotes is a character in a filename. `url("a)b.png"` is OPEN for the same reason — its only `)`
+   * is inside them too.
+   */
+  test("a `(` inside a string does not open a call", () => {
+    expect(refused(`const a = <div css={@@(\n  content: url("a(b.png");\n)}>x</div>;\n`)).toBe("(not refused)");
+  });
+
+  test("a `)` inside a string does not close one", () => {
+    const said = refused(`const a = <div css={@@(\n  content: url("a)b.png";\n)}>x</div>;\nconst d = (1);\n`);
+
+    expect(said).toContain("url(");
+  });
+
+  /** An escaped quote does not end the string, so the walk keeps going past it. */
+  test("an escaped quote is part of the string", () => {
+    const said = refused(`const a = <div css={@@(\n  content: url("a\\")b.png";\n)}>x</div>;\nconst d = (1);\n`);
+
+    expect(said).toContain("url(");
+  });
 });
