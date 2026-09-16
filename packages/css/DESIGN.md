@@ -2711,3 +2711,72 @@ package has already measured once, with `background-image: url("a.png")`.
 
 So the fix belongs in the GENERATOR: a positive fact saying a property's grammar admits no primitive
 at all, which is a measurement against the engines rather than a guess from a gap.
+
+### 7. Review pass 9 — what every consumer does with a config it does not like
+
+The pass was chosen by measuring rather than by guessing. Nine files read the config; review pass 4
+built its matrix against three of them — the checker, the build and the editor — and `codegen.ts`,
+the third-heaviest reader, was never swept. That is how pass 8's `TypeError` got in. The consumer
+list had been written down rather than derived.
+
+So this pass derived it, and ran twelve broken configs through six consumers: `check`, `codegen`,
+`codegen --check`, `explain`, a real Vite build, and the editor.
+
+#### The one that mattered: a config that does not parse
+
+```
+export default { variables: {{{ };     →     exports.default = { variables: {} };
+```
+
+TypeScript's error RECOVERY. `transpileModule` reports nothing unless asked, and emits whatever it
+managed to build — so the config LOADED: valid, empty, and nobody's. Nothing threw, nothing was
+undefined, so no consumer had anything to notice. A real Vite build exited 0 and shipped
+
+```css
+.r-pl-2rem{padding-left:2rem}      units: { length: ["px"] }
+.r-c-\#ff0000{color:red}           "<color>": { variablesOnly: true }
+```
+
+Only `ramonda-css check` caught it, and only because it alone type-checks the config file.
+
+`readConfig`'s own note names this failure exactly — *a tool that quietly ran with defaults because
+somebody's config had a typo would be the worst of both* — and it was true of a config that THREW
+and not of one that would not parse. `reportDiagnostics: true` is the whole fix; the sentence it
+produces says what the silence would have cost, because a parse error is the one fault where doing
+nothing looks exactly like success.
+
+#### Crashes, and the distinction that already existed
+
+Three refusals in `codegen.ts` threw a raw `Error`, so a person met a Node stack trace with a
+careful sentence buried in it. `cli.ts` draws the line — the author's file is SAID, a bug of ours is
+thrown — and these were on the wrong side. No test saw it: a crash exits 1 and prints its message
+too, so assertions on status and wording passed straight over. What separates them is the stack
+frame, and that is what the new tests assert.
+
+Every remaining raw `throw new Error` in the package was then read rather than assumed. Each one is
+a bug of ours or a formatter this package has not been measured against, and says so. They are on
+the right side of the same line.
+
+#### The editor, which was silent
+
+Returning an empty config there is right — a broken one must not take the language service down,
+and measured it does not: 828 property names are still offered. It took every RULE instead, and
+said nothing:
+
+```
+GOOD             [unit-not-allowed] … | [literal-not-allowed] …
+a syntax error   (nothing)            828 completions, as if all were well
+units: "px"      (nothing)            828 completions
+… and six more, every one of them silent
+```
+
+A green file is a claim. With no config loaded the tool cannot support it, so one diagnostic sits on
+the block — and only on a file that HOLDS one, because a file with no CSS in it is not affected by
+the config and marking it would be noise on every file in the project.
+
+#### Measured and left alone
+
+`explain` answers from a config whose VARIABLES are broken, and that is correct: it reports what the
+config does to one property, and a bad variable name does not change that answer. The build reports
+one fault per file where the checker lists them all — deliberate, and written down where it happens:
+a build stops at one anyway, and `ramonda-css check` is what enumerates.
