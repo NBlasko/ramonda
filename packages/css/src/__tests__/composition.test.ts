@@ -464,3 +464,44 @@ describe("a nested guard, evaluated", () => {
     expect(classes(off, false).includes("r-cur-none")).toBe(cursor);
   });
 });
+
+/**
+ * TWO conditions your code decides, both true — and the answer is the order you wrote.
+ *
+ * The user asked it directly: *"a sta se desava ako su oba pod nekim uslovom … i u jednom trenutku
+ * se loaduju oba, da li poslednji pobedjuje ili bacamo gresku? Ako ima resenje i deterministicko je,
+ * mozemo da ga dokumentujemo."*
+ *
+ * It is deterministic, and it needs no rule. `if ({ … }) { … }` compiles to a merge argument —
+ * `_merge(p && { … }, q && { … })` — so both groups are settled before anything reaches the page,
+ * and the element carries ONE class for the property. Nothing ever reaches the stylesheet twice, so
+ * there is no position for the two to fight over.
+ *
+ * That is the opposite of two CSS conditions, where both rules exist in the sheet and its one
+ * position has to decide — which is why those are refused when both can hold.
+ */
+describe("two conditions the code decides", () => {
+  const block = (p: boolean, q: boolean) =>
+    merge(p && { color: "r-c-red" }, q && { color: "r-c-blue" }) as { className: string };
+
+  test("both true is the one written last", () => {
+    expect(block(true, true).className).toBe("r-c-blue");
+  });
+
+  test.each([
+    ["only the first", true, false, "r-c-red"],
+    ["only the second", false, true, "r-c-blue"],
+    ["neither", false, false, ""],
+  ])("%s", (_what, p, q, expected) => {
+    expect(block(p, q).className).toBe(expected);
+  });
+
+  /** And the compiled shape is what makes that true, rather than an accident of this merge. */
+  test("a condition compiles to an argument of the merge, in source order", () => {
+    const out = emit(
+      `const a = (p: boolean, q: boolean) => @@(\n  if ({p}) { color: red; }\n  if ({q}) { color: blue; }\n);\n`,
+    );
+
+    expect(out).toMatch(/_merge\(p && \{[^}]*"color":"r-c-red"[^}]*\},\s*q && \{[^}]*"color":"r-c-blue"/);
+  });
+});

@@ -91,6 +91,26 @@ const card = @@(
 );
 ```
 
+## A condition your code decides
+
+`if ({ … }) { … }` is not a stylesheet condition at all — it is a group merged when the expression
+holds, so the answer comes from the merge rather than from the sheet. **Later wins, which is the
+order you wrote:**
+
+```tsx
+const card = (compact: boolean, loud: boolean) => @@(
+  if ({compact}) { color: red; }
+  if ({loud}) { color: blue; }
+);
+```
+
+With both true the element is blue. Not sometimes — a block is one merge of maps in source order,
+and the element ends up carrying one class for `color`, chosen before anything reaches the page.
+
+That is why these need no rule and no ordering band: the two above never both reach the stylesheet,
+so there is no position for them to fight over. Two CSS conditions are the opposite case — both
+rules exist in the sheet and something has to decide between them — which is the section above.
+
 ## A mode is not a size
 
 `prefers-color-scheme` and `@media print` are weaker than a breakpoint; `@supports`, `orientation`,
