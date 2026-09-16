@@ -640,16 +640,27 @@ describe("a wrong config", () => {
   const wrap = (rules: string) =>
     `import { defineConfig } from "@ramonda/css/config";\nexport default defineConfig({ properties: ${rules} });\n`;
 
+  /**
+   * Reported — by whichever half gets there first, which is the point of asserting the WORD.
+   *
+   * Two of these used to come back as a type error on `defineConfig`, and review pass 8 moved them
+   * earlier: the config validator now walks inside a `properties` entry, so a key that is not a
+   * property and an arity CSS does not give are REFUSED before anything is generated. That is the
+   * better half to be caught by — a refusal names the file and says what to write, and it reaches
+   * the BUILD, which type-checks no config at all. So the assertion is the fault's own word rather
+   * than the shape of the report carrying it.
+   */
   test.each([
     ["a property CSS does not have", `{ "z-indx": { values: [1] } }`, "z-indx"],
     ["`shorthand` on a longhand", `{ color: { shorthand: false } }`, "shorthand"],
-    ["an arity CSS does not give", `{ padding: { arity: 7 } }`, "'7' is not assignable"],
+    ["an arity CSS does not give", `{ padding: { arity: 7 } }`, "arity"],
     ["a unit that is not one", `{ "*": { units: ["pxx"] } }`, "pxx"],
   ])("%s is reported", (_what, rules, expected) => {
     const output = checkedWithConfig(wrap(rules));
 
-    expect(output).toContain("problem");
     expect(output).toContain(expected);
+    // Reported at all, rather than run with: either a problem count or a refusal naming the config.
+    expect(output).toMatch(/problem|ramonda\.css\.ts/);
   });
 
   test("and a config that is right is silent, which is the control", () => {

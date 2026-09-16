@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type Declarations, namesIn } from "./codegen";
 import { KINDS } from "./declared";
-import { UNIT_TYPE } from "./compiler/keywords.generated";
+import { PROPERTIES, UNIT_TYPE } from "./compiler/keywords.generated";
 import type { Kind } from "./token";
 import type { CssArity, CssProperties, CssShorthand } from "./properties.generated";
 import type { CssUnit, CssUnitFamily } from "./units.generated";
@@ -625,6 +625,82 @@ function load(path: string, source: string, typescript: typeof ts, environment: 
  * message can name the file and say what to write instead — which is the same standard the key
  * check above already met.
  */
+/** Every CSS property name, as a set, for the `properties` keys. */
+const PROPERTY_NAMES = new Set(PROPERTIES);
+
+/**
+ * The settings INSIDE one `properties` entry, which the validation used to stop short of.
+ *
+ * The note above {@link validate} traced where an unchecked value lands and refused to leave it
+ * there: a `TypeError` thrown out of `getScriptSnapshot` takes down completion, hover and every
+ * squiggle in the project, on every keystroke. That reasoning was applied to the top-level keys and
+ * not one level down — and measured, the same two keys land in the same place:
+ *
+ *     properties: { "<length>": { units: { length: ["px"] } } }
+ *     → TypeError: units.map is not a function, with a stack naming neither the file nor the key
+ *
+ * `units` is the sharp one. The TOP-LEVEL key changed to be keyed by FAMILY and says so when a list
+ * arrives; per property it is still a list, because one property has one set of units and no family
+ * to disambiguate. So an author who learns the top-level lesson and applies it here was thanked
+ * with a crash. The message below says which shape belongs where.
+ *
+ * The other three were not crashes, which is worse in its own way: `shorthand: "no"`,
+ * `variablesOnly: "yes"` and a key that is not a setting at all were accepted in silence and did
+ * nothing — a rule the author believes they wrote and nobody enforces.
+ */
+function settings(key: string, entry: unknown, refuse: (says: string) => never): void {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+    refuse(
+      `sets \`properties[${JSON.stringify(key)}]\` to ${describe(entry)}. It takes settings, like { shorthand: false }.`,
+    );
+  }
+
+  const known = ["units", "values", "shorthand", "variablesOnly", "arity"];
+  for (const [name, value] of Object.entries(entry as Record<string, unknown>)) {
+    const at = `properties[${JSON.stringify(key)}].${name}`;
+    if (!known.includes(name)) {
+      const meant = nearest(name, known);
+      refuse(
+        `sets \`${at}\`, which is not a setting.` +
+          (meant === undefined ? "" : ` Did you mean \`${meant}\`?`) +
+          ` An entry holds ${known.join(", ")}.`,
+      );
+    }
+
+    if (name === "units") {
+      if (!Array.isArray(value)) {
+        refuse(
+          `sets \`${at}\` to ${describe(value)}. Per property it is a LIST, like ["px", "rem"] — ` +
+            `one property has one set of units.\n\n        The families are for the top-level ` +
+            `\`units\`, which covers every property at once: units: { length: ["px"] }.`,
+        );
+      }
+      for (const one of value as unknown[]) {
+        if (typeof one !== "string") refuse(`lists ${describe(one)} in \`${at}\`. Every unit is a string, like "px".`);
+      }
+    }
+
+    if (name === "values") {
+      if (!Array.isArray(value)) {
+        refuse(`sets \`${at}\` to ${describe(value)}. It takes a closed list, like [0, 1, 10].`);
+      }
+      for (const one of value as unknown[]) {
+        if (typeof one !== "string" && typeof one !== "number") {
+          refuse(`lists ${describe(one)} in \`${at}\`. Every value is a string or a number.`);
+        }
+      }
+    }
+
+    if ((name === "shorthand" || name === "variablesOnly") && typeof value !== "boolean") {
+      refuse(`sets \`${at}\` to ${describe(value)}. It is true or false.`);
+    }
+
+    if (name === "arity" && (typeof value !== "number" || ![1, 2, 3, 4].includes(value))) {
+      refuse(`sets \`${at}\` to ${describe(value)}. It is how many values go in: 1, 2, 3 or 4.`);
+    }
+  }
+}
+
 function validate(config: Record<string, unknown>, path: string): void {
   const refuse = (says: string): never => {
     throw new ConfigError(`${path} ${says}`);
@@ -756,15 +832,32 @@ function validate(config: Record<string, unknown>, path: string): void {
         );
       }
       const kind = /^<(.+)>$/.exec(key);
-      if (kind === null) continue;
-      if (!KINDS.includes(kind[1] as never)) {
-        const meant = nearest(kind[1], KINDS as readonly string[]);
+      if (kind !== null) {
+        if (!KINDS.includes(kind[1] as never)) {
+          const meant = nearest(kind[1], KINDS as readonly string[]);
+          refuse(
+            `keys \`properties\` by \`${key}\`, which is not a kind.` +
+              (meant === undefined ? "" : ` Did you mean \`<${meant}>\`?`) +
+              ` The kinds are CSS's own: ${KINDS.join(", ")}.`,
+          );
+        }
+      } else if (key !== "*" && !PROPERTY_NAMES.has(key) && !key.startsWith("--")) {
+        /**
+         * A misspelled PROPERTY NAME, which was silent while a misspelled KIND was refused.
+         *
+         * Two halves of one key disagreeing: `"<lenght>"` stopped the config and `"padding-lft"`
+         * was accepted and did nothing at all. That is the failure {@link readConfig}'s own note
+         * refuses — a tool quietly running with defaults because somebody's config had a typo.
+         */
+        const meant = nearest(key, PROPERTIES);
         refuse(
-          `keys \`properties\` by \`${key}\`, which is not a kind.` +
-            (meant === undefined ? "" : ` Did you mean \`<${meant}>\`?`) +
-            ` The kinds are CSS's own: ${KINDS.join(", ")}.`,
+          `keys \`properties\` by \`${key}\`, which is not a CSS property.` +
+            (meant === undefined ? "" : ` Did you mean \`${meant}\`?`) +
+            ` A key is a property, a kind like \`"<length>"\`, or \`"*"\`.`,
         );
       }
+
+      settings(key, (properties as Record<string, unknown>)[key], refuse);
     }
   }
 
@@ -870,5 +963,8 @@ function whatTurnedOn(id: string, config: Record<string, unknown>): { setting: s
 function describe(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "a list";
-  return typeof value === "string" ? `the string ${JSON.stringify(value)}` : `a ${typeof value}`;
+  if (typeof value === "string") return `the string ${JSON.stringify(value)}`;
+  // `an object`, not `a object` — these sentences are read by people, and `properties` is the first
+  // key whose wrong value is commonly one.
+  return `${/^[aeiou]/.test(typeof value) ? "an" : "a"} ${typeof value}`;
 }

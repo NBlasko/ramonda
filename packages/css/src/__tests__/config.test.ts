@@ -372,6 +372,54 @@ describe("the project's config", () => {
       expect(refused(`{ properties: { "<lenght>": { variablesOnly: true } } }`)).toThrow(/Did you mean `<length>`/);
     });
 
+    /**
+     * INSIDE an entry, which the validation stopped at the key.
+     *
+     * The note above `validate` traced where an unchecked value lands and refused to leave it: a
+     * `TypeError` out of `getScriptSnapshot` takes down completion, hover and every squiggle in the
+     * whole project. That reasoning was applied to the top-level keys and not one level down, and
+     * measured, the same two keys land in the same place — `properties: { "<length>": { units: {
+     * length: ["px"] } } }` threw `units.map is not a function` out of codegen, with a stack naming
+     * neither the file nor the key.
+     *
+     * `units` is the sharp one, because the top-level key was CHANGED to be keyed by family and
+     * says so when a list arrives. Per property it is still a list — one property, one set of
+     * units, no family to disambiguate — so an author who learns the top-level lesson and applies
+     * it here got a crash for it.
+     */
+    test.each([
+      [
+        "units by family, which is the TOP-LEVEL shape",
+        `{ properties: { "<length>": { units: { length: ["px"] } } } }`,
+        /units/,
+      ],
+      ["units as a bare string", `{ properties: { "padding-left": { units: "px" } } }`, /units/],
+      ["units holding a number", `{ properties: { "padding-left": { units: [1] } } }`, /units/],
+      ["values as a bare string", `{ properties: { "z-index": { values: "1" } } }`, /values/],
+      ["values as an object", `{ properties: { "z-index": { values: { a: 1 } } } }`, /values/],
+      ["shorthand as a word", `{ properties: { "padding": { shorthand: "no" } } }`, /shorthand/],
+      ["variablesOnly as a word", `{ properties: { "<color>": { variablesOnly: "yes" } } }`, /variablesOnly/],
+      ["arity as a string", `{ properties: { "padding": { arity: "2" } } }`, /arity/],
+      ["a setting that is not one", `{ properties: { "padding": { unknownKey: true } } }`, /unknownKey/],
+      ["an entry that is not an object", `{ properties: { "padding": true } }`, /padding/],
+    ])("inside an entry, %s is refused", (_what, body, says) => {
+      expect(refused(body)).toThrow(says);
+    });
+
+    /**
+     * A misspelled PROPERTY NAME, which was silent — the rule simply never applied.
+     *
+     * A misspelled KIND is caught, so the two halves of one key disagreed: `"<lenght>"` is refused
+     * and `"padding-lft"` is accepted and does nothing. That is the failure `readConfig`'s own note
+     * names, a tool quietly running with defaults because somebody's config had a typo.
+     */
+    test.each([
+      ["a near miss", `{ properties: { "padding-lft": { shorthand: false } } }`, /padding-left/],
+      ["a word that is not a property at all", `{ properties: { nonsense: { shorthand: false } } }`, /nonsense/],
+    ])("a `properties` key that is not a property is refused (%s)", (_what, body, says) => {
+      expect(refused(body)).toThrow(says);
+    });
+
     test.each([
       ["a kind selector", `{ properties: { "<color>": { variablesOnly: true } } }`],
       [
