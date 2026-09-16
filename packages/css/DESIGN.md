@@ -2683,42 +2683,58 @@ So whatever is built first ships with the side that FAILS: an app installing a p
 unmet requirement hears about it at build time, with the package named, and an app reading a name an
 installed package provides stops being refused for it.
 
-### 4. An unclosed call eats the block's closer
+### 4. An unclosed call eats the block's closer — FIXED
 
-Measured twice, in an earlier review and again in pass 3, unchanged:
+`content: url(;` reported two words of the author's own JSX as CSS values, and the real fault — a
+missing `)` — was never named. The note parked this saying the parens are BALANCED so no cheap check
+exists.
 
-```
-content: url(;
+**That is true of the BLOCK and false of the DECLARATION**, which is what unlocked it: inside one,
+`url(` is short a `)` and counting says so. Two things the count has to do, both measured: skip a
+string (a naive count called `url("a)b.png"` balanced and `url("a(b.png")` unclosed, both
+backwards), and stop at the `;` — because the fault itself means the value has already swallowed the
+block's closer.
 
-unknown-value: `content` does not accept `Hello`.
-unknown-value: `content` does not accept `div`.
-```
+Two halves, because a refusal runs before any rule: `unclosed-call` is what an editor shows, and the
+strict read carries the same sentence and reports at the CALL's own position. Measured through the
+CLI: `src/Card.tsx:2:12`, on `url(` itself, where it used to say line 4.
 
-Two words out of the author's own JSX, reported as CSS values — the value ran past `)}` into the
-markup, because `readValue` counts parens and a block's closer is a `)` like any other. The real
-fault, a missing `)`, is never named.
+### 5. A number where only keywords go — FIXED
 
-The parens are BALANCED, so a cheap check does not exist, and the value scanner is what all 39 rules
-read. This one needs a design before code.
+`display: 1` compiled in silence while `position: 1` was caught, and both take no number. The note
+had the design already: *the fix belongs in the GENERATOR — a positive fact, measured against the
+engines rather than guessed from a gap.*
 
----
+`scripts/build-numberless-properties.mjs` asks Chromium, Firefox and WebKit
+`CSS.supports(property, n)` for seven numbers, and records the 241 of 566 unprefixed properties that
+refuse all of them. Three decisions inside that, each measured:
 
-## `css-system/`, committed — and the argument that was wrong
+- **seven numbers, not one** — `1` alone would have called `font-weight` numberless;
+- **the INTERSECTION, not the union** — every other generator here takes a union because a keyword
+  any engine accepts is one somebody may write; this says a number is WRONG, so all three must
+  agree. Chromium alone claimed 301;
+- **a property an engine does not KNOW is dropped**, because silence is not agreement.
 
-The generated files were `ramonda.css.generated.ts` and `.css` beside the config, both gitignored.
-The user asked about both halves at once: *"gledam playground i ovi generisani fajlovi su
-gitignorisani. Ja mislim da to ne treba da bude ignorisano, kao sto se i ostale codegen stvari ne
-ignorisu. Samo je pitanje da li je bolje da ove generisane stvari imaju svoj folder."*
+The rule fires only when the number is the WHOLE value. `box-shadow: 1` is refused by all three and
+`box-shadow: 0 0 1px red` is accepted by all three — the `0` is a length. The first version reported
+both, and `transform: scale(2)` with them.
 
-**The reason for ignoring them was written down and it was wrong.** It said committing would let a
-config and its output drift apart in review. That is the right worry and the wrong answer, and this
-repository already answers it the other way for its own generator: `keywords.generated.ts` is in the
-tree and `build-css-properties.mjs --check` fails when it is stale. Hiding a file does not stop it
-drifting — it stops anybody SEEING that it has. And it costs a fresh clone its `$` until something
-builds, which an editor meets before any build runs.
+### 6. Forbidding a pseudo-class — asked for nothing, and NOT built
 
-So `check-css-system.mjs` runs codegen and compares, and is wired into `pnpm check` beside the other
-cheap read-only checks. Seen to fail: one hand-edited line and it names the file.
+Measured: there is no way to say *this project does not use `:hover`*. `properties` is keyed by a
+property, a kind or `"*"`, and a selector is none of those; `rules` takes a rule id and there is no
+rule to silence. A block writing `&:hover { … }` under either spelling compiles, and nothing is
+reported.
+
+**Left alone deliberately.** Every other item in this chapter earned its place by something breaking
+quietly — a false report, a build that stops, a page that renders wrong with nothing said. This one
+breaks nothing: the CSS is correct, the compilation is correct, and the only thing missing is a
+prohibition nobody has asked for.
+
+Building it would also mean a fourth kind of key in `properties`, whose whole design is that the
+three it has nest — `"*"` then `"<kind>"` then a property name, each a narrowing of the one before.
+A selector is not a narrowing of a property; it would be a second axis, and that is a cost to pay
+when somebody wants it and not before.
 
 ### The name
 
@@ -2775,37 +2791,22 @@ against what a unit harness offers. Changes made under a review deserve the same
 code the review was about.
 
 
-### 6. Open after review pass 8 — a number where only keywords go
+### 6. Open after review pass 8 — a number where only keywords go — CLOSED
 
-**Measured, and left open on purpose.** Sweeping values after a numeric value became a number in the
-type, twenty-nine wrong declarations on closed-keyword properties went in and nineteen came back:
+**Left here as the pass's own record**, because the measurement that found it is what the fix was
+built on. What it discovered, sweeping values after `quoted` changed:
 
 ```
-  caught     display: flexx;    overflow: scrol;   cursor: poitner;   line-height: red;
-  caught     position: 1;       float: 1;          text-align: 1;     visibility: 1;
-  SILENT     display: 1;        overflow: 1;       white-space: 1;    cursor: 1;
-  SILENT     opacity: 50px;     opacity: 1px;      line-height: 1px2; font-weight: -5;
+  caught   display: flexx;   overflow: scrol;   cursor: poitner;
+  caught   position: 1;      float: 1;          text-align: 1;
+  SILENT   display: 1;       overflow: 1;       white-space: 1;   cursor: 1;
 ```
 
-Every MISSPELLED keyword is caught — `unknown-value` walks the words in a value and does its job.
-What is silent is a NUMBER where only keywords go, and it is silent inconsistently: `position: 1` is
-reported and `display: 1` is not.
+Every misspelled keyword caught; a NUMBER silent, and inconsistently. The pass wrote no rule on
+purpose — absence from `PRIMITIVE` means *the grammar was not reduced*, not *this takes no number* —
+and named where the answer belonged: the generator, as a positive fact measured against the engines.
 
-The cause is not the rule. `unknown-value` reads `KEYWORDS`, which has a set for both; `position` is
-also in `PRIMITIVE` and `display` is not, so only `position` gets a narrowed type that refuses a
-number. 373 properties have a keyword set and 226 of them — 205 unprefixed — are absent from
-`PRIMITIVE`, because the generator could not reduce their grammar: `display` is
-`[ <display-outside> || <display-inside> ] | …`, a combination rather than a plain alternation.
-
-**Why no rule was written for it.** Absence from `PRIMITIVE` means *the grammar was not resolved*,
-not *this takes no number*. Among the same 205 are `aspect-ratio`, `background-position`,
-`border-image-slice` and `line-height`, where a bare number is correct CSS. A rule keyed on the
-absence would report those, and a checker that cries wolf is one people switch off — which this
-package has already measured once, with `background-image: url("a.png")`.
-
-So the fix belongs in the GENERATOR: a positive fact saying a property's grammar admits no primitive
-at all, which is a measurement against the engines rather than a guess from a gap.
-
+That is what was built. See §5 above for what the measurement decided.
 ### 7. Review pass 9 — what every consumer does with a config it does not like
 
 The pass was chosen by measuring rather than by guessing. Nine files read the config; review pass 4
