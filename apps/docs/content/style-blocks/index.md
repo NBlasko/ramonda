@@ -106,8 +106,9 @@ Your editor has to be running the **workspace's** TypeScript for any plugin to l
 ```
 
 An editor runs **two** TypeScript servers — a syntax one for what needs no types, and a semantic one
-for everything else — and only the semantic one loads plugins. So the syntax server reads your file,
-which is not TypeScript, and walks into an assertion of its own. From a real editor's log:
+for everything else. The syntax one never opens your `tsconfig.json`, which is where this plugin is
+named, so it reads your file as plain TypeScript. Your file is not plain TypeScript, and it walks
+into an assertion of its own. From a real editor's log:
 
 ```
 [error] [vscode.typescript-language-features] provider FAILED
@@ -115,7 +116,12 @@ which is not TypeScript, and walks into an assertion of its own. From a real edi
 Debug Failure. False expression: Token end is child end
 ```
 
-Nothing in a plugin can reach that server. The setting is what stops the editor asking it.
+The setting is what stops the editor asking it, and nothing is lost by turning it off: one server
+answers everything the two did. What the syntax one was buying is speed on a cold project — code
+folding, the outline, *Format Document* and expand-selection answer before the program has loaded
+rather than after it. That is one wait, once per project.
+
+Recent VS Code spells the same setting `js/ts.tsserver.useSyntaxServer`, and reads either.
 
 ### The colours, and format-on-save
 

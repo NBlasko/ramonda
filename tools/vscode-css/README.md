@@ -54,8 +54,9 @@ TypeScript Version → Use Workspace Version**.
 
 ## The setting the editor needs
 
-VS Code runs two TypeScript servers, and only one of them loads language plugins. The other reads
-your file as plain TypeScript, which a style block is not, so turn it off:
+VS Code runs two TypeScript servers. One of them never opens your `tsconfig.json`, where this
+plugin is named, so it reads your file as plain TypeScript — which a style block is not. Turn it
+off, and the other server answers everything it did:
 
 ```json
 { "typescript.tsserver.useSyntaxServer": "never" }
