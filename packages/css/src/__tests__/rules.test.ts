@@ -1144,6 +1144,45 @@ describe("an override the sheet's order will not honour", () => {
     ).toHaveLength(0);
   });
 
+  /**
+   * A VENDOR PREFIX written BELOW the standard property it is another name for.
+   *
+   * The engine treats them as one property, so in plain CSS the later one wins. The sheet puts the
+   * prefixed form first — deliberately, so the standard property wins wherever both appear and wins
+   * the same way in every build — which means writing them this way round is an override that
+   * cannot happen. Measured in Chromium, `box-shadow: 0 0 9px blue; -webkit-box-shadow: 0 0 1px red`
+   * is red in plain CSS and blue here.
+   *
+   * The conventional order is the other one, and it is silent: a prefixed fallback ABOVE the
+   * standard property is what every author writes, and it does exactly what they mean.
+   */
+  test.each([
+    ["box-shadow", "-webkit-box-shadow", "0 0 1px red"],
+    ["transform", "-webkit-transform", "scale(7)"],
+    ["user-select", "-webkit-user-select", "text"],
+    ["appearance", "-webkit-appearance", "button"],
+  ])("a prefixed `%s` below the standard one", (standard, prefixed, value) => {
+    const found = checkNamedFree(`${standard}: ${value};\n${prefixed}: ${value};`);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("override-out-of-order");
+    expect(found[0].message).toContain(standard);
+    // And the REASON is this pair's own, not the shorthand sentence most of these get: neither
+    // name is a shorthand, and what decides is that the engine reads them as one property.
+    expect(found[0].message).toContain("vendor prefix before the standard property");
+  });
+
+  test("and the conventional order — the prefix first — is silent", () => {
+    expect(checkNamedFree("-webkit-box-shadow: 0 0 1px red;\nbox-shadow: 0 0 9px blue;")).toHaveLength(0);
+    expect(checkNamedFree("-webkit-transform: scale(7);\ntransform: scale(3);")).toHaveLength(0);
+  });
+
+  /** A prefixed name with no standard form fights nobody, and two unrelated ones are not a pair. */
+  test("a prefixed name that stands alone is not reported", () => {
+    expect(checkNamedFree("-moz-osx-font-smoothing: grayscale;\ncolor: red;")).toHaveLength(0);
+    expect(checkNamedFree("box-shadow: 0 0 9px blue;\n-webkit-transform: scale(7);")).toHaveLength(0);
+  });
+
   /** `max-width` is desktop-first, so the narrower one is the one written — and emitted — last. */
   test("max-width goes the other way, and the sheet's order is the written one", () => {
     expect(

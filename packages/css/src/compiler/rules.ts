@@ -2,7 +2,7 @@ import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
-import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, widthSlot } from "./flatten";
+import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, standardFormOf, widthSlot } from "./flatten";
 import { holeOutOfPlace } from "./errors";
 import { PREFIXED } from "./prefixed.generated";
 import {
@@ -1869,6 +1869,14 @@ function becauseOf(
   earlier: { property: string; conditions: readonly string[] },
   later: { property: string; conditions: readonly string[] },
 ): string {
+  /**
+   * An alias pair first, because the shorthand sentence below is true of most of these and not of
+   * this one: neither name is a shorthand, and what decides is that they are ONE property to the
+   * engine and the sheet has picked which spelling goes first.
+   */
+  if (standardFormOf(earlier.property) === later.property || standardFormOf(later.property) === earlier.property) {
+    return "a vendor prefix before the standard property it is another name for";
+  }
   if (earlier.conditions.length === 0) return "a shorthand before its own longhands";
   if (widthSlot(later.conditions) === widthSlot(earlier.conditions)) {
     return "the broadest property first";

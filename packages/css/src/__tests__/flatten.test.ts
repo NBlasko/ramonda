@@ -359,6 +359,46 @@ describe("how narrow a rule is", () => {
       const narrow = sheetRank({ property: "margin", conditions: ["@media (min-width: 40rem)"] });
       expect(narrow).toBeLessThan(wide);
     });
+
+    /**
+     * A PREFIXED property and the standard one are the same property to the engine, and the rank
+     * has to separate them or nothing does.
+     *
+     * Both clear nothing, so both had the same breadth and the same layer — and inside a layer the
+     * sort is stable, so the winner was whichever the build happened to emit first. Measured in
+     * Chromium through a real Vite build, the SAME block each time:
+     *
+     *     -webkit-box-shadow: 0 0 1px red; box-shadow: 0 0 9px blue;
+     *
+     *     alone in the file                           blue   (CSS's answer)
+     *     after a block naming box-shadow first        RED
+     *     after a block with the same two, reversed    RED
+     *
+     * So the page depended on what another component wrote — invisible from the block, and it moves
+     * when somebody edits a file that has nothing to do with it. The prefixed one goes first, so the
+     * standard property wins wherever both are written, whatever the build order.
+     */
+    test.each([
+      ["box-shadow", "-webkit-box-shadow"],
+      ["transform", "-webkit-transform"],
+      ["user-select", "-webkit-user-select"],
+      ["appearance", "-webkit-appearance"],
+      ["backface-visibility", "-webkit-backface-visibility"],
+    ])("puts `-webkit-%s` before `%s`, so the standard property wins", (standard, prefixed) => {
+      expect(sheetRank({ property: prefixed })).toBeLessThan(sheetRank({ property: standard }));
+    });
+
+    /** A prefixed name with no standard form is nobody's alias and keeps its own breadth. */
+    test("a prefixed name that stands alone is not moved", () => {
+      expect(sheetRank({ property: "-moz-osx-font-smoothing" })).toBe(sheetRank({ property: "color" }));
+    });
+
+    /** And a prefixed SHORTHAND still outranks the longhands it clears, which is the other order. */
+    test("a prefixed shorthand still comes before its own longhands", () => {
+      expect(sheetRank({ property: "-webkit-border-radius" })).toBeLessThan(
+        sheetRank({ property: "border-top-left-radius" }),
+      );
+    });
   });
 });
 
