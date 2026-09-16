@@ -1,8 +1,10 @@
 import { CssBlockError } from "./compiler/errors";
 import { readFileSync } from "node:fs";
+import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { type Config, configReader, environmentOf } from "./config";
+import { knownNames, type Config, configReader, environmentOf } from "./config";
+import { forgetGenerated, variablesSheetFor, writeGenerated } from "./generate";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
@@ -82,12 +84,28 @@ interface ScanBuild {
 export interface HotUpdate {
   readonly file: string;
   read(): string | Promise<string>;
+  /**
+   * The running server, which only the CONFIG path needs — see `reconfigure`.
+   *
+   * Declared optional because both hooks this is the parameter of are handed slightly different
+   * shapes by Vite, and because a test may call the hook with neither. Nothing else here asks for
+   * it: an ordinary save invalidates itself through the module Vite already knows changed.
+   */
+  readonly server?: { moduleGraph?: ModuleGraphLike };
+}
+
+/** What `reconfigure` needs of Vite's module graph, and nothing more. */
+interface ModuleGraphLike {
+  getModuleById(id: string): unknown;
+  invalidateModule(mod: never): void;
 }
 
 /** What Vite is handed. Only the hooks this uses are declared. */
 export interface CssPluginLike {
   name: string;
   enforce: "pre";
+  /** Rollup's own, and the one hook that runs before anything is resolved — see its use below. */
+  buildStart(this: unknown): void;
   config(this: unknown, userConfig: unknown, environment: { mode?: string } | undefined): unknown;
   resolveId(this: unknown, id: string): string | null;
   load(this: unknown, id: string): string | null;
@@ -133,6 +151,8 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
    */
   let production: boolean | undefined;
   const configFor = configReader(ts, () => environmentOf(production));
+  /** Where this project is, as Vite reports it. See `buildStart`. */
+  let root = process.cwd();
 
   // Said once, when the built package is behind its sources — see `warnIfStale` for the day it cost.
   // `fileURLToPath`, not a string replace: a `file://` url PERCENT-ENCODES, so a checkout at
@@ -229,7 +249,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
      * This used to tell other files too, because ownership moved rules between them; that
      * mechanism could not work and is gone with the ownership that needed it.
      */
-    sheet.add(file, result.blocks, { ...result.variables, known: config.variables });
+    sheet.add(file, result.blocks, { ...result.variables, known: knownNames(config) });
     compiled.set(file, { source: code, config, result });
     return result;
   }
@@ -237,6 +257,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   /** What both hot-update hooks do. See where they are returned for why there are two of them. */
   async function recompile(context: HotUpdate): Promise<void> {
     const file = context.file;
+    if (basename(file) === "ramonda.css.ts") return reconfigure(file, context);
     if (!SOURCE.test(file) || file.includes("node_modules")) return;
 
     const code = await context.read();
@@ -251,8 +272,69 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     }
   }
 
+  /**
+   * The project's config was SAVED, so everything it decided has to be decided again.
+   *
+   * It reached here and returned at the first line: `recompile` takes files that hold a block, and a
+   * config holds none. Measured on a running server, both halves were stale and both were silent:
+   *
+   * - `css-system/variables.css` is written by `buildStart` and never again, so a token changed from
+   *   `16px` to `40px` still served `16px`. It is a plain stylesheet the project imports once —
+   *   nothing else was ever going to regenerate it.
+   * - every already-compiled file kept the rules the OLD config gave it, so a narrowed `units` or a
+   *   property switched off was not enforced until each file happened to be touched.
+   *
+   * The page is simply wrong, with no word anywhere, and a restart is the only cure. The config is
+   * the file this package tells people to edit, so that is the one save that must not be dropped.
+   *
+   * A config that does not READ is swallowed, exactly as a block that does not compile is on the
+   * line below: a half-typed config is what one looks like for most of the time it is being edited,
+   * and the transform reports it properly the moment anything asks for a file.
+   */
+  async function reconfigure(file: string, context: HotUpdate): Promise<void> {
+    try {
+      forgetGenerated();
+      writeGenerated(dirname(file), ts);
+    } catch {
+      // Swallowed on purpose — see above. Nothing is invalidated, because nothing could be read.
+      return;
+    }
+
+    /**
+     * Every compiled file is DROPPED rather than recompiled here.
+     *
+     * Recompiling would mean deciding what to do with one that no longer compiles, in a hook whose
+     * errors are swallowed — which is how a fault becomes invisible. Dropping is the same shape the
+     * memo already has for a source save: the next transform compiles against the new config and
+     * reports at the author's own line, which is where a diagnostic belongs.
+     */
+    for (const each of compiled.keys()) compiled.delete(each);
+
+    const graph = context.server?.moduleGraph;
+    if (graph === undefined) return;
+    for (const each of styled) {
+      const found = graph.getModuleById(each);
+      if (found !== undefined && found !== null) graph.invalidateModule(found as never);
+    }
+  }
+
   return {
     name: "ramonda-css",
+
+    /**
+     * Codegen, run once before anything is resolved.
+     *
+     * **Before**, because user code IMPORTS the generated module: run it lazily on the first file and
+     * that import has already failed. So it happens at the start of the build, from the directory the
+     * bundler was invoked in.
+     *
+     * From the project ROOT Vite reported, not from the process's directory — everything else here
+     * finds a config by walking up from the FILE, which is what makes a monorepo work, and this is
+     * the one question with no file to ask about. Vite is the thing that knows, so it is asked.
+     */
+    buildStart() {
+      writeGenerated(root, ts);
+    },
 
     /**
      * The dependency SCAN is a second pass, and it never sees this plugin.
@@ -268,9 +350,11 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
      * is the imports; a block that the real transform would refuse is left alone rather than thrown
      * from, since a scan is not where an author should meet a diagnostic.
      */
-    config(_userConfig, environment) {
+    config(userConfig, environment) {
       // Vite's own `isProduction` is exactly this, and it is the answer a config asks for.
       production = environment?.mode === "production";
+      // The project's root, for the one question with no file to ask about — see `buildStart`.
+      root = (userConfig as { root?: string } | undefined)?.root ?? root;
       return {
         optimizeDeps: {
           esbuildOptions: {
@@ -340,7 +424,24 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
        * about that. Appending leaves every source position — and therefore the map — untouched.
        */
       const own = sheet.cssFor(file);
-      const code2 = own === "" ? result.code : `${result.code}\nimport ${JSON.stringify(file + SUFFIX)};\n`;
+      /**
+       * The import that carries the project's declared VARIABLES, beside the one carrying its rules.
+       *
+       * Reported by the user, who declared variables, wrote `$`, and got a page with no colours: the
+       * generated `:root` was written to disk and nothing imported it, so `var(--color-accent-main)`
+       * resolved to its registered initial value and nothing else. Correct classes, unstyled page.
+       *
+       * Emitted beside the block import rather than asked of the project, for the same reason codegen runs
+       * itself: a line a project has to remember is a line most projects will not have. Both bundlers
+       * dedupe an import by path, so the declarations arrive once however many modules ask for them.
+       */
+      const declared = variablesSheetFor(file);
+      const code2 =
+        own === ""
+          ? result.code
+          : `${result.code}\n` +
+            `${declared === undefined ? "" : `import ${JSON.stringify(declared)};\n`}` +
+            `import ${JSON.stringify(file + SUFFIX)};\n`;
 
       return { code: code2, map: result.map };
     },

@@ -61,6 +61,8 @@ const TYPES = join(root, "packages/css/src/properties.generated.ts");
 const KEYWORDS = join(root, "packages/css/src/compiler/keywords.generated.ts");
 /** The third output, and the only one with no runtime in it — see the note beside `units`. */
 const DIMENSIONS = join(root, "packages/css/src/units.generated.ts");
+/** The fourth, also types only: the vocabularies a DECLARED VARIABLE's fallback is checked against. */
+const VALUES = join(root, "packages/css/src/values.generated.ts");
 const check = process.argv.includes("--check");
 
 /** What every message from this script is prefixed with, so a build log says who spoke. */
@@ -124,11 +126,329 @@ const syntaxes = require("mdn-data/css/syntaxes.json");
 function expand(syntax, depth = 0) {
   if (depth > 8) return syntax;
   return syntax.replace(/<([a-zA-Z0-9-]+)>/g, (whole, name) =>
-    syntaxes[name] === undefined ? whole : `[ ${expand(syntaxes[name].syntax, depth + 1)} ]`,
+    PRIMITIVE.has(name) || syntaxes[name] === undefined ? whole : `[ ${expand(syntaxes[name].syntax, depth + 1)} ]`,
   );
 }
 
 const KEYWORD = /^[a-zA-Z][a-zA-Z0-9-]*$/;
+
+/**
+ * The primitives a `@property` can REGISTER, which is the set {@link primitiveOf} stops at.
+ *
+ * Not a vocabulary of ours: these are CSS's own syntax component names, so a property narrowed to
+ * one of them is narrowed to exactly what a declared variable can BE. Expanding them was the first
+ * attempt and it is why `<color>` came out as a complex grammar — its own syntax is six
+ * alternatives, and none of them is the thing anybody means.
+ */
+const PRIMITIVE = new Set([
+  "angle",
+  "color",
+  "custom-ident",
+  "dashed-ident",
+  "image",
+  "integer",
+  "length",
+  "length-percentage",
+  "number",
+  "percentage",
+  "resolution",
+  "string",
+  "time",
+  "transform-function",
+  "transform-list",
+  "url",
+]);
+
+/**
+ * The primitives a project MAY narrow a property to, and the list is here because it is CSS's.
+ *
+ * What each becomes as a type — and which declared-variable kinds a slot for it accepts — is
+ * `codegen.ts`'s, because that is a decision of ours rather than a fact about CSS, and because it is
+ * the config that decides how far to take it.
+ *
+ * Only the primitives where a type can be both exact and complete. `<url>`, `<image>`, `<string>`
+ * and the ident families are left out: a union for them would be a guess about text CSS lets an
+ * author invent, and refusing correct CSS is the one failure this may not have.
+ */
+const NARROWABLE = new Set([
+  "angle",
+  "color",
+  "integer",
+  "length",
+  "length-percentage",
+  "number",
+  "percentage",
+  "resolution",
+  "time",
+]);
+
+/** Which property takes which primitive, for codegen to narrow from. */
+const primitiveRows = [];
+
+/**
+ * How many values a property may take, for the ones that repeat ONE longhand.
+ *
+ * `padding` is `<'padding-top'>{1,4}`, so `padding: 8px 12px` is two of the same thing. Sixteen
+ * properties are that shape, and they are the only ones where "how many values" is a question with
+ * an answer: `border` takes a width, a style and a colour, which is three DIFFERENT things, and
+ * asking a project to pick a count there would mean nothing.
+ *
+ * CSS's own maximum, so the config type can refuse `padding: { arity: 7 }` rather than accept a
+ * number nothing will honour.
+ */
+function arityOf(syntax) {
+  const text = String(syntax).trim();
+
+  /** `<'padding-top'>{1,4}` — one longhand, repeated. */
+  const repeated = /^<'[^']+'>\{1,([1-4])\}$/.exec(text);
+  if (repeated !== null) return Number(repeated[1]);
+
+  /** `<color>{1,4}` — a bare type repeated, which `border-color` is. */
+  const repeatedType = /^<[a-zA-Z0-9-]+(?:\s*\[[^\]]*\])?>\{1,([1-4])\}$/.exec(text);
+  if (repeatedType !== null) return Number(repeatedType[1]);
+
+  /**
+   * `<'row-gap'> <'column-gap'>?` — a juxtaposition of longhand references, each optional after the
+   * first. `gap` is this shape and the repeat pattern above does not see it, so `gap: 1px 2px 3px`
+   * was accepted. Found while answering a user who wrote a colour into a `gap`.
+   */
+  const references = text.match(/<'[^']+'>\??/g);
+  if (references === null || references.join(" ") !== text) return undefined;
+  return references.length <= 4 ? references.length : undefined;
+}
+
+const arityRows = Object.entries(properties)
+  .map(([name, one]) => [name, arityOf(one.syntax)])
+  .filter(([, most]) => most !== undefined)
+  .map(([name, most]) => `  ${JSON.stringify(name)}: ${most},`);
+
+/** How many properties this narrowed, for the line the script prints. */
+let narrowed = 0;
+
+/** Top-level alternatives — a `|` inside a group belongs to the group, and `||` is not a split. */
+function alternatives(text) {
+  const parts = [];
+  let depth = 0;
+  let current = "";
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+    if (character === "[" || character === "(") depth++;
+    else if (character === "]" || character === ")") depth--;
+    if (character === "|" && depth === 0) {
+      if (text[index + 1] === "|") {
+        current += "||";
+        index++;
+        continue;
+      }
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  parts.push(current);
+  return parts.map((one) => one.trim()).filter(Boolean);
+}
+
+/** `[ … ]` wrapping, which `expand` puts around every reference it resolves. */
+function unwrap(one) {
+  let text = one.trim();
+  for (;;) {
+    const next = text.replace(/^\[\s*([\s\S]*?)\s*\]$/, "$1").trim();
+    if (next === text) return text;
+    text = next;
+  }
+}
+
+/**
+ * The ONE primitive a property's grammar reaches beside its keywords, or nothing.
+ *
+ * `border-left-color` is `<color>`; `column-gap` is `normal | <length-percentage [0,∞]>`; `z-index`
+ * is `auto | <integer>`. Each of those can say what it takes instead of `string | number`, and — the
+ * reason this exists — each can then accept a declared variable of the MATCHING KIND and refuse one
+ * of any other.
+ *
+ * Anything else is left alone: a grammar with a function, a comma, a multiplier or two primitives is
+ * one a union would refuse correct CSS for, and refusing correct CSS is the one failure a type map
+ * may not have.
+ *
+ * A range — `<length-percentage [0,∞]>` — is dropped rather than treated as complexity. It is a
+ * bound no type can express and it does not change which primitive the value is.
+ */
+/**
+ * A grammar with its `<'property'>` references resolved, so a shorthand can be classified.
+ *
+ * `gap` is `<'row-gap'> <'column-gap'>?` and `padding` is `<'padding-top'>{1,4}` — every part is
+ * another property, and without following them neither can be classified at all. Measured before
+ * this: `gap: $.color.accent.main` compiled, because an unclassified property is `string | number`
+ * and a variable is a branded string. Reported by a user.
+ *
+ * Bounded, because a property may refer to itself through a chain.
+ */
+function withReferences(syntax, depth = 0) {
+  if (depth > 6) return syntax;
+  return String(syntax).replace(/<'([a-zA-Z0-9-]+)'>/g, (whole, referenced) => {
+    const target = properties[referenced]?.syntax;
+    return target === undefined ? whole : `[ ${withReferences(target, depth + 1)} ]`;
+  });
+}
+
+/**
+ * A juxtaposition of groups, each with an optional multiplier — or nothing.
+ *
+ * `[ a ] [ b ]?` and `[ a ]{1,4}` are sequences; `a b` and `[ a ] | b` are not. Returns each group's
+ * INSIDE, so the caller can ask what it reaches.
+ *
+ * **A bare type with a multiplier counts as a group**, and a `/` between groups is a SEPARATOR.
+ * Both are here for one shape: `border-radius` is `<length-percentage>{1,4} [ / <length-percentage>
+ * {1,4} ]?` — four corners, then four again after a slash, one primitive throughout. It read as not
+ * a sequence at all because the first piece has no brackets, so the property a design system
+ * constrains right after padding could not be narrowed at all.
+ *
+ * The slash separates values in CSS and never IS one, so skipping it cannot admit a grammar that
+ * holds two kinds: every piece still has to reach the same primitive, which is what leaves `font`,
+ * `grid` and `border-image` unclassified where they belong.
+ */
+function sequence(text) {
+  const pieces = [];
+  let index = 0;
+
+  while (index < text.length) {
+    while (index < text.length && /\s/.test(text[index])) index += 1;
+    if (index >= text.length) break;
+
+    // A separator, not a value. `[ / <a> ]` is one group holding one thing.
+    if (text[index] === "/") {
+      index += 1;
+      continue;
+    }
+
+    if (text[index] !== "[") {
+      const bare = /^<[a-zA-Z0-9-]+(?:\s*\[[^\]]*\])?>(?:[?*+#]|\{\d+(?:,\d*)?\})?/.exec(text.slice(index));
+      if (bare === null) return undefined;
+      pieces.push(bare[0].replace(/(?:[?*+#]|\{\d+(?:,\d*)?\})$/, ""));
+      index += bare[0].length;
+      continue;
+    }
+
+    let depth = 0;
+    const from = index;
+    for (; index < text.length; index++) {
+      if (text[index] === "[") depth += 1;
+      else if (text[index] === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          index += 1;
+          break;
+        }
+      }
+    }
+    if (depth !== 0) return undefined;
+
+    pieces.push(text.slice(from + 1, index - 1));
+    // The multiplier that may follow: `?`, `*`, `+`, `#`, `{1,4}`.
+    const multiplier = /^(?:[?*+#]|\{\d+(?:,\d*)?\})/.exec(text.slice(index));
+    if (multiplier !== null) index += multiplier[0].length;
+  }
+
+  return pieces.length === 0 ? undefined : pieces;
+}
+
+function primitiveOf(name) {
+  const raw = properties[name]?.syntax;
+  if (raw === undefined) return undefined;
+
+  const seen = new Set();
+  const walk = (text, depth) => {
+    if (depth > 8) return false;
+    for (const one of alternatives(text)) {
+      const part = unwrap(one);
+      if (KEYWORD.test(part)) continue;
+
+      /**
+       * A FUNCTIONAL type is not a second primitive — `<anchor-size()>`, `<anchor()>`, `<calc()>`.
+       *
+       * Every value type here already admits any call, because nothing in a type can read inside
+       * one. Counting these as primitives is what left `margin-left` unclassified: its grammar is
+       * `<length-percentage> | auto | <anchor-size()>`, which is one primitive and a call.
+       */
+      if (/^<[a-zA-Z0-9-]+\(\)>$/.test(part)) continue;
+
+      /**
+       * The SAME thing spelled without angle brackets — `fit-content(<length-percentage>)`.
+       *
+       * `mdn-data` writes a call two ways: `<calc-size()>` names the type, and `fit-content(…)`
+       * writes the call out with its argument. The rule above caught only the first, so one
+       * alternative out of eight left `width` unclassified — and with it `height`, `max-width`,
+       * `min-width` and their block/inline relatives, every one of them a length property a design
+       * system constrains first. Found by a design review asking why `variablesOnly: ["length"]`
+       * reported `padding-left: 8px` and said nothing about `width: 200px`.
+       *
+       * A call is a call: nothing in a type can read inside one, so it is not a second primitive
+       * however it is written.
+       */
+      if (/^[a-zA-Z][a-zA-Z0-9-]*\(.*\)$/.test(part)) continue;
+
+      /**
+       * A type REPEATED — `border-color` is `<color>{1,4}`, four of one thing.
+       *
+       * The sequence test below reads bracketed groups, which is what a resolved `<'property'>`
+       * reference becomes; a bare type with a multiplier never gets brackets and was missed. Same
+       * family as the two gaps a user already found, and the same answer: what repeats is still one
+       * primitive.
+       */
+      const type = /^<([a-zA-Z0-9-]+)(?:\s*\[[^\]]*\])?>(?:[?*+#]|\{\d+(?:,\d*)?\})?$/.exec(part);
+      if (type !== null) {
+        seen.add(type[1]);
+        continue;
+      }
+      /**
+       * A plain alternation, recursed into. Parens are NOT disqualifying: `alternatives` splits at
+       * depth zero, so a `|` inside `fit-content(…)` was never a split point, and the call itself is
+       * skipped above. Leaving `(` in this guard is what kept `<'width'>` — and so `inline-size`,
+       * `block-size` and `flex-basis` — unclassified once the reference was resolved.
+       */
+      /**
+       * A RANGE is not grammar — `<length-percentage [0,∞]>` is a length-percentage with a bound,
+       * and the type test above already tolerates one. Its comma is the only comma in most of these
+       * grammars, and read as a grammar comma it disqualified the whole alternation: `<'width'>`
+       * resolved to a group this walk then refused, leaving `inline-size`, `block-size` and their
+       * min/max relatives unclassified. Ignored HERE rather than stripped from the syntax, because
+       * stripping it up front lost `animation-duration` — measured.
+       */
+      const grammar = part.replace(/\s*\[[^\]]*\](?=>)/g, "");
+      if (grammar.includes("|") && !/[{}+*?,#!]|&&/.test(grammar)) {
+        if (!walk(part, depth + 1)) return false;
+        continue;
+      }
+
+      /**
+       * A sequence of resolved references — `gap`'s `[ … ] [ … ]?`, `padding`'s `[ … ]{1,4}`.
+       *
+       * Every piece has to reach the SAME primitive, which is what makes a count meaningful there:
+       * `gap` is one or two length-percentages, `padding` one to four. A `border` whose pieces are a
+       * width, a style and a colour fails this and stays unclassified, which is right.
+       *
+       * Parsed rather than measured by length. The first version compared the matched pieces'
+       * length against the part's and let a difference of one through — which classified `margin`
+       * and not `padding`, for no reason but the four characters of `[0,∞]`. A heuristic that gets
+       * two identical grammars different answers is not a heuristic, it is a coin.
+       */
+      const pieces = sequence(part);
+      if (pieces !== undefined) {
+        for (const piece of pieces) {
+          if (!walk(piece, depth + 1)) return false;
+        }
+        continue;
+      }
+      return false;
+    }
+    return true;
+  };
+
+  if (!walk(expand(withReferences(raw)), 0)) return undefined;
+  return seen.size === 1 ? [...seen][0] : undefined;
+}
 
 /**
  * The keywords a property accepts, or `undefined` when it accepts anything else as well.
@@ -304,8 +624,25 @@ function scan(name, from) {
       return " ";
     });
 
-    // A bare word, and never a function name — `rgb(` is a function, `red` is a keyword.
-    for (const match of rest.matchAll(/(?<![\w-])([a-z][a-z0-9-]*)(?![\w-]*\()/g)) words.add(match[1]);
+    /**
+     * A bare word, and never a function name — `rgb(` is a function, `red` is a keyword.
+     *
+     * **Capitals are matched and then folded, and both halves of that are load-bearing.** CSS
+     * keywords are ASCII case-insensitive, and `mdn-data` prints them the way the specification
+     * does — `currentColor`, and the nineteen `<system-color>` names such as `ButtonText` and
+     * `Canvas`. Matching only `[a-z]` dropped every one of them.
+     *
+     * It also did something worse than dropping: where the keyword STARTS lowercase, the match
+     * stopped at the first capital and kept the prefix. `currentColor` put `current` in the table —
+     * a word CSS does not have. So `color: current` passed and `color: currentcolor` was reported,
+     * which is the wrong answer in both directions on the commonest colour keyword there is.
+     *
+     * Folding to lower case is what the checker compares against, so the table stays in one case
+     * and `ButtonText`, `buttontext` and `BUTTONTEXT` are one entry rather than three.
+     */
+    for (const match of rest.matchAll(/(?<![\w-])([a-zA-Z][a-zA-Z0-9-]*)(?![\w-]*\()/g)) {
+      words.add(match[1].toLowerCase());
+    }
     // The function names on their own, for the completion table only — see `calls` above.
     for (const match of rest.matchAll(/(?<![\w-])([a-z][a-zA-Z0-9-]*)\s*\(/g)) calls.add(match[1]);
   };
@@ -710,6 +1047,12 @@ const named = [
 freeIsFree();
 
 const rows = [];
+/**
+ * Every bare word the `<color>` grammar reaches, computed once and read from two places: the type
+ * this emits for a colour property, and `values.generated.ts`. One sweep, so they cannot disagree.
+ */
+const colourKeywords = scan("color").words;
+
 const keywordRows = [];
 /**
  * Every bare word a property's grammar reaches, for COMPLETION — a different question from checking.
@@ -757,6 +1100,24 @@ for (const name of named) {
   const grammar = keywordsOf(properties[name].syntax);
   const keywords = grammar === undefined ? undefined : [...new Set([...grammar, ...(ENGINE_KEYWORDS[name] ?? [])])];
   const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
+  /**
+   * A property whose grammar is keywords plus ONE primitive is RECORDED rather than narrowed here.
+   *
+   * The narrowing is a project's, not this package's — `DESIGN.md`, and the user said it more than
+   * once: the config makes the types and the completions for the app. What CSS knows is which
+   * primitive a property takes, and that is what ships; how many values, which units and which of
+   * them a project permits is the config's, and codegen writes that into the project's own map.
+   *
+   * Shipping the narrowing was tried and is what this replaces. It refused a `string` reaching a
+   * property through a hole in every project at once, config or no config, which is not this
+   * package's call to make.
+   */
+  const primitive = keywords === undefined ? primitiveOf(name) : undefined;
+  if (primitive !== undefined && NARROWABLE.has(primitive)) {
+    narrowed++;
+    primitiveRows.push(`  ${JSON.stringify(name)}: ${JSON.stringify(primitive)},`);
+  }
+
   const type = keywords === undefined ? "CssValue" : `Keyword<${keywords.map((k) => JSON.stringify(k)).join(" | ")}>`;
   rows.push(`${documentation(name)}\n  ${key}: ${type};`);
 
@@ -1363,6 +1724,8 @@ if (invented.length > 0) {
 }
 
 const types = `// Generated by scripts/build-css-properties.mjs from mdn-data (CC0-1.0). Do not edit.
+
+
 //
 // ${named.length} properties, ${unions} of them a closed keyword set. Everything else is \`string | number\`
 // and its typos belong to the CSS checker — see the script for the measurement behind that split.
@@ -1381,6 +1744,29 @@ export type CssValue = string | number;
  * *did you mean* survives.
  */
 export type Keyword<K extends string> = K | CssGlobal | \`var(\${string})\` | \`\${K | CssGlobal} !important\`;
+
+/**
+ * A property whose grammar is keywords plus ONE primitive — the keywords, the values, and a declared
+ * variable of a kind that fits.
+ *
+ * \`!important\` is admitted on anything rather than only on a keyword, which is deliberate: it is an
+ * escape hatch, and a type that refused \`padding: calc(1rem + 2px) !important\` would be refusing
+ * correct CSS to protect a check the author has already opted out of.
+ */
+/** The properties a project may give an \`arity\`, and the most CSS gives each. */
+export interface CssArity {
+${arityRows.map((one) => one.replace(/: (\d),$/, (_whole, most) => `: ${Array.from({ length: Number(most) }, (_unused, index) => index + 1).join(" | ")};`)).join("\n")}
+}
+
+/** Every property the engines call a shorthand — the only ones a project may switch off. */
+export type CssShorthand = ${shorthandRows.map((one) => one.slice(2, one.indexOf(":"))).join(" | ")};
+
+export type Narrowed<K extends string, V> =
+  | K
+  | V
+  | CssGlobal
+  | \`var(\${string})\`
+  | \`\${string} !important\`;
 
 export interface CssProperties {
 ${rows.join("\n")}
@@ -1602,6 +1988,30 @@ ${valueRows.join("\n")}
  * which no table here does.
  */
 export const UNION_TYPED: readonly string[] = ${JSON.stringify(unionTyped.map((one) => JSON.parse(one)))};
+
+/**
+ * Which property takes which PRIMITIVE, for the properties whose grammar is keywords plus one.
+ *
+ * What CSS knows, and all this package ships of it. A project narrows further — an arity, a unit
+ * list, a set of values — and \`codegen.ts\` turns this plus that config into the project's own
+ * property map. Splitting it there rather than here is the point: the narrowing belongs to whoever
+ * wrote the config, not to everybody who installs this.
+ *
+ * ${primitiveRows.length} properties.
+ */
+export const PRIMITIVE: Readonly<Record<string, string>> = {
+${primitiveRows.join("\n")}
+};
+
+/**
+ * The most values each of these properties may take — see \`arityRows\` in the script.
+ *
+ * ${arityRows.length} properties, and a project may narrow one to fewer. Nothing else has an arity
+ * worth asking about: a shorthand whose parts are different things is not "n of something".
+ */
+export const ARITY: Readonly<Record<string, number>> = {
+${arityRows.join("\n")}
+};
 `;
 
 /**
@@ -1629,7 +2039,9 @@ export const UNION_TYPED: readonly string[] = ${JSON.stringify(unionTyped.map((o
  * A family gets its own union only where it HAS more than one unit. `percentage` and `flex` hold
  * one each, and `CssDimension<"%">` says that better than a name would.
  */
-const families = [...new Set(classified.values())]
+const allFamilies = [...new Set(classified.values())].sort();
+
+const families = allFamilies
   .map((family) => [family, allUnits.filter((unit) => classified.get(unit) === family)])
   .filter(([, units]) => units.length > 1);
 
@@ -1642,6 +2054,15 @@ const units = `// Generated by scripts/build-css-properties.mjs from mdn-data (C
 
 /** Every unit CSS has, from \`mdn-data\` — the same list \`unknown-unit\` measures a typo against. */
 export type CssUnit = ${unitUnion(allUnits)};
+
+/**
+ * The families a unit can belong to — what \`units\` in \`ramonda.css.ts\` is keyed by.
+ *
+ * Every family, including the two that hold a single unit, because a project may well want to say
+ * that \`%\` is permitted and \`fr\` is not. The per-family unions below skip those two; this does
+ * not, because it names the KEY rather than the values.
+ */
+export type CssUnitFamily = ${unitUnion(allFamilies)};
 ${families
   .map(
     ([family, list]) => `
@@ -1670,16 +2091,60 @@ export type Css${family[0].toUpperCase()}${family.slice(1)}Unit = ${unitUnion(li
 export type CssDimension<Unit extends CssUnit = CssUnit> = \`\${number}\${Unit}\` | 0 | "0" | \`\${string}(\${string})\`;
 `;
 
+/**
+ * The keyword vocabularies a declared variable's FALLBACK is checked against.
+ *
+ * `kind("color", { primary: { main: "…" } })` narrows what may be written for a fallback, and that
+ * narrowing has to admit every colour CSS admits or the config would refuse correct CSS — the one
+ * thing this package may not do. So the list comes from the same sweep the checker's `unknown-value`
+ * rule reads, rather than from a second list somebody keeps in step by hand.
+ *
+ * Folded to lower case, like every other word this sweep collects, because the engine folds it too:
+ * Chrome round-trips `ButtonText` to `"buttontext"` and `currentColor` to `"currentcolor"`.
+ */
+
+const values = `// Generated by scripts/build-css-properties.mjs from mdn-data (CC0-1.0). Do not edit.
+//
+// Types only, and no runtime — the same rule as \`units.generated.ts\`. ${colourKeywords.length} colour keywords.
+
+/**
+ * Every bare word the \`<color>\` grammar reaches — the named colours, \`transparent\`,
+ * \`currentcolor\`, and the system colours.
+ *
+ * This is the checker's own list, not a copy of it: both come from one sweep of \`mdn-data\`, so a
+ * value the rule accepts in a block and a fallback the config accepts cannot disagree.
+ */
+export type CssColorKeyword = ${colourKeywords.map((one) => JSON.stringify(one)).join(" | ")};
+
+/**
+ * A colour, for the declaration that MAKES one rather than for the block — the same argument
+ * \`CssDimension\` is generated for, and the same shape of answer.
+ *
+ * Ninety-six properties say what they take now, so a value reaching one through a hole has to say
+ * what it is. This is what an author writes to say it:
+ *
+ * \`\`\`ts
+ * const accent: CssColor = theme.dark ? "#93c5fd" : "#3b82f6";
+ * \`\`\`
+ *
+ * It admits any call — \`rgb()\`, \`oklch()\`, \`color-mix()\`, \`light-dark()\`, \`var()\` — because
+ * nothing in a type can read inside one, and refusing them would make it useless where it is wanted.
+ */
+export type CssColor = CssColorKeyword | \`#\${string}\` | \`\${string}(\${string})\`;
+`;
+
 const said =
   `${named.length} properties, ${unions} typed as a union, ${checkable} value-checkable by the rules, ` +
   `${propertyNamedRows.length} whose value is a property name, ${allUnits.length} units, ` +
   `${NOT_IN_A_RULE.length} at-rules that may not sit in a block, ${shorthandRows.length} shorthands, ` +
-  `${valueRows.length} with values to suggest, ${Object.keys(ABBREVIATIONS).length} abbreviated`;
+  `${valueRows.length} with values to suggest, ${Object.keys(ABBREVIATIONS).length} abbreviated, ` +
+  `${colourKeywords.length} colour keywords, ${narrowed} classified by their one primitive`;
 
 if (!check) {
   writeFileSync(TYPES, types);
   writeFileSync(KEYWORDS, keywords);
   writeFileSync(DIMENSIONS, units);
+  writeFileSync(VALUES, values);
   console.log(`[css-properties] wrote ${said}`);
   process.exit(0);
 }
@@ -1687,7 +2152,8 @@ if (!check) {
 if (
   readFileSync(TYPES, "utf8") === types &&
   readFileSync(KEYWORDS, "utf8") === keywords &&
-  readFileSync(DIMENSIONS, "utf8") === units
+  readFileSync(DIMENSIONS, "utf8") === units &&
+  readFileSync(VALUES, "utf8") === values
 ) {
   console.log(`[css-properties] up to date — ${said}`);
   process.exit(0);

@@ -55,7 +55,15 @@ function project(card: string, entry: string, assets: Record<string, string> = {
   for (const [name, contents] of Object.entries(assets)) writeFileSync(join(root, "src", name), contents);
 
   // Vite has to resolve its own runtime imports from somewhere. This package's own tree has it.
-  symlinkSync(join(PACKAGE, "node_modules"), join(root, "node_modules"));
+  /**
+   * The REPOSITORY's `node_modules`, not the package's — a package does not contain itself, and a
+   * project whose `ramonda.css.ts` imports `@ramonda/css/config` has to resolve it. It resolved
+   * through `NODE_PATH` before, which pnpm points at its hoisted `.pnpm/node_modules`: an artefact
+   * of one machine's install history, absent from a clean checkout.
+   *
+   * Vite's own runtime imports resolve from here too, which is what this line was added for.
+   */
+  symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
   writeFileSync(
     join(root, "package.json"),
     JSON.stringify({ name: "probe", private: true, type: "module", version: "0.0.0" }),
@@ -469,14 +477,14 @@ test("a unit the project's `ramonda.css.ts` does not allow fails the build", () 
   const root = project(
     `export const card = <div className="lead" css={@@( padding: 1em; )}>x</div>;\n`,
     `import { card } from "./Card";\nconsole.log(card);\n`,
-    { "../ramonda.css.ts": `export default { units: ["px", "rem"] };\n` },
+    { "../ramonda.css.ts": `export default { units: { length: ["px", "rem"] } };\n` },
   );
 
   const result = build(root);
   expect(result.ok).toBe(false);
   // The refusal is the message, not the rule id — a build says what to change, and `ramonda-check`
   // is where a fault is listed under its id.
-  expect(result.output).toContain("a CSS unit this project does not use");
+  expect(result.output).toContain("a length this project does not use");
   expect(result.output).toContain("px, rem");
 });
 
@@ -552,4 +560,34 @@ test("zzdiagnose", () => {
   }
   require("node:fs").writeFileSync("/tmp/zzdiag.txt", lines.join("\n"));
   expect(result.ok).toBe(true);
+});
+
+/**
+ * The same wiring claim, asked of Vite.
+ *
+ * Two plugins run codegen and each could stop doing it on its own, so the claim is made of both
+ * rather than of whichever one was convenient. The mechanism is proven in `generate.test.ts`; what
+ * a real build shows is that somebody calls it, and calls it before anything is resolved.
+ */
+describe("codegen through the vite plugin", () => {
+  test("the pair is written, and a block using `$` compiles to a plain var()", () => {
+    const root = project(
+      `export const Card = () => <div css={@@( color: $.color.primary.main; )}>x</div>;\n`,
+      `import { Card } from "./Card";\nconsole.log(Card);\n`,
+    );
+    writeFileSync(
+      join(root, "ramonda.css.ts"),
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+    );
+
+    const result = build(root);
+
+    expect(result.ok).toBe(true);
+    expect(readFileSync(join(root, join("css-system", "variables.css")), "utf8")).toContain(
+      "--color-primary-main: #3b82f6;",
+    );
+    // The emitted rule reads the variable and carries no fallback — the registration is the
+    // guarantee, and it is in the file above.
+    expect(Object.values(result.files).join("\n")).toContain("var(--color-primary-main)");
+  });
 });

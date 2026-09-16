@@ -11,6 +11,7 @@ import {
   Toast,
   LifecycleDemo,
 } from "../demos/panels";
+import { EtEtStrict } from "../demos/EtEtStrict";
 
 export class ShowcasePage extends Component {
   @state source = 1;
@@ -50,6 +51,10 @@ export class ShowcasePage extends Component {
             <StyleBlock />
             <StyleBlockNested />
             <StyleBlockComposed />
+          </div>
+
+          <div className="panel">
+            <EtEtStrict />
           </div>
         </section>
       </div>

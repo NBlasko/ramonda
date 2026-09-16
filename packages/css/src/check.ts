@@ -1,10 +1,13 @@
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
+import { REPLACED_CODES, SPEAKS_OVER_TYPES } from "./compiler/rules";
 import { Sheet, messageFor } from "./compiler/sheet";
 import { checkedSource } from "./compiler/source";
 import { positionOf } from "./compiler/errors";
-import { configReader, environmentOf } from "./config";
+import { knownNames, configReader, environmentOf } from "./config";
+import { findConfig } from "./config";
+import { propertiesFor } from "./generate";
 import { readModule } from "./modules";
 import { mayHoldABlock } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
@@ -130,7 +133,14 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
        * The `filename` goes with it: a relative specifier is resolved against the file holding the
        * import, so a reader with nothing to resolve against reads nothing.
        */
-      const virtual = virtualFile(text, { properties: options.properties, filename: fileName, read: readModule });
+      /**
+       * The project's OWN property map when it has generated one, and the shipped map otherwise.
+       *
+       * An explicit `properties` option still wins — a fixture, a wrapper's own — because a caller
+       * that named one meant it.
+       */
+      const properties = options.properties ?? propertiesFor(fileName);
+      const virtual = virtualFile(text, { properties, filename: fileName, read: readModule });
       // `mayHoldABlock` is allowed to say maybe — a string or a comment can hold the syntax, and
       // a file that turns out to hold no block needs no overlay.
       if (virtual !== undefined) {
@@ -145,7 +155,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
             message: finding.message,
           })),
         );
-        sheet.add(fileName, [], { ...walked.variables, known: config.variables });
+        sheet.add(fileName, [], { ...walked.variables, known: knownNames(config) });
         sources.set(fileName, text);
         for (const one of walked.ignored) exempted.push({ file: fileName, line: one.line, reason: one.reason });
       }
@@ -180,7 +190,27 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     return { files: parsed.fileNames.length, styled: overlays.size, findings: refusals, refused: true, exempted };
   }
 
-  const program = ts.createProgram(parsed.fileNames, { ...parsed.options, noEmit: true }, overlaying(parsed, overlays));
+  /**
+   * **The project's own `ramonda.css.ts` is type-checked, and a `tsconfig` will not have included
+   * it.**
+   *
+   * `defineConfig` exists so that a config is checked as it is written — a property CSS does not
+   * have, an arity CSS does not give, a unit that is not one, each refused on the line. None of that
+   * runs if the file is not in the PROGRAM, and it usually is not: a config sits at the project root
+   * and an ordinary `include` is `["src"]`. Measured on this repository's own playground, where four
+   * deliberately wrong configs were written and every one compiled.
+   *
+   * Reported by the user, in their words: *"ramonda.css.ts fajl nema onaj tipo sto sam zeleo da ne
+   * moram magicno da mislim i pisem konfig."*
+   *
+   * Added here rather than asked of every project's `tsconfig.json`, because a manual step that
+   * every project needs is a step most projects will not have.
+   */
+  const settings = findConfig(dirname(configPath));
+  const roots =
+    settings === undefined || parsed.fileNames.includes(settings) ? parsed.fileNames : [...parsed.fileNames, settings];
+
+  const program = ts.createProgram(roots, { ...parsed.options, noEmit: true }, overlaying(parsed, overlays));
 
   const findings: Finding[] = [];
   /** Setup faults, by message, so a project of any size reports each of them once. */
@@ -194,7 +224,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   return {
     files: parsed.fileNames.length,
     styled: overlays.size,
-    findings: [...setup.values(), ...inOrder(css, findings)],
+    findings: [...setup.values(), ...inOrder(css, findings, sources)],
     refused: false,
     exempted,
   };
@@ -223,15 +253,152 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
  * comment is the one that doubled — so this is a widening of the same rule rather than a case for
  * `//`, because the next rule to land on a key would have doubled too.
  */
-function inOrder(css: readonly Finding[], types: readonly Finding[]): Finding[] {
+function inOrder(css: readonly Finding[], types: readonly Finding[], sources: ReadonlyMap<string, string>): Finding[] {
   const said = new Set(css.map((finding) => at(finding)));
+  const where = declarations(sources);
 
-  return [...css, ...types.filter((finding) => !(finding.code === 2353 && said.has(at(finding))))].sort(
-    (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column,
+  /**
+   * A line where a HOLE's own value was refused, so the property's complaint about it is dropped.
+   *
+   * The pair appears the moment a property says what it takes. `__val` constrains a hole to
+   * `CssValue`; when the expression fails that, TypeScript reports it on the expression — the
+   * actionable one — and then falls back to the CONSTRAINT as the call's type, which a narrowed
+   * property refuses in turn. Measured on `color: {maybe}` where `maybe` is `string | undefined`:
+   *
+   *     TS2322 3:3   Type 'CssValue' is not assignable to type 'Narrowed<never, CssColor | …>'
+   *     TS2345 3:11  Argument of type 'undefined' is not assignable to parameter of type 'CssValue'
+   *
+   * Two messages for one mistake, and the first names a type the author never wrote. It is the same
+   * fault `TS2353` had above, arriving from the other direction, so it is answered the same way.
+   *
+   * Matched on the message rather than on position alone, because `Type 'CssValue' is not
+   * assignable` can only come from a hole falling back to its constraint — a value the author wrote
+   * out is reported as its own type, never as `CssValue`.
+   */
+  const holeRefused = new Set(
+    types.filter((finding) => finding.code === 2345 && finding.message.includes("CssValue")).map(where),
   );
+
+  /**
+   * A LINE where a `$` path was refused by a rule of ours, so the compiler's word about it goes.
+   *
+   * Measured, one typo came back twice, at two columns, with the same suggestion in each:
+   *
+   *     unknown-variable  `$.space.gutter.norml` is not a variable this project declares.
+   *                       Did you mean `$.space.gutter.normal`?
+   *     TS2551            Property 'norml' does not exist on type
+   *                       'Readonly<{ normal: Token<"length", "16px">; }>'. Did you mean 'normal'?
+   *
+   * Ours is the one kept: it names the whole path the author wrote and says *this project*, where
+   * the compiler names the last segment and a generated type. Three shapes of the same fault, and
+   * the compiler spells each differently — `TS2551` for a near miss, `TS2339` for a segment near
+   * nothing, `TS2322` for a GROUP, which is a real member whose type no property accepts.
+   *
+   * **By line, not by character**, which is the one place this departs from the note above. The two
+   * land at different columns by construction: ours spans the whole path from the `$`, the
+   * compiler's sits on the segment that failed. A `$` path does not span lines, so the line is the
+   * fault's own extent here.
+   *
+   * **And the rule is not deleted**, which was the first idea and would have been wrong. It is the
+   * only thing that speaks in the BUILD — vite and esbuild run these rules over a block and never
+   * run TypeScript over it, so a `var()` into a name nothing sets would compile clean.
+   */
+  const pathRefused = new Set(css.filter((finding) => finding.code === "unknown-variable").map(where));
+
+  /**
+   * A LINE where a literal was refused by `variablesOnly`, so the compiler's word about it goes.
+   *
+   * Both machineries speak here, and both must: the TYPE is what an editor squiggles as you type,
+   * and the RULE is the only one the BUILD runs — vite and esbuild never type-check a block. What
+   * an author must not get is the pair, and measured they did: twelve reports for six faults.
+   *
+   * Ours is kept. `Narrowed<never, 0 | "0" | Token<"length" | "percentage" | …>>` names neither the
+   * project, nor `ramonda.css.ts`, nor the way out; the rule names all three. By line for the same
+   * reason as above — the two land at different columns by construction, ours on the value and the
+   * compiler's on the property.
+   */
+  const literalRefused = new Set(
+    css.filter((finding) => (SPEAKS_OVER_TYPES as readonly string[]).includes(String(finding.code))).map(where),
+  );
+
+  const kept = types.filter((finding) => {
+    if (finding.code === 2353 && said.has(at(finding))) return false;
+    if (finding.code === 2322 && finding.message.startsWith("Type 'CssValue' is not assignable")) {
+      return !holeRefused.has(where(finding));
+    }
+    if (finding.code === 2551 || finding.code === 2339 || finding.code === 2322) {
+      if (pathRefused.has(where(finding))) return false;
+    }
+    /**
+     * `TS2353` too, because a shorthand switched off is REMOVED from the map rather than narrowed —
+     * so the compiler's word about it is *does not exist in type*, not *is not assignable*.
+     */
+    /**
+     * `TS2561` too, which is the compiler's *did you mean* for a bare property name. `unknown-property`
+     * speaks for those since pass 6, so that the BUILD sees them — and two reports for one typo is
+     * the fault this whole filter exists for.
+     */
+    if (
+      typeof finding.code === "number" &&
+      REPLACED_CODES.includes(finding.code) &&
+      literalRefused.has(where(finding))
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  return [...css, ...kept].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column);
 }
 
 const at = (finding: Finding) => `${finding.file}:${finding.line}:${finding.column}`;
+
+/**
+ * Where a finding sits, as the DECLARATION that holds it rather than as the line.
+ *
+ * The three sets above drop the compiler's word where a rule of ours already spoke for the same
+ * fault, and they cannot use the position: the two land at different columns by construction — ours
+ * on the value or on the whole `$` path, the compiler's on the property or on the segment that
+ * failed. The line was the next thing up, and it was too much. A line holds as many declarations as
+ * an author cares to write, and measured, `padding-left: $.size.control.mdd; color: $.size.control.md;`
+ * reported ONE problem: the typo suppressed the KIND mismatch beside it, which nothing else catches
+ * — a kind is a type, not a rule the build runs, so that fault left the tool altogether.
+ *
+ * A declaration is the extent a fault really has. Both messages about one fault fall inside one;
+ * the next declaration on the same line is a different fault and keeps its own.
+ *
+ * **A declaration that SPANS lines is not joined up here**, so a property on one line and its value
+ * on the next get both messages. That is what the line key did too — it is left as it was rather
+ * than widened blind, because the shapes this exists for (`$` paths, quoted values, property names)
+ * cannot span lines.
+ */
+function declarations(sources: ReadonlyMap<string, string>): (finding: Finding) => string {
+  const lines = new Map<string, readonly string[]>();
+
+  return (finding) => {
+    let split = lines.get(finding.file);
+    if (split === undefined) {
+      split = sources.get(finding.file)?.split("\n") ?? [];
+      lines.set(finding.file, split);
+    }
+
+    const line = split[finding.line - 1] ?? "";
+    let start = 0;
+    /**
+     * The last `;` BEFORE the finding opens the declaration it is in.
+     *
+     * A brace is NOT a separator here, though a nested rule uses one: a HOLE is written in braces
+     * too, and measured, counting them split one fault's two messages into two declarations — the
+     * `TS2345` inside `color: {this.maybe}` landed after the brace and the property's `TS2322`
+     * before it, so the pair this filter exists to collapse came back. A `;` ends every declaration
+     * a nested rule holds, so the brace earns nothing the semicolon does not already give.
+     */
+    for (let index = 0; index < finding.column - 1 && index < line.length; index++) {
+      if (line[index] === ";") start = index + 1;
+    }
+    return `${finding.file}:${finding.line}:${start}`;
+  };
+}
 
 /**
  * One diagnostic, in the author's own coordinates — or nothing, when it belongs to the file this

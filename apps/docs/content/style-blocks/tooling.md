@@ -2,7 +2,7 @@
 title: Tooling, and what it does not do
 description: Why your formatter and linter cannot read a file holding a block, what to run instead, and using a block in another JSX library.
 section: Style blocks
-order: 113
+order: 114
 ---
 
 # Tooling, and what it does not do
@@ -84,8 +84,10 @@ the class exists in a file the browser can cache, and no style is rebuilt on a r
 **It does not scope your other CSS.** A `className` is still the string you wrote, and the class in
 your source is the class in the served HTML — see [styling](/styling).
 
-**It is not a theme system.** A theme is custom properties, which needs nothing from the compiler —
-see [names the stylesheet sees](/style-blocks/variables#theming).
+**It is not a theme system.** A theme is custom properties, and switching one is an attribute on
+`<html>` — no render, no JavaScript per element, and nothing here to configure. The compiler can
+declare the tokens for you and check that you read them by the right name, which is a different job
+from owning them — see [names the stylesheet sees](/style-blocks/variables#theming).
 
 **It does not decide anything from the order of your classes.** Nothing can — the order of names in a
 `class` attribute has no meaning in CSS, which is exactly why composition merges maps rather than

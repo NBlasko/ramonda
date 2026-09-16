@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import ts from "typescript";
-import { configReader, environmentOf } from "./config";
+import { knownNames, configReader, environmentOf } from "./config";
+import { variablesSheetFor, writeGenerated } from "./generate";
 import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
 import { mayHoldABlock } from "./compiler/scan";
@@ -91,7 +92,13 @@ export interface EsbuildLike {
    * of this shape, and a missing one falls back to the process's own directory, which is what
    * esbuild does.
    */
-  readonly initialOptions?: { absWorkingDir?: string };
+  readonly initialOptions?: {
+    absWorkingDir?: string;
+    /** esbuild's own production signal, and what its users reach for first. */
+    minify?: boolean;
+    /** `{ "process.env.NODE_ENV": '"production"' }` — the unambiguous way to say which build this is. */
+    define?: Record<string, string>;
+  };
   onResolve(options: { filter: RegExp }, callback: (args: { path: string }) => Resolved | undefined): void;
   onLoad(
     options: { filter: RegExp; namespace?: string },
@@ -156,6 +163,37 @@ export function loaderFor(path: string): "tsx" | "ts" | "jsx" {
   return "jsx";
 }
 
+/**
+ * Whether this is a production build, read off what esbuild was actually asked to do.
+ *
+ * The note here used to say *esbuild is not told which build this is*. It is told, twice, and the
+ * cost of believing otherwise was measured: the same config and the same block,
+ *
+ *     vite,    --mode production, NODE_ENV unset    refused
+ *     esbuild, minify: true,      NODE_ENV unset    BUILT — `2rem` went in
+ *
+ * which is exactly the failure `environmentOf` in `config.ts` records and says is fixed — *it
+ * silently took the development branch of every such config, in production builds included*. Fixed
+ * for Vite, which is handed its mode, and left here.
+ *
+ * `define` FIRST, because it is a statement: `process.env.NODE_ENV` is what esbuild rewrites into
+ * the bundle, so a project setting it has said which build this is out loud, and somebody minifying
+ * a development build must be able to say so. `minify` second, because it is an inference — a
+ * strong one, since nobody minifies for their own reading, but still an inference. `NODE_ENV` last,
+ * which is what a consumer that cannot know falls back to.
+ *
+ * **The asymmetry decides the order of the last two.** Reading a build as production when it is not
+ * gives stricter rules than the author wanted, which arrives as a refusal they can see and argue
+ * with. Reading it as development when it is not ships the loose half, silently, to real users.
+ */
+function productionFrom(options: { minify?: boolean; define?: Record<string, string> } | undefined): boolean {
+  const said = options?.define?.["process.env.NODE_ENV"];
+  // esbuild's `define` values are JavaScript source, so the quotes are part of it.
+  if (said !== undefined) return said.replace(/^["'`]|["'`]$/g, "") === "production";
+  if (options?.minify === true) return true;
+  return process.env.NODE_ENV === "production";
+}
+
 export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPluginLike {
   const sheet = new Sheet();
   /**
@@ -167,10 +205,13 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
    *
    * Anchored on the file being loaded rather than on `process.cwd()`, and re-read when its text
    * changes rather than once here — both a review's findings, and both explained on
-   * {@link configReader}. esbuild is not told which build this is, so the environment is
-   * `NODE_ENV`'s answer, which is the convention its own users already set.
+   * {@link configReader}.
+   *
+   * **Which build this is comes from the build**, and a lambda rather than a value because the
+   * options are not known until `setup` runs — see {@link productionFrom}.
    */
-  const configFor = configReader(ts, environmentOf());
+  let production: boolean | undefined;
+  const configFor = configReader(ts, () => environmentOf(production));
 
   /** Files that currently contribute rules, so a file losing its last block is noticed. */
   const styled = new Set<string>();
@@ -179,6 +220,22 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
     name: "ramonda-css",
 
     setup(build) {
+      /**
+       * Codegen, run once before anything is resolved.
+       *
+       * **Before**, because user code IMPORTS the generated module: run it lazily on the first file and
+       * that import has already failed. So it happens at the start of the build, from the directory the
+       * bundler was invoked in.
+       *
+       * The BUILD's own working directory, not the process's — esbuild already reports every location
+       * relative to it, and asking the process instead would generate into whichever directory the
+       * command happened to start in. Everything else here finds a config by walking up from the
+       * FILE, which is what makes a monorepo work; this is the one question with no file to ask
+       * about, so it asks the build.
+       */
+      production = productionFrom(build.initialOptions);
+      writeGenerated(build.initialOptions?.absWorkingDir ?? process.cwd(), ts);
+
       build.onResolve({ filter: /\?ramonda-css\.css$/ }, (args) => ({ path: args.path, namespace: NAMESPACE }));
 
       build.onLoad({ filter: /.*/, namespace: NAMESPACE }, (args) => ({
@@ -245,9 +302,26 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
         }
 
         styled.add(args.path);
-        sheet.add(args.path, result.blocks, { ...result.variables, known: config.variables });
+        sheet.add(args.path, result.blocks, { ...result.variables, known: knownNames(config) });
         const own = sheet.cssFor(args.path);
-        const contents = own === "" ? result.code : `${result.code}\nimport ${JSON.stringify(args.path + SUFFIX)};\n`;
+        /**
+         * The import that carries the project's declared VARIABLES, beside the one carrying its rules.
+         *
+         * Reported by the user, who declared variables, wrote `$`, and got a page with no colours: the
+         * generated `:root` was written to disk and nothing imported it, so `var(--color-accent-main)`
+         * resolved to its registered initial value and nothing else. Correct classes, unstyled page.
+         *
+         * Emitted beside the block import rather than asked of the project, for the same reason codegen runs
+         * itself: a line a project has to remember is a line most projects will not have. Both bundlers
+         * dedupe an import by path, so the declarations arrive once however many modules ask for them.
+         */
+        const declared = variablesSheetFor(args.path);
+        const contents =
+          own === ""
+            ? result.code
+            : `${result.code}\n` +
+              `${declared === undefined ? "" : `import ${JSON.stringify(declared)};\n`}` +
+              `import ${JSON.stringify(args.path + SUFFIX)};\n`;
 
         return { contents, loader: loaderFor(args.path) };
       });

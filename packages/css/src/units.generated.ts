@@ -6,20 +6,29 @@
 /** Every unit CSS has, from `mdn-data` — the same list `unknown-unit` measures a typo against. */
 export type CssUnit = "%" | "cap" | "ch" | "cm" | "cqb" | "cqh" | "cqi" | "cqmax" | "cqmin" | "cqw" | "deg" | "dpcm" | "dpi" | "dppx" | "dvb" | "dvh" | "dvi" | "dvmax" | "dvmin" | "dvw" | "em" | "ex" | "fr" | "grad" | "hz" | "ic" | "in" | "khz" | "lh" | "lvb" | "lvh" | "lvi" | "lvmax" | "lvmin" | "lvw" | "mm" | "ms" | "pc" | "pt" | "px" | "q" | "rad" | "rcap" | "rch" | "rem" | "rex" | "ric" | "rlh" | "s" | "svb" | "svh" | "svi" | "svmax" | "svmin" | "svw" | "turn" | "vb" | "vh" | "vi" | "vmax" | "vmin" | "vw" | "x";
 
-/** The 49 `<length>` units. `CssDimension<CssLengthUnit>` is a length and nothing else. */
-export type CssLengthUnit = "cap" | "ch" | "cm" | "cqb" | "cqh" | "cqi" | "cqmax" | "cqmin" | "cqw" | "dvb" | "dvh" | "dvi" | "dvmax" | "dvmin" | "dvw" | "em" | "ex" | "ic" | "in" | "lh" | "lvb" | "lvh" | "lvi" | "lvmax" | "lvmin" | "lvw" | "mm" | "pc" | "pt" | "px" | "q" | "rcap" | "rch" | "rem" | "rex" | "ric" | "rlh" | "svb" | "svh" | "svi" | "svmax" | "svmin" | "svw" | "vb" | "vh" | "vi" | "vmax" | "vmin" | "vw";
+/**
+ * The families a unit can belong to — what `units` in `ramonda.css.ts` is keyed by.
+ *
+ * Every family, including the two that hold a single unit, because a project may well want to say
+ * that `%` is permitted and `fr` is not. The per-family unions below skip those two; this does
+ * not, because it names the KEY rather than the values.
+ */
+export type CssUnitFamily = "angle" | "flex" | "frequency" | "length" | "percentage" | "resolution" | "time";
 
 /** The 4 `<angle>` units. `CssDimension<CssAngleUnit>` is an angle and nothing else. */
 export type CssAngleUnit = "deg" | "grad" | "rad" | "turn";
 
-/** The 2 `<time>` units. `CssDimension<CssTimeUnit>` is a time and nothing else. */
-export type CssTimeUnit = "ms" | "s";
+/** The 2 `<frequency>` units. `CssDimension<CssFrequencyUnit>` is a frequency and nothing else. */
+export type CssFrequencyUnit = "hz" | "khz";
+
+/** The 49 `<length>` units. `CssDimension<CssLengthUnit>` is a length and nothing else. */
+export type CssLengthUnit = "cap" | "ch" | "cm" | "cqb" | "cqh" | "cqi" | "cqmax" | "cqmin" | "cqw" | "dvb" | "dvh" | "dvi" | "dvmax" | "dvmin" | "dvw" | "em" | "ex" | "ic" | "in" | "lh" | "lvb" | "lvh" | "lvi" | "lvmax" | "lvmin" | "lvw" | "mm" | "pc" | "pt" | "px" | "q" | "rcap" | "rch" | "rem" | "rex" | "ric" | "rlh" | "svb" | "svh" | "svi" | "svmax" | "svmin" | "svw" | "vb" | "vh" | "vi" | "vmax" | "vmin" | "vw";
 
 /** The 4 `<resolution>` units. `CssDimension<CssResolutionUnit>` is a resolution and nothing else. */
 export type CssResolutionUnit = "dpcm" | "dpi" | "dppx" | "x";
 
-/** The 2 `<frequency>` units. `CssDimension<CssFrequencyUnit>` is a frequency and nothing else. */
-export type CssFrequencyUnit = "hz" | "khz";
+/** The 2 `<time>` units. `CssDimension<CssTimeUnit>` is a time and nothing else. */
+export type CssTimeUnit = "ms" | "s";
 
 /**
  * A number with a unit on it, for the declaration that MAKES one rather than for the block.

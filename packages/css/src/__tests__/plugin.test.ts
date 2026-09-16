@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { virtualFile } from "../compiler/virtual";
+import { SELECTORS } from "../compiler/keywords.generated";
 import { init } from "../plugin";
 
 const require = createRequire(import.meta.url);
@@ -227,7 +228,10 @@ describe("the red squiggles", () => {
     expect(rest).toEqual([]);
     expect(only.start).toBe(source.indexOf("dsiplay"));
     expect(only.length).toBe("dsiplay".length);
-    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("Did you mean to write 'display'?");
+    // OURS since review pass 6 — the rule reports a bare name too, so the build sees it, and the
+    // compiler's `TS2561` on that position is dropped. One typo, one squiggle.
+    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("[unknown-property]");
+    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("display");
   });
 
   test("an ordinary type error in the same file still arrives, at its own place", () => {
@@ -236,6 +240,25 @@ describe("the red squiggles", () => {
 
     const [only] = service.getSemanticDiagnostics(FILE);
     expect(only.start).toBe(source.indexOf("n: number"));
+  });
+
+  /**
+   * An ordinary type error SHARING the line with a block whose fault a rule of ours speaks for.
+   *
+   * The drop was keyed on the LINE, and a line holds as much as an author puts on it — measured, a
+   * one-line component swallowed `const n: number = "no"` because the block beside it had a
+   * property typo. The unit is the declaration, not the line, exactly as in `check.ts`.
+   */
+  test("a type error sharing the line with a block's own fault still arrives", () => {
+    const marked = `const n: number = "no"; const a = <div css={@@( dsiplay: flex; )}>x</div>;\nexport default [n, a];\n`;
+    const { service, source } = editor(marked);
+
+    const found = service.getSemanticDiagnostics(FILE);
+    expect(found.map((one) => one.start)).toContain(source.indexOf("n: number"));
+    expect(found.map((one) => ts.flattenDiagnosticMessageText(one.messageText, " "))).toContainEqual(
+      expect.stringContaining("[unknown-property]"),
+    );
+    expect(found).toHaveLength(2);
   });
 
   /**
@@ -1321,12 +1344,28 @@ describe("a value that is a function", () => {
     expect(entry?.insertText).toBe("translate(");
   });
 
+  /**
+   * Asserted as an ORDER rather than as a literal `sortText`, which is what the claim is.
+   *
+   * It read `"0"` and `"1"` until a vendor prefix earned a digit of its own — `&::` was offering
+   * eight `-moz-` and `-ms-` pseudo-elements ahead of `before`. A test that names the encoding
+   * fails when the encoding grows, and says nothing about whether the order is right.
+   */
   test("and a keyword sorts above a function, because it is the shorter answer", () => {
     const { service, caret } = editor(`const a = <div css={@@( transform: ${CARET} )}>x</div>;\n`);
     const entries = service.getCompletionsAtPosition(FILE, caret, undefined)?.entries ?? [];
+    const sortOf = (name: string) => entries.find((one) => one.name === name)?.sortText ?? "";
 
-    expect(entries.find((one) => one.name === "none")?.sortText).toBe("0");
-    expect(entries.find((one) => one.name === "rotate()")?.sortText).toBe("1");
+    expect(sortOf("none")).not.toBe("");
+    expect(sortOf("none") < sortOf("rotate()")).toBe(true);
+  });
+
+  test("and a vendor-prefixed name sorts below both", () => {
+    const { service, caret } = editor(`const a = <div css={@@(\n  &::${CARET}\n)}>x</div>;\n`);
+    const entries = service.getCompletionsAtPosition(FILE, caret, undefined)?.entries ?? [];
+    const sortOf = (name: string) => entries.find((one) => one.name === name)?.sortText ?? "";
+
+    expect(sortOf("before") < sortOf("-moz-progress-bar")).toBe(true);
   });
 
   test("`var()` is offered everywhere, because every property takes it", () => {
@@ -1830,8 +1869,11 @@ describe("which config the editor measures a file against", () => {
     const repo = mkdtempSync(join(tmpdir(), "ramonda-editor-which-"));
     mkdirSync(join(repo, ".git"), { recursive: true });
     for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
-    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
-    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px", "em"] };\n`);
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
+    writeFileSync(
+      join(repo, "packages", "admin", "ramonda.css.ts"),
+      `export default { units: { length: ["px", "em"] } };\n`,
+    );
     const source = `const a = <div css={@@(\n  padding: 1em;\n)}>x</div>;\nexport default a;\n`;
     for (const name of ["web", "admin"]) writeFileSync(join(repo, "packages", name, "Card.tsx"), source);
     writeFileSync(join(repo, "jsx.d.ts"), JSX_TYPES);
@@ -1880,7 +1922,7 @@ describe("which config the editor measures a file against", () => {
       .getSemanticDiagnostics(join(repo, "packages", "web", "Card.tsx"))
       .map((one) => ts.flattenDiagnosticMessageText(one.messageText, " "));
 
-    expect(said.join("\n")).toContain("`em` is a CSS unit this project does not use");
+    expect(said.join("\n")).toContain("`em` is a length this project does not use");
   });
 
   test("and the package next door keeps its own answer, in the same session", () => {
@@ -2092,5 +2134,189 @@ describe("an edit an editor would apply", () => {
     const found = service.findRenameLocations(FILE, `const `.length, false, false, {});
 
     expect(found?.length).toBe(2);
+  });
+});
+
+/**
+ * The caret right after `@@`, where NOTHING TypeScript knows can stand.
+ *
+ * **Reported by a user**, twice: *"kada napisem `css={@@` i krenem da kucam `(` desi se
+ * `css={@@Component()}`"*, and later the same with `$` at the top of the list. Measured, the list
+ * held **1003 entries** — every global, every local, every keyword — because `css={@@}` holds no
+ * parens yet, so `findBlocks` sees no site, no overlay is built, and the question goes to
+ * TypeScript against the author's own text, where the caret is an expression position.
+ *
+ * The first entry is preselected, so the next keystroke commits it and writes a name the author
+ * never typed into the one place a block was about to be.
+ *
+ * Only four things can follow `@@`: a `(`, or one of the three named sites this compiles. So that
+ * is the list, and the rest is refused rather than filtered — `isGlobalCompletion: false` tells the
+ * editor not to fall back to its own word list either.
+ */
+describe("the caret right after `@@`", () => {
+  test("offers the named sites, and nothing else", () => {
+    expect(names(`const a = <div css={@@${CARET}}>x</div>;\n`).sort()).toEqual(["font-face", "keyframes", "property"]);
+  });
+
+  test("a name half typed narrows to what it could still be", () => {
+    expect(names(`const a = <div css={@@key${CARET}}>x</div>;\n`)).toEqual(["keyframes"]);
+  });
+
+  test("and a name that could be none of them offers none", () => {
+    expect(names(`const a = <div css={@@zzz${CARET}}>x</div>;\n`)).toEqual([]);
+  });
+
+  /** The globals are GONE, which is the fault — not merely reordered. */
+  test.each([["Component"], ["$"], ["abstract"], ["AbortController"]])("%s is not offered", (name) => {
+    expect(names(`const a = <div css={@@${CARET}}>x</div>;\n`)).not.toContain(name);
+  });
+
+  /** And once the block is open, the caret is inside CSS and the property names come back. */
+  test("inside an opened block it is the properties again, unchanged", () => {
+    const got = names(`const a = <div css={@@( ${CARET} )}>x</div>;\n`);
+
+    for (const property of SOME_PROPERTIES) expect(got).toContain(property);
+  });
+
+  /**
+   * Typing `(` must open a plain block, not commit the first name — which it did.
+   *
+   * The user met it one message after the list was narrowed: `@@` then `(` wrote `@@keyframes()`.
+   * Narrowing the list to three did nothing about this, because the first entry is preselected and
+   * VS Code's TypeScript extension adds `(` to the commit characters whenever the position is NOT a
+   * new-identifier location.
+   *
+   * **What this asserts is the contract, not the editor.** Committing is VS Code's behaviour and
+   * cannot be exercised from a language service; what can be exercised is the two things it reads,
+   * and both are here. `isNewIdentifierLocation` is true because it is TRUE — after `@@` the author
+   * may type the `(` of an ordinary block, which is not in the list.
+   */
+  test("nothing here can be committed by typing, because a `(` is a block and not a name", () => {
+    const { service, caret } = editor(`const a = <div css={@@${CARET}}>x</div>;\n`);
+    const got = service.getCompletionsAtPosition(FILE, caret, undefined);
+
+    expect(got?.isNewIdentifierLocation).toBe(true);
+    for (const entry of got?.entries ?? []) expect(entry.commitCharacters).toEqual([]);
+  });
+
+  /** A single `@` is an ordinary decorator and none of this may touch it. */
+  test("one `@` is a decorator and is left to TypeScript", () => {
+    const got = names(`declare const dec: any;\nclass C {\n  @${CARET}\n}\n`);
+
+    expect(got).not.toEqual(["font-face", "keyframes", "property"]);
+  });
+});
+
+/**
+ * A caret in a nested rule's PRELUDE — `&:` — where the pseudo-classes belong.
+ *
+ * **Asked for by the user while using it**: *"voleo bih kada napisem `:` da imam autocomplete za
+ * `&:hover` i ostale."* Measured before this, `&:` was answered with **828 property names** — the
+ * key position's list, in a position where no property can stand. The same fault the `@@` opener
+ * had, and the same one `valueWords` exists to fix in a value: the caret maps somewhere TypeScript
+ * has an answer for, and the answer is about the wrong thing.
+ *
+ * The data was already here. `SELECTORS` holds 129 names and `unknown-selector` reads it, so what
+ * is offered and what is accepted come from ONE table — which is the trap named in `DESIGN.md`
+ * before this was built: an editor that suggests what the checker then reports is worse than one
+ * that suggests nothing.
+ *
+ * A prelude in this language starts with `&` — `CssBlockShape` says so, the key is
+ * `` `&${string}` `` — and that is what separates `&:ho` from `color: ho`, whose `:` looks the same
+ * from the caret backwards.
+ */
+describe("a caret in a nested rule's prelude", () => {
+  test("`&:` offers the pseudo-classes, not the property names", () => {
+    const got = names(`const a = <div css={@@(\n  color: red;\n  &:${CARET}\n)}>x</div>;\n`);
+
+    expect(got).toContain("hover");
+    expect(got).toContain("focus");
+    expect(got).toContain("first-child");
+    expect(got).not.toContain("display");
+    expect(got).not.toContain("padding");
+  });
+
+  test("half typed, it narrows", () => {
+    const got = names(`const a = <div css={@@(\n  &:ho${CARET}\n)}>x</div>;\n`);
+
+    expect(got).toContain("hover");
+    expect(got).not.toContain("focus");
+  });
+
+  test("`&::` offers the pseudo-ELEMENTS, which are a different set", () => {
+    const got = names(`const a = <div css={@@(\n  &::${CARET}\n)}>x</div>;\n`);
+
+    expect(got).toContain("before");
+    expect(got).toContain("after");
+    // A one-colon pseudo-class is not a pseudo-element, and offering it here would be a report.
+    expect(got).not.toContain("hover");
+  });
+
+  /**
+   * The control that matters: a DECLARATION's colon looks identical from the caret backwards.
+   * What separates them is the `&` at the head of the run.
+   */
+  test("a declaration's colon is untouched, and still answers about values", () => {
+    const got = names(`const a = <div css={@@(\n  position: ${CARET}\n)}>x</div>;\n`);
+
+    for (const value of POSITION_VALUES) expect(got).toContain(value);
+    expect(got).not.toContain("hover");
+  });
+
+  test("and inside the rule's BODY it is the properties again", () => {
+    const got = names(`const a = <div css={@@(\n  &:hover { ${CARET} }\n)}>x</div>;\n`);
+
+    for (const property of SOME_PROPERTIES) expect(got).toContain(property);
+    expect(got).not.toContain("hover");
+  });
+
+  /**
+   * A VENDOR-PREFIXED name sorts last, and it was sorting first.
+   *
+   * Measured in a real project: `&::` offered eight `-moz-` and `-ms-` pseudo-elements before any
+   * real one, because the list is alphabetical and a dash sorts before a letter. Somebody typing
+   * `&::` wants `before` or `after`; `-moz-progress-bar` is a name they will never reach for.
+   *
+   * `entryFor` already sorts a function call after a bare word for the same reason — the ordinary
+   * answer first — and a prefix is the same judgement one step further.
+   */
+  test("`&::` offers the ordinary pseudo-elements first", () => {
+    const got = names(`const a = <div css={@@(\n  &::${CARET}\n)}>x</div>;\n`);
+    const first = got.slice(0, 8);
+
+    expect(first).toContain("before");
+    expect(first).toContain("after");
+    expect(first.every((one) => !one.startsWith("-"))).toBe(true);
+  });
+
+  test("and a prefixed one is still offered, at the end", () => {
+    const got = names(`const a = <div css={@@(\n  &::${CARET}\n)}>x</div>;\n`);
+
+    expect(got).toContain("-moz-progress-bar");
+    expect(got.indexOf("-moz-progress-bar")).toBeGreaterThan(got.indexOf("before"));
+  });
+
+  test("the same for a pseudo-class", () => {
+    const got = names(`const a = <div css={@@(\n  &:${CARET}\n)}>x</div>;\n`);
+
+    expect(got.slice(0, 8).every((one) => !one.startsWith("-"))).toBe(true);
+    expect(got).toContain("hover");
+  });
+
+  /**
+   * Everything offered comes from the table the CHECKER reads — one table, both halves.
+   *
+   * The trap named in `DESIGN.md` before this was built: *"the offer has to match what the rule
+   * accepts, or the editor suggests what the checker reports."* It has gone wrong here once already,
+   * with `UNION_TYPED` against a project's own config.
+   */
+  test.each([
+    ["a pseudo-class", ":", `&:`],
+    ["a pseudo-element", "::", `&::`],
+  ])("every %s offered is a key of SELECTORS", (_what, colons, written) => {
+    const got = names(`const a = <div css={@@(\n  ${written}${CARET}\n)}>x</div>;\n`);
+
+    expect(got).not.toEqual([]);
+    for (const one of got) expect(Object.keys(SELECTORS)).toContain(`${colons}${one}`);
   });
 });

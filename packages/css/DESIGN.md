@@ -424,6 +424,1016 @@ else has to.
 
 ## Open decisions
 
+**0. What a project's config generates, and what it looks like.** OPEN, and the shape is the whole
+question. Three designs below, the same project written in each.
+
+The constraint is not "what CSS allows" — that comes from the grammars and is already measured. It
+is **what THIS project allows**, which is narrower and therefore more expressible. `<integer>` cannot
+be a type: measured, neither `number` nor `` `${number}` `` refuses `1.5`. But `1 | 2 | 5 | 10` — a
+scale a team chose for `z-index` — is a closed union and is exact.
+
+Two constraints, deliberately separate, because `padding` is itself a shorthand and "no shorthands"
+means two different things:
+
+- **shorthand PROPERTIES** — `padding` does not exist; you write `padding-left`. The package already
+  knows which 120 those are, read out of the engines.
+- **ARITY** — `padding` exists and takes one value, so `padding: 8px 12px` is gone.
+
+And the cost is settled: `prototype-strict-types.mjs` measures **+4 instantiations, flat** across 1,
+12, 40 and 80 properties set in a block. The shape must be a WRITTEN-OUT interface — deriving one
+with `Omit<Base, …>` is 2,531 against 30 — which is why the project generates its own file rather
+than narrowing ours.
+
+The three criteria are the user's, and they pull against each other: **quick to configure**
+sometimes, **fine enough to argue about details**, and **shareable** — people publish a config and
+others run codegen against it.
+
+### A. A key per constraint, beside the ones that exist
+
+```ts
+export default {
+  units: ["px", "rem"],
+  shorthands: false,
+  arity: 1,
+  values: { "z-index": [1, 2, 5, 10] },
+};
+```
+
+Exceptions change each key's shape:
+
+```ts
+  shorthands: { allow: ["margin"] },
+  arity: { default: 1, padding: 4 },
+```
+
+Quick, and it matches `units` and `rules` exactly, so nothing new has to be learned. **Its weakness
+is sharing:** a key that is `false | { allow: [] }` merges badly — two shared configs setting
+`shorthands` differently have no obvious answer, and `{...base, ...mine}` silently takes one whole.
+
+### B. Presets and `extends`
+
+```ts
+import { strict } from "@ramonda/css/presets";
+
+export default {
+  extends: [strict],
+  shorthands: { allow: ["margin"] },
+  values: { "z-index": [1, 2, 5, 10] },
+};
+```
+
+The quickest of the three — one word buys a posture — and sharing is the mechanism rather than a
+side effect: a team publishes `@acme/ramonda-strict` and everyone extends it.
+
+**Its weakness is that merge rules become a feature.** What wins, how arrays combine, what a later
+`extends` does to an earlier one: this is the part of eslint people complain about, and it has to be
+answered before the first preset ships, not after.
+
+### C. One map, keyed by property, with a wildcard
+
+```ts
+export default {
+  properties: {
+    "*": { shorthand: false, arity: 1 },
+    margin: { shorthand: true },
+    "z-index": { values: [1, 2, 5, 10] },
+  },
+};
+```
+
+Every per-property constraint in one place, and **the merge is the well-defined one** — two shared
+configs merge key by key, and a project overrides one property without touching the rest.
+
+**Its weakness is the quick path:** `"*"` is the one-line sweep, and it is a convention somebody has
+to know exists. Nothing about the shape suggests it.
+
+### D. A function, and the config author owns the merge
+
+The user's own idea: stop inventing merge rules and let JavaScript do it. The config already supports
+a function form — it is given `{ production }` — so a preset is a value you spread.
+
+```ts
+import { strict } from "@acme/ramonda-strict";
+
+export default ({ production }) => ({
+  ...strict,
+  properties: {
+    ...strict.properties,              // this line carries everything
+    margin: { shorthand: true },
+    "z-index": production ? strict.properties["z-index"] : { values: [1, 2, 5, 10, 9999] },
+  },
+});
+```
+
+Nothing to specify, arbitrary composition, and a preset needs no blessing from this package.
+
+**And the user saw the cost immediately: "ako ga lose napisu, onda je config besmislen."** Worse than
+meaningless — a config that lies. Drop the inner spread and every inherited constraint is gone, the
+codegen writes types, `tsc` passes, and the team believes it has `z-index: 1 | 2 | 5 | 10`:
+
+```ts
+export default () => ({
+  ...strict,
+  properties: {
+    margin: { shorthand: true },       // `...strict.properties` missing — one line
+  },
+});
+```
+
+**This is not hypothetical here. The function form has already produced exactly this failure, twice**
+— both recorded in `config.ts`:
+
+- `export default async () => ({ units: ["px"] })` enforced nothing and said nothing. A Promise is an
+  object, so it passed every check and `Object.keys` of it was empty.
+- `env.production` was wired nowhere, so every environment-dependent config silently took its
+  development branch, production builds included.
+
+Both have the same shape as the missing spread: **a wrong result indistinguishable from a deliberate
+one.** With a declarative merge, not mentioning `properties` means "inherit". With a function, not
+spreading it means "delete", and the two look identical from outside.
+
+**The mitigation is to take away the silence, not the function** — the move
+`ramonda-css-ignore` already makes, printed on every run whether or not anything failed:
+
+```
+[ramonda-css] ramonda.css.ts → src/css.generated.d.ts
+
+  766 properties
+    120 shorthand properties removed        padding, margin, border, …
+    646 limited to one value
+      1 given a value set                   z-index: 1 | 2 | 5 | 10
+```
+
+**Be honest about which half of that is possible.** The counts are arithmetic over what the function
+returned, and they are real. The DIAGNOSIS — "you imported a preset and did not spread its
+properties" — is not: the function has already run, and the preset does not exist as a separate thing
+in its result. So the report can say *this config constrains 1 property out of 766* and let a person
+stop; it cannot say why.
+
+Whether that is enough is the decision. It is the difference between a config that can be wrong
+loudly and one that can be wrong quietly.
+
+### DECIDED: C, with the function as delivery and no `extends`
+
+**C is the shape** — one map keyed by property, `"*"` for the default. Three reasons, the first
+being the only one that is really about the long term:
+
+1. **CSS grows, so the default has to be the strict one.** A deny-list — "forbid `padding`,
+   `margin`" — lets every property CSS adds afterwards escape, silently, and in five years nobody
+   knows how stale the list is. `"*"` says *everything, except these*, and covers a new property the
+   day it lands. Strictness that does not renew itself is a moment, not a posture.
+2. **C is what makes the function form survivable.** The danger of a function config is proportional
+   to how many nested keys must be spread: design A would need `shorthands`, `arity`, `values`,
+   `units` and `rules` — five chances to forget one. C has exactly ONE nested key, `properties`, so
+   there is exactly one spread to get right.
+3. **Presets then need no mechanism.** A preset is `export const strict = { properties: { … } }`, and
+   you import and spread it.
+
+**`extends` is refused**, and not because it is bad: merge rules become permanent public surface that
+cannot be changed afterwards. eslint is the evidence — that part of it is its largest source of
+complaint, and it grew from the same good intention.
+
+**The report is a condition, not a decoration.** Silent loss survives this design: one missing
+`...strict.properties` and the constraints are gone with everything green. The counts are arithmetic
+over what the function returned and are real; the DIAGNOSIS is not, because the function has already
+run and the preset no longer exists as a thing in its result. So the codegen can say *this config
+constrains 1 property out of 766* and let a person stop. It cannot say why.
+
+### The config's own type, and what it has to catch
+
+The type is what guides somebody writing the config, so it is worth being exact. Measured against a
+draft, all three are refused:
+
+```ts
+properties: {
+  "z-indx": { values: [1] },     // TS2353 — not a property CSS has
+  color: { shorthand: false },   // TS2353 — `color` is not a shorthand, so the key cannot exist
+  padding: { arity: 7 },         // TS2322 — CSS gives padding at most four
+}
+```
+
+The shape that does it: `arity` as `1 | 2 | 3 | 4` rather than `number`; `shorthand` only on the 120
+names the engines say ARE shorthands, so the key is absent everywhere else; and the map keyed by the
+generated property union rather than by `string`.
+
+One trap while checking this: **TypeScript reports one excess-property error per object literal**, so
+a literal with several faults appears to miss the first one. It does not — isolate the case before
+concluding the type is loose.
+
+### NO CONFIG IS A SENTENCE, NOT A DEFAULT
+
+The obvious design is a permissive fallback: no `ramonda.css.ts`, no project constraints. **The user
+refused it, and the reason is the one this package is built on:** *"brinem ako imam po defaultu konfig
+koji sve dozvoljava jer ako ga ne setuju kako treba, moci ce da rade sta hoce, umesto da odmah budu
+svesni da nisu setovali config i codegen."*
+
+A permissive default is silent, and silence is what every other mechanism here exists to remove —
+`ramonda-css-ignore` prints on every run, `check-first-publish` stops a release, `check-test-jobs`
+refuses a partition nobody verified.
+
+**And this is the only moment the decision is free: no project uses this package yet.** Requiring a
+config costs nothing today and can never be made to cost nothing again.
+
+So the absence is said out loud, with the command that fixes it, and `create-ramonda` scaffolds one
+so the ordinary path never meets the message. What is still open is only its severity — a refusal, or
+a line printed on every run.
+
+**What the scaffolded config should contain is a separate question**, and the trap in it is real: the
+obvious opinionated default, `"*": { arity: 1 }`, forbids `margin: 0 auto`. A default people delete
+first is not a default.
+
+### The completion table has to move with the types
+
+`plugin.ts` deliberately offers nothing where a property already has a real union, and lets
+TypeScript answer:
+
+```ts
+if (UNION_TYPED.includes(property)) return undefined;
+```
+
+**`UNION_TYPED` is a constant generated from OUR map and shipped in the package.** It knows nothing
+about a project's config — so the moment codegen narrows `z-index` to `1 | 2 | 5 | 10`, the type
+accepts four values while the editor still suggests everything CSS allows. **The editor would offer a
+value the type refuses**, on day one.
+
+It is a small repair and it belongs in the design rather than after it: `UNION_TYPED` stops being a
+constant and becomes a question put to the config — *does this property have a union in THIS
+project*. The plugin already reads the config for `units`, so the path exists.
+
+This is the repository's recurring fault in its purest form: one question — *what may this property
+hold* — with two consumers, the type and the completion, and a design that lets only one of them read
+the answer.
+
+### A `$.color.primary.main` syntax for variables — OPEN, and better than I first judged
+
+The user's proposal: a third spelling for a custom property, `$.color.primary.main` instead of
+`var(--color-primary-main)`, with three reasons. Two of them turn out to stand differently than
+posed.
+
+**"It does not create a hole" is already true of `var()`.** Measured through the real transform:
+
+    var(--accent)   ->  "border-left": "r-bl-4px_solid_var(--accent)"     a class, no value
+    {accent}        ->  ["r-J7FSVc8dZ", accent]                          a class AND a value
+
+So a `var()` costs nothing per element and nothing on a change; the new syntax adds no capability
+there. **The argument survives in a stronger form**, though: a hole costs 41 bytes an element and a
+render, people reach for one anyway, and making the free path the SHORT path is a real lever. That is
+a different claim from "it avoids a hole", and it is the one worth arguing.
+
+**"It is shorter" barely is.** `$.color.primary.main` is 20 characters against 25 for
+`var(--color-primary-main)`. Five characters do not carry a design decision.
+
+**"Types from the config" is real, and has a cheaper route.** Generating the token names into the
+VALUE type needs no new syntax and was measured to work, did-you-mean included:
+
+```
+background: "var(--colr-primary-main)"
+
+TS2820: Did you mean '"var(--color-primary-main)"'?
+```
+
+~~Because that is a template-literal union, an editor completes inside the string and filters by
+prefix — typing `var(--color-` narrows to the colours, which recovers most of what the nested
+spelling is attractive for.~~ **Measured against the language service, and it does not.** On a scale
+of 88 tokens in 6 groups, asked at the position an editor asks:
+
+    a value typed as the flat union, empty string       88 offered
+    the same union, after `var(--color-`                88 offered
+    $.                                                   6 offered   color, font, motion, …
+    $.color.                                             5 offered   border, primary, state, …
+    $.color.primary.                                     4 offered   contrast, dark, light, …
+
+The service returns the whole list at both string positions; the editor narrows what it DISPLAYS by
+what has been typed. That is filtering, and filtering requires already knowing the name. The nested
+object answers the other question — *what exists here at all* — and it is the question somebody
+reaching for a token usually has. At two hundred tokens the gap widens rather than closes.
+
+**The objection is the user's own principle.** This would be the THIRD spelling of one thing:
+
+    var(--color-primary-main)   plain CSS, checked by our rule against every name the build sets
+    var({accent})               a `@@property` binding, checked by TypeScript, compiles to a name
+    $.color.primary.main        proposed
+
+`Why the condition is inside { }` in the docs makes exactly this argument for `if ({ … })`: *the
+moment there are two, every reader has to learn which one a given line is.* Three is worse.
+
+**What only `$` can give, and the user did not raise it:** it is a real object, so rename-refactor
+and go-to-definition work. A string in a union has no definition site, so renaming a token cannot be
+an editor operation. With two hundred tokens that is not nothing.
+
+**That recommendation was wrong, and the user overturned it with one question: how dare a type
+report a variable that came from an outer scope?**
+
+A custom property is an OPEN world — that is what inheritance is. A name may be set by an ancestor
+block, by a stylesheet this does not compile, or from JavaScript as `style={{ "--x": … }}`. Measured,
+a type cannot be open and catch a typo at the same time:
+
+    closed  `var(--${Token})`                       typo REPORTED   `var(--row-height)` also reported
+    open    `var(--${Token})` | `var(${string})`    typo silent     `var(--row-height)` fine
+
+The did-you-mean only existed because the union was closed, and closing it refuses correct CSS —
+which is the one failure this package may not have. That is exactly why the current design checks
+variables with a RULE: it sees every name the whole BUILD sets, so a parent setting what a child
+reads needs no ceremony; `variables` in the config covers names from outside; `var(--x, fallback)` is
+CSS's own way of saying the name may be absent; and it can be silenced on one line. A type does none
+of those.
+
+**And this dissolves the objection above rather than the proposal.** `$` and `var()` are not two
+spellings of one thing. They are spellings of two different things:
+
+| | the world | what checks it |
+|---|---|---|
+| `$.color.primary.main` | **closed** — the tokens this project declared | the type: complete, with completion and rename |
+| `var(--anything)` | **open** — including what an ancestor, a foreign stylesheet or JS sets | the rule: knows the whole build, and has an escape |
+
+**The closed case has no spelling today.** `@@property` is the nearest thing and is not it: a
+declaration per token, in a flat namespace, which is far too heavy for a scale of two hundred.
+
+So the question is no longer "is a third spelling worth five characters" — it is whether the project's
+own token scale deserves a closed, navigable namespace of its own, separate from the open world of
+every other custom property. Put that way it is a much better proposal than the one I argued against,
+and the arguments for it are the two that survive, both measured and both impossible through a
+string: **rename-refactor**, because a member has a definition site and a string has none, and
+**progressive completion**, because a union is one flat list however it is filtered.
+
+#### Decided
+
+**`$` is a superset spelling, and it compiles to `var(--name, fallback)`.** Nothing new reaches the
+browser and there is no runtime: the stylesheet is what a hand-written `var()` produces. The fallback
+is not decoration — it is what makes the value's type true, because a `var()` with no fallback can
+resolve to nothing and a type that promised a colour would have lied.
+
+**A group is an error; always write a leaf.** `$.color.primary` names three variables and no value.
+Left alone TypeScript would say `Type '{ main: … }' is not assignable`, which names the shape instead
+of the mistake, so groups carry a marker and the message says a group was named.
+
+**A leaf has a kind, and it is WRITTEN — once per group.** Reading the kind off the fallback was
+tried and refused: a value cannot say whether `"0"` is a length or a number, and guessing is worse
+than asking. But writing it beside every variable is ceremony nobody keeps up. So `kind(…)` wraps a
+GROUP and holds all the way down, and a subgroup may override it.
+
+It earns its place twice. At the use site it is the type; in the config it **narrows the fallback
+while it is being typed**, so the defaults are written against a real type rather than from memory:
+
+```
+kind("color",  { primary: { main: "30px"   } })   TS2322  not assignable to `#${string}` | rgb(…) | …
+kind("length", { control: { md: "#3b82f6" } })    TS2322  not assignable to "0" | `${number}px` | …
+
+$.size.control.sm   in a padding narrowed to 4/8/16/24   ok
+$.size.control.md   the same slot                        TS2345  Var<"length","30px"> is not PaddingScale
+$.color.primary.main                                     TS2345  a colour
+```
+
+That last pair is the point of the kind: the narrowing a project sets on a property reaches its
+variables too, and the message names the offending VALUE rather than the variable.
+
+Measured: 5,133 instantiations against 4,776 for an empty program, 0.39s either way.
+`prototype-variable-types.ts` is the probe, and four errors in it are expected.
+
+#### The config, entire
+
+```ts
+export default defineConfig({
+  variables: {
+    color: kind("color", {
+      primary: { main: "#3b82f6", light: "#93c5fd" },
+      surface: { base: "#ffffff", sunken: "#f3f4f6" },
+    }),
+    size: kind("length", {
+      control: { sm: "24px", md: "30px" },
+      weight: kind("number", { bold: 700 }),
+    }),
+    motion: kind("duration", { fast: "120ms", slow: "400ms" }),
+  },
+});
+```
+
+A name, a fallback, and a kind per group. Nothing else. The nesting is what gives grouped completion — `$.` then
+`color.` then `primary.` — measured at 6, then 5, then 4 offered, against 88 for a flat union.
+
+This REPLACES `variables: readonly string[]`, which is a hand-written list of names from outside
+(`config.ts:47`). Same key, now carrying a value each: the rule still stops reporting those names,
+and they gain a type and a fallback at the same time.
+
+#### One source, and the CSS is OUTPUT
+
+The user found the split I had left in: this config declares the variables, but the variables
+themselves live in a `:root` block somewhere — *"ovaj config moraju da održavaju odvojeno od onog
+drugog mesta gde su variable, zar ne?"* They do, and that is two places.
+
+**So they do not write `:root` at all. Codegen emits it from the same object.**
+
+```
+ramonda.css.ts   ->   :root { --color-primary-main: #3b82f6; … }    emitted
+                 ->   $ and the types                               emitted
+                 ->   $.color.primary.main  ->  var(--color-primary-main, #3b82f6)
+```
+
+The fallback is then not a second copy of the value. It is one value, written once, used twice: as
+the declaration codegen emits, and as the fallback every use carries. Their own answer to *"da li bi
+bila preporuka da oni taj CSS napišu neki typescript objekat"* — it already is that object.
+
+A theme is still theirs. `[data-theme="dark"] { --color-primary-main: … }` is CSS they write, in
+their own file, and we know nothing about it. That is the whole reason the fallback exists rather
+than a model of themes.
+
+**The honest cost:** a nested object is less scannable than a stylesheet — the user's word was
+*nepregledan*. `kind(…)` groups keep it shallow and grouped, and the emitted stylesheet is there to
+read; but it is generated, not authored, and that is a real trade rather than a free win.
+
+#### Reading a variable from JavaScript
+
+Rare, and it happens. Measured in Chrome rather than recalled:
+
+    --set-colour                          "#3b82f6"
+    --unset                               ""          typeof "string" — never undefined
+    --spaced (whitespace in the source)   "#10b981"   trimmed
+    set on :root, read on a child         "30px"      inheritance, as expected
+    set from JavaScript, read back        "irrelevant"
+
+    width: var(--set-length)              "30px"
+    width: var(--unset, 42px)             "42px"
+    width: var(--unset)                   "720px"     <- the finding
+
+**That last row is the strongest argument for the fallback in the whole design, and it is not mine.**
+Without one the declaration does not merely miss: it is invalid at computed-value time, `width` falls
+back to `auto`, and the element lays out at 720px. Nothing is reported and nothing looks broken.
+
+And a fallback is **invisible to a read** — `--unset` is still `""` after a property used it with
+one. So a typed read has to apply the fallback itself:
+
+```ts
+read($.color.primary.main, el)   // getPropertyValue, trimmed; "" becomes the declared fallback
+```
+
+which is what makes "never undefined" true in JavaScript too, not only in CSS. `$` is already an
+importable object, so it carries the name and the fallback that this needs.
+
+#### The whole thing end to end
+
+##### 1. What a person writes
+
+One file, `ramonda.css.ts`. The variables half is new; the strictness half already existed.
+
+```ts
+import { defineConfig, kind } from "@ramonda/css/config";
+
+export default defineConfig({
+  variables: {
+    color: kind("color", {
+      primary: { main: "#3b82f6", light: "#93c5fd" },
+      surface: { base: "#ffffff" },
+    }),
+    size: kind("length", { control: { sm: "24px", md: "30px" } }),
+    motion: kind("duration", { fast: "120ms" }),
+  },
+  rules: { /* … as today … */ },
+});
+```
+
+##### 2. When codegen runs
+
+The build plugin runs it on start and whenever `ramonda.css.ts` changes, so the ordinary case needs
+no command. `ramonda-css codegen` exists for CI and for an editor that only watches files. Output
+goes to a directory the project's `tsconfig.json` already includes.
+
+##### 3. What it writes
+
+| artefact | what is in it |
+|---|---|
+| `variables.css` | `:root { --color-primary-main: #3b82f6; … }`, and one `@property` per variable |
+| the `$` module | the object — each leaf carries its NAME and its FALLBACK — plus `Var<kind, value>` types, `toStyle` and `read` |
+| the value types | the narrowed per-property types the virtual file already consumes |
+
+`$.color.primary.main` in a block compiles to `var(--color-primary-main, #3b82f6)`. In TypeScript it
+is a real object, which is what `read` and `toStyle` need.
+
+##### 4. Where a wrong value is caught — and where it is not
+
+This answers the user's question directly: *do we scream at build too, or only at runtime?* Both, but
+not everywhere, and the gap is worth knowing.
+
+| a wrong value written… | caught at build? | by what |
+|---|---|---|
+| in the config — `kind("length", { md: "#3b82f6" })` | **yes** | `tsc`, `TS2322` |
+| in a block — `padding: $.color.primary.main` | **yes** | the types, `TS2345` |
+| in a block — `--size-control-md: crveno` | **yes** | the checker already reads custom properties a block sets |
+| through `toStyle({ "size.control.md": "crveno" })` | **yes** | it is TypeScript |
+| in THEIR own hand-written `.css` file | **no** | it is not a file we compile |
+| from a server, at runtime | there is no build | — |
+
+The last two rows are what `@property` is for, and it is not theoretical. Measured in Chrome:
+
+    registered `syntax: "<length>"`, set to "crveno"    reads back "30px"   — refused, initial-value stands
+    UNregistered, set to "crveno"                       reads back "crveno"
+      and an element sized by it                        height "0px"        — silently collapsed
+
+So the same `kind` the config already requires buys a second guarantee, in the browser, at no cost to
+the person writing it. That is the one idea taken from StyleX, whose `stylex.types.*` emit exactly
+these rules — the difference being that they write the type per variable and we write it per group.
+
+##### 5. Overriding: a recommendation, not a feature
+
+We do not model themes. But the names are readable by design, so overriding is ordinary CSS, and the
+cascade does the work. Measured in Chrome, from weakest to strongest:
+
+    :root { --c: base }                     ->  "base"
+    @media (…) { :root { --c: mode } }      ->  "mode"
+    <html style="--c: …">                   ->  "tenant-on-html"
+    <div style="--c: …">  (a wrapper)       ->  "tenant-on-wrapper"
+
+**The nearest ancestor that sets a name wins.** That single sentence is the whole mental model, and
+it is CSS's, not ours.
+
+##### 6. The complex cases, each one walked
+
+*Light and dark.* Their CSS, their file:
+
+```css
+@media (prefers-color-scheme: dark) { :root { --color-primary-main: #93c5fd; } }
+[data-theme="dark"]                 { --color-primary-main: #93c5fd; }
+```
+
+*A size that changes with the screen — 30px wide, 24px narrow.* The same shape. The config holds the
+base value; a media query overrides it. This is why `when` is not in the config: CSS already has it,
+and ours would have been a worse spelling of it.
+
+```css
+@media (max-width: 600px) { :root { --size-control-md: 24px; } }
+```
+
+*An organisation's theme, arriving from a server.* Values on an element, typed on the way in:
+
+```tsx
+<div style={toStyle({ "color.primary.main": org.primary })}>…</div>
+```
+
+*A user's theme.* The same call, applied wherever it should reach.
+
+*All of them at once.* The cascade resolves it, by the sentence above: base, then the mode's media
+query, then whatever element the tenant's values sit on. **Recommendation: apply a runtime theme to a
+wrapper element rather than to `<html>`, and let it carry values already resolved for the current
+mode.** On `<html>` it competes with the mode's media query on the same element, and inline wins —
+so dark mode would lose. On a wrapper there is no competition, only distance, which is easier to
+reason about and easier to undo.
+
+And if they want their own override file checked rather than trusted, they write it as a block; then
+row three of the table above applies and the checker reads it like any other.
+
+##### 7. Their own CSS, checked — one hook, and they fill it
+
+The table in §4 has one row where the build is blind: a `.css` file they wrote themselves. The user
+would not leave it there, and proposed the shape: give them an output, let them write the reader,
+and we say in time whether it will pass.
+
+That is the right division, and it is the one this whole design already follows — **they read, we
+check.**
+
+```ts
+export default defineConfig({
+  variables: { … },
+
+  /** Everything else that sets our variables. */
+  alsoSets: fromCss("./src/theme.css"),      // a reader we ship
+});
+```
+
+```ts
+  alsoSets: () => fromWhereverTheyLike(),    // their function, our contract
+```
+
+The contract is small: return `{ name, value, where? }[]`. `where` is what separates a useful report
+from an irritating one — the finding lands on THEIR file and line, not on the config.
+
+For each pair we ask two things: is the name declared (if not, it may be a typo of one that is, which
+is where did-you-mean belongs), and does the value satisfy the written `kind`.
+
+This also absorbs the old `variables: readonly string[]`: a name set from outside is the same
+question asked with no value. One mechanism instead of two.
+
+**Two limits, stated rather than discovered later.** `fromCss` reads a subset and is not a
+spec-complete CSS parser — the existing parser already handles nested rules with a prelude, `@media`
+included, which is the shape a `:root` override has, but a file it cannot read is a real
+possibility. That limit is only acceptable BECAUSE the hook exists: they replace the reader with
+their own function and lose nothing. And a value computed at runtime can never be on the list;
+`@property` stays the net for that.
+
+##### 8. What registering costs, measured on the emitted stylesheet
+
+The generated CSS was fed to Chrome rather than reasoned about, and it does what §4 claims:
+
+    base value reaches a child                       "30px"    inherits
+    an override still works                          "24px"
+    `--size-control-md: crveno`                      "30px"    REFUSED, initial stands
+    `--color-primary-main: 12px`                     refused
+    `any`, which registers nothing                   anything sticks
+    `<integer>` given 1.5                            "2"       refused — the case no type can express
+
+**One thing registering also does, and it had better be written down before somebody meets it.** A
+registered variable's computed value is NORMALISED; an unregistered one reads back verbatim:
+
+    registered    `--x: #10b981`    reads  "rgb(16, 185, 129)"
+    unregistered  `--x: #10b981`    reads  "#10b981"
+    registered    `--x: 2rem`       reads  "32px"
+
+For reading that is usually an improvement — a resolved value rather than a token. But `read` cannot
+promise to hand back the literal that was written, and a length comes back absolutised against the
+element it was read on. `inherits: true` is likewise not a preference: an unregistered custom
+property inherits, so a registration saying otherwise would quietly change how every existing use
+behaves.
+
+#### What was tried and dropped, and why
+
+Every one of these was the user refusing a complication, and every one was right.
+
+| tried | why it went |
+|---|---|
+| `{ kind: "color", value: … }` per variable | *"neću pored svakog tokena da pišem njegov kind"*. Answered by declaring it per group instead — not by dropping it. |
+| reading the kind off the fallback value | *"ne možeš da čitaš kind, moraš eksplicitno da ga napišeš"*. `"0"` is a length or a number and the value cannot say which. |
+| `ref("palette.blue.500")` | *"ti to ne možeš da napraviš type safe"*. Measured: `ref("totally.made.up")` and a colour pointing at a length both compiled, unreported. A config literal cannot reference its own paths — the inference is circular. |
+| `when: { "max-width: 600px": "24px" }` | conditions are unbounded, and maintaining a model of them commits us to something we do not understand. |
+| `themes: { dark: { when, values } }` | the same, one level up. Themes are theirs. |
+| a scope list per runtime theme (`owns: […]`) | policy, not types. They write their own logic; we owe them types, not permissions. |
+| reading the project's token stylesheet | it assumed a Figma-shaped export, and it put us in the business of parsing somebody else's CSS. *"zasto bi mi to radili za njih"*. |
+
+The through-line: **we do not model theming.** A variable may be set by a theme, a media query, a
+container query, an ancestor, a tenant's values from a server, or code we never see. We state the
+name, the fallback and the kind; everything past that is the project's.
+
+#### Left to settle
+
+- A property narrowed to a scale that IS a variable group would otherwise be written twice. Proposal:
+  the strictness config names the group (`"space"`) instead of listing values, and codegen refuses an
+  unknown group with a sentence. Checked at build time rather than by `tsc`; not everything has to be
+  a type.
+- Four consumers have to learn `$`: the grammar, the formatter, the checker and the virtual file.
+  Only the last is interesting — a hole there is already a real TypeScript expression, so `$` rides
+  the same machinery for completion while compiling to text rather than to a custom property.
+- Names that are not identifiers (`2xl`, `0`): written with a dot in the block, bracketed in the
+  virtual file. Measured — `$.space.inline.2xl` does not parse (`TS1351`), `["2xl"]` does — and the
+  mapping already supports it, since `Segment` keeps `sourceLength` apart from the virtual length and
+  `copied` is written rather than inferred. The path is emitted as several runs so completion lands.
+
+### A list of things worth forbidding, and where it should live
+
+The user's idea, in their words: *"verujem ako pogledas stylex tailwind, oni blokiraju mnogo
+besmislenih featurea koje ima CSS jer postoji uvek bolji nacin, pa da vidimo i mi tu listu."*
+
+#### What StyleX actually forbids, read rather than recalled
+
+From their own documentation:
+
+| forbidden | their stated reason |
+|---|---|
+| descendant and sibling combinators — `.x > *`, `.x ~ *`, `.x:hover button` | *"make styles fragile, less predictable and harder to debug. An element could be styled without having any classes applied to it."* |
+| `border` and `background`, entirely | write `borderWidth`, `borderStyle`, `borderColor` instead |
+| multi-value shorthands — `padding: 8px 12px`, `margin`, `borderWidth` | one side per property |
+
+Their principle is one sentence: *"All styles on an element should be caused by class names on that
+element itself."* Their `valid-shorthands` lint rule autofixes every one of these.
+
+**What I could not verify and am not going to guess at:** the complete list of properties they ban.
+Their site documents the rule's OPTIONS rather than its contents, and the rule's source was not where
+the search put it. So the three rows above are what is quoted from their docs, and nothing else here
+is attributed to them.
+
+#### What this package can already say, measured
+
+    828 properties
+    262 vendor-prefixed          webkit 182, ms 48, moz 30, apple 2
+    124 of those have an unprefixed form that ALSO exists
+     98 shorthands
+
+**The 124 is the interesting number.** `-moz-appearance` beside `appearance`, `-webkit-box-flex`
+beside `flex-grow`: writing the prefixed one is not a preference, it is a name that was needed once
+and is not any more. That is a list worth offering, and it is derivable rather than opinionated —
+it is the properties where a standard spelling of the same thing exists.
+
+#### Where it belongs, and why not as a default
+
+The mechanism is already here. `properties: { "-webkit-box-flex": { shorthand: false } }` does not
+apply (it is not a shorthand), so this needs one more key — call it `allowed: false` — or a list of
+its own. Either way it is the same pipeline: the config narrows, codegen writes, the types and the
+completions follow.
+
+**What it must not be is a default of ours.** Three reasons, and the third is the one that decides:
+
+1. *"a better way exists"* is a judgement about somebody else's project. `-webkit-line-clamp` has no
+   standard equivalent that ships everywhere, and a team supporting an old WebKit needs it.
+2. This package's own rule is that refusing correct CSS is the failure it may not have. A blocklist
+   is exactly that, held deliberately — which is fine when a PROJECT holds it and not when we do.
+3. The same argument already settled the narrowing: what CSS allows is this package's to state, and
+   how far a project goes is the project's. A blocklist we ship is that decision taken back.
+
+So the shape is a PRESET: a config a project imports and spreads, published beside this package or
+by anybody else. `DESIGN.md` above already chose design C partly because its merge is well-defined —
+key by key — which is what makes a preset worth starting from rather than a thing to fight.
+
+#### DECIDED: no preset. The mechanism, and worked configs in the documentation.
+
+The user's call, and it is the better of the two for reasons this design had already half-written.
+
+**A published preset is a dependency, and the failure it invites is silent.** Design D above was
+refused for exactly this — one missing `...strict.properties` and the constraints are gone with
+everything green. A preset makes that a permanent shape rather than a thing somebody might write: it
+is spread into a config, it changes under the project when it is upgraded, and the counts codegen
+prints are arithmetic over what the function returned rather than over what anybody intended.
+
+**A config in the documentation is copied, and then it is theirs.** No version, no merge, no spread
+to forget. Every line is editable and the project owns all of them, which is the same reason the
+narrowing was moved out of the shipped types in the first place: how far a project goes is the
+project's.
+
+**And a config in the documentation is CHECKED, which a preset would not need to be.**
+`scripts/check-examples.mjs` type-checks every ```ts and ```tsx fence on every page — `CHECKED` is
+`new Set(["ts", "tsx"])` — so a config example is compiled against the real `Config` type on every
+run. A property that does not exist, an arity CSS does not give, a unit that is not one: each is
+refused before the page can ship. A wrong example in the documentation is the worst kind, because a
+reader trusts it and copies it, and this is the one mechanism that already stops it.
+
+**The honest limit of that:** the gate proves an example COMPILES, not that it is good advice. A
+config that forbids something worth having would pass. So the pages have to argue for each row
+rather than list it — which is what `what-a-page-owes-its-reader` asks of every page anyway.
+
+What the pages should carry, from mildest to strictest, is the open question — and it is a writing
+question rather than a design one, so it belongs with the documentation work rather than here. The
+one row with evidence behind it today is the 124 vendor-prefixed properties whose unprefixed form
+also exists, measured above.
+
+### Two things the user found while using it, both OPEN
+
+#### A token's type carries its declared VALUE, and a theme changes that value
+
+Codegen writes:
+
+```ts
+"main": "var(--color-accent-main)" as Token<"color", "#10b981">
+```
+
+The user's reading of it, and it is right: *"dobra stvar je sto to mogu da procitam, losa strana je
+sto mi mozemo da promenimo vrednost jer kod teme je to i sustina."*
+
+The literal is what makes the narrowing work — a property limited to `4px | 8px` can refuse a
+variable whose value is `12px` only because the value is in the type. But under a theme that value is
+the FALLBACK and nothing more: `[data-theme="dark"]` sets the same name to something else, and the
+type still says `#10b981`.
+
+Three shapes were named, and the choice is not obvious:
+
+1. **The literal stays and means "the declared fallback".** Honest if it is said out loud, and the
+   narrowing keeps working. A reader hovering sees a value that a theme may have replaced.
+2. **The literal goes.** `Token<"color">` alone. Nothing lies, and a property narrowed to a scale can
+   no longer refuse a variable outside it — which is a capability the user asked for by name.
+3. **Two kinds of token.** A fixed one carrying its value and a themed one carrying only its kind,
+   declared differently in the config. The user's own suggestion — *"ili su ovo oni readonly tokeni,
+   a za temu da se prave drugi"* — and it keeps both properties at the cost of a distinction to
+   learn.
+
+**Not decided, and it should not be decided quickly**: it is the first thing in this design where
+being right about themes and being strict about ranges pull against each other. Whatever wins, the
+themed tokens have to be typed too.
+
+#### The path's colouring
+
+`$.space.gutter.wide` colours only `space`, as a property VALUE, and the rest — the `$`, the dots,
+`gutter`, `wide` — comes out as plain text.
+
+**That is the state BEFORE `ramonda.css-variable`, measured and fixed.** The grammar makes the whole
+path one token now, and `grammar.test.ts` asserts it. What the user is seeing is the installed
+extension: the marketplace has `0.1.2`, and the fix is in the `.vsix` that has not been uploaded.
+
+So this is not a bug to fix but a release to make — and the one thing worth deciding with it is the
+SCOPE. It is `variable.other.ramonda` today, which most themes colour as a variable rather than as a
+value. The user asked for the whole path to read as `space` does. Worth checking against two or three
+themes before the upload, because a scope is not a colour and only a theme turns it into one.
+
+### A worked config: what is worth forbidding, what is worth narrowing
+
+Asked for by the user. Every row has its reason, because a row without one is a row somebody deletes
+the first time it is in their way — and because the documentation gate proves an example COMPILES,
+not that it is good advice.
+
+#### 1. Shorthands whose parts are different things
+
+**The line is derivable, not an opinion.** A shorthand is either n of ONE thing or several different
+things at once, and only the first can be checked:
+
+    n of one thing, checkable     20   padding, margin, gap, inset, border-color, border-width, …
+    several different things      69   background, border, transition, animation, font, …
+
+`background: red` also resets `background-image`, `background-repeat` and six more to their initial
+values. Nothing in a type or a rule can say that is wrong, because it is legal CSS doing exactly what
+it says. A longhand cannot do it.
+
+So forbid the 69 and keep the 20 — `padding: 8px 12px` is four lengths and is checked already.
+
+```ts
+properties: {
+  "*": { shorthand: false },
+  // Back, by name: these are n of one thing and are checked.
+  padding: { shorthand: true },
+  margin: { shorthand: true },
+  gap: { shorthand: true },
+  inset: { shorthand: true },
+  "border-color": { shorthand: true },
+  "border-width": { shorthand: true },
+  // … and the fourteen block/inline pairs of the same shape.
+}
+```
+
+**Twenty lines is the honest cost of the config as it stands**, and it is worth noticing: the package
+knows which twenty, and saying so for a project would be deciding for them. A `shorthand: "checkable"`
+on `"*"` would spell the same fact in one line and is NOT policy — it is the mechanism's own
+classification. Worth building; not built.
+
+#### 2. Units — narrow, and it costs nothing
+
+```ts
+"*": { units: ["px", "rem", "%"] },
+```
+
+Forty-nine length units exist and a team uses three. This is the cheapest row in any config: the unit
+parameter is already in `CssDimension`, so it is a type substitution rather than a new check.
+
+**`units` is not a range.** It narrows which units may appear, not which values — `30px` passes a
+`px`-only property, correctly.
+
+#### 3. Values — narrow where a scale exists, and nowhere else
+
+```ts
+"z-index": { values: [0, 1, 10, 100, 1000] },
+```
+
+A layering scale is the case every project has and nobody writes down. The type refuses `z-index: 5`
+and the editor stops offering `auto`.
+
+**Not for colours, and the user is right about why:** *"tesko mi je da poverujem da ce neko zeleti
+odredjene vrednosti boje u tipu, to mi deluje kao overkill."* A palette is fifty values, they change,
+and pinning them in a property's type puts the palette in two places.
+
+What a project wants for colours is a different thing: *"za boje moze reci da hoce samo kroz tokene i
+variable da radi, nece hardcoded values."* **That cannot be said today** — a closed list of every
+permitted colour is not it. It needs its own spelling, and by KIND rather than by property, since a
+colour reaches fourteen properties:
+
+```ts
+"<color>": { variablesOnly: true },   // proposed; built, and as a selector
+```
+
+#### 4. Arity — the one most projects should NOT set
+
+```ts
+"*": { arity: 1 },
+```
+
+Reads as the obvious strict default and forbids `margin: 0 auto`. Set it per property where a team
+means it, and leave the sweep alone.
+
+#### What a project does NOT have to decide
+
+CSS's own maximum applies with no config at all — `padding: 4px 0 0 0 0` is five values where CSS
+gives four, and that is reported without anybody asking. A config narrows from there and can never
+widen past it.
+
+### A variable's DEFAULT and its RANGE, which is one thing today and should be two
+
+The user's question, and it is the last hole in the theme story: *"kako to u configu da uradimo, da
+zna sta je default vrednost, ali da kasnije zadrzi range ako zelis da menjas vrednost te variable."*
+
+Today a variable declares one value, and it is both the initial and the whole of its type:
+
+```ts
+size: kind("length", { control: { md: "30px" } })
+```
+
+That value goes into `:root`, into `@property`'s `initial-value`, and into `Token<"length", "30px">`.
+Under a theme the first two are right and the third is a claim about a value the theme replaces.
+
+**Proposed: a variable may declare what it MAY BE, beside what it starts as.**
+
+```ts
+size: kind("length", {
+  control: { md: { value: "30px", range: ["24px", "30px", "36px"] } },
+}),
+color: kind("color", {
+  text: { primary: { value: "#111827", range: ["#111827", "#e5e7eb"] } },
+  brand: { main: { value: "#10b981", range: "any" } },
+}),
+```
+
+Three states, and each says something different:
+
+| written | the type carries | what it means |
+|---|---|---|
+| `"30px"` | `"30px"` | this never changes |
+| `{ value, range: [ … ] }` | the list | it may be any of these — light and dark, wide and narrow |
+| `{ value, range: "any" }` | the kind alone | it changes and we do not pin it — a tenant's colour from a server |
+
+What it buys, and each is something the design cannot do now:
+
+- The range is what a property's narrowing is checked against, so the check is about what the
+  variable may BE rather than what it happens to start as. The theme hole closes.
+- `toStyle` accepts only values from the range. Setting a variable at run time becomes checked
+  instead of being a string.
+- A reader hovering sees the range, which is more useful than one value that a theme replaces.
+- **It is the user's own "readonly tokens versus themed tokens" distinction**, expressed as data on
+  the variable rather than as two kinds to learn.
+
+The cost is one object form beside the bare value, written only where a variable actually changes —
+which in a real design system is the semantic colours and the responsive sizes, not the palette.
+
+**And most of it should not be written at all.** The user's correction: *"neke vrednosti dolaze
+kasnije, ne mogu odmah ovde da ih upisem. Zapravo, mogu, ako imaju CSS fajl, oni pozovu neki parser i
+izvuku za odredjen token sve moguce vrednosti, zar ne?"*
+
+Yes — and the hook for it is already designed. `alsoSets` returns `{ name, value, where }` from
+whatever a project reads, so a theme file setting `--color-text-primary: #e5e7eb` hands codegen that
+value. **The range is then the declared initial plus everything anything else sets for that name**,
+and nobody writes it twice.
+
+What stays hand-written is only the two cases no file can answer:
+
+    range: "any"       the value arrives from a server and no stylesheet holds it
+    range: [ … ]       pinned deliberately, with no file to read it from
+
+`alsoSets` has only its name-list form today; the reader is designed and not built. Until it is, a
+range is written by hand or left open.
+
+**Cost, measured, because the question was asked:** none. On a program shaped like a real design
+system — variables set from a block, a dozen properties written —
+
+    200 variables x 1 value    18,104 types   5,742 instantiations   0.41s
+    200 variables x 3 values   19,104         5,742                  0.44s
+    200 variables x 8 values   21,104         5,742                  0.41s
+    500 variables x 3 values   22,704         6,942                  0.42s
+
+Instantiations do not move with the range at all. A union of string literals is the cheap kind.
+
+### `@@` and the editor's own completion — reported, not diagnosed
+
+The user, typing: *"kada napisem `css={@@` i krenem da kucam `(` desi se `css={@@Component()}` … je
+mnogo iritantno."*
+
+What is happening is the editor's ordinary completion: after `@@` the caret is in an expression
+position TypeScript knows nothing special about, so it offers every symbol in scope, `Component`
+among them — and `(` is a commit character, so typing the very next character of the block ACCEPTS
+the highlighted one.
+
+**Not diagnosed, and worth saying so:** the `@` is not the problem in itself, and this is very
+probably not VS Code deciding anything about decorators. It is a completion list that should not be
+there at all, and the plugin already owns `getCompletionsAtPosition` — it returns its own list inside
+a value and drops the virtual file's own bindings everywhere. A caret between `@@` and its `(` is a
+position where the answer is NOTHING, and saying so is the same shape of fix.
+
+To confirm before building: whether the list is TypeScript's or the editor's word-based fallback,
+because the two are answered in different places. Measure it the way `configReaches.test.ts` does —
+a real project, the real plugin, the caret exactly there.
+
+### Completion after a `:` — BUILT, and it found a second fault beside it
+
+The user, while using it: *"voleo bih kada napisem `:` da imam autocomplete za `&:hover` i ostale."*
+
+A caret in a PRELUDE gets nothing today. The data is there — `SELECTORS` holds 129 names and the
+`unknown-selector` rule already reads it, including the four one-colon CSS2 forms — so this is the
+same shape as `valueWords`: a region the plugin knows it is in, answered from the table the checker
+already asks.
+
+Both things this said to get right were right, and both bit:
+
+- **A caret in empty space belongs to no run yet** — and to the WRONG one. Measured, `&:` is read as
+  a declaration whose property is `&`, so the value region CLAIMED the caret and the first version of
+  the fix never ran. The text decides instead: a prelude starts with `&`, which `CssBlockShape`'s
+  `` `&${string}` `` key makes a fact rather than a convention, and the run is bounded by `;`, a
+  brace, or just past the block's `(` — that last bound measured too, because stopping ON the paren
+  put it at the head of the run and nothing matched.
+- **The offer matches what the rule accepts**, asserted: every name offered is a key of `SELECTORS`,
+  which is the table `unknown-selector` reads.
+
+**And the same probe found a second fault, in the mapping.** `position: ` with the caret after the
+space — a union-typed property, whose words are deliberately TypeScript's to offer:
+
+```
+author 36 (the caret)    ->  virtual 783   between `},{` and `},]`
+author 37 (the newline)  ->  virtual 778   between the quotes of `position:""`
+```
+
+One character apart, and the first is the key position of the NEXT declaration — which is why the
+answer was the 828 property names. So `position: stat` worked and `position: ` did not: the answer
+arrived only once you had typed enough not to need it. TypeScript is asked at the value region's own
+end where nothing is typed yet, which is the same fact the property is read from rather than a
+second guess at where the value lives.
+
+### What is not in dispute
+
+The codegen step is the same in all three: read the config, write a `.d.ts` the project's
+`tsconfig.json` includes. Only what a person writes differs.
+
+**And this makes the config serve two audiences** — the checker reads it at check time, the codegen
+reads it at build time. That is this repository's most common shape of fault, one question with two
+consumers, so whichever design wins has to say out loud which keys the checker honours and which the
+types do, and a key honoured by only one is a key that will surprise somebody.
+
+
 **1. Where a hole may appear.** A custom property holds a *value*. It cannot hold a property name, a
 selector, or a whole declaration:
 
@@ -1061,3 +2071,948 @@ of the work above, arriving early and uninvited — and a reminder that "the edi
 that opens the file, not just the one with the squiggles.
 
 Nothing here is started.
+
+---
+
+## The design review, and what it changed
+
+The feature was finished and green before this: `$`, `kind()`, codegen, the checker, the grammar,
+the formatter, `toStyle`/`read`. The user then asked for a review of the DESIGN rather than the code
+— *"razmisli da li smo nesto nepotrebno ukomplikovali, nesto sto ce praviti vise problema nego
+koristi"* — and every finding below was MEASURED against the real checker rather than recalled.
+
+Three claims survived every probe and are worth naming, because a review that only lists faults
+misreports the thing it reviewed:
+
+- **The merge is real.** `"*": { units, arity }` plus `"padding-left": { values }` stacks; each
+  constraint fires on its own. `"*": { shorthand: false }` with `padding: { shorthand: true }` brings
+  exactly one back. Presets — design C's whole reason — will work.
+- **A token is not a hole in the strictness.** `padding-left: $.rems.big.one` is refused where the
+  property is px-only; `z-index: $.space.gutter.normal` is refused because a length is not an
+  integer.
+- **`$` earns the virtual file.** `$.space.gutter.norml` gets *Did you mean 'normal'?* from
+  TypeScript itself, with rename and go-to-definition for free.
+
+### 1. `units` meant two different things — FIXED
+
+Measured, the two keys spelled `units` disagreed about scope, not just about mechanism:
+
+| written | `units: [...]` | `properties["*"].units: [...]` |
+|---|---|---|
+| `transition: all 200ms ease` | reported | accepted |
+| `width: 50%` | reported | accepted |
+| `rotate: 45deg` | reported | accepted |
+| `repeat(3, 1fr)` | reported | accepted |
+| `letter-spacing: 0.05em` | reported | reported |
+
+Same name, same value shape, and `width: 50%` refused by one and accepted by the other. Setting
+both — which the docs invited — reported one mistake twice.
+
+The top-level key is read by a RULE and sees every value. The property-level key reaches the TYPES
+and can only bind a property whose value is a dimension. Neither can do the other's job, so both
+must exist; what was wrong was that a flat list could not say what anybody meant.
+
+**`units` is keyed by FAMILY now.** `units: { length: ["px", "rem"] }` — and a family the config does
+not name is not constrained, so `200ms`, `45deg` and `1fr` are nobody's business but the project's.
+An empty list bans a family outright: `{ flex: [] }`. The families come from `UNIT_TYPE`, generated
+with an assertion that every unit lands in exactly one, so a unit CSS adds fails the build until
+somebody classifies it. `CssUnitFamily` is generated beside it.
+
+**The flat list is refused, not reinterpreted**, and that is the decision worth recording. Reading
+`["px", "rem"]` as `{ length: [...] }` would be a project's rules quietly getting weaker on an
+upgrade — `200ms` stops being reported and nothing says so. The `ConfigError` writes out the family
+form with the project's own units in it. A config that stops loading is a minute's work; a check that
+stops checking is found in production.
+
+This was agreed with the user in an earlier session as "a later version" and the review is what made
+it urgent: `units` reached only the checker then, and it reaches the types now.
+
+### 2. One typo, two squiggles — FIXED
+
+A mistyped `$` path was reported twice, at two columns, with the same suggestion in each:
+
+```
+unknown-variable  `$.space.gutter.norml` is not a variable this project declares.
+                  Did you mean `$.space.gutter.normal`?
+TS2551            Property 'norml' does not exist on type
+                  'Readonly<{ normal: Token<"length", "16px">; }>'. Did you mean 'normal'?
+```
+
+**The first idea was to delete the rule, and it was wrong.** The rule's own note said the types say
+this in an editor and the rule says it "in CI, in a hook, and to a reviewer — none of which run
+TypeScript over the block." Measured, that is only half true: `ramonda-css check` DOES run TypeScript
+over the block, which is where the double report came from. But the BUILD does not — vite and
+esbuild run these rules and never type-check — so deleting the rule would leave a `var()` into a name
+nothing sets compiling clean in the one place that ships.
+
+So the fault was never the rule; it was two consumers speaking where one fault existed. `inOrder`
+already drops the compiler's word where a rule of ours said it better, and this is that mechanism
+widened once more: a `TS2551`, `TS2339` or `TS2322` on a LINE where `unknown-variable` already spoke
+is the same fault, and goes.
+
+By line rather than by character, which is the one place this departs from `inOrder`'s own principle.
+The two land at different columns by construction — ours spans the whole path from the `$`, the
+compiler's sits on the segment that failed — and a `$` path does not span lines, so the line is the
+fault's extent here.
+
+Three shapes, and the compiler spells each differently: `TS2551` for a near miss, `TS2339` for a
+segment near nothing, `TS2322` for a GROUP, which is a real member whose type no property accepts.
+
+### 3. `padding: 0` refused by `variablesOnly` — FIXED
+
+Measured, `variablesOnly: ["length"]` refused the most common declaration in CSS:
+
+```
+padding-left: 0   →   Type '"0"' is not assignable to type
+                      'Narrowed<never, Token<"length" | "length-percentage" | "percentage">>'
+```
+
+**A bare `0` is not a hardcoded length.** CSS lets a zero length go without a unit, `CssDimension`
+holds `0 | "0"` for exactly that reason, and a project saying *lengths come from variables* is not
+asking anybody to write `$.space.none`. The dimensionless zero went out with the literals because
+the two lived in one type.
+
+Both spellings are admitted: a block is CSS, so `padding-left: 0` reaches the type as the string
+`"0"`, while a hole can hand over the number. It goes in the VALUE slot of `Narrowed<K, V>`, not
+beside the keywords — `K extends string`, and `0` is a number.
+
+Not for `<number>` or `<integer>`. A zero there is a number written out, which is what the setting
+is refusing.
+
+**And the two narrowings disagreed about zero**, which is the shape this review kept finding: `units`
+leaves the literal type in place and swaps only the unit parameter, so `0` always survived it. One
+question, two settings, two answers.
+
+#### The message was the other half, and finding 8 answered it
+
+`Narrowed<never, Token<…>>` names neither the project nor `ramonda.css.ts`. A doc comment on
+`Narrowed` would show on hover and NOT in the compiler's text, so that was never the fix. What
+worked is the one written there: the rule speaks for every property with a kind, and `inOrder` drops
+the compiler's word on that line.
+
+### 4. `variablesOnly` covered a list nobody could see — MOSTLY FIXED
+
+Measured on seven hardcoded lengths in one component, under `variablesOnly: ["length"]`:
+
+```
+padding-left: 8px;      reported          width: 200px;        SILENT
+margin-top: 16px;       reported          border-radius: 4px;  SILENT
+gap: 8px;               reported          max-width: 320px;    SILENT
+                                          flex-basis: 240px;   SILENT
+```
+
+Three of seven. A team turns the rule on, fixes three places, sees green, and concludes hardcoded
+lengths are gone. Four remain in the same file. **A rule that looks enforced and is not is worse
+than no rule** — without it the team would at least know to watch.
+
+The user's instinct was right and my first reading was wrong: there was no design reason `width`
+could not be narrowed exactly like `padding-left`. `auto` was never the problem — a classified
+property already puts its keywords in the `Narrowed<K, V>` keyword slot, so `width: auto` passes and
+`width: 200px` does not, which is precisely what was wanted. `width` simply never reached the
+classifier.
+
+**Three faults in `primitiveOf`, every one a SPELLING rather than a grammar:**
+
+```
+fit-content(<length-percentage>)    a call written out, where `<calc-size()>` was skipped
+[ auto | … | fit-content(…) ]       parens disqualified an alternation `alternatives` splits safely
+<length-percentage [0,∞]>           the range's comma read as a comma in the grammar
+```
+
+`PRIMITIVE` went from 172 to 195 — `width`, `height`, every `min-`/`max-`, the logical `inline-size`
+and `block-size` families, `flex-basis`, the logical `margin-` and `inset-` longhands. **Nothing
+lost, nothing reclassified**, asserted against the whole map before and after: a classifier that
+gains one property and quietly moves another is worse than one that gains nothing.
+
+A fourth attempt was REVERTED. Stripping the range annotation from the syntax up front looked
+equivalent and lost `animation-duration`, so the range is ignored inside the one test that misread
+it and nowhere else.
+
+#### What StyleX does here, read rather than recalled
+
+Their `@stylexjs/valid-styles` rule takes a `propLimits` map, keyed by property name or glob, and
+each entry is a `limit` plus a **`reason`**:
+
+```json
+"padding": { "limit": [0, 4, 8, 16, 32, 64], "reason": "Use a padding that conforms to the design system" }
+```
+
+`limit` is `null` (ban the property), `"string"`, `"number"`, one constant, or a list of them.
+**There is no rule of theirs that forbids literals in favour of tokens generally** — a project
+enumerates the properties and the permitted values itself. So `variablesOnly`, keyed by KIND and
+reaching sixty-odd properties from one word, is a thing their design does not offer.
+
+**Their `reason` is worth taking.** It is the config author's own sentence, carried into the
+message, and it answers finding 3 from the other direction: we cannot make TypeScript say why a
+project refused a value, but a project could say it once and have the checker repeat it.
+
+### 5. `variablesOnly` moved inside `properties`, as a KIND selector
+
+The user's question, and it was about the config's SIZE rather than about the setting: *"mene brine
+koliko je nas konfig komplikovan. Da li ima smisla da taj deo bude tamo gde je padding."*
+
+`variablesOnly` was a top-level list of kinds. That made it **the one setting keyed by kind while
+every other was keyed by property** — the inconsistency this review opened with.
+
+Moving it per property alone was measured and cannot work: `<color>` reaches 40 properties and
+`<length>` 127. Nobody lists those.
+
+**So `properties` got a third selector.** It already had one — `"*"` is not a property name, it is
+*every property* — and the middle rung was missing:
+
+```ts
+properties: {
+  "*":             { shorthand: false },      // every property
+  "<length>":      { variablesOnly: true },   // every property whose value is that kind
+  "border-radius": { variablesOnly: false },  // that property, overriding the kind
+}
+```
+
+Each binds more tightly than the one before, which is the shape CSS itself has. Merged key by key,
+so a kind can say `variablesOnly` while the property beneath it says `values` and both apply — and
+so two shared configs still combine, which is what design C was chosen for.
+
+**Nothing new to learn.** `<length>` is the same word already written in `kind("length", …)` and
+registered in `@property { syntax }`. The angle brackets are CSS's own notation for a type and keep
+a kind apart from a property name.
+
+**What it gains that the list could not express: the exemption.** `variablesOnly: ["length"]` was
+all-or-nothing per kind, so a project could not say *lengths from variables, except `border-radius`*.
+
+Top-level keys: six to five. The old key is refused with the selector written out from its own list,
+by `validate` rather than by the unknown-key check — a key that MOVED needs to be told where it went,
+and *"which is not a setting"* loses exactly that.
+
+Both machineries follow the selector. A property that says what it takes is narrowed by its TYPE; a
+composite one — `border-left: 4px solid red` — has no type worth narrowing and the
+`literal-not-allowed` rule reads its value. The rule asks the KIND selectors what is variables-only,
+because a composite property has no kind of its own, and asks the property by NAME whether it is
+exempt, because only its own entry can speak for it.
+
+#### `reason` was considered and NOT added
+
+StyleX carries the config author's own sentence into the message. It does not fit here, and the
+reason is worth writing down: the message for `padding-left: 8px` is TypeScript's `TS2322`, and
+nothing a project writes can get inside it. A `reason` would need the checker to recognise that
+refusal and speak over it first — and once that machinery exists, the sentence can be GENERATED from
+what is already known, including a suggestion of the declared variable whose value matches:
+
+```
+`8px` is a length written out, and this project takes lengths only from its own variables.
+You declared `$.space.sm` with exactly this value.
+```
+
+So the work is the same either way, and generating leaves the config one key smaller. `reason` goes
+back on the table only if a project wants a sentence we cannot derive.
+
+### 6. What `variablesOnly` MEANS, and the three faults the question exposed
+
+The user asked it plainly, and it is the right question to ask of a setting with two neighbours:
+*"sta znaci variablesOnly? Da samo variable smes da pises za taj property ili su variable nacin da
+zaobidjes range vrednosti za taj property?"*
+
+**It removes the LITERAL spelling and nothing else.** A variable is still checked against the range,
+by its declared value. Their own position — *"variabla takodje mora da postuje range. Ako im se ne
+svidja, pa onda prosiri range."* — was already the behaviour, and measured:
+
+```
+"padding-left": { values: ["4px", "8px"] }
+
+padding-left: 12px      refused    a literal outside the list
+padding-left: $.s.ok    accepted   declared 8px, which the list permits
+padding-left: $.s.big   refused    declared 30px, which it does not
+```
+
+So `variablesOnly` is not a way around a range. It is the same range with one spelling taken away.
+
+**But asking the question found three faults, all one root cause.** The branch that writes a closed
+list walked `Object.entries(rules)` — the keys somebody typed — while every other setting asks
+`ruleFor(property)`. Invisible while the only keys were property names and `"*"`; the kind selector
+broke it three ways at once:
+
+```
+values + variablesOnly        the literal went in anyway — `variablesOnly` was never consulted
+"<time>": { values: [...] }   emitted a row literally NAMED `"<time>"`, constraining nothing
+"*": { values: [...] }        silently did nothing at all, and had since before the selector
+```
+
+The third is the oldest and was never noticed. It is refused now, naming the two places a closed
+list belongs, because a list of permitted values for all 935 properties is not a thing anybody
+means and doing nothing about it quietly was the worse of the two answers.
+
+**This is the repository's recurring fault in its clearest form yet** — one rule, many consumers,
+and one of them asking a different question. Every other setting asks per property; this one asked
+per config key, and agreed with the others only by accident of which keys existed.
+
+A property with NO kind keeps its literals under `variablesOnly`, because nothing can check a
+variable into it: narrowing it to a token it cannot have would leave nothing a person could write.
+
+### 7. `Token<"length", "16px">` — what the second parameter IS, and the message behind it
+
+The user's question: *"sta ces da radis za one primere tipa `as Token<"length", "16px">`, da li tu
+menjamo sta se vidi jer onaj 16px sto je inicijalna vrednost ne znaci sta je range mogucnosti za ovu
+variablu"*
+
+**It is already the range, not the initial.** Measured across the three declaration forms:
+
+```ts
+fixed:  kind("length", { gutter: "16px" })                              Token<"length", "16px">
+themed: kind("length", { gutter: { value: "16px", range: [...] } })     Token<"length", "8px" | "16px" | "24px">
+open:   kind("length", { gutter: { value: "16px", range: "any" } })     Token<"length", ValueByKind["length"]>
+```
+
+All three set `--gutter: 16px` in the stylesheet and register the same `initial-value`. The type
+differs because the RANGE differs. A bare declaration means the variable never changes, so its range
+is one value, and the two coincide on purpose.
+
+**But asking exposed the message, and it was the worst one in the package:**
+
+```
+toStyle([[$.space.gutter, "24px"]])
+
+TS2322: Type 'Token<"length", "16px">' is not assignable to type 'never'.
+TS2322: Type 'string' is not assignable to type 'never'.
+```
+
+Two errors on one line, naming neither the variable, nor the range, nor what to do. And **not only
+for the fixed case** — a variable with a real range said `never` too, so the range check worked and
+could not be read. `Permitted` intersected the author's pair with the permitted pair, and an
+intersection of two different literals is `never`.
+
+Now:
+
+```
+Type '"24px"' is not assignable to type
+  '"24px" & this_variable_was_declared_with_one_value_give_it_a_range_to_set_it_at_run_time'
+
+Type '"24px"' is not assignable to type
+  '"24px" & this_variable_may_only_be<"8px" | "16px">'
+```
+
+One error, and the second names the permitted values.
+
+**The message is the TYPE'S NAME**, which reads oddly in the source and is deliberate: TypeScript
+prints a type's name verbatim and prints nothing else it is handed, so a sentence in the name is the
+only channel a type has. This is the same wall finding 3 hit from the other side — there the answer
+must be the checker speaking over `TS2322`, because the refused thing is a value in a block and there
+is no type of ours to name.
+
+**`Fixed<V>` is written by CODEGEN, not inferred.** Only codegen knows the declaration was bare:
+`range: ["16px"]` is a range that happens to hold one value, and setting the variable to it is a
+thing the project said it may do. `Fixed<V> = V & {…}`, so a marked token is still a token
+everywhere else — it goes into a block, and into a property narrowed to its own value, unchanged.
+
+### 8. `variablesOnly` did not reach the BUILD at all — FIXED
+
+Chasing the bad message found a hole, not a wording problem. The types refused `padding-left: 8px`
+and the RULE said nothing, which read as a division of labour — *one mechanism per property, never
+two for one*, as the rule's own note put it. Measured by asking the rules alone, which is all vite
+and esbuild ever run since neither type-checks a block:
+
+```
+padding-left: 8px       []                      the build compiled it
+width: 200px            []                      and this
+color: red              []                      and this
+border: 1px solid red   [literal-not-allowed]   only the composite was caught
+```
+
+So a project could set `variablesOnly`, watch `ramonda-css check` refuse a file, and watch the dev
+server serve it. **The repository's recurring fault once more** — one rule, three consumers, two of
+them silent.
+
+The rule speaks for every property with a kind now, and `inOrder` drops the compiler's `TS2322` on
+that line. Both machineries are needed and neither is redundant: the TYPE is what an editor squiggles
+as you type, the RULE is the only thing the build runs. What an author must not get is the pair, and
+measured they did — twelve reports for six faults.
+
+Ours is the one kept, which also closes finding 3 for this case:
+
+```
+before   TS2322: Type '"8px"' is not assignable to type
+           'Narrowed<never, 0 | "0" | Token<"length" | "percentage" | "length-percentage">>'
+
+after    literal-not-allowed: `8px` is a length or a percentage written out, and this project
+           takes them only from its own variables.
+
+           Declare it in `ramonda.css.ts` and write `$.…`, or set
+           `"padding-left": { variablesOnly: false }`.
+```
+
+**What is deliberately not a literal.** A CALL is an escape hatch and is not read into —
+`calc($.space.md * 2)` holds a `2` that is not a hardcoded length and nothing here can tell it from
+one that is. A bare `0` needs no unit in CSS. `var()` is what CSS itself provides. A HOLE evaluates
+at render.
+
+**And the top-level value walk is SHARED now.** `too-many-values` counted values inline and this
+needed the same answer; a second scanner agreeing by accident is the fault above in miniature, and
+it is the one that made `variablesOnly` mean something different in the build than in the checker.
+One walk, one answer, both callers.
+
+### 9. The slash form — `border-radius` classified
+
+`<length-percentage>{1,4} [ / <length-percentage>{1,4} ]?` — four corners, then four again after a
+slash, one primitive throughout. `sequence` wanted every piece bracketed and the first one is not,
+so the property a design system constrains right after padding could not be narrowed at all.
+
+Two changes, both in `sequence`: a bare type with a multiplier is a group, and a `/` between groups
+is a separator. **The slash separates values in CSS and never IS one**, so skipping it cannot admit
+a grammar holding two kinds — every piece still has to reach the same primitive, which is what keeps
+`font`, `grid`, `border-image` and `mask` unclassified where they belong.
+
+`PRIMITIVE` 195 → 205, nothing lost and nothing reclassified. Ten properties: `border-radius`, and
+the `animation-range` and `timeline-trigger-range` families.
+
+**A classified property is a NARROWED property, which is where refusing correct CSS becomes
+possible.** `animation-range-start` arrived with this and its value is a keyword and a percentage
+together — `entry 50%` — which is exactly the shape a narrowing gets wrong. Measured with no config
+at all and guarded by a test: the elliptical `border-radius: 50% / 20%`, `entry 50%`, and
+`animation-range: entry 0% exit 100%` are all silent.
+
+### 10. The two ways a literal still reached the page
+
+**A colour LONGHAND did not reach the build**, and that is a miss in finding 8's own fix. The
+dimension half was extended and the colour half was not: `literalNotAllowed` skipped a property
+whose grammar says `<color>` as *the types' to refuse*. A test asserted exactly that, with the
+reason *saying it twice for one mistake is the fault this repository keeps finding*.
+
+The first half of that reason was true of the checker and false of the build. **The count was never
+two — it was one in the checker and ZERO where it ships.** Forty properties, `color: red` the first
+of them, compiled by vite and esbuild. Both speak now and `inOrder` drops the compiler's word, which
+is what the second half of the reason was really asking for.
+
+**And a custom property set in the block was an open door.** `--own: red; color: var(--own)` is two
+declarations this compiler reads and neither was looked at, so a rule a project turned on could be
+walked around in one line — by accident as easily as on purpose.
+
+A custom property has NO KIND, which is what keeps this narrow. Only a value that can be nothing
+else is reported:
+
+```
+--own: red          reported      a named colour and nothing else
+--own: #ff0000      reported      a hex
+--gap: 8px          reported      a number carrying a unit
+--n: 3              silent        a bare number is not a length
+--label: "red"      silent        quoted, so it is text — `topLevelValues` keeps the quotes
+--own: var(--x)     silent        the escape CSS itself provides
+--gap: 0            silent        a zero needs no unit
+```
+
+It is reported against every forbidden kind at once, because nothing in a custom property says which
+was meant.
+
+### 11. `rules: off` silenced half of what the config turned on
+
+Three settings reach both a rule and a type, and a rule severity can only reach the rule. Measured:
+
+```
+"*": { arity: 1 }                     too-many-values off      accepted
+"<length>": { variablesOnly: true }   literal-not-allowed off  TS2322, still refused
+"<length>": { units: ["px"] }         unit-not-allowed off     TS2322, still refused
+```
+
+**Worse than a gap: it is a trap.** An author with a file full of errors silences the rule to ship,
+and is not unblocked — the error stays, and the message gets WORSE, because ours names the project
+and `ramonda.css.ts` while `Narrowed<never, Token<…>>` names neither. Only `arity`, the one setting
+with no type behind it, silences completely, so the same gesture means two different things
+depending on which setting it lands on.
+
+The other direction cannot be built: codegen would have to write a narrowing and then unwrite it.
+
+So the contradiction is refused, and the message names the switch that works:
+
+```
+silences `literal-not-allowed`, which this config turned on itself with
+`properties["<length>"].variablesOnly`.
+
+    `rules` is for a report you did not ask for. This one you did, and silencing it
+    would not even lift it — the same constraint reaches the TYPES, which no rule
+    severity can reach. Change the setting instead:
+
+    properties: { "<length>": { variablesOnly: false } }
+```
+
+**Only the contradiction.** `rules: { "literal-not-allowed": "off" }` in a config that never turned
+it on is fine, and so is `too-many-values` off where no `arity` is set — that rule also reports CSS's
+own maximum, which is a report a project may genuinely not want.
+
+---
+
+## For the NEXT pull request — asked for, measured where possible, not built
+
+None of these blocks the merge. Each is written down with what was measured, so the next session
+starts from a fact rather than from a recollection.
+
+### 1. Two rules on one fault, since passes 4 and 6
+
+Measured after both passes, on a config that narrows several things at once:
+
+```
+letter-spacing: 2rem   →  literal-not-allowed + unit-not-allowed
+margin: 8px            →  shorthand-not-allowed + literal-not-allowed
+padding: 1px 2px       →  too-many-values + literal-not-allowed
+```
+
+Each of those is ONE mistake. `literal-not-allowed` is the widest of the rules — it fires on any
+written-out value of a variables-only kind — so it lands beside every narrower one that also fired.
+
+This is the repository's recurring fault in a new place, and it is the shape `inOrder` already
+answers for the compiler's word: the most SPECIFIC finding at a position should be the one kept.
+`unit-not-allowed` says which unit; `literal-not-allowed` says the kind comes from variables. Both
+are true; only one is the thing to fix first.
+
+### 2. Class names — shorter, more readable, and one approach rather than two
+
+The user's words: *"mislim da neke mogu da budu jos krace ili citljvije"*, and — the part that
+decides — *"mislim da cemo morati da iskljucimo onu opciju da ih generisemo sa hash uvek."*
+
+**The reason is packaging, and it is a good one.** People will build a component library in one
+package and consume it BUILT in another. Two naming modes means two packages can name the same
+declaration differently, and nothing at consume time can notice: the CSS is already emitted. One
+approach, always, is what makes a built package composable with a source one.
+
+`CONTRACT.md` §3 already fixes the prefix for this exact reason, and `config.ts` refuses `names`,
+`hash` and `prefix` as settings because identity is the one thing every consumer must agree about.
+The `names: "hash"` bundler option is the remaining way to disagree.
+
+### 3. A manifest carrying what a package REQUIRES — measured, and it does not exist
+
+The user remembered a Ramonda build step writing a manifest that carries the app tree, and asked
+whether it could carry a package's required variables too.
+
+Measured: there is no such thing today. `apps/docs/scripts/build-manifest.mjs` is the docs app's own
+script and maps lazily-imported modules to chunk URLs — *"the piece nothing at runtime can know"* —
+and `@ramonda/build` exports bundler settings and nothing else. No package emits a manifest.
+
+So this is a design question rather than a change: a built package that uses `$.color.accent.main`
+needs the consuming app to declare that variable, and nothing carries that requirement across the
+package boundary today. The `@property` registration in the built stylesheet is the nearest thing —
+it declares the name and its initial — which may be the whole answer, or may need a manifest beside
+it. Not decided.
+
+### 4. An unclosed call eats the block's closer
+
+Measured twice, in an earlier review and again in pass 3, unchanged:
+
+```
+content: url(;
+
+unknown-value: `content` does not accept `Hello`.
+unknown-value: `content` does not accept `div`.
+```
+
+Two words out of the author's own JSX, reported as CSS values — the value ran past `)}` into the
+markup, because `readValue` counts parens and a block's closer is a `)` like any other. The real
+fault, a missing `)`, is never named.
+
+The parens are BALANCED, so a cheap check does not exist, and the value scanner is what all 39 rules
+read. This one needs a design before code.
+
+---
+
+## `css-system/`, committed — and the argument that was wrong
+
+The generated files were `ramonda.css.generated.ts` and `.css` beside the config, both gitignored.
+The user asked about both halves at once: *"gledam playground i ovi generisani fajlovi su
+gitignorisani. Ja mislim da to ne treba da bude ignorisano, kao sto se i ostale codegen stvari ne
+ignorisu. Samo je pitanje da li je bolje da ove generisane stvari imaju svoj folder."*
+
+**The reason for ignoring them was written down and it was wrong.** It said committing would let a
+config and its output drift apart in review. That is the right worry and the wrong answer, and this
+repository already answers it the other way for its own generator: `keywords.generated.ts` is in the
+tree and `build-css-properties.mjs --check` fails when it is stale. Hiding a file does not stop it
+drifting — it stops anybody SEEING that it has. And it costs a fresh clone its `$` until something
+builds, which an editor meets before any build runs.
+
+So `check-css-system.mjs` runs codegen and compares, and is wired into `pnpm check` beside the other
+cheap read-only checks. Seen to fail: one hand-edited line and it names the file.
+
+### The name
+
+`.ramonda/` was proposed and refused by the user, for a reason worth keeping: **a leading dot reads
+as *not committed*,** and these are. The name had to be agnostic besides — `@ramonda/css` is usable
+outside Ramonda, where a folder named after the framework says nothing, and inside one where it says
+nothing either.
+
+`css-system/` says what is in it and names neither framework nor tool. The nearest precedent is
+Panda CSS's `styled-system/`: committed, framework-agnostic, and a shape people recognise.
+
+```
+ramonda.css.ts          the config
+css-system/
+  index.ts              `$`, `Value`, `Var`, and this project's narrowed property map
+  variables.css         `:root`, and an `@property` for each
+```
+
+`index.ts` so an import writes the folder and no filename — `import { $ } from "../../css-system"`.
+
+### `outDir`, and why it is read from the TEXT
+
+The user asked for it to be configurable, and the reason is concrete: a project may already have a
+folder called `css-system`, and a generated one landing silently beside it is worse than a key.
+
+`propertiesFor` and `variablesSheetFor` are asked PER FILE — they run inside an editor, on every
+keystroke's worth of work — so they read the key out of the config's text with a regex rather than
+transpiling it. A transpile per file to close that would be the worse trade.
+
+**The two readings are compared, and a disagreement is REFUSED.** This said the mismatch was one *a
+project can see and fix*, and review pass 8 measured what a project actually sees: the files land in
+one folder, everything that reads them looks in another, and the author is told
+
+```
+TS2339  Property 'size' does not exist on type
+        '"Declare your variables in ramonda.css.ts, then run `ramonda-css …`"'
+```
+
+advice they have just followed. Running it again writes the same two files and changes nothing. A
+comment that merely MENTIONS the key causes it, because the text reader takes the first `outDir:` in
+the file. Codegen has both readings, so it compares them and refuses with both folders named.
+
+A path that climbs out of the project, or starts at the root, is refused.
+
+### 5. One more review, before licences and docs
+
+Asked for by the user at the end of the session, and the reason is the session itself: seven passes
+closed, and then a great deal changed after them — `css-system/`, a numeric value becoming a number
+in the type, `SPEAKS_OVER_TYPES`, two completion faults, and the editor fixes before those.
+
+Every one of those was measured, and several were found only by asking a question nobody had asked
+before — what the BUILD sees against what the CHECKER sees, what a REAL project's completions offer
+against what a unit harness offers. Changes made under a review deserve the same treatment as the
+code the review was about.
+
+
+### 6. Open after review pass 8 — a number where only keywords go
+
+**Measured, and left open on purpose.** Sweeping values after a numeric value became a number in the
+type, twenty-nine wrong declarations on closed-keyword properties went in and nineteen came back:
+
+```
+  caught     display: flexx;    overflow: scrol;   cursor: poitner;   line-height: red;
+  caught     position: 1;       float: 1;          text-align: 1;     visibility: 1;
+  SILENT     display: 1;        overflow: 1;       white-space: 1;    cursor: 1;
+  SILENT     opacity: 50px;     opacity: 1px;      line-height: 1px2; font-weight: -5;
+```
+
+Every MISSPELLED keyword is caught — `unknown-value` walks the words in a value and does its job.
+What is silent is a NUMBER where only keywords go, and it is silent inconsistently: `position: 1` is
+reported and `display: 1` is not.
+
+The cause is not the rule. `unknown-value` reads `KEYWORDS`, which has a set for both; `position` is
+also in `PRIMITIVE` and `display` is not, so only `position` gets a narrowed type that refuses a
+number. 373 properties have a keyword set and 226 of them — 205 unprefixed — are absent from
+`PRIMITIVE`, because the generator could not reduce their grammar: `display` is
+`[ <display-outside> || <display-inside> ] | …`, a combination rather than a plain alternation.
+
+**Why no rule was written for it.** Absence from `PRIMITIVE` means *the grammar was not resolved*,
+not *this takes no number*. Among the same 205 are `aspect-ratio`, `background-position`,
+`border-image-slice` and `line-height`, where a bare number is correct CSS. A rule keyed on the
+absence would report those, and a checker that cries wolf is one people switch off — which this
+package has already measured once, with `background-image: url("a.png")`.
+
+So the fix belongs in the GENERATOR: a positive fact saying a property's grammar admits no primitive
+at all, which is a measurement against the engines rather than a guess from a gap.
+
+### 7. Review pass 9 — what every consumer does with a config it does not like
+
+The pass was chosen by measuring rather than by guessing. Nine files read the config; review pass 4
+built its matrix against three of them — the checker, the build and the editor — and `codegen.ts`,
+the third-heaviest reader, was never swept. That is how pass 8's `TypeError` got in. The consumer
+list had been written down rather than derived.
+
+So this pass derived it, and ran twelve broken configs through six consumers: `check`, `codegen`,
+`codegen --check`, `explain`, a real Vite build, and the editor.
+
+#### The one that mattered: a config that does not parse
+
+```
+export default { variables: {{{ };     →     exports.default = { variables: {} };
+```
+
+TypeScript's error RECOVERY. `transpileModule` reports nothing unless asked, and emits whatever it
+managed to build — so the config LOADED: valid, empty, and nobody's. Nothing threw, nothing was
+undefined, so no consumer had anything to notice. A real Vite build exited 0 and shipped
+
+```css
+.r-pl-2rem{padding-left:2rem}      units: { length: ["px"] }
+.r-c-\#ff0000{color:red}           "<color>": { variablesOnly: true }
+```
+
+Only `ramonda-css check` caught it, and only because it alone type-checks the config file.
+
+`readConfig`'s own note names this failure exactly — *a tool that quietly ran with defaults because
+somebody's config had a typo would be the worst of both* — and it was true of a config that THREW
+and not of one that would not parse. `reportDiagnostics: true` is the whole fix; the sentence it
+produces says what the silence would have cost, because a parse error is the one fault where doing
+nothing looks exactly like success.
+
+#### Crashes, and the distinction that already existed
+
+Three refusals in `codegen.ts` threw a raw `Error`, so a person met a Node stack trace with a
+careful sentence buried in it. `cli.ts` draws the line — the author's file is SAID, a bug of ours is
+thrown — and these were on the wrong side. No test saw it: a crash exits 1 and prints its message
+too, so assertions on status and wording passed straight over. What separates them is the stack
+frame, and that is what the new tests assert.
+
+Every remaining raw `throw new Error` in the package was then read rather than assumed. Each one is
+a bug of ours or a formatter this package has not been measured against, and says so. They are on
+the right side of the same line.
+
+#### The editor, which was silent
+
+Returning an empty config there is right — a broken one must not take the language service down,
+and measured it does not: 828 property names are still offered. It took every RULE instead, and
+said nothing:
+
+```
+GOOD             [unit-not-allowed] … | [literal-not-allowed] …
+a syntax error   (nothing)            828 completions, as if all were well
+units: "px"      (nothing)            828 completions
+… and six more, every one of them silent
+```
+
+A green file is a claim. With no config loaded the tool cannot support it, so one diagnostic sits on
+the block — and only on a file that HOLDS one, because a file with no CSS in it is not affected by
+the config and marking it would be noise on every file in the project.
+
+#### Measured and left alone
+
+`explain` answers from a config whose VARIABLES are broken, and that is correct: it reports what the
+config does to one property, and a bad variable name does not change that answer. The build reports
+one fault per file where the checker lists them all — deliberate, and written down where it happens:
+a build stops at one anyway, and `ramonda-css check` is what enumerates.
+
+### 8. Review pass 10 — the stylesheet in a real browser
+
+Nine passes had asked whether the tool agrees with itself: rules against types, config against
+consumers, one reader against another. The one thing none of them could find is a shared wrong
+assumption — where both halves agree and both are wrong. Only an engine answers that, and measuring
+it was easy to justify: the package compares its output against hand-written CSS in several tests,
+but as TEXT. Nothing had ever rendered.
+
+So: a real Vite build, the emitted stylesheet and the class list the RUNTIME produces, loaded in
+headless Chromium beside hand-written CSS with the same declarations in the same order, comparing
+`getComputedStyle` property by property.
+
+#### The finding: a vendor prefix was ordered by the build, not by the sheet
+
+`-webkit-box-shadow` and `box-shadow` are one property to the engine and two names to the model.
+Both clear nothing, so both got the same breadth and the same cascade layer — and inside a layer the
+sort is stable, so the winner was whichever the build emitted first:
+
+```
+-webkit-box-shadow: 0 0 1px red; box-shadow: 0 0 9px blue;   ← the same block every time
+
+alone in the file                            blue   — what plain CSS says
+after a block with the same two, reversed    RED
+after a block naming only `box-shadow`       RED
+after a block naming only the prefixed one   blue
+```
+
+The page depended on what another component wrote. That is worse than a divergence — it is invisible
+from the block, it moves when somebody edits an unrelated file, and there is no answer to learn.
+
+`sheetRank` puts the prefixed form first now, so the standard property wins wherever both appear and
+wins identically in every build. That is also what a prefixed fallback means, and nothing that can
+read this stylesheet needs one: it is built on `@layer`, and every engine with cascade layers has
+the unprefixed `transform`, `box-shadow`, `user-select` and `appearance`. The other order is a
+stable divergence and is REPORTED, which keeps the count in the rule above at one.
+
+The same test found a prefixed SHORTHAND sitting in its longhands' layer: the shorthand table is
+generated from unprefixed names, so `-webkit-border-radius` was recorded as clearing nothing.
+
+#### What the browser confirmed, and it is most of it
+
+- **26 shorthand/longhand pairs, 13 families, both orders** — every one agrees with hand-written
+  CSS. The merge's clear-list settles them exactly as its note claims, and a suspicion that it did
+  not was a FALSE report caught before it was made: the first probe hardcoded both classes, which
+  the runtime never emits together.
+- `!important` both ways, nested rules, `:not()` specificity, custom properties read after and
+  before they are set, `all: unset`, inheritance — all agree.
+- **All six generated `@property` registrations are accepted by Chromium**, and an invalid value
+  falls back to the declared initial in every kind. That guarantee is the whole reason `$` compiles
+  to a bare `var()` with no fallback, and it had never been put to an engine.
+
+#### The method note worth keeping
+
+The probe was wrong twice, and the CONTROL row caught it both times — once a bad `node_modules`
+symlink, once a page asserting a class combination the runtime does not produce. A matrix whose
+control does not pass is measuring itself.
+
+### 9. Review pass 11 — the runtime, and a tie the bands never closed
+
+Two halves. The runtime was the half nothing had swept; the finding came from the browser oracle
+pass 10 built, pointed at the shape people actually write.
+
+#### The finding: two conditions that can both hold
+
+`widthSlot` ranks a breakpoint by its width and everything else by a small table of bands — and two
+different conditions inside one band TIE. A tie is settled by the sheet's position, which is the
+order the build happened to meet them:
+
+```
+@supports (display: grid) { color: red; } @supports (display: flex) { color: blue; }
+
+alone in the file                     blue — what plain CSS says
+interfering block in ANOTHER file     RED
+interfering block in the SAME file    RED
+```
+
+Both queries hold in every browser that can read this stylesheet, so the page depended on what
+another component wrote.
+
+**The same fault is recorded twice already, and both records said it was closed.** `widthSlot`'s note
+describes it for breakpoints — *the sheet fell back to the order the file happened to write them in,
+which another file re-emitting one of the two then reversed; 280 of 750 load orders wrong* — and the
+bands are what fixed it. Inside a band it was never fixed. And `sheet.test.ts` claimed it could not
+happen at all: *within one file the author's order and the rank cannot disagree, because
+`override-out-of-order` refuses the block where they would.* True where the ranks DIFFER. The rule
+said nothing about a tie, and a production build puts every file's rules in one sheet where a shared
+atom keeps the position of whoever claimed it first — so the per-file order that note is about never
+reaches a build.
+
+There is no order to give such a pair that is CSS's: one sheet, one position, two blocks each
+wanting a different one. So it is refused, which is where this package puts a difference that cannot
+be written. Conditions that EXCLUDE each other still tie and still say nothing — a colour scheme, an
+orientation, a medium, which is most of what anybody writes. `exclusive` is conservative on purpose:
+`@supports` asks what a browser CAN do rather than what is true now, so two of them never exclude
+each other.
+
+#### The runtime, and it is sound
+
+- An empty hole — `undefined`, `null`, `""` — drops its declaration, and the declaration it was
+  written to override with it. That looks alarming and is exactly right: measured in Chromium
+  against hand-written `color: blue; color: var(--missing)`, both give the inherited colour, and
+  both give `0px` for a non-inherited property. `@@` and `var()` agree.
+- `false` and `NaN` reach the sheet as values. The TYPES refuse them — `TS2345: Argument of type
+  'string | boolean' is not assignable to parameter of type 'CssValue'` — which is the designed
+  place, since no rule can know what an expression will evaluate to.
+- Two holes in one declaration drop together, because half a value is not CSS. A hole in a nested
+  rule or under a `@media` drops only its own declaration. Composition with `...{}` and
+  `if ({}) {}` gives later-wins in all four arrangements.
+- `merge.ts`, `conditions.ts`, `token.ts`, `modules.ts`, `stale.ts` and `declared.ts` have no
+  uncovered lines at all, so coverage had nothing left to point at here.
+
+#### Two suspicions that were wrong, and how they were caught
+
+Both were about to become findings. The empty-hole one dissolved when the hand-written control was
+written — `var()` does the same thing. The other was a report that a shorthand written after a
+longhand loses; the runtime clears it, and the first probe had hardcoded a class combination the
+runtime never emits. **Write the control before believing the measurement.**
+
+### 10. Review pass 12 — the dev server
+
+Four dev-server tests existed and every one of them saves the same single source file. Two things
+had never been asked here: what a save of the CONFIG does, and what two files sharing an atom do.
+
+#### The finding: saving `ramonda.css.ts` did nothing
+
+The hot-update hook takes files that hold a block, and a config holds none, so it returned at its
+first line. Measured on a running server, both halves of what the config decides were stale and both
+were silent:
+
+```
+a token changed 16px → 40px     css-system/variables.css still said 16px
+units narrowed rem → px         a block writing 2rem still compiled
+```
+
+The first is the sharper one. `variables.css` is written by `buildStart` and never again, and it is
+a plain stylesheet the project imports once — nothing else was ever going to regenerate it. The page
+is wrong, nothing says so, and a restart is the only cure, on the file the playground's own copy
+calls *here to be CHANGED*.
+
+Codegen re-runs now and every file holding a block is invalidated. They are DROPPED from the memo
+rather than recompiled in the hook, because recompiling would mean deciding what to do with one that
+no longer compiles inside a hook whose errors are swallowed — which is how a fault becomes
+invisible. The next transform compiles against the new config and reports at the author's own line.
+
+A config saved half-typed is swallowed exactly as a block that does not compile is; that test passed
+before the change and still does.
+
+#### What was measured and found right
+
+Two files naming `display: flex` are ONE rule, and the second keeps it when the first stops naming
+it — through a value change and through the first losing its block altogether. Fifty saves leave a
+file serving its own two rules. A file that gains its first block is picked up.
+
+#### Two harness faults, and both looked like findings
+
+**A fresh plugin measures nothing.** The first `saveConfig` called `ramondaCss(…).handleHotUpdate`
+directly. A new instance has an empty memo, so it regenerated the stylesheet — filesystem state,
+which passes — and invalidated no module — instance state, which fails. It passed the half it could
+not have failed. It goes through the watcher now, so the server's own instance handles it.
+
+**A request a browser cannot make.** A file gaining its first block measured as *the JavaScript
+names a class the stylesheet does not define*, which is precisely the fault the first test in that
+file exists for. The transform appends `import "<absolute path>?ramonda-css.css"`, so a client
+learns that URL only by reading the JavaScript; asking for it first hits `load` with an id Vite has
+not resolved, creates the module empty, and Vite caches that. Tracing `load` is what settled it.
+
+That is the third false report in three passes, and all three were caught the same way: by building
+the control rather than trusting the measurement.
+
+#### And what the leak test does not say
+
+It asserts what a file SERVES. Breaking the sheet's withdraw loop instead leaves dead entries in its
+`rules` map while every file still serves the right CSS — so it does not bound memory. Written into
+the test rather than left for its name to imply.
+
+### 11. Review pass 13 — the esbuild adapter
+
+Every earlier pass measured Vite. This package ships two bundler adapters and they are one rule with
+two consumers, which is the arrangement this repository keeps finding a fault in — so the pass was
+one question asked twice: *does esbuild do what Vite does, given the same input?*
+
+#### The finding: it did not know which build it was running
+
+A config may be written `env.production ? ["px"] : ["px", "rem"]`, and that dependence is the whole
+reason it is TypeScript rather than JSON. Vite is handed its mode and passes it on. The esbuild
+adapter read `NODE_ENV` alone and said why — *esbuild is not told which build this is*. It is told,
+twice:
+
+```
+config   units: env.production ? ["px"] : ["px", "rem"]
+block    padding-left: 2rem
+
+vite,    --mode production, NODE_ENV unset    refused
+esbuild, minify: true,      NODE_ENV unset    BUILT — `2rem` went in
+```
+
+`environmentOf` in `config.ts` records this exact failure and calls it fixed — *it silently took the
+development branch of every such config, in production builds included*. Fixed for Vite; this
+consumer was left behind.
+
+`define: { "process.env.NODE_ENV": … }` decides it first, because that is a STATEMENT — esbuild
+rewrites it into the bundle, so a project setting it has said which build this is out loud, and
+somebody minifying a development build has to be able to say so or the escape hatch is not one.
+`minify` next, an inference but a strong one. `NODE_ENV` last.
+
+**The asymmetry settles the order of the last two.** Reading a build as production when it is not
+gives stricter rules than the author wanted, which arrives as a refusal they can see and argue with.
+Reading it as development when it is not ships the loose half, silently, to real users.
+
+#### What the two adapters agree about, measured
+
+The same source built both ways: **every class identical**, across a plain block, a nested rule, a
+`@media`, a shorthand pair, a hole, a `$` variable, a `@@keyframes` and a vendor-prefixed pair. The
+stylesheets hold the same twelve rules in the same twelve layers and differ only in minification.
+
+All ten broken configs from review pass 9's matrix are refused here too, each naming the config
+file, none crashing. Those fixes live in `config.ts`, so they reached this consumer for free — which
+is the argument for where they were put, and the reason the adapters agree about everything except
+the one thing each was asked separately.
+
+#### One flake, unreproduced, written down rather than guessed at
+
+`pnpm check` went red once during this pass, in `grammar.test.ts`, with a crash inside shiki's own
+tokenizer — `TypeError: Cannot read properties of undefined (reading 'startIndex')` in
+`_tokenizeWithTheme`. Nothing to do with the change under review.
+
+It did not reproduce: the file alone three times, the failing test alone five times, the whole
+package's suite, and `pnpm check` a second time — all green. The two highlighters are built once in
+`beforeAll` and shared by all sixty-nine tests, which is the shape a load-dependent fault takes, and
+it is the same shape the dev-server harness already records for chokidar.
+
+**Not fixed, because it was not understood.** A repair aimed at a cause nobody has measured is the
+mistake that harness note records making once already: *the first repair was a longer wait, which is
+what one reaches for when the cause is a guess. It made the window smaller and left the race.* If it
+returns, the thing to measure first is whether shiki's registry is safe to share across tests at all.

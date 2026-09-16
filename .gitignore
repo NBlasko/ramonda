@@ -55,6 +55,12 @@ apps/docs/dist/
 apps/docs/.build/
 apps/docs/src/generated/
 
+# `css-system/` — written by `ramonda-css codegen` — is COMMITTED, and the argument for hiding it was
+# wrong. It said committing would let a config and its output drift apart in review; this repository
+# answers that with a gate rather than by hiding, which is why `keywords.generated.ts` is in the tree
+# and `build-css-properties.mjs --check` fails when it is stale. Hiding the file does not prevent
+# drift, it prevents anybody SEEING it — and it costs a fresh clone its `$` until something builds.
+
 # The packaged editor extension. Built from the folder it sits in, on the way to a marketplace or an
 # editor, and never a source of anything — a committed one is a binary nobody can review or diff.
 *.vsix

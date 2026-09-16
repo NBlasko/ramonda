@@ -2,6 +2,7 @@ import type ts from "typescript";
 import type { BlockItem } from "./compiler/ast";
 import {
   PROPERTIES,
+  PRIMITIVE,
   PROPERTY_NAMED,
   UNION_TYPED,
   VALUE_WORDS,
@@ -9,11 +10,13 @@ import {
   AT_RULE_LINKS,
 } from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
-import { type Finding, checkSite } from "./compiler/rules";
+import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding, checkSite } from "./compiler/rules";
+import { variablesOnlyKinds } from "./codegen";
 import { checkedSource } from "./compiler/source";
 import { findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 import { type Config, configReader, environmentOf } from "./config";
+import { propertiesFor } from "./generate";
 import { warnIfStale } from "./stale";
 import { type Imported, namedSites } from "./compiler/references";
 
@@ -181,12 +184,33 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        * cache was fixed for. An editor session is a development session — see `environmentOf`.
        */
       const readProjectConfig = configReader(tsModule, environmentOf(false));
+
+      /**
+       * Why a config this cannot read is REMEMBERED rather than only survived.
+       *
+       * Returning an empty config is right and stays: a broken one must not take the editor's
+       * completions with it, and measured, it does not — 828 property names are still offered.
+       *
+       * What it also took was every RULE, in silence. Measured across nine broken configs, with a
+       * block breaking two of the project's own settings:
+       *
+       *     GOOD             [unit-not-allowed] … | [literal-not-allowed] …
+       *     a syntax error   (nothing)
+       *     units: "px"      (nothing)            … and six more, every one silent
+       *
+       * The author wrote those settings. A green file is a claim, and with no config loaded the
+       * tool cannot support it — so the reason is kept and said once, on a file that holds a block.
+       * The note here used to send a reader to `ramonda-css lint`, which is not a command anybody
+       * runs to find out their config broke.
+       */
+      const configFailure = new Map<string, string>();
       const projectConfig = (fileName: string): Config => {
         try {
-          return readProjectConfig(fileName);
-        } catch {
-          // A broken config must not take the editor's completions with it. `ramonda-css lint` is
-          // where it is reported, with the file and the reason.
+          const config = readProjectConfig(fileName);
+          configFailure.delete(fileName);
+          return config;
+        } catch (error) {
+          configFailure.set(fileName, error instanceof Error ? error.message : String(error));
           return {};
         }
       };
@@ -236,7 +260,9 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           text === undefined
             ? undefined
             : virtualFile(text, {
-                properties: properties(info),
+                // The project's own map when it has generated one — the same answer the CLI gives,
+                // so the editor and `ramonda-css check` cannot disagree about what a block accepts.
+                properties: properties(info) ?? propertiesFor(fileName),
                 tolerant: true,
                 filename: fileName,
                 read: readModuleFromEditor,
@@ -333,14 +359,82 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
        */
       const proxy: ts.LanguageService = Object.create(service);
 
+      /**
+       * The word typed so far after a `@@` that has not been opened with a `(` — or nothing.
+       *
+       * Deliberately narrow. A `(` anywhere between the `@@` and the caret means the block is open
+       * and the caret is in CSS, which every other branch already handles; a character that cannot
+       * be part of a site's name means this is not a site being typed.
+       */
+      const openerAt = (text: string, position: number): string | undefined => {
+        let index = position;
+        while (index > 0 && /[a-zA-Z-]/.test(text[index - 1])) index--;
+        if (index < 2 || text[index - 1] !== "@" || text[index - 2] !== "@") return undefined;
+        // `@@@x` is not an opener, and `a@@x` is not one either — the scanner wants the pair alone.
+        if (index > 2 && text[index - 3] === "@") return undefined;
+        return text.slice(index, position);
+      };
+
+      /**
+       * The three names a `@@name( … )` may carry — offered, and impossible to commit by accident.
+       *
+       * **The list being right was not enough**, which the user met immediately: narrowed to three,
+       * the first is still preselected, and typing `(` wrote `@@keyframes()` when they meant the
+       * plain `@@( … )`. That is one keystroke producing a block they did not ask for.
+       *
+       * Two statements stop it, and both are true rather than tricks:
+       *
+       * - `isNewIdentifierLocation: true` — after `@@` the author may type something that is NOT in
+       *   this list, namely the `(` of an ordinary block. That is what the flag means, and VS Code's
+       *   TypeScript extension reads it to decide whether to add `(` to the commit characters. With
+       *   it `false`, `(` commits the selection; with it `true`, `(` is just a `(`.
+       * - `commitCharacters: []` per entry — said outright, for the editors that read the entry's
+       *   own list rather than deriving one. Nothing should commit these but a deliberate Enter or
+       *   Tab.
+       */
+      const namedSites = (typed: string, position: number): ts.WithMetadata<ts.CompletionInfo> => ({
+        isGlobalCompletion: false,
+        isMemberCompletion: false,
+        isNewIdentifierLocation: true,
+        entries: NAMED_BLOCKS.filter((one) => one.startsWith(typed.toLowerCase())).map((one, order) => ({
+          name: one,
+          kind: tsModule.ScriptElementKind.keyword,
+          kindModifiers: "",
+          sortText: String(order),
+          commitCharacters: [],
+          replacementSpan: { start: position - typed.length, length: typed.length },
+        })),
+      });
+
       proxy.getCompletionsAtPosition = (fileName, position, options, settings) => {
+        /**
+         * The caret right after `@@`, where nothing TypeScript knows can stand.
+         *
+         * **Reported by a user twice**: typing `css={@@` and then `(` produced `css={@@Component()}`,
+         * and later the same with `$` at the head of the list. Measured, **1003 entries** — every
+         * global, every local, every keyword. `css={@@}` holds no parens yet, so `findBlocks` sees no
+         * site and no overlay is built; the question reaches TypeScript against the author's own
+         * text, where that caret is an ordinary expression position and the answer is the world.
+         *
+         * The first entry is preselected, so the next keystroke commits a name the author never
+         * typed into the one place a block was about to be.
+         *
+         * Answered BEFORE the overlay for the same reason the fault exists: at this point there is
+         * no block to overlay. Four things can follow `@@` — a `(`, or one of the three named sites
+         * this compiles — so that is the list.
+         */
+        const snapshot = readSnapshot(fileName);
+        const opener =
+          snapshot === undefined ? undefined : openerAt(snapshot.getText(0, snapshot.getLength()), position);
+        if (opener !== undefined) return namedSites(opener, position);
+
         const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getCompletionsAtPosition(fileName, position, options, settings);
 
         const at = file.virtualOf(position);
         if (at === undefined) return undefined;
 
-        const got = service.getCompletionsAtPosition(fileName, at, options, settings);
+        let got = service.getCompletionsAtPosition(fileName, at, options, settings);
 
         /**
          * Nothing from TypeScript, in a value it has no union for — see {@link valueWords}.
@@ -359,6 +453,8 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
            * else is ours.
            */
           const where = cache.get(fileName)?.where ?? EMPTY_REGIONS;
+          /** The author's own text, for the two carets the parse has no run for — see below. */
+          const written = snapshot?.getText(0, snapshot.getLength()) ?? "";
           const value = where.values.find((one) => one.start < position && position <= one.end);
           /**
            * A caret at a hole's closing `}}` is still in the hole — you are typing at the end of the
@@ -367,8 +463,71 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
            * expression offered CSS words instead of the file's own bindings.
            */
           const inHole = where.holes.some((one) => one.start <= position && position <= one.end);
+          // A `$` path is TypeScript's, for the same reason a hole is: it IS a TypeScript
+          // expression, and the members of the project's variables are the only useful answer.
+          const inPath = where.paths.some((one) => one.start <= position && position <= one.end);
+          /**
+           * A caret in EMPTY SPACE belongs to no parsed run — and to the WRONG one in a prelude.
+           *
+           * The regions above come from the parse, and a half-written line has not parsed into
+           * anything yet. Measured, both of the moments a person actually asks:
+           *
+           *     position: |     828 property names, where the values belong
+           *     &:|             828 property names, where a pseudo-class belongs
+           *
+           * `position: stat|` works, because by then there IS a value run. So the answer appeared
+           * only once you had typed enough not to need it.
+           *
+           * Read from the TEXT, bounded by the block. What separates the two is the `&` at the head
+           * of the run: a prelude in this language starts with one — `CssBlockShape` says so — and
+           * `color:` and `&:` look identical from the caret backwards.
+           *
+           * **Asked BEFORE the parse's own answer, not after.** Measured, `&:` is read as a
+           * declaration whose property is `&`, so `where.values` claims the caret and the first
+           * version of this never ran. A run headed by `&` is a prelude whatever the parse made of
+           * it, and the text is what says so.
+           */
+          const typing = !inHole && !inPath && isCss(where, position) ? caretIn(written, position, where) : undefined;
+
+          if (typing?.kind === "prelude") {
+            return {
+              isGlobalCompletion: false,
+              isMemberCompletion: false,
+              isNewIdentifierLocation: true,
+              entries: selectorsFor(typing.colons, typing.typed).map(entryFor),
+            };
+          }
+
+          /**
+           * An EMPTY value maps past the declaration, so TypeScript is asked where the value IS.
+           *
+           * Measured on `position: ` with the caret after the space — a union-typed property, whose
+           * words are deliberately TypeScript's to offer:
+           *
+           *     author 36 (the caret)   ->  virtual 783   between `},{` and `},]`
+           *     author 37 (the newline) ->  virtual 778   between the quotes of `position:""`
+           *
+           * One character apart, and the first is the key position of the NEXT declaration — which
+           * is why the answer was the 828 property names. So `position: stat` worked and
+           * `position: ` did not: the answer arrived only once you had typed enough not to need it.
+           *
+           * Re-asked only where NOTHING is typed yet, which is the whole of the fault and keeps this
+           * off every path that already works. The region's own end is the value's extent, and it is
+           * what the property above is read from, so this is the same fact used twice rather than a
+           * second guess at where the value lives.
+           */
+          if (typing?.kind === "value" && typing.typed === "" && value !== undefined) {
+            const inValue = file.virtualOf(value.end);
+            if (inValue !== undefined && inValue !== at) {
+              got = service.getCompletionsAtPosition(fileName, inValue, options, settings) ?? got;
+            }
+          }
+
+          const property = value?.property ?? (typing?.kind === "value" ? typing.property : undefined);
           const words =
-            value === undefined || inHole || !isCss(where, position) ? undefined : valueWords(value.property);
+            property === undefined || inHole || inPath || !isCss(where, position)
+              ? undefined
+              : valueWords(property, projectConfig(fileName));
           if (words !== undefined) {
             return {
               isGlobalCompletion: false,
@@ -483,6 +642,109 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         };
       };
 
+      /**
+       * Where a virtual offset belongs in the author's file — with one allowance, for an INSERTION.
+       *
+       * An import goes ABOVE everything, and above everything in the virtual file is this package's
+       * own preamble: the declarations that give a block its `@@`, its `$` and its holes. That text
+       * has no home, so mapping it gives nothing and the import was dropped — measured, which is why
+       * the user saw the editor put it wherever it liked.
+       *
+       * A zero-length insertion is different from every other span in one way that settles this: it
+       * writes BEFORE a position rather than over a range, so the question is not *what character is
+       * this* but *what does it come before*. So the scan walks forward to the first offset that does
+       * have a home, and that is the answer — the author's own first character, for an import.
+       *
+       * Only for an insertion. A span that REPLACES text and maps nowhere is text of ours, and
+       * moving it somewhere plausible is how a file gets destroyed; that one is still dropped.
+       */
+      const homeFor = (file: VirtualFile, offset: number, inserting: boolean): number | undefined => {
+        const home = file.homeOf(offset);
+        if (home !== undefined || !inserting) return home;
+
+        const length = file.code.length;
+        for (let ahead = offset + 1; ahead <= length; ahead++) {
+          const found = file.homeOf(ahead);
+          if (found !== undefined) return found;
+        }
+        return undefined;
+      };
+
+      /**
+       * The DETAILS of a completion — and accepting one that needs an import WRITES to the file.
+       *
+       * **Reported by a user**, who put it down to VS Code: an accepted auto-import landed at the
+       * END of their `.tsx` file, and went to the top the moment they deleted the `@@` block.
+       *
+       * `getCompletionsAtPosition` above is proxied and maps the caret into the virtual file. This
+       * was not proxied at all, so TypeScript got the AUTHOR's position against the VIRTUAL text —
+       * a different place entirely. Measured, it returned `undefined`: the editor is handed an entry
+       * it can offer and cannot resolve, and what it writes then is nobody's decision.
+       *
+       * The same shape as the rename fault below — an unmapped span an editor writes at — and it
+       * differs in what to do about it. Refusing is right for a rename, which is a convenience.
+       * An import is not: without it the completion list is offering something it cannot deliver.
+       * So the spans are mapped HOME, and a code action holding one that maps nowhere is dropped
+       * whole rather than applied in part.
+       */
+      proxy.getCompletionEntryDetails = (fileName, position, entryName, formatOptions, source, preferences, data) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) {
+          return service.getCompletionEntryDetails(
+            fileName,
+            position,
+            entryName,
+            formatOptions,
+            source,
+            preferences,
+            data,
+          );
+        }
+
+        const at = file.virtualOf(position);
+        if (at === undefined) return undefined;
+
+        const got = service.getCompletionEntryDetails(
+          fileName,
+          at,
+          entryName,
+          formatOptions,
+          source,
+          preferences,
+          data,
+        );
+        if (got?.codeActions === undefined) return got;
+
+        /**
+         * A change in this file is mapped; one in ANOTHER file is already in its own coordinates
+         * and is left alone — unless that file carries a block too, in which case it is mapped by
+         * its own overlay.
+         */
+        const homeward = (change: ts.FileTextChanges): ts.FileTextChanges | undefined => {
+          const its = overlay(change.fileName, readSnapshot);
+          if (its === undefined) return change;
+
+          const textChanges: ts.TextChange[] = [];
+          for (const one of change.textChanges) {
+            const start = homeFor(its, one.span.start, one.span.length === 0);
+            const end = one.span.length === 0 ? start : its.homeOf(one.span.start + one.span.length);
+            if (start === undefined || end === undefined || end < start) return undefined;
+            textChanges.push({ newText: one.newText, span: { start, length: end - start } });
+          }
+          return { ...change, textChanges };
+        };
+
+        const codeActions: ts.CodeAction[] = [];
+        for (const action of got.codeActions) {
+          const changes = action.changes.map(homeward);
+          // All or nothing: half an import is worse than none, and this is a span an editor WRITES at.
+          if (changes.some((one) => one === undefined)) continue;
+          codeActions.push({ ...action, changes: changes as ts.FileTextChanges[] });
+        }
+
+        return { ...got, codeActions };
+      };
+
       proxy.getQuickInfoAtPosition = (fileName, position) => {
         const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getQuickInfoAtPosition(fileName, position);
@@ -526,6 +788,41 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         return home === undefined ? undefined : { ...read, textSpan: home };
       };
 
+      /**
+       * One diagnostic saying the project's config did not load, or nothing.
+       *
+       * Only reached for a file that HOLDS a block — `getSemanticDiagnostics` has already returned
+       * the inner service's answer for anything else — because a file with no CSS in it is not
+       * affected by the config and marking it would be noise on every file in the project.
+       *
+       * On the first block's opener, so it sits where the missing rules would have spoken. A
+       * zero-width span is a squiggle nobody can see; see `Finding.length` in `rules.ts`.
+       */
+      const brokenConfig = (fileName: string): ts.Diagnostic[] => {
+        const why = configFailure.get(fileName);
+        if (why === undefined) return [];
+
+        const text = readSnapshot(fileName);
+        const source = text?.getText(0, text.getLength()) ?? "";
+        const [site] = findBlocks(source);
+        if (site === undefined) return [];
+
+        return [
+          {
+            file: cache.get(fileName)?.author,
+            start: site.start,
+            length: site.open - site.start + 1,
+            category: tsModule.DiagnosticCategory.Error,
+            // Zero, for the reason `ours` gives: this is not TypeScript's, and the id is in the text.
+            code: 0,
+            messageText:
+              `[config-not-read] ${why}\n\n` +
+              "        Until it reads, none of this project's rules are running — this block is not " +
+              "being\n        checked against them, and a build will refuse before it gets here.",
+          },
+        ];
+      };
+
       proxy.getSemanticDiagnostics = (fileName) => {
         const file = overlay(fileName, readSnapshot);
         if (file === undefined) return service.getSemanticDiagnostics(fileName);
@@ -537,9 +834,14 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          */
         const ours = cssFor(fileName);
         return [
+          ...brokenConfig(fileName),
           ...ours,
           ...hintsFor(fileName),
-          ...withoutRepeats(ours, mapped(file, service.getSemanticDiagnostics(fileName))),
+          ...withoutRepeats(
+            ours,
+            mapped(file, service.getSemanticDiagnostics(fileName)),
+            readSnapshot(fileName)?.getText(0, readSnapshot(fileName)?.getLength() ?? 0) ?? "",
+          ),
         ];
       };
 
@@ -1052,14 +1354,72 @@ function ours(
  * Matched on POSITION, the way the command does it: the same fault at the same character is the same
  * fault, and a `TS2353` about a nested rule's key is at a position no property rule names.
  */
-function withoutRepeats(ours: readonly ts.Diagnostic[], theirs: readonly ts.Diagnostic[]): ts.Diagnostic[] {
+function withoutRepeats(
+  ours: readonly ts.Diagnostic[],
+  theirs: readonly ts.Diagnostic[],
+  text: string,
+): ts.Diagnostic[] {
+  /**
+   * Every rule that says what the TYPES also refuse, from the list both consumers read.
+   *
+   * It was `[unknown-property]` alone, and `check.ts` had the full list — so the editor showed TWO
+   * messages for one fault on every setting pass 4 gave a rule. Reported by the user, who hovered a
+   * narrowed `z-index` and read the rule's sentence beside a raw `Narrowed<…>`: the type lists the
+   * string spellings a block arrives as, the rule says the value is not permitted, and together
+   * they read as a contradiction.
+   *
+   * One list in `rules.ts`, both consumers, so the next rule added cannot reach one and not the
+   * other — which is precisely how this drifted.
+   */
+  /**
+   * By DECLARATION, read off the TEXT — which is how `check.ts` does it, and the reason for both halves.
+   *
+   * Not by offset, because the two land at different ones by construction: `unknown-property` points
+   * at the property name and the compiler's `TS2561` does too, which is why matching on `start`
+   * worked for it alone — but `value-not-allowed` points at the VALUE while `TS2322` points
+   * elsewhere in the declaration. Measured, matched on `start`, every one still came back twice.
+   *
+   * It was the LINE next, and a line is too much: an author puts as much on one as they like, and
+   * measured, a one-line component swallowed `const n: number = "no"` because the block beside it
+   * had a property typo. The declaration is the fault's own extent — the text back to the last `;`
+   * or line break. A brace is NOT a boundary: a hole is written in braces, and counting them would
+   * split one fault's two messages apart again.
+   *
+   * From the text rather than from `diagnostic.file`, because ours carry whatever source file the
+   * cache held and a harness need not provide one — measured, `undefined` there made every key
+   * `-1` and the set matched nothing.
+   */
+  const declarationOf = (diagnostic: ts.Diagnostic) => {
+    const at = diagnostic.start;
+    if (at === undefined) return -1;
+    let start = 0;
+    for (let index = 0; index < at && index < text.length; index++) {
+      const code = text.charCodeAt(index);
+      if (code === 59 || code === 10) start = index + 1;
+    }
+    return start;
+  };
+
   const said = new Set(
     ours
-      .filter((diagnostic) => String(diagnostic.messageText).startsWith("[unknown-property]"))
-      .map((diagnostic) => diagnostic.start),
+      .filter((diagnostic) => SPEAKS_OVER_TYPES.some((rule) => String(diagnostic.messageText).startsWith(`[${rule}]`)))
+      .map(declarationOf),
   );
 
-  return theirs.filter((diagnostic) => !(diagnostic.code === 2353 && said.has(diagnostic.start)));
+  /**
+   * `TS2561` too, which is the compiler's *did you mean* for a BARE property name.
+   *
+   * `unknown-property` was dashed names only until review pass 6, because a bare one already had
+   * `TS2561` and a quoted key gets no suggestion at all. That reasoning held in the checker and not
+   * in the BUILD, which runs no TypeScript — so the rule speaks for both now, and the editor has to
+   * drop the compiler's word the same way `check.ts` does.
+   *
+   * Found by this package's own test: `check.ts` got the drop and this did not, which is the
+   * arrangement it keeps finding a fault in — one rule, two consumers, one of them left behind.
+   */
+  return theirs.filter(
+    (diagnostic) => !(REPLACED_CODES.includes(diagnostic.code) && said.has(declarationOf(diagnostic))),
+  );
 }
 
 /** Quick info at a position, or nothing when there is no position to ask about. */
@@ -1104,6 +1464,7 @@ function regions(text: string, fileName: string, readModule: Imported["read"]): 
   const blocks: Span[] = [];
   const holes: Span[] = [];
   const values: ValueSpan[] = [];
+  const paths: Span[] = [];
   const preludes: PreludeSpan[] = [];
   // A resolved reference is not a hole, so it is not a region TypeScript owns — an editor must not
   // colour `{slide}` as an expression in a place the build writes a name into. Imports included:
@@ -1113,20 +1474,94 @@ function regions(text: string, fileName: string, readModule: Imported["read"]): 
     const read = readBlock(text, site.open, "", { tolerant: true, resolve: (name) => references.get(name) });
     blocks.push({ start: site.open, end: read.end });
     holes.push(...read.holes);
-    collect(read.block.items, values, preludes);
+    collect(read.block.items, values, preludes, paths);
   }
-  return { blocks, holes, values, preludes };
+  return { blocks, holes, values, paths, preludes };
+}
+
+/**
+ * What the caret is in the middle of writing, read from the TEXT — a prelude, a value, or neither.
+ *
+ * The regions the plugin holds come from the PARSE, and a half-written line has not parsed into
+ * anything. Measured, that is exactly the moment somebody asks: `position: ` and `&:` were both
+ * answered with the 828 property names, and `position: stat` — where you no longer need the help —
+ * was answered correctly.
+ *
+ * ## What separates a prelude from a declaration
+ *
+ * Nothing, from the caret backwards: `color:` and `&:` end the same way. What separates them is the
+ * head of the run, and a nested rule's prelude starts with `&` in this language — `CssBlockShape`'s
+ * key is `` `&${string}` ``, so that is a fact rather than a convention.
+ *
+ * The run is bounded by `;`, `{`, `}` and the block's own start, which is what keeps
+ * `&:hover { color: ` a VALUE: the `{` ends the prelude's run before the `&` is reached.
+ */
+function caretIn(
+  text: string,
+  position: number,
+  where: Regions,
+): { kind: "prelude"; colons: 1 | 2; typed: string } | { kind: "value"; property: string; typed: string } | undefined {
+  const block = where.blocks.find((one) => one.start <= position && position <= one.end);
+  if (block === undefined) return undefined;
+
+  /** The word being typed, which is what a completion replaces. */
+  let head = position;
+  while (head > block.start && /[a-zA-Z-]/.test(text[head - 1])) head--;
+  const typed = text.slice(head, position);
+
+  /**
+   * Back to the start of this run: a `;`, a brace, or just past the block's own opening.
+   *
+   * `block.start + 1` and not `block.start`, which is the `(` itself — measured, stopping on it put
+   * the paren at the head of the run, so `&` was not first and `position` was not a name. The first
+   * declaration in a block is the one that has no `;` before it, which is every case somebody types
+   * into an empty block.
+   */
+  let from = head;
+  while (from > block.start + 1 && !/[;{}]/.test(text[from - 1])) from--;
+  const run = text.slice(from, head);
+
+  if (run.trimStart().startsWith("&")) {
+    const colons = run.endsWith("::") ? 2 : run.endsWith(":") ? 1 : undefined;
+    // Only right after the colons. A caret elsewhere in a prelude is a combinator or a class name,
+    // and this has no list for those — offering the pseudo-classes there would be a worse answer.
+    return colons === undefined ? undefined : { kind: "prelude", colons, typed };
+  }
+
+  const colon = run.lastIndexOf(":");
+  if (colon === -1) return undefined;
+  const property = run.slice(0, colon).trim();
+  return /^-{0,2}[a-zA-Z][\w-]*$/.test(property) ? { kind: "value", property, typed } : undefined;
+}
+
+/** The pseudo-classes or the pseudo-elements, without the colons the author has already typed. */
+function selectorsFor(colons: 1 | 2, typed: string): readonly string[] {
+  const wanted = colons === 2 ? "::" : ":";
+  const names = Object.keys(SELECTORS)
+    .filter((one) => (colons === 2 ? one.startsWith("::") : !one.startsWith("::")))
+    .map((one) => one.slice(wanted.length));
+
+  /**
+   * Unprefixed FIRST, then alphabetical — which the plain sort got backwards.
+   *
+   * Measured: `&::` offered eight `-moz-` and `-ms-` names ahead of any real one, because a dash
+   * sorts before a letter. `entryFor` says the same thing in `sortText`, and both are here so the
+   * list reads right whether a consumer sorts it or takes it as it comes.
+   */
+  return names
+    .filter((one) => one.startsWith(typed.toLowerCase()))
+    .sort((a, b) => Number(a.startsWith("-")) - Number(b.startsWith("-")) || a.localeCompare(b));
 }
 
 /** Every declaration's VALUE, with the property it belongs to — see `valueWords`. */
-function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: PreludeSpan[]): void {
+function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: PreludeSpan[], paths?: Span[]): void {
   for (const item of items) {
     if (item.kind === "rule") {
       // The prelude's own span, which a nested rule already carries for the checker's squiggles.
       if (item.at !== undefined && item.preludeEnd !== undefined) {
         preludes?.push({ start: item.at, end: item.preludeEnd, prelude: item.prelude });
       }
-      collect(item.items, out, preludes);
+      collect(item.items, out, preludes, paths);
       continue;
     }
     // A spread has no value and its own marker is what a reader hovers — see `spoken`.
@@ -1141,6 +1576,19 @@ function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: Prelu
      * this could not answer.
      */
     out.push({ start: item.at + item.property.length, end: item.end, property: item.property });
+
+    /**
+     * A `$` path is TypeScript's to complete, exactly as a hole is.
+     *
+     * Without this, a caret inside `$.` was answered with the PROPERTY's own value words — measured,
+     * `color: $.` offered 210 colour keywords where the variable groups belong, because the caret is
+     * in a value and that is all this knew about it.
+     */
+    for (const part of item.value) {
+      if (part.kind === "variable" && part.at !== undefined) {
+        paths?.push({ start: part.at, end: part.at + (part.length ?? 0) });
+      }
+    }
   }
 }
 
@@ -1162,9 +1610,28 @@ function collect(items: readonly BlockItem[], out: ValueSpan[], preludes?: Prelu
  * A property that admits a free identifier — `animation-name`, `font-family` — has no entry and gets
  * nothing, which is right: that name is the author's own and nothing can suggest it.
  */
-function valueWords(property: string): readonly string[] | undefined {
+function valueWords(property: string, config: Config): readonly string[] | undefined {
   // A real union is TypeScript's to offer, and it offers `!important` and `var()` beside each word.
   if (UNION_TYPED.includes(property)) return undefined;
+
+  /**
+   * **A union the PROJECT gave it, which `UNION_TYPED` cannot know about.**
+   *
+   * That constant is generated from the shipped map and ships with the package. The moment a config
+   * narrows `z-index` to `1 | 2 | 5 | 10`, the generated module gives it a real union — and this
+   * went on offering everything CSS allows, so the editor suggested `auto` and `abs()` beside values
+   * the type refuses. Measured, and it is the worst arrangement of the two: a suggestion that does
+   * not compile is worse than no suggestion.
+   *
+   * So the question is put to the config as well. A property with a closed list is TypeScript's to
+   * answer, exactly as a property with a shipped union already was.
+   */
+  if (config.properties?.[property as keyof NonNullable<Config["properties"]>] !== undefined) {
+    const rule = config.properties[property as keyof NonNullable<Config["properties"]>] as
+      | { readonly values?: readonly unknown[] }
+      | undefined;
+    if (rule?.values !== undefined) return undefined;
+  }
 
   const own = VALUE_WORDS[property];
   // A property whose value is a property NAME — `transition-property`, `will-change` — takes any of
@@ -1172,10 +1639,26 @@ function valueWords(property: string): readonly string[] | undefined {
   const named = PROPERTY_NAMED[property] === undefined ? [] : PROPERTIES;
   if (own === undefined && named.length === 0) return undefined;
 
-  // Every property takes these, whatever else it takes.
+  /**
+   * A kind this project takes only from its VARIABLES offers none of that kind's literals.
+   *
+   * The trap `DESIGN.md` named before any of this was built: *"the offer has to match what the rule
+   * accepts, or the editor suggests what the checker reports."* Measured, it had gone wrong exactly
+   * here — `"<color>": { variablesOnly: true }` and typing `color: ` still offered all 210 colour
+   * keywords, every one of which `literal-not-allowed` then refuses.
+   *
+   * What stays is what the SETTING itself leaves alone, so the two agree by construction rather
+   * than by a second list: `currentcolor` is a reference to the inherited colour rather than one
+   * anybody wrote, and the CSS-wide keywords below are not values either.
+   */
+  const kinds = variablesOnlyKinds(config.properties);
+  const primitive = PRIMITIVE[property];
+  const literal =
+    primitive !== undefined && kinds.includes(primitive) ? (word: string) => word === "currentcolor" : () => true;
+
   return [
-    ...(own === undefined ? [] : own.split(" ").filter(Boolean)),
-    ...named,
+    ...(own === undefined ? [] : own.split(" ").filter(Boolean).filter(literal)),
+    ...named.filter(literal),
     "var()",
     "inherit",
     "initial",
@@ -1194,10 +1677,21 @@ function valueWords(property: string): readonly string[] | undefined {
  */
 function entryFor(name: string): ts.CompletionEntry {
   const call = name.endsWith("()");
+  /**
+   * A VENDOR-PREFIXED name sorts last, and it was sorting FIRST.
+   *
+   * Measured: `&::` offered eight `-moz-` and `-ms-` pseudo-elements ahead of any real one, because
+   * the list is alphabetical and a dash sorts before a letter. Somebody typing `&::` wants `before`
+   * or `after`; `-moz-progress-bar` is a name they will never reach for.
+   *
+   * The same judgement as the call below, one step further: the ordinary answer first. Both stay in
+   * the list — a project supporting an old engine needs them, and they are one keystroke away.
+   */
+  const prefixed = name.startsWith("-");
   return {
     name,
     kind: "string" as ts.ScriptElementKind,
-    sortText: call ? "1" : "0",
+    sortText: `${prefixed ? "2" : "0"}${call ? "1" : "0"}`,
     ...(call ? { insertText: name.slice(0, -1) } : {}),
   };
 }
@@ -1208,7 +1702,7 @@ function unquoted(name: string): string {
 }
 
 /** Nothing at all, for a file whose regions are not cached. */
-const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [], preludes: [] };
+const EMPTY_REGIONS: Regions = { blocks: [], holes: [], values: [], paths: [], preludes: [] };
 
 /**
  * What THIS language says about a prelude, which nobody else can.
@@ -1325,6 +1819,13 @@ interface Regions {
   readonly blocks: readonly Span[];
   readonly holes: readonly Span[];
   readonly values: readonly ValueSpan[];
+  /**
+   * Where each `$` path runs — a region TypeScript owns, for the same reason a hole is.
+   *
+   * It IS a TypeScript expression, so the members of the project's variables are the only useful
+   * answer there. Measured without it: `color: $.` offered 210 colour keywords.
+   */
+  readonly paths: readonly Span[];
   /** Where each nested rule's prelude runs — a selector, an at-rule, or a condition. */
   readonly preludes: readonly PreludeSpan[];
 }

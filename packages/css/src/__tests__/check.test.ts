@@ -126,7 +126,7 @@ describe("a project that is not", () => {
     expect(only.file).toMatch(/Card\.tsx$/);
     expect(only.line).toBe(3);
     expect(only.column).toBe(5);
-    expect(only.message).toContain("Did you mean to write 'display'?");
+    expect(only.message).toContain("Did you mean `display`?");
   });
 
   /**
@@ -143,16 +143,27 @@ describe("a project that is not", () => {
    * because the fallback to `CssValue` is exactly what satisfies an open property and stays quiet.
    * One confusing message on a quarter of properties beat a second message on all of them.
    */
-  test("a hole whose type the property cannot take is reported, on the hole and on the property", () => {
+  /**
+   * **This reported twice until ninety-six properties started saying what they take.**
+   *
+   * The pair was `TS2345` on the expression — *boolean is not assignable to `CssValue`* — and
+   * `TS2322` on the property — *`CssValue` is not assignable to `Keyword<…>`*. The note above
+   * weighed that second message against the alternative and kept it, when it reached a quarter of
+   * properties. Narrowing took it to most of them, and the same trade reads differently at that
+   * scale: `CssValue` is this compiler's own fallback, not anything the author wrote, so the second
+   * message asks a person to reason about a type they have never seen.
+   *
+   * One message now, on the author's own expression, and `inOrder` is where the other is dropped.
+   */
+  test("a hole whose type the property cannot take is reported once, on the hole", () => {
     const report = check({
       "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div css={@@( position: {this.wide}; )}>x</div>;\n  }\n}\n`,
     });
 
-    expect(report.findings).toHaveLength(2);
-    expect(report.findings.every((one) => one.line === 4)).toBe(true);
-    const [onTheHole] = report.findings.filter((one) => one.code === 2345);
-    expect(onTheHole.message).toContain("boolean");
-    expect(report.findings.some((one) => one.code === 2322)).toBe(true);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].line).toBe(4);
+    expect(report.findings[0].code).toBe(2345);
+    expect(report.findings[0].message).toContain("boolean");
   });
 
   /** And an OPEN property — 424 of the 551 — reports the hole once, with the type the author wrote. */
@@ -204,9 +215,9 @@ describe("a project that is not", () => {
     });
 
     expect(report.findings.map((f) => f.line)).toEqual([3, 4, 6]);
-    expect(report.findings[0].message).toContain("Did you mean to write 'display'?");
+    expect(report.findings[0].message).toContain("Did you mean `display`?");
     expect(report.findings[1].message).toContain(`Did you mean '"static"'?`);
-    expect(report.findings[2].message).toContain("Did you mean to write 'color'?");
+    expect(report.findings[2].message).toContain("Did you mean `color`?");
   });
 
   test("two files each report their own", () => {
@@ -287,14 +298,25 @@ describe("the CSS rules, beside the type errors", () => {
     expect(report.findings.map((finding) => finding.code)).toEqual(["line-comment"]);
   });
 
-  test("a TS2353 about something no rule named is still reported", () => {
-    // A `@font-face` descriptor that is not one. `DESCRIPTORS` is a near-miss search, and `nope`
-    // is near nothing, so no rule of ours claims it and the compiler's word is all there is.
+  /**
+   * A descriptor that is not one — named ONCE, by us.
+   *
+   * It used to be the compiler's alone: `DESCRIPTORS` was a near-miss search, and `nope` is near
+   * nothing, so no rule claimed it. Since review pass 6 `unknown-property` reports a name CSS does
+   * not have whether or not it has a suggestion, because the BUILD runs no TypeScript and a typo
+   * compiled — so the rule speaks and `inOrder` drops the compiler's `TS2353` on the line.
+   *
+   * What the count is protecting is unchanged: one fault, one report.
+   */
+  test("a descriptor that is not one is reported once, by the rule", () => {
     const report = check({
       "Face.tsx": `const f = @@font-face(\n  src: url(a.woff2);\n  nope: 1;\n);\nexport default f;\n`,
     });
 
-    expect(report.findings.some((finding) => finding.code === 2353)).toBe(true);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].code).toBe("unknown-property");
+    expect(report.findings[0].message).toContain("font-face");
+    expect(report.findings[0].line).toBe(3);
   });
 });
 
@@ -325,8 +347,11 @@ describe("a setup that would otherwise pass silently", () => {
    * diagnostic is dropped, would turn a broken setup into a passing run.
    */
   test("a block shape that does not resolve is reported, not dropped", () => {
+    // CORRECT css, so the only finding can be the setup fault. It used to hold `dsiplay`, which the
+    // types alone reported; since pass 6 the RULE reports a plain property name too — so the block
+    // would carry a fault of its own and the count would stop being about the setup.
     const report = checkProject(
-      project({ "Card.tsx": `const a = <div css={@@( dsiplay: flex; )}>x</div>;\nexport default a;\n` }, null),
+      project({ "Card.tsx": `const a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n` }, null),
     );
 
     expect(report.findings).toHaveLength(1);
@@ -346,9 +371,13 @@ describe("a setup that would otherwise pass silently", () => {
       ),
     );
 
-    // Five, because the virtual file names five types from that module — the block's shape, what a
+    // Five, because the virtual file names five things from that module — the block's shape, what a
     // block IS, composition's two, and what a hole in a value must be. Each missing one is its own
     // setup fault, and each is reported.
+    //
+    // It was SIX, and `$` was the sixth. The fallback is written inline now rather than imported,
+    // so that no module has to export a `$` — an export is an auto-import suggestion, and a user
+    // met `import { $ } from "@ramonda/css/properties"` offered beside their own generated one.
     expect(report.findings).toHaveLength(5);
     expect(report.findings.map((one) => one.message).join(" ")).toContain("CssBlockShape");
   });
@@ -804,12 +833,32 @@ describe("what a hole may evaluate to", () => {
   });
 
   test.each([
-    ["a fallback is written", '  color: {maybe ?? "red"};', "declare const maybe: string | undefined;\n"],
-    ["a plain string", "  color: {s};", "declare const s: string;\n"],
     ["a number", "  opacity: {n};", "declare const n: number;\n"],
     ["a closed property's own keyword", "  position: {k};", 'declare const k: "absolute";\n'],
     ["a string inside a value", "  border-left: {s} solid red;", "declare const s: string;\n"],
+    // Spelled out rather than imported, so this probe resolves nothing: `CssColor` and
+    // `CssDimension` are exported for an author to annotate with, and these are what they mean.
+    ["a colour the author typed as one", "  color: {c};", "declare const c: `#${string}`;\n"],
+    ["a length the author typed as one", "  letter-spacing: {d};", "declare const d: `${number}px`;\n"],
   ])("%s is accepted", (_what, declaration, head) => {
+    expect(held(declaration, head).findings).toEqual([]);
+  });
+
+  /**
+   * **A bare `string` goes in, because this project has no config.**
+   *
+   * Narrowing is a project's own: the config says how far, codegen writes it into that project's
+   * property map, and a project that has written neither is checked against the shipped map, where
+   * a value is `string | number`. These probes have no `ramonda.css.ts`, so this is what they get —
+   * and `generated.test.ts` asserts the other half, in a project that has one.
+   *
+   * Shipping the narrowing instead was tried for a day. It refused this in every project at once,
+   * config or no config, which is not this package's call to make.
+   */
+  test.each([
+    ["a plain string", "  color: {s};", "declare const s: string;\n"],
+    ["a fallback that widens to string", '  color: {maybe ?? "red"};', "declare const maybe: string | undefined;\n"],
+  ])("%s is accepted where nothing narrowed the property", (_what, declaration, head) => {
     expect(held(declaration, head).findings).toEqual([]);
   });
 
@@ -1026,9 +1075,9 @@ describe("which config a file is checked against", () => {
 
   test("each package's own, inside one project", () => {
     const report = check({
-      "web/ramonda.css.ts": `export default { units: ["px"] };\n`,
+      "web/ramonda.css.ts": `export default { units: { length: ["px"] } };\n`,
       "web/Card.tsx": SOURCE,
-      "admin/ramonda.css.ts": `export default { units: ["px", "em"] };\n`,
+      "admin/ramonda.css.ts": `export default { units: { length: ["px", "em"] } };\n`,
       "admin/Card.tsx": SOURCE,
     });
 
@@ -1040,7 +1089,7 @@ describe("which config a file is checked against", () => {
   /** And the shared one above them still governs a package that has none of its own. */
   test("the root's config, for a package that does not have one", () => {
     const report = check({
-      "ramonda.css.ts": `export default { units: ["px"] };\n`,
+      "ramonda.css.ts": `export default { units: { length: ["px"] } };\n`,
       "web/Card.tsx": SOURCE,
     });
 

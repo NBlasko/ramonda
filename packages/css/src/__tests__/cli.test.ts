@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,8 @@ beforeAll(builtFromThisSource);
 
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BIN = join(PACKAGE, "bin.mjs");
+/** For a fixture whose `ramonda.css.ts` imports `@ramonda/css/config`. */
+const REPO = resolve(PACKAGE, "..", "..");
 
 const projects: string[] = [];
 afterEach(() => {
@@ -88,7 +90,7 @@ describe("the bin", () => {
 
     expect(status).toBe(1);
     expect(output).toContain("src/Card.tsx:3:5");
-    expect(output).toContain("Did you mean to write 'display'?");
+    expect(output).toContain("Did you mean `display`?");
   });
 
   test("a block it cannot read is reported alone, and exits 1", () => {
@@ -249,8 +251,8 @@ describe("a config this cannot use", () => {
 
   test.each([
     ["a rule id that is not one", 'export default { rules: { "unknown-vlaue": "off" } };', "Did you mean"],
-    ["an async config", 'export default async () => ({ units: ["px"] });', "is async"],
-    ["units as a string", 'export default { units: "px" };', "takes a list"],
+    ["an async config", 'export default async () => ({ units: { length: ["px"] } });', "is async"],
+    ["units as a string", 'export default { units: "px" };', "takes families"],
     ["a setting that is not one", 'export default { unitz: ["px"] };', "not a setting"],
     ["exporting a number", "export default 5;", "must export an object"],
   ])("%s is said as a sentence, not thrown", (_what, config, expected) => {
@@ -349,5 +351,275 @@ describe("an argument that is not a project", () => {
     expect(status).toBe(1);
     expect(output).toContain("src/Nowhere");
     expect(output).not.toContain("node:fs");
+  });
+});
+
+/**
+ * `ramonda-css codegen`, which is the command that makes `$` usable at all.
+ *
+ * A project with no generated module has no `$` to import, so this is not a convenience: it is the
+ * step between a declared variable and a written one. In a bundler it runs on its own; this is for
+ * CI, for a fresh clone, and for a project that builds with neither plugin.
+ */
+describe("codegen", () => {
+  function bare(config: string | undefined): string {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-css-codegen-"));
+    projects.push(root);
+    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+    if (config !== undefined) writeFileSync(join(root, "ramonda.css.ts"), config);
+    return root;
+  }
+
+  const runIn = (root: string, ...flags: string[]) => {
+    try {
+      return {
+        output: execFileSync(process.execPath, [BIN, "codegen", ...flags], { cwd: root, encoding: "utf8" }),
+        status: 0,
+      };
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? -1 };
+    }
+  };
+
+  test("writes the pair, says what it wrote, and exits 0", () => {
+    const root = bare(
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+    );
+    const { output, status } = runIn(root);
+
+    expect(status).toBe(0);
+    expect(output).toContain("1 variable");
+    expect(existsSync(join(root, join("css-system", "variables.css")))).toBe(true);
+    expect(existsSync(join(root, join("css-system", "index.ts")))).toBe(true);
+  });
+
+  test("no config is said plainly, and is not a failure", () => {
+    // A project may use blocks and declare no variables. Exiting non-zero would break its build for
+    // a step it never asked for.
+    const { output, status } = runIn(bare(undefined));
+
+    expect(status).toBe(0);
+    expect(output).toMatch(/no .*ramonda\.css\.ts/i);
+  });
+
+  /**
+   * `--check` is what a repository that COMMITS the generated pair asks in CI.
+   *
+   * The gate that wanted it was re-deriving the whole answer: it read both files, ran codegen over
+   * the author's tree and compared — so a red run left the working copy modified and then told the
+   * reader to run the command it had just run for them, and it carried a second copy of the
+   * `outDir` regex to find the folder at all. Codegen already knows both halves, because `put`
+   * compares before writing for an unrelated reason.
+   */
+  describe("`--check`", () => {
+    const declaring = `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`;
+
+    test("a project with no generated pair at all is stale, and nothing is written", () => {
+      const root = bare(declaring);
+      const { output, status } = runIn(root, "--check");
+
+      expect(status).toBe(1);
+      expect(output).toContain("css-system");
+      // The half that makes it a CHECK rather than a fix: the tree it was asked about is untouched.
+      expect(existsSync(join(root, join("css-system", "index.ts")))).toBe(false);
+    });
+
+    test("a pair codegen has just written agrees, and exits 0", () => {
+      const root = bare(declaring);
+      runIn(root);
+
+      expect(runIn(root, "--check").status).toBe(0);
+    });
+
+    test("an output edited by hand is stale, and is NOT repaired", () => {
+      const root = bare(declaring);
+      runIn(root);
+      const path = join(root, "css-system", "index.ts");
+      writeFileSync(path, `${readFileSync(path, "utf8")}\n// @ramonda/css — edited by hand\n`);
+
+      const { output, status } = runIn(root, "--check");
+
+      expect(status).toBe(1);
+      expect(output).toContain("index.ts");
+      expect(readFileSync(path, "utf8")).toContain("edited by hand");
+    });
+
+    test("a config it refuses is said in its own words, not as a crash", () => {
+      const root = bare(`// outDir: "elsewhere"\n${declaring}`);
+      const { output, status } = runIn(root, "--check");
+
+      expect(status).toBe(1);
+      expect(output).toContain("outDir");
+      expect(output).toContain("elsewhere");
+    });
+  });
+
+  test("a collision stops it, with both paths named", () => {
+    const root = bare(
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) } };\n`,
+    );
+    const { output, status } = runIn(root);
+
+    expect(status).toBe(1);
+    expect(output).toContain("--a-b-c");
+    expect(existsSync(join(root, join("css-system", "variables.css")))).toBe(false);
+  });
+
+  /**
+   * SAID, not thrown — and the assertion above could not tell the difference.
+   *
+   * The note above `said` in `cli.ts` claims this: *all six ways `ramonda.css.ts` can be wrong
+   * reached a person as a Node crash — `throw new Error(…)`, a caret, and a stack — while the
+   * sentence inside each was careful and right.* It was made true for `ConfigError` and left false
+   * for the two `refuse` helpers in `codegen.ts` and `declared.ts`, which still threw a raw one:
+   *
+   *     file:///…/dist/chunk-U7N5QK5K.js:1620
+   *       throw new Error(`[ramonda-css] ${message}`);
+   *             ^
+   *     Error: [ramonda-css] `a}b` cannot be part of a variable's name.
+   *         at refuse (…)  at verifyNames (…)  at writeGenerated (…)
+   *
+   * A crash exits 1 and prints its message too, so every assertion on status and wording passed
+   * over it. The frames are the thing that separates the two, and the file's own name is what a
+   * person needs: measured, the Vite build reported this fault and named no config at all.
+   */
+  /**
+   * The other half of the same sentence: a refusal `kind()` raises while the config RUNS.
+   *
+   * It carries the tag and no file, because nothing that deep knows the path, so `load` adds one —
+   * and it used to add both a second tag and a claim that is untrue:
+   *
+   *     [ramonda-css] …/ramonda.css.ts could not be read: [ramonda-css] `b` has an empty `range`…
+   *
+   * The file read perfectly well. A value in it is wrong, which is a different thing to be told.
+   */
+  test("a declaration `kind` refuses is said once, with the file and the reason", () => {
+    const root = bare(
+      `import { kind } from "@ramonda/css/config";\nexport default { variables: { a: kind("length", { b: { value: "8px", range: [] } }) } };\n`,
+    );
+    const { output, status } = runIn(root);
+
+    expect(status).toBe(1);
+    expect(output).toContain("empty `range`");
+    expect(output).toContain("ramonda.css.ts");
+    expect(output).not.toContain("could not be read");
+    // The tag once, from the CLI that prints it — not again from inside the sentence.
+    expect(output.match(/\[ramonda-css\]/g)).toHaveLength(1);
+  });
+
+  test.each([
+    ["a name the stylesheet cannot hold", `{ "a}b": kind("color", { c: "red" }) }`],
+    ["a value that would close the rule", `{ a: kind("color", { c: "red; }" }) }`],
+    [
+      "two variables spelling one custom property",
+      `{ "a-b": kind("length", { c: "1px" }), a: kind("length", { "b-c": "2px" }) }`,
+    ],
+  ])("%s is SAID, with no stack and with the config named", (_what, variables) => {
+    const root = bare(`import { kind } from "@ramonda/css/config";\nexport default { variables: ${variables} };\n`);
+    const { output, status } = runIn(root);
+
+    expect(status).toBe(1);
+    expect(output).not.toMatch(/\bat \w+ \(|node:internal|\.js:\d+:\d+/);
+    expect(output).toContain("ramonda.css.ts");
+  });
+});
+
+/**
+ * `ramonda-css explain` — what the config does to one property, and which line decided it.
+ *
+ * The config grew a third selector and the user said what that cost: *"sada imam samo jos jedno
+ * pitanje jer smo toliko ukomplikovali da mi je tesko da pratim."* Knowing what applies to
+ * `border-radius` means reading three entries and holding CSS's own classification in your head.
+ *
+ * `explain.test.ts` holds the claim that matters — that this agrees with what is ENFORCED. These
+ * are about the command: that it runs, that it names the deciding selector, and that the two ways of
+ * asking it wrongly are said rather than crashed.
+ */
+describe("`explain`", () => {
+  const withConfig = (config: string, argument: string) => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-explain-"));
+    projects.push(root);
+    symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "p", type: "module", version: "0.0.0" }));
+    writeFileSync(join(root, "ramonda.css.ts"), config);
+
+    try {
+      return {
+        output: execFileSync(process.execPath, [BIN, "explain", argument], { cwd: root, encoding: "utf8" }),
+        status: 0,
+      };
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      return { output: `${failed.stdout ?? ""}${failed.stderr ?? ""}`, status: failed.status ?? 1 };
+    }
+  };
+
+  const CONFIG = `export default {
+  properties: {
+    "*": { shorthand: false, arity: 1 },
+    "<length>": { variablesOnly: true, units: ["px", "rem"] },
+    "border-radius": { variablesOnly: false },
+  },
+};
+`;
+
+  test("names the selector that decided each setting, and the one it overrode", () => {
+    const { output, status } = withConfig(CONFIG, "border-radius");
+
+    expect(status).toBe(0);
+    expect(output).toContain('"*"');
+    expect(output).toContain('"<length>"');
+    expect(output).toContain('overriding "<length>"');
+    expect(output).toContain("px, rem");
+  });
+
+  test("a property the kind reaches but the config never names", () => {
+    const { output } = withConfig(CONFIG, "padding-left");
+
+    expect(output).toContain('"<length>"');
+    expect(output).not.toContain("overriding");
+  });
+
+  test("a property CSS does not have is said, with the nearest one", () => {
+    const { output, status } = withConfig(CONFIG, "pading-left");
+
+    expect(status).toBe(1);
+    expect(output).toContain("padding-left");
+  });
+
+  test("no property at all is said rather than crashed", () => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-explain-"));
+    projects.push(root);
+    let out = "";
+    let status = 0;
+    try {
+      out = execFileSync(process.execPath, [BIN, "explain"], { cwd: root, encoding: "utf8" });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string; status?: number };
+      out = `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+      status = failed.status ?? 1;
+    }
+
+    expect(status).toBe(1);
+    expect(out).toContain("takes a property");
+    expect(out).not.toContain("throw new Error");
+  });
+
+  test("a project with no config is told so rather than shown an empty table", () => {
+    const root = mkdtempSync(join(tmpdir(), "ramonda-explain-"));
+    projects.push(root);
+    writeFileSync(join(root, ".git"), "");
+
+    const output = execFileSync(process.execPath, [BIN, "explain", "padding-left"], { cwd: root, encoding: "utf8" });
+
+    expect(output).toContain("nothing is narrowed");
+  });
+
+  /** `--help` must never do work — the rule the formatter learned the hard way. */
+  test("`--help` prints the usage, which now lists this command", () => {
+    const output = execFileSync(process.execPath, [BIN, "explain", "--help"], { cwd: PACKAGE, encoding: "utf8" });
+
+    expect(output).toContain("ramonda-css explain");
   });
 });

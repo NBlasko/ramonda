@@ -23,7 +23,26 @@ export type {
   CssTimeUnit,
   CssUnit,
 } from "./units.generated";
+/** A colour, for the declaration that makes one — see `CssDimension` for the same argument. */
+export type { CssColor, CssColorKeyword } from "./values.generated";
+/**
+ * What `$.color.primary.main` IS, for the module codegen writes.
+ *
+ * A TYPE and nothing else, which is what lets that module import from here without importing
+ * anything: a token's runtime value is the string `var(--color-primary-main)`, written straight into
+ * the generated file, so there is no factory to call and no code to ship.
+ */
+export type { Fixed, Kind, Token, ValueByKind } from "./token";
 export type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
+/**
+ * What a project does with a declared variable OUTSIDE a block.
+ *
+ * `$` inside a block is compiled away and never reaches the browser. These are the other half: a
+ * theme whose values arrive at run time, and the rare read back out. Neither is a theming mechanism
+ * — what is owed is the name and the kind check, not the logic.
+ */
+export { read, toStyle } from "./value";
+export type { Setting } from "./value";
 export { block, toStyleObject } from "./value";
 export type { StyleEntry, StyleMap } from "./merge";
 export { compose, merge } from "./merge";

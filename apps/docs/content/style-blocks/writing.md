@@ -21,9 +21,45 @@ const panel = @@( display: flex; );
 const two = <div css={panel}>a value, written somewhere else</div>;
 ```
 
-Reach for the second whenever the block is long, or shared, or you want a name for it. Nothing about
-a block requires JSX — `const panel = @@( … )` is a value like any other, and that is the point:
-**this extends TypeScript, not JSX.** A block in a `.ts` file with no markup in it works the same way.
+Reach for the second whenever the block is long, or you want a name for it. Nothing about a block
+requires JSX — `const panel = @@( … )` is a value like any other, and that is the point: **this
+extends TypeScript, not JSX.** A block in a `.ts` file with no markup in it works the same way.
+
+### A block at module scope reads its holes ONCE
+
+A block is a value, and a value at module scope is built when the module loads. So a hole in one is
+read at import time and then frozen:
+
+```tsx
+let theme = "#10b981";
+
+// Every element using this carries #10b981 for the life of the page, even
+// after `theme` changes. The hole was read when this module loaded.
+export const panel = @@( border-left: 4px solid {theme}; );
+```
+
+Measured, on what the transform emits: `_merge({"border-left": ["r-…", theme]})` — an ordinary
+expression in an ordinary initialiser, evaluated once. Nothing reports this today.
+
+**It bites hardest where a shared block is most tempting: a default somebody imports everywhere.**
+That is the one place a stale value spreads across the whole app rather than one component.
+
+Three shapes that do not have the problem:
+
+```tsx
+// 1. No hole — nothing to freeze, and the class is shared by every element that names it.
+export const panel = @@( display: flex; gap: 8px; );
+
+// 2. A function, so the hole is read per call.
+export const panelFor = (theme: string) => @@( border-left: 4px solid {theme}; );
+
+// 3. A custom property, which is what a value the whole app shares should be anyway.
+export const panel2 = @@( border-left: 4px solid var(--theme); );
+```
+
+**The third is the real answer for a theme**, and it is cheaper as well as correct — see
+[a hole is not a theme](/style-blocks/variables#a-hole-is-not-a-theme), where the same choice is
+measured at 41 bytes on every element.
 
 ## Each declaration becomes one class
 
@@ -135,7 +171,9 @@ reported — a unit, a suffix, a `#` in front, on either side.
 Write the hole wherever you need the value. That is the whole answer for almost every block:
 
 ```tsx
-declare const accent: string;
+import type { Value } from "../css-system";
+
+declare const accent: Value<"color">;
 
 const card = @@(
   border-left: 4px solid {accent};
@@ -239,6 +277,35 @@ disagree.
 One looseness, on purpose: **any call is admitted.** `calc()`, `min()`, `clamp()` and `var()` can
 each produce any dimension and nothing in a type can read inside one, so `calc(1rem + 2px)` passes
 `CssDimension<"px">`. Refusing calls would make the type useless in the one place you reach for it.
+
+### In a project with a config, name the property instead
+
+`CssDimension` says *a length*. When your project has a
+[`ramonda.css.ts`](/style-blocks/config), it can say *whatever this property takes here* — units
+narrowed, closed lists, `variablesOnly` and all:
+
+```tsx
+import type { Value } from "../css-system";
+
+declare const n: number;
+
+const gap: Value<"gap"> = `${n}px`;
+```
+
+One property, one name, and the answer moves when the config does. `Value<"color">` is what the hole
+example above is annotated with, for the same reason.
+
+And `Var<"color">` is *any variable this project declares of that kind* — which is what you want
+when a function chooses between them:
+
+```tsx
+import { $ } from "../css-system";
+import type { Var } from "../css-system";
+
+declare const loud: boolean;
+
+const pick = (): Var<"color"> => (loud ? $.color.accent : $.color.surface);
+```
 
 ## Comments
 

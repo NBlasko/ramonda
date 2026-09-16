@@ -13,6 +13,7 @@ import {
   interval,
   timeout,
 } from "@ramonda/core";
+import type { Value } from "../../css-system";
 
 /* ── Nested hooks: CounterHook uses HistoryHook (hook-of-a-hook) ────────── */
 class HistoryHook extends Hook<{ value: number }> {
@@ -251,9 +252,14 @@ export class StyleBlock extends Component {
      * — so the template literal is not decoration. Written inline it was the densest line in this
      * repository, and the density was the expression sitting inside the declaration rather than the
      * braces around it. This is the same shape the block below uses for `accent`.
+     *
+     * **`Value<…>` is the annotation, and without it these do not compile.** `padding-left` says it
+     * takes a length in this project, and a bare template literal is a `string` — which could be
+     * anything at run time. The name comes from `css-system`, so if the config ever
+     * narrows the units, this line moves with it and nothing here has to be edited.
      */
-    const border = `${this.weight}px`;
-    const inset = `${this.weight + 8}px`;
+    const border: Value<"border-left-width"> = `${this.weight}px`;
+    const inset: Value<"padding-left"> = `${this.weight + 8}px`;
 
     return (
       <div

@@ -31,7 +31,15 @@ export function messageFor(one: UnknownVariable): string {
   return (
     `nothing in this build sets \`${one.read.name}\`.` +
     (one.meant === undefined ? "" : ` Did you mean \`${one.meant}\`?`) +
-    `\n    Set it in a block, register it with \`@@property\`, add it to \`variables\` in ` +
+    /**
+     * `alsoSets`, and it said `variables` until that key became something else.
+     *
+     * `variables` is the declarations `$` is built from now, and it REFUSES a bare list — so an
+     * author following this wrote `variables: ["--brand"]` and was told *that was its old meaning …
+     * those go in `alsoSets` now*. The tool sent them somewhere that turned them away, and the
+     * refusal did the teaching a message was already trying to do.
+     */
+    `\n    Set it in a block, register it with \`@@property\`, add it to \`alsoSets\` in ` +
     `\`ramonda.css.ts\` if it comes from a stylesheet this does not compile, or give it a ` +
     `fallback — \`var(${one.read.name}, <value>)\` — which says it may be absent.`
   );

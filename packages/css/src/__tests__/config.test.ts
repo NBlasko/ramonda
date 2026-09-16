@@ -37,18 +37,18 @@ describe("the project's config", () => {
   };
 
   test("a plain object", () => {
-    const dir = project({ "ramonda.css.ts": `export default { units: ["px", "rem"] };\n` });
+    const dir = project({ "ramonda.css.ts": `export default { units: { length: ["px", "rem"] } };\n` });
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px", "rem"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px", "rem"] } });
   });
 
   test("a function of the environment, which is why it is not JSON", () => {
     const dir = project({
-      "ramonda.css.ts": `export default (env: { production: boolean }) => ({\n  units: env.production ? ["px"] : ["px", "rem"],\n});\n`,
+      "ramonda.css.ts": `export default (env: { production: boolean }) => ({\n  units: { length: env.production ? ["px"] : ["px", "rem"] },\n});\n`,
     });
 
-    expect(readConfig(findConfig(dir), ts, { production: true })).toEqual({ units: ["px"] });
-    expect(readConfig(findConfig(dir), ts, { production: false })).toEqual({ units: ["px", "rem"] });
+    expect(readConfig(findConfig(dir), ts, { production: true })).toEqual({ units: { length: ["px"] } });
+    expect(readConfig(findConfig(dir), ts, { production: false })).toEqual({ units: { length: ["px", "rem"] } });
   });
 
   /**
@@ -89,14 +89,14 @@ describe("the project's config", () => {
 
   test("TypeScript that is not erasable, which type stripping would refuse", () => {
     const dir = project({
-      "ramonda.css.ts": `enum Unit { px = "px" }\nexport default { units: [Unit.px] };\n`,
+      "ramonda.css.ts": `enum Unit { px = "px" }\nexport default { units: { length: [Unit.px] } };\n`,
     });
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 
   test("found by walking up, the way a tool run from a subdirectory needs", () => {
-    const dir = project({ "ramonda.css.ts": `export default { units: ["px"] };\n` });
+    const dir = project({ "ramonda.css.ts": `export default { units: { length: ["px"] } };\n` });
 
     expect(findConfig(join(dir, "src", "deep"))).toBe(join(dir, "ramonda.css.ts"));
   });
@@ -115,7 +115,7 @@ describe("the project's config", () => {
    */
   describe("how far up it looks", () => {
     test("stops at the repository root, and does not read what is above it", () => {
-      const outer = project({ "ramonda.css.ts": `export default { units: ["cm"] };\n` });
+      const outer = project({ "ramonda.css.ts": `export default { units: { length: ["cm"] } };\n` });
       const repo = join(outer, "repo");
       mkdirSync(join(repo, ".git"), { recursive: true });
       mkdirSync(join(repo, "src"), { recursive: true });
@@ -128,17 +128,17 @@ describe("the project's config", () => {
       const repo = join(outer, "repo");
       mkdirSync(join(repo, ".git"), { recursive: true });
       mkdirSync(join(repo, "packages", "web"), { recursive: true });
-      writeFileSync(join(repo, "ramonda.css.ts"), `export default { units: ["px"] };\n`);
+      writeFileSync(join(repo, "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
 
       expect(findConfig(join(repo, "packages", "web"))).toBe(join(repo, "ramonda.css.ts"));
     });
 
     test("and a package's own config still wins over the root's", () => {
-      const repo = project({ "ramonda.css.ts": `export default { units: ["px"] };\n` });
+      const repo = project({ "ramonda.css.ts": `export default { units: { length: ["px"] } };\n` });
       mkdirSync(join(repo, ".git"), { recursive: true });
       const inner = join(repo, "packages", "web");
       mkdirSync(inner, { recursive: true });
-      writeFileSync(join(inner, "ramonda.css.ts"), `export default { units: ["rem"] };\n`);
+      writeFileSync(join(inner, "ramonda.css.ts"), `export default { units: { length: ["rem"] } };\n`);
 
       expect(findConfig(inner)).toBe(join(inner, "ramonda.css.ts"));
     });
@@ -149,7 +149,7 @@ describe("the project's config", () => {
       mkdirSync(join(repo, ".git"), { recursive: true });
       const dep = join(repo, "node_modules", "some-package");
       mkdirSync(dep, { recursive: true });
-      writeFileSync(join(dep, "ramonda.css.ts"), `export default { units: ["cm"] };\n`);
+      writeFileSync(join(dep, "ramonda.css.ts"), `export default { units: { length: ["cm"] } };\n`);
 
       expect(findConfig(dep)).toBeUndefined();
     });
@@ -218,6 +218,85 @@ describe("the project's config", () => {
    * Nothing types this file — the documented example is a bare object literal — so a wrong value is
    * not exotic. `units: "px"` is the obvious thing to write when the list has one entry.
    */
+  /**
+   * A config that does not PARSE, which loaded as an empty one and said nothing.
+   *
+   * TypeScript's error recovery is the trap. `transpileModule` does not report a syntax error
+   * unless it is asked to, and it emits whatever it managed to build — measured,
+   *
+   *     export default { variables: {{{ };     →     exports.default = { variables: {} };
+   *
+   * so the config LOADED, valid and empty. Nothing threw, nothing was undefined, and every consumer
+   * that does not type-check `ramonda.css.ts` ran with no settings at all. Measured through a real
+   * Vite build, which exited 0 and emitted `.r-pl-2rem` and `.r-c-\#ff0000` — the unit and the
+   * hardcoded colour that very config forbids.
+   *
+   * `readConfig`'s own note names this exact failure and refuses it: *a tool that quietly ran with
+   * defaults because somebody's config had a typo would be the worst of both — the settings are not
+   * applied, and nothing says so.*
+   */
+  /**
+   * A refusal raised while the config RUNS — `kind()` checking a declaration it was handed.
+   *
+   * Those carry a careful sentence and no file, because nothing down there knows the path. Wrapping
+   * the whole thing gave the tag twice and a claim that is untrue:
+   *
+   *     [ramonda-css] …/ramonda.css.ts could not be read: [ramonda-css] `b` has an empty `range`…
+   *
+   * It read perfectly well; a value in it is wrong, which is a different thing to be told.
+   */
+  describe("a declaration the config itself refuses", () => {
+    const refused = (body: string) => {
+      const dir = project({ "ramonda.css.ts": body });
+      return () => readConfig(findConfig(dir), ts);
+    };
+
+    /**
+     * The tagged throw `kind()` raises, written out — this is about the WRAPPER that presents it.
+     * `cli.test.ts` runs the real `kind` through the real binary for the other half.
+     */
+    const declaring = (says: string) =>
+      `export default (() => { throw new Error(${JSON.stringify(`[ramonda-css] ${says}`)}); })();\n`;
+
+    test("says what is wrong ONCE, with the file and without the tag twice", () => {
+      let message = "";
+      try {
+        refused(declaring("`b` has an empty `range`, which permits no value at all."))();
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).toContain("ramonda.css.ts");
+      expect(message).toContain("empty `range`");
+      // The two faults the wrapper used to add: its own tag a second time, and an untrue sentence.
+      expect(message).not.toContain("[ramonda-css]");
+      expect(message).not.toContain("could not be read");
+    });
+
+    test("and a failure that is NOT ours still says it could not be read", () => {
+      expect(refused(`export default (() => { throw new Error("boom"); })();\n`)).toThrow(/could not be read: boom/);
+    });
+  });
+
+  describe("a config that does not parse", () => {
+    const refused = (body: string) => {
+      const dir = project({ "ramonda.css.ts": body });
+      return () => readConfig(findConfig(dir), ts);
+    };
+
+    test.each([
+      ["a brace that never opens an object", `export default { variables: {{{ };\n`],
+      ["a string that is never closed", `export default { outDir: "css-system };\n`],
+      ["a bracket left open", `export default { properties: { "z-index": { values: [1, 2 } };\n`],
+    ])("%s is refused, not loaded as an empty config", (_what, body) => {
+      expect(refused(body)).toThrow(/does not parse|TS\d/);
+    });
+
+    test("and the message says WHERE, because a parse error is a place", () => {
+      expect(refused(`export default {\n  variables: {{{ };\n`)).toThrow(/ramonda\.css\.ts/);
+    });
+  });
+
   describe("a key whose value is the wrong shape", () => {
     const refused = (body: string) => {
       const dir = project({ "ramonda.css.ts": `export default ${body};\n` });
@@ -226,24 +305,213 @@ describe("the project's config", () => {
 
     test.each([
       ["units as a bare string", `{ units: "px" }`, /units/],
-      ["units holding a number", `{ units: [1] }`, /units/],
       ["units as null", `{ units: null }`, /units/],
+      ["units holding a number", `{ units: { length: [1] } }`, /units\.length/],
+      ["a family that is not one", `{ units: { lenght: ["px"] } }`, /lenght/],
+      ["a family whose value is not a list", `{ units: { length: "px" } }`, /units\.length/],
       ["rules as null", `{ rules: null }`, /rules/],
       ["rules as an array", `{ rules: ["unknown-unit"] }`, /rules/],
       ["a rule set to a boolean", `{ rules: { "unknown-unit": false } }`, /unknown-unit/],
       ["a rule set to a word that is not a severity", `{ rules: { "unknown-unit": "quiet" } }`, /quiet/],
       ["variables as a bare string", `{ variables: "--brand" }`, /variables/],
-      ["variables holding a number", `{ variables: [1] }`, /variables/],
+      // The old spelling of this key, which is now `alsoSets` — the message says where the list goes
+      // rather than only that an object was wanted, because a project carrying the old form needs to
+      // be told the destination, not the shape.
+      ["variables as the list it used to be", `{ variables: ["--brand"] }`, /alsoSets/],
+      ["alsoSets as a bare string", `{ alsoSets: "--brand" }`, /alsoSets/],
+      ["alsoSets holding a number", `{ alsoSets: [1] }`, /alsoSets/],
       // A custom property begins with two dashes. `brand` is a property name, and a list of those
       // would silence a rule about names it was never given.
-      ["a variable with no dashes", `{ variables: ["brand"] }`, /two dashes/],
+      ["a name in alsoSets with no dashes", `{ alsoSets: ["brand"] }`, /two dashes/],
     ])("%s is refused, naming what is wrong", (_what, body, says) => {
       expect(refused(body)).toThrow(says);
+    });
+
+    /**
+     * The old flat spelling, refused rather than reinterpreted.
+     *
+     * `units: ["px", "rem"]` meant every unit in CSS and nothing else; keyed by family the same
+     * words mean lengths only. Reading the list as `{ length: [...] }` would be a project's rules
+     * quietly getting weaker on an upgrade — `200ms` and `45deg` stop being reported and nothing
+     * says so. A config that stops loading is a minute's work; a check that stops checking is found
+     * in production.
+     */
+    test("the old flat list is refused, and the message writes out the family form", () => {
+      const thrown = refused(`{ units: ["px", "rem"] }`);
+
+      expect(thrown).toThrow(/keyed by FAMILY/);
+      expect(thrown).toThrow(/units: \{ length: \["px","rem"\] \}/);
+      expect(thrown).toThrow(/200ms/);
     });
 
     /** A rule id that does not exist is a typo, and a typo that is ignored is invisible. */
     test("a misspelled rule id is refused, with the nearest real one", () => {
       expect(refused(`{ rules: { "unkown-unit": "off" } }`)).toThrow(/unknown-unit/);
+    });
+
+    test("and a misspelled unit family is too", () => {
+      expect(refused(`{ units: { lenght: ["px"] } }`)).toThrow(/Did you mean/);
+    });
+
+    /**
+     * The old top-level `variablesOnly`, refused with its replacement written out.
+     *
+     * It was a list of kinds at the top of the config — the one setting keyed by kind while every
+     * other was keyed by property. It is a selector inside `properties` now: same reach, one key
+     * fewer, and a property may exempt itself from it, which the list could not express.
+     */
+    test("the old top-level `variablesOnly` is refused, and the message writes the selector", () => {
+      const thrown = refused(`{ variablesOnly: ["color", "length"] }`);
+
+      expect(thrown).toThrow(/selector inside/);
+      expect(thrown).toThrow(/"<color>": \{ variablesOnly: true \}/);
+      expect(thrown).toThrow(/"<length>": \{ variablesOnly: true \}/);
+    });
+
+    /** A closed list for all 935 properties is not a thing anybody means, and it did nothing. */
+    test("a closed list on the sweep is refused, naming the two places it belongs", () => {
+      const thrown = refused(`{ properties: { "*": { values: ["red"] } } }`);
+
+      expect(thrown).toThrow(/cannot mean anything/);
+      expect(thrown).toThrow(/"z-index": \{ values/);
+      expect(thrown).toThrow(/"<time>": \{ values/);
+    });
+
+    /**
+     * Silencing a rule the project's OWN config turned on — refused, naming the real switch.
+     *
+     * Measured, and it is worse than it looks. Three settings reach both a rule and a type, and
+     * `rules: "off"` can only silence the rule:
+     *
+     *     "*": { arity: 1 }                   too-many-values OFF  ->  accepted
+     *     "<length>": { variablesOnly: true } literal-not-allowed OFF -> TS2322, still refused
+     *     "<length>": { units: ["px"] }       unit-not-allowed OFF ->  TS2322, still refused
+     *
+     * So an author who turns the rule off to ship is not unblocked: the error stays and the message
+     * gets WORSE, because ours named the project and `Narrowed<never, Token<…>>` names nothing. And
+     * `arity`, the one setting with no type behind it, silences completely — so the same gesture
+     * means two different things depending on which setting it lands on.
+     *
+     * `rules` is for a report the project did not ask for. Undoing what the project DID ask for is
+     * an edit to that setting, and the message says which.
+     */
+    test.each([
+      [
+        "`literal-not-allowed`, against `variablesOnly`",
+        `{ properties: { "<length>": { variablesOnly: true } }, rules: { "literal-not-allowed": "off" } }`,
+        /variablesOnly/,
+      ],
+      [
+        "`unit-not-allowed`, against a property's `units`",
+        `{ properties: { "<length>": { units: ["px"] } }, rules: { "unit-not-allowed": "off" } }`,
+        /units/,
+      ],
+      [
+        "`unit-not-allowed`, against the project-wide `units`",
+        `{ units: { length: ["px"] }, rules: { "unit-not-allowed": "off" } }`,
+        /units/,
+      ],
+      [
+        "`too-many-values`, against `arity`",
+        `{ properties: { "*": { arity: 1 } }, rules: { "too-many-values": "off" } }`,
+        /arity/,
+      ],
+    ])("%s is refused", (_what, body, says) => {
+      const thrown = refused(body);
+
+      expect(thrown).toThrow(says);
+      expect(thrown).toThrow(/turned on/);
+    });
+
+    test.each([
+      ["one nothing in this config turned on", `{ rules: { "literal-not-allowed": "off" } }`],
+      ["`too-many-values` where no `arity` is set", `{ rules: { "too-many-values": "off" } }`],
+      [
+        "a rule that reads no config at all",
+        `{ properties: { "<length>": { variablesOnly: true } }, rules: { "unknown-unit": "off" } }`,
+      ],
+      ["the setting on its own", `{ properties: { "<length>": { variablesOnly: true } } }`],
+      [
+        "the rule set to error, which changes nothing",
+        `{ properties: { "*": { arity: 1 } }, rules: { "too-many-values": "error" } }`,
+      ],
+    ])("%s is accepted", (_what, body) => {
+      expect(refused(body)).not.toThrow();
+    });
+
+    test.each([
+      ["a string", `{ properties: "padding" }`],
+      ["a list", `{ properties: ["padding"] }`],
+      ["null", `{ properties: null }`],
+    ])("`properties` as %s is refused, naming the shape it takes", (_what, body) => {
+      expect(refused(body)).toThrow(/takes a map keyed by property/);
+    });
+
+    test("a `properties` key wrapped in angle brackets that is not a kind is refused", () => {
+      expect(refused(`{ properties: { "<lenght>": { variablesOnly: true } } }`)).toThrow(/Did you mean `<length>`/);
+    });
+
+    /**
+     * INSIDE an entry, which the validation stopped at the key.
+     *
+     * The note above `validate` traced where an unchecked value lands and refused to leave it: a
+     * `TypeError` out of `getScriptSnapshot` takes down completion, hover and every squiggle in the
+     * whole project. That reasoning was applied to the top-level keys and not one level down, and
+     * measured, the same two keys land in the same place — `properties: { "<length>": { units: {
+     * length: ["px"] } } }` threw `units.map is not a function` out of codegen, with a stack naming
+     * neither the file nor the key.
+     *
+     * `units` is the sharp one, because the top-level key was CHANGED to be keyed by family and
+     * says so when a list arrives. Per property it is still a list — one property, one set of
+     * units, no family to disambiguate — so an author who learns the top-level lesson and applies
+     * it here got a crash for it.
+     */
+    test.each([
+      [
+        "units by family, which is the TOP-LEVEL shape",
+        `{ properties: { "<length>": { units: { length: ["px"] } } } }`,
+        /units/,
+      ],
+      ["units as a bare string", `{ properties: { "padding-left": { units: "px" } } }`, /units/],
+      ["units holding a number", `{ properties: { "padding-left": { units: [1] } } }`, /units/],
+      ["values as a bare string", `{ properties: { "z-index": { values: "1" } } }`, /values/],
+      ["values as an object", `{ properties: { "z-index": { values: { a: 1 } } } }`, /values/],
+      ["values holding something that is neither", `{ properties: { "z-index": { values: [1, true] } } }`, /values/],
+      ["shorthand as a word", `{ properties: { "padding": { shorthand: "no" } } }`, /shorthand/],
+      ["variablesOnly as a word", `{ properties: { "<color>": { variablesOnly: "yes" } } }`, /variablesOnly/],
+      ["arity as a string", `{ properties: { "padding": { arity: "2" } } }`, /arity/],
+      ["a setting that is not one", `{ properties: { "padding": { unknownKey: true } } }`, /unknownKey/],
+      ["an entry that is not an object", `{ properties: { "padding": true } }`, /padding/],
+    ])("inside an entry, %s is refused", (_what, body, says) => {
+      expect(refused(body)).toThrow(says);
+    });
+
+    /**
+     * A misspelled PROPERTY NAME, which was silent — the rule simply never applied.
+     *
+     * A misspelled KIND is caught, so the two halves of one key disagreed: `"<lenght>"` is refused
+     * and `"padding-lft"` is accepted and does nothing. That is the failure `readConfig`'s own note
+     * names, a tool quietly running with defaults because somebody's config had a typo.
+     */
+    test.each([
+      ["a near miss", `{ properties: { "padding-lft": { shorthand: false } } }`, /padding-left/],
+      ["a word that is not a property at all", `{ properties: { nonsense: { shorthand: false } } }`, /nonsense/],
+    ])("a `properties` key that is not a property is refused (%s)", (_what, body, says) => {
+      expect(refused(body)).toThrow(says);
+    });
+
+    test.each([
+      ["a kind selector", `{ properties: { "<color>": { variablesOnly: true } } }`],
+      [
+        "one beside a property exempting itself",
+        `{ properties: { "<length>": { variablesOnly: true }, "border-radius": { variablesOnly: false } } }`,
+      ],
+      [
+        "the sweep, a kind and a property at once",
+        `{ properties: { "*": { shorthand: false }, "<length>": { arity: 1 }, "z-index": { values: [1] } } }`,
+      ],
+    ])("%s is accepted", (_what, body) => {
+      expect(refused(body)).not.toThrow();
     });
 
     /**
@@ -260,9 +528,10 @@ describe("the project's config", () => {
     });
 
     test.each([
-      ["one unit", `{ units: ["px"] }`],
-      ["a variable this compiler cannot see", `{ variables: ["--brand"] }`],
-      ["several", `{ units: ["px", "rem", "%"] }`],
+      ["one unit", `{ units: { length: ["px"] } }`],
+      ["a name this compiler cannot see", `{ alsoSets: ["--brand"] }`],
+      ["several families", `{ units: { length: ["px", "rem"], time: ["ms"] } }`],
+      ["a family banned outright", `{ units: { flex: [] } }`],
       ["a rule silenced", `{ rules: { "unknown-unit": "off" } }`],
       ["a rule set to error, which is the default", `{ rules: { "unknown-unit": "error" } }`],
       ["an empty object", `{}`],
@@ -284,11 +553,11 @@ describe("what the config does to the rules", () => {
     checkBlock(readBlock(`@@(\n  ${declaration};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
 
   test("a unit the project does not allow", () => {
-    expect(of("padding: 1em", { units: ["px", "rem"] })).toEqual(["unit-not-allowed"]);
+    expect(of("padding: 1em", { units: { length: ["px", "rem"] } })).toEqual(["unit-not-allowed"]);
   });
 
   test("and one it does", () => {
-    expect(of("padding: 1rem", { units: ["px", "rem"] })).toEqual([]);
+    expect(of("padding: 1rem", { units: { length: ["px", "rem"] } })).toEqual([]);
   });
 
   test("with no `units` at all, every unit CSS has is fine", () => {
@@ -300,12 +569,12 @@ describe("what the config does to the rules", () => {
    * both on one declaration would be two faults where there is one.
    */
   test("a unit CSS does not have is left to the rule that names it", () => {
-    expect(of("padding: 10pxx", { units: ["px"] })).toEqual(["unknown-unit"]);
+    expect(of("padding: 10pxx", { units: { length: ["px"] } })).toEqual(["unknown-unit"]);
   });
 
   test("the message says what the project allows", () => {
     const [only] = checkBlock(readBlock(`@@(\n  padding: 1em;\n)`, 2, "C.tsx").block, {
-      config: { units: ["px", "rem"] },
+      config: { units: { length: ["px", "rem"] } },
     });
 
     expect(only.message).toContain("px, rem");
@@ -344,8 +613,11 @@ describe("which config governs a file", () => {
     const repo = mkdtempSync(join(tmpdir(), "ramonda-reader-"));
     mkdirSync(join(repo, ".git"), { recursive: true });
     for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
-    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
-    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["rem"] };\n`);
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
+    writeFileSync(
+      join(repo, "packages", "admin", "ramonda.css.ts"),
+      `export default { units: { length: ["rem"] } };\n`,
+    );
     return repo;
   };
 
@@ -364,8 +636,8 @@ describe("which config governs a file", () => {
     const read = configReader(ts);
 
     inside(join(repo, "packages", "web"), () => {
-      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: ["px"] });
-      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: ["rem"] });
+      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: { length: ["px"] } });
+      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: { length: ["rem"] } });
     });
   });
 
@@ -374,8 +646,8 @@ describe("which config governs a file", () => {
     const read = configReader(ts);
 
     inside(join(repo, "packages", "admin"), () => {
-      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: ["px"] });
-      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: ["rem"] });
+      expect(read(join(repo, "packages", "web", "Card.tsx"))).toEqual({ units: { length: ["px"] } });
+      expect(read(join(repo, "packages", "admin", "Card.tsx"))).toEqual({ units: { length: ["rem"] } });
     });
   });
 
@@ -396,10 +668,10 @@ describe("which config governs a file", () => {
     const file = join(repo, "packages", "web", "Card.tsx");
     const read = configReader(ts);
 
-    expect(read(file)).toEqual({ units: ["px"] });
-    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["ch"] };\n`);
+    expect(read(file)).toEqual({ units: { length: ["px"] } });
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["ch"] } };\n`);
 
-    expect(read(file)).toEqual({ units: ["ch"] });
+    expect(read(file)).toEqual({ units: { length: ["ch"] } });
   });
 
   test("and a config WRITTEN while it runs is found", () => {
@@ -409,9 +681,9 @@ describe("which config governs a file", () => {
     const read = configReader(ts);
 
     expect(read(file)).toEqual({});
-    writeFileSync(join(repo, "packages", "late", "ramonda.css.ts"), `export default { units: ["vh"] };\n`);
+    writeFileSync(join(repo, "packages", "late", "ramonda.css.ts"), `export default { units: { length: ["vh"] } };\n`);
 
-    expect(read(file)).toEqual({ units: ["vh"] });
+    expect(read(file)).toEqual({ units: { length: ["vh"] } });
   });
 
   /**
@@ -422,7 +694,10 @@ describe("which config governs a file", () => {
   test("one config, transpiled once however many files ask", () => {
     const repo = monorepo();
     const counting = join(repo, "packages", "web", "ramonda.css.ts");
-    writeFileSync(counting, `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: ["px"] };\n`);
+    writeFileSync(
+      counting,
+      `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: { length: ["px"] } };\n`,
+    );
     (globalThis as unknown as { runs: number }).runs = 0;
     const read = configReader(ts);
 
@@ -435,7 +710,7 @@ describe("which config governs a file", () => {
     const repo = monorepo();
     const counting = join(repo, "packages", "web", "ramonda.css.ts");
     const body = (unit: string) =>
-      `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: ["${unit}"] };\n`;
+      `(globalThis as unknown as { runs: number }).runs++;\nexport default { units: { length: ["${unit}"] } };\n`;
     writeFileSync(counting, body("px"));
     (globalThis as unknown as { runs: number }).runs = 0;
     const read = configReader(ts);
@@ -456,16 +731,16 @@ describe("which config governs a file", () => {
     const repo = monorepo();
     writeFileSync(
       join(repo, "packages", "web", "ramonda.css.ts"),
-      `export default (env: { production: boolean }) => ({ units: env.production ? ["px"] : ["px", "em"] });\n`,
+      `export default (env: { production: boolean }) => ({ units: { length: env.production ? ["px"] : ["px", "em"] } });\n`,
     );
     let production: boolean | undefined;
     const read = configReader(ts, () => environmentOf(production));
     const file = join(repo, "packages", "web", "Card.tsx");
 
     production = true;
-    expect(read(file)).toEqual({ units: ["px"] });
+    expect(read(file)).toEqual({ units: { length: ["px"] } });
     production = false;
-    expect(read(file)).toEqual({ units: ["px", "em"] });
+    expect(read(file)).toEqual({ units: { length: ["px", "em"] } });
   });
 
   test("a config that throws is reported, and reported again on the next file", () => {
@@ -473,8 +748,8 @@ describe("which config governs a file", () => {
     writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: "px" };\n`);
     const read = configReader(ts);
 
-    expect(() => read(join(repo, "packages", "web", "A.tsx"))).toThrow(/It takes a list/);
-    expect(() => read(join(repo, "packages", "web", "B.tsx"))).toThrow(/It takes a list/);
+    expect(() => read(join(repo, "packages", "web", "A.tsx"))).toThrow(/It takes families/);
+    expect(() => read(join(repo, "packages", "web", "B.tsx"))).toThrow(/It takes families/);
   });
 });
 
@@ -499,16 +774,18 @@ describe("what a config is allowed to use", () => {
    */
   test("a default import of a CommonJS module", () => {
     const dir = project(
-      `import path from "node:path";\nexport default { units: [path.sep === "/" ? "px" : "rem"] };\n`,
+      `import path from "node:path";\nexport default { units: { length: [path.sep === "/" ? "px" : "rem"] } };\n`,
     );
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 
   test("and a named import, which always worked", () => {
-    const dir = project(`import { sep } from "node:path";\nexport default { units: [sep === "/" ? "px" : "rem"] };\n`);
+    const dir = project(
+      `import { sep } from "node:path";\nexport default { units: { length: [sep === "/" ? "px" : "rem"] } };\n`,
+    );
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 
   /**
@@ -518,10 +795,10 @@ describe("what a config is allowed to use", () => {
    */
   test("`__dirname`, which is the config's own directory", () => {
     const dir = project(
-      `export default { units: [__dirname.split("/").pop()!.startsWith("ramonda") ? "px" : "rem"] };\n`,
+      `export default { units: { length: [__dirname.split("/").pop()!.startsWith("ramonda") ? "px" : "rem"] } };\n`,
     );
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 
   /**
@@ -530,7 +807,7 @@ describe("what a config is allowed to use", () => {
    *
    * A Promise is an object, so the shape check let it through, `Object.keys` of it is empty, every
    * validation passed over nothing, and what came back was `{}`. Measured: `export default async ()
-   * => ({ units: ["px"] })` gave the empty config, so the units were not enforced and nothing said
+   * => ({ units: { length: ["px"] } })` gave the empty config, so the units were not enforced and nothing said
    * so — the exact failure this file exists to refuse, since "a tool that quietly ran with defaults
    * because somebody's config had a typo would be the worst of both".
    *
@@ -539,9 +816,9 @@ describe("what a config is allowed to use", () => {
    * is refused, with the reason.
    */
   test.each([
-    ["an async function", `export default async () => ({ units: ["px"] });\n`],
-    ["a function returning a promise", `export default () => Promise.resolve({ units: ["px"] });\n`],
-    ["a promise directly", `export default Promise.resolve({ units: ["px"] });\n`],
+    ["an async function", `export default async () => ({ units: { length: ["px"] } });\n`],
+    ["a function returning a promise", `export default () => Promise.resolve({ units: { length: ["px"] } });\n`],
+    ["a promise directly", `export default Promise.resolve({ units: { length: ["px"] } });\n`],
   ])("%s is refused rather than silently ignored", (_what, body) => {
     const dir = project(body);
 
@@ -549,8 +826,10 @@ describe("what a config is allowed to use", () => {
   });
 
   test("and `__filename`, which is the config itself", () => {
-    const dir = project(`export default { units: [__filename.endsWith("ramonda.css.ts") ? "px" : "rem"] };\n`);
+    const dir = project(
+      `export default { units: { length: [__filename.endsWith("ramonda.css.ts") ? "px" : "rem"] } };\n`,
+    );
 
-    expect(readConfig(findConfig(dir), ts)).toEqual({ units: ["px"] });
+    expect(readConfig(findConfig(dir), ts)).toEqual({ units: { length: ["px"] } });
   });
 });

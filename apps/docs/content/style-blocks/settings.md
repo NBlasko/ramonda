@@ -2,7 +2,7 @@
 title: Project settings
 description: ramonda.css.ts, the rules your project makes stricter than CSS is, and what the class names say.
 section: Style blocks
-order: 112
+order: 113
 ---
 
 # Project settings
@@ -23,23 +23,21 @@ export default defineConfig(({ mode }) => ({
 ```
 
 **Rules your project agrees on** belong in a `ramonda.css.ts` beside your `tsconfig.json` — because
-`ramonda-css lint`, `ramonda-css format` and your editor all have to read the same answer, and none
-of them reads a bundler's config:
+`ramonda-css check`, `ramonda-css format`, the build and your editor all have to read the same
+answer, and none of them reads a bundler's config:
 
 ```ts alternatives
 export default {
-  // Every unit CSS has is fine unless you say otherwise.
-  units: ["px", "rem", "%"],
-  rules: { "unknown-unit": "off" },
+  units: { length: ["px", "rem"] },
 };
 ```
 
 `1em` is then reported — not because CSS minds, but because your project does:
 
-> `em` is a CSS unit this project does not use. `ramonda.css.ts` allows %, px, rem.
+> `em` is a length this project does not use. `ramonda.css.ts` allows px, rem.
 
-`rules` takes a rule's id from [the table](/style-blocks/checking#every-rule), and a typo in one is
-caught: writing `unknown-unti` tells you so and names the one you meant.
+That file is [its own page](/style-blocks/config): what a project can narrow, and how the three
+selectors decide which setting reaches which property.
 
 ## The names a block emits
 
@@ -102,5 +100,7 @@ you would grep for.
 
 ## Next
 
-- **[What is checked](/style-blocks/checking)** — every rule you can switch off here.
+- **[The config file](/style-blocks/config)** — everything `ramonda.css.ts` holds, and what a
+  project can decide not to allow.
+- **[What is checked](/style-blocks/checking)** — every rule, and how to switch one off.
 - **[Tooling](/style-blocks/tooling)** — formatters, linters, and other JSX libraries.

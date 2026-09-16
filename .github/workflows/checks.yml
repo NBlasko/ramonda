@@ -54,6 +54,12 @@ jobs:
       # first, since a check nobody has seen fail proves nothing.
       - name: Check workflows
         run: SELFTEST=1 node scripts/check-workflows.mjs && node scripts/check-workflows.mjs
+
+      # The two `test` jobs must together run every test task and neither twice. Here
+      # rather than in a test job, because it must fail on the tree that broke it rather
+      # than beside the very tasks it is checking.
+      - name: Check the test jobs partition the suite
+        run: node scripts/check-test-jobs.mjs
       # Every pending changeset is one the release can process AND one it can consume. This ran only
       # in `pnpm check` until now, which is how two changesets for an ignored package reached `main`
       # and left the release unable to ever take its publish branch.
@@ -174,6 +180,45 @@ jobs:
             apps/playground-core/playwright-report/
           retention-days: 7
 
+  # The test suite, split across two runners.
+  #
+  # Measured 2026-09-14: 2438s of CPU work, and as one job it finishes in ~600s — which
+  # is 4.06x parallelism on a 4-core runner, so it is already saturating the machine. The
+  # only thing left that shortens it is more cores, and a second job is how you get them.
+  #
+  # `@ramonda/css` alone is 836s of that 2438s, so it is the half. The other 18 tasks are
+  # the rest. `check-test-jobs.mjs` asserts the two filters partition the set, because the
+  # last split in this repository dropped three tasks without a word — see `Coverage`
+  # below, and the script's own header.
+  #
+  # Both halves are still `turbo run test`, which keeps the gate exactly what it was: each
+  # package's own `test` script, instrumented, exiting non-zero on a failure.
+  test-css:
+    name: Test (css)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      - name: Test with coverage
+        run: pnpm exec turbo run test --filter=@ramonda/css
+
+      - name: Merge into one report
+        run: SELFTEST=1 node scripts/merge-lcov.mjs && node scripts/merge-lcov.mjs
+
+      # `parallel: true` tells Coveralls this is one of several uploads for one build; the
+      # `coverage` job below closes it. Without the pair, whichever half uploaded last
+      # would replace the other's numbers rather than adding to them.
+      - name: Upload to Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          file: coverage/lcov.info
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          flag-name: css
+          parallel: true
+          allow-empty: true
+        continue-on-error: true
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -193,13 +238,13 @@ jobs:
       # silently NOT RUN — 21 test tasks against 18. A second name is a name that can be
       # forgotten; there is now only one.
       #
+      # The filter is the ONLY thing that differs from `test-css`, and the two are checked
+      # against each other rather than trusted.
+      #
       # Coverage is still not a THRESHOLD gate: nothing fails on a percentage. A failing
       # test fails; a lower number is reported and left to a human.
-      #
-      # No filters — every package that has a `test` script runs it, and turbo skips the
-      # ones that do not.
       - name: Test with coverage
-        run: pnpm exec turbo run test
+        run: pnpm exec turbo run test --filter=!@ramonda/css
 
       # Six packages each write paths relative to themselves, so six `src/index.ts`
       # records would collide into one file in the report. This rewrites them to be
@@ -220,9 +265,28 @@ jobs:
           # A fork's pull request gets a read-only token, so the upload would 403 and
           # fail a check the contributor cannot fix. The numbers are still produced
           # and printed by the steps above.
+          flag-name: rest
+          parallel: true
           allow-empty: true
         # Reporting must never fail the gate: the tests above already passed by the
         # time this runs, and a Coveralls outage is not a fact about this code.
+        continue-on-error: true
+
+  # Tells Coveralls both halves have arrived, so it adds them into one number instead of
+  # showing whichever landed last. It reports only — `if: always()` so a red test job
+  # still closes the build rather than leaving it open, and it is not a gate.
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: [test, test-css]
+    if: always()
+    steps:
+      - name: Tell Coveralls the build is complete
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel-finished: true
+          carryforward: css,rest
         continue-on-error: true
 
   build:

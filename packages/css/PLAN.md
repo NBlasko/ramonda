@@ -703,7 +703,7 @@ on the tsx grammar alone, every token of a block came back with the theme's INVA
 did every line BELOW it, to the end of the file. A block on line 243 made `const after = 1;` on line
 259 look broken.
 
-**Two injections, in `packages/css/vscode/grammar/`.** One is aimed at a JSX tag and scopes
+**Two injections, in `tools/vscode-css/grammar/`.** One is aimed at a JSX tag and scopes
 `name=@@( … )` as embedded CSS; the other is aimed at the CSS a block scopes, and gives `{ … }` back
 to TypeScript. **The hole has to be a SEPARATE injection**, because `{` in ordinary JSX is
 `style={…}` — a pattern in the tag-level grammar would colour every inline style object as CSS.
@@ -724,7 +724,7 @@ same colour inside a block as it is in a `css` fence. Verified by unwiring it �
 fail. A hole is not among them: it comes out the theme's plain text colour either way, so its scope
 is asserted in this package instead, where scopes are visible.
 
-**The extension is `packages/css/vscode/`**, linked into an editor by `node vscode/install.mjs`
+**The extension is `tools/vscode-css/`**, linked into an editor by `node vscode/install.mjs`
 rather than copied, so the grammars the tests read are the grammars the editor loads. Its manifest is
 gated too — a `scopeName` is written twice, once in the grammar and once in the contribution, and a
 typo in either installs cleanly, activates cleanly and colours nothing.
@@ -1054,7 +1054,7 @@ depth, and what is asserted is what the RUNTIME does with a shape, so the shape 
 
 The syntax, the three spellings, the build plugins, the language-service plugin, the extension, the
 Prettier plugin, the wrappers, the `useSyntaxServer` setting and the colour limits were spread across
-`packages/css/README.md`, `packages/css/vscode/README.md`, `DESIGN.md`, this file and a docs page that
+`packages/css/README.md`, `tools/vscode-css/README.md`, `DESIGN.md`, this file and a docs page that
 covered only the syntax. Nobody setting up an editor would have found four of those.
 
 `apps/docs/content/style-blocks.md` carries all of it now, and the two READMEs point at it rather than
@@ -1897,6 +1897,51 @@ question, asked mechanically, found reviews 20, 21 and 24 on its own.
   and half the people who install this are on one. `toolIn` and `vscode/locate.js` look for the
   `.cmd` spelling now, but whether `execFileSync` then RUNS a `.cmd` cleanly is a question this
   machine cannot answer. One line of CI turns the reasoning into measurement.
+- **What can actually be forbidden, measured 2026-09-14.** The list the user asked for, and the cost
+  of having it.
+
+  **Today 143 of 766 properties have a closed union; 623 accept `string | number`.** So `gap: 12`,
+  `letter-spacing: 12` and `color: 12px` all compile, and a browser drops each.
+
+  Classified by what each grammar states, after splitting it on top-level `|`:
+
+  | | |
+  |---|---|
+  | keywords + exactly ONE primitive type | **161**, of which **100 are standard and non-vendor** |
+  | genuinely complex grammar — `background`, `font`, `grid-template` | 279 |
+  | no grammar in `mdn-data` at all — the vendor names the engines gave us | 180 |
+  | keywords only, no type | 3 |
+
+  The 100 by primitive, with the ones people write every day first:
+
+  | | |
+  |---|---|
+  | `<length>` 16 | `letter-spacing`, `outline-offset`, `border-spacing`, the `scroll-margin` family |
+  | `<color>` 14 | `background-color`, `border-color`, `accent-color`, each side's own |
+  | `<length-percentage>` 13 | **`row-gap`, `column-gap`** — this is the `gap: 12` case |
+  | `<line-width>` 6 | `border-*-width`, `outline-width` |
+  | `<integer>` 4 | `z-index`, `column-count`, `line-clamp` |
+  | `<number>` 3 | `flex-grow`, `flex-shrink` |
+  | `<corner-shape-value>` 17 | new CSS almost nobody writes — the biggest bucket and the least useful |
+
+  **The cost is four instantiations, and it is FLAT** — `prototype-strict-types.mjs`, 100 properties
+  declared, measured as a block sets more of them:
+
+  ```
+                 1      12      40      80
+  CssValue    4774    4829    4969    5169
+  strict      4778    4833    4973    5173      +4 at every width
+  ```
+
+  So the user's constraint — *"pisi ih performantno … typescript nekada moze biti bottle neck"* — is
+  answered: this shape is not one. The growth is from setting more properties and is identical for
+  the loose map. `CssDimension<Unit>` already exists, generated from the unit table with its own
+  tests; it types HOLES today and nothing in the property map.
+
+  **`<integer>` cannot be a type and has to stay a rule.** Measured: neither `number` nor
+  `` `${number}` `` refuses `1.5`, so `z-index: 1.5` — which a browser drops — needs a sentence
+  rather than a signature. That splits the list across the two mechanisms this package already has.
+
 - **Config-driven strictness through codegen**, which is the user's idea and the one thing that would
   put this ahead of StyleX rather than level with it. The measurements are in the TODO: every
   constraint works as a generated TYPE with instantiations FLAT, the exception being a message inside

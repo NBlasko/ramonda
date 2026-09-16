@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import ts from "typescript";
 import { checkProject } from "./check";
-import { ConfigError } from "./config";
+import { NARROW, explain } from "./codegen";
+import { PRIMITIVE } from "./compiler/keywords.generated";
+import { nearest } from "./compiler/nearest";
+import { writeGenerated } from "./generate";
+import { ConfigError, environmentOf, findConfig, readConfig } from "./config";
 import { filesUnder, formatFile, formatText, lintFile, toolIn } from "./tooling";
 import { ToolFailed, biomeFormatter, oxlintLinter } from "./tools";
 
@@ -38,6 +43,9 @@ const USAGE = `ramonda-css — the tools for a project whose source TypeScript c
   ramonda-css [tsconfig.json]      type-check the project, mapping every diagnostic home
   ramonda-css format <paths…>      format through the project's own biome (--check to report)
   ramonda-css lint <paths…>        lint through the project's own oxlint
+  ramonda-css codegen              write the variables this project declares, and their types
+                                   (--check reports a stale css-system instead of writing)
+  ramonda-css explain <property>   what your config does to one property, and which line decided it
 
 The check takes a PROJECT — a tsconfig, or the directory holding one — because a program is what
 is type-checked. \`format\` and \`lint\` take paths, because a file is what they rewrite and read.`;
@@ -87,6 +95,14 @@ if (argv[0] === "format" || argv[0] === "lint") {
   said(() => runTool(argv[0] as "format" | "lint", argv.slice(1)));
 }
 
+if (argv[0] === "codegen") {
+  said(() => runCodegen(argv.includes("--check")));
+}
+
+if (argv[0] === "explain") {
+  said(() => runExplain(argv[1]));
+}
+
 /**
  * The project to check — a tsconfig, or the directory holding one, which is what `tsc -p` takes too.
  *
@@ -95,6 +111,20 @@ if (argv[0] === "format" || argv[0] === "lint") {
  * JSON reader, which answered `'{' expected.` at line 1 column 1 of the author's own component — a
  * message that says the source is broken when the source is fine.
  */
+/**
+ * Codegen runs BEFORE the check, always, and that is not a convenience.
+ *
+ * The check reads the project's own property map when one is on disk and the shipped map when it is
+ * not — so a generated module that is missing or stale means a weaker check with nothing said. A
+ * fresh clone has none (they are not committed: a config and its output drifting apart in review is
+ * the one thing generated output must never do), and a config edited since the last build has an
+ * old one. Both would have passed while checking against something the project no longer says.
+ *
+ * It is cheap — it writes only when the content differs — and it means `ramonda-css tsconfig.json`
+ * is one command rather than two that must be run in the right order.
+ */
+said(() => writeGenerated(process.cwd(), ts));
+
 const given = argv.find((argument) => !argument.startsWith("-")) ?? "tsconfig.json";
 const tsconfig = statSync(given, { throwIfNoEntry: false })?.isDirectory() ? join(given, "tsconfig.json") : given;
 
@@ -301,4 +331,128 @@ function runTool(which: "format" | "lint", args: readonly string[]): never {
     console.error("");
   }
   process.exit(1);
+}
+
+/**
+ * `ramonda-css codegen`
+ *
+ * Writes the stylesheet that sets this project's declared variables, and the module that reaches
+ * them. Both bundler plugins run it on their own, so this is for the builds that use neither, for
+ * CI, and for a fresh clone where the generated pair is not committed.
+ *
+ * **A project with no config is not a failure.** Blocks work perfectly well without declaring a
+ * variable, and exiting non-zero would break a build for a step it never asked for. It says so and
+ * stops.
+ */
+function runCodegen(only: boolean): never {
+  const result = writeGenerated(process.cwd(), ts, { write: !only });
+
+  if (result.config === undefined) {
+    console.log(`${TAG} no \`ramonda.css.ts\` in this project, so there are no variables to write.`);
+    process.exit(0);
+  }
+
+  if (result.declared === 0) {
+    console.log(`${TAG} ${where(result.config)} declares no variables, so nothing was written.`);
+    process.exit(0);
+  }
+
+  const changed = result.files.filter((one) => one.changed);
+
+  /**
+   * `--check` writes NOTHING and exits non-zero when the pair is stale.
+   *
+   * The generated files are committed, so something has to say when they stop matching the config
+   * beside them — and the repository already answers that question this way for
+   * `keywords.generated.ts`. The gate that asked for this had been re-deriving it instead: it read
+   * both files, RAN codegen over the author's tree, and compared — so a red run left the working
+   * copy modified, and it carried its own copy of the `outDir` regex to find the folder at all.
+   *
+   * Asking codegen is the same answer with none of that. It knows what it would write and whether
+   * that differs, because `put` compares before writing for an unrelated reason.
+   */
+  if (only) {
+    if (changed.length === 0) {
+      console.log(`${TAG} ${where(result.config)} and its generated files agree`);
+      process.exit(0);
+    }
+
+    console.error(
+      `\n${TAG} ${changed.length} generated file(s) no longer match ${where(result.config)}:\n\n` +
+        `${changed.map((one) => `  - ${where(one.path)}`).join("\n")}\n\n` +
+        "        Run `ramonda-css codegen` here and commit the result. Nothing was written.\n",
+    );
+    process.exit(1);
+  }
+
+  const said = changed.length === 0 ? "already up to date" : changed.map((one) => where(one.path)).join(", ");
+
+  console.log(
+    `${TAG} ${result.declared} variable${result.declared === 1 ? "" : "s"} from ${where(result.config)} — ${said}`,
+  );
+  process.exit(0);
+}
+
+/**
+ * What this project's config does to ONE property, and which selector decided each part.
+ *
+ * ```
+ * $ ramonda-css explain border-radius
+ *
+ *   border-radius        a length or a percentage
+ *
+ *     shorthand      false        "*"
+ *     units          px, rem      "<length>"
+ *     variablesOnly  false        "border-radius"   overriding "<length>"
+ * ```
+ *
+ * **Asked for because the config grew a third selector.** `properties` is keyed by the sweep, by a
+ * kind, and by a name, and each binds more tightly than the one before — so knowing what applies to
+ * one property means reading three entries and holding CSS's own classification in your head. The
+ * user's words: *"sada imam samo jos jedno pitanje jer smo toliko ukomplikovali da mi je tesko da
+ * pratim."*
+ *
+ * It reads {@link explain}, which walks the same selectors as `ruleFor` in the same order — see its
+ * note for why an explanation that agreed by accident would be worse than none.
+ */
+function runExplain(property: string | undefined): never {
+  if (property === undefined || property.startsWith("--") || property === "-h") {
+    console.error(`\n${TAG} \`explain\` takes a property — \`ramonda-css explain padding-left\`.\n`);
+    process.exit(1);
+  }
+
+  const path = findConfig(process.cwd());
+  const config = readConfig(path, ts, environmentOf());
+  const said = explain(config.properties, property);
+
+  if (!said.known) {
+    const meant = nearest(property, Object.keys(PRIMITIVE));
+    console.error(
+      `\n${TAG} CSS has no \`${property}\`.` + (meant === undefined ? "" : ` Did you mean \`${meant}\`?`) + "\n",
+    );
+    process.exit(1);
+  }
+
+  const lines: string[] = [
+    "",
+    `  ${property}${said.kind === undefined ? "" : `   ${NARROW[said.kind]?.said ?? said.kind}`}`,
+    "",
+  ];
+
+  if (path === undefined) {
+    lines.push("  no `ramonda.css.ts` in this project, so nothing is narrowed.", "");
+  } else if (said.settings.length === 0) {
+    lines.push(`  ${where(path)} says nothing about it, so it takes whatever CSS allows.`, "");
+  } else {
+    const width = Math.max(...said.settings.map((one) => one.name.length));
+    for (const one of said.settings) {
+      const value = Array.isArray(one.value) ? one.value.join(", ") : String(one.value);
+      const overriding = one.overriding === undefined ? "" : `   overriding ${JSON.stringify(one.overriding)}`;
+      lines.push(`    ${one.name.padEnd(width)}  ${value.padEnd(12)} ${JSON.stringify(one.from)}${overriding}`);
+    }
+    lines.push("", `  from ${where(path)}`, "");
+  }
+
+  console.log(lines.join("\n"));
+  process.exit(0);
 }

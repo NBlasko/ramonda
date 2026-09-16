@@ -6,7 +6,7 @@
 
 From the repository root:
 
-1. **Bump `version`** in `packages/css/vscode/package.json`.
+1. **Bump `version`** in `tools/vscode-css/package.json`.
 
    Nothing bumps it for you. The extension is deliberately outside `changeset`, because its version
    and the npm packages' versions answer different questions — an extension is released when its
@@ -26,7 +26,7 @@ From the repository root:
 
 3. **`pnpm extension:package`**
 
-   Writes `packages/css/vscode/ramonda-css-<version>.vsix` — about 41 KB, twelve files — and deletes
+   Writes `tools/vscode-css/ramonda-css-<version>.vsix` — about 41 KB, twelve files — and deletes
    any older bundle beside it, because a stale `.vsix` is the easiest wrong file to upload. It is
    gitignored (`*.vsix`); nothing about it is ever committed.
 
@@ -66,7 +66,7 @@ shipped: <https://marketplace.visualstudio.com/items?itemName=ramonda.css>, unde
 
 Two things no test can do, because they are about the MANIFEST rather than the code:
 
-- Install the `.vsix` into a clean editor — `code --install-extension packages/css/vscode/ramonda-css-<version>.vsix`
+- Install the `.vsix` into a clean editor — `code --install-extension tools/vscode-css/ramonda-css-<version>.vsix`
   — and open a file with a block. A wrong `injectTo` is invisible to every test and fatal in use.
 - Read `README.md` as the marketplace renders it. It is the extension's whole front page.
 
@@ -99,7 +99,7 @@ Switch to the subscription's directory, sign in again, then back to the signup.
   which is generated from `@ramonda/theme`:
 
       qlmanage -t -s 1024 -o <tmp> apps/docs/public/apple-icon.svg
-      sips -z 512 512 <tmp>/apple-icon.svg.png --out packages/css/vscode/icon.png
+      sips -z 512 512 <tmp>/apple-icon.svg.png --out tools/vscode-css/icon.png
 
   512×512, and from the VECTOR. 128×128 is the marketplace minimum, not the size it displays: the
   item page draws the icon far larger than a list row does, and the first version of this file was a
@@ -118,7 +118,7 @@ Switch to the subscription's directory, sign in again, then back to the signup.
 
 ## Why the scripts live where they do
 
-`packages/css/vscode` is deliberately **not** a workspace package — it is installed by linking and
+`tools/vscode-css` is deliberately **not** a workspace package — it is installed by linking and
 nothing in it goes to npm — so `pnpm --filter` matches no project and says so. `pnpm
 extension:package` from the root is the route; `pnpm run package` inside the folder runs the same
 script. And `pnpm publish` is a built-in command, which is why the other one is called

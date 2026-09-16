@@ -20,7 +20,7 @@ beforeAll(builtFromThisSource);
  */
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BIN = join(PACKAGE, "bin.mjs");
-const { commandFor } = createRequire(join(PACKAGE, "package.json"))("./vscode/locate.js") as {
+const { commandFor } = createRequire(join(PACKAGE, "package.json"))("../../tools/vscode-css/locate.js") as {
   commandFor: (file: string) => string | undefined;
 };
 

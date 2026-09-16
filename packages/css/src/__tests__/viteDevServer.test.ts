@@ -1,6 +1,19 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** The repository, whose `node_modules` a temp project resolves the package through. */
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 import { createServer, type ViteDevServer } from "vite";
 import { afterEach, expect, test } from "vitest";
 import { ramondaCss } from "../vite";
@@ -28,7 +41,7 @@ afterEach(async () => {
 const named = (code: string) => [...code.matchAll(/"(r-[\w-]+)"/g)].map((each) => each[1]);
 const defined = (code: string) => [...code.matchAll(/\.(r-[\w-]+)/g)].map((each) => each[1]);
 
-async function serve(source: string) {
+async function serve(source: string, config?: string, alongside?: string) {
   /**
    * `realpathSync`, and it had to be measured: on macOS a temporary directory is `/var/…`, which is
    * a symlink to `/private/var/…`. Vite resolves the id through the real path and then checks it
@@ -37,11 +50,23 @@ async function serve(source: string) {
    */
   const root = realpathSync(mkdtempSync(join(tmpdir(), "ramonda-css-hmr-")));
   roots.push(root);
+  /**
+   * A config's `import { kind } from "@ramonda/css/config"` is RUN, so it has to resolve.
+   *
+   * It used to resolve through `NODE_PATH`, which pnpm points at its hoisted `.pnpm/node_modules` —
+   * an artefact of one machine's install history that a clean checkout does not have. The
+   * REPOSITORY's, not the package's: a package does not contain itself.
+   */
+  symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
   mkdirSync(join(root, "src"), { recursive: true });
   const runtime = join(root, "runtime.js");
   writeFileSync(runtime, "export const block = (...a) => a;\nexport const merge = (...a) => a;\n");
   const file = join(root, "src", "main.ts");
   writeFileSync(file, source);
+  const configPath = join(root, "ramonda.css.ts");
+  if (config !== undefined) writeFileSync(configPath, config);
+  const second = join(root, "src", "second.ts");
+  if (alongside !== undefined) writeFileSync(second, alongside);
 
   const server = await createServer({
     root,
@@ -108,7 +133,31 @@ async function serve(source: string) {
     return { css: defined(css?.code ?? ""), js: named(js?.code ?? "") };
   }
 
-  return { save, firstLoad, fetchBoth, server };
+  /**
+   * A save of `ramonda.css.ts`, through the WATCHER — so the server's own plugin instance handles
+   * it, which is the whole point.
+   *
+   * Calling `ramondaCss(…).handleHotUpdate` directly was the first version and it measured nothing:
+   * a fresh plugin has an empty memo, so it regenerated the stylesheet (which is filesystem state)
+   * and invalidated no module (which is instance state). The test passed the half it could not have
+   * failed and failed the half that works.
+   */
+  async function saveConfig(next: string) {
+    writeFileSync(configPath, next);
+    server.watcher.emit("change", configPath);
+    // The config path is not in the module graph, so no payload is sent and there is nothing to
+    // wait for by counting one. The hook is awaited by the server before it returns from the event.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  /** What `css-system/variables.css` currently says one variable is. */
+  const variable = () => {
+    const sheet = join(root, "css-system", "variables.css");
+    if (!existsSync(sheet)) return "(no file)";
+    return /--space-gutter:\s*([^;]+)/.exec(readFileSync(sheet, "utf8"))?.[1] ?? "(not in it)";
+  };
+
+  return { save, saveConfig, variable, firstLoad, fetchBoth, server, second };
 }
 
 const withDisplay = (display: string) =>
@@ -149,6 +198,152 @@ test("a save that cannot compile is not reported by the watcher, and is reported
 
   // The transform is, at the author's own line.
   await expect(server.transformRequest("/src/main.ts")).rejects.toThrow();
+});
+
+/**
+ * SAVING `ramonda.css.ts` while the server is running.
+ *
+ * The config is the file the playground's own copy calls *here to be CHANGED* — a variable's value,
+ * a unit list, a property switched off. Measured, saving it did NOTHING: `recompile` takes only
+ * files that hold a block, and a config holds none, so it returned at the first line.
+ *
+ * Two halves, and the second is the sharp one:
+ *
+ * - every already-compiled file keeps the rules the OLD config gave it, so a narrowed `units` or a
+ *   newly forbidden property is not enforced until each file is touched by hand;
+ * - `css-system/variables.css` is written by codegen at `buildStart` and never again, so a design
+ *   token changed from `16px` to `40px` still served `16px`. That file is a plain stylesheet the
+ *   project imports once — nothing else was ever going to regenerate it.
+ *
+ * Both are invisible: the page is simply wrong, and a restart is the only thing that fixes it.
+ */
+test("saving the config regenerates the variables stylesheet", async () => {
+  const gutter = (value: string) =>
+    `import { kind } from "@ramonda/css/config";\n` +
+    `export default { variables: { space: kind("length", { gutter: "${value}" }) } };\n`;
+
+  const { saveConfig, firstLoad, variable } = await serve(withDisplay("flex"), gutter("16px"));
+  await firstLoad();
+  expect(variable()).toBe("16px");
+
+  await saveConfig(gutter("40px"));
+  expect(variable()).toBe("40px");
+});
+
+test("and every file already compiled is checked against the new config", async () => {
+  const units = (unit: string) => `export default { units: { length: ["${unit}"] } };\n`;
+  const block = `const a = @@( padding: 2rem; );\nexport default a;\nif (import.meta.hot) import.meta.hot.accept();\n`;
+
+  const { saveConfig, firstLoad, server } = await serve(block, units("rem"));
+  // It compiles under the config it was written for, which is the control.
+  expect((await firstLoad()).js).toEqual(["r-p-2rem"]);
+
+  await saveConfig(units("px"));
+
+  // `2rem` is not permitted any more, and the author is told at their own line rather than on a
+  // page that quietly kept the old rule.
+  await expect(server.transformRequest("/src/main.ts")).rejects.toThrow(/unit-not-allowed/);
+});
+
+test("and a config that is saved with a fault in it does not take the server down", async () => {
+  const { saveConfig, firstLoad } = await serve(withDisplay("flex"), `export default { units: { length: ["px"] } };\n`);
+  await firstLoad();
+
+  // Half-typed, which is what a config looks like for most of the time it is being edited.
+  await expect(saveConfig(`export default { units: {{{ };\n`)).resolves.toBeUndefined();
+});
+
+/**
+ * TWO files, which every test above is not — each of them saves one file and asks about it.
+ *
+ * A shared atom is where review passes 10 and 11 both found a fault: two files naming
+ * `display: flex` mean ONE rule, and what happens to it when one of them stops naming it is not a
+ * question a single-file test can ask. It is right, and these are here so it stays right.
+ */
+test("a file keeps a rule another file has stopped naming", async () => {
+  const { server, save, second } = await serve(
+    `const a = @@( display: flex; color: red; );\nexport default a;\n`,
+    undefined,
+    `const b = @@( display: flex; color: blue; );\nexport default b;\n`,
+  );
+
+  /**
+   * The JS FIRST, then its stylesheet — and that order is not a convenience.
+   *
+   * The transform appends `import "<absolute path>?ramonda-css.css"`, so a client learns the
+   * stylesheet's URL only by reading the JavaScript. Asking for the URL before the JS has ever been
+   * transformed hits `load` with an id Vite has not resolved to a path, and the sheet has nothing
+   * under that key — which measured as an empty stylesheet and looked exactly like a bug. It is a
+   * request a browser cannot make.
+   */
+  const ask = async (name: string) => {
+    await server.transformRequest(`/src/${name}`);
+    return defined((await server.transformRequest(`/src/${name}?ramonda-css.css`))?.code ?? "");
+  };
+
+  expect(await ask("main.ts")).toEqual(["r-disp-flex", "r-c-red"]);
+  expect(await ask("second.ts")).toEqual(["r-disp-flex", "r-c-blue"]);
+
+  // The first file stops using the shared atom. The second still needs it.
+  await save(`const a = @@( display: grid; color: red; );\nexport default a;\n`);
+  expect(await ask("main.ts")).toEqual(["r-disp-grid", "r-c-red"]);
+  expect(await ask("second.ts")).toEqual(["r-disp-flex", "r-c-blue"]);
+
+  // And it survives the first file losing its block altogether.
+  await save(`export default 1;\n`);
+  expect(await ask("main.ts")).toEqual([]);
+  expect(await ask("second.ts")).toEqual(["r-disp-flex", "r-c-blue"]);
+  void second;
+});
+
+/**
+ * A long editing session, which is the shape a stale rule hides in.
+ *
+ * Every save makes a new atom and abandons the last one, and a page still carrying `padding: 0px`
+ * from forty saves ago is the kind of wrong nobody suspects the tool for.
+ *
+ * **What this asserts is what a file SERVES**, which is `byFile` being replaced on each save rather
+ * than added to — measured by breaking that line, which fails this and the test above. It does NOT
+ * assert that the sheet's own `rules` map is bounded: breaking the withdraw loop leaves dead entries
+ * there and every file still serves the right CSS. That is a memory question and it needs the sheet
+ * asked directly, which `sheet.test.ts` is the place for.
+ */
+test("fifty saves leave a file serving its own two rules and no more", async () => {
+  const { server, save, fetchBoth, firstLoad } = await serve(
+    `const a = @@( padding: 0px; color: red; );\nexport default a;\nif (import.meta.hot) import.meta.hot.accept();\n`,
+  );
+  await firstLoad();
+
+  for (let n = 1; n <= 50; n++) {
+    await save(
+      `const a = @@( padding: ${n}px; color: red; );\nexport default a;\nif (import.meta.hot) import.meta.hot.accept();\n`,
+    );
+    await server.transformRequest("/src/main.ts");
+  }
+
+  const { css } = await fetchBoth();
+  expect(css).toEqual(["r-p-50px", "r-c-red"]);
+});
+
+test("a file that gains its first block is picked up", async () => {
+  const { save, firstLoad, server } = await serve(`export default 1;\n`);
+
+  /**
+   * The JavaScript ONLY, because a file with no block has no stylesheet to ask for.
+   *
+   * `firstLoad` asks for both, and asking for a stylesheet nothing imports is a request a browser
+   * cannot make — the URL is only ever learnt from the `import` the transform appends. Measured, it
+   * creates the module empty and Vite caches that, so the save afterwards looked like it had been
+   * missed. The fault was in the asking.
+   */
+  expect(named((await server.transformRequest("/src/main.ts"))?.code ?? "")).toEqual([]);
+
+  await save(`const a = @@( color: green; );\nexport default a;\nif (import.meta.hot) import.meta.hot.accept();\n`);
+  // `firstLoad`'s order, because that is what a client does here: it has never seen this file's
+  // stylesheet and can only learn the URL from the JavaScript it is about to fetch.
+  const both = await firstLoad();
+  expect(both.js).toEqual(["r-c-green"]);
+  expect(both.css).toEqual(["r-c-green"]);
 });
 
 test("a change to a file that is not source is left alone", async () => {

@@ -306,16 +306,92 @@ describe("the CSS inside a block", () => {
   });
 
   /**
-   * A hole's own spacing is its expression's, and the BRACES are not part of the expression.
+   * With NO formatter, a hole's own spacing is its expression's and stays.
    *
-   * The whitespace inside `a  ?  "red"` is the author's and stays; the whitespace between `{` and
-   * `a` is a delimiter's and is closed up, because a hole is the escape JSX already uses in the same
-   * place and JSX writes it tight. See `tightened`, and the one shape that keeps its space above.
+   * The whitespace between `{` and `a` is a delimiter's and is closed up, because a hole is the
+   * escape JSX already uses in the same place and JSX writes it tight. What is inside is TypeScript,
+   * and nothing here has an opinion about TypeScript — see the block below for who does.
    */
   test("a hole keeps the spacing inside its expression, and loses it at the braces", () => {
     expect(laid(`const a = <div css={@@(\n  color: { a  ?  "red"  :  "blue" };\n)}>x</div>;\n`)).toBe(
       `const a = <div css={@@(\n  color: {a  ?  "red"  :  "blue"};\n)}>x</div>;\n`,
     );
+  });
+
+  /**
+   * A hole's expression goes through the PROJECT's formatter, which is the only thing entitled to
+   * lay out TypeScript.
+   *
+   * **Reported by a user**: *"formating unutar rupe ne radi"*, on
+   * `color: {this.toggle ? $.color.accent.quiet    : $.color.accent.main}`. They were right, and it
+   * was the one part of the file that is ordinary TypeScript escaping the formatter entirely —
+   * `ramonda-css format` exists precisely so a file carrying blocks is laid out by the project's own
+   * tools.
+   *
+   * The expression is handed over ALONE rather than the file being formatted twice: what reaches
+   * biome is `(\n<expression>\n);` and what comes back is the statement, unwrapped. The hole is
+   * still stepped over as one unit by the layout above; only its contents are replaced.
+   */
+  describe("a hole's expression, through the project's formatter", () => {
+    /** Stands in for biome: collapses runs of spaces, which is what the user's example needed. */
+    const squeeze = (text: string) => text.replace(/ {2,}/g, " ");
+
+    const through = (source: string) => {
+      const held = placehold(source, { expression: squeeze });
+      return held?.restore(held.text);
+    };
+
+    test("the user's own example", () => {
+      expect(through(`const a = <div css={@@(\n  color: {t ? $.a.b    : $.a.c};\n)}>x</div>;\n`)).toBe(
+        `const a = <div css={@@(\n  color: {t ? $.a.b : $.a.c};\n)}>x</div>;\n`,
+      );
+    });
+
+    test("and the braces are still closed up, which was already right", () => {
+      expect(through(`const a = <div css={@@(\n  color: {  t ? $.a.b    : $.a.c  };\n)}>x</div>;\n`)).toBe(
+        `const a = <div css={@@(\n  color: {t ? $.a.b : $.a.c};\n)}>x</div>;\n`,
+      );
+    });
+
+    test("a hole beside text keeps the text exactly", () => {
+      expect(through(`const a = <div css={@@(\n  padding-left: {this.gap   +   2}px;\n)}>x</div>;\n`)).toBe(
+        `const a = <div css={@@(\n  padding-left: {this.gap + 2}px;\n)}>x</div>;\n`,
+      );
+    });
+
+    /**
+     * A formatter that would BREAK THE LINE is declined, and the author's own text is kept.
+     *
+     * The layout above puts one declaration on a line and steps over a hole whole; a hole holding a
+     * newline would be spliced into the middle of a line and the result would not be the author's
+     * code. So a multi-line answer means this expression is not one this can lay out.
+     */
+    test("a result that spans lines is declined, and the author's text stays", () => {
+      const across = () => "a\n  ? b\n  : c";
+      const source = `const a = <div css={@@(\n  color: {t ?   b :   c};\n)}>x</div>;\n`;
+
+      expect(placehold(source, { expression: across })?.restore(placehold(source, { expression: across })!.text)).toBe(
+        source,
+      );
+    });
+
+    /** A formatter that throws is a broken setup, not a reason to lose the author's expression. */
+    test("a formatter that throws leaves the hole alone", () => {
+      const throws = () => {
+        throw new Error("no");
+      };
+      const source = `const a = <div css={@@(\n  color: {t ?   b :   c};\n)}>x</div>;\n`;
+
+      expect(placehold(source, { expression: throws })?.restore(placehold(source, { expression: throws })!.text)).toBe(
+        source,
+      );
+    });
+
+    test("an expression that begins or ends with a brace keeps its spaces, as it did", () => {
+      const source = `const a = <div css={@@(\n  color: {{ x["}"] }};\n)}>x</div>;\n`;
+
+      expect(through(source)).toBe(source);
+    });
   });
 
   /**
@@ -678,14 +754,42 @@ describe("what the rule reports, the formatter writes", () => {
     "text-transform: UPPERCASE;",
   ];
 
-  test.each(spellings)("%s is reported, and formatting settles it", (written) => {
+  /**
+   * Every one of them formats to something the checker is silent about. That claim is unchanged.
+   */
+  test.each(spellings)("%s formats to something nothing reports", (written) => {
+    const formatted = formatText(`const a = @@(\n  ${written}\n);\n`, FILE, asIs);
+
+    expect(checkSource(formatted, FILE)).toEqual([]);
+  });
+
+  /**
+   * What is still REPORTED is a difference of more than case — see `onlyCase`, pass 3.
+   *
+   * `2N + 1` is not spelled `2n+1`, which is a real difference and stays a finding. Everything else
+   * in the list above differs only in case and is the formatter's alone now.
+   */
+  test.each(["&:NTH-CHILD(2N + 1) { gap: 8px; }"])("%s is reported, and formatting settles it", (written) => {
     const source = `const a = @@(\n  ${written}\n);\n`;
 
     const before = checkSource(source, FILE).filter((one) => one.rule === "non-canonical-spelling");
     expect(before.length, `nothing reported ${written}`).toBeGreaterThan(0);
+    expect(checkSource(formatText(source, FILE, asIs), FILE)).toEqual([]);
+  });
 
-    const formatted = formatText(source, FILE, asIs);
-    expect(checkSource(formatted, FILE)).toEqual([]);
+  /**
+   * **And the case-only ones are rewritten WITHOUT being reported**, which is the user's own
+   * condition for the report going: *"neka formater obavezno to resava."*
+   *
+   * This is the pairing that matters now — a rule going quiet while the formatter also went quiet
+   * would leave nothing anywhere — so it is asserted in both directions: nothing is said, and the
+   * text still changes.
+   */
+  test.each(spellings.filter((one) => !one.includes("2N")))("%s is rewritten and never reported", (written) => {
+    const source = `const a = @@(\n  ${written}\n);\n`;
+
+    expect(checkSource(source, FILE).filter((one) => one.rule === "non-canonical-spelling")).toEqual([]);
+    expect(formatText(source, FILE, asIs)).not.toContain(written);
   });
 
   /** And formatting twice is formatting once, which is what makes it safe to run on save. */
@@ -716,5 +820,81 @@ describe("what the rule reports, the formatter writes", () => {
     const source = "const RED = 1;\nconst a = @@(\n  color: {RED};\n);\n";
 
     expect(formatText(source, FILE, asIs)).toContain("color: {RED}");
+  });
+});
+
+/**
+ * A declared variable through the formatter, which is the one consumer that had nothing to do.
+ *
+ * `$` reaches the grammar, the checker, the compiler and the virtual file, and each had to learn it.
+ * The formatter did not — a block's innards are never reformatted, only put back at the indentation
+ * the project's own tool chose. That is worth ASSERTING rather than leaving as a thing that happens
+ * to be true: it is the kind of claim that stops being true quietly, and a path rewritten by a
+ * formatter would be a compile of `var()` into the wrong name.
+ */
+describe("a declared variable is not a formatter's business", () => {
+  const reindent = (text: string) => text.replace(/^ {2}/gm, "    ");
+  const identity = (text: string) => text;
+
+  test("the path survives byte for byte", () => {
+    const source = `const a = <div css={@@(\n  color: $.color.primary.main;\n)}>x</div>;\n`;
+
+    expect(formatText(source, "X.tsx", identity)).toBe(source);
+  });
+
+  test("even written loosely, because the innards are not reformatted at all", () => {
+    // No space after the colon, and a segment starting with a digit. A formatter that touched the
+    // block would tidy the first and could break the second.
+    const source = `const b = <div css={@@(\n  padding:$.space.inline.2xl;\n)}>x</div>;\n`;
+
+    expect(formatText(source, "X.tsx", identity)).toBe(source);
+  });
+
+  test("and it moves with the block when the formatter re-indents around it", () => {
+    const source = `function C() {\n  return <div css={@@(\n  width: calc($.size.control.md * 2);\n)}>x</div>;\n}\n`;
+    const out = formatText(source, "X.tsx", reindent);
+
+    expect(out).toContain("calc($.size.control.md * 2)");
+  });
+});
+
+/**
+ * A formatter that DUPLICATED a placeholder — which left ours in the author's file.
+ *
+ * Found by probing what `restore` does when the text it gets back is not the text it handed over.
+ * The missing case was already refused, and refused for the right reason: *a formatter that eats a
+ * block is unrecoverable work, and it was doing it silently.* The duplicate case is the same fault
+ * from the other side and was not:
+ *
+ *     const a = <div css={@@( color: red; )}>x</div>;
+ *     const a = <div css={/*@ramonda-css:0*\/ 0}>x</div>;
+ *
+ * The first got its block, the second kept the marker — this package's own internal text, written
+ * to disk in somebody's component. `exec` finds the first match and nothing looked for a second.
+ *
+ * No formatter measured here duplicates code. That is exactly the argument the missing case did not
+ * accept, and the reason is the same: there is no correct output to fall back to, so there is no
+ * output.
+ */
+describe("a placeholder that comes back more than once", () => {
+  const source = `const a = <div css={@@( color: red; )}>x</div>;\n`;
+
+  test("is refused, rather than leaving our marker in the file", () => {
+    const held = placehold(source);
+
+    expect(() => held?.restore(`${held.text}${held.text}`)).toThrow(/placeholder/);
+  });
+
+  test("and the message says nothing was written, the same as a missing one", () => {
+    const held = placehold(source);
+
+    expect(() => held?.restore(`${held.text}${held.text}`)).toThrow(/nothing was written/);
+  });
+
+  /** One is still one, which is the whole of the ordinary path. */
+  test("exactly one is put back as it always was", () => {
+    const held = placehold(source);
+
+    expect(held?.restore(held.text)).toBe(source);
   });
 });

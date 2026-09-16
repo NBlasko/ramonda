@@ -19,7 +19,16 @@ import * as api from "../index";
  * `class` attribute decides nothing. `compose` is the primitive and composes with itself; `merge` is
  * the boundary and produces the value the framework already takes.
  */
-const RUNTIME = ["block", "compose", "merge", "toStyleObject"];
+const RUNTIME = [
+  "block",
+  "compose",
+  "merge",
+  // A declared variable OUTSIDE a block: setting one for a runtime theme, and reading one back.
+  // Inside a block `$` is compiled away, so these are the only two that ever ship.
+  "read",
+  "toStyle",
+  "toStyleObject",
+];
 
 /**
  * The TYPES the runtime entry exports, which `Object.keys` cannot see.
@@ -31,6 +40,10 @@ const RUNTIME = ["block", "compose", "merge", "toStyleObject"];
  */
 const TYPES = [
   "CssAngleUnit",
+  // A colour, for the declaration that makes one. Ninety-six properties say what they take now, so
+  // a value reaching one through a hole has to say what it is — and this is what says it.
+  "CssColor",
+  "CssColorKeyword",
   "CssDimension",
   "CssFrequencyUnit",
   "CssLengthUnit",
@@ -38,11 +51,20 @@ const TYPES = [
   "CssTimeUnit",
   "CssUnit",
   "HoleValues",
+  // What `$.color.primary.main` is, for the module codegen writes. A type and nothing else: a
+  // token's runtime value is the string `var(--name)`, written into that module, so importing `$`
+  // pulls in no code from here at all.
+  // A bare declaration's mark, named by the generated module and so part of the surface.
+  "Fixed",
+  "Kind",
   "StyleBlock",
   "StyleEntry",
   "StyleMap",
+  "Setting",
   "StyleValue",
   "StyleVarValue",
+  "Token",
+  "ValueByKind",
 ];
 
 /** Everything one module exports, values and types alike, through a real program. */

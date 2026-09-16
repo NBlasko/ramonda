@@ -1,6 +1,7 @@
 import type { Block, BlockItem } from "./ast";
-import { HOLE, collapse, propertyName } from "./normalise";
-import { MAY_CLEAR, SHORTHANDS } from "./keywords.generated";
+import { nameFor } from "./dollar";
+import { HOLE, canonicalValue, collapse, propertyName } from "./normalise";
+import { MAY_CLEAR, PROPERTIES, SHORTHANDS } from "./keywords.generated";
 import { widthSlot } from "../conditions";
 import { CONDITION, SPREAD, holeIn } from "./read";
 
@@ -55,8 +56,9 @@ export interface AtomicDeclaration {
 /**
  * The distinct breadths a property can have, WIDEST first — the sheet's minor order.
  *
- * From the generated shorthand table, so it is known before a build: twelve of them. `all` covers
- * 41 properties and comes first; a longhand covers none and comes last.
+ * From the generated shorthand table, so it is known before a build — one for each distinct number
+ * of properties a shorthand clears, and the count moves with the table rather than being written
+ * here. `all` covers the most and comes first; a longhand covers none and comes last.
  */
 const BREADTHS: readonly number[] = (() => {
   const found = new Set<number>([0]);
@@ -64,12 +66,40 @@ const BREADTHS: readonly number[] = (() => {
   return [...found].sort((a, b) => b - a);
 })();
 
-/** How many properties a declaration's own property clears. */
-function breadthOf(declaration: { property?: string }): number {
-  return declaration.property === undefined ? 0 : (SHORTHANDS[declaration.property]?.length ?? 0);
+/**
+ * The standard property a VENDOR-PREFIXED one is another name for, or nothing.
+ *
+ * By stripping the prefix and asking whether what is left is a property CSS has. A prefixed name
+ * with no standard form — `-moz-osx-font-smoothing`, `-webkit-box-orient` — is nobody's alias and
+ * is left exactly where it was.
+ *
+ * Deliberately not a generated table. The question here is only *do these two fight*, and being
+ * wrong about a pair that does not is harmless: two properties that never touch the same computed
+ * value are not affected by which of them is written out first.
+ */
+export function standardFormOf(property: string): string | undefined {
+  const bare = /^-[a-z]+-(.+)$/.exec(property)?.[1];
+  return bare !== undefined && STANDARD.has(bare) ? bare : undefined;
 }
 
-export { widthSlot } from "../conditions";
+const STANDARD = new Set(PROPERTIES);
+
+/**
+ * How many properties a declaration's own property clears.
+ *
+ * A prefixed name borrows its standard form's breadth, because the engine gives it the standard
+ * property's meaning: `-webkit-border-radius` clears the same four corners `border-radius` does,
+ * and the table, which is generated from unprefixed names, said it cleared nothing — so it sat in
+ * the longhands' own layer and lost to them.
+ */
+function breadthOf(declaration: { property?: string }): number {
+  const property = declaration.property;
+  if (property === undefined) return 0;
+  const covered = SHORTHANDS[property] ?? SHORTHANDS[standardFormOf(property) ?? ""];
+  return covered?.length ?? 0;
+}
+
+export { exclusive, widthSlot } from "../conditions";
 
 /**
  * Where a declaration's rule goes in the stylesheet, and it is a RULE rather than an accident.
@@ -89,7 +119,31 @@ export { widthSlot } from "../conditions";
  * package keeps finding a fault in.
  */
 export function sheetRank(declaration: { property?: string; conditions?: readonly string[] }): number {
-  return widthSlot(declaration.conditions) * 100 + BREADTHS.indexOf(breadthOf(declaration));
+  /**
+   * The PREFIXED half of an alias pair goes first, so the standard property wins wherever both are
+   * written — and, more to the point, wins DETERMINISTICALLY.
+   *
+   * Both clear the same properties, so both had the same breadth and the same layer; inside a layer
+   * the sort is stable, so the winner was whichever the build emitted first. Measured in Chromium
+   * through a real Vite build, the same block each time:
+   *
+   *     -webkit-box-shadow: 0 0 1px red; box-shadow: 0 0 9px blue;
+   *
+   *     alone in the file                           blue   — CSS's answer
+   *     after a block naming `box-shadow` first      RED
+   *     after a block with the same two, reversed    RED
+   *
+   * So the page depended on what another component wrote: invisible from the block, and it moves
+   * when somebody edits a file that has nothing to do with it. That is worse than a divergence,
+   * because there is no answer to learn.
+   *
+   * A prefix losing to the standard property is also the way round every author means it — the
+   * prefixed form is the fallback. And nothing that can read this stylesheet needs one: it is built
+   * on `@layer`, and every engine with cascade layers has the unprefixed `transform`, `box-shadow`,
+   * `user-select` and `appearance`.
+   */
+  const prefixed = declaration.property !== undefined && standardFormOf(declaration.property) !== undefined;
+  return widthSlot(declaration.conditions) * 100 + BREADTHS.indexOf(breadthOf(declaration)) * 2 + (prefixed ? 0 : 1);
 }
 
 /**
@@ -183,9 +237,21 @@ function mayCover(one: string, other: string): boolean {
   return MAY_CLEAR[one]?.includes(other) ?? false;
 }
 
-/** Whether two properties fight over anything — the same one, or one covering the other. */
+/**
+ * Whether two names are the SAME property to the engine — a vendor prefix and its standard form.
+ *
+ * Kept out of {@link covers} on purpose. `covers` is what the merge clears by, and clearing here
+ * would drop one of the pair from the element entirely; an alias is a fallback somebody wrote on
+ * purpose, and the two names are not interchangeable in every engine. They fight, and that is all
+ * this says.
+ */
+function alias(a: string, b: string): boolean {
+  return standardFormOf(a) === b || standardFormOf(b) === a;
+}
+
+/** Whether two properties fight over anything — the same one, one covering the other, or an alias. */
 export function conflict(a: string, b: string): boolean {
-  return a === b || covers(a, b) || covers(b, a) || mayCover(a, b) || mayCover(b, a);
+  return a === b || alias(a, b) || covers(a, b) || covers(b, a) || mayCover(a, b) || mayCover(b, a);
 }
 
 /** Whether the pair is the one no writing mode settles, which the report has to say out loud. */
@@ -346,11 +412,42 @@ function declarationOf(
       value += part.text;
       continue;
     }
+    /**
+     * A declared variable is TEXT here, and is emphatically not a hole.
+     *
+     * A hole becomes a value on the element — a custom property, 41 bytes each, and a render when it
+     * changes. `$` costs neither: it is a `var()` in the stylesheet, so two elements written the same
+     * way share one class and carry nothing. That difference is the whole reason the spelling exists.
+     */
+    if (part.kind === "variable") {
+      value += `var(${nameFor(part.path)})`;
+      continue;
+    }
     value += `${HOLE}${holes.length}${HOLE}`;
     holes.push(part.index);
   }
 
-  const canonical = `${property}:${collapse(value)};`;
+  /**
+   * The value's KEYWORD CASE is folded here too, because the class name is built from this.
+   *
+   * `normalise.ts` has folded it since it was written, and this built its own text and never called
+   * the same function. Measured through the real transform:
+   *
+   *     color: currentColor;   ->  r-c-currentColor
+   *     color: currentcolor;   ->  r-c-currentcolor
+   *
+   * Two atomic classes with identical CSS, and two hashes with them, because `identity` below is
+   * built from this string. One question — what is this value, canonically — answered in two places,
+   * and only the one nobody looked at reached the class.
+   *
+   * Reported by the user while the case REPORT was being dropped: *"da nemamo razlicit hash i
+   * atomske klase."* The report never protected this; it was a live fault beside it.
+   *
+   * `canonicalValue` folds a word only where the fold names a keyword the property HAS, so a font
+   * family, a custom property's value and a grid-area name keep the case the author gave them —
+   * asserted, because folding those would make two different values one class.
+   */
+  const canonical = `${property}:${canonicalValue(property, collapse(value))};`;
   const sorted = mayBeSorted(conditions) ? [...conditions].sort() : [...conditions];
 
   /**

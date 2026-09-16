@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { positionOf } from "../compiler/errors";
-import { KEYWORDS } from "../compiler/keywords.generated";
+import { ARITY, KEYWORDS, PRIMITIVE } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
 import { checkBlock } from "../compiler/rules";
 import { virtualFile } from "../compiler/virtual";
@@ -264,5 +264,103 @@ describe("properties whose grammar mentions a url or a string", () => {
     "font-feature-settings: normol",
   ])("%s is reported", (declaration) => {
     expect(of(declaration).map((one) => one.rule)).toEqual(["unknown-value"]);
+  });
+});
+
+/**
+ * A shorthand whose parts are ONE kind is classified; one whose parts differ is not.
+ *
+ * That line is derivable rather than opinion, and it is the one a project should draw when deciding
+ * which shorthands to switch off: `padding`, `margin`, `gap`, `inset`, `border-color` and
+ * `border-width` are n of a thing and can be checked; `background`, `border` and `transition` are a
+ * width and a style and a colour at once, and nothing can say whether their value is right.
+ *
+ * Three shapes reached this table late, each found by a user writing ordinary CSS:
+ *
+ *     gap           <'row-gap'> <'column-gap'>?    a property REFERENCE, not followed
+ *     margin-left   … | <anchor-size()>            a FUNCTIONAL type counted as a second primitive
+ *     border-color  <color>{1,4}                   a bare type with a MULTIPLIER
+ */
+describe("which shorthands can be checked at all", () => {
+  test.each([
+    ["padding", "length-percentage"],
+    ["margin", "length-percentage"],
+    ["gap", "length-percentage"],
+    ["inset", "length-percentage"],
+    ["border-color", "color"],
+    ["border-width", "length"],
+  ])("%s is n of one thing", (property, primitive) => {
+    expect(PRIMITIVE[property]).toBe(primitive);
+  });
+
+  test.each([["background"], ["border"], ["transition"], ["animation"], ["font"]])(
+    "%s is several different things, and stays unclassified",
+    (property) => {
+      expect(PRIMITIVE[property]).toBeUndefined();
+    },
+  );
+
+  /**
+   * The properties a design system constrains FIRST, and every one of them was unclassified.
+   *
+   * Found by a design review asking why `variablesOnly: ["length"]` reported `padding-left: 8px`
+   * and said nothing about `width: 200px`. Both are one length; only one was classified, and the
+   * config author had no way to see which.
+   *
+   * Three faults in the walk, each a SPELLING rather than a grammar:
+   *
+   *     fit-content(<length-percentage>)   a call written out, where `<calc-size()>` was skipped
+   *     [ auto | … | fit-content(…) ]      parens disqualified an alternation `alternatives` splits
+   *     <length-percentage [0,∞]>          the range's comma read as a comma in the grammar
+   *
+   * Twenty-three properties classified once all three were answered, none lost and none changed
+   * kind — asserted against the whole map, because a classifier that gains one property and quietly
+   * moves another is worse than one that gains nothing.
+   */
+  test.each([
+    ["width", "length-percentage"],
+    ["height", "length-percentage"],
+    ["min-width", "length-percentage"],
+    ["max-width", "length-percentage"],
+    ["min-height", "length-percentage"],
+    ["max-height", "length-percentage"],
+    ["inline-size", "length-percentage"],
+    ["block-size", "length-percentage"],
+    ["max-inline-size", "length-percentage"],
+    ["flex-basis", "length-percentage"],
+    ["margin-inline-start", "length-percentage"],
+    ["inset-block-end", "length-percentage"],
+  ])("%s is one length, however its grammar spells its calls", (property, primitive) => {
+    expect(PRIMITIVE[property]).toBe(primitive);
+  });
+
+  /**
+   * The SLASH form — `<length-percentage>{1,4} [ / <length-percentage>{1,4} ]?`.
+   *
+   * Four corners, then four again after a slash, one primitive throughout. `sequence` wanted every
+   * piece bracketed and the first one is not, so the property a design system constrains right
+   * after padding could not be narrowed at all.
+   *
+   * A `/` separates values in CSS and never IS one, so skipping it cannot admit a grammar holding
+   * two kinds: every piece still has to reach the same primitive, which is what keeps `font`,
+   * `grid` and `border-image` where they belong.
+   */
+  test("`border-radius` is one length, slash form and all", () => {
+    expect(PRIMITIVE["border-radius"]).toBe("length-percentage");
+    expect(PRIMITIVE["border-top-left-radius"]).toBe("length-percentage");
+  });
+
+  test.each([["font"], ["grid"], ["border-image"], ["mask"], ["grid-area"]])(
+    "%s holds a slash and several kinds, and stays unclassified",
+    (property) => {
+      expect(PRIMITIVE[property]).toBeUndefined();
+    },
+  );
+
+  test("and the ones that repeat carry how many CSS gives them", () => {
+    expect(ARITY.padding).toBe(4);
+    expect(ARITY["border-color"]).toBe(4);
+    expect(ARITY.gap).toBe(2);
+    expect(ARITY["padding-block"]).toBe(2);
   });
 });

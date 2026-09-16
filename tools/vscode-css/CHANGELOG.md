@@ -1,5 +1,23 @@
 # Ramonda CSS
 
+## 0.1.5
+
+- **`$.color.primary.main` is coloured as a variable inside a block.** A declared variable is written
+  as a path in `@@( … )` and was coloured as whatever its segments looked like — a property name, a
+  keyword, plain text. It is one token now, with its own scope `ramonda.css-variable`, so a theme
+  colours the whole path as the one thing it is.
+
+  Checked against what the formatters do rather than assumed: neither biome nor prettier touches the
+  spelling, so the colour and the text agree after a format.
+
+## 0.1.4
+
+- **Corrected the formatter advice, which said the wrong thing about a global setting.** It read
+  *"safe to set for a whole language"*; `editor.defaultFormatter` decides which extension VS Code
+  asks and does not fall through, so set in user settings it makes format-on-save silently do nothing
+  in every project without `@ramonda/css`, and runs biome in a project that formats with Prettier.
+  The setting belongs in the project's own `.vscode/settings.json`, and the page now says why.
+
 ## 0.1.3
 
 - Rewrote *Where the colours apply*. `@ramonda/css@0.2.0` refuses a block written as a bare

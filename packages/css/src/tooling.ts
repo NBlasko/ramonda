@@ -129,7 +129,14 @@ export function formatFile(
  * changed. Everything else is shared with `formatFile`, so the two cannot drift.
  */
 export function formatText(source: string, file: string, format: (text: string, path: string) => string): string {
-  const held = placehold(source);
+  /**
+   * A hole's expression is handed to the SAME formatter, one at a time — see `tightened`.
+   *
+   * The file is not formatted twice: the expression is wrapped as a statement and formatted alone.
+   * The path it is formatted AS is the author's own, so a project whose `.tsx` and `.ts` rules
+   * differ gets the one that applies to the file the hole is in.
+   */
+  const held = placehold(source, { expression: (text) => format(text, file) });
   if (held === undefined) return format(source, file);
 
   /**

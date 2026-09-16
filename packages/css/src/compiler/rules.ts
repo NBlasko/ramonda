@@ -1,22 +1,36 @@
-import type { Config } from "../config";
+import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
+import { nearest } from "./nearest";
+import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
-import { conflict, covers, flatten, onlyTheModeDecides, sheetRank, widthSlot } from "./flatten";
+import {
+  conflict,
+  covers,
+  exclusive,
+  flatten,
+  onlyTheModeDecides,
+  sheetRank,
+  standardFormOf,
+  widthSlot,
+} from "./flatten";
 import { holeOutOfPlace } from "./errors";
 import { PREFIXED } from "./prefixed.generated";
 import {
+  ARITY,
   AT_RULE_LINKS,
   DESCRIPTORS,
   KEYWORDS,
   NOT_IN_A_RULE,
   PROPERTIES,
   PROPERTY_NAMED,
+  SHORTHANDS,
   STRING_ALLOWED,
   UNITS,
   MEDIA_FEATURES,
   UNIT_TYPE,
   SELECTORS,
+  PRIMITIVE,
 } from "./keywords.generated";
-import { canonicalPrelude, canonicalValue } from "./normalise";
+import { canonicalPrelude, canonicalValue, propertyName } from "./normalise";
 import { CONDITION, LINE_COMMENT, SPREAD, closingHole, holeIn, opensAHole } from "./read";
 import type { BlockSite } from "./scan";
 
@@ -93,6 +107,8 @@ export const RULE_IDS = [
   "unknown-media-feature",
   "value-and-registered-syntax",
   "unit-not-allowed",
+  "value-not-allowed",
+  "shorthand-not-allowed",
   "string-not-allowed",
   "property-not-a-name",
   "non-canonical-spelling",
@@ -106,6 +122,10 @@ export const RULE_IDS = [
   "unknown-at-rule",
   "unknown-selector",
   "unknown-flag",
+  "unknown-variable",
+  "too-many-values",
+  "missing-semicolon",
+  "literal-not-allowed",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -286,11 +306,712 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (at !== undefined) compositionInANamedBlock(block, at, findings);
   if (syntaxes !== undefined && syntaxes.size > 0) againstRegisteredSyntax(block, syntaxes, findings);
   if (config?.units !== undefined) unitNotAllowed(block, config.units, findings);
+  /**
+   * The per-property half, with anything the sweep above already named left out.
+   *
+   * `units` at the top of the config and `units` inside `properties` are different mechanisms with
+   * one name — the design review said so, and pass 4 gave the second one a rule. Setting both then
+   * reported the same value twice. One value, one fault, one report; two different units in one
+   * value are still two.
+   */
+  unitNotAllowedPerProperty(block, config?.properties, findings);
+  valueNotAllowed(block, config?.properties, findings);
+  shorthandNotAllowed(block, config?.properties, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
+  if (config !== undefined) unknownVariable(block, config, findings);
+  tooManyValues(block, config?.properties, findings);
+  literalNotAllowed(block, config?.properties, findings);
+  // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
+  missingSemicolon(block, findings);
+  /**
+   * A block reported for a misplaced HOLE is not also asked about its property names.
+   *
+   * `&:{state} { … }` leaves `state` behind as a declaration's property once the braces are read
+   * off, so widening `unknown-property` in pass 6 reported *`state` is not a CSS property* beside
+   * `hole-out-of-place`. The second is the fault; the first is an artefact of a parse the author is
+   * about to fix.
+   *
+   * **After the walk rather than during it**, and that is measured: the hole is found on a LATER
+   * item than the property, so a guard at the moment of pushing sees nothing to guard against.
+   */
+  const misplaced = findings.some((one) => one.rule === "hole-out-of-place");
+  const named = misplaced ? findings.filter((one) => one.rule !== "unknown-property") : findings;
+
   const silenced = config?.rules;
-  const kept = silenced === undefined ? findings : findings.filter((one) => silenced[one.rule] !== "off");
+  const kept = silenced === undefined ? named : named.filter((one) => silenced[one.rule] !== "off");
   return kept.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * More values than this project allows a property to take — `padding: 8px 12px` under `arity: 1`.
+ *
+ * **A rule rather than a type, and that is measured.** A type for this is a template literal over
+ * the permitted values, and at 49 units by four positions TypeScript SILENTLY STOPS CHECKING — no
+ * `TS2590`, no message, it simply accepts anything:
+ *
+ *     1 unit,   arity 4    refuses `8pxx`
+ *     49 units, arity 2    refuses `8pxx`
+ *     49 units, arity 4    ACCEPTS `8pxx`
+ *
+ * A type that quietly stops checking is worse than no type, because the whole file stays green. The
+ * checker has no such threshold, and the message here is one somebody can act on.
+ *
+ * Counting is by TOP-LEVEL space, so `calc(1rem + 2px)` and `rgb(0 0 0)` are one value each — the
+ * spaces inside a call belong to the call. A hole is one value too: what it evaluates to is decided
+ * at render and nothing here knows how many words it will be.
+ */
+function tooManyValues(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  /**
+   * The most values this property may take here: CSS's own maximum, narrowed by what the config
+   * said — and never widened by it.
+   *
+   * **CSS's maximum applies with no config at all**, because exceeding it is not a project's
+   * opinion, it is invalid CSS. Reported by a user, who wrote `padding: 4px 0 0 0 0` — five values
+   * where CSS gives four — and was told nothing, because this rule only ran when a config set an
+   * arity.
+   *
+   * **And a config may only narrow.** `"*": { arity: 4 }` left `padding-block: 1px 2px 3px` silent,
+   * because the sweep's four is higher than the two CSS gives that property and nothing clamped it.
+   * Found in the same breath as the first, and the same `Math.min` answers both.
+   *
+   * `ARITY` holds the sixteen properties that repeat one longhand, which is the whole set where
+   * "how many" has an answer. `border-left` is `<line-width> || <line-style> || <color>` — three
+   * different things, so `4px solid red` is one value in three parts. Under `"*": { arity: 1 }` it
+   * was reported once, which is refusing correct CSS.
+   */
+  const allowed = (property: string): { most: number; whose: "css" | "project" } | undefined => {
+    const css = ARITY[property];
+    const own = (rules?.[property as keyof PropertyRules] ?? {}) as { arity?: number };
+    const sweep = (rules?.["*"] ?? {}) as { arity?: number };
+    // The sweep reaches only the properties CSS gives an arity; a NAMED one is always meaningful,
+    // because the config type permits an arity on those sixteen and nowhere else.
+    const said = own.arity ?? (css === undefined ? undefined : sweep.arity);
+
+    if (css === undefined) return said === undefined ? undefined : { most: said, whose: "project" };
+    if (said === undefined) return { most: css, whose: "css" };
+    return said < css ? { most: said, whose: "project" } : { most: css, whose: "css" };
+  };
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+
+      const property = propertyName(item.property);
+      const limit = allowed(property);
+      if (limit === undefined || item.at === undefined) continue;
+
+      /**
+       * A declaration that swallowed the next one is `run-on-declaration`'s to report, not this.
+       *
+       * `padding: 8px border-left: 4px solid red` parses as one declaration with a great many
+       * values, so this counted them and spoke — two reports for one mistake, and the other one
+       * names the actual fault and the missing `;`. Measured as a regression the moment CSS's own
+       * maximum started applying without a config.
+       *
+       * The tell is the same one that rule uses: a bare colon in a value, which CSS values do not
+       * contain.
+       */
+      if (item.value.some((part) => part.kind === "text" && bareColon(part.text) !== -1)) continue;
+
+      const values = topLevelValues(item.value).length;
+      if (values <= limit.most) continue;
+
+      const takes = limit.most === 1 ? "one value" : `at most ${limit.most} values`;
+
+      findings.push({
+        rule: "too-many-values",
+        at: item.valueAt ?? item.at,
+        length: (item.end ?? item.at) - (item.valueAt ?? item.at),
+        message:
+          limit.whose === "css"
+            ? `\`${property}\` takes ${takes} in CSS, and this is ${values}.`
+            : `\`${property}\` takes ${takes} in this project, and this is ${values}.` +
+              `\n\n        Set each side on its own, or raise \`arity\` in \`ramonda.css.ts\`.`,
+      });
+    }
+  };
+
+  walkItems(block.items);
+}
+
+/**
+ * A declaration with no `;` after it, which CSS allows for the last one in a block.
+ *
+ * **This package does not, and the reason is what happens NEXT.** A declaration without its
+ * semicolon swallows whatever is written under it — that is `run-on-declaration`, and it reports the
+ * line somebody adds rather than the line that was already wrong. So a block that is legal today
+ * makes a stranger's next edit report a fault they did not write:
+ *
+ *     padding: 8px          legal, and silent
+ *     padding: 8px          somebody adds a line
+ *     color: red            run-on-declaration, on THEIR line
+ *
+ * Reported by a user, who wrote the first shape and asked for it to be refused.
+ *
+ * Every other declaration needs one and the formatter writes one, so requiring it costs nobody a
+ * keystroke they were not already making. A nested rule's last declaration is included: it is the
+ * same shape and the same next edit.
+ */
+function missingSemicolon(block: Block, findings: Finding[]): void {
+  /**
+   * **Quiet wherever another rule has already spoken about this declaration.**
+   *
+   * A declaration with no `;` is usually a declaration, and sometimes it is wreckage: a run-on that
+   * swallowed the next line, a hole standing where a property name goes, a string that was never
+   * closed and ate the rest of the block. Each of those has a rule that explains it, and each leaves
+   * a declaration with no terminator behind — so this spoke second, about a shape somebody is
+   * already being told is wrong.
+   *
+   * Listing the shapes was the first attempt and it kept finding another one. Asking whether
+   * anything has been said about the same span is the question that was actually being asked, and it
+   * is the same one `inOrder` asks of TypeScript's diagnostics for exactly this reason.
+   */
+  const spoken = (item: Declaration): boolean =>
+    item.at !== undefined &&
+    item.end !== undefined &&
+    findings.some((one) => one.at >= item.at! && one.at <= item.end!);
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      if (item.terminated === true || item.end === undefined) continue;
+      // A spread is its own shape and has its own rules; it is not a declaration missing anything.
+      if (item.property.startsWith("...")) continue;
+      /**
+       * A property name holding a BRACE is wreckage, whatever recovered from it.
+       *
+       * A name is an identifier, so a `{` or `}` in one means the parser rebuilt something from a
+       * shape nobody wrote — a hole standing where a property goes, the body a broken selector left
+       * behind. The rule that explains it reports at its own position, which is not always inside
+       * this declaration's span, so `spoken` alone does not see it.
+       */
+      if (item.property.includes("{") || item.property.includes("}")) continue;
+
+      /**
+       * A declaration with NO VALUE yet, which is the state an editor is in most.
+       *
+       * `padding: ` while it is being typed has no value and no `;`, and saying so on every
+       * keystroke is noise. The strict read refuses a valueless declaration outright, so nothing
+       * reaches a build this way — and in the tolerant read it is also what the wreckage of a
+       * malformed selector looks like, which another rule explains.
+       */
+      if (item.value.length === 0) continue;
+
+      if (spoken(item)) continue;
+
+      findings.push({
+        rule: "missing-semicolon",
+        at: item.end,
+        length: 0,
+        message:
+          `this declaration has no \`;\`. CSS lets the last one in a block go without, and this does not:` +
+          `\n\n        a declaration with no \`;\` swallows whatever is written under it next, so the` +
+          `\n        line somebody adds tomorrow is the one that gets reported.`,
+      });
+    }
+  };
+
+  walkItems(block.items);
+}
+
+/** One top-level value of a declaration, and where it starts. See {@link topLevelValues}. */
+interface TopLevel {
+  /** The text, or `undefined` for a HOLE — whose value is decided at render and is nobody's to read. */
+  readonly text: string | undefined;
+  readonly at: number | undefined;
+}
+
+/**
+ * A declaration's values, separated the way CSS separates them: by a space at depth zero.
+ *
+ * `calc(1rem + 2px)` and `rgb(0 0 0)` are ONE value each — the spaces inside a call belong to the
+ * call. A hole is one value too, and an opaque one: what it evaluates to is decided at render.
+ *
+ * **Shared on purpose.** `too-many-values` counted these inline and this rule needed the same
+ * answer, and a second scanner that agrees by accident is this repository's recurring fault — the
+ * one that made `variablesOnly` mean something different in the build than in the checker. One walk,
+ * one answer, both callers.
+ */
+function topLevelValues(parts: readonly ValuePart[]): TopLevel[] {
+  const out: TopLevel[] = [];
+  let depth = 0;
+  let open: { text: string; at: number | undefined } | undefined;
+
+  const close = (): void => {
+    if (open !== undefined) out.push(open);
+    open = undefined;
+  };
+
+  for (const part of parts) {
+    if (part.kind !== "text") {
+      // A hole glued to text is part of that value; on its own it is a value of its own.
+      if (open === undefined) out.push({ text: undefined, at: undefined });
+      else open = { text: `${open.text}\u0000`, at: open.at };
+      continue;
+    }
+    for (const [index, character] of [...part.text].entries()) {
+      if (character === "(") depth++;
+      else if (character === ")") depth--;
+
+      if (depth === 0 && /\s/.test(character)) {
+        close();
+        continue;
+      }
+      if (open === undefined) open = { text: character, at: part.at === undefined ? undefined : part.at + index };
+      else open = { text: open.text + character, at: open.at };
+    }
+  }
+  close();
+  return out;
+}
+
+/** Every bare word the `<color>` grammar reaches, minus the one that is not a colour anybody wrote. */
+const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== "" && one !== "currentcolor"));
+
+/** The functions that produce a colour — `rgb()`, `oklch()`, `color-mix()`. */
+const COLOUR_CALL = /(?<![\w-])(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\s*\(/i;
+
+/** A hex colour, in every length CSS allows. */
+const HEX = /#[0-9a-fA-F]{3,8}(?![\w-])/;
+
+/**
+ * A colour written as a literal where the project said colours come from variables only.
+ *
+ * **This is the half a type cannot do.** Sixty-three properties accept a colour; forty say so in
+ * their grammar and the generated types refuse a literal there outright. The other twenty-three are
+ * composite — `border-left: 4px solid red`, `background`, `box-shadow` — and their value is
+ * `string | number` because a union narrow enough to refuse `red` would refuse `4px solid red` as
+ * well. So the rule reads those, and only those: one mechanism per property, never two for one.
+ *
+ * `currentcolor` is not a colour somebody hardcoded, it is a reference to the inherited one, and
+ * `var()` is the escape CSS itself provides. Neither is reported.
+ */
+function literalNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  const kinds = variablesOnlyKinds(rules);
+  if (kinds.length === 0) return;
+  dimensionNotAllowed(block, rules, findings);
+  if (!kinds.includes("color")) return;
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+
+      const property = propertyName(item.property);
+      // A property whose grammar SAYS it takes a colour is the types' to refuse — see above.
+      if (PRIMITIVE[property] === "color") continue;
+      // One that does not accept a colour at all has nothing here to find.
+      if (!(KEYWORDS[property] ?? "").split(" ").includes("rebeccapurple")) continue;
+      /**
+       * Exempted by its own name, which is the thing the top-level list could not express.
+       *
+       * Asked of the property rather than of the kind, because a composite property HAS no kind —
+       * `border` is a width, a style and a colour at once, so `"<color>"` never reaches it and only
+       * `border: { variablesOnly: false }` can speak for it.
+       */
+      if (
+        (rules?.[property as keyof PropertyRules] as { variablesOnly?: boolean } | undefined)?.variablesOnly === false
+      ) {
+        continue;
+      }
+
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+
+        const found = HEX.exec(part.text) ?? COLOUR_CALL.exec(part.text) ?? namedColour(part.text);
+        if (found === null) continue;
+
+        findings.push({
+          rule: "literal-not-allowed",
+          at: part.at + found.index,
+          length: found[0].length,
+          message:
+            `\`${found[0].trim()}\` is a colour written out, and this project takes colours only from its ` +
+            `own variables.\n\n        Declare it in \`ramonda.css.ts\` and write \`$.…\`, or set ` +
+            `\`${JSON.stringify(property)}: { variablesOnly: false }\` beside \`"<color>"\`.`,
+        });
+        break;
+      }
+    }
+  };
+
+  walkItems(block.items);
+}
+
+/**
+ * A dimension or a number written out where the project said that kind comes from its variables.
+ *
+ * **The half the BUILD sees, and it saw nothing.** The types refused `padding-left: 8px` and the
+ * rule said nothing, which read as a division of labour and was a hole: vite and esbuild run these
+ * rules over a block and never type-check it, so a project could watch `ramonda-css check` refuse a
+ * file and watch the dev server serve it. Measured, asking the rules alone:
+ *
+ *     padding-left: 8px       []                     compiled
+ *     width: 200px            []                     compiled
+ *     border: 1px solid red   [literal-not-allowed]  only the composite was caught
+ *
+ * It also answers the message. `Narrowed<never, Token<…>>` names neither the project nor the config
+ * file; this names both, and `inOrder` drops the compiler's word where this one has spoken — the
+ * same answer `unknown-variable` got.
+ *
+ * ## What is deliberately NOT a literal
+ *
+ * A CALL is an escape hatch and is not read into: `calc($.space.md * 2)` holds a `2` that is not a
+ * hardcoded length, and nothing here can tell it from one that is. A bare `0` needs no unit in CSS
+ * and is not a value anybody reached for instead of a token. `var()` is what CSS itself provides. A
+ * HOLE evaluates at render and is nobody's to read. A keyword is not a dimension at all.
+ */
+function dimensionNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  const kinds = variablesOnlyKinds(rules);
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+
+      const property = propertyName(item.property);
+
+      /**
+       * A CUSTOM PROPERTY has no kind, so only a value that can be nothing else is read.
+       *
+       * `--own: red; color: var(--own)` walked around the whole setting in one line — two
+       * declarations this compiler reads and neither was looked at. But a custom property holds
+       * anything: `--n: 3` is not a length and `--label: "red"` is text. So a bare number is left
+       * alone and a quoted string never matches, because `topLevelValues` keeps the quotes.
+       *
+       * Reported against EVERY forbidden kind at once, since nothing here says which was meant.
+       */
+      if (property.startsWith("--")) {
+        for (const value of topLevelValues(item.value)) {
+          const text = value.text;
+          if (text === undefined || value.at === undefined) continue;
+
+          const unit = A_DIMENSION.exec(text)?.[2]?.toLowerCase();
+          const family = unit === undefined ? undefined : UNIT_TYPE[unit];
+          const dimension = family !== undefined && kinds.includes(family) ? family : undefined;
+          const colour =
+            kinds.includes("color") && (HEX.test(text) || COLOUR_CALL.test(text) || COLOUR_WORDS.has(text))
+              ? "color"
+              : undefined;
+          const found = colour ?? dimension;
+          if (found === undefined || Number(text) === 0) continue;
+
+          findings.push({
+            rule: "literal-not-allowed",
+            at: value.at,
+            length: text.length,
+            message:
+              `\`${text}\` is ${NARROW[found]?.said ?? "a value"} written out, and this project takes ` +
+              `them only from its own variables.` +
+              `\n\n        A custom property set here is still a value this project ships. Declare it in ` +
+              `\n        \`ramonda.css.ts\` and write \`$.…\`.`,
+          });
+          break;
+        }
+        continue;
+      }
+
+      const primitive = PRIMITIVE[property];
+      // No kind, no answer: nothing can say what a composite property's pieces should have been.
+      // A colour inside one is the colour walk's, which reads the value rather than the type.
+      if (primitive === undefined) continue;
+      const rule = ruleFor(rules, property);
+      if (rule.variablesOnly !== true) continue;
+
+      for (const value of topLevelValues(item.value)) {
+        const text = value.text;
+        if (text === undefined || value.at === undefined) continue;
+
+        /**
+         * A colour LONGHAND is read here too, and was not.
+         *
+         * `literalNotAllowed` skipped a property whose grammar says `<color>` as *the types' to
+         * refuse* — true of the checker and false of the BUILD, which runs no TypeScript. Forty
+         * properties, `color: red` the first of them, compiled by vite and esbuild.
+         */
+        const isColour = primitive === "color" && (HEX.test(text) || COLOUR_CALL.test(text) || COLOUR_WORDS.has(text));
+        if (!isColour && !A_DIMENSION.test(text) && !A_NUMBER.test(text)) continue;
+        if (primitive === "color" && !isColour) continue;
+        // A zero needs no unit in CSS and is not a value anybody wrote instead of reaching for one.
+        if (Number(text) === 0) continue;
+
+        findings.push({
+          rule: "literal-not-allowed",
+          at: value.at,
+          length: text.length,
+          message:
+            `\`${text}\` is ${NARROW[primitive]?.said ?? "a value"} written out, and this project takes ` +
+            `them only from its own variables.` +
+            `\n\n        Declare it in \`ramonda.css.ts\` and write \`$.…\`, or set ` +
+            `\`${JSON.stringify(property)}: { variablesOnly: false }\`.`,
+        });
+        break;
+      }
+    }
+  };
+
+  walkItems(block.items);
+}
+
+/**
+ * The three settings the TYPES enforced and the BUILD did not — units, values, shorthand.
+ *
+ * Found by review pass 4, which swept every setting against every consumer. Vite and esbuild run
+ * these rules over a block and never type-check it, so a setting that only reaches the types is a
+ * setting the dev server ignores:
+ *
+ *     properties["*"].units         padding-left: 2rem    checker refuses, build serves
+ *     properties["z-index"].values  z-index: 5            checker refuses, build serves
+ *     properties["*"].shorthand     padding: 8px          checker refuses, build serves
+ *
+ * The project-wide `units`, `arity` and `variablesOnly` already spoke in both. So half the config
+ * was enforced everywhere and half in one place, with nothing saying which half.
+ *
+ * `inOrder` drops the compiler's word on a line one of these reports, so an author still meets one
+ * report rather than two — the same arrangement `variablesOnly` already has.
+ */
+function unitNotAllowedPerProperty(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  if (rules === undefined) return;
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      const allowed = ruleFor(rules, property).units;
+      if (allowed === undefined) continue;
+
+      const permitted = new Set(allowed.map((one) => one.toLowerCase()));
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+        for (const found of unitsIn(part.text, part.at)) {
+          const unit = found.unit.toLowerCase();
+          // A unit CSS does not have is `unknown-unit`'s, which names it — two rules on one fault
+          // reads as two faults. And a family this property said nothing about is not constrained.
+          if (!KNOWN_UNITS.has(unit) || permitted.has(unit)) continue;
+          if (![...permitted].some((one) => UNIT_TYPE[one] === UNIT_TYPE[unit])) continue;
+
+          // Said once. The project-wide sweep runs first and may already have named this exact unit
+          // at this exact position — see the note beside the call.
+          if (findings.some((one) => one.rule === "unit-not-allowed" && one.at === found.at)) continue;
+
+          findings.push({
+            rule: "unit-not-allowed",
+            at: found.at,
+            length: found.length,
+            message:
+              `\`${found.unit}\` is a unit \`${property}\` does not take in this project. ` +
+              `\`ramonda.css.ts\` allows ${[...permitted].sort().join(", ")}.`,
+          });
+        }
+      }
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A value outside the closed list a project gave this property — `z-index: 5` under `[0, 1, 10]`.
+ *
+ * `var()` and the CSS-wide keywords go in, because neither is a value somebody chose: one is the
+ * escape CSS itself provides and the others mean *inherit this* rather than *be this*. A value
+ * carrying a HOLE is left alone, for the reason written above `non-canonical-spelling`: what the
+ * hole evaluates to is not the text the author wrote.
+ */
+function valueNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  if (rules === undefined) return;
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      const values = ruleFor(rules, property).values;
+      if (values === undefined || item.value.some((part) => part.kind !== "text")) continue;
+
+      const written = item.value
+        .map((part) => (part.kind === "text" ? part.text : ""))
+        .join("")
+        .trim();
+      if (written === "" || GLOBAL.has(written.toLowerCase()) || written.startsWith("var(")) continue;
+      /**
+       * A QUOTED value is `string-not-allowed`'s, and this one used to speak beside it.
+       *
+       * Reported by the user, who read the type and the rule together and saw a contradiction:
+       * `z-index: "1"` gave two findings, and the second said *takes only 0, 1, 10 … and this is
+       * `"1"`* — naming a value that IS in the list. The fault is the quoting, not the number, and
+       * the other rule says exactly that.
+       *
+       * The string spellings in the TYPE are a different thing and are not a widening of what the
+       * project permitted: a block is CSS, so `z-index: 1` reaches the type as `"1"`. Both
+       * spellings mean one declaration, and a hole may hand over either.
+       */
+      if (written.startsWith('"') || written.startsWith("'")) continue;
+      // Both spellings, because a block is CSS: `z-index: 5` arrives as the string `"5"`.
+      if (values.some((one) => String(one) === written)) continue;
+
+      findings.push({
+        rule: "value-not-allowed",
+        at: item.valueAt ?? item.at ?? 0,
+        length: written.length,
+        message:
+          `\`${property}\` takes only ${values.map((one) => String(one)).join(", ")} in this project, ` +
+          `and this is \`${written}\`.\n\n        Add it to \`values\` in \`ramonda.css.ts\`, or use ` +
+          `one of those.`,
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A shorthand this project switched off — `margin: 8px` under `"*": { shorthand: false }`.
+ *
+ * The message names the longhands, because that is the whole of the fix and the project chose this
+ * setting to be asked for them.
+ */
+function shorthandNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
+  if (rules === undefined) return;
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      if (ruleFor(rules, property).shorthand !== false || SHORTHANDS[property] === undefined) continue;
+
+      /**
+       * A few of the longhands and the count, rather than all of them or an arbitrary four.
+       *
+       * `SHORTHANDS` holds every longhand a shorthand sets, TRANSITIVELY and sorted — `margin` has
+       * ten, and the first four alphabetically are the logical ones rather than the four sides
+       * somebody is looking for. Naming three and the number is honest about both: what to write,
+       * and that there is more to choose from.
+       */
+      const all = SHORTHANDS[property];
+      const shown = all.slice(0, 3).join(", ");
+      const rest = all.length > 3 ? ` and ${all.length - 3} more` : "";
+
+      findings.push({
+        rule: "shorthand-not-allowed",
+        at: item.at ?? 0,
+        length: item.property.length,
+        message:
+          `\`${property}\` is a shorthand this project does not use.\n\n        Write a longhand ` +
+          `instead — ${shown}${rest} — or name it in \`properties\` with \`shorthand: true\`.`,
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/** The first bare word in a value that is a named colour, with where it starts. */
+function namedColour(text: string): RegExpExecArray | null {
+  for (const match of text.matchAll(/(?<![\w-])([a-zA-Z][a-zA-Z0-9-]*)(?![\w-]*\()/g)) {
+    if (COLOUR_WORDS.has(match[1].toLowerCase())) return match as RegExpExecArray;
+  }
+  return null;
+}
+
+/**
+ * The paths a config declares, worked out once per config rather than once per block.
+ *
+ * A `WeakMap` because a config object outlives no more than the run that made it, and a bundler
+ * holds one per package for the length of a watch.
+ */
+const declaredPaths = new WeakMap<Config, ReadonlySet<string>>();
+
+function pathsDeclaredBy(config: Config): ReadonlySet<string> {
+  const already = declaredPaths.get(config);
+  if (already !== undefined) return already;
+
+  const paths = new Set(config.variables === undefined ? [] : namesIn(config.variables).map((one) => one.path));
+  declaredPaths.set(config, paths);
+  return paths;
+}
+
+/**
+ * `$.a.b.c` naming a variable this project never declared.
+ *
+ * **This is the only thing standing between a typo and a `var()` into nothing.** The compiler emits
+ * `var(--a-b-c)` from the path alone and reads no config to do it — deliberately, so that the CLI,
+ * the bundler and the editor cannot disagree about what a `$` compiles to. The cost of that choice
+ * is that a misspelled path compiles perfectly well, into a name nothing sets. Measured, that is not
+ * a missing value but a wrong one: `height: var(--never-set)` laid an element out at 0px, with
+ * nothing reported anywhere.
+ *
+ * The types say the same thing in an editor, through the generated `$`. This says it in CI, in a
+ * hook, and to a reviewer — none of which run TypeScript over the block.
+ *
+ * ## A group is reported too
+ *
+ * `$.color.primary` names three variables and no value. Left alone it would compile to
+ * `var(--color-primary)`, which nothing sets, so it is the same fault with a better message
+ * available: the path exists, it is just not a leaf.
+ *
+ * ## Declaring nothing is reported, and that is the user's own instruction
+ *
+ * A config that permits everything when it was never written means people can do as they like
+ * without ever learning the config exists. A config OBJECT that declares no variables is therefore
+ * told so. No config object at all is different and stays silent — nobody asked.
+ */
+function unknownVariable(block: Block, config: Config, findings: Finding[]): void {
+  const declared = pathsDeclaredBy(config);
+
+  const groups = new Set<string>();
+  for (const path of declared) {
+    const segments = path.split(".");
+    for (let count = 1; count < segments.length; count++) groups.add(segments.slice(0, count).join("."));
+  }
+
+  const among = [...declared];
+
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const part of item.value) {
+        if (part.kind !== "variable" || part.at === undefined) continue;
+        if (declared.has(part.path)) continue;
+
+        const written = part.path === "" ? "$." : `$.${part.path}`;
+        const meant = nearest(part.path, among);
+
+        const message =
+          declared.size === 0
+            ? `\`${written}\` names a variable, and this project declares no variables.\n\n` +
+              `        Declare them in \`ramonda.css.ts\`, with a kind and a fallback each:\n` +
+              `        variables: { color: kind("color", { primary: { main: "#3b82f6" } }) }`
+            : groups.has(part.path)
+              ? `\`${written}\` names a group of variables rather than one of them. Write a variable.`
+              : `\`${written}\` is not a variable this project declares.` +
+                (meant === undefined ? "" : ` Did you mean \`$.${meant}\`?`);
+
+        findings.push({ rule: "unknown-variable", at: part.at, length: part.length ?? written.length, message });
+      }
+    }
+  };
+
+  walkItems(block.items);
 }
 
 /**
@@ -823,6 +1544,36 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
  * came to be type-checked as an ORDINARY block: no surface meant no named check, and the ordinary
  * one took over. `SURFACES` reads this, and so does the rule below.
  */
+/**
+ * The rules that say what the TYPES also refuse, and the compiler codes they speak over.
+ *
+ * Both the checker and the editor have to drop the compiler's word where one of these has spoken,
+ * and they had drifted: `check.ts` had the list and `plugin.ts` had only `unknown-property`, so the
+ * editor showed two messages for one fault on every setting pass 4 gave a rule. Reported by the
+ * user, who read a rule's sentence beside a raw `Narrowed<…>` and saw a contradiction.
+ *
+ * One list, both consumers, so the next rule added here cannot reach one and not the other.
+ *
+ * `TS2353` is *does not exist in type*, which a REMOVED shorthand gets rather than *is not
+ * assignable*; `TS2561` is the compiler's own *did you mean* for a bare property name.
+ */
+export const SPEAKS_OVER_TYPES: readonly RuleId[] = [
+  "literal-not-allowed",
+  "unit-not-allowed",
+  "value-not-allowed",
+  "shorthand-not-allowed",
+  "unknown-property",
+  /**
+   * A quoted value, where the type's own word is unreadable: measured, `z-index: "1"` gives
+   * *Type '"\"1\""' is not assignable* — the author's quotes escaped inside the compiler's own
+   * quotes. The rule says the quotes are part of a CSS string and a browser drops the declaration.
+   */
+  "string-not-allowed",
+];
+
+/** The compiler codes those rules replace. See {@link SPEAKS_OVER_TYPES}. */
+export const REPLACED_CODES: readonly number[] = [2322, 2353, 2561];
+
 export const NAMED_BLOCKS = ["keyframes", "font-face", "property"] as const;
 
 /**
@@ -888,6 +1639,54 @@ function compositionInANamedBlock(block: Block, at: string, findings: Finding[])
   walkItems(block.items);
 }
 
+/**
+ * Whether two spellings differ only in CASE — in which case nothing is reported, and the FORMATTER
+ * is what settles it.
+ *
+ * Found in review pass 3, by asking what the checker says about correct CSS: it reported
+ * `color: currentColor`, the spelling MDN documents and very nearly everybody writes. Every rule is
+ * an error, so that is a failed build. The forty `<system-color>` names went with it — `Canvas`,
+ * `ButtonFace`, `AccentColor` — each spelled here exactly as the specification prints them.
+ *
+ * ## What the rest of the ecosystem does, measured
+ *
+ * `csstype` is the shared type behind emotion, styled-components, vanilla-extract and StyleX, and
+ * its colour is:
+ *
+ *     type Color = ColorBase | SystemColor | DeprecatedSystemColor | "currentColor" | (string & {});
+ *
+ * It lists `currentColor` in capitals outright, keeps the spec's case for the system colours, and
+ * ends with an escape hatch that admits any string — 529 of those in the file. So none of them can
+ * report a case at all. We were the only tool failing a build on it.
+ *
+ * ## The canonical form does NOT change
+ *
+ * `keywords CSS spells with capitals` measured Chrome: `ButtonText` in, `"buttontext"` out, and the
+ * same for `currentColor`. Lower case is what the browser does to the value anyway, so it stays
+ * what the normaliser writes and what the class is built from.
+ *
+ * ## Why the REPORT goes, and it is not that the ecosystem is laxer
+ *
+ * The rule's own justification is *one spelling is what lets two blocks agree on one class* — and
+ * measured, `canonicalValue` gives the same string for either case already. Identity never depended
+ * on the author being told.
+ *
+ * And the refusal was never argued for. The note above `a keyword written in capitals` says *the
+ * verdict does not change — it is still refused — but the REASON becomes true*: the verdict was
+ * carried over from when this was `unknown-value`, which was a false report. Nobody decided that
+ * correct CSS should fail a build; it was inherited from a bug.
+ *
+ * **`ramonda-css format` still rewrites every one of them**, which is the user's own condition for
+ * this — *"neka formater obavezno to resava"* — and `toolingCli.test.ts` holds it to that through
+ * the real biome, on a value, a pseudo-class, an at-rule name and a media feature at once.
+ *
+ * A difference that is MORE than case is still reported, because it is a real one: `&:before` is a
+ * pseudo-element written with a pseudo-class's colon, and `2n + 1` is not spelled `2n+1`.
+ */
+function onlyCase(written: string, canonical: string): boolean {
+  return written.toLowerCase() === canonical.toLowerCase();
+}
+
 function spelling(block: Block, findings: Finding[]): void {
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -897,7 +1696,7 @@ function spelling(block: Block, findings: Finding[]): void {
 
       const written = item.prelude.trim();
       const canonical = canonicalPrelude(written);
-      if (canonical === written) continue;
+      if (canonical === written || onlyCase(written, canonical)) continue;
 
       findings.push({
         rule: "non-canonical-spelling",
@@ -1026,6 +1825,46 @@ function overrideOutOfOrder(block: Block, findings: Finding[]): void {
       const sameContext = earlier.conditions.join("|") === later.conditions.join("|");
       if (sameContext && covers(later.property, earlier.property)) continue;
 
+      /**
+       * A TIE, which the sheet settles by position — so by the order the build met the two files.
+       *
+       * The bands in `widthSlot` rank a breakpoint by its width and everything else by a small
+       * table, and two conditions inside one band tie. Measured in Chromium through a real Vite
+       * build, the same block each time:
+       *
+       *     @supports (display: grid) { color: red; } @supports (display: flex) { color: blue; }
+       *
+       *     alone in the file                          blue — what plain CSS says
+       *     after a block with the same two, reversed  RED
+       *     after a block naming only the flex query   RED
+       *
+       * Both queries hold in every browser that can read the sheet, so the page depended on what
+       * another component wrote. There is no order to give them that is CSS's — one sheet, one
+       * position, and the author's two blocks each want a different one — so the shape is refused.
+       *
+       * `widthSlot`'s own note records this fault for breakpoints and the bands are what fixed it;
+       * inside a band it was never fixed. Conditions that EXCLUDE each other still tie and still
+       * say nothing, because no element is ever matched by both — which is a colour scheme, an
+       * orientation and a medium, and most of what anybody writes.
+       */
+      if (
+        sheetRank(later) === sheetRank(earlier) &&
+        later.conditions.join("|") !== earlier.conditions.join("|") &&
+        !exclusive(earlier.conditions, later.conditions)
+      ) {
+        findings.push({
+          rule: "override-out-of-order",
+          at: later.at ?? 0,
+          length: later.property.length,
+          message:
+            `\`${earlier.conditions.join(" ") || earlier.property}\` and \`${later.conditions.join(" ") || later.property}\` ` +
+            `can both hold at once, and the stylesheet cannot be ordered for both — it has one ` +
+            `position for each rule, and\n        whichever the build reads first would win. Put ` +
+            `\`${later.property}\` under one condition, or combine them with \`and\`.`,
+        });
+        return;
+      }
+
       if (sheetRank(later) >= sheetRank(earlier)) continue;
 
       /**
@@ -1079,6 +1918,14 @@ function becauseOf(
   earlier: { property: string; conditions: readonly string[] },
   later: { property: string; conditions: readonly string[] },
 ): string {
+  /**
+   * An alias pair first, because the shorthand sentence below is true of most of these and not of
+   * this one: neither name is a shorthand, and what decides is that they are ONE property to the
+   * engine and the sheet has picked which spelling goes first.
+   */
+  if (standardFormOf(earlier.property) === later.property || standardFormOf(later.property) === earlier.property) {
+    return "a vendor prefix before the standard property it is another name for";
+  }
   if (earlier.conditions.length === 0) return "a shorthand before its own longhands";
   if (widthSlot(later.conditions) === widthSlot(earlier.conditions)) {
     return "the broadest property first";
@@ -1324,14 +2171,18 @@ function unknownPrefix(item: Declaration, findings: Finding[]): void {
 }
 
 /**
- * A dashed property name that is nearly one CSS has.
+ * A property name CSS does not have.
  *
- * **Bare names are left to the types**, which report them with TypeScript's own *did you mean*. A
- * dashed one cannot be an unquoted object key, and a quoted key gets no suggestion — measured. So
- * this fills exactly that hole and nothing else.
+ * **It was DASHED names only, and the build compiled the rest.** The split was half right: a dashed
+ * name cannot be an unquoted object key and a quoted key gets no *did you mean* — measured — while
+ * a bare name gets `TS2561`, which says it better. But it says it better in the CHECKER. Vite and
+ * esbuild run these rules and no TypeScript at all, so `dsiplay: flex` and even `zzz: flex` reached
+ * the stylesheet with nothing said anywhere. Found in review pass 6, by asking both consumers the
+ * same question about the same file.
  *
- * A name with no near miss is not reported either: the types already said it does not exist, and
- * repeating that with nothing added is noise.
+ * So it speaks for both now, and `inOrder` drops the compiler's word on the line — the arrangement
+ * `unknown-variable` and `variablesOnly` already have. A name with no near miss is reported too,
+ * without a suggestion: the types are not there to say it in the build.
  */
 function unknownProperty(item: Declaration, findings: Finding[], body?: string): void {
   const name = item.property;
@@ -1342,7 +2193,14 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
     unknownPrefix(item, findings);
     return;
   }
-  if (!name.includes("-")) return;
+  /**
+   * It has to LOOK like a property name, and the dash test was doing this by accident.
+   *
+   * Dropping that guard so the build sees a plain typo exposed every shape the parser records as a
+   * declaration without one being there — a spread comes through as `... 0 `, and forty-one tests
+   * went red at once saying it is not a CSS property. True, and not a thing to report.
+   */
+  if (!/^[a-zA-Z][a-zA-Z0-9-]*$/.test(name)) return;
 
   /**
    * Inside a named block the vocabulary is that at-rule's descriptors, and only those: `src` is not
@@ -1354,7 +2212,7 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
   if (body === undefined && KNOWN.has(name)) return;
 
   const meant = nearest(name, among);
-  if (meant === undefined) return;
+  const said = meant === undefined ? "" : ` Did you mean \`${meant}\`?`;
 
   findings.push({
     rule: "unknown-property",
@@ -1362,8 +2220,8 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
     length: name.length,
     message:
       body === undefined
-        ? `\`${name}\` is not a CSS property. Did you mean \`${meant}\`?`
-        : `\`${name}\` is not a \`@${body}\` descriptor. Did you mean \`${meant}\`?`,
+        ? `\`${name}\` is not a CSS property.${said}`
+        : `\`${name}\` is not a \`@${body}\` descriptor.${said}`,
   });
 }
 
@@ -1489,12 +2347,15 @@ function unknownValue(item: Declaration, findings: Finding[]): void {
     : undefined;
   if (written === undefined) return;
 
+  const canonical = canonicalValue(item.property, written);
+  if (onlyCase(written, canonical)) return;
+
   findings.push({
     rule: "non-canonical-spelling",
     at: item.valueAt ?? item.at ?? 0,
     length: written.length,
     message:
-      `write this as \`${canonicalValue(item.property, written)}\` — a CSS keyword is ` +
+      `write this as \`${canonical}\` — a CSS keyword is ` +
       `case-insensitive, so the two are the same declaration, and one spelling is what lets two ` +
       `blocks writing it agree on one class. \`ramonda-css format\` fixes it.`,
   });
@@ -2045,13 +2906,26 @@ function* unitsIn(text: string, at: number): Generator<{ unit: string; at: numbe
  * decided against it — the fault is local to a project, so the list comes from `ramonda.css.ts` and
  * there is no default: a project that says nothing gets every unit CSS has.
  *
+ * **Asked per FAMILY, and a family the config does not name is not constrained.** The setting was a
+ * flat list and meant *every unit in CSS and nothing else*, which measured reported four things
+ * nobody writing `units: ["px", "rem"]` intends — `200ms`, `50%`, `45deg`, `1fr`. A project could
+ * not state the rule it wanted without enumerating five families it had no opinion about. Keyed by
+ * family, the rule it wanted is the rule it writes.
+ *
+ * An EMPTY list is a family banned outright, which is a thing somebody may well mean: `flex: []`
+ * says this project does not use `fr`. So the test is whether the family was NAMED, never whether
+ * its list has anything in it.
+ *
  * It runs BESIDE `unknown-unit` rather than instead of it. A unit that is not a unit is a typo
  * wherever it is written; a unit the project has banned is a different sentence, and reading both on
  * one declaration would be two faults where there is one — so a unit CSS does not have is skipped
  * here and left to the rule that names it.
  */
-function unitNotAllowed(block: Block, allowed: readonly string[], findings: Finding[]): void {
-  const permitted = new Set(allowed.map((one) => one.toLowerCase()));
+function unitNotAllowed(block: Block, allowed: UnitsByFamily, findings: Finding[]): void {
+  /** By family, lower-cased once, so the walk below asks a set rather than a list. */
+  const permitted = new Map<string, ReadonlySet<string>>(
+    Object.entries(allowed).map(([family, units]) => [family, new Set((units ?? []).map((one) => one.toLowerCase()))]),
+  );
 
   const walkItems = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -2064,15 +2938,20 @@ function unitNotAllowed(block: Block, allowed: readonly string[], findings: Find
 
         for (const found of unitsIn(part.text, part.at)) {
           const unit = found.unit.toLowerCase();
-          if (permitted.has(unit) || !KNOWN_UNITS.has(unit)) continue;
+          if (!KNOWN_UNITS.has(unit)) continue;
 
+          const family = UNIT_TYPE[unit];
+          const allowedHere = family === undefined ? undefined : permitted.get(family);
+          if (allowedHere === undefined || allowedHere.has(unit)) continue;
+
+          const listed = [...allowedHere].sort().join(", ");
           findings.push({
             rule: "unit-not-allowed",
             at: found.at,
             length: found.length,
             message:
-              `\`${found.unit}\` is a CSS unit this project does not use. \`ramonda.css.ts\` allows ` +
-              `${[...permitted].sort().join(", ")}.`,
+              `\`${found.unit}\` is a ${family} this project does not use. \`ramonda.css.ts\` allows ` +
+              `${listed === "" ? `no ${family} at all` : listed}.`,
           });
         }
       }
@@ -2372,85 +3251,5 @@ const isWordCharacter = (code: number) => isWordStart(code) || (code >= 48 && co
 
 /* ── the near miss ─────────────────────────────────────────────────────────────────────────── */
 
-/**
- * The closest name, or nothing when nothing is close.
- *
- * The bound is what keeps the suggestion honest: a name three edits away from `flex-direction` is
- * not a typo of it, and offering one anyway sends a reader to change a line that was right for a
- * different reason. Scaled by length, so a short name needs a closer match than a long one.
- */
-export function nearest(word: string, among: readonly string[]): string | undefined {
-  const bound = Math.min(3, Math.max(1, Math.floor(word.length / 4)));
-  let best: string | undefined;
-  let closest = bound + 1;
-
-  for (const candidate of among) {
-    if (Math.abs(candidate.length - word.length) > closest) continue;
-    const distance = editDistance(word, candidate, closest);
-    if (distance < closest) {
-      closest = distance;
-      best = candidate;
-    }
-  }
-
-  return best;
-}
-
-/**
- * Levenshtein, abandoned as soon as every cell in a row is past the bound.
- *
- * The bound is what makes this affordable: `unknown-value` asks it once per word against a set that
- * can be 160 colours long, and a full matrix per candidate would be the checker's whole cost.
- */
-function editDistance(a: string, b: string, bound: number): number {
-  /** The row before the one before, which is the only thing a swap needs to see. */
-  let twoBack: number[] = [];
-  let previous = Array.from({ length: b.length + 1 }, (_unused, index) => index);
-
-  for (let i = 1; i <= a.length; i++) {
-    const row = [i];
-    let best = i;
-
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
-      let value = Math.min(previous[j] + 1, row[j - 1] + 1, previous[j - 1] + cost);
-
-      /**
-       * **A SWAPPED PAIR IS ONE EDIT, and plain Levenshtein counts it as two.**
-       *
-       * A swap is the commonest way to mistype a word, and the bound is scaled by length — so for a
-       * six-character name it is 1, and every transposition was out of reach. Found by `@medai`,
-       * which is `@media` with two letters swapped and got no suggestion at all.
-       *
-       * Measured over every single-swap typo of every name in the four vocabularies, and every
-       * single DELETION as well, so the change was measured for what it might break:
-       *
-       *     properties  swap   Levenshtein  right 12978  wrong 88  silent 199
-       *                        this         right 13263  wrong  2  silent   0
-       *     properties  drop   both the same: right 14223, wrong 63, silent 0
-       *     at-rules    swap   157 -> 182 right, 25 silent -> 0
-       *     selectors   swap  1210 -> 1353 right, 141 silent -> 0
-       *
-       * Better in every direction, and FASTER — 0.024 ms against 0.037 ms per word over 828 names,
-       * because a swap costing 1 reaches the abandon bound sooner.
-       */
-      if (
-        i > 1 &&
-        j > 1 &&
-        a.charCodeAt(i - 1) === b.charCodeAt(j - 2) &&
-        a.charCodeAt(i - 2) === b.charCodeAt(j - 1)
-      ) {
-        value = Math.min(value, twoBack[j - 2] + 1);
-      }
-
-      row.push(value);
-      if (value < best) best = value;
-    }
-
-    if (best > bound) return bound + 1;
-    twoBack = previous;
-    previous = row;
-  }
-
-  return previous[b.length];
-}
+/** Re-exported where it has always been imported from. See `./nearest`. */
+export { nearest } from "./nearest";

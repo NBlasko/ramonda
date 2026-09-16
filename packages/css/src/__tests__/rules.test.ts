@@ -1,11 +1,15 @@
 import { describe, expect, test } from "vitest";
+import type { Config } from "../config";
+import { kind } from "../declared";
 import { ABBREVIATIONS, KEYWORDS, PROPERTIES, SHORTHANDS } from "../compiler/keywords.generated";
 import { readBlock } from "../compiler/read";
 import { nearest } from "../compiler/rules";
 import { checkSource } from "../compiler/source";
 import { namedSites, syntaxesIn } from "../compiler/references";
 import { type Finding, checkBlock, checkText } from "../compiler/rules";
+import { canonicalValue } from "../compiler/normalise";
 import { findBlocks } from "../compiler/scan";
+import { transform } from "../compiler/transform";
 
 /**
  * The CSS checker: the faults the types deliberately cannot catch.
@@ -46,11 +50,33 @@ function check(css: string): Finding[] {
 const rules = (css: string) => check(css).map((finding) => finding.rule);
 const messages = (css: string) => check(css).map((finding) => finding.message);
 
-describe("a property name the types could not suggest", () => {
+/** The rule ids for one block, checked with a project config — for the config-driven rules. */
+function rulesWith(css: string, config: import("../config").Config): string[] {
+  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const [site] = findBlocks(source);
+  const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+  return checkBlock(read.block, { config }).map((finding) => finding.rule);
+}
+
+/** The same, as messages — for the rules whose WORDING is the thing being asserted. */
+function messagesWith(css: string, config: import("../config").Config): string[] {
+  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const [site] = findBlocks(source);
+  const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+  return checkBlock(read.block, { config }).map((finding) => finding.message);
+}
+
+describe("a property name CSS does not have", () => {
   /**
-   * The types report a dashed name as `TS2353` with no suggestion, because a QUOTED object key gets
-   * none — measured. A bare one gets `TS2561` and TypeScript's own *did you mean*, so it is not
-   * repeated here: one fault, one report.
+   * **It was dashed names only until review pass 6**, and the reason was sound in the checker and
+   * wrong in the build. The types report a dashed name as `TS2353` with no suggestion, because a
+   * QUOTED object key gets none — measured — while a bare one gets `TS2561` and TypeScript's own
+   * *did you mean*. So the rule filled the first hole and left the second.
+   *
+   * The build runs no TypeScript. Measured in pass 6: `dsiplay: flex` and even `zzz: flex` compiled
+   * into the stylesheet with nothing said anywhere. The rule speaks for both now, with or without a
+   * suggestion, and `inOrder` drops the compiler's word on the line — so it is still one fault, one
+   * report.
    */
   test("a dashed near miss is named, with what was meant", () => {
     const [only, ...rest] = check("  flex-dirction: row;");
@@ -61,13 +87,20 @@ describe("a property name the types could not suggest", () => {
     expect(only.message).toContain("flex-direction");
   });
 
-  test("a bare name is left to the types, which say it better", () => {
-    expect(rules("  dsiplay: flex;")).toEqual([]);
+  test("a bare name is named too, so the BUILD sees it", () => {
+    const [only, ...rest] = check("  dsiplay: flex;");
+
+    expect(rest).toEqual([]);
+    expect(only.rule).toBe("unknown-property");
+    expect(only.message).toContain("display");
   });
 
-  test("a dashed name with no near miss at all is still not this rule's to report", () => {
-    // Nothing to suggest means nothing to add to what the types already said.
-    expect(rules("  zzz-qqq-www: 1px;")).toEqual([]);
+  test("a name with no near miss at all is named without one", () => {
+    const [only] = check("  zzz-qqq-www: 1px;");
+
+    expect(only.rule).toBe("unknown-property");
+    expect(only.message).toContain("zzz-qqq-www");
+    expect(only.message).not.toContain("Did you mean");
   });
 
   test.each([
@@ -141,9 +174,17 @@ describe("a bare word a property does not accept", () => {
   test.each([
     ["a string where the grammar allows none", `  display: "flexx";`],
     ["an escaped quote inside one", `  display: "a\\"b";`],
-    ["one that is never closed", `  display: "flexx`],
   ])("%s is not a word, and is reported as a string", (_what, css) => {
     expect(rules(css)).toEqual(["string-not-allowed"]);
+  });
+
+  /**
+   * A string that is never closed swallows the rest of the block, and `string-not-allowed` is what
+   * explains that — so `missing-semicolon` stays quiet, as it does wherever another rule has already
+   * spoken about the same declaration.
+   */
+  test("one that is never closed is not a word, and is reported as a string", () => {
+    expect(rules(`  display: "flexx`)).toEqual(["string-not-allowed"]);
   });
 
   /**
@@ -240,7 +281,7 @@ describe("a hole where a custom property cannot go", () => {
    */
   test.each([
     ["a property name", "  {name}: 24px;"],
-    ["a whole declaration", `  {cond ? "display:flex" : ""}`],
+    ["a whole declaration", `  {cond ? "display:flex" : ""};`],
     ["a selector", "  &:{state} { color: red; }"],
   ])("%s is named", (_what, css) => {
     const [only, ...rest] = check(css);
@@ -1101,6 +1142,106 @@ describe("an override the sheet's order will not honour", () => {
     expect(
       checkNamedFree("@media (min-width: 40rem) { padding: 8px; }\n@media (min-width: 64rem) { padding: 40px; }"),
     ).toHaveLength(0);
+  });
+
+  /**
+   * A VENDOR PREFIX written BELOW the standard property it is another name for.
+   *
+   * The engine treats them as one property, so in plain CSS the later one wins. The sheet puts the
+   * prefixed form first — deliberately, so the standard property wins wherever both appear and wins
+   * the same way in every build — which means writing them this way round is an override that
+   * cannot happen. Measured in Chromium, `box-shadow: 0 0 9px blue; -webkit-box-shadow: 0 0 1px red`
+   * is red in plain CSS and blue here.
+   *
+   * The conventional order is the other one, and it is silent: a prefixed fallback ABOVE the
+   * standard property is what every author writes, and it does exactly what they mean.
+   */
+  test.each([
+    ["box-shadow", "-webkit-box-shadow", "0 0 1px red"],
+    ["transform", "-webkit-transform", "scale(7)"],
+    ["user-select", "-webkit-user-select", "text"],
+    ["appearance", "-webkit-appearance", "button"],
+  ])("a prefixed `%s` below the standard one", (standard, prefixed, value) => {
+    const found = checkNamedFree(`${standard}: ${value};\n${prefixed}: ${value};`);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("override-out-of-order");
+    expect(found[0].message).toContain(standard);
+    // And the REASON is this pair's own, not the shorthand sentence most of these get: neither
+    // name is a shorthand, and what decides is that the engine reads them as one property.
+    expect(found[0].message).toContain("vendor prefix before the standard property");
+  });
+
+  test("and the conventional order — the prefix first — is silent", () => {
+    expect(checkNamedFree("-webkit-box-shadow: 0 0 1px red;\nbox-shadow: 0 0 9px blue;")).toHaveLength(0);
+    expect(checkNamedFree("-webkit-transform: scale(7);\ntransform: scale(3);")).toHaveLength(0);
+  });
+
+  /**
+   * TWO CONDITIONS THE SHEET CANNOT ORDER, both of which may hold at once.
+   *
+   * `widthSlot` ranks a breakpoint by its width and everything else by a small table of bands — and
+   * inside a band, two different conditions TIE. A tie is settled by the sheet's position, which is
+   * the order the build happened to meet them, which is exactly what the bands exist to stop. The
+   * note on `widthSlot` records the same fault for breakpoints: *the sheet fell back to the order the
+   * file happened to write them in — which another file re-emitting one of the two then reversed.*
+   *
+   * Measured in Chromium through a real Vite build, the same block each time:
+   *
+   *     @supports (display: grid) { color: red; } @supports (display: flex) { color: blue; }
+   *
+   *     alone in the file                          blue — what plain CSS says
+   *     after a block with the same two, reversed  RED
+   *     after a block naming only the flex query   RED
+   *
+   * Both queries are true in every browser that can read the sheet, so the page depended on what
+   * another component wrote. There is no order to give them that is CSS's, so the shape is refused.
+   */
+  test.each([
+    [
+      "two `@supports`, both true",
+      `@supports (display: grid) { color: red; }\n@supports (display: flex) { color: blue; }`,
+    ],
+    [
+      "two feature queries on different features",
+      `@media (hover: hover) { color: red; }\n@media (pointer: fine) { color: blue; }`,
+    ],
+    [
+      "a feature query and a height",
+      `@media (hover: hover) { color: red; }\n@media (min-height: 40rem) { color: blue; }`,
+    ],
+  ])("%s setting one property is refused", (_what, css) => {
+    const found = checkNamedFree(css);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].rule).toBe("override-out-of-order");
+    expect(found[0].message).toMatch(/both|either|cannot be ordered/i);
+  });
+
+  /**
+   * And conditions that EXCLUDE each other are silent, because only one of them ever applies.
+   *
+   * This is most of what people write: a colour scheme, an orientation, a medium. They tie in the
+   * band too, and the tie has never mattered — no element is ever matched by both.
+   */
+  test.each([
+    [
+      "a colour scheme",
+      `@media (prefers-color-scheme: dark) { color: red; }\n@media (prefers-color-scheme: light) { color: blue; }`,
+    ],
+    [
+      "an orientation",
+      `@media (orientation: portrait) { color: red; }\n@media (orientation: landscape) { color: blue; }`,
+    ],
+    ["a medium", `@media print { color: red; }\n@media screen { color: blue; }`],
+  ])("%s is silent, because only one of them ever applies", (_what, css) => {
+    expect(checkNamedFree(css)).toHaveLength(0);
+  });
+
+  /** A prefixed name with no standard form fights nobody, and two unrelated ones are not a pair. */
+  test("a prefixed name that stands alone is not reported", () => {
+    expect(checkNamedFree("-moz-osx-font-smoothing: grayscale;\ncolor: red;")).toHaveLength(0);
+    expect(checkNamedFree("box-shadow: 0 0 9px blue;\n-webkit-transform: scale(7);")).toHaveLength(0);
   });
 
   /** `max-width` is desktop-first, so the narrower one is the one written — and emitted — last. */
@@ -2020,7 +2161,9 @@ describe("valid CSS these rules must not report", () => {
       const source = `<div css={@@(\n${css}\n)}>x</div>`;
       const [site] = findBlocks(source);
       const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
-      return checkBlock(read.block, { config: { units: ["px", "rem"] } }).map((one) => one.rule);
+      return checkBlock(read.block, { config: { units: { length: ["px", "rem"], percentage: ["%"] } } }).map(
+        (one) => one.rule,
+      );
     };
 
     test.each([
@@ -2041,8 +2184,13 @@ describe("valid CSS these rules must not report", () => {
       expect(withUnits(`  --a: "12em" 4em;`)).toEqual(["unit-not-allowed"]);
     });
 
+    /**
+     * One report, not two: `%` is a percentage and this fixture constrains percentages to `%`, so
+     * only the `em` is a fault. It is INSIDE the call, which is the whole claim — were the call's
+     * interior skipped the way a string's is, this would be silent.
+     */
     test("and a unit inside an ordinary call still is too", () => {
-      expect(withUnits(`  width: calc(100% - 4em);`)).toEqual(["unit-not-allowed", "unit-not-allowed"]);
+      expect(withUnits(`  width: calc(100% - 4em);`)).toEqual(["unit-not-allowed"]);
     });
 
     test("`unknown-unit` has the same blind spot and the same fix", () => {
@@ -2085,18 +2233,31 @@ describe("valid CSS these rules must not report", () => {
  */
 describe("a spelling that is the same CSS and a different class", () => {
   test.each([
-    ["a pseudo-class in capitals", "  &:HOVER { color: red; }", "&:hover"],
     ["a legacy pseudo-element", '  &:before { content: ""; }', "&::before"],
-    ["an at-rule name in capitals", "  @MEDIA print { color: red; }", "@media print"],
-    ["a feature name in capitals", "  @media (MIN-WIDTH: 40rem) { color: red; }", "min-width"],
     ["no space after a feature's colon", "  @media (min-width:40rem) { color: red; }", "min-width: 40rem"],
-    ["a media type in capitals", "  @media PRINT { color: red; }", "@media print"],
     ["a supports declaration", "  @supports (display:grid) { color: red; }", "display: grid"],
   ])("%s is reported, with the spelling to use", (_what, css, expected) => {
     const found = rules(css);
 
     expect(found).toEqual(["non-canonical-spelling"]);
     expect(messages(css)[0]).toContain(expected);
+  });
+
+  /**
+   * A difference of CASE ALONE is not reported — see `onlyCase`, and the formatter still fixes it.
+   *
+   * These four were reported until review pass 3 measured what that cost: `color: currentColor` —
+   * the spelling MDN documents — failed the build, and every rule is an error. The formatter half is
+   * unchanged and is what carries the guarantee now; `toolingCli.test.ts` holds it to that through
+   * the real biome, on all four shapes at once.
+   */
+  test.each([
+    ["a pseudo-class in capitals", "  &:HOVER { color: red; }"],
+    ["an at-rule name in capitals", "  @MEDIA print { color: red; }"],
+    ["a feature name in capitals", "  @media (MIN-WIDTH: 40rem) { color: red; }"],
+    ["a media type in capitals", "  @media PRINT { color: red; }"],
+  ])("%s says nothing, because case alone is the formatter's", (_what, css) => {
+    expect(rules(css)).toEqual([]);
   });
 
   test.each([
@@ -2552,26 +2713,35 @@ describe("a swapped pair of letters", () => {
  * own words above the line that canonicalises a prelude.
  */
 describe("a keyword written in capitals", () => {
+  /**
+   * **And it is not reported at all now** — see `onlyCase`, decided in review pass 3.
+   *
+   * The finding above stands and was the right half of the answer: saying a keyword in capitals
+   * DOES NOT EXIST is a lie. What it kept was the verdict, and its own note says why: *the verdict
+   * does not change — it is still refused — but the REASON becomes true.* The refusal was inherited
+   * from the false report, not argued for.
+   *
+   * Measured in pass 3: `color: currentColor` — the spelling MDN documents — failed the build, and
+   * `csstype`, the shared type behind emotion, styled-components, vanilla-extract and StyleX, lists
+   * `"currentColor"` outright and ends its colour with `(string & {})`, so none of them reports a
+   * case at all.
+   *
+   * The FORMATTER still rewrites every one of these, which is the user's own condition, and
+   * `case and the atomic class` below holds the part that actually mattered: one class either way.
+   */
   test.each([
     ["color", "RED"],
     ["display", "FLEX"],
     ["background-image", "NONE"],
     ["overflow", "Hidden"],
     ["text-transform", "UPPERCASE"],
-  ])("%s: %s is the same CSS, not a value that does not exist", (property, value) => {
-    const found = checkNamedFree(`${property}: ${value};`);
-
-    expect(found).toHaveLength(1);
-    expect(found[0].rule).toBe("non-canonical-spelling");
-    expect(found[0].message).toContain(value.toLowerCase());
+  ])("%s: %s is the same CSS, and is left alone", (property, value) => {
+    expect(checkNamedFree(`${property}: ${value};`)).toEqual([]);
   });
 
   /** Every word in the value, because a shorthand carries several. */
-  test("a shorthand's keywords are all named", () => {
-    const [found] = checkNamedFree("flex-flow: ROW WRAP;");
-
-    expect(found.rule).toBe("non-canonical-spelling");
-    expect(found.message).toContain("row wrap");
+  test("a shorthand's keywords are all left alone", () => {
+    expect(checkNamedFree("flex-flow: ROW WRAP;")).toEqual([]);
   });
 
   /** And a value that really is wrong is still wrong, whatever its case. */
@@ -2915,4 +3085,868 @@ describe("the important flag", () => {
       expect(checkNamedFree(written).filter((one) => one.rule === "unknown-flag")).toEqual([]);
     },
   );
+});
+
+/**
+ * Keywords CSS spells with capitals, which the grammar's own table carries and the scanner dropped.
+ *
+ * `mdn-data` writes `currentColor` and the nineteen `<system-color>` names in camel case, because
+ * that is how the specification prints them — and CSS keywords are ASCII case-insensitive, so every
+ * one of them is correct in a stylesheet. The word scanner matched `[a-z][a-z0-9-]*`, which does two
+ * wrong things at once rather than one: it drops the keyword, and where the keyword STARTS lowercase
+ * it keeps the truncated prefix as a keyword of its own.
+ *
+ * Measured before the fix: `color` carried 150 words — the 148 named colours, `transparent`, and
+ * `current`, which is not a CSS keyword at all. So `color: current` passed and `color: currentcolor`
+ * was reported. Exactly backwards, on the most common colour keyword there is.
+ */
+describe("keywords CSS spells with capitals", () => {
+  test("`currentcolor` is accepted, and it is the one this was found through", () => {
+    expect(rules("color: currentcolor;")).toEqual([]);
+    expect(rules("border: 1px solid currentcolor;")).toEqual([]);
+    expect(rules("background-color: currentcolor;")).toEqual([]);
+  });
+
+  test("a system colour is accepted in either case, and lower case is still canonical", () => {
+    expect(rules("color: buttontext;")).toEqual([]);
+    expect(rules("background-color: canvas;")).toEqual([]);
+
+    // Chrome round-trips every one of these to lower case — `ButtonText` in, `"buttontext"` out,
+    // and the same for `currentColor` and even `Red`. So the table folds case and the NORMALISER
+    // agrees with what the browser will do to the value anyway, rather than with how a spec prints
+    // it. What changed in pass 3 is only that the case is no longer REPORTED: the spec spells these
+    // `ButtonText` and `Canvas`, and failing a build on the documented spelling is the fault that
+    // finding was about. `case and the atomic class` holds the guarantee that matters.
+    expect(rules("color: ButtonText;")).toEqual([]);
+    expect(canonicalValue("color", " ButtonText").trim()).toBe("buttontext");
+  });
+
+  test("the truncated prefix is NOT a keyword, which is the half a fix could leave behind", () => {
+    expect(rules("color: current;")).toEqual(["unknown-value"]);
+  });
+
+  test("the named colours it always had are untouched", () => {
+    expect(rules("color: rebeccapurple;")).toEqual([]);
+    expect(rules("color: transparent;")).toEqual([]);
+    expect(rules("color: notacolour;")).toEqual(["unknown-value"]);
+  });
+});
+
+/**
+ * `arity` — how many values a property may take here, which is a RULE and not a type.
+ *
+ * A type for it is a template literal over the permitted values, and measured, at 49 units by four
+ * positions TypeScript silently stops checking: no `TS2590`, no message, `8pxx` simply accepted. A
+ * type that quietly stops checking is worse than none, because the file stays green. The checker has
+ * no threshold, and the sentence is ours to write.
+ */
+describe("more values than this project allows", () => {
+  const ONE: Config = { properties: { "*": { arity: 1 } } };
+
+  test("one value is silent and two are reported", () => {
+    expect(rulesWith("padding: 8px;", ONE)).toEqual([]);
+    expect(rulesWith("padding: 8px 12px;", ONE)).toEqual(["too-many-values"]);
+  });
+
+  test("a call is ONE value, however many spaces are inside it", () => {
+    expect(rulesWith("padding: calc(1rem + 2px);", ONE)).toEqual([]);
+    expect(rulesWith("color: rgb(0 0 0);", ONE)).toEqual([]);
+  });
+
+  /**
+   * **The wildcard reaches only the sixteen properties an arity means something for.**
+   *
+   * `border-left` is `<line-width> || <line-style> || <color>`, so `4px solid red` is one value in
+   * three parts rather than three values. It was reported under `"*": { arity: 1 }` before this was
+   * narrowed — refusing correct CSS, which is the failure this package may not have.
+   */
+  test("a shorthand whose parts are different things is untouched", () => {
+    expect(rulesWith("border-left: 4px solid red;", ONE)).toEqual([]);
+    expect(rulesWith("background: red url(a.png) no-repeat;", ONE)).toEqual([]);
+  });
+
+  test("a property may be given its own arity, which beats the sweep", () => {
+    const own: Config = { properties: { "*": { arity: 1 }, margin: { arity: 4 } } };
+
+    expect(rulesWith("margin: 0 auto;", own)).toEqual([]);
+    // `0 8px` rather than `0 auto`: `auto` is not a padding value, so that would have reported
+    // `unknown-value` beside this one and the assertion would have been about two rules at once.
+    expect(rulesWith("padding: 0 8px;", own)).toEqual(["too-many-values"]);
+  });
+
+  /**
+   * `margin: 0 auto` under `arity: 1`, which `DESIGN.md` names as the trap in the obvious default.
+   *
+   * Reported, and correctly — the project asked for one value. It is here so that anybody proposing
+   * `"*": { arity: 1 }` as a scaffolded default meets it in a test rather than in their own code.
+   */
+  test("centring with `margin: 0 auto` is reported under an arity of one", () => {
+    expect(rulesWith("margin: 0 auto;", ONE)).toEqual(["too-many-values"]);
+  });
+
+  test("a hole is one value, because what it evaluates to is decided at render", () => {
+    expect(rulesWith("padding: {gap};", ONE)).toEqual([]);
+  });
+
+  test("no arity anywhere is silence", () => {
+    expect(rulesWith("padding: 8px 12px 4px 2px;", {})).toEqual([]);
+  });
+});
+
+/**
+ * More values than CSS ITSELF gives the property, which needs no config at all.
+ *
+ * **Reported by a user**, who wrote `padding: 4px 0 0 0 0` — five values where CSS gives four — and
+ * was told nothing, because this rule only ran when a config set an arity. Exceeding CSS's maximum
+ * is not a project's opinion; it is invalid CSS, and the browser drops the declaration.
+ *
+ * The same breath found the second half: `"*": { arity: 4 }` left `padding-block: 1px 2px 3px`
+ * silent, because the sweep's four is higher than the two CSS gives that property. A config may only
+ * ever NARROW, and one `Math.min` answers both.
+ */
+describe("more values than CSS gives the property", () => {
+  test("five values for `padding` are reported with no config at all", () => {
+    expect(rulesWith("padding: 4px 0 0 0 0;", {})).toEqual(["too-many-values"]);
+    expect(messagesWith("padding: 4px 0 0 0 0;", {})[0]).toContain("at most 4 values in CSS");
+  });
+
+  test("four are not, because that is what CSS gives it", () => {
+    expect(rulesWith("padding: 4px 0 0 0;", {})).toEqual([]);
+  });
+
+  test("a property whose CSS maximum is two is held to two", () => {
+    expect(rulesWith("padding-block: 1px 2px;", {})).toEqual([]);
+    expect(rulesWith("padding-block: 1px 2px 3px;", {})).toEqual(["too-many-values"]);
+  });
+
+  test("a config may NARROW the maximum", () => {
+    expect(rulesWith("padding: 4px 0;", { properties: { "*": { arity: 1 } } })).toEqual(["too-many-values"]);
+    expect(messagesWith("padding: 4px 0;", { properties: { "*": { arity: 1 } } })[0]).toContain("in this project");
+  });
+
+  test("and may NOT widen it — the half that was silent", () => {
+    const four = { properties: { "*": { arity: 4 } } } as const;
+
+    // CSS gives `padding-block` two, so the sweep's four does not reach past it.
+    expect(rulesWith("padding-block: 1px 2px 3px;", four)).toEqual(["too-many-values"]);
+    expect(messagesWith("padding-block: 1px 2px 3px;", four)[0]).toContain("in CSS");
+  });
+
+  test("a property with no CSS arity is untouched without a config, as before", () => {
+    expect(rulesWith("border-left: 4px solid red;", {})).toEqual([]);
+    expect(rulesWith("transition: color 150ms ease-in-out;", {})).toEqual([]);
+  });
+
+  /**
+   * A declaration that swallowed the next one belongs to `run-on-declaration`, which names the
+   * actual fault and the missing `;`. Counting its values and speaking as well was a regression the
+   * moment CSS's own maximum started applying with no config — two reports for one mistake.
+   */
+  test("a run-on declaration is left to the rule that explains it", () => {
+    expect(rulesWith("padding: 8px\n  border-left: 4px solid red;", {})).toEqual(["run-on-declaration"]);
+  });
+});
+
+/**
+ * A declaration with no `;`, which CSS allows for the last one in a block and this does not.
+ *
+ * **Reported by a user, and the reason is what happens NEXT.** A declaration without its semicolon
+ * swallows whatever is written under it — that is `run-on-declaration` — so a block that is legal
+ * today makes a stranger's next edit report a fault on a line they did not touch:
+ *
+ *     padding: 8px          legal, and silent
+ *     padding: 8px          somebody adds a line under it
+ *     color: red            run-on-declaration, on THEIR line
+ *
+ * Every other declaration needs one and the formatter writes one, so requiring it costs nobody a
+ * keystroke they were not already making.
+ */
+describe("a declaration with no semicolon", () => {
+  test("the last one in a block is reported", () => {
+    expect(rules("  color: red;\n  padding: 8px")).toEqual(["missing-semicolon"]);
+  });
+
+  test("and the last one in a NESTED rule, which is the same next edit", () => {
+    expect(rules("  &:hover { color: red }")).toEqual(["missing-semicolon"]);
+  });
+
+  test("a terminated block is silent, which is the control", () => {
+    expect(rules("  color: red;\n  padding: 8px;")).toEqual([]);
+    expect(rules("  &:hover { color: red; }")).toEqual([]);
+  });
+
+  /**
+   * **Quiet wherever another rule has already spoken about the same declaration.**
+   *
+   * A declaration with no `;` is sometimes wreckage — a run-on, a hole standing where a property
+   * name goes, a string that was never closed and ate the rest of the block. Listing those shapes
+   * was the first attempt and it kept finding another one; asking whether anything has been said
+   * about the same span is the question that was actually being asked.
+   */
+  test.each([
+    ["a run-on", "  padding: 8px\n  border-left: 4px solid red;", "run-on-declaration"],
+    ["a string that is never closed", `  display: "flexx`, "string-not-allowed"],
+    ["a hole where a property name goes", `  {cond ? "display:flex" : ""}`, "hole-out-of-place"],
+  ])("%s is left to the rule that explains it", (_what, css, only) => {
+    expect(rules(css)).toEqual([only]);
+  });
+
+  /**
+   * A declaration with NO VALUE yet is the state an editor is in most — `padding: ` while it is
+   * being typed. Saying so on every keystroke is noise, and the strict read refuses a valueless
+   * declaration outright, so nothing reaches a build this way.
+   */
+  test("a half-typed declaration says nothing", () => {
+    expect(rules("  padding:")).toEqual([]);
+  });
+});
+
+/**
+ * A colour written out where the project takes colours only from its own variables.
+ *
+ * Asked for by the user: *"za boje moze reci da hoce samo kroz tokene i variable da radi, nece
+ * hardcoded values."* A closed list of every permitted colour is not that — a palette is fifty
+ * values that change, and pinning them in a property's type puts it in two places.
+ *
+ * **This is the half a type cannot do.** Sixty-three properties accept a colour; forty say so in
+ * their grammar and the generated types refuse a literal there. The other twenty-three are composite
+ * — their value is `string | number`, because a union narrow enough to refuse `red` would refuse
+ * `4px solid red` as well. So this reads those, and only those: one mechanism per property.
+ */
+describe("a colour written out, where the project said variables only", () => {
+  const ONLY: Config = { properties: { "<color>": { variablesOnly: true } } };
+
+  test.each([
+    ["a named colour inside a shorthand", "  border-left: 4px solid red;"],
+    ["a hex", "  box-shadow: 0 1px 2px #00000022;"],
+    ["a colour function", "  background: linear-gradient(rgb(0 0 0), white);"],
+  ])("%s is reported", (_what, css) => {
+    expect(rulesWith(css, ONLY)).toEqual(["literal-not-allowed"]);
+  });
+
+  test("a variable is what it is asking for, and says nothing", () => {
+    // Declared, because `unknown-variable` would otherwise speak about the path and this test would
+    // be measuring that rule instead of this one.
+    const declared: Config = { ...ONLY, variables: { color: kind("color", { accent: { main: "#10b981" } }) } };
+
+    expect(rulesWith("  border-left: 4px solid $.color.accent.main;", declared)).toEqual([]);
+  });
+
+  test("`currentcolor` and `var()` go in, because neither is a colour somebody wrote out", () => {
+    expect(rulesWith("  border-left: 4px solid currentcolor;", ONLY)).toEqual([]);
+    expect(rulesWith("  border-left: 4px solid var(--brand);", ONLY)).toEqual([]);
+  });
+
+  /**
+   * A property whose grammar SAYS it takes a colour is read HERE TOO, and used not to be.
+   *
+   * This asserted the opposite, and its reason was *the types refuse it, and saying it twice for one
+   * mistake is the fault this repository keeps finding*. The first half was true of the checker and
+   * false of the BUILD: vite and esbuild run these rules and never type-check a block, so `color:
+   * red` compiled. The count was never two — it was one in the checker and ZERO where it shipped.
+   *
+   * Both speak now and `inOrder` drops the compiler's word, which is what the second half of that
+   * reason was really asking for.
+   */
+  test("a property whose grammar says it takes a colour is read here too", () => {
+    expect(rulesWith("  color: red;", ONLY)).toEqual(["literal-not-allowed"]);
+    expect(rulesWith("  background-color: #fff;", ONLY)).toEqual(["literal-not-allowed"]);
+  });
+
+  test("a property that takes no colour has nothing to find", () => {
+    expect(rulesWith("  padding: 8px;", ONLY)).toEqual([]);
+    expect(rulesWith('  grid-template-areas: "a b";', ONLY)).toEqual([]);
+  });
+
+  test("and with no `variablesOnly` anywhere, none of this happens", () => {
+    expect(rulesWith("  border-left: 4px solid red;", {})).toEqual([]);
+  });
+});
+
+/**
+ * `units` constrains a FAMILY, because a project that says "px and rem" is talking about lengths.
+ *
+ * The flat list said *every unit in CSS and nothing else*, and measured, that reported four things
+ * nobody writing `units: ["px", "rem"]` means:
+ *
+ *     transition: all 200ms ease        ms is a time
+ *     width: 50%                        % is a percentage
+ *     rotate: 45deg                     deg is an angle
+ *     grid-template-columns: 1fr        fr is a flex
+ *
+ * So a project could not state the one rule it actually wanted without enumerating the units of five
+ * families it had no opinion about. A family it does not name is a family it does not constrain,
+ * which is what makes the setting sayable.
+ *
+ * The families come from `UNIT_TYPE`, generated with an assertion that every unit lands in exactly
+ * one — so a unit CSS adds fails the build until somebody says what it is.
+ */
+describe("units, by family", () => {
+  const under = (units: Config["units"], css: string) => {
+    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, { config: { units } }).map((one) => one.rule);
+  };
+
+  const lengths = { length: ["px", "rem"] } as const;
+
+  test.each([
+    ["a time", "  transition: all 200ms ease;"],
+    ["a percentage", "  width: 50%;"],
+    ["an angle", "  rotate: 45deg;"],
+    ["a flex", "  grid-template-columns: repeat(3, 1fr);"],
+    ["a resolution", "  --a: 2dppx;"],
+    ["a frequency", "  --a: 40hz;"],
+  ])("%s is untouched when only lengths were constrained", (_what, css) => {
+    expect(under(lengths, css)).toEqual([]);
+  });
+
+  test.each([
+    ["one this project allows", "  padding: 8px;", []],
+    ["the other one it allows", "  padding: 1rem;", []],
+    ["one it does not", "  padding: 2em;", ["unit-not-allowed"]],
+    ["one it does not, inside a call", "  width: calc(100% - 4em);", ["unit-not-allowed"]],
+    ["a bare zero, which has no family at all", "  padding: 0;", []],
+  ])("%s", (_what, css, expected) => {
+    expect(under(lengths, css)).toEqual(expected);
+  });
+
+  test("a second family is constrained independently", () => {
+    const both = { length: ["px"], time: ["ms"] } as const;
+
+    expect(under(both, "  transition: all 200ms ease;")).toEqual([]);
+    expect(under(both, "  transition: all 2s ease;")).toEqual(["unit-not-allowed"]);
+    expect(under(both, "  rotate: 45deg;")).toEqual([]);
+  });
+
+  test("the message names the family, so the fix is the one the author meant", () => {
+    const source = `<div css={@@(\n  padding: 2em;\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    const [found] = checkBlock(read.block, { config: { units: lengths } });
+
+    expect(found.message).toContain("`em` is a length this project does not use");
+    expect(found.message).toContain("px, rem");
+  });
+
+  test("an empty list for a family permits nothing of it, which is how a family is banned outright", () => {
+    expect(under({ angle: [] }, "  rotate: 45deg;")).toEqual(["unit-not-allowed"]);
+    expect(under({ angle: [] }, "  padding: 8px;")).toEqual([]);
+  });
+});
+
+/**
+ * A literal where the project said that KIND comes from its variables — the half the build sees.
+ *
+ * The types refused `padding-left: 8px` and the RULE said nothing, which read as a division of
+ * labour and was a hole. Measured, asking the rules alone — which is all vite and esbuild ever run,
+ * since neither type-checks a block:
+ *
+ *     padding-left: 8px       []                        the build compiled it
+ *     width: 200px            []                        and this
+ *     color: red              []                        and this
+ *     border: 1px solid red   [literal-not-allowed]     only the composite was caught
+ *
+ * So a project could set `variablesOnly`, watch `ramonda-css check` refuse a file, and watch the
+ * dev server serve it. One rule, three consumers, and two of them silent — the repository's
+ * recurring fault, found once more by asking what a setting means.
+ *
+ * The rule speaks for every property now and `inOrder` drops the compiler's duplicate, which is the
+ * same answer `unknown-variable` got. It also fixes the message: `Narrowed<never, Token<…>>` names
+ * neither the project nor the config file, and this names both.
+ *
+ * **A CALL is an escape hatch and is not read into.** `calc($.space.md * 2)` has a `2` in it that is
+ * not a hardcoded length, and nothing in this rule can tell it from one that is. `var()`, a bare
+ * `0`, the CSS-wide keywords and a property's own keywords are all left alone for the same reason:
+ * none of them is a value somebody wrote out instead of reaching for a token.
+ */
+describe("a literal where the project said that kind comes from variables", () => {
+  /** Declared, because `unknown-variable` would otherwise speak about the `$` paths below. */
+  const VARIABLES = {
+    space: kind("length", { gutter: "16px" }),
+    motion: kind("time", { quick: "120ms" }),
+  };
+
+  const under = (selector: string, decl: string) =>
+    checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {
+      config: { variables: VARIABLES, properties: { [selector]: { variablesOnly: true } } },
+    }).map((one) => one.rule);
+
+  test.each([
+    ["a longhand", "padding-left: 8px"],
+    ["one reached only through the kind", "width: 200px"],
+    ["a negative length", "margin-top: -8px"],
+    ["a shorthand with several", "padding: 8px 16px"],
+    ["a percentage, which this property also takes", "padding-left: 50%"],
+  ])("%s is reported", (_what, decl) => {
+    expect(under("<length>", decl)).toEqual(["literal-not-allowed"]);
+  });
+
+  test.each([
+    ["a bare zero, which needs no unit in CSS", "padding-left: 0"],
+    ["a declared variable, which is the point", "padding-left: $.space.gutter"],
+    ["`var()`, the escape CSS itself provides", "padding-left: var(--x)"],
+    ["a CSS-wide keyword", "padding-left: inherit"],
+    ["the property's own keyword", "width: auto"],
+    ["a call, which may hold a variable and arithmetic", "padding-left: calc(100% - 8px)"],
+    ["a hole, whose value is decided at render", "padding-left: {gap}"],
+  ])("%s is silent", (_what, decl) => {
+    expect(under("<length>", decl)).toEqual([]);
+  });
+
+  test("another kind, said on its own selector", () => {
+    expect(under("<time>", "transition-duration: 200ms")).toEqual(["literal-not-allowed"]);
+    expect(under("<time>", "transition-duration: $.motion.quick")).toEqual([]);
+    // A length is not a time, and this selector said nothing about lengths.
+    expect(under("<time>", "padding-left: 8px")).toEqual([]);
+  });
+
+  test("a property exempting itself by name is left alone", () => {
+    const config: Config = {
+      properties: { "<length>": { variablesOnly: true }, "border-radius": { variablesOnly: false } },
+    };
+    const of = (decl: string) =>
+      checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
+
+    expect(of("border-radius: 4px")).toEqual([]);
+    expect(of("padding-left: 8px")).toEqual(["literal-not-allowed"]);
+  });
+
+  test("the message names the project and the way out", () => {
+    const [found] = checkBlock(readBlock(`@@(\n  padding-left: 8px;\n)`, 2, "C.tsx").block, {
+      config: { properties: { "<length>": { variablesOnly: true } } },
+    });
+
+    expect(found.message).toContain("`8px`");
+    expect(found.message).toContain("ramonda.css.ts");
+    expect(found.message).toContain("variablesOnly");
+  });
+
+  test("and with no `variablesOnly` anywhere, every one of these is silent", () => {
+    const of = (decl: string) => checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {}).map((o) => o.rule);
+
+    for (const decl of ["padding-left: 8px", "width: 200px", "transition-duration: 200ms"]) {
+      expect(of(decl)).toEqual([]);
+    }
+  });
+});
+
+/**
+ * Correct CSS the slash form must not start refusing.
+ *
+ * Teaching `sequence` about `<type>{1,4} [ / <type>{1,4} ]?` classified ten properties, and a
+ * classified property is a NARROWED property — which is where refusing correct CSS becomes
+ * possible. `animation-range-start` came with it, and its value is a keyword and a percentage
+ * together: `entry 50%` is valid and is the shape a narrowing gets wrong.
+ *
+ * Asserted with no config at all, because the shipped types must accept every one of these however
+ * strict a project later chooses to be.
+ */
+describe("the slash form, and the correct CSS it must not refuse", () => {
+  const of = (decl: string) => check(`  ${decl};`).map((one) => one.rule);
+
+  test.each([
+    ["one radius", "border-radius: 4px"],
+    ["two", "border-radius: 4px 8px"],
+    ["four", "border-radius: 4px 8px 12px 16px"],
+    ["the elliptical form", "border-radius: 50% / 20%"],
+    ["and in lengths", "border-radius: 4px / 8px"],
+    ["a keyword and a percentage together", "animation-range-start: entry 50%"],
+    ["its bare keyword", "animation-range-start: normal"],
+    ["two ranges at once", "animation-range: entry 0% exit 100%"],
+  ])("%s is silent", (_what, decl) => {
+    expect(of(decl)).toEqual([]);
+  });
+});
+
+/**
+ * The two ways a literal still reached the page after `variablesOnly` was said.
+ *
+ * **A colour LONGHAND did not reach the build.** The dimension half was extended and the colour
+ * half was not: `literalNotAllowed` skipped a property whose grammar says `<color>` as *the types'
+ * to refuse*, which was true of the checker and false of vite and esbuild. Forty properties, and
+ * `color: red` the first of them.
+ *
+ * **And a custom property set in the block was an open door.** `--own: red; color: var(--own)` is
+ * two declarations this compiler reads, and neither was looked at — so the rule a project turned on
+ * could be walked around in one line, by accident as easily as on purpose.
+ *
+ * A custom property has NO KIND, which is what makes this narrow: a bare `3` is not a length and
+ * `"red"` inside quotes is not a colour. Only a value that can be nothing else is reported — a hex,
+ * a colour function, a named colour, or a number carrying a unit.
+ */
+describe("a literal that reached the page anyway", () => {
+  const ONLY: Config = {
+    variables: { brand: kind("color", { main: "#10b981" }), space: kind("length", { sm: "8px" }) },
+    properties: { "<color>": { variablesOnly: true }, "<length>": { variablesOnly: true } },
+  };
+  const of = (decl: string) =>
+    checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, { config: ONLY }).map((one) => one.rule);
+
+  test.each([
+    ["a colour longhand, which the build never saw", "color: red"],
+    ["a hex in one", "background-color: #ff0000"],
+    ["a colour function", "border-top-color: rgb(255 0 0)"],
+  ])("%s is reported", (_what, decl) => {
+    expect(of(decl)).toEqual(["literal-not-allowed"]);
+  });
+
+  test.each([
+    ["a colour put into a custom property", "--own: red"],
+    ["a hex put into one", "--own: #ff0000"],
+    ["a length put into one", "--gap: 8px"],
+  ])("%s is reported", (_what, decl) => {
+    expect(of(decl)).toEqual(["literal-not-allowed"]);
+  });
+
+  test("the whole bypass, which is what this is for", () => {
+    expect(of("--own: red; color: var(--own)")).toEqual(["literal-not-allowed"]);
+  });
+
+  test.each([
+    ["a declared variable, which is the point", "--own: $.brand.main"],
+    ["a colour word inside a STRING, which is text", '--label: "red"'],
+    ["a bare number, which has no kind at all", "--n: 3"],
+    ["a keyword", "--mode: dark"],
+    ["`var()`, the escape CSS itself provides", "--own: var(--theme)"],
+    ["a zero", "--gap: 0"],
+  ])("%s is silent", (_what, decl) => {
+    expect(of(decl)).toEqual([]);
+  });
+
+  /** And none of it happens to a project that said nothing. */
+  test("with no `variablesOnly`, every one of these is silent", () => {
+    const plain = (decl: string) =>
+      checkBlock(readBlock(`@@(\n  ${decl};\n)`, 2, "C.tsx").block, {}).map((one) => one.rule);
+
+    for (const decl of ["color: red", "--own: red", "--gap: 8px"]) expect(plain(decl)).toEqual([]);
+  });
+});
+
+/**
+ * A keyword's CASE must not change the atomic class — and it did.
+ *
+ * The user asked for exactly this when the case REPORT was being dropped: *"potrudi se da pri buildu
+ * opet bude lower case ili sta vec, da nemamo razlicit hash i atomske klase."* Measured through the
+ * real transform, before any of it:
+ *
+ *     color: currentColor;   ->  r-c-currentColor
+ *     color: currentcolor;   ->  r-c-currentcolor
+ *
+ * Two atomic classes, identical CSS, shipped side by side. And the hash differs with them, because
+ * `identity` is built from the same text.
+ *
+ * **It was a live fault already**, not something the report was holding back — the report never
+ * touched the build. `normalise.ts` folds a value's case through `canonicalValue`; `flatten.ts`
+ * built its own canonical as `` `${property}:${collapse(value)};` `` and never called it. One
+ * question, two answers, and only the one nobody looked at reached the class name.
+ */
+describe("case and the atomic class", () => {
+  const classesOf = (css: string) => {
+    const result = transform(`const a = <div css={@@(${css})}>x</div>;`, { filename: "C.tsx" });
+    return [...(result?.code ?? "").matchAll(/"(r-[^"]+)"/g)].map((one) => one[1]);
+  };
+
+  test.each([
+    ["a colour keyword", " color: currentColor; ", " color: currentcolor; "],
+    ["a system colour", " background-color: Canvas; ", " background-color: canvas; "],
+    ["an ordinary keyword", " display: FLEX; ", " display: flex; "],
+    ["a shorthand's words", " flex-flow: ROW WRAP; ", " flex-flow: row wrap; "],
+    ["several at once", " color: RED; overflow: Hidden; ", " color: red; overflow: hidden; "],
+  ])("%s gives one class whichever case is written", (_what, written, lowered) => {
+    expect(classesOf(written)).toEqual(classesOf(lowered));
+  });
+
+  test("and the emitted CSS is the same text, not merely the same name", () => {
+    const of = (css: string) => transform(`const a = <div css={@@(${css})}>x</div>;`, { filename: "C.tsx" });
+
+    expect(of(" color: currentColor; ")?.code).toBe(of(" color: currentcolor; ")?.code);
+  });
+
+  /** A value whose case the author OWNS is untouched — a font name is not a keyword. */
+  test.each([
+    ["a font family", " font-family: My Font; ", " font-family: my font; "],
+    ["a custom property's value", " --Brand: Blue; ", " --brand: blue; "],
+    ["a grid area name", " grid-area: Header; ", " grid-area: header; "],
+  ])("%s keeps the author's case, so these stay two classes", (_what, written, lowered) => {
+    expect(classesOf(written)).not.toEqual(classesOf(lowered));
+  });
+});
+
+/**
+ * Three settings the TYPES enforced and the BUILD did not.
+ *
+ * Review pass 4 swept every setting against every consumer, which is the shape four of this
+ * session's faults had. Vite and esbuild run these rules over a block and never type-check it, so a
+ * setting that only reaches the types is a setting the dev server ignores:
+ *
+ *     properties["*"].units         padding-left: 2rem    checker refuses, build serves
+ *     properties["z-index"].values  z-index: 5            checker refuses, build serves
+ *     properties["*"].shorthand     padding: 8px          checker refuses, build serves
+ *
+ * The other three — the project-wide `units`, `arity` and `variablesOnly` — already spoke in both.
+ * So half the config was enforced everywhere and half in one place, with nothing saying which.
+ *
+ * The precedent is the one `variablesOnly` set: *a project could watch `ramonda-css check` refuse a
+ * file and watch the dev server serve it.* `inOrder` drops the compiler's word where these speak, so
+ * an author still meets one report rather than two.
+ */
+describe("a setting the types enforced and the build did not", () => {
+  const under = (config: Config, css: string) =>
+    checkBlock(readBlock(`@@(\n  ${css};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
+
+  describe("a unit said on a property", () => {
+    const config: Config = { properties: { "*": { units: ["px"] } } };
+
+    test.each([
+      ["a unit the project does not use", "padding-left: 2rem"],
+      ["one inside a call", "width: calc(100% - 2rem)"],
+    ])("%s is reported", (_what, css) => {
+      expect(under(config, css)).toEqual(["unit-not-allowed"]);
+    });
+
+    /**
+     * A family the list says nothing about is not constrained — found by MUTATION.
+     *
+     * Review pass 7 broke `const family = UNIT_TYPE[unit]` on purpose and the whole suite stayed
+     * green: one case named a time, and a time is not a length, so it would have been silent either
+     * way. What was never asked is whether a unit of ANOTHER family is silent because of its family
+     * or by accident — so all four are here, one per family a project might meet.
+     */
+    test.each([
+      ["a unit it does use", "padding-left: 8px"],
+      ["a bare zero, which has no unit", "padding-left: 0"],
+      ["a time, where the list holds lengths", "transition-duration: 200ms"],
+      ["an angle", "rotate: 45deg"],
+      ["a percentage, which is its own family", "width: 50%"],
+      ["a flex", "grid-template-columns: repeat(3, 1fr)"],
+    ])("%s is silent", (_what, css) => {
+      expect(under(config, css)).toEqual([]);
+    });
+
+    test("one property's units do not reach another", () => {
+      const only: Config = { properties: { "letter-spacing": { units: ["em"] } } };
+
+      expect(under(only, "letter-spacing: 2px")).toEqual(["unit-not-allowed"]);
+      expect(under(only, "padding-left: 2px")).toEqual([]);
+    });
+  });
+
+  describe("a closed list of values", () => {
+    const config: Config = { properties: { "z-index": { values: [0, 1, 10] } } };
+
+    test.each([
+      ["a value outside it", "z-index: 5"],
+      ["a keyword outside it", "z-index: auto"],
+    ])("%s is reported", (_what, css) => {
+      expect(under(config, css)).toEqual(["value-not-allowed"]);
+    });
+
+    test.each([
+      ["one from the list", "z-index: 10"],
+      ["`var()`, the escape CSS provides", "z-index: var(--layer)"],
+      ["a CSS-wide keyword", "z-index: inherit"],
+      ["another property entirely", "order: 5"],
+    ])("%s is silent", (_what, css) => {
+      expect(under(config, css)).toEqual([]);
+    });
+
+    /**
+     * A QUOTED value is `string-not-allowed`'s, and this one stayed out of it.
+     *
+     * **Reported by the user**, who read the two together and saw a contradiction: the type offers
+     * `"1"` and the rule refuses it. Measured, `z-index: "1"` gave two findings, and the second was
+     * worse than redundant — *takes only 0, 1, 10 … and this is `"1"`* names a value that IS in the
+     * list. The fault is the quoting, not the number.
+     *
+     * The string spellings in the type are not a widening of what the project permitted. A block is
+     * CSS, so `z-index: 1` reaches the type as the string `"1"` — `a closed list` above was written
+     * for exactly that, because a list of numbers used to refuse its own permitted values. A hole
+     * may hand over either, and both mean the same declaration.
+     */
+    test("a quoted value is reported once, by the rule about quotes", () => {
+      expect(under(config, 'z-index: "1"')).toEqual(["string-not-allowed"]);
+    });
+
+    test("and a quoted value that is not in the list is still just the quoting", () => {
+      expect(under(config, 'z-index: "5"')).toEqual(["string-not-allowed"]);
+    });
+
+    test("the message names the list", () => {
+      expect(under(config, "z-index: 5")).toEqual(["value-not-allowed"]);
+      const [found] = checkBlock(readBlock(`@@(\n  z-index: 5;\n)`, 2, "C.tsx").block, { config });
+
+      expect(found.message).toContain("0, 1, 10");
+    });
+  });
+
+  describe("a shorthand switched off", () => {
+    const config: Config = { properties: { "*": { shorthand: false }, padding: { shorthand: true } } };
+
+    test.each([
+      ["one the project switched off", "margin: 8px"],
+      ["another", "background: red"],
+    ])("%s is reported", (_what, css) => {
+      expect(under(config, css)).toEqual(["shorthand-not-allowed"]);
+    });
+
+    test.each([
+      ["the one it kept", "padding: 8px"],
+      ["a longhand, which is the point", "margin-top: 8px"],
+    ])("%s is silent", (_what, css) => {
+      expect(under(config, css)).toEqual([]);
+    });
+
+    test("the message names longhands to write, and how many there are", () => {
+      const [found] = checkBlock(readBlock(`@@(\n  margin: 8px;\n)`, 2, "C.tsx").block, { config });
+
+      expect(found.message).toContain("margin-block");
+      expect(found.message).toContain("7 more");
+    });
+  });
+
+  /** And a project that said nothing gets none of it. */
+  test("with no config, all three are silent", () => {
+    for (const css of ["padding-left: 2rem", "z-index: 5", "margin: 8px"]) expect(under({}, css)).toEqual([]);
+  });
+});
+
+/**
+ * Two faults where the CLI and the BUNDLERS disagreed — review pass 6.
+ *
+ * Both consumers were asked the same question about the same file, which is the lens four of this
+ * session's findings came through.
+ *
+ * ## A unit reported twice
+ *
+ * `units` at the top of the config and `units` inside `properties` are different mechanisms with one
+ * name — the design review said so — and pass 4 gave the second one a rule. Setting both then
+ * reported the same value twice. One value, one fault, one report.
+ *
+ * ## A property typo the build compiled
+ *
+ * The split was deliberate and half of it was right: a DASHED name — `flex-dirction` — gets
+ * `unknown-property`, because TypeScript offers no *did you mean* for a quoted key; a plain name —
+ * `dsiplay` — was left to `TS2561`, which says it better.
+ *
+ * It says it better in the CHECKER. The build runs no TypeScript, so `dsiplay: flex` and even
+ * `zzz: flex` compiled into the stylesheet with nothing said anywhere. The rule speaks for both
+ * now, and `inOrder` drops the compiler's word on the line — the same arrangement
+ * `unknown-variable` and `variablesOnly` already have.
+ */
+describe("what the bundlers see and the checker saw", () => {
+  const under = (css: string, config: Config = {}) =>
+    checkBlock(readBlock(`@@(\n  ${css};\n)`, 2, "C.tsx").block, { config }).map((one) => one.rule);
+
+  test("a unit is reported once, whichever settings are in play", () => {
+    const both: Config = { units: { length: ["px"] }, properties: { "*": { units: ["px"] } } };
+
+    expect(under("padding-left: 2rem", both)).toEqual(["unit-not-allowed"]);
+    expect(under("padding-left: 2rem", { units: { length: ["px"] } })).toEqual(["unit-not-allowed"]);
+    expect(under("padding-left: 2rem", { properties: { "*": { units: ["px"] } } })).toEqual(["unit-not-allowed"]);
+  });
+
+  test("two different units in one value are still two faults", () => {
+    const both: Config = { units: { length: ["px"] }, properties: { "*": { units: ["px"] } } };
+
+    expect(under("padding: 2rem 3em", both)).toEqual(["unit-not-allowed", "unit-not-allowed"]);
+  });
+
+  test.each([
+    ["a plain name, which the checker left to TypeScript", "dsiplay: flex"],
+    ["one that is near nothing", "zzz: flex"],
+    ["a dashed name, which always spoke", "flex-dirction: row"],
+    ["another", "padding-lefft: 8px"],
+  ])("%s is reported, so the build sees it", (_what, css) => {
+    expect(under(css)).toContain("unknown-property");
+  });
+
+  test("and the suggestion is still there for a plain name", () => {
+    const [found] = checkBlock(readBlock(`@@(\n  dsiplay: flex;\n)`, 2, "C.tsx").block, {});
+
+    expect(found.message).toContain("display");
+  });
+
+  test.each([
+    ["a real property", "display: flex"],
+    ["a vendor prefix", "-webkit-line-clamp: 3"],
+    ["a custom property", "--row-height: 2rem"],
+    ["one CSS added after our table", "-moz-osx-font-smoothing: grayscale"],
+  ])("%s is silent", (_what, css) => {
+    expect(under(css)).toEqual([]);
+  });
+});
+
+/**
+ * Every rule a project's CONFIG turns on, measured INSIDE a nested rule.
+ *
+ * Found by coverage, and it was six lines in a row: each of these rules walks a block and recurses
+ * into a nested one, and not one of those recursions had ever run in a test. The rules are the six
+ * review pass 4 added and reworked — the whole config-driven half — so the question the gap asked
+ * was whether a project's settings reach `&:hover { … }` at all, or stop at the top level where
+ * every test happened to put them.
+ *
+ * **They reach it, at any depth**, which is what these assert. A nested rule is where a hover
+ * colour and a focus ring are written, so a `variablesOnly` that stopped at the top level would
+ * have exempted the declarations most likely to hold a hardcoded one.
+ */
+describe("a config rule inside a nested rule", () => {
+  const config: Config = {
+    units: { length: ["px"] },
+    properties: {
+      "<color>": { variablesOnly: true },
+      "<length>": { variablesOnly: true },
+      "z-index": { values: [0, 1] },
+      padding: { shorthand: false },
+      "padding-left": { units: ["px"] },
+    },
+    variables: { color: kind("color", { primary: { main: "#3b82f6" } }) },
+  };
+
+  const under = (css: string) => {
+    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, { config }).map((one) => one.rule);
+  };
+
+  test.each([
+    ["a colour written out", "color: #ff0000;", "literal-not-allowed"],
+    ["a length written out", "padding-top: 8px;", "literal-not-allowed"],
+    ["a value outside the closed list", "z-index: 5;", "value-not-allowed"],
+    ["a shorthand switched off", "padding: 8px;", "shorthand-not-allowed"],
+    ["a unit this property does not take", "padding-left: 2rem;", "unit-not-allowed"],
+    ["a unit the project does not take", "margin-top: 2rem;", "unit-not-allowed"],
+  ])("%s is reported at the top level, one deep and two deep", (_what, css, rule) => {
+    // The top level first, so a config that reached nothing would not pass the two below for free.
+    expect(under(`  ${css}`)).toContain(rule);
+    expect(under(`  &:hover {\n    ${css}\n  }`)).toContain(rule);
+    expect(under(`  &:hover {\n    &:focus {\n      ${css}\n    }\n  }`)).toContain(rule);
+  });
+
+  /**
+   * A custom property nested too, which is the walk `dimensionNotAllowed` has of its own.
+   *
+   * `--own: red; color: var(--own)` walks around `variablesOnly` in one line, and a nested rule is
+   * exactly where somebody would set one.
+   */
+  test("a custom property holding a forbidden value is read inside a nested rule", () => {
+    expect(under(`  &:hover {\n    --own: #ff0000;\n  }`)).toContain("literal-not-allowed");
+  });
+
+  /**
+   * The two silences, which are DELIBERATE and are asserted so they stay that way.
+   *
+   * A bare zero needs no unit in CSS and is nobody's hardcoded value; a non-colour in a colour
+   * property is not what `variablesOnly` is for, and the types refuse it anyway.
+   */
+  test.each([
+    ["a bare zero", "padding-top: 0;"],
+    ["a value that is not of the forbidden kind", "color: 2px;"],
+    ["a variable, which is the point of the setting", "color: $.color.primary.main;"],
+    ["a `var()` call", "color: var(--anything);"],
+  ])("%s stays silent inside a nested rule too", (_what, css) => {
+    expect(under(`  &:hover {\n    ${css}\n  }`)).toEqual([]);
+  });
 });

@@ -31,7 +31,7 @@
  *
  * Regenerate with `node scripts/build-css-properties.mjs`; `pnpm check` runs it with `--check`.
  */
-export type { CssGlobal, CssProperties, CssValue, Keyword } from "./properties.generated";
+export type { CssGlobal, CssProperties, CssValue, Keyword, Narrowed } from "./properties.generated";
 export type { StyleValue } from "./types";
 
 import type { StyleValue } from "./types";
@@ -69,9 +69,27 @@ import type { CssProperties, CssValue } from "./properties.generated";
  * Measured, exactly that. One literal per declaration, gathered in an array, gets every fault
  * reported at once, each with its own position and its own suggestion.
  */
+
 export type CssBlockShape = Partial<CssProperties> & {
   [nested: `&${string}`]: CssBlockShape[];
 } & { [at: `@${string}`]: CssBlockShape[] } & { [dashed: `-${string}`]: CssValue };
+
+/**
+ * **A PROJECT writes its own copy of this shape, and there is no parameterised version to share.**
+ *
+ * There was one — `BlockShapeOf<P>` — so the shape around the properties could be stated once and
+ * a generated module could name it. It is gone because it does not work, and the playground found
+ * it on its first run:
+ *
+ *     generic, one level of nesting     accepted
+ *     generic, TWO levels               TS2353: '"& .title"' does not exist in type
+ *     self-referential, two levels      accepted
+ *
+ * A generic recursive type alias stops expanding at depth, and two levels of nesting is ordinary
+ * CSS — `&:hover { & .title { … } }` is written in this repository's own playground. So `codegen.ts`
+ * emits the shape concretely, referring to the project's own `CssBlockShape`, and the duplication is
+ * the price of a type that works at the depth people write.
+ */
 
 /**
  * The body of `@@keyframes( … )`: frames, each holding declarations of its own.

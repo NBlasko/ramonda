@@ -1,6 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 import { afterAll, describe, expect, test } from "vitest";
 import { ramondaCss } from "../esbuild";
@@ -16,12 +17,22 @@ import { ramondaCss } from "../esbuild";
  * itself would assert what this package believes and nothing about what esbuild does.
  */
 
+/** The repository, whose `node_modules` a temp project resolves the package through. */
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+
 const roots: string[] = [];
 
 /** A throwaway project, so a build has real files to resolve. */
 function project(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "ramonda-css-esbuild-"));
   roots.push(root);
+  /**
+   * A `ramonda.css.ts` here is RUN, and its `import { kind } from "@ramonda/css/config"` has to
+   * resolve. It used to, through `NODE_PATH` — which pnpm points at its hoisted
+   * `.pnpm/node_modules`, an artefact of one machine's install history that a clean checkout does
+   * not have. The REPOSITORY's, because a package does not contain itself.
+   */
+  symlinkSync(join(REPO, "node_modules"), join(root, "node_modules"));
   for (const [name, contents] of Object.entries(files)) writeFileSync(join(root, name), contents);
   return root;
 }
@@ -48,6 +59,75 @@ const spoken = (failure: esbuild.BuildFailure) =>
 
 const outputs = (result: esbuild.BuildResult) =>
   Object.fromEntries((result.outputFiles ?? []).map((file) => [file.path.split(".").pop(), file.text]));
+
+/**
+ * WHICH BUILD THIS IS, which the config may be a function of.
+ *
+ * The note on `environmentOf` in `config.ts` records this exact failure and says it was fixed: a
+ * config written `env.production ? ["px"] : ["px", "rem"]` *silently took the development branch of
+ * every such config, in production builds included*. It was fixed for Vite, which is told its mode,
+ * and left here — the adapter said *esbuild is not told which build this is*.
+ *
+ * It is told, twice, and both are how esbuild's own users say it. Measured, the same config and the
+ * same block:
+ *
+ *     vite,    --mode production, NODE_ENV unset    refused
+ *     esbuild, minify: true,      NODE_ENV unset    BUILT — `2rem` went in
+ *
+ * A project that builds with esbuild and does not set `NODE_ENV` shipped the loose half of its own
+ * rules, with nothing said anywhere.
+ */
+describe("which build this is", () => {
+  /** A config that is a function of the environment — the reason it is TypeScript rather than JSON. */
+  const CONFIG = `export default (env) => ({ units: { length: env.production ? ["px"] : ["px", "rem"] } });\n`;
+  /** Permitted in development, refused in production. */
+  const APP = `const a = <div css={@@( padding-left: 2rem; )}>x</div>;\nexport default a;\n`;
+
+  const underEsbuild = async (options: Parameters<typeof esbuild.build>[0], env: string | undefined) => {
+    const root = project({ "index.tsx": APP, "ramonda.css.ts": CONFIG });
+    const was = process.env.NODE_ENV;
+    if (env === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = env;
+    try {
+      await build(root, { absWorkingDir: root, ...options });
+      return "built";
+    } catch (failure) {
+      return spoken(failure as esbuild.BuildFailure).includes("unit-not-allowed") ? "refused" : "refused (other)";
+    } finally {
+      if (was === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = was;
+    }
+  };
+
+  test("`minify` is a production build, which is what esbuild's own users mean by it", async () => {
+    expect(await underEsbuild({ minify: true }, undefined)).toBe("refused");
+  });
+
+  test("and so is `define` saying so, which is the unambiguous way to say it", async () => {
+    expect(await underEsbuild({ define: { "process.env.NODE_ENV": '"production"' } }, undefined)).toBe("refused");
+  });
+
+  test("`NODE_ENV` still answers when the build says nothing", async () => {
+    expect(await underEsbuild({}, "production")).toBe("refused");
+    expect(await underEsbuild({}, "development")).toBe("built");
+  });
+
+  test("and a plain build with nothing set is development, which is the control", async () => {
+    expect(await underEsbuild({}, undefined)).toBe("built");
+  });
+
+  /**
+   * `define` OVERRIDES `minify`, because one is a statement and the other is an inference.
+   *
+   * Somebody minifying a development build has said `development` out loud, and this has to believe
+   * them — otherwise the escape hatch is not one.
+   */
+  test("`define` saying development beats `minify`", async () => {
+    expect(await underEsbuild({ minify: true, define: { "process.env.NODE_ENV": '"development"' } }, undefined)).toBe(
+      "built",
+    );
+  });
+});
 
 describe("a build", () => {
   const APP = `const a = <div css={@@(\n  display: flex;\n  gap: 8px;\n)}>x</div>;\nexport default a;\n`;
@@ -294,8 +374,11 @@ describe("which config a file is measured against", () => {
     roots.push(repo);
     mkdirSync(join(repo, ".git"), { recursive: true });
     for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
-    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
-    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px", "em"] };\n`);
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
+    writeFileSync(
+      join(repo, "packages", "admin", "ramonda.css.ts"),
+      `export default { units: { length: ["px", "em"] } };\n`,
+    );
     const app = `const a = <div css={@@(\n  padding: 1em;\n)}>x</div>;\nexport default a;\n`;
     for (const name of ["web", "admin"]) writeFileSync(join(repo, "packages", name, "index.tsx"), app);
     return repo;
@@ -399,5 +482,41 @@ console.log(b);
     const failed = await build(root).catch((error: unknown) => error as esbuild.BuildFailure);
 
     expect(spoken(failed as esbuild.BuildFailure)).not.toContain("filter");
+  });
+});
+
+/**
+ * The plugin running codegen, which is the wiring rather than the mechanism.
+ *
+ * `generate.test.ts` proves the function. This proves somebody CALLS it — the distinction this
+ * repository has already been caught by once, where `environmentOf` was correct, tested, and wired
+ * to nothing, so every config took its development branch in production builds and said nothing.
+ *
+ * It has to happen before anything is resolved, because user code IMPORTS the generated module: run
+ * it on the first file instead and that import has already failed.
+ */
+describe("codegen through the plugin", () => {
+  test("the pair is written into the build's own root, before anything is resolved", async () => {
+    const root = project({
+      "index.tsx": `const a = <div css={@@( color: $.color.primary.main; )}>x</div>;\nexport default a;\n`,
+      "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
+    });
+
+    await build(root, { absWorkingDir: root });
+
+    expect(readFileSync(join(root, join("css-system", "variables.css")), "utf8")).toContain(
+      "--color-primary-main: #3b82f6;",
+    );
+    expect(readFileSync(join(root, join("css-system", "index.ts")), "utf8")).toContain("--color-primary-main");
+  });
+
+  test("a project with no config is built without one being invented", async () => {
+    const root = project({
+      "index.tsx": `const a = <div css={@@( color: red; )}>x</div>;\nexport default a;\n`,
+    });
+
+    await build(root, { absWorkingDir: root });
+
+    expect(existsSync(join(root, join("css-system", "index.ts")))).toBe(false);
   });
 });

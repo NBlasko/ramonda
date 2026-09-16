@@ -452,7 +452,7 @@ describe("what the plugin tells a config about the build", () => {
     }
   };
 
-  const STRICT = `export default (env: { production: boolean }) => ({\n  units: env.production ? ["px"] : ["px", "em"],\n});\n`;
+  const STRICT = `export default (env: { production: boolean }) => ({\n  units: { length: env.production ? ["px"] : ["px", "em"] },\n});\n`;
 
   test("a production build gets the production branch", () => {
     const dir = project(STRICT);
@@ -563,8 +563,11 @@ describe("which config a transform is measured against", () => {
     roots.push(repo);
     mkdirSync(join(repo, ".git"), { recursive: true });
     for (const name of ["web", "admin"]) mkdirSync(join(repo, "packages", name), { recursive: true });
-    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
-    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px", "em"] };\n`);
+    writeFileSync(join(repo, "packages", "web", "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
+    writeFileSync(
+      join(repo, "packages", "admin", "ramonda.css.ts"),
+      `export default { units: { length: ["px", "em"] } };\n`,
+    );
     return repo;
   };
 
@@ -628,7 +631,7 @@ describe("which config a transform is measured against", () => {
     };
 
     expect(run()).toBe("accepted");
-    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: ["px"] };\n`);
+    writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
 
     expect(run()).toContain("px");
   });
