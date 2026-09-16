@@ -50,9 +50,10 @@ export const OUT_DIR = "css-system";
  * learn one string — they run inside an editor, on every keystroke's worth of work. The key is a
  * plain literal in a config people write by hand, so reading it is reading it.
  *
- * A config that computes it falls back to the default here and is still written correctly by
- * `writeGenerated`, which has the real config. That is a mismatch a project can see and fix; paying
- * a transpile per file to close it would be the worse trade.
+ * A config that computes it falls back to the default here while `writeGenerated`, which has the
+ * real config, writes somewhere else — so the two readings are compared and the disagreement is
+ * REFUSED. See {@link agreeOnTheFolder}: it was left to surface on its own once, and what surfaced
+ * was a sentence telling the author to run a command they had just run.
  */
 function outDirFor(config: string): string {
   try {
@@ -61,6 +62,37 @@ function outDirFor(config: string): string {
   } catch {
     return OUT_DIR;
   }
+}
+
+/**
+ * The two readings of `outDir` have to agree, and this is where the disagreement can still be said.
+ *
+ * Codegen has the real config and {@link outDirFor} has only the text, which is the trade that keeps
+ * the per-file lookups cheap. When they differ the files land in one folder and everything that
+ * reads them looks in another — and measured, what the author is shown is
+ *
+ *     TS2339  Property 'size' does not exist on type
+ *             '"Declare your variables in ramonda.css.ts, then run `ramonda-css …`"'
+ *
+ * advice they have just followed. They would run it again, it would write the same two files, and
+ * nothing would change. A comment that only MENTIONS the key causes it too, because the text reader
+ * takes the first `outDir:` in the file.
+ *
+ * The note this replaces said the mismatch was *a mismatch a project can see and fix*. It was not:
+ * nothing named it, and the one sentence shown was untrue.
+ */
+function agreeOnTheFolder(path: string, folder: string): void {
+  const text = outDirFor(path);
+  if (text === folder) return;
+
+  throw new ConfigError(
+    `${path} names two different folders: \`outDir\` reads as ${JSON.stringify(text)} in the file's text ` +
+      `and as ${JSON.stringify(folder)} when the config runs.\n\n` +
+      "        The editor and the per-file lookups read it from the TEXT — they cannot transpile a config on\n" +
+      "        every keystroke — so the generated files would land where nothing looks for them.\n" +
+      "        Write `outDir` as a plain string literal, and check that nothing earlier in the file spells\n" +
+      "        `outDir:` first, a comment included. Nothing was written.",
+  );
 }
 
 /** One file this wrote, and whether writing it changed anything. */
@@ -156,7 +188,9 @@ export function writeGenerated(from: string, typescript: typeof ts): CodegenResu
   }
 
   const { css, module } = generate(declarations, rules);
-  const out = join(dirname(path), config.outDir ?? OUT_DIR);
+  const folder = config.outDir ?? OUT_DIR;
+  agreeOnTheFolder(path, folder);
+  const out = join(dirname(path), folder);
   mkdirSync(out, { recursive: true });
 
   return {

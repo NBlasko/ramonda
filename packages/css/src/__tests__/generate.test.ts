@@ -240,6 +240,34 @@ export default { variables: { space: kind("length", { sm: "8px" }) } };
     ]);
   });
 
+  /**
+   * `outDir` is read TWICE, and the two readings have to agree.
+   *
+   * Codegen transpiles the config and gets the real value. The per-file lookups cannot — they run
+   * in an editor, on every keystroke's worth of work — so they read the key out of the config's
+   * TEXT. When those disagree, the files land in one folder and everything that reads them looks in
+   * another, and measured, the author is told
+   *
+   *     TS2339  Property 'size' does not exist on type
+   *             '"Declare your variables in ramonda.css.ts, then run `ramonda-css …`"'
+   *
+   * which is advice they have already followed. They would run it again, it would write the same
+   * two files, and nothing would change. A comment that merely MENTIONS the key is enough to cause
+   * it, because the text reader takes the first `outDir:` in the file.
+   *
+   * So the disagreement is refused where it can still be explained, rather than left to surface as
+   * a sentence that is not true.
+   */
+  test.each([
+    ["computed", 'const NAME = "design-system";\n', "  outDir: NAME,"],
+    ["mentioned in a comment", '// we used to write outDir: "design-system" here\n', ""],
+  ])("an `outDir` the text cannot read is refused (%s)", (_what, head, key) => {
+    write("ramonda.css.ts", `${head}${declaring.replace("export default {", `export default {\n${key}`)}`);
+
+    expect(() => writeGenerated(project, ts)).toThrow(/outDir/);
+    expect(() => writeGenerated(project, ts)).toThrow(/design-system/);
+  });
+
   test("a folder that is not ours is still refused, the same as a file was", () => {
     write("ramonda.css.ts", declaring);
     mkdirSync(join(project, "css-system"), { recursive: true });
