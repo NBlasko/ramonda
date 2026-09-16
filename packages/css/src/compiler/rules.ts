@@ -122,6 +122,7 @@ export const RULE_IDS = [
   "unknown-at-rule",
   "unknown-selector",
   "unknown-flag",
+  "unclosed-call",
   "unknown-variable",
   "too-many-values",
   "missing-semicolon",
@@ -323,6 +324,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
+  unclosedCall(block, findings);
   missingSemicolon(block, findings);
   /**
    * A block reported for a misplaced HOLE is not also asked about its property names.
@@ -3277,6 +3279,107 @@ function words(parts: readonly ValuePart[]): Word[] {
   }
 
   return out;
+}
+
+/**
+ * A `(` in a value that no `)` closes, named where it opens.
+ *
+ * ## The fault this answers, and why it was parked
+ *
+ * `content: url(;` is a missing `)`, and what the author was told had nothing to do with it. The
+ * value scanner counts parens and a block's own closer is a `)` like any other, so the value ran
+ * past `)}` into the author's own code:
+ *
+ *     content: url(;      →  `const d = (1 + 2)` is not a declaration
+ *                            reported on line 4, for a mistake on line 2
+ *
+ * The note that parked this said the parens are BALANCED so no cheap check exists. True of the
+ * block, false of the DECLARATION: inside one, `url(` is short a `)` and counting says so.
+ *
+ * ## What the count has to skip
+ *
+ * A string, and that is not a detail — measured, a naive count called `url("a)b.png"` balanced and
+ * `url("a(b.png")` unclosed, both backwards. `endOfString` is what the other value rules already
+ * use, so there is one answer to *where does this string end* rather than two.
+ *
+ * ## Why the last unclosed one is named
+ *
+ * `calc(min(1px, 2px` is short two, and the author's fix starts at the innermost — a `)` typed at
+ * the end closes `min` first. So the position reported is the last `(` still open, which is the one
+ * their cursor wants.
+ */
+function unclosedCall(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+
+      /** Every `(` still open at the end of the value, innermost last. */
+      const open: { at: number; name: string }[] = [];
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+        /**
+         * Only as far as the `;`, because the value has ALREADY swallowed the block's closer.
+         *
+         * That is the fault itself, seen from inside: `content: url(;` comes back as the single
+         * value `url(;\n)}>x</div>`, so a count over the whole part meets the block's own `)` and
+         * calls it balanced. The declaration ends at its `;` whatever the scanner did with the rest,
+         * and everything past that belongs to somebody else.
+         */
+        const text = part.text.slice(0, terminator(part.text));
+        for (let index = 0; index < text.length; index++) {
+          const code = text.charCodeAt(index);
+          if (code === 34 || code === 39) {
+            index = endOfString(text, index);
+            continue;
+          }
+          if (code === 40) {
+            let from = index;
+            while (from > 0 && /[\w-]/.test(text[from - 1] ?? "")) from--;
+            open.push({ at: part.at + from, name: `${text.slice(from, index)}(` });
+          } else if (code === 41) {
+            open.pop();
+          }
+        }
+      }
+
+      const last = open.at(-1);
+      if (last === undefined) continue;
+
+      findings.push({
+        rule: "unclosed-call",
+        at: last.at,
+        length: last.name.length,
+        message:
+          `\`${last.name}\` is never closed — it needs a \`)\`.\n\n        Until it is, the value runs ` +
+          `past the end of the block, and what gets reported is\n        whatever your own code says ` +
+          `after it.`,
+      });
+    }
+  };
+
+  walkItems(block.items);
+}
+
+/**
+ * Where a declaration's own `;` is, skipping one inside a string — or the end of the text.
+ *
+ * Its own walk rather than `indexOf(";")`, and that is measured: `content: url("a)b.png";` has a
+ * `;` only after the quote, and `content: "a;b";` has one inside it. Cutting at the first `;` read
+ * the second as a two-character value and called its parens balanced by accident.
+ */
+function terminator(text: string): number {
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index);
+      continue;
+    }
+    if (code === 59 /* ; */) return index;
+  }
+  return text.length;
 }
 
 function endOfString(text: string, start: number): number {

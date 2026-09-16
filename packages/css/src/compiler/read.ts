@@ -436,6 +436,66 @@ export function opensAHole(before: string): boolean {
  * would be a cycle. One sentence in one place: a second wording is the shape this repository keeps
  * finding, where two halves of one answer drift the first time either is corrected.
  */
+/**
+ * The message for a call left open in a declaration already read, or nothing.
+ *
+ * Asked only when a refusal is about to happen: a block that reads has nothing to explain, and this
+ * walks what was read rather than the source. `unclosedCall` in `rules.ts` is the tolerant half and
+ * says the same thing to an editor — the wording lives there, and is repeated here rather than
+ * imported because `rules.ts` imports this module and the cycle would be the worse trade.
+ */
+function unclosedAbove(items: readonly BlockItem[]): { at: number; message: string } | undefined {
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index];
+    if (item.kind !== "declaration") continue;
+
+    let depth = 0;
+    let name = "";
+    let opens: number | undefined;
+    for (const part of item.value) {
+      if (part.kind !== "text" || part.at === undefined) continue;
+      const text = part.text;
+      for (let at = 0; at < text.length; at++) {
+        const code = text.charCodeAt(at);
+        if (code === 34 || code === 39) {
+          at = endOfQuoted(text, at);
+          continue;
+        }
+        if (code === 59 /* ; */) break;
+        if (code === 40) {
+          let from = at;
+          while (from > 0 && /[\w-]/.test(text[from - 1] ?? "")) from--;
+          name = `${text.slice(from, at)}(`;
+          opens = part.at + from;
+          depth++;
+        } else if (code === 41) depth--;
+      }
+    }
+
+    if (depth <= 0 || opens === undefined) return undefined;
+    return {
+      at: opens,
+      message:
+        `\`${name}\` is never closed — it needs a \`)\`.\n\n        Until it is, the value runs past the ` +
+        `end of the block, and what gets reported is\n        whatever your own code says after it.`,
+    };
+  }
+  return undefined;
+}
+
+/** Where a quoted run ends, so a `(` or `)` inside one is text rather than structure. */
+function endOfQuoted(text: string, start: number): number {
+  const quote = text.charCodeAt(start);
+  for (let index = start + 1; index < text.length; index++) {
+    if (text.charCodeAt(index) === 92) {
+      index++;
+      continue;
+    }
+    if (text.charCodeAt(index) === quote) return index;
+  }
+  return text.length;
+}
+
 export const LINE_COMMENT =
   "CSS has no `//` comment — this and the rest of the line are written into the stylesheet, " +
   "and the build refuses the file. Write `/* … */`.";
@@ -977,15 +1037,36 @@ export function readBlock(source: string, open: number, filename: string, option
            *
            * The rule's own words rather than a second wording of them: one sentence, one place.
            */
+          /**
+           * A declaration ABOVE this one holding a call nothing closed, which is why this line is
+           * being read as a property at all.
+           *
+           * `content: url(;` runs past `)}` — the value scanner counts parens and a block's closer
+           * is a `)` like any other — so the author's own next line arrives here and is refused for
+           * not being a declaration. Measured, `const d = (1 + 2);` was reported on line 4 for a
+           * mistake on line 2.
+           *
+           * `unclosed-call` has the sentence that names the real fault, and never got to say it:
+           * this refusal runs first and nothing checks a block that would not read. So the refusal
+           * carries the rule's words, which is what `//` beside it already does — one sentence, one
+           * place.
+           */
+          const dangling = unclosedAbove(items);
+
           refuse(
-            property.trimStart().startsWith("//")
-              ? LINE_COMMENT
-              : `\`${property.trim()}\` is not a declaration — a block holds \`property: value;\` and nested rules, nothing else.`,
+            dangling !== undefined
+              ? dangling.message
+              : property.trimStart().startsWith("//")
+                ? LINE_COMMENT
+                : `\`${property.trim()}\` is not a declaration — a block holds \`property: value;\` and nested rules, nothing else.`,
             source,
             // `from`, not `at - property.length`: the name is trimmed, so measuring its length back
             // from a position past the whitespace pointed one column further right for every space
             // after it. `disp ` reported column 6 for a word beginning at 5.
-            from,
+            //
+            // And the CALL's own position when one is dangling: the fault is where the `(` is, not
+            // where the value happened to run out. Measured, it read line 4 for a mistake on line 2.
+            dangling?.at ?? from,
             filename,
           );
         }

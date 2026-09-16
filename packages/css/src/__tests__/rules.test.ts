@@ -4034,3 +4034,65 @@ describe("a declaration that breaks more than one of a project's rules", () => {
     expect(under("  letter-spacing: $.space.gutter;")).toEqual([]);
   });
 });
+
+/**
+ * A CALL that is never closed, named where it opens.
+ *
+ * `content: url(;` is a missing `)`, and what the author was told had nothing to do with it. The
+ * value scanner counts parens, and a block's own closer is a `)` like any other — so the value ran
+ * past `)}` and swallowed whatever came next:
+ *
+ *     content: url(;      →  "`const d = (1 + 2)` is not a declaration"
+ *                            reported on line 4, for a mistake on line 2
+ *
+ * The note that parked this said the parens are BALANCED so no cheap check exists. That is true of
+ * the block and false of the DECLARATION: inside one, `url(` is short a `)` and counting says so —
+ * as long as the count skips a string, which is what made a naive version wrong about
+ * `url("a)b.png"`.
+ */
+describe("a call that is never closed", () => {
+  const under = (css: string) => {
+    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {});
+  };
+
+  test.each([
+    ["a url", "  content: url(;"],
+    ["a calc", "  width: calc(1px;"],
+    ["a nested call", "  width: calc(min(1px, 2px;"],
+  ])("%s is reported, with the call named", (_what, css) => {
+    const found = under(css);
+
+    expect(found.map((one) => one.rule)).toContain("unclosed-call");
+    expect(found.find((one) => one.rule === "unclosed-call")?.message).toMatch(/\)/);
+  });
+
+  test("the message names the function, so the fix is where the fault is", () => {
+    const [found] = under("  content: url(;").filter((one) => one.rule === "unclosed-call");
+
+    expect(found.message).toContain("url(");
+  });
+
+  /**
+   * A `)` inside a STRING is not structure, and this cuts both ways.
+   *
+   * `content: url("a)b.png";` really IS unclosed — the only `)` is inside the quotes, so the call
+   * never closes and the report is right. I wrote this row the other way round first and the code
+   * was correct; a naive count agrees with the wrong answer, which is why the string skip is the
+   * thing being tested here rather than an implementation detail.
+   */
+  test("a closer inside a string does not close the call", () => {
+    expect(under(`  content: url("a)b.png";`).map((one) => one.rule)).toContain("unclosed-call");
+  });
+
+  test.each([
+    ["an opener inside a string", `  content: url("a(b.png");`],
+    ["a closed call", "  content: url(a.png);"],
+    ["nested and closed", "  width: calc(min(1px, 2px) + 3px);"],
+    ["no call at all", "  padding: 8px;"],
+  ])("%s is not reported (%#)", (_what, css) => {
+    expect(under(css).map((one) => one.rule)).not.toContain("unclosed-call");
+  });
+});

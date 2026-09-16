@@ -280,6 +280,7 @@ const CSS_LINES = {
   "unknown-value": "a word this property does not take",
   "unknown-unit": "a unit CSS does not have",
   "unknown-flag": "a `!` at the end of a value that is not `!important`",
+  "unclosed-call": "a `(` in a value that no `)` closes — the value runs past the end of the block",
   "unknown-prefix": "a vendor prefix that is not one of the four",
   "unknown-at-rule": "an at-rule name CSS does not have",
   "unknown-selector": "a pseudo-class or pseudo-element that is not one — the whole rule is dropped",
