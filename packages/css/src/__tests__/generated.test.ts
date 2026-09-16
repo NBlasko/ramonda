@@ -253,6 +253,68 @@ export const spaced = <div css={@@( padding-left: {gap}; )}>x</div>;
  * why this could not work until a property said what it takes. `padding-left` takes a length now,
  * and a colour is not one.
  */
+/**
+ * The NAMED blocks, in a project that has a config — which is every project using `$`.
+ *
+ * A generated `css-system/index.ts` REPLACES the shipped property map for every file under it, and
+ * a virtual file reads the shapes of `@@property`, `@@keyframes` and `@@font-face` from that module.
+ * The generated one defined what it narrowed and re-exported none of the rest, so all three stopped
+ * type-checking the moment a project declared its first variable:
+ *
+ *     TS2694: Namespace '…/css-system/index' has no exported member 'CssPropertyDescriptors'
+ *     TS2694: … 'CssKeyframesShape'
+ *     TS2694: … 'CssFontFaceDescriptors'
+ *
+ * Measured against the same file with no config: no problems at all. So it was not the blocks — it
+ * was declaring a variable, which is the one thing this whole feature asks people to do.
+ *
+ * Found while writing the documentation, which is the reader this is for: `variables.md` is 218
+ * lines about exactly these three shapes.
+ */
+describe("a named block in a project that declares variables", () => {
+  test.each([
+    [
+      "`@@property`",
+      `export const accent = @@property( syntax: "<color>"; inherits: true; initial-value: #10b981; );\n`,
+    ],
+    ["`@@keyframes`", `export const slide = @@keyframes( from { opacity: 0; } to { opacity: 1; } );\n`],
+    ["`@@font-face`", `export const face = @@font-face( font-family: "Inter"; src: url("/i.woff2"); );\n`],
+  ])("%s type-checks", (_what, source) => {
+    const root = project();
+    mkdirSync(join(root, "src"), { recursive: true });
+    writeFileSync(join(root, "src", "Named.tsx"), source);
+    writeFileSync(
+      join(root, "tsconfig.json"),
+      JSON.stringify({
+        compilerOptions: {
+          strict: true,
+          noEmit: true,
+          target: "ES2022",
+          module: "ESNext",
+          moduleResolution: "bundler",
+          jsx: "preserve",
+          types: [],
+        },
+        include: ["src", join("css-system", "index.ts")],
+      }),
+    );
+
+    let output: string;
+    try {
+      output = execFileSync(process.execPath, [join(PACKAGE, "bin.mjs"), "tsconfig.json"], {
+        cwd: root,
+        encoding: "utf8",
+      });
+    } catch (error) {
+      const failed = error as { stdout?: string; stderr?: string };
+      output = `${failed.stdout ?? ""}${failed.stderr ?? ""}`;
+    }
+
+    expect(output).not.toContain("TS2694");
+    expect(output).not.toMatch(/problem\(s\)/);
+  });
+});
+
 describe("a variable of the wrong kind", () => {
   const checkedWith = (card: string): string => {
     const root = project();

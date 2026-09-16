@@ -1,6 +1,11 @@
+import { readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { type Declarations, generate, namesIn, verifyNames } from "../codegen";
 import { kind } from "../declared";
+
+const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /**
  * What codegen writes from a project's declared variables, which is the whole reason the config
@@ -110,9 +115,12 @@ describe("naming what a property accepts", () => {
     const { module: written } = generate(simple);
 
     expect(written).toContain("export type Value<P extends keyof CssProperties> = CssProperties[P];");
-    expect(written).toContain(
-      'import type { CssProperties as Base, CssValue, Narrowed } from "@ramonda/css/properties";',
-    );
+    // The three names the rows below are written in terms of. The whole import line is NOT asserted:
+    // it also carries everything the module passes on, which is its own test — and a list that has
+    // to be repeated in an assertion is a list that stops the next name being added to it.
+    for (const one of ["CssProperties as Base", "CssValue", "Narrowed"]) {
+      expect(written).toMatch(new RegExp(`import type \\{[^}]*\\b${one.replace(/ /g, "\\s")}\\b`));
+    }
     expect(written).toContain("export type CssProperties = Omit<Base, keyof Narrowings> & Narrowings;");
     // Written out rather than named from the package: a generic recursive alias stops expanding at
     // depth, and two levels of nesting is ordinary CSS. See the note on `CssBlockShape`.
@@ -240,5 +248,47 @@ describe("the header's count", () => {
     const declared = [...module.matchAll(/^ {2}"[^"]+"\??:/gm)].length;
 
     expect(said).toBe(declared);
+  });
+});
+
+/**
+ * The generated module passes on EVERY type the shipped map exports and it does not define.
+ *
+ * It replaces that map for every file in the project, so a name it drops stops existing. Four were
+ * passed on and seven were missing, and three of those seven are what a NAMED block is checked
+ * against — so `@@property`, `@@keyframes` and `@@font-face` all stopped type-checking the moment a
+ * project declared a variable. `generated.test.ts` holds the behaviour; this holds the LIST, which
+ * is what would rot first: the next type added to `properties.ts` is the next one forgotten.
+ *
+ * Read off the shipped file's own text rather than written out here, because a second copy of the
+ * list is the thing this is trying to stop.
+ */
+describe("what the generated module passes on", () => {
+  const shipped = readFileSync(join(PACKAGE, "src", "properties.ts"), "utf8");
+
+  /** Every type `properties.ts` exports, however it spells the export. */
+  const exported = new Set<string>();
+  for (const [, names] of shipped.matchAll(/export type \{([^}]*)\}/g)) {
+    for (const one of names.split(",")) {
+      const name = one
+        .trim()
+        .split(/\s+as\s+/)
+        .pop()
+        ?.trim();
+      if (name !== undefined && name !== "") exported.add(name);
+    }
+  }
+  for (const [, name] of shipped.matchAll(/^export (?:type|interface) ([A-Za-z]\w*)/gm)) exported.add(name);
+
+  /** What the generated module defines for itself, narrowed by the config — see its own note. */
+  const ITS_OWN = new Set(["CssProperties", "CssBlockShape"]);
+
+  test("every one of them, and the list is read from `properties.ts` rather than repeated", () => {
+    const module = generate({ space: kind("length", { gutter: "16px" }) }).module;
+    const missing = [...exported].filter((one) => !ITS_OWN.has(one) && !module.includes(one));
+
+    // The control: the sweep found something to check, so an empty set cannot pass for free.
+    expect(exported.size).toBeGreaterThan(8);
+    expect(missing).toEqual([]);
   });
 });
