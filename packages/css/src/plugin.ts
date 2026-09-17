@@ -81,6 +81,19 @@ export interface PluginModule {
 /** Only these are source. Everything else is somebody else's file. */
 const SOURCE = /\.[cm]?[jt]sx?$/;
 
+/**
+ * A declaration file, which cannot hold a block and must not be opened looking for one.
+ *
+ * `SOURCE` alone lets through every `lib.*.d.ts` and every `.d.ts` in `node_modules`. Measured
+ * through a real `tsserver` on a project holding ONE source file: **174 files reached the overlay,
+ * 172 of them declarations, 4.9 MB of text read** — paid per project, each time an editor opens one,
+ * and worth 190 ms of the 250 ms that took.
+ *
+ * It is work for an answer known in advance. A declaration file declares types and has no
+ * expressions, so there is nowhere in one for `@@( … )` to be written.
+ */
+const DECLARATIONS = /\.d\.[cm]?ts$/;
+
 export function init(modules: { typescript: typeof ts }): PluginModule {
   const tsModule = modules.typescript;
 
@@ -229,7 +242,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         fileName: string,
         read: (name: string) => ts.IScriptSnapshot | undefined,
       ): VirtualFile | undefined => {
-        if (!SOURCE.test(fileName)) return undefined;
+        if (!SOURCE.test(fileName) || DECLARATIONS.test(fileName)) return undefined;
 
         const version = host.getScriptVersion(fileName);
         const cached = cache.get(fileName);
