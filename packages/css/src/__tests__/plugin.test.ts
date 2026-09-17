@@ -7,7 +7,7 @@ import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { virtualFile } from "../compiler/virtual";
 import { SELECTORS } from "../compiler/keywords.generated";
-import { init } from "../plugin";
+import { NO_COMPILER, init } from "../plugin";
 
 const require = createRequire(import.meta.url);
 
@@ -43,7 +43,9 @@ const CARET = "/*|*/";
  */
 function editor(
   marked: string,
-  config: { properties?: string; as?: string } = { properties: join(PACKAGE, "src", "properties") },
+  config: { properties?: string; as?: string; [NO_COMPILER]?: boolean } = {
+    properties: join(PACKAGE, "src", "properties"),
+  },
 ) {
   const source = marked.replace(CARET, "");
   const caret = marked.indexOf(CARET);
@@ -2378,5 +2380,65 @@ describe("a caret in a nested rule's prelude", () => {
 
     expect(got).not.toEqual([]);
     for (const one of got) expect(Object.keys(SELECTORS)).toContain(`${colons}${one}`);
+  });
+});
+
+/**
+ * A project that cannot COMPILE a block, and what the editor owes it.
+ *
+ * The extension contributes this plugin to every project an editor opens. Where the project has no
+ * `@ramonda/css` of its own, the extension's copy answers — about a syntax that project cannot
+ * build: measured, `@@( colour: red; )` is `unknown-property` here and *Expected identifier but
+ * found "@"* from esbuild. Saying only the first is promising a page the build will not give.
+ *
+ * **The shape is TypeScript's own**, measured rather than recalled. JSX in a project with no `jsx`
+ * option is parsed, is checked, and gets one more diagnostic naming what is missing:
+ *
+ *     TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+ *     TS7026:  JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements'…
+ *
+ * So this sits BESIDE the CSS reports. They are still true about the CSS; this is what makes them a
+ * preview rather than a promise.
+ */
+describe("a project with nothing that compiles a block", () => {
+  const source = "const a = <div css={@@(\n  colour: red;\n)}>x</div>;\n";
+
+  test("is told so, once, on the block", () => {
+    const { service } = editor(source, { [NO_COMPILER]: true });
+    const said = service
+      .getSemanticDiagnostics(FILE)
+      .filter((one) => String(one.messageText).includes("[no-compiler]"));
+
+    expect(said).toHaveLength(1);
+    expect(String(said[0].messageText)).toContain("a build will refuse this file");
+    expect(said[0].category).toBe(ts.DiagnosticCategory.Error);
+  });
+
+  test("and still hears what is wrong with the CSS, which is the point of saying both", () => {
+    const said = editor(source, { [NO_COMPILER]: true })
+      .service.getSemanticDiagnostics(FILE)
+      .map((one) => String(one.messageText));
+
+    expect(said.some((one) => one.includes("[no-compiler]"))).toBe(true);
+    expect(said.some((one) => one.includes("unknown-property"))).toBe(true);
+  });
+
+  /** The control: a project with the package hears nothing about compiling. */
+  test("while a project that has the compiler is not told anything", () => {
+    const said = editor(source)
+      .service.getSemanticDiagnostics(FILE)
+      .map((one) => String(one.messageText));
+
+    expect(said.some((one) => one.includes("[no-compiler]"))).toBe(false);
+    expect(said.some((one) => one.includes("unknown-property"))).toBe(true);
+  });
+
+  /** And a file with no block is not marked, or every file in the project would be. */
+  test("and a file with no block in it is left alone", () => {
+    const said = editor("const a = 1;\n", { [NO_COMPILER]: true })
+      .service.getSemanticDiagnostics(FILE)
+      .map((one) => String(one.messageText));
+
+    expect(said.some((one) => one.includes("[no-compiler]"))).toBe(false);
   });
 });

@@ -44,9 +44,16 @@ nothing to configure, and nothing to add to a project.
 **Diagnostics and completions** work too — the extension carries the compiler's language plugin, so
 a misspelt property is underlined the moment you type it.
 
-**Building is the project's own**, and so is deciding what counts as an error. Install
-[`@ramonda/css`](https://www.npmjs.com/package/@ramonda/css) and name the plugin in
-`tsconfig.json`, and the editor answers with the version you pinned instead of the one in here:
+**Building is the project's own.** A style block is not TypeScript, and nothing in an editor can
+compile one: without `@ramonda/css` in the project a build refuses the file outright. So where the
+extension is answering on its own, it says that first, on the block, and goes on reporting the CSS
+underneath it:
+
+> `[no-compiler]` nothing in this project compiles a style block, so a build will refuse this file.
+
+Install [`@ramonda/css`](https://www.npmjs.com/package/@ramonda/css) and name the plugin in
+`tsconfig.json`. The line goes, and the editor answers with the version you pinned instead of the
+one in here:
 
 ```json
 { "compilerOptions": { "plugins": [{ "name": "@ramonda/css/plugin" }] } }

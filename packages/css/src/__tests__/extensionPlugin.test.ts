@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
+import { NO_COMPILER } from "../plugin";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const EXTENSION = join(ROOT, "tools", "vscode-css");
@@ -107,7 +108,14 @@ describe("the plugin the extension contributes", () => {
      * control passed for the wrong reason until it was moved out here. No editor sets `NODE_PATH`,
      * so this is also the environment the shim really meets.
      */
-    function asked(directory: string): { said: string[]; threw?: string; service?: string; externalFiles?: unknown } {
+    function asked(directory: string): {
+      said: string[];
+      threw?: string;
+      service?: string;
+      externalFiles?: unknown;
+      /** The config keys the project's OWN plugin was handed, when it is the one serving. */
+      handed?: string[];
+    } {
       execFileSync("node", [join(EXTENSION, "build-plugin.mjs")], { stdio: "pipe" });
       const { NODE_PATH: _hoisted, ...clean } = process.env;
       return JSON.parse(
@@ -123,6 +131,23 @@ describe("the plugin the extension contributes", () => {
 
       expect(out.said.join(" ")).toContain("stands aside");
       expect(out.service).toBe("theirs");
+    });
+
+    /**
+     * The key the fallback sets is the extension's business, not the project's.
+     *
+     * It tells the bundled copy that IT is answering for a project that cannot build a block, which
+     * is only ever true when the project has no plugin of its own. Handing it to one that does
+     * would make it report the opposite of what is true.
+     */
+    test("and does not hand the project's own plugin the no-compiler key", () => {
+      const out = asked(
+        project(
+          `module.exports = () => ({ create: (info) => ({ marker: "theirs", handed: Object.keys(info.config ?? {}) }) });`,
+        ),
+      );
+
+      expect(out.handed).toEqual([]);
     });
 
     /** The control: away from a project that has one, the extension's copy is what runs. */
@@ -168,6 +193,24 @@ describe("the plugin the extension contributes", () => {
 
       expect(out.externalFiles).toEqual(["theirs.css"]);
     });
+  });
+
+  /**
+   * The two halves of the no-compiler report, which live in different packages.
+   *
+   * The shim sets a key on the config it hands the bundled plugin, and the plugin turns that key
+   * into a diagnostic — see `plugin.test.ts`. A string written out in both places is a string that
+   * can drift, so the shim reads it off the plugin, and this is what says it still can.
+   */
+  test("the shim and the plugin agree on the key that says nothing here can compile", () => {
+    execFileSync("node", [join(EXTENSION, "build-plugin.mjs")], { stdio: "pipe" });
+    // By path: the staged package declares only `./plugin`, which is the shim.
+    const staged = createRequire(join(EXTENSION, "x.js"))("./node_modules/@ramonda/css/dist/plugin.cjs") as {
+      NO_COMPILER?: string;
+    };
+
+    expect(staged.NO_COMPILER).toBe(NO_COMPILER);
+    expect(readFileSync(join(EXTENSION, "plugin-shim.cjs"), "utf8")).toContain("bundled.NO_COMPILER");
   });
 
   test("reaches the `.vsix`, which ignores the rest of `node_modules`", () => {

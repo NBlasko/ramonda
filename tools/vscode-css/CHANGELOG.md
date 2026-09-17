@@ -16,7 +16,14 @@
   steps aside wherever the project has one, so the version you pinned is still the version that
   decides what is an error.
 
-  And a project that installed the package without naming the plugin in its `tsconfig.json` stops
+- **An editor no longer promises what a build will refuse.** The extension answers about style
+  blocks in any project, including one with no `@ramonda/css` at all — and such a project cannot
+  compile a block: a build stops at `Expected identifier but found "@"`. So where the extension is
+  the only thing answering, it says so on the block and keeps reporting the CSS underneath, which
+  is the shape TypeScript uses for JSX in a project with no `jsx` option: the file is parsed, it is
+  checked, and one more line names what is missing.
+
+- **A project that installed the package without naming the plugin** in its `tsconfig.json` stops
   being told nonsense. It used to get `Variable 'red' implicitly has an 'any' type` and `Cannot find
   name 'flex'` from a block TypeScript was reading as code; it now gets what is actually wrong with
   the CSS.

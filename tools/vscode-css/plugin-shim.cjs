@@ -48,6 +48,15 @@ const BUNDLED = require.resolve("./node_modules/@ramonda/css/dist/plugin.cjs");
 const bundled = require(BUNDLED);
 
 /**
+ * The key that tells the bundled plugin it is answering for a project that cannot build a block.
+ *
+ * Read off the plugin itself rather than written out twice — the two live in different packages,
+ * and a string copied into both is a string that can drift. The fallback is only reached if an
+ * older copy is ever staged, and it costs one diagnostic, not the plugin.
+ */
+const NO_COMPILER = bundled.NO_COMPILER ?? "@ramonda/css:no-compiler-in-the-project";
+
+/**
  * The project's own plugin, or nothing.
  *
  * `createRequire` against a path inside the project, so resolution starts where the project is
@@ -111,7 +120,16 @@ module.exports = function init(modules) {
       }
 
       try {
-        return mine.create(info);
+        /**
+         * The copy in here is answering, so the project has no `@ramonda/css` and cannot build a
+         * block at all — measured, esbuild refuses the file with *Expected identifier but found
+         * "@"*. The plugin turns this into one diagnostic per file, beside the CSS reports rather
+         * than instead of them, which is the shape TypeScript uses for JSX with no `jsx` option.
+         *
+         * `info` is a plain object literal in `tsserver`'s `enableProxy`, so a spread carries
+         * everything and mutates nothing that belongs to the project.
+         */
+        return mine.create({ ...info, config: { ...info.config, [NO_COMPILER]: true } });
       } catch (error) {
         // The last fallback is what `tsserver` had before any of this. Blocks go unchecked in the
         // editor, which is what would have happened anyway — and now something says so.

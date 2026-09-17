@@ -1,4 +1,4 @@
-import { init } from "./plugin";
+import { NO_COMPILER, init } from "./plugin";
 
 /**
  * The CommonJS entry, and the whole reason it exists is one measurement.
@@ -13,4 +13,14 @@ import { init } from "./plugin";
  * module has nothing else — `export =` would say it more directly and TypeScript refuses it under
  * `module: ESNext`, which is what the rest of this package needs.
  */
-export default init;
+/**
+ * The factory, with one constant hung on it.
+ *
+ * `tsserver` checks `typeof factory === "function"` and nothing else, so a property is free — and
+ * the extension's shim needs {@link NO_COMPILER} to tell this plugin that IT is the copy answering.
+ * The two live in different packages, and a string written out in both is a string that can drift.
+ */
+const factory = init as typeof init & { NO_COMPILER: typeof NO_COMPILER };
+factory.NO_COMPILER = NO_COMPILER;
+
+export default factory;

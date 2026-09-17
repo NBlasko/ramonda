@@ -59,11 +59,25 @@ import { type Imported, namedSites } from "./compiler/references";
  * for the caret to be inside anything at all.
  */
 
+/**
+ * The key the extension's shim sets when IT is the copy answering — see `cannotCompile`.
+ *
+ * A string rather than a symbol because it crosses a package boundary as plain data, and one long
+ * enough that a key in somebody's `tsconfig.json` cannot collide with it by accident.
+ */
+export const NO_COMPILER = "@ramonda/css:no-compiler-in-the-project";
+
 /** What `tsserver` hands the factory. Structural, so `typescript` stays a peer and not an import. */
 export interface PluginCreateInfo {
   languageService: ts.LanguageService;
   languageServiceHost: ts.LanguageServiceHost;
-  config?: { properties?: string };
+  /**
+   * The plugin's own entry from `tsconfig.json` — plus one key the extension's shim sets.
+   *
+   * See {@link NO_COMPILER}: it is how the copy bundled in the extension knows it is answering for
+   * a project that has no `@ramonda/css` of its own, and so cannot build a block at all.
+   */
+  config?: { properties?: string; [NO_COMPILER]?: boolean };
   /**
    * tsserver's own log, when there is one — the only place a plugin can say anything.
    *
@@ -786,6 +800,55 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
       };
 
       /**
+       * One diagnostic saying nothing in this project can COMPILE a block, or nothing.
+       *
+       * The extension contributes this plugin to every project an editor opens, and hands over to
+       * the project's own `@ramonda/css` wherever there is one. Where there is not, the editor
+       * answers about a syntax the project cannot build: measured, `@@( colour: red; )` is reported
+       * as `unknown-property` in the editor and refused by esbuild with *Expected identifier but
+       * found "@"*. An editor that only said the first is promising a page the build will not give.
+       *
+       * **The shape is TypeScript's own.** Writing JSX in a project with no `jsx` option is not met
+       * with silence and not with a broken parse — it is parsed, it is checked, and one more
+       * diagnostic names what the project is missing:
+       *
+       *     TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+       *     TS7026:  JSX element implicitly has type 'any' because no interface
+       *              'JSX.IntrinsicElements' exists.
+       *
+       * So this sits beside the CSS reports rather than replacing them: they are still true about
+       * the CSS, and this is what makes them a preview instead of a promise.
+       *
+       * Only the SHIM can know it, and it already does — it resolves the project's own plugin
+       * before deciding which copy answers. A project that names this plugin in its own
+       * `tsconfig.json` has the package by definition and never sees it.
+       */
+      const cannotCompile = (fileName: string): ts.Diagnostic[] => {
+        if (info.config?.[NO_COMPILER] !== true) return [];
+
+        const text = readSnapshot(fileName);
+        const source = text?.getText(0, text.getLength()) ?? "";
+        const [site] = findBlocks(source);
+        if (site === undefined) return [];
+
+        return [
+          {
+            file: cache.get(fileName)?.author,
+            start: site.start,
+            length: site.open - site.start + 1,
+            category: tsModule.DiagnosticCategory.Error,
+            code: 0,
+            messageText:
+              "[no-compiler] nothing in this project compiles a style block, so a build will refuse " +
+              "this file.\n        What you see here comes from the Ramonda CSS extension's own copy " +
+              "of the compiler.\n\n" +
+              "        Install `@ramonda/css` and add its plugin to your build — see " +
+              "https://ramonda.dev/style-blocks",
+          },
+        ];
+      };
+
+      /**
        * One diagnostic saying the project's config did not load, or nothing.
        *
        * Only reached for a file that HOLDS a block — `getSemanticDiagnostics` has already returned
@@ -831,6 +894,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          */
         const ours = cssFor(fileName);
         return [
+          ...cannotCompile(fileName),
           ...brokenConfig(fileName),
           ...ours,
           ...hintsFor(fileName),

@@ -25,7 +25,8 @@ const project = {
   projectService: { logger: { info: (one) => said.push(one) } },
 };
 
-const out = { said, threw: undefined, service: undefined, externalFiles: undefined };
+/** What the project's own plugin was handed, when it is the one serving — see `seen` below. */
+const out = { said, threw: undefined, service: undefined, externalFiles: undefined, handed: undefined };
 try {
   const service = made.create({
     languageService: { marker: "the one tsserver already had" },
@@ -34,6 +35,7 @@ try {
     project,
   });
   out.service = service?.marker ?? "a proxy";
+  out.handed = service?.handed;
 } catch (error) {
   out.threw = String(error);
 }
