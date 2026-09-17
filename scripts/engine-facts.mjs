@@ -39,6 +39,31 @@ export function unionOf(previous, measured) {
   return [...new Set([...previous, ...measured])].sort();
 }
 
+/**
+ * Only the names in BOTH — for the one list here that is read to make the checker STRICTER.
+ *
+ * The note above says every one of these lists widens what is allowed, and `numberless.generated.ts`
+ * is the exception: it says a bare number is a MISTAKE, so believing it too readily refuses valid
+ * CSS, which `properties.ts` names as the one failure a type map may not have.
+ *
+ * So it accumulates the other way round. A union grows across platforms because one engine having a
+ * property is enough; this shrinks, because one engine ACCEPTING a number is enough to end the
+ * claim. `--check` then asks the question that matters for this shape: **does this machine accept
+ * anything the file refuses?**
+ *
+ * Measured, and it is why this exists: the intersection is 241 properties on macOS and a different
+ * number on a Linux runner, with the same engine versions — WebKit there is a different build. A
+ * file written on one and checked on the other can never be byte-equal, and CI went red for a
+ * difference that was nobody's mistake.
+ *
+ * What it costs is the mirror of the union's cost: a property that becomes numberless later never
+ * gets in until somebody deletes the file and regenerates from scratch. That is the safe direction
+ * for a list that REFUSES.
+ */
+export function intersectionOf(previous, measured) {
+  return measured.filter((one) => previous.includes(one)).sort();
+}
+
 /** The same, for a map of lists: every key in either, and within a key every value in either. */
 export function unionOfMap(previous, measured) {
   const out = {};
@@ -61,7 +86,10 @@ export function writeOrCheck(file, contents, command, check) {
   const had = existsSync(file) ? readFileSync(file, "utf8") : "";
   if (had === contents) return false;
   if (check) {
-    console.error(`[${command}] ${file.split("/").slice(-1)[0]} is missing something the engines here report.`);
+    // Direction-neutral on purpose: this compares text and cannot tell an addition from a removal.
+    // It said "is missing something", which is true of the lists that only grow and a guess about
+    // the one that only shrinks.
+    console.error(`[${command}] ${file.split("/").slice(-1)[0]} is not what the engines here report.`);
     console.error(`[${command}] run \`node scripts/${command}.mjs\` and commit the result.`);
     process.exit(1);
   }
