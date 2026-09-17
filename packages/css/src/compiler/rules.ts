@@ -3577,6 +3577,32 @@ interface Inert {
 const LAYS_OUT_CHILDREN = (display: string): boolean => /\b(flex|grid|box)\b/.test(display);
 
 /**
+ * A `display` CSS actually has — because a row that fires when the value is NOT something must not
+ * fire on a word nobody has finished typing.
+ *
+ * `display: bolck` is a typo, and the author may be about to write `flex`, which makes the `gap`
+ * beside it exactly right. Reporting it is speaking about a declaration somebody is still fixing —
+ * the reading `unknown-property` already gives way to elsewhere in this file.
+ *
+ * Only this row needs it, and the asymmetry is why: `position: static` and `overflow: visible` fire
+ * when the value IS something, so a misspelling is not that value and they go quiet on their own.
+ *
+ * A vendor spelling needs no exception, and one written here was cut for changing no outcome: no
+ * generated row holds `-webkit-box`, so it fails this — and every vendor display CSS has carries
+ * `box`, `flex` or `grid` anyway, so the row was already quiet about it either way.
+ */
+const A_REAL_DISPLAY = (display: string): boolean => {
+  const known = KEYWORDS.display;
+  if (known === undefined) return true;
+  const words = new Set(known.split(" "));
+  return display
+    .replace(/\s*!\s*important\s*$/i, "")
+    .split(/\s+/)
+    .filter((one) => one !== "")
+    .every((one) => words.has(one) || GLOBAL.has(one));
+};
+
+/**
  * A size a browser can use without laying anything out, which is what makes `aspect-ratio` inert.
  *
  * Measured, and the first version of the row was wrong about every other shape: beside
@@ -3622,7 +3648,7 @@ const INERT: readonly Inert[] = [
     rescuedBy: ["columns", "column-count", "column-width"],
     off: (seen) => {
       const display = seen.get("display") ?? "";
-      return !LAYS_OUT_CHILDREN(display) && !NO_BOX.has(display);
+      return A_REAL_DISPLAY(display) && !LAYS_OUT_CHILDREN(display) && !NO_BOX.has(display);
     },
     says: (subject, seen) =>
       `\`${subject}\` does nothing here: \`display: ${seen.get("display")}\` lays out no children of ` +

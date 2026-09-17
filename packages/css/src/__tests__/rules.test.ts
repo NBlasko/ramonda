@@ -4329,6 +4329,45 @@ describe("a declaration another one on the same element switches off", () => {
   });
 
   /**
+   * A neighbour the checker is already complaining about decides nothing.
+   *
+   * `display: bolck` is a typo, and the author may be about to write `flex` — in which case the
+   * `gap` beside it is exactly right. Judging it from a word CSS does not have is speaking about a
+   * declaration somebody is still fixing, which is the reading `unknown-property` already gives way
+   * to elsewhere in this file.
+   *
+   * Only the `display` row needs it, and the asymmetry is the reason: a row that fires when the
+   * value IS something — `position: static`, `overflow: visible` — already goes quiet on a typo,
+   * because a misspelling is not that value either. `display` fires when the value is NOT flex or
+   * grid, and a misspelling is not those either.
+   */
+  test.each([
+    ["display: bolck; gap: 12px;"],
+    ["display: blcok; justify-content: flex-end;"],
+    ["display: flexx; grid-template-columns: 1fr;"],
+    // The control for the shape above: a typo in a row that fires on a value it RECOGNISES.
+    ["position: statik; top: 20px;"],
+    ["overflow: visibl; resize: both;"],
+  ])("`%s` names a value CSS does not have, so nothing beside it is judged", (css) => {
+    expect(check(css).map((one) => one.rule)).not.toContain("declaration-does-nothing");
+  });
+
+  /** And a display CSS does have is still judged, including the vendor spellings. */
+  test.each([
+    ["display: block; gap: 12px;", true],
+    ["display: table-cell; gap: 12px;", true],
+    ["display: block !important; gap: 12px;", true],
+    ["display: -webkit-box; gap: 12px;", false],
+    ["display: block flex; gap: 12px;", false],
+  ])("`%s` is reported: %s", (css, reported) => {
+    expect(
+      check(css)
+        .map((one) => one.rule)
+        .includes("declaration-does-nothing"),
+    ).toBe(reported);
+  });
+
+  /**
    * The VALUE is read out of the canonical text, so the shapes that text can take are their own
    * question — separate from which properties the table names.
    */

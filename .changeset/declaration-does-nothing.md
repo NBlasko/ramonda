@@ -29,6 +29,11 @@ build over: `display: -webkit-box` and `-webkit-inline-box` lay out children and
 an `overflow-x` or `overflow-y` written beside `overflow: visible` brings both `resize` and the
 ellipsis back. All four are silent now.
 
+A neighbour the checker is already complaining about decides nothing either. `display: bolck` is a
+typo, and the author may be about to write `flex` — which makes the `gap` beside it right. Only the
+`display` row needed that, and the asymmetry is the reason: a row that fires when the value IS
+something, like `position: static`, goes quiet on a misspelling by itself.
+
 Silence is the default wherever the answer is not certain. A `...{spread}` merges declarations the
 reading block cannot see, so a disabling declaration counts only where it is written; `white-space`
 is inherited, so an absent one is never assumed; a nested rule is judged on its own declarations;
