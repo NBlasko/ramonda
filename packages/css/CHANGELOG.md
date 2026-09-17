@@ -1,5 +1,234 @@
 # @ramonda/css
 
+## 0.4.0
+
+### Minor Changes
+
+- 8d71b71: A declaration another declaration on the same element switches off is reported.
+
+  `display: block; gap: 12px` is valid CSS. Every tool is happy, the build is green, and the browser
+  spaces nothing. So is `position: static; top: 20px`, and `text-overflow: ellipsis` beside a
+  `white-space` that wraps — ten rows in all, each one a layout that is quietly a little wrong with
+  the line that looks like the fix already in place.
+
+  A stylesheet cannot ask this. It does not know which of its rules reach an element, so nothing built
+  on ordinary CSS can say _this line does nothing_. A block is one element's rule, which is what makes
+  it answerable here.
+
+  A test does not catch it either. `getComputedStyle` reports the computed value rather than what the
+  browser did: it answers `z-index: 10` on a static element and `width: 300px` on an inline one,
+  having done neither.
+
+  Every list in the rule was measured against Chromium rather than recalled, and that removed four
+  properties from it — `align-content`, `justify-items`, `place-items` and `place-content` all work on
+  a block container in current browsers, and reporting them would have reported correct CSS. `gap`
+  keeps its multi-column exception for the same reason.
+
+  A review found four more shapes it was wrong about, each of them correct CSS it would have failed a
+  build over: `display: -webkit-box` and `-webkit-inline-box` lay out children and use `gap`;
+  `aspect-ratio` still applies beside a height of `50%`, `calc(50% - 2px)`, `min-content`,
+  `fit-content` or `stretch`, because none of those is a size until something has been laid out; and
+  an `overflow-x` or `overflow-y` written beside `overflow: visible` brings both `resize` and the
+  ellipsis back. All four are silent now.
+
+  A neighbour the checker is already complaining about decides nothing either. `display: bolck` is a
+  typo, and the author may be about to write `flex` — which makes the `gap` beside it right. Only the
+  `display` row needed that, and the asymmetry is the reason: a row that fires when the value IS
+  something, like `position: static`, goes quiet on a misspelling by itself.
+
+  Silence is the default wherever the answer is not certain. A `...{spread}` merges declarations the
+  reading block cannot see, so a disabling declaration counts only where it is written; `white-space`
+  is inherited, so an absent one is never assumed; a nested rule is judged on its own declarations;
+  and a hole is not judged at all.
+
+  Switch it off with `rules: { "declaration-does-nothing": "off" }`, or for one line with a
+  `ramonda-css-ignore` and a reason.
+
+- 86b8e43: The editor says when nothing in the project can compile a style block.
+
+  The plugin is contributed by the VS Code extension as well as by a `tsconfig.json`, so it answers in
+  projects that have no `@ramonda/css` at all. Those projects cannot compile a block — a build stops
+  at `Expected identifier but found "@"` — and an editor that only reported the CSS was promising a
+  page the build would refuse.
+
+  One diagnostic now says so, on the block, beside the CSS reports rather than instead of them:
+
+  > `[no-compiler]` nothing in this project compiles a style block, so a build will refuse this file.
+
+  That shape is TypeScript's own, measured rather than recalled. JSX in a project with no `jsx` option
+  is not met with silence and not with a broken parse — it is parsed, it is checked, and one more
+  diagnostic names what is missing:
+
+  ```
+  TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+  TS7026:  JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+  ```
+
+  A project that names the plugin in its own `tsconfig.json` has the package by definition and never
+  sees the line.
+
+- 7d3614e: A number written where only keywords go is reported.
+
+  `display: 1` compiled in silence while `position: 1` was caught — and both take no number. What
+  separated them was whether the generator could reduce their grammar to a primitive, which is not a
+  fact about CSS.
+
+  So the fact is measured instead. `scripts/build-numberless-properties.mjs` launches Chromium,
+  Firefox and WebKit and asks `CSS.supports(property, n)` for seven different numbers; a property
+  every engine refuses all of them for is one no number belongs in — 241 of the 566 unprefixed
+  properties. It is the INTERSECTION rather than the union, because this says a number is _wrong_.
+
+  Only when the number is the whole value: `box-shadow: 0 0 1px red` and `transform: scale(2)` are
+  correct CSS on properties in that list, and both are measured to be accepted.
+
+- 647c43f: A call that is never closed is named where it opens, instead of blaming the line below.
+
+  `content: url(;` is a missing `)`. The value scanner counts parens and a block's own closer is a `)`
+  like any other, so the value ran past `)}` and took the author's next line with it — and what they
+  were told was about that line:
+
+  ```
+  `export const d = (1 + 2)` is not a declaration
+  reported on line 4, for a mistake on line 2
+  ```
+
+  The new rule `unclosed-call` says which call is open, at the line and column it opens on. The strict
+  read carries the same sentence, because it refuses the block before any rule can speak.
+
+### Patch Changes
+
+- 387bf4a: The unused-code dimming, and a `// TODO`, are the author's own again.
+
+  An editor fades unused code out from `getSuggestionDiagnostics` — a third list beside the semantic
+  and syntactic ones, and it was not proxied. It came straight off the virtual file with virtual
+  positions, so an editor applied them to the author's text at face value: a word came out half
+  coloured, and hovering a `<div>` said `'__cond' is declared but its value is never read` — a name
+  this package wrote and nobody can act on.
+
+  Where the stray fades LANDED depended on the file's length, which is why editing an unrelated line
+  changed the symptom and why removing every `$` appeared to cure it: the preamble is shorter without
+  one, so the same meaningless offsets fell past the end of the text instead of onto it.
+
+  A sweep of the language service for every method that answers with a position found one more:
+  `getTodoComments` reported a comment on line five at offset 838 of a file a hundred characters long.
+
+  Both map home now, so a name the author really did leave unused is still faded and a TODO they wrote
+  is still found — at the place they wrote it.
+
+- 4f84832: The grammar tests no longer fail when the machine is busy.
+
+  `includeExplanation` makes shiki tokenise each line twice — once for scopes, once for the binary
+  form — and hands both passes the same 500 ms limit. When one trips it and the other does not, the
+  two disagree about where the line ends and shiki walks the shorter list with an index from the
+  longer one, reading `undefined`.
+
+  It appeared once in a full run with every package's tests going at once, and not on an idle machine.
+  Turning the limit down to 1 ms reproduces the same error every time, which is what identified it.
+
+  The limit is now zero, which is `vscode-textmate`'s own default: a time limit has nothing to do with
+  what these tests claim, which is the scope a grammar gives a piece of text.
+
+- 3bffb83: A property name in the wrong case is one spelling of correct CSS, not a typo.
+
+  `COLOR: red` was reported as _`COLOR` is not a CSS property_, with no suggestion — and measured in
+  Chromium, Firefox and WebKit, all three set `color` to red and all three say
+  `CSS.supports("COLOR", "red")` is true. Property names are case-insensitive in CSS.
+
+  The rule for a value's keywords already settled this — _saying it does not exist is a lie the author
+  cannot act on_ — and reached the verdict this now uses: still refused, under `non-canonical-spelling`,
+  because a repository wants one spelling and `ramonda-css format` writes it.
+
+  A real typo shouted gets its suggestion back too: `DSIPLAY` is six substitutions from `display` and
+  none from `dsiplay`, so it used to come back with none at all.
+
+- 30a5ba1: One mistake in a declaration is one finding, when a project narrows several things at once.
+
+  `literal-not-allowed` is the widest of the rules a config turns on — it fires on any written-out
+  value of a kind taken from variables — so it landed beside every narrower rule that also fired:
+
+  ```
+  letter-spacing: 2rem     literal-not-allowed + unit-not-allowed
+  margin: 8px              shorthand-not-allowed + literal-not-allowed
+  padding: 1px 2px         too-many-values + literal-not-allowed
+  ```
+
+  Each is one gesture by the author. The one kept is the outermost of the four, in the order the fixes
+  nest: which property, then how many values, then where the value comes from, then how it is spelt.
+  Reading the unit first is the case that shows why — it sends you to `2px`, which the same config
+  still refuses.
+
+  Two findings of the same rule are still two: `padding: 2rem 3em` names both units. Two declarations
+  still keep their own, and anything CSS itself refuses is untouched.
+
+- f828308: The editor plugin no longer reads every declaration file looking for a style block.
+
+  The overlay let through anything named like source, which is every `lib.*.d.ts` and every `.d.ts` in
+  `node_modules`. On a project holding one small file, 174 files reached it — 172 of them declarations
+  — and 4.9 MB of text was read.
+
+  That is work for an answer known in advance: a declaration file declares types and has no
+  expressions, so there is nowhere in one for `@@( … )` to be written.
+
+  The cost was paid per project rather than per editor session, so a monorepo paid it again for every
+  package a file was opened in. Measured through a real `tsserver`, opening a second project: 248 ms
+  with the plugin against 59 ms without. It is now 62 ms — the same as a plugin that does nothing at
+  all, and the same as no plugin.
+
+  The exclusion is asked of one function, `fileMayHoldABlock`, which the editor plugin, the CLI check,
+  the Vite plugin and the esbuild plugin all now use. Adding it to the editor alone had made them
+  disagree: a block written in a declaration file was two reports from `ramonda-css` and nothing at
+  all in the editor. TypeScript's own complaint about such a file stays, in both, which is the honest
+  answer — a declaration file allows no initialiser, so the block could never have been there.
+
+- 4209148: A block the parser gives up on no longer hides every other file's faults.
+
+  `ramonda-css` stops type-checking when it cannot read a block, and the reason is right: with no
+  virtual file for that module, the compiler's word about anything is confusion about a file it could
+  not read. But that reason was applied to the whole project — one unclosed `url(` in one file hid a
+  misspelt property in another that had parsed perfectly, so a typo anywhere meant fixing a repository
+  one error per run.
+
+  The CSS rules that ran over files which read are reported now, under a heading of their own, after
+  the refusal. The compiler's own diagnostics stay out, which is what the reason is about, and the
+  file that failed still contributes nothing — its walk stopped before it found anything.
+
+  ```
+  [ramonda-css] 1 block(s) could not be read, so nothing was type-checked:
+
+    src/Card.tsx:2:12
+      `url(` is never closed — it needs a `)`.
+
+  [ramonda-css] and 1 problem(s) in files that read:
+
+    src/Other.tsx:2:3
+      unknown-property: `colour` is not a CSS property. Did you mean `color`?
+  ```
+
+- 545c8b1: One mistake, one report, for a value a project refuses twice over.
+
+  `width: 2rem` under a closed `values` list and a `units` list drew two findings — _`2rem` is not one
+  of the values this project allows_ and _`rem` is a unit this project does not use_ — for one word
+  and one fix.
+
+  The rules a project switches on overlap by construction, which is why the check already collapses
+  them to the outermost question: which property, then how many values, then where the value comes
+  from, then how it is spelt. `value-not-allowed` was not in that list, and by the same reading it
+  belongs between the last two: the unit is a detail of a value that is not on the list, and reading
+  the unit first sends you to `2px`, which the list still refuses.
+
+- 59e6045: A closed list of values takes numbers where CSS measures the property in numbers.
+
+  `values: ["1", "10"]` on `z-index` type-checked and then every use of it was refused, because a
+  quoted value is a CSS string and a browser drops the declaration. A setting that permits what the
+  checker will not take is worse than one that refuses outright.
+
+  The twenty-one properties CSS gives a `<number>` or an `<integer>` now take `readonly number[]`, from
+  a generated type built out of the same grammar the rules read. Everything else still takes either — a
+  time is `"120ms"` and a colour is `"#10b981"`.
+
+  Both halves, because nothing type-checks a config in the build: the type refuses it in your editor,
+  and the config validator refuses it with the number to write.
+
 ## 0.3.0
 
 ### Minor Changes
