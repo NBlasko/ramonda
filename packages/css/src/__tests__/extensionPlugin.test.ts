@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -71,8 +71,34 @@ describe("the plugin the extension contributes", () => {
    * before and after the contribution: `Loading @ramonda/css/plugin from …/tools/vscode-css`. So
    * without the hand-over the extension would quietly take over checking for every project,
    * replacing whatever `@ramonda/css` that project installed and pinned.
+   *
+   * ## And why every branch is asserted
+   *
+   * `tsserver` logs a plugin that throws in `create` as `Plugin activation failed`, at INFO level,
+   * and keeps the un-proxied language service. Nothing is shown. So a shim that can throw turns a
+   * style block into a syntax error in the editor with no message anywhere — which is the failure
+   * the extension exists to remove, arriving by the one door nobody watches.
    */
   describe("and hands over to the project's own copy", () => {
+    /**
+     * A project with a plugin of its own, written here so each branch can be provoked.
+     *
+     * `plugin.js` at the bare subpath, not only in `exports`: `tsserver` resolves with TypeScript's
+     * own node10 resolver and does not read `exports`. The shim uses Node's, which reads both.
+     */
+    function project(body: string): string {
+      const directory = mkdtempSync(join(tmpdir(), "ramonda-shim-"));
+      const own = join(directory, "node_modules", "@ramonda", "css");
+      mkdirSync(own, { recursive: true });
+      writeFileSync(join(directory, "package.json"), JSON.stringify({ name: "theirs", version: "1.0.0" }));
+      writeFileSync(
+        join(own, "package.json"),
+        JSON.stringify({ name: "@ramonda/css", version: "9.9.9", exports: { "./plugin": "./plugin.js" } }),
+      );
+      writeFileSync(join(own, "plugin.js"), body);
+      return directory;
+    }
+
     /**
      * Run in a CHILD process with `NODE_PATH` cleared, and that is not tidiness.
      *
@@ -81,23 +107,66 @@ describe("the plugin the extension contributes", () => {
      * control passed for the wrong reason until it was moved out here. No editor sets `NODE_PATH`,
      * so this is also the environment the shim really meets.
      */
-    function said(directory: string): string {
+    function asked(directory: string): { said: string[]; threw?: string; service?: string; externalFiles?: unknown } {
       execFileSync("node", [join(EXTENSION, "build-plugin.mjs")], { stdio: "pipe" });
       const { NODE_PATH: _hoisted, ...clean } = process.env;
-      return execFileSync(
-        "node",
-        [join(dirname(fileURLToPath(import.meta.url)), "askTheShim.mjs"), EXTENSION, directory],
-        { env: clean, encoding: "utf8" },
+      return JSON.parse(
+        execFileSync("node", [join(dirname(fileURLToPath(import.meta.url)), "askTheShim.mjs"), EXTENSION, directory], {
+          env: clean,
+          encoding: "utf8",
+        }),
       );
     }
 
     test("when the project has one", () => {
-      expect(said(join(ROOT, "apps", "playground-core"))).toContain("stands aside");
+      const out = asked(project(`module.exports = () => ({ create: () => ({ marker: "theirs" }) });`));
+
+      expect(out.said.join(" ")).toContain("stands aside");
+      expect(out.service).toBe("theirs");
     });
 
     /** The control: away from a project that has one, the extension's copy is what runs. */
     test("and runs its own when the project has none", () => {
-      expect(said(tmpdir())).not.toContain("stands aside");
+      const out = asked(mkdtempSync(join(tmpdir(), "ramonda-bare-")));
+
+      expect(out.said.join(" ")).not.toContain("stands aside");
+      expect(out.threw).toBeUndefined();
+    });
+
+    test("a project plugin that will not start falls back here, and says which copy answered", () => {
+      const out = asked(project(`module.exports = () => { throw new Error("no"); };`));
+
+      expect(out.threw).toBeUndefined();
+      expect(out.said.join(" ")).toContain("would not start");
+      expect(out.said.join(" ")).toContain("using the extension's copy");
+    });
+
+    /**
+     * A module that is not a factory is treated as ABSENT, not as broken.
+     *
+     * The `try` around the hand-over would catch calling it anyway, so this is about the message: a
+     * package that was never this plugin should not be reported as one that would not start.
+     */
+    test("a project plugin that is not a factory at all is treated as absent, in silence", () => {
+      const out = asked(project(`module.exports = { notAFactory: true };`));
+
+      expect(out.threw).toBeUndefined();
+      expect(out.said).toEqual([]);
+    });
+
+    /**
+     * `getExternalFiles` is asked of the MODULE, so it has to reach the one that served the
+     * project. The first version forwarded this copy's, which answers for the wrong plugin the
+     * moment a project's own grows the hook.
+     */
+    test("`getExternalFiles` reaches the module that served the project", () => {
+      const out = asked(
+        project(
+          `module.exports = () => ({ create: () => ({ marker: "theirs" }), getExternalFiles: () => ["theirs.css"] });`,
+        ),
+      );
+
+      expect(out.externalFiles).toEqual(["theirs.css"]);
     });
   });
 

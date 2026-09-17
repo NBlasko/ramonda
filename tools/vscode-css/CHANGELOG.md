@@ -16,6 +16,11 @@
   steps aside wherever the project has one, so the version you pinned is still the version that
   decides what is an error.
 
+  And a project that installed the package without naming the plugin in its `tsconfig.json` stops
+  being told nonsense. It used to get `Variable 'red' implicitly has an 'any' type` and `Cannot find
+  name 'flex'` from a block TypeScript was reading as code; it now gets what is actually wrong with
+  the CSS.
+
 ## 0.1.6
 
 - **The page now shows what a block looks like.** A marketplace page is rendered by the marketplace's

@@ -1,6 +1,6 @@
 /**
- * Asks the extension's staged plugin what it does for one project directory, and prints what it
- * logged.
+ * Asks the extension's staged plugin what it does for one project directory, and prints the answer
+ * as JSON: what it logged, what `create` returned, and what `getExternalFiles` answers.
  *
  *     node askTheShim.mjs <extension dir> <project dir>
  *
@@ -19,14 +19,29 @@ const from = createRequire(join(extension, "node_modules", "x.js"));
 const made = from("@ramonda/css/plugin")({ typescript: from("typescript") });
 
 const said = [];
-made.create({
-  languageService: {},
-  config: {},
-  languageServiceHost: { getScriptSnapshot: () => undefined, getScriptVersion: () => "1" },
-  project: {
-    getCurrentDirectory: () => directory,
-    projectService: { logger: { info: (one) => said.push(one) } },
-  },
-});
+/** What `tsserver` hands a plugin, cut down to what the shim reads. */
+const project = {
+  getCurrentDirectory: () => directory,
+  projectService: { logger: { info: (one) => said.push(one) } },
+};
 
-process.stdout.write(said.join("\n"));
+const out = { said, threw: undefined, service: undefined, externalFiles: undefined };
+try {
+  const service = made.create({
+    languageService: { marker: "the one tsserver already had" },
+    config: {},
+    languageServiceHost: { getScriptSnapshot: () => undefined, getScriptVersion: () => "1" },
+    project,
+  });
+  out.service = service?.marker ?? "a proxy";
+} catch (error) {
+  out.threw = String(error);
+}
+
+try {
+  out.externalFiles = made.getExternalFiles(project, 0);
+} catch (error) {
+  out.externalFiles = `threw: ${error}`;
+}
+
+process.stdout.write(JSON.stringify(out));

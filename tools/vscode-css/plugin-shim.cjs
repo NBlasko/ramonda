@@ -25,27 +25,47 @@
  * The bundled copy is therefore doing the work that made this worth building: formatting, folding,
  * the outline and expand-selection, which the syntax server answers forever rather than only while
  * a project loads. Nothing it does there depends on the project's version of the rules.
+ *
+ * ## Nothing here may throw, and that is not a style rule
+ *
+ * `tsserver` wraps a plugin's `create`, logs `Plugin activation failed` at INFO level and keeps the
+ * un-proxied language service. So a throw in here shows no error anywhere: it turns a style block
+ * into a syntax error in the editor with nothing said, which is the exact failure this extension
+ * exists to remove. Every step below falls back instead of raising, and the last fallback is the
+ * language service `tsserver` already had.
+ *
+ * ## One instance per project
+ *
+ * `enableProxy` calls the factory per project, so what is remembered below belongs to one project
+ * and needs no keying by it.
  */
 
 const { createRequire } = require("node:module");
 const { join } = require("node:path");
 
 /** This copy, staged beside the shim by `build-plugin.mjs`. */
-const bundled = require("./node_modules/@ramonda/css/dist/plugin.cjs");
+const BUNDLED = require.resolve("./node_modules/@ramonda/css/dist/plugin.cjs");
+const bundled = require(BUNDLED);
 
 /**
  * The project's own plugin, or nothing.
  *
- * `createRequire` against a file path inside the project, so resolution starts where the project is
+ * `createRequire` against a path inside the project, so resolution starts where the project is
  * rather than where this extension lives. A project with no `@ramonda/css` throws, which is the
- * ordinary case for every unrelated project an editor opens, and is not worth a log line.
+ * ordinary case for every unrelated project an editor opens and is not worth a log line.
  */
 function projectsOwn(directory) {
   try {
     const from = createRequire(join(directory, "package.json"));
-    const resolved = from.resolve("@ramonda/css/plugin");
-    // Never this file's own copy: an extension installed inside a workspace could resolve back here.
-    if (resolved.includes(join("vscode-css", "node_modules"))) return undefined;
+    /**
+     * Never this copy, compared by RESOLVED PATH rather than by a name inside it.
+     *
+     * The first version looked for `vscode-css/node_modules`, which is this repository's working
+     * tree. An installed extension lives in `ramonda.css-<version>` — measured in
+     * `~/.vscode/extensions` — so that test was dead everywhere it would have mattered.
+     */
+    if (from.resolve("@ramonda/css/plugin") === BUNDLED) return undefined;
+
     const found = from("@ramonda/css/plugin");
     const factory = found && found.__esModule ? found.default : found;
     return typeof factory === "function" ? factory : undefined;
@@ -56,20 +76,63 @@ function projectsOwn(directory) {
 
 module.exports = function init(modules) {
   const mine = bundled(modules);
+  /** Whichever module served this project — this copy, until `create` says otherwise. */
+  let serving = mine;
+
+  /** A log line may not be the thing that kills the plugin. */
+  const say = (info, message) => {
+    try {
+      info.project.projectService.logger.info(`[ramonda-css] ${message}`);
+    } catch {
+      // An editor that hosts `tsserver` its own way may have no logger here, and that is fine.
+    }
+  };
 
   return {
     create(info) {
-      const own = projectsOwn(info.project.getCurrentDirectory());
-      if (own === undefined) return mine.create(info);
+      let own;
+      try {
+        own = projectsOwn(info.project.getCurrentDirectory());
+      } catch {
+        own = undefined;
+      }
 
-      info.project.projectService.logger.info(
-        "[ramonda-css] the project has its own @ramonda/css/plugin; the extension's copy stands aside",
-      );
-      return own(modules).create(info);
+      if (own !== undefined) {
+        try {
+          const theirs = own(modules);
+          const service = theirs.create(info);
+          serving = theirs;
+          say(info, "the project has its own @ramonda/css/plugin; the extension's copy stands aside");
+          return service;
+        } catch (error) {
+          // Theirs is the copy that should have run, so the line has to say which one answered.
+          say(info, `the project's own @ramonda/css/plugin would not start (${error}); using the extension's copy`);
+        }
+      }
+
+      try {
+        return mine.create(info);
+      } catch (error) {
+        // The last fallback is what `tsserver` had before any of this. Blocks go unchecked in the
+        // editor, which is what would have happened anyway — and now something says so.
+        say(info, `the style-block plugin would not start (${error}); blocks are not checked here`);
+        return info.languageService;
+      }
     },
-    // `tsserver` asks the MODULE for these, so a shim that hid them would shrink the plugin.
-    getExternalFiles: mine.getExternalFiles === undefined ? undefined : (...args) => mine.getExternalFiles(...args),
-    onConfigurationChanged:
-      mine.onConfigurationChanged === undefined ? undefined : (...args) => mine.onConfigurationChanged(...args),
+
+    /**
+     * Asked of the MODULE, with the project as an argument, so it has to reach the module that
+     * actually served that project. Forwarding this copy's would answer for the wrong one the
+     * moment a project's own plugin grows the hook.
+     */
+    getExternalFiles(project, updateLevel) {
+      return typeof serving.getExternalFiles === "function"
+        ? serving.getExternalFiles(project, updateLevel)
+        : undefined;
+    },
+
+    onConfigurationChanged(configuration) {
+      if (typeof serving.onConfigurationChanged === "function") serving.onConfigurationChanged(configuration);
+    },
   };
 };
