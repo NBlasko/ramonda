@@ -366,6 +366,10 @@ const NESTED: readonly RuleId[] = [
   "shorthand-not-allowed",
   "too-many-values",
   "literal-not-allowed",
+  // The closed LIST before the unit: the unit is a detail of a value that is not on the list, and
+  // reading it first sends the author to `2px` — which the list still refuses. The same round trip
+  // `literal-not-allowed` is placed above `unit-not-allowed` to avoid.
+  "value-not-allowed",
   "unit-not-allowed",
 ];
 
@@ -378,8 +382,12 @@ const NESTED: readonly RuleId[] = [
  * property and `literal-not-allowed` on the value — so nothing narrower than the declaration could
  * group them.
  *
- * Anything outside this list is left alone on purpose. These four are the ones a project SWITCHED
+ * Anything outside this list is left alone on purpose. These five are the ones a project SWITCHED
  * ON, so they overlap by construction; CSS's own rules do not.
+ *
+ * **`value-not-allowed` was missing from it**, against that same criterion, and the pair it left
+ * uncollapsed is an ordinary one: `width: 2rem` under a closed list and a units list gave both
+ * *`2rem` is not one of the values* and *`rem` is a unit this project does not use*, for one word.
  */
 function outermost(block: Block, findings: readonly Finding[]): Finding[] {
   if (findings.length < 2) return [...findings];

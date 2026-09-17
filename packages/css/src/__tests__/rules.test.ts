@@ -4014,6 +4014,27 @@ describe("a declaration that breaks more than one of a project's rules", () => {
     expect(under(css)).toEqual([rule]);
   });
 
+  /**
+   * A value outside a closed list, written in a unit the project also refuses.
+   *
+   * Its own config, because the fixture above takes every length from variables and
+   * `literal-not-allowed` answers first there. Both rules here are the project's own and both are
+   * about one word, so the list is the question to ask: the unit is a detail of a value that is not
+   * on the list. Reading the unit first sends the author to `2px`, which the list still refuses —
+   * the round trip the note above describes for `literal-not-allowed`.
+   */
+  test("a value outside a closed list, in a forbidden unit, is one finding", () => {
+    const narrow: Config = {
+      units: { length: ["px"] },
+      properties: { width: { values: ["8px", "12px"] } },
+    };
+    const source = "<div css={@@(\n  width: 2rem;\n)}>x</div>";
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+
+    expect(checkBlock(read.block, { config: narrow }).map((one) => one.rule)).toEqual(["value-not-allowed"]);
+  });
+
   /** Each alone is untouched — the collapse may not cost a report that stands on its own. */
   test.each([
     ["a colour written out", "  color: #ff0000;", "literal-not-allowed"],
