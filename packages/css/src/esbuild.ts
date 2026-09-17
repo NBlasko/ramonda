@@ -5,7 +5,7 @@ import { knownNames, configReader, environmentOf } from "./config";
 import { variablesSheetFor, writeGenerated } from "./generate";
 import { readModule } from "./modules";
 import { CssBlockError } from "./compiler/errors";
-import { mayHoldABlock } from "./compiler/scan";
+import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
 import { Sheet } from "./compiler/sheet";
 import { transform } from "./compiler/transform";
 
@@ -244,7 +244,8 @@ export function ramondaCss(options: EsbuildCssPluginOptions = {}): EsbuildCssPlu
       }));
 
       build.onLoad({ filter: options.filter ?? SOURCE }, (args) => {
-        if (args.path.includes("node_modules")) return undefined;
+        // The regex above is esbuild's own coarse filter; this is the question every consumer asks.
+        if (!fileMayHoldABlock(args.path) || args.path.includes("node_modules")) return undefined;
 
         const code = readFileSync(args.path, "utf8");
         /**

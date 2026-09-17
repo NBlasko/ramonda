@@ -8,7 +8,7 @@ import { forgetGenerated, variablesSheetFor, writeGenerated } from "./generate";
 import { warnIfStale } from "./stale";
 import { readModule } from "./modules";
 import { loaderFor } from "./esbuild";
-import { mayHoldABlock } from "./compiler/scan";
+import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
 import { Sheet } from "./compiler/sheet";
 import { type SourceMap, transform } from "./compiler/transform";
 
@@ -126,9 +126,6 @@ export type Bundle = Record<string, { type?: string; fileName?: string; source?:
  * stylesheet belongs to) and end in something Vite reads as a stylesheet.
  */
 const SUFFIX = "?ramonda-css.css";
-
-/** Only these are source. A `.css`, a `.json` or somebody else's virtual module is not ours to read. */
-const SOURCE = /\.[cm]?[jt]sx?$/;
 
 export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   /**
@@ -258,7 +255,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   async function recompile(context: HotUpdate): Promise<void> {
     const file = context.file;
     if (basename(file) === "ramonda.css.ts") return reconfigure(file, context);
-    if (!SOURCE.test(file) || file.includes("node_modules")) return;
+    if (!fileMayHoldABlock(file) || file.includes("node_modules")) return;
 
     const code = await context.read();
     // A file that has never held a block, and does not now, has nothing here to be stale.
@@ -363,6 +360,8 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
                 name: "ramonda-css:scan",
                 setup(build: ScanBuild) {
                   build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, (args: { path: string }) => {
+                    // esbuild's filter has to be a RegExp; the question every consumer asks is this.
+                    if (!fileMayHoldABlock(args.path)) return null;
                     let source: string;
                     try {
                       source = readFileSync(args.path, "utf8");
@@ -413,7 +412,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       const file = id.split("?")[0];
       // A query string is Vite's — `?used`, `?v=hash`, `?worker`. A file skipped because of one is a
       // file whose blocks silently do not compile.
-      if (!SOURCE.test(file) || file.includes("node_modules") || id.startsWith("\0")) return null;
+      if (!fileMayHoldABlock(file) || file.includes("node_modules") || id.startsWith("\0")) return null;
 
       const result = compile(file, code);
       if (result === undefined) return null;

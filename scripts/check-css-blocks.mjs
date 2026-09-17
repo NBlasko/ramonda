@@ -30,7 +30,6 @@ const TAG = "[css-blocks]";
 
 /** Where a block may live at all. `dist`, `coverage` and the like are nobody's source. */
 const SKIP = new Set(["node_modules", "dist", "build", "coverage", "coverage-prod", ".turbo", ".build", "out"]);
-const SOURCE = /\.[cm]?[jt]sx?$/;
 
 /**
  * Every source file that really holds a block.
@@ -40,7 +39,10 @@ const SOURCE = /\.[cm]?[jt]sx?$/;
  * the substring alone would name files that hold nothing.
  */
 async function filesWithBlocks() {
-  const { findBlocks, mayHoldABlock } = await import("@ramonda/css/compiler");
+  // `fileMayHoldABlock` rather than a regex of this script's own: five consumers were each deciding
+  // which files can hold a block, and the moment one of them changed its mind the build and the
+  // editor disagreed about a `.d.ts`.
+  const { fileMayHoldABlock, findBlocks, mayHoldABlock } = await import("@ramonda/css/compiler");
   const found = [];
 
   const walk = (at) => {
@@ -51,7 +53,7 @@ async function filesWithBlocks() {
         walk(path);
         continue;
       }
-      if (!SOURCE.test(entry.name)) continue;
+      if (!fileMayHoldABlock(entry.name)) continue;
 
       const text = readFileSync(path, "utf8");
       if (mayHoldABlock(text) && findBlocks(text).length > 0) found.push(relative(root, path));

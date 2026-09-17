@@ -9,7 +9,7 @@ import { knownNames, configReader, environmentOf } from "./config";
 import { findConfig } from "./config";
 import { propertiesFor } from "./generate";
 import { readModule } from "./modules";
-import { mayHoldABlock } from "./compiler/scan";
+import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
 /**
@@ -109,6 +109,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   const exempted: { file: string; line: number; reason: string }[] = [];
 
   for (const fileName of parsed.fileNames) {
+    if (!fileMayHoldABlock(fileName)) continue;
     const text = ts.sys.readFile(fileName);
     if (text === undefined || !mayHoldABlock(text)) continue;
 

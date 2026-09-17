@@ -79,6 +79,31 @@ export function mayHoldABlock(source: string): boolean {
   return source.includes("@@");
 }
 
+/** Source, by name: the extensions a block can be written in. */
+const SOURCE = /\.[cm]?[jt]sx?$/;
+
+/** A declaration file, which declares types and holds no expressions to write one in. */
+const DECLARATIONS = /\.d\.[cm]?ts$/;
+
+/**
+ * The cheaper question, asked before the file is OPENED — can this name hold a block at all?
+ *
+ * **One place, because four consumers were each deciding it their own way.** The editor plugin, the
+ * CLI check, the Vite plugin and the esbuild plugin all filter the files they look at, and a
+ * `.d.ts` exclusion added to one of them made the build and the editor disagree: a block written in
+ * a declaration file was reported by `ramonda-css` and invisible in the editor. A green editor over
+ * a red build is the worst shape this repository has, and it is the shape it keeps finding.
+ *
+ * A declaration file is excluded because it cannot hold one: it declares types, and TypeScript
+ * allows no initialiser in an ambient context, so there is nowhere for `@@( … )` to go. Excluding
+ * it is also worth real time — measured through a real `tsserver`, the editor was opening every
+ * `lib.*.d.ts` and every `.d.ts` in `node_modules` looking for a block: 172 files and 4.9 MB per
+ * project.
+ */
+export function fileMayHoldABlock(fileName: string): boolean {
+  return SOURCE.test(fileName) && !DECLARATIONS.test(fileName);
+}
+
 /** The words a block can be assigned after, none of which can name a JSX attribute or a tag. */
 const DECLARES = new Set(["const", "let", "var", "return", "yield", "await", "default", "of", "in"]);
 
