@@ -2,7 +2,7 @@
 title: Which declaration wins
 description: Two declarations of one property, and the rule that decides between them — the more specific case wins, whatever order you wrote it in.
 section: Style blocks
-order: 110
+order: 111
 ---
 
 # Which declaration wins

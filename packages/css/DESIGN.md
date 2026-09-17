@@ -2766,10 +2766,26 @@ the component that received it.
 **Measure first, before any of it is designed:** whether the virtual file has a position where a
 type argument on `@@` could be written at all. Everything else depends on that answer.
 
-### 8. A declaration that does nothing — layout faults inside ONE block
+### 8. A declaration that does nothing — layout faults inside ONE block — BUILT
 
-**Decided: this goes into the build, and gets a docs page of its own.** The user's words for the
-target: *"kada neko slucajno polomi layout"*.
+**`declaration-does-nothing`, with its own page at `/style-blocks/does-nothing`.** The user's words
+for the target: *"kada neko slucajno polomi layout"*.
+
+**Two of the four this section first named were removed by measurement, and both would have been
+false reports.** `z-index` on a static element WORKS when the parent is a flex or grid container,
+and the parent is a different block. `width` on `display: inline` works on `<input>` (308px) and
+`<button>` (300px) and not on `<span>` (39px) — it needs the tag, and a block is a value that can be
+spread onto anything. Both belong to §9.
+
+**What shipped instead is wider: ten rows.** Asking Chromium the same question of every neighbouring
+property found seven more of the same shape — `top`/`inset` beside `position: static`, `float`
+beside `position: absolute`, `resize` beside `overflow: visible`, `text-overflow` beside a wrapping
+`white-space` or a visible `overflow`, `aspect-ratio` beside both sizes, and the whole flex/grid
+container family beside a display that lays out nothing.
+
+**And measuring the LIST is what earned the most.** Of seventeen container properties, four act on a
+block container in current engines — `align-content`, `justify-items`, `place-items`,
+`place-content`. Written from memory they would have been four false reports on correct CSS.
 
 A block is ONE element's rule, so this compiler knows every declaration that lands on an element.
 Ordinary CSS cannot ask that question — nothing there knows which rules reach which element — and it

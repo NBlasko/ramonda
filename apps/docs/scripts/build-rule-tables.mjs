@@ -291,6 +291,8 @@ const CSS_LINES = {
   "value-not-allowed": "a value outside the closed list your `ramonda.css.ts` gave this property",
   "shorthand-not-allowed": "a shorthand your `ramonda.css.ts` switched off — write its longhands",
   "literal-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from variables",
+  "declaration-does-nothing":
+    "a declaration another one on the same element switches off — valid CSS the browser ignores",
   "unknown-variable": "`$.…` naming a variable your `ramonda.css.ts` does not declare",
   "too-many-values": "more values than the property takes — in CSS, or in your `ramonda.css.ts`",
   "missing-semicolon": "a declaration with no `;`, which swallows the line written under it",

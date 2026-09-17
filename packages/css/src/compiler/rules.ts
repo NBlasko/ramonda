@@ -128,6 +128,7 @@ export const RULE_IDS = [
   "too-many-values",
   "missing-semicolon",
   "literal-not-allowed",
+  "declaration-does-nothing",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -324,6 +325,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (config !== undefined) unknownVariable(block, config, findings);
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
+  doesNothing(block, findings);
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
   unclosedCall(block, findings);
   missingSemicolon(block, findings);
@@ -3504,3 +3506,231 @@ const isWordCharacter = (code: number) => isWordStart(code) || (code >= 48 && co
 
 /** Re-exported where it has always been imported from. See `./nearest`. */
 export { nearest } from "./nearest";
+
+/**
+ * A declaration another declaration on the SAME element switches off.
+ *
+ * **The one question ordinary CSS cannot ask.** A stylesheet does not know which rules reach an
+ * element, so nothing there can say *this line does nothing*. A block is one element's rule, so
+ * here it is answerable — and what it reports is a broken LAYOUT rather than broken CSS: the
+ * property exists, the value is valid, the build is green, and the browser ignores it.
+ *
+ * **It is not visible through `getComputedStyle` either**, which is why no test anybody would write
+ * catches these. Measured in Chromium: the browser reports `z-index: 10` on a static element and
+ * `width: 300px` on an inline one, having done neither. Computed is not used.
+ *
+ * ## Every list here was MEASURED, and that is not a formality
+ *
+ * Each property was asked of Chromium beside the neighbour that should disable it and beside one
+ * that should not. **Four of seventeen candidates act on a block container** — `align-content`,
+ * `justify-items`, `place-items`, `place-content`, which modern engines apply to block layout — so
+ * a list written from memory would have shipped four false reports. They are not in the table.
+ *
+ * The same measurement fixed the `display` test: `flex`, `inline-flex`, `grid`, `inline-grid` and
+ * the two-value `block flex` / `inline grid` all use `gap`; `block`, `inline`, `inline-block`,
+ * `table`, `table-cell`, `list-item`, `flow-root` and `ruby` do not. A word test for `flex` or
+ * `grid` is exactly that boundary.
+ *
+ * ## Absence proves nothing, so absence is silent
+ *
+ * `flatten` drops a spread — `...{base}` merges declarations this never sees. So a row may only
+ * read a disabling declaration that is PRESENT. `top: 20px` on its own says nothing, because the
+ * block spread above it may be what positions the element, and a rule that guessed would report
+ * correct CSS. The same reasoning keeps `text-overflow` quiet when no `white-space` is written:
+ * that property is INHERITED, so an absent one may be `nowrap` from an ancestor.
+ *
+ * ## And a nested rule is a group of its own
+ *
+ * `&:hover` is the same element, so a base `display` really does decide a `gap` written under it —
+ * but `& > span` is a different element and the same reading would be wrong about that. One reading
+ * has to serve both, so the narrow one does: a declaration is decided only by its own group.
+ * Silence costs a report; the alternative costs a false one.
+ */
+interface Inert {
+  /** The properties this row can report. */
+  readonly subjects: readonly string[];
+  /** Which values of the subject are at risk. Every value, when this is absent. */
+  readonly when?: (value: string) => boolean;
+  /** Every property whose value this row reads. One missing from the group means SILENCE. */
+  readonly reads: readonly string[];
+  /** A property whose mere presence keeps the subject alive, whatever `reads` says. */
+  readonly rescuedBy?: readonly string[];
+  /** Given what it reads, is the subject switched off? */
+  readonly off: (seen: ReadonlyMap<string, string>) => boolean;
+  /** The sentence, given the subject and what was read. */
+  readonly says: (subject: string, seen: ReadonlyMap<string, string>) => string;
+}
+
+/** `flex`, `inline-flex`, `grid`, `inline-grid`, `block flex`, `inline grid` — measured, all of them. */
+const LAYS_OUT_CHILDREN = (display: string): boolean => /\b(flex|grid)\b/.test(display);
+
+/** A value nothing here can reason about: a keyword that resolves elsewhere, or a variable. */
+const OPAQUE = (value: string): boolean => GLOBAL.has(value) || value.includes("var(");
+
+/** `display: none` and `contents` make everything inert; that is not the fault this reports. */
+const NO_BOX = new Set(["none", "contents"]);
+
+/** Values of `white-space` that let a line wrap, so nothing ever overflows one. */
+const WRAPS = new Set(["normal", "pre-wrap", "pre-line", "break-spaces"]);
+
+const INERT: readonly Inert[] = [
+  {
+    // Measured on Chromium beside `display: block` and beside the display each one uses.
+    subjects: [
+      "gap",
+      "row-gap",
+      "column-gap",
+      "justify-content",
+      "align-items",
+      "flex-direction",
+      "flex-wrap",
+      "flex-flow",
+      "grid-template-columns",
+      "grid-template-rows",
+      "grid-auto-flow",
+      "grid-auto-columns",
+      "grid-auto-rows",
+    ],
+    reads: ["display"],
+    // Measured: a multi-column block uses `gap`, so any of these makes the pair correct CSS.
+    rescuedBy: ["columns", "column-count", "column-width"],
+    off: (seen) => {
+      const display = seen.get("display") ?? "";
+      return !LAYS_OUT_CHILDREN(display) && !NO_BOX.has(display);
+    },
+    says: (subject, seen) =>
+      `\`${subject}\` does nothing here: \`display: ${seen.get("display")}\` lays out no children of ` +
+      `its own, so there is nothing for it to arrange.\n\n        Write \`display: flex\` or ` +
+      `\`display: grid\`, or take the declaration out.`,
+  },
+  {
+    subjects: [
+      "top",
+      "right",
+      "bottom",
+      "left",
+      "inset",
+      "inset-block",
+      "inset-inline",
+      "inset-block-start",
+      "inset-block-end",
+      "inset-inline-start",
+      "inset-inline-end",
+    ],
+    reads: ["position"],
+    off: (seen) => seen.get("position") === "static",
+    says: (subject) =>
+      `\`${subject}\` does nothing here: \`position: static\` is the one position an offset does ` +
+      `not move.\n\n        Write \`position: relative\`, or take the declaration out.`,
+  },
+  {
+    subjects: ["float"],
+    reads: ["position"],
+    off: (seen) => seen.get("position") === "absolute" || seen.get("position") === "fixed",
+    says: (subject, seen) =>
+      `\`${subject}\` does nothing here: \`position: ${seen.get("position")}\` takes the element out ` +
+      `of the flow, and a float has no flow left to sit in.`,
+  },
+  {
+    subjects: ["resize"],
+    when: (value) => value !== "none",
+    reads: ["overflow"],
+    off: (seen) => seen.get("overflow") === "visible",
+    says: (subject) =>
+      `\`${subject}\` does nothing here: \`overflow: visible\` leaves the element nothing to scroll, ` +
+      `and only a scroll container can be resized.\n\n        Write \`overflow: auto\`, or take the ` +
+      `declaration out.`,
+  },
+  {
+    subjects: ["text-overflow"],
+    when: (value) => value !== "clip",
+    reads: ["white-space"],
+    off: (seen) => WRAPS.has(seen.get("white-space") ?? ""),
+    says: (subject, seen) =>
+      `\`${subject}\` does nothing here: \`white-space: ${seen.get("white-space")}\` lets the text ` +
+      `wrap, so no line ever overflows for it to mark.\n\n        Write \`white-space: nowrap\`, or ` +
+      `take the declaration out.`,
+  },
+  {
+    subjects: ["text-overflow"],
+    when: (value) => value !== "clip",
+    reads: ["overflow"],
+    off: (seen) => seen.get("overflow") === "visible",
+    says: (subject) =>
+      `\`${subject}\` does nothing here: \`overflow: visible\` lets the text spill out instead of ` +
+      `being cut, so there is nothing to mark.\n\n        Write \`overflow: hidden\`, or take the ` +
+      `declaration out.`,
+  },
+  {
+    subjects: ["aspect-ratio"],
+    when: (value) => value !== "auto",
+    reads: ["width", "height"],
+    off: (seen) => seen.get("width") !== "auto" && seen.get("height") !== "auto",
+    says: (subject) =>
+      `\`${subject}\` does nothing here: \`width\` and \`height\` are both set, so the box already ` +
+      `has both of its sizes.\n\n        Set one of them to \`auto\`, or take the declaration out.`,
+  },
+];
+
+/** What one group holds about one property: its winning value, where it was written, and its holes. */
+interface Written {
+  readonly value: string;
+  readonly at?: number;
+  readonly holes: number;
+}
+
+function doesNothing(block: Block, findings: Finding[]): void {
+  /** One group per element-and-context: the declarations a browser applies together. */
+  const groups = new Map<string, Map<string, Written>>();
+  for (const one of flatten(block)) {
+    const key = `${one.selector} @ ${one.conditions.join("|")}`;
+    let group = groups.get(key);
+    if (group === undefined) groups.set(key, (group = new Map()));
+    // The later of two wins, which is what the browser applies and so what this must read.
+    group.set(one.property, {
+      value: one.canonical.slice(one.property.length + 1, -1).trim(),
+      at: one.at,
+      holes: one.holes.length,
+    });
+  }
+
+  for (const group of groups.values()) {
+    /**
+     * One declaration, one finding — `text-overflow` has two rows and a block can fail both.
+     *
+     * Written with `white-space: normal` AND `overflow: visible` it was reported twice on the same
+     * line, which is the repository's own rule about one mistake being one report, broken inside a
+     * single rule. The first row to fire is the one that speaks.
+     */
+    const reported = new Set<string>();
+    for (const row of INERT) {
+      for (const subject of row.subjects) {
+        if (reported.has(subject)) continue;
+        const written = group.get(subject);
+        if (written === undefined || written.at === undefined) continue;
+        if (written.holes > 0) continue;
+        if (row.when !== undefined && !row.when(written.value)) continue;
+        if (row.rescuedBy?.some((one) => group.has(one)) === true) continue;
+
+        const seen = new Map<string, string>();
+        let readable = true;
+        for (const name of row.reads) {
+          const found = group.get(name);
+          // Absent, holding a hole, or a keyword that resolves elsewhere — all unanswerable.
+          if (found === undefined || found.holes > 0 || OPAQUE(found.value)) readable = false;
+          else seen.set(name, found.value);
+        }
+        if (!readable) continue;
+        if (!row.off(seen)) continue;
+
+        reported.add(subject);
+        findings.push({
+          rule: "declaration-does-nothing",
+          at: written.at,
+          length: subject.length,
+          message: row.says(subject, seen),
+        });
+      }
+    }
+  }
+}

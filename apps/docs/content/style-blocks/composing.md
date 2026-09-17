@@ -2,7 +2,7 @@
 title: Composing, and who wins
 description: Merging one block into another, conditions that bring whole groups, and the cascade layer that decides against your own stylesheet.
 section: Style blocks
-order: 111
+order: 112
 ---
 
 # Composing, and who wins
