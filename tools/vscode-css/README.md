@@ -41,9 +41,12 @@ nothing to configure, and nothing to add to a project.
 
 **Colours** work on their own, in `.ts`, `.tsx`, `.js` and `.jsx`.
 
-**Diagnostics, completions and formatting** come from
-[`@ramonda/css`](https://www.npmjs.com/package/@ramonda/css) in the project, which is where the
-compiler lives. Install it and turn the language plugin on in `tsconfig.json`:
+**Diagnostics and completions** work too — the extension carries the compiler's language plugin, so
+a misspelt property is underlined the moment you type it.
+
+**Building is the project's own**, and so is deciding what counts as an error. Install
+[`@ramonda/css`](https://www.npmjs.com/package/@ramonda/css) and name the plugin in
+`tsconfig.json`, and the editor answers with the version you pinned instead of the one in here:
 
 ```json
 { "compilerOptions": { "plugins": [{ "name": "@ramonda/css/plugin" }] } }
@@ -54,16 +57,16 @@ TypeScript Version → Use Workspace Version**.
 
 ## Both TypeScript servers see your blocks
 
-VS Code runs two TypeScript servers. One of them never opens your `tsconfig.json`, where the
-`@ramonda/css` plugin is named — and that is the server that formats, folds and outlines your file
-for as long as the editor is open. It used to read a style block as plain TypeScript.
+VS Code runs two TypeScript servers, and one of them never opens your `tsconfig.json` — which is
+where a project names this plugin. That is also the server that formats, folds and outlines your
+file for as long as the editor is open, so on its own it reads a style block as plain TypeScript and
+reformats it into something else.
 
-This extension contributes the plugin a second way, which VS Code hands to both servers. Nothing to
-configure, and `js/ts.tsserver.useSyntaxServer` can come out of your settings.
+This extension carries the plugin to both of them, so a block is left alone by *Format Document* and
+folds where you would expect. There is nothing to configure for it.
 
-A project that installs `@ramonda/css` is still checked by its own copy: the plugin in here steps
-aside wherever the project has one, so the version you pinned is the version that decides what is an
-error.
+Where a project has `@ramonda/css` of its own, the copy in here steps aside for it — so the checking
+follows the version that project pinned, and the editor and the build agree about what is an error.
 
 ## Format on save
 

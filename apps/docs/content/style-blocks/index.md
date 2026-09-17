@@ -84,9 +84,10 @@ the module it was written in and each module imports its own CSS, so splitting i
 bundler was making anyway: a lazily-loaded module gets its own `.css` asset, carrying that module's
 rules and not the entry's.
 
-## Three things in your editor
+## Two things in your editor
 
-They are separate on purpose, and you can stop after the first.
+They are separate on purpose, and they answer different halves: the plugin decides what is an error,
+the extension decides what you see while typing.
 
 ### The compiler, for completion, hover and the red squiggles
 
@@ -99,39 +100,11 @@ A TypeScript language-service plugin, turned on in your own `tsconfig.json`:
 Your editor has to be running the **workspace's** TypeScript for any plugin to load. In VS Code:
 *TypeScript: Select TypeScript Version → Use Workspace Version*.
 
-### The second TypeScript server, and what reaches it
+### The extension, for colours, formatting, and the second TypeScript server
 
-An editor runs **two** TypeScript servers — a syntax one for what needs no types, and a semantic one
-for everything else. The syntax one owns formatting, code folding, the outline and expand-selection
-for as long as the editor is open, and it never opens your `tsconfig.json`. So a plugin named there
-never reaches it, and it reads your file as plain TypeScript. Your file is not plain TypeScript, and
-it walks into an assertion of its own. From a real editor's log:
-
-```
-[error] [vscode.typescript-language-features] provider FAILED
-[error] Error: <syntax> TypeScript Server Error (5.9.3)
-Debug Failure. False expression: Token end is child end
-```
-
-**The extension below is what reaches it.** It contributes the same plugin a second way, which VS
-Code hands to both servers, so formatting a block leaves it alone and the outline matches. With the
-extension installed there is nothing to configure.
-
-**Without it, one setting is needed**, and it turns the syntax server off:
-
-```json
-{ "js/ts.tsserver.useSyntaxServer": "never" }
-```
-
-Nothing is lost by that: one server answers everything the two did. What the syntax one was buying
-is speed on a cold project — folding, the outline, *Format Document* and expand-selection answer
-before the program has loaded rather than after it. That is one wait, once per project. Older VS
-Code spells the setting `typescript.tsserver.useSyntaxServer`, and either is read.
-
-### The colours, and format-on-save
-
-These come from an editor extension rather than from the plugin — colours are a grammar and cost
-nothing, and a project that has not asked for the compiler should not be given one.
+The colours are a TextMate grammar, which is why they are an extension and not part of the plugin:
+a grammar needs no program and costs nothing. The extension does two more things — it runs your own
+formatter over a block, and it carries the plugin to the editor's second TypeScript server.
 
 ```sh
 code --install-extension ramonda.css
@@ -168,6 +141,35 @@ every project it is in scope for:
 | your user settings | what you want | runs **biome**, not Prettier | format-on-save does **nothing**: this extension has no command to run and returns no edits, and Prettier and biome are never asked |
 
 In a workspace it is also what everyone else on the project gets.
+
+#### Why the extension is not only colours
+
+An editor runs **two** TypeScript servers — a syntax one for what needs no types, and a semantic one
+for everything else. The syntax one owns formatting, code folding, the outline and expand-selection
+for as long as the editor is open, and it never opens your `tsconfig.json`. So a plugin named there
+never reaches it, and it reads your file as plain TypeScript. Your file is not plain TypeScript, and
+it walks into an assertion of its own. From a real editor's log:
+
+```
+[error] [vscode.typescript-language-features] provider FAILED
+[error] Error: <syntax> TypeScript Server Error (5.9.3)
+Debug Failure. False expression: Token end is child end
+```
+
+**The extension is what reaches it.** It carries the same plugin a second way, which VS Code hands
+to both servers — so formatting a block leaves it alone, and the outline matches. With the extension
+installed there is nothing to configure.
+
+**Without it, one setting is needed**, and it turns the syntax server off:
+
+```json
+{ "js/ts.tsserver.useSyntaxServer": "never" }
+```
+
+Nothing is lost by that: one server answers everything the two did. What the syntax one was buying
+is speed on a cold project — folding, the outline, *Format Document* and expand-selection answer
+before the program has loaded rather than after it. That is one wait, once per project. Older VS
+Code spells the setting `typescript.tsserver.useSyntaxServer`, and either is read.
 
 ## Check that it worked
 

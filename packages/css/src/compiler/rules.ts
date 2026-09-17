@@ -3710,6 +3710,16 @@ interface Written {
   readonly holes: number;
 }
 
+/**
+ * Every property `declaration-does-nothing` can report, for the page that lists them.
+ *
+ * The page and the table drifted apart within an hour of both being written: the rule was narrowed
+ * in a review — `-webkit-box` added, `aspect-ratio` restricted to plain lengths, the `overflow`
+ * longhands made a rescue — and the page went on describing the version before it. Nothing sees a
+ * page that is merely wrong, so this is what `docs.test.ts` compares it against.
+ */
+export const INERT_SUBJECTS: readonly string[] = [...new Set(INERT.flatMap((one) => one.subjects))];
+
 function doesNothing(block: Block, findings: Finding[]): void {
   /** One group per element-and-context: the declarations a browser applies together. */
   const groups = new Map<string, Map<string, Written>>();

@@ -57,19 +57,33 @@ Each row is one declaration switched off by another **on the same element**:
 
 | written | what happens |
 |---|---|
-| `gap`, `row-gap`, `column-gap` beside a `display` that is not flex or grid | there are no tracks to space |
+| `gap`, `row-gap`, `column-gap` beside a `display` that arranges no children | there are no tracks to space |
 | `justify-content`, `align-items` beside the same | there is nothing to align |
 | `flex-direction`, `flex-wrap`, `flex-flow` beside the same | there is no flex line |
 | `grid-template-columns`, `grid-template-rows`, `grid-auto-flow`, `grid-auto-columns`, `grid-auto-rows` beside the same | there is no grid |
-| `top`, `right`, `bottom`, `left`, `inset…` beside `position: static` | a static element does not move |
+| `top`, `right`, `bottom`, `left` and the `inset` properties beside `position: static` | a static element does not move |
 | `float` beside `position: absolute` or `fixed` | the element left the flow the float needed |
 | `resize` beside `overflow: visible` | only a scroll container can be resized |
 | `text-overflow: ellipsis` beside a `white-space` that wraps | no line ever overflows |
 | `text-overflow: ellipsis` beside `overflow: visible` | the text spills instead of being cut |
-| `aspect-ratio` beside both a `width` and a `height` | the box already has both sizes |
+| `aspect-ratio` beside a `width` and a `height` that are both plain lengths | the box already has both sizes |
 
-`gap` is the one row with an exception, and it is real CSS: a **multi-column** block uses it. So
-`display: block; columns: 2; gap: 12px` is correct and stays quiet.
+**A `display` that arranges children** is `flex`, `grid`, `inline-flex`, `inline-grid`, the
+two-value `block flex` and `inline grid`, and the `-webkit-` spellings of all of them — including
+`-webkit-box`, which is old flexbox and does use `gap`.
+
+**The `inset` properties** are `inset`, `inset-block`, `inset-inline`, `inset-block-start`,
+`inset-block-end`, `inset-inline-start` and `inset-inline-end`.
+
+Three rows have an exception, and each of them is real CSS:
+
+- **`gap` in a multi-column block.** `display: block; columns: 2; gap: 12px` spaces the columns, so
+  it stays quiet.
+- **`resize` and the ellipsis beside an `overflow` longhand.** `overflow: visible; overflow-x: auto`
+  is a scroll container after all, so both come back and neither is reported.
+- **`aspect-ratio` beside a size that is not one yet.** A `height` of `50%`, `min-content`,
+  `fit-content` or `stretch` is not a size until something has been laid out, so the ratio still
+  applies. Only two plain lengths — `140px` and `4rem` — mean the box really has both.
 
 Some properties that look like they belong here are missing on purpose. `align-content`,
 `justify-items`, `place-items` and `place-content` all work on a block container in current
