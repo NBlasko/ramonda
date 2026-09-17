@@ -9,8 +9,9 @@
   other server did not.
 
   The extension now contributes the plugin itself, which VS Code hands to both servers. Formatting a
-  block is left alone, folding and the outline match, and `"js/ts.tsserver.useSyntaxServer": "never"`
-  can come out of your settings.
+  block is left alone, folding and the outline match, and the setting can come out of your settings —
+  `"typescript.tsserver.useSyntaxServer"`, or `"js/ts.tsserver.useSyntaxServer"` if your VS Code is
+  new enough to have renamed it.
 
   A project that installs `@ramonda/css` keeps being checked by its own copy: the extension's plugin
   steps aside wherever the project has one, so the version you pinned is still the version that

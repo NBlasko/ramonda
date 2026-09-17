@@ -142,6 +142,12 @@ every project it is in scope for:
 
 In a workspace it is also what everyone else on the project gets.
 
+**TypeScript's own formatter steps aside for a file that holds a block**, which is why one of the
+two above is not optional. The syntax is not TypeScript, and an edit the language service computed
+for it would land on the wrong characters and corrupt the file rather than merely look wrong — so it
+is refused for the whole file. In a file with a block, *Format Document* and *Format Selection* do
+nothing by themselves, even on lines nowhere near the block.
+
 #### Why the extension is not only colours
 
 An editor runs **two** TypeScript servers — a syntax one for what needs no types, and a semantic one

@@ -106,6 +106,16 @@ no edits, so format-on-save does nothing and neither Prettier nor biome is asked
 Inside a project that uses biome it covers a whole language rather than a folder: a file with no
 block is passed straight to biome, with that project's own configuration.
 
+**TypeScript's own formatter steps aside for a file that holds a block**, and that is what makes one
+of the two above necessary. A style block is not TypeScript: asked to format one, the language
+service rewrites it into something else. It could be left to guess, and an edit it computed would
+land on the wrong characters and corrupt the file rather than merely look wrong — so it is refused
+instead, for the whole file.
+
+That is worth knowing before it surprises you: in a file with a block, *Format Document* and *Format
+Selection* do nothing on their own, even on lines nowhere near the block. One of the two routes
+above is what formats it.
+
 ## Where the colours apply
 
 **Everywhere a block is a value**, which since `@ramonda/css@0.2.0` is everywhere a block can be
