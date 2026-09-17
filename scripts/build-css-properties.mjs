@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { previousFrom } from "./engine-facts.mjs";
 
 /**
  * Writes `@ramonda/css`'s property map from MDN's own CSS data.
@@ -83,12 +84,33 @@ const properties = require("mdn-data/css/properties.json");
  * failed with `Unexpected token ']'` and named neither file. A reader that cannot be broken by a
  * formatting decision is one less way for a generated file to take the build down.
  */
-const LEAVES = JSON.parse(
-  (
-    /LEAVES: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\})\s*;/.exec(
-      readFileSync(join(root, "packages/css/src/compiler/leaves.generated.ts"), "utf8"),
-    )?.[1] ?? "{}"
-  ).replace(/,(\s*[}\]])/g, "$1"),
+/**
+ * A generated file this build cannot do without, read back or refused.
+ *
+ * `previousFrom` answers with the fallback when a file is ABSENT, which is right for
+ * `keywords.engine` — empty until that generator has run once. These two are different: the map
+ * this script writes is wrong without them, so there is no honest default and `undefined` is a
+ * fault rather than a start.
+ */
+function required(where, pattern) {
+  const found = previousFrom(join(root, where), pattern, undefined);
+  if (found === undefined) throw new Error(`${where} is not there, and this build cannot be written without it.`);
+  return found;
+}
+
+/**
+ * Read through `previousFrom`, which refuses a file it cannot parse.
+ *
+ * These three used to end `?.[1] ?? "{}"`, and that fallback cannot tell *this file is not here yet*
+ * from *this file is here and the pattern no longer matches it*. The second silently empties a fact
+ * the engines were launched to measure: `LEAVES` reaches `SHORTHANDS`, which decides what a
+ * shorthand CLEARS in the CSS this package emits, so an empty one stops clearing the 37 longhands
+ * that generator exists for — and a run without `--check` would write that map out and commit it
+ * green.
+ */
+const LEAVES = required(
+  "packages/css/src/compiler/leaves.generated.ts",
+  /LEAVES: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\})\s*;/,
 );
 
 /**
@@ -96,22 +118,15 @@ const LEAVES = JSON.parse(
  * `build-engine-keywords.mjs`. Empty until that has been run once, which is the honest default: it
  * widens what is allowed and never narrows it.
  */
-const ENGINE_KEYWORDS = JSON.parse(
-  (
-    /ENGINE_KEYWORDS: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\n\})\s*;/.exec(
-      existsSync(join(root, "packages/css/src/compiler/keywords.engine.generated.ts"))
-        ? readFileSync(join(root, "packages/css/src/compiler/keywords.engine.generated.ts"), "utf8")
-        : "",
-    )?.[1] ?? "{}"
-  ).replace(/,(\s*[}\]])/g, "$1"),
+const ENGINE_KEYWORDS = previousFrom(
+  join(root, "packages/css/src/compiler/keywords.engine.generated.ts"),
+  /ENGINE_KEYWORDS: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\n\})\s*;/,
+  {},
 );
 
-const PREFIXED = JSON.parse(
-  (
-    /PREFIXED: readonly string\[\] = (\[[\s\S]*?\])\s*;/.exec(
-      readFileSync(join(root, "packages/css/src/compiler/prefixed.generated.ts"), "utf8"),
-    )?.[1] ?? "[]"
-  ).replace(/,(\s*\])/, "$1"),
+const PREFIXED = required(
+  "packages/css/src/compiler/prefixed.generated.ts",
+  /PREFIXED: readonly string\[\] = (\[[\s\S]*?\])\s*;/,
 );
 const syntaxes = require("mdn-data/css/syntaxes.json");
 
