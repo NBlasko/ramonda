@@ -47,6 +47,18 @@ function projects(from, found = []) {
 }
 
 const found = projects(root);
+
+/**
+ * A project has to have been found, or every comparison below is vacuous.
+ *
+ * Measured by emptying the scan: it printed *0 project(s) — every committed css-system matches its
+ * config* and exited 0. The sentence is the proof this script exists to give, and it gave it about
+ * nothing.
+ */
+if (found.length === 0) {
+  console.error(`\n${TAG} no project with a \`ramonda.css.ts\` was found, so nothing was compared.\n`);
+  process.exit(1);
+}
 let refused = 0;
 
 for (const project of found) {

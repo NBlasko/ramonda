@@ -2,7 +2,7 @@
 title: Project settings
 description: ramonda.css.ts, the rules your project makes stricter than CSS is, and what the class names say.
 section: Style blocks
-order: 113
+order: 114
 ---
 
 # Project settings

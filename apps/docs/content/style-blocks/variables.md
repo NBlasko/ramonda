@@ -2,7 +2,7 @@
 title: Names the stylesheet sees
 description: Variables declared in ramonda.css.ts and read with $, keyframes and font faces as blocks of their own, and why a theme is var() and not a hole.
 section: Style blocks
-order: 109
+order: 110
 ---
 
 # Names the stylesheet sees
@@ -117,10 +117,9 @@ variable, so the kind is declared to the engine too:
 ```
 
 A registered custom property set to something that is not of its syntax falls back to
-`initial-value` instead of poisoning the declaration that reads it. Measured in Chrome: an
-**unregistered** `--size` set to `not-a-length` and read by `height` laid the element out at `0px`,
-silently. Registered, the same value is ignored, `height` gets the `16px` the registration declares,
-and the page keeps working.
+`initial-value` instead of poisoning the declaration that reads it. An **unregistered** `--size` set
+to `not-a-length` and read by `height` lays the element out at `0px`, silently. Registered, the same
+value is ignored, `height` gets the `16px` the registration declares, and the page keeps working.
 
 ## A range, when the value is meant to move
 
@@ -254,15 +253,37 @@ const card = @@(
 
 The values on `:root` come from `variables.css`, so the override is the only CSS you write.
 
+### `light-dark()` resolves where the variable is set
+
+A declared variable is registered with `@property`, which gives it a type and a computed value —
+and that is what makes `light-dark()` behave differently here than in a hand-written stylesheet. The
+pair is resolved on the element that **sets** the variable, and every descendant inherits the
+answer. A `color-scheme` further down does not change it:
+
+```css
+:root  { color-scheme: light dark; --color-surface: light-dark(#ffffff, #0b0b0b); }
+.panel { color-scheme: dark; }   /* the surface inside this is still the light one */
+```
+
+So a region that forces a scheme sets the values it wants, rather than switching the scheme and
+expecting the pair to follow:
+
+```css
+[data-scheme="dark"] { --color-surface: #0b0b0b; }
+```
+
+That is also the form that works for every kind. `light-dark()` is colour only — a length written
+that way is dropped, and the variable keeps its `initial-value`.
+
 ### A hole is not a theme
 
 It is tempting, because a hole and a `var()` are the same thing underneath — a hole compiles to
 `var(--r-<hash>-0)` and the element carries the value. The difference is **who sets it**, and it
 decides the cost.
 
-Measured on a server render of 500 rows with one themed value: through a hole the markup went from
-19.4 KB to **39.9 KB** — 41 bytes on every element, for one themed value. Through `var()` it is
-nothing, because the value is on `:root` and each element inherits it.
+A hole's value travels in the markup, once per element: on a server-rendered list of 500 rows, one
+themed value is **41 bytes on every one of them**, and doubles the HTML. Through `var()` it costs
+nothing at all, because the value is on `:root` and each element inherits it.
 
 And a theme switch through a hole is a **render**. A hole's value belongs to the render that
 produced it, so every element carrying it has to render again to change it. A `var()` changes when
@@ -277,10 +298,10 @@ not. A theme is the opposite of that.
 :root { --accent: red; }        ✗  inside a block
 ```
 
-It compiles, and then does nothing. Measured through the same CSS compiler a build uses, it flattens
-to `.r-… :root` — a descendant selector, and `:root` is the `<html>` element, which is nobody's
-descendant. A theme's own declarations belong in a stylesheet, and this project's own belong in
-`ramonda.css.ts`.
+It compiles, and then does nothing. A block is one element's rule, so everything in it is nested
+inside that rule — and `:root` there flattens to `.r-… :root`, a descendant selector. `:root` is the
+`<html>` element, which is nobody's descendant. A theme's own declarations belong in a stylesheet,
+and this project's own belong in `ramonda.css.ts`.
 
 ## Next
 

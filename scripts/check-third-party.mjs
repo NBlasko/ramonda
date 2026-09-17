@@ -1,5 +1,6 @@
 import { existsSync, globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { VENDORED } from "./vendored.mjs";
 
 /**
  * Every published package that DISTRIBUTES somebody else's work ships the notice for it.
@@ -28,17 +29,6 @@ import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
 const TAG = "[third-party]";
-
-/** Copied content, and the distinctive bytes that prove a build carries it. */
-const VENDORED = [
-  {
-    work: "Phosphor Icons",
-    /** The opening of the `cursor-click` path — see `packages/theme/src/index.ts`. */
-    fingerprint: "M88,24V16a8,8,0,0,1,16,0v8a8,8,0,0,1-16,0Z",
-    /** What the notice must name, so a file that exists but says nothing does not pass. */
-    names: "Phosphor Icons",
-  },
-];
 
 /** Every package npm would publish, with the paths its `files` entry ships. */
 function published() {
@@ -72,12 +62,30 @@ function shipped(pkg) {
 
 const problems = [];
 let carried = 0;
+/** Which works were really seen in a shipped file — see the check at the end. */
+const found = new Set();
 
-for (const pkg of published()) {
+/**
+ * The corpus itself, before anything is asked of it.
+ *
+ * Measured by breaking it: with the glob pointing at a directory that does not exist, this printed
+ * *1 vendored work(s), carried by 0 published package(s), each with its notice* and exited 0 — a
+ * sentence that reads like an all-clear for a run that read nothing. A rename, a move to a
+ * different folder, a `files` entry that stops resolving: each would leave the licence gate green
+ * and looking at nothing.
+ */
+const packages = published();
+if (packages.length === 0) {
+  console.error(`\n${TAG} found no published packages to look in — the glob matches nothing.\n`);
+  process.exit(1);
+}
+
+for (const pkg of packages) {
   const text = shipped(pkg);
   for (const one of VENDORED) {
     if (!text.includes(one.fingerprint)) continue;
     carried++;
+    found.add(one.work);
     const notice = join(pkg.dir, "THIRD-PARTY.md");
     if (!existsSync(notice)) {
       problems.push(`${pkg.name} ships ${one.work} and has no THIRD-PARTY.md`);
@@ -97,6 +105,23 @@ for (const pkg of published()) {
 
 if (!existsSync(join(root, "THIRD-PARTY.md"))) problems.push("the repository has no THIRD-PARTY.md at its root");
 
+/**
+ * And a fingerprint nothing carries, which is the other way this goes quiet.
+ *
+ * The list describes work this repository DOES distribute, so an entry no shipped file contains
+ * means one of two things and both need a person: the vendoring was removed and the entry is stale,
+ * or the bytes moved and this stopped finding them. Either way the gate is no longer watching what
+ * it says it watches.
+ */
+for (const one of VENDORED) {
+  if (!found.has(one.work)) {
+    problems.push(
+      `${one.work} is in the list and no published file contains it — remove the entry if it is no ` +
+        `longer distributed, or find out why the fingerprint stopped matching`,
+    );
+  }
+}
+
 if (problems.length > 0) {
   console.error(`\n${TAG} ${problems.length} problem(s):\n\n${problems.map((one) => `  - ${one}`).join("\n")}\n`);
   process.exit(1);
@@ -105,3 +130,4 @@ if (problems.length > 0) {
 console.log(
   `${TAG} ${VENDORED.length} vendored work(s), carried by ${carried} published package(s), each with its notice`,
 );
+console.log(`${TAG} the .vsix is scanned where it is written — see scripts/package-extension.mjs`);

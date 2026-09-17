@@ -9,21 +9,22 @@ order: 107
 
 A block is `@@( … )`, and what goes inside it is CSS.
 
-## Two places it goes
+## A block is a value
 
-A block is an ordinary **value**, so it goes anywhere a value goes. That gives two spellings, and
-they compile to exactly the same thing:
+So it goes wherever a value goes — in the attribute, or in a binding you name and use later:
 
 ```tsx
-const one = <div css={@@( display: flex; )}>in the braces JSX already has</div>;
+const card = <div css={@@( display: flex; )}>inline</div>;
 
 const panel = @@( display: flex; );
-const two = <div css={panel}>a value, written somewhere else</div>;
+const named = <div css={panel}>named, and reusable</div>;
 ```
 
-Reach for the second whenever the block is long, or you want a name for it. Nothing about a block
-requires JSX — `const panel = @@( … )` is a value like any other, and that is the point: **this
-extends TypeScript, not JSX.** A block in a `.ts` file with no markup in it works the same way.
+Name it when it is long, when two elements share it, or when you want to
+[compose](/style-blocks/composing) it into another.
+
+**Nothing about a block requires JSX.** `const panel = @@( … )` is a value like any other, and a
+block in a `.ts` file with no markup in it works the same way — this extends TypeScript, not JSX.
 
 ### A block at module scope reads its holes ONCE
 
@@ -38,8 +39,8 @@ let theme = "#10b981";
 export const panel = @@( border-left: 4px solid {theme}; );
 ```
 
-Measured, on what the transform emits: `_merge({"border-left": ["r-…", theme]})` — an ordinary
-expression in an ordinary initialiser, evaluated once. Nothing reports this today.
+What the block compiles to is `_merge({"border-left": ["r-…", theme]})` — an ordinary expression in
+an ordinary initialiser, so it is evaluated once, when the module loads. Nothing reports this.
 
 **It bites hardest where a shared block is most tempting: a default somebody imports everywhere.**
 That is the one place a stale value spreads across the whole app rather than one component.
@@ -153,7 +154,7 @@ padding-left: {n}px;               ✗  reported
 ```
 
 A `var()` is substituted as **tokens**, so the `12` and the `px` in `var(--w)px` never become one
-length. Measured in a browser, with `--w: 12`:
+length. With `--w: 12`, a browser computes these:
 
 | written | computed |
 |---|---|

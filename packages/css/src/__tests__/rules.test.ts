@@ -3893,13 +3893,19 @@ describe("what the bundlers see and the checker saw", () => {
  */
 describe("a config rule inside a nested rule", () => {
   const config: Config = {
-    units: { length: ["px"] },
+    /**
+     * `time` as well as `length`, so a unit can be refused on a property whose KIND this config does
+     * not also take from variables — otherwise `literal-not-allowed` answers first and the unit
+     * rules below would be asserting something else's presence. See "a declaration that breaks more
+     * than one of a project's rules".
+     */
+    units: { length: ["px"], time: ["ms"] },
     properties: {
       "<color>": { variablesOnly: true },
       "<length>": { variablesOnly: true },
       "z-index": { values: [0, 1] },
       padding: { shorthand: false },
-      "padding-left": { units: ["px"] },
+      "transition-duration": { units: ["ms"] },
     },
     variables: { color: kind("color", { primary: { main: "#3b82f6" } }) },
   };
@@ -3916,8 +3922,8 @@ describe("a config rule inside a nested rule", () => {
     ["a length written out", "padding-top: 8px;", "literal-not-allowed"],
     ["a value outside the closed list", "z-index: 5;", "value-not-allowed"],
     ["a shorthand switched off", "padding: 8px;", "shorthand-not-allowed"],
-    ["a unit this property does not take", "padding-left: 2rem;", "unit-not-allowed"],
-    ["a unit the project does not take", "margin-top: 2rem;", "unit-not-allowed"],
+    ["a unit this property does not take", "transition-duration: 2s;", "unit-not-allowed"],
+    ["a unit the project does not take", "animation-duration: 2s;", "unit-not-allowed"],
   ])("%s is reported at the top level, one deep and two deep", (_what, css, rule) => {
     // The top level first, so a config that reached nothing would not pass the two below for free.
     expect(under(`  ${css}`)).toContain(rule);
@@ -3948,5 +3954,506 @@ describe("a config rule inside a nested rule", () => {
     ["a `var()` call", "color: var(--anything);"],
   ])("%s stays silent inside a nested rule too", (_what, css) => {
     expect(under(`  &:hover {\n    ${css}\n  }`)).toEqual([]);
+  });
+});
+
+/**
+ * ONE mistake, ONE finding — when a project narrows several things at once.
+ *
+ * `literal-not-allowed` is the widest of the config's rules: it fires on any written-out value of a
+ * kind taken from variables, so it landed beside every narrower rule that also fired. Measured under
+ * a config narrowing units, shorthands, arity and a kind at the same time:
+ *
+ *     letter-spacing: 2rem     literal-not-allowed + unit-not-allowed
+ *     margin: 8px              shorthand-not-allowed + literal-not-allowed
+ *     padding-left: 1px 2px    too-many-values + literal-not-allowed
+ *
+ * Each is one gesture by the author, and two reports for one gesture is what the whole `inOrder`
+ * machinery exists to stop on the other side of the tool.
+ *
+ * **The order is the order the fixes nest in**, which is what makes it one principle rather than a
+ * table of pairs. A declaration is decided outside in: WHICH property, then HOW MANY values, then
+ * WHERE the value comes from, then HOW it is spelt. Each later answer is a detail of the earlier
+ * one, so the outermost unanswered question is the one to ask.
+ *
+ *     shorthand-not-allowed   the property itself
+ *     too-many-values         how many values it takes
+ *     literal-not-allowed     where the value comes from
+ *     unit-not-allowed        how that value is spelt
+ *
+ * Reading `unit-not-allowed` first is the case that shows why: it sends the author to `2px`, which
+ * their own config still refuses — a round trip that ends where `literal-not-allowed` would have
+ * started them.
+ */
+describe("a declaration that breaks more than one of a project's rules", () => {
+  const config: Config = {
+    units: { length: ["px"] },
+    properties: {
+      "<length>": { variablesOnly: true },
+      "<color>": { variablesOnly: true },
+      "*": { shorthand: false },
+      // Exempt, so `too-many-values` can be reached without `shorthand-not-allowed` answering first.
+      padding: { shorthand: true, arity: 1 },
+      "z-index": { values: [0, 1] },
+    },
+    variables: { space: kind("length", { gutter: "16px" }) },
+  };
+
+  const under = (css: string) => {
+    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, { config }).map((one) => one.rule);
+  };
+
+  test.each([
+    ["a forbidden unit on a kind taken from variables", "  letter-spacing: 2rem;", "literal-not-allowed"],
+    ["a shorthand that is switched off", "  margin: 8px;", "shorthand-not-allowed"],
+    ["more values than the project allows", "  padding: 1px 2px;", "too-many-values"],
+  ])("%s is one finding, the outermost", (_what, css, rule) => {
+    expect(under(css)).toEqual([rule]);
+  });
+
+  /**
+   * A value outside a closed list, written in a unit the project also refuses.
+   *
+   * Its own config, because the fixture above takes every length from variables and
+   * `literal-not-allowed` answers first there. Both rules here are the project's own and both are
+   * about one word, so the list is the question to ask: the unit is a detail of a value that is not
+   * on the list. Reading the unit first sends the author to `2px`, which the list still refuses —
+   * the round trip the note above describes for `literal-not-allowed`.
+   */
+  test("a value outside a closed list, in a forbidden unit, is one finding", () => {
+    const narrow: Config = {
+      units: { length: ["px"] },
+      properties: { width: { values: ["8px", "12px"] } },
+    };
+    const source = "<div css={@@(\n  width: 2rem;\n)}>x</div>";
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+
+    expect(checkBlock(read.block, { config: narrow }).map((one) => one.rule)).toEqual(["value-not-allowed"]);
+  });
+
+  /** Each alone is untouched — the collapse may not cost a report that stands on its own. */
+  test.each([
+    ["a colour written out", "  color: #ff0000;", "literal-not-allowed"],
+    ["a value outside a closed list", "  z-index: 5;", "value-not-allowed"],
+    ["a shorthand with a variable in it", "  margin: $.space.gutter;", "shorthand-not-allowed"],
+  ])("%s is still reported on its own", (_what, css, rule) => {
+    expect(under(css)).toEqual([rule]);
+  });
+
+  /** And two faults in two DECLARATIONS are still two, which is the line this must not cross. */
+  test("a second declaration keeps its own finding", () => {
+    expect(under("  margin: 8px;\n  color: #ff0000;")).toEqual(["shorthand-not-allowed", "literal-not-allowed"]);
+  });
+
+  /** A unit refused where the kind is NOT taken from variables still says which unit. */
+  test("a forbidden unit alone still names the unit", () => {
+    expect(under("  transition-duration: 2s;")).toEqual([]);
+    expect(under("  letter-spacing: $.space.gutter;")).toEqual([]);
+  });
+});
+
+/**
+ * A CALL that is never closed, named where it opens.
+ *
+ * `content: url(;` is a missing `)`, and what the author was told had nothing to do with it. The
+ * value scanner counts parens, and a block's own closer is a `)` like any other — so the value ran
+ * past `)}` and swallowed whatever came next:
+ *
+ *     content: url(;      →  "`const d = (1 + 2)` is not a declaration"
+ *                            reported on line 4, for a mistake on line 2
+ *
+ * The note that parked this said the parens are BALANCED so no cheap check exists. That is true of
+ * the block and false of the DECLARATION: inside one, `url(` is short a `)` and counting says so —
+ * as long as the count skips a string, which is what made a naive version wrong about
+ * `url("a)b.png"`.
+ */
+describe("a call that is never closed", () => {
+  const under = (css: string) => {
+    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {});
+  };
+
+  test.each([
+    ["a url", "  content: url(;"],
+    ["a calc", "  width: calc(1px;"],
+    ["a nested call", "  width: calc(min(1px, 2px;"],
+  ])("%s is reported, with the call named", (_what, css) => {
+    const found = under(css);
+
+    expect(found.map((one) => one.rule)).toContain("unclosed-call");
+    expect(found.find((one) => one.rule === "unclosed-call")?.message).toMatch(/\)/);
+  });
+
+  test("the message names the function, so the fix is where the fault is", () => {
+    const [found] = under("  content: url(;").filter((one) => one.rule === "unclosed-call");
+
+    expect(found.message).toContain("url(");
+  });
+
+  /**
+   * A `)` inside a STRING is not structure, and this cuts both ways.
+   *
+   * `content: url("a)b.png";` really IS unclosed — the only `)` is inside the quotes, so the call
+   * never closes and the report is right. I wrote this row the other way round first and the code
+   * was correct; a naive count agrees with the wrong answer, which is why the string skip is the
+   * thing being tested here rather than an implementation detail.
+   */
+  test("a closer inside a string does not close the call", () => {
+    expect(under(`  content: url("a)b.png";`).map((one) => one.rule)).toContain("unclosed-call");
+  });
+
+  test.each([
+    ["an opener inside a string", `  content: url("a(b.png");`],
+    ["a closed call", "  content: url(a.png);"],
+    ["nested and closed", "  width: calc(min(1px, 2px) + 3px);"],
+    ["no call at all", "  padding: 8px;"],
+  ])("%s is not reported (%#)", (_what, css) => {
+    expect(under(css).map((one) => one.rule)).not.toContain("unclosed-call");
+  });
+});
+
+/**
+ * A NUMBER written where only keywords go — the fault review pass 8 measured and left open.
+ *
+ * Every misspelled keyword was caught and a number was not, inconsistently: `position: 1` was
+ * reported and `display: 1` was not. Both have a keyword set; what separated them was `PRIMITIVE`,
+ * which `position` is in and `display` is not — so only one got a narrowed type refusing a number.
+ *
+ * **The gap could not be the rule's key.** Absence from `PRIMITIVE` means *the grammar was not
+ * reduced*, not *this takes no number*, and `aspect-ratio`, `line-height` and `background-position`
+ * are in the same gap with a bare number being correct CSS. So the fact is measured instead:
+ * `NUMBERLESS` is the properties every one of Chromium, Firefox and WebKit refuses every bare
+ * number for — 241 of them, an INTERSECTION because this says a number is wrong.
+ */
+describe("a number where only keywords go", () => {
+  const under = (css: string) => {
+    const source = `<div css={@@(\n  ${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {});
+  };
+
+  test.each([
+    ["display", "display: 1;"],
+    ["position", "position: 0;"],
+    ["overflow", "overflow: 1;"],
+    ["white-space", "white-space: 2;"],
+    ["cursor", "cursor: 1;"],
+    ["float", "float: 1;"],
+  ])("`%s` takes no number, and says so", (property, css) => {
+    const found = under(css);
+
+    expect(found.map((one) => one.rule)).toContain("unknown-value");
+    expect(found[0].message).toContain(property);
+  });
+
+  /** A number that is CORRECT stays silent — the half a rule keyed on the gap would have broken. */
+  test.each([
+    ["a ratio", "aspect-ratio: 1;"],
+    ["a line height", "line-height: 1.5;"],
+    ["a weight", "font-weight: 700;"],
+    ["a layer", "z-index: 10;"],
+    ["a grow factor", "flex-grow: 1;"],
+    ["an opacity", "opacity: 0.5;"],
+    ["a count", "column-count: 3;"],
+  ])("%s is still silent", (_what, css) => {
+    expect(under(css)).toEqual([]);
+  });
+
+  /** And a keyword each of them does take is untouched, which is the control. */
+  test.each([["display: flex;"], ["position: absolute;"], ["overflow: hidden;"], ["cursor: pointer;"]])(
+    "`%s` is silent",
+    (css) => {
+      expect(under(css)).toEqual([]);
+    },
+  );
+});
+
+/**
+ * A PROPERTY NAME in the wrong case, which is the same CSS and was called a typo.
+ *
+ * `unknownValue`'s own note settled this for VALUES and its words are the argument here too: *a
+ * keyword in the wrong CASE is the same CSS, and saying it does not exist is a lie the author cannot
+ * act on.* The verdict it reached — still refused, under `non-canonical-spelling`, because a
+ * repository wants one spelling and the formatter writes it — was never applied to the name half.
+ *
+ * Measured in Chromium, Firefox and WebKit: `COLOR: red` sets `color` to red in all three, and
+ * `CSS.supports("COLOR", "red")` is true in all three. Property names are case-insensitive in CSS.
+ *
+ * So `COLOR` was reported as `unknown-property` — *`COLOR` is not a CSS property* — with no
+ * suggestion, because `nearest` measures a distance and the distance from `COLOR` to `color` is
+ * five substitutions.
+ */
+describe("a property name in the wrong case", () => {
+  const under = (css: string) => {
+    const source = `<div css={@@(\n  ${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {});
+  };
+
+  test.each([["COLOR: red;"], ["PADDING-LEFT: 8px;"], ["Display: flex;"]])(
+    "`%s` is one spelling of correct CSS, not an unknown property",
+    (css) => {
+      const found = under(css);
+
+      expect(found.map((one) => one.rule)).toEqual(["non-canonical-spelling"]);
+      expect(found[0].message).not.toContain("is not a CSS property");
+    },
+  );
+
+  test("and the message says which spelling to write", () => {
+    const [found] = under("COLOR: red;");
+
+    expect(found.message).toContain("color");
+  });
+
+  /** A real typo is still a real typo, whatever its case — the half this must not cost. */
+  test.each([
+    ["dsiplay: flex;", "display"],
+    ["DSIPLAY: flex;", "display"],
+    ["colr: red;", "color"],
+  ])("`%s` is still reported as unknown, with the near miss", (css, meant) => {
+    const found = under(css);
+
+    expect(found.map((one) => one.rule)).toEqual(["unknown-property"]);
+    expect(found[0].message).toContain(meant);
+  });
+});
+
+/**
+ * A declaration another declaration on the SAME element switches off.
+ *
+ * This is the one question ordinary CSS cannot ask. A stylesheet does not know which rules reach an
+ * element, so nothing there can say *this line does nothing*; a block is one element's rule, so
+ * here it is answerable — and what it catches is a broken LAYOUT rather than broken CSS.
+ *
+ * ## Why every list here was measured rather than recalled
+ *
+ * Asked of Chromium, each property beside `display: block` and beside the display that uses it.
+ * **Four of the seventeen candidates ACT on a block container** — `align-content`, `justify-items`,
+ * `place-items` and `place-content`, which modern engines apply to block layout — so a list written
+ * from memory would have been four false reports. They are not in the table.
+ *
+ * ## And why silence is the default
+ *
+ * `flatten` drops a spread: `...{base}` merges declarations this never sees. So the rule may only
+ * read a disabling declaration that is PRESENT, never infer one from an absence — `top: 20px` alone
+ * says nothing, because the block spread above it may be what positions the element.
+ */
+describe("a declaration another one on the same element switches off", () => {
+  test.each([
+    ["display: block; gap: 12px;", "gap"],
+    ["display: block; justify-content: flex-end;", "justify-content"],
+    ["display: block; flex-direction: column;", "flex-direction"],
+    ["display: block; grid-template-columns: 1fr 1fr;", "grid-template-columns"],
+    ["display: inline; row-gap: 12px;", "row-gap"],
+    ["display: table; gap: 12px;", "gap"],
+  ])("`%s` is reported on `%s`", (css, property) => {
+    const found = check(css).filter((one) => one.rule === "declaration-does-nothing");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain(property);
+    expect(found[0].message).toContain("display");
+  });
+
+  test.each([
+    ["display: flex; gap: 12px;"],
+    ["display: grid; gap: 12px;"],
+    ["display: inline-flex; justify-content: flex-end;"],
+    ["display: inline-grid; grid-template-rows: 40px;"],
+    // Measured: a multi-column block uses `gap`, so the same pair is correct CSS here.
+    ["display: block; columns: 2; gap: 12px;"],
+    ["display: block; column-count: 2; gap: 12px;"],
+    // Measured: these act on a block container, so reporting them would report correct CSS.
+    ["display: block; align-content: flex-end;"],
+    ["display: block; justify-items: end;"],
+    ["display: block; place-items: end;"],
+    ["display: block; place-content: end;"],
+    // A spread may be what sets `display`, and this cannot see one.
+    ["gap: 12px;"],
+    // Nothing here knows what the hole holds, or what a global keyword resolves to.
+    ["display: {0}; gap: 12px;"],
+    ["display: inherit; gap: 12px;"],
+    // An element with no box makes EVERY declaration inert; naming one of them would be noise.
+    ["display: none; gap: 12px;"],
+    ["display: contents; gap: 12px;"],
+  ])("`%s` is silent", (css) => {
+    expect(check(css).map((one) => one.rule)).not.toContain("declaration-does-nothing");
+  });
+
+  test.each([
+    ["position: static; top: 20px;", "top"],
+    ["position: static; inset: 20px;", "inset"],
+    ["position: absolute; float: left;", "float"],
+    ["position: fixed; float: right;", "float"],
+    ["overflow: visible; resize: both;", "resize"],
+    ["text-overflow: ellipsis; white-space: normal;", "text-overflow"],
+    ["text-overflow: ellipsis; white-space: pre-wrap; overflow: hidden;", "text-overflow"],
+    ["overflow: visible; white-space: nowrap; text-overflow: ellipsis;", "text-overflow"],
+    ["width: 120px; height: 60px; aspect-ratio: 1 / 3;", "aspect-ratio"],
+  ])("`%s` is reported on `%s`", (css, property) => {
+    const found = check(css).filter((one) => one.rule === "declaration-does-nothing");
+
+    expect(found).toHaveLength(1);
+    expect(found[0].message).toContain(property);
+  });
+
+  test.each([
+    ["position: relative; top: 20px;"],
+    ["position: absolute; inset: 20px;"],
+    ["position: static; float: left;"],
+    ["overflow: auto; resize: both;"],
+    ["overflow: hidden; white-space: nowrap; text-overflow: ellipsis;"],
+    ["overflow: clip; white-space: pre; text-overflow: ellipsis;"],
+    // `white-space` is INHERITED, so an absent one may be `nowrap` from an ancestor.
+    ["overflow: hidden; text-overflow: ellipsis;"],
+    ["width: 120px; aspect-ratio: 1 / 3;"],
+    ["width: 120px; height: auto; aspect-ratio: 1 / 3;"],
+    ["top: 20px;"],
+    ["float: left;"],
+    ["resize: both;"],
+  ])("`%s` is silent", (css) => {
+    expect(check(css).map((one) => one.rule)).not.toContain("declaration-does-nothing");
+  });
+
+  /**
+   * Values a browser accepts that the first version of the table was wrong about.
+   *
+   * Each row here reported correct CSS until it was measured. A rule that fails a build has to be
+   * wrong in the quiet direction, so every one of these is now silence.
+   */
+  test.each([
+    // `-webkit-box` and its inline form lay out children and use `gap`; `flex` and `grid` are not
+    // the only words that mean so.
+    ["display: -webkit-box; gap: 12px;"],
+    ["display: -webkit-inline-box; gap: 12px;"],
+    ["display: -webkit-flex; justify-content: flex-end;"],
+    // `aspect-ratio` applies whenever a size is not DEFINITE, and a percentage is not.
+    ["width: 140px; height: 50%; aspect-ratio: 1 / 3;"],
+    ["width: 140px; height: calc(50% - 2px); aspect-ratio: 1 / 3;"],
+    ["width: 140px; height: min-content; aspect-ratio: 1 / 3;"],
+    ["width: 140px; height: fit-content; aspect-ratio: 1 / 3;"],
+    ["width: 140px; height: stretch; aspect-ratio: 1 / 3;"],
+    // An `overflow` longhand written beside the shorthand is what the element really has.
+    ["overflow: visible; overflow-x: auto; resize: both;"],
+    ["overflow: visible; overflow-y: auto; resize: both;"],
+    ["white-space: nowrap; overflow: visible; overflow-x: hidden; text-overflow: ellipsis;"],
+  ])("`%s` is correct CSS and stays silent", (css) => {
+    expect(check(css).map((one) => one.rule)).not.toContain("declaration-does-nothing");
+  });
+
+  /**
+   * A neighbour the checker is already complaining about decides nothing.
+   *
+   * `display: bolck` is a typo, and the author may be about to write `flex` — in which case the
+   * `gap` beside it is exactly right. Judging it from a word CSS does not have is speaking about a
+   * declaration somebody is still fixing, which is the reading `unknown-property` already gives way
+   * to elsewhere in this file.
+   *
+   * Only the `display` row needs it, and the asymmetry is the reason: a row that fires when the
+   * value IS something — `position: static`, `overflow: visible` — already goes quiet on a typo,
+   * because a misspelling is not that value either. `display` fires when the value is NOT flex or
+   * grid, and a misspelling is not those either.
+   */
+  test.each([
+    ["display: bolck; gap: 12px;"],
+    ["display: blcok; justify-content: flex-end;"],
+    ["display: flexx; grid-template-columns: 1fr;"],
+    // The control for the shape above: a typo in a row that fires on a value it RECOGNISES.
+    ["position: statik; top: 20px;"],
+    ["overflow: visibl; resize: both;"],
+  ])("`%s` names a value CSS does not have, so nothing beside it is judged", (css) => {
+    expect(check(css).map((one) => one.rule)).not.toContain("declaration-does-nothing");
+  });
+
+  /** And a display CSS does have is still judged, including the vendor spellings. */
+  test.each([
+    ["display: block; gap: 12px;", true],
+    ["display: table-cell; gap: 12px;", true],
+    ["display: block !important; gap: 12px;", true],
+    ["display: -webkit-box; gap: 12px;", false],
+    ["display: block flex; gap: 12px;", false],
+  ])("`%s` is reported: %s", (css, reported) => {
+    expect(
+      check(css)
+        .map((one) => one.rule)
+        .includes("declaration-does-nothing"),
+    ).toBe(reported);
+  });
+
+  /**
+   * The VALUE is read out of the canonical text, so the shapes that text can take are their own
+   * question — separate from which properties the table names.
+   */
+  test.each([
+    // A variable is a value nothing here can read, so nothing beside it is judged.
+    ["display: var(--layout); gap: 12px;", false],
+    ["position: var(--place); top: 20px;", false],
+    // `!important` rides along in the value and must not hide the word that decides.
+    ["display: flex !important; gap: 12px;", false],
+    ["display: block !important; gap: 12px;", true],
+    // Order between the two is CSS's business, not this rule's: they are one element's declarations.
+    ["gap: 12px; display: block;", true],
+    // The later of two wins, which is what the browser applies.
+    ["display: block; display: flex; gap: 12px;", false],
+    ["display: flex; display: block; gap: 12px;", true],
+  ])("`%s` is reported: %s", (css, reported) => {
+    expect(
+      check(css)
+        .map((one) => one.rule)
+        .includes("declaration-does-nothing"),
+    ).toBe(reported);
+  });
+
+  /** And the definite sizes still are, so narrowing did not empty the row. */
+  test.each([["width: 140px; height: 4rem; aspect-ratio: 1 / 3;"], ["width: 140px; height: 0; aspect-ratio: 1 / 3;"]])(
+    "`%s` is still reported",
+    (css) => {
+      expect(check(css).map((one) => one.rule)).toContain("declaration-does-nothing");
+    },
+  );
+
+  /**
+   * A nested rule is a different group, and that is deliberate.
+   *
+   * `&:hover` is the same ELEMENT, so a `display` in the base group really does decide a `gap`
+   * written under the hover — but `& > span` is a different element and the same reading would be
+   * wrong about it. Silence costs a report; the alternative costs a false one.
+   */
+  test("a declaration under a nested selector is not decided by the base group", () => {
+    expect(check("display: block;\n&:hover { gap: 12px; }").map((one) => one.rule)).not.toContain(
+      "declaration-does-nothing",
+    );
+  });
+
+  test("but a nested rule that sets both is reported", () => {
+    const found = check("&:hover { display: block; gap: 12px; }").filter(
+      (one) => one.rule === "declaration-does-nothing",
+    );
+
+    expect(found).toHaveLength(1);
+  });
+
+  /** Two rows can fire on `text-overflow`, and one mistake is one report. */
+  test("a declaration both of its neighbours switch off is reported once", () => {
+    const found = check("text-overflow: ellipsis; white-space: normal; overflow: visible;").filter(
+      (one) => one.rule === "declaration-does-nothing",
+    );
+
+    expect(found).toHaveLength(1);
+  });
+
+  test("the message says what to do about it", () => {
+    const [found] = check("display: block; gap: 12px;").filter((one) => one.rule === "declaration-does-nothing");
+
+    expect(found.message).toContain("does nothing");
+    expect(found.message).toContain("display: block");
   });
 });

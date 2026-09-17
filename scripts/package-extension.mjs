@@ -26,6 +26,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { VENDORED } from "./vendored.mjs";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -135,11 +136,102 @@ for (const name of readdirSync(here)) {
   if (name.endsWith(".vsix")) rmSync(join(here, name), { force: true });
 }
 
+/**
+ * The language-service plugin is staged FIRST, and from the build rather than from whatever is
+ * lying in the folder.
+ *
+ * `contributes.typescriptServerPlugins` names `@ramonda/css/plugin`, and VS Code passes it to both
+ * of an editor's TypeScript servers — including the syntax one, which has no `tsconfig.json` and so
+ * would otherwise read a style block as plain TypeScript. A `.vsix` cut without the staging step
+ * names a plugin that is not inside it, and an editor logs the failure at info level where nobody
+ * reads it.
+ */
+execFileSync("node", [join(here, "build-plugin.mjs")], { stdio: "inherit" });
+
 console.log(`[extension] ${id} ${manifest.version} — packaging\n`);
-execFileSync("pnpm", ["dlx", "@vscode/vsce@3", "package", "--no-dependencies", "--out", out], {
+/**
+ * **Without `--no-dependencies`, and that flag is why the plugin was missing.**
+ *
+ * `vsce` skips `node_modules` entirely under it — measured, and not only the dependencies it was
+ * told not to walk: with the `node_modules/**` line taken out of `.vscodeignore` as well, it still
+ * listed none. The staged plugin has to live there, because that is the only place `tsserver`
+ * resolves a contributed plugin from.
+ *
+ * Dropping the flag costs nothing here: this extension declares no `dependencies`, so there is
+ * nothing for `vsce` to walk, and `.vscodeignore` keeps the rest of `node_modules` out. Measured on
+ * the archive — three files, which are the three that were staged.
+ */
+execFileSync("pnpm", ["dlx", "@vscode/vsce@3", "package", "--out", out], {
   cwd: here,
   stdio: "inherit",
 });
+
+/**
+ * And the staged plugin really is IN the archive.
+ *
+ * `.vscodeignore` ignores `node_modules/**` and un-ignores this one subtree, which is a pair that
+ * can drift — and either way round the failure is silent: the extension names a plugin an editor
+ * cannot find. A `.vsix` is a zip, so its own listing is the assertion.
+ */
+const listed = execFileSync("unzip", ["-Z1", join(here, out)], { encoding: "utf8" });
+
+/**
+ * **Somebody else's bytes, looked for in the archive itself.**
+ *
+ * `check-third-party.mjs` watches what npm publishes, and its own note says why the check is on the
+ * OUTPUT rather than on anybody's intention: copied work reaches a distribution through a bundler,
+ * through a dependency that is not published, through a refactor that moves a file. A `.vsix` is now
+ * one of those distributions — it carries a bundle of the whole compiler — and nothing looked at it.
+ *
+ * Measured when this was written: the archive holds three copyright lines and all three are this
+ * extension's own MIT, `magic-string` is not inlined, and the bundle requires only Node built-ins.
+ * Nothing is owed today. This is what will say so tomorrow.
+ *
+ * The fingerprints come from `vendored.mjs`, which is the list and nothing else: one list, two
+ * artefacts, and no script that runs somebody else's gate on import.
+ */
+const bytes = execFileSync("unzip", ["-p", join(here, out)], { encoding: "latin1", maxBuffer: 64 * 1024 * 1024 });
+const carries = VENDORED.filter((one) => bytes.includes(one.fingerprint));
+
+if (carries.length > 0) {
+  /**
+   * The notice has to be in `THIRD-PARTY.md`, not merely somewhere in the archive.
+   *
+   * The first version asked whether the words were anywhere in the bytes, and this extension's own
+   * MIT already carries *Permission is hereby granted* — so half the test was satisfied by our own
+   * licence, for somebody else's work. `check-third-party.mjs` asks the same question of npm and
+   * asks it of one named file; so does this.
+   */
+  const NOTICE = "extension/THIRD-PARTY.md";
+  const said = listed.includes(NOTICE)
+    ? execFileSync("unzip", ["-p", join(here, out), NOTICE], { encoding: "utf8" })
+    : "";
+  const owed = carries.filter((one) => !(said.includes(one.names) && /Permission is hereby granted/.test(said)));
+
+  if (owed.length > 0) {
+    console.error(`\n[extension] the .vsix carries somebody else's work and not their notice:\n`);
+    for (const one of owed) console.error(`    • ${one.work}`);
+    console.error(
+      `\n[extension] put a THIRD-PARTY.md beside the manifest naming it, with its permission notice,` +
+        `\n[extension] and make sure .vscodeignore lets it through.\n`,
+    );
+    rmSync(join(here, out), { force: true });
+    process.exit(1);
+  }
+  console.log(`[extension] ${carries.length} vendored work(s) in the archive, each with its notice`);
+}
+
+const missing = [
+  "extension/node_modules/@ramonda/css/plugin.js",
+  "extension/node_modules/@ramonda/css/dist/plugin.cjs",
+].filter((one) => !listed.includes(one));
+if (missing.length > 0) {
+  console.error(`\n[extension] the .vsix does not carry the plugin it contributes:\n`);
+  for (const one of missing) console.error(`    • ${one}`);
+  console.error(`\n[extension] check the \`!node_modules/@ramonda/**\` line in .vscodeignore.\n`);
+  rmSync(join(here, out), { force: true });
+  process.exit(1);
+}
 
 const size = statSync(join(here, out)).size;
 const where = relative(process.cwd(), join(here, out));

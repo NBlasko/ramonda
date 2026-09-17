@@ -13,7 +13,7 @@ import { type Span, readBlock } from "./compiler/read";
 import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding, checkSite } from "./compiler/rules";
 import { variablesOnlyKinds } from "./codegen";
 import { checkedSource } from "./compiler/source";
-import { findBlocks } from "./compiler/scan";
+import { fileMayHoldABlock, findBlocks } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 import { type Config, configReader, environmentOf } from "./config";
 import { propertiesFor } from "./generate";
@@ -59,11 +59,25 @@ import { type Imported, namedSites } from "./compiler/references";
  * for the caret to be inside anything at all.
  */
 
+/**
+ * The key the extension's shim sets when IT is the copy answering — see `cannotCompile`.
+ *
+ * A string rather than a symbol because it crosses a package boundary as plain data, and one long
+ * enough that a key in somebody's `tsconfig.json` cannot collide with it by accident.
+ */
+export const NO_COMPILER = "@ramonda/css:no-compiler-in-the-project";
+
 /** What `tsserver` hands the factory. Structural, so `typescript` stays a peer and not an import. */
 export interface PluginCreateInfo {
   languageService: ts.LanguageService;
   languageServiceHost: ts.LanguageServiceHost;
-  config?: { properties?: string };
+  /**
+   * The plugin's own entry from `tsconfig.json` — plus one key the extension's shim sets.
+   *
+   * See {@link NO_COMPILER}: it is how the copy bundled in the extension knows it is answering for
+   * a project that has no `@ramonda/css` of its own, and so cannot build a block at all.
+   */
+  config?: { properties?: string; [NO_COMPILER]?: boolean };
   /**
    * tsserver's own log, when there is one — the only place a plugin can say anything.
    *
@@ -77,9 +91,6 @@ export interface PluginCreateInfo {
 export interface PluginModule {
   create(info: PluginCreateInfo): ts.LanguageService;
 }
-
-/** Only these are source. Everything else is somebody else's file. */
-const SOURCE = /\.[cm]?[jt]sx?$/;
 
 export function init(modules: { typescript: typeof ts }): PluginModule {
   const tsModule = modules.typescript;
@@ -229,7 +240,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         fileName: string,
         read: (name: string) => ts.IScriptSnapshot | undefined,
       ): VirtualFile | undefined => {
-        if (!SOURCE.test(fileName)) return undefined;
+        if (!fileMayHoldABlock(fileName)) return undefined;
 
         const version = host.getScriptVersion(fileName);
         const cached = cache.get(fileName);
@@ -789,6 +800,55 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
       };
 
       /**
+       * One diagnostic saying nothing in this project can COMPILE a block, or nothing.
+       *
+       * The extension contributes this plugin to every project an editor opens, and hands over to
+       * the project's own `@ramonda/css` wherever there is one. Where there is not, the editor
+       * answers about a syntax the project cannot build: measured, `@@( colour: red; )` is reported
+       * as `unknown-property` in the editor and refused by esbuild with *Expected identifier but
+       * found "@"*. An editor that only said the first is promising a page the build will not give.
+       *
+       * **The shape is TypeScript's own.** Writing JSX in a project with no `jsx` option is not met
+       * with silence and not with a broken parse — it is parsed, it is checked, and one more
+       * diagnostic names what the project is missing:
+       *
+       *     TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+       *     TS7026:  JSX element implicitly has type 'any' because no interface
+       *              'JSX.IntrinsicElements' exists.
+       *
+       * So this sits beside the CSS reports rather than replacing them: they are still true about
+       * the CSS, and this is what makes them a preview instead of a promise.
+       *
+       * Only the SHIM can know it, and it already does — it resolves the project's own plugin
+       * before deciding which copy answers. A project that names this plugin in its own
+       * `tsconfig.json` has the package by definition and never sees it.
+       */
+      const cannotCompile = (fileName: string): ts.Diagnostic[] => {
+        if (info.config?.[NO_COMPILER] !== true) return [];
+
+        const text = readSnapshot(fileName);
+        const source = text?.getText(0, text.getLength()) ?? "";
+        const [site] = findBlocks(source);
+        if (site === undefined) return [];
+
+        return [
+          {
+            file: cache.get(fileName)?.author,
+            start: site.start,
+            length: site.open - site.start + 1,
+            category: tsModule.DiagnosticCategory.Error,
+            code: 0,
+            messageText:
+              "[no-compiler] nothing in this project compiles a style block, so a build will refuse " +
+              "this file.\n        What you see here comes from the Ramonda CSS extension's own copy " +
+              "of the compiler.\n\n" +
+              "        Install `@ramonda/css` and add its plugin to your build — see " +
+              "https://ramonda.dev/style-blocks",
+          },
+        ];
+      };
+
+      /**
        * One diagnostic saying the project's config did not load, or nothing.
        *
        * Only reached for a file that HOLDS a block — `getSemanticDiagnostics` has already returned
@@ -834,6 +894,7 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          */
         const ours = cssFor(fileName);
         return [
+          ...cannotCompile(fileName),
           ...brokenConfig(fileName),
           ...ours,
           ...hintsFor(fileName),
@@ -868,6 +929,55 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
 
         const got = service.getEncodedSemanticClassifications(fileName, { start: 0, length: file.code.length }, format);
         return { ...got, spans: home(file, got.spans, span, cache.get(fileName)?.where ?? EMPTY_REGIONS) };
+      };
+
+      /**
+       * THE DIMMING, which is a diagnostic nobody thinks of as one.
+       *
+       * VS Code fades unused code out, and what it fades is this list — a third one beside the
+       * semantic and syntactic diagnostics. It was not proxied, so it came straight off the VIRTUAL
+       * file with virtual positions, and an editor applied them to the author's text at face value:
+       *
+       *     TS6133 at 200+6   lands on "olor: "   '__vars' is declared but its value is never read
+       *     TS6133 at 397+6   past the end        '__cond' …
+       *     TS6133 at 519+6   past the end        '__from' …
+       *
+       * Two faults in one. The positions are somebody else's, which is why a word came out half
+       * coloured; and the subject is scaffolding this package wrote, which is why hovering a `<div>`
+       * said `'__cond' is declared but its value is never read`. Reported by the user, who found it
+       * by deleting a line and watching the colours come right.
+       *
+       * `mapped` is the whole fix: a diagnostic about the author's own text keeps its place, and one
+       * about the preamble maps to nothing and is dropped — so an unused name they really did write
+       * is still faded, which is the half a blanket `return []` would have broken.
+       */
+      proxy.getSuggestionDiagnostics = (fileName) => {
+        const file = overlay(fileName, readSnapshot);
+        return file === undefined
+          ? service.getSuggestionDiagnostics(fileName)
+          : mapped(file, service.getSuggestionDiagnostics(fileName));
+      };
+
+      /**
+       * The TODO list, which is a position and was somebody else's.
+       *
+       * Found by sweeping the language service for every method that answers with a position and
+       * asking which are proxied — 42 of 48 were, and this was one of the six. Measured, a `// TODO`
+       * the author wrote came back at offset 838 in a file barely a hundred characters long.
+       *
+       * The same `back` the diagnostics use, so a comment in the author's text keeps its place and
+       * one the preamble happens to contain is dropped.
+       */
+      proxy.getTodoComments = (fileName, descriptors) => {
+        const file = overlay(fileName, readSnapshot);
+        if (file === undefined) return service.getTodoComments(fileName, descriptors);
+
+        const out: ts.TodoComment[] = [];
+        for (const one of service.getTodoComments(fileName, descriptors)) {
+          const span = back(file, { start: one.position, length: one.message.length });
+          if (span !== undefined) out.push({ ...one, position: span.start });
+        }
+        return out;
       };
 
       /** Folding, and the outline that feeds the breadcrumbs — both are spans and both were wrong. */

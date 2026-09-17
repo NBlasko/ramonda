@@ -1,5 +1,42 @@
 # Ramonda CSS
 
+## 0.2.0
+
+- **The `useSyntaxServer` setting is no longer needed.** An editor runs two TypeScript servers, and
+  the syntax one — which owns formatting, folding, the outline and expand-selection for as long as
+  the editor is open — never reads a `tsconfig.json`. So the plugin named there never reached it,
+  and it treated a style block as plain TypeScript: asked to format one file, it wanted 20 edits the
+  other server did not.
+
+  The extension now contributes the plugin itself, which VS Code hands to both servers. Formatting a
+  block is left alone, folding and the outline match, and the setting can come out of your settings —
+  `"typescript.tsserver.useSyntaxServer"`, or `"js/ts.tsserver.useSyntaxServer"` if your VS Code is
+  new enough to have renamed it.
+
+  A project that installs `@ramonda/css` keeps being checked by its own copy: the extension's plugin
+  steps aside wherever the project has one, so the version you pinned is still the version that
+  decides what is an error.
+
+- **An editor no longer promises what a build will refuse.** The extension answers about style
+  blocks in any project, including one with no `@ramonda/css` at all — and such a project cannot
+  compile a block: a build stops at `Expected identifier but found "@"`. So where the extension is
+  the only thing answering, it says so on the block and keeps reporting the CSS underneath, which
+  is the shape TypeScript uses for JSX in a project with no `jsx` option: the file is parsed, it is
+  checked, and one more line names what is missing.
+
+- **A project that installed the package without naming the plugin** in its `tsconfig.json` stops
+  being told nonsense. It used to get `Variable 'red' implicitly has an 'any' type` and `Cannot find
+  name 'flex'` from a block TypeScript was reading as code; it now gets what is actually wrong with
+  the CSS.
+
+## 0.1.6
+
+- **The page now shows what a block looks like.** A marketplace page is rendered by the marketplace's
+  own highlighter, which has no way to load the grammars an extension is made of — so the example
+  above was being coloured as ordinary TypeScript, which is the one thing this extension exists to
+  change. There is a picture now, generated from these grammars rather than screenshotted, and CI
+  fails if the two stop agreeing.
+
 ## 0.1.5
 
 - **`$.color.primary.main` is coloured as a variable inside a block.** A declared variable is written

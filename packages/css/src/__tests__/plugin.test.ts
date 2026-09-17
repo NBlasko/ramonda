@@ -7,7 +7,7 @@ import ts from "typescript";
 import { describe, expect, test } from "vitest";
 import { virtualFile } from "../compiler/virtual";
 import { SELECTORS } from "../compiler/keywords.generated";
-import { init } from "../plugin";
+import { NO_COMPILER, init } from "../plugin";
 
 const require = createRequire(import.meta.url);
 
@@ -43,7 +43,9 @@ const CARET = "/*|*/";
  */
 function editor(
   marked: string,
-  config: { properties?: string; as?: string } = { properties: join(PACKAGE, "src", "properties") },
+  config: { properties?: string; as?: string; [NO_COMPILER]?: boolean } = {
+    properties: join(PACKAGE, "src", "properties"),
+  },
 ) {
   const source = marked.replace(CARET, "");
   const caret = marked.indexOf(CARET);
@@ -259,6 +261,66 @@ describe("the red squiggles", () => {
       expect.stringContaining("[unknown-property]"),
     );
     expect(found).toHaveLength(2);
+  });
+
+  /**
+   * THE DIMMING, which is a diagnostic nobody thinks of as one.
+   *
+   * VS Code fades unused code out, and what it fades is `getSuggestionDiagnostics` — a third list
+   * beside the semantic and syntactic ones. It was not proxied, so it came straight off the VIRTUAL
+   * file with virtual positions, and an editor applied them to the author's text at face value.
+   *
+   * Reported by the user, who saw a word half-coloured and hovered a `<div>` they wrote:
+   *
+   *     TS6133 at 200+6   lands on "olor: "   '__vars' is declared but its value is never read
+   *     TS6133 at 397+6   past the end        '__cond' …
+   *     TS6133 at 519+6   past the end        '__from' …
+   *
+   * Two faults in one: the positions are somebody else's, and the subject is scaffolding this
+   * package wrote. `__vars`, `__cond` and `__from` are names no author can act on.
+   *
+   * It is the same fault the semantic-token note below records — a list of SPANS handed over
+   * unmapped — which is why this is a class and not an oversight: every method that answers with a
+   * position has to be mapped or dropped, and the next one added will be too.
+   */
+  test("the unused-code dimming is the author's own, or is not shown", () => {
+    const marked =
+      `export class Card {\n  toggle = true;\n  render() {\n` +
+      `    const shade = this.toggle ? "red" : "blue";\n` +
+      `    return (\n      <div\n        css={@@(\n          color: white;\n` +
+      `          &:hover { color: {shade}; }\n        )}\n      >x</div>\n    );\n  }\n}\n`;
+    const { service } = editor(marked);
+
+    for (const one of service.getSuggestionDiagnostics(FILE)) {
+      const said = ts.flattenDiagnosticMessageText(one.messageText, " ");
+      // Nothing about the scaffolding: those are names the author never wrote.
+      expect(said).not.toMatch(/__vars|__cond|__from|__block|__val/);
+    }
+  });
+
+  test("and an unused name the author DID write is still dimmed, which is the control", () => {
+    const marked = `const spare = 1;\nconst a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n`;
+    const { service, source } = editor(marked);
+
+    const found = service.getSuggestionDiagnostics(FILE).filter((one) => one.code === 6133);
+    expect(found).toHaveLength(1);
+    expect(source.slice(found[0].start ?? 0, (found[0].start ?? 0) + (found[0].length ?? 0))).toBe("spare");
+  });
+
+  /**
+   * A `// TODO` the author wrote, at the place they wrote it.
+   *
+   * Found by the same sweep as the dimming: every method that answers with a POSITION has to be
+   * mapped or dropped, and this one was neither. Measured, a comment on line five came back at
+   * offset 838 of a file a hundred characters long.
+   */
+  test("a TODO comment keeps the author's own position", () => {
+    const marked = `const a = <div css={@@( color: white; )}>x</div>;\n// TODO: one the author wrote\nexport default a;\n`;
+    const { service, source } = editor(marked);
+
+    const found = service.getTodoComments(FILE, [{ text: "TODO", priority: 1 }]);
+    expect(found).toHaveLength(1);
+    expect(source.slice(found[0].position, found[0].position + 4)).toBe("TODO");
   });
 
   /**
@@ -2318,5 +2380,65 @@ describe("a caret in a nested rule's prelude", () => {
 
     expect(got).not.toEqual([]);
     for (const one of got) expect(Object.keys(SELECTORS)).toContain(`${colons}${one}`);
+  });
+});
+
+/**
+ * A project that cannot COMPILE a block, and what the editor owes it.
+ *
+ * The extension contributes this plugin to every project an editor opens. Where the project has no
+ * `@ramonda/css` of its own, the extension's copy answers — about a syntax that project cannot
+ * build: measured, `@@( colour: red; )` is `unknown-property` here and *Expected identifier but
+ * found "@"* from esbuild. Saying only the first is promising a page the build will not give.
+ *
+ * **The shape is TypeScript's own**, measured rather than recalled. JSX in a project with no `jsx`
+ * option is parsed, is checked, and gets one more diagnostic naming what is missing:
+ *
+ *     TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+ *     TS7026:  JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements'…
+ *
+ * So this sits BESIDE the CSS reports. They are still true about the CSS; this is what makes them a
+ * preview rather than a promise.
+ */
+describe("a project with nothing that compiles a block", () => {
+  const source = "const a = <div css={@@(\n  colour: red;\n)}>x</div>;\n";
+
+  test("is told so, once, on the block", () => {
+    const { service } = editor(source, { [NO_COMPILER]: true });
+    const said = service
+      .getSemanticDiagnostics(FILE)
+      .filter((one) => String(one.messageText).includes("[no-compiler]"));
+
+    expect(said).toHaveLength(1);
+    expect(String(said[0].messageText)).toContain("a build will refuse this file");
+    expect(said[0].category).toBe(ts.DiagnosticCategory.Error);
+  });
+
+  test("and still hears what is wrong with the CSS, which is the point of saying both", () => {
+    const said = editor(source, { [NO_COMPILER]: true })
+      .service.getSemanticDiagnostics(FILE)
+      .map((one) => String(one.messageText));
+
+    expect(said.some((one) => one.includes("[no-compiler]"))).toBe(true);
+    expect(said.some((one) => one.includes("unknown-property"))).toBe(true);
+  });
+
+  /** The control: a project with the package hears nothing about compiling. */
+  test("while a project that has the compiler is not told anything", () => {
+    const said = editor(source)
+      .service.getSemanticDiagnostics(FILE)
+      .map((one) => String(one.messageText));
+
+    expect(said.some((one) => one.includes("[no-compiler]"))).toBe(false);
+    expect(said.some((one) => one.includes("unknown-property"))).toBe(true);
+  });
+
+  /** And a file with no block is not marked, or every file in the project would be. */
+  test("and a file with no block in it is left alone", () => {
+    const said = editor("const a = 1;\n", { [NO_COMPILER]: true })
+      .service.getSemanticDiagnostics(FILE)
+      .map((one) => String(one.messageText));
+
+    expect(said.some((one) => one.includes("[no-compiler]"))).toBe(false);
   });
 });

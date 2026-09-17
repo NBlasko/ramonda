@@ -93,6 +93,7 @@ const COMPILER = [
   "HOLE",
   "MEDIA_FEATURES",
   "classNameFor",
+  "fileMayHoldABlock",
   "findBlocks",
   "mayHoldABlock",
   "holeOutOfPlace",

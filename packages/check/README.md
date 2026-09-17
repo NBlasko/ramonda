@@ -16,7 +16,7 @@ member. All found before the app is ever opened.
 > [root README](https://github.com/NBlasko/ramonda#readme).
 
 ```sh
-npm install -D @ramonda/check typescript
+npm install -D @ramonda/check
 ```
 
 Documentation: **[ramonda.dev/reference/check](https://ramonda.dev/reference/check)**

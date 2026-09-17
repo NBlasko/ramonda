@@ -280,6 +280,7 @@ const CSS_LINES = {
   "unknown-value": "a word this property does not take",
   "unknown-unit": "a unit CSS does not have",
   "unknown-flag": "a `!` at the end of a value that is not `!important`",
+  "unclosed-call": "a `(` in a value that no `)` closes — the value runs past the end of the block",
   "unknown-prefix": "a vendor prefix that is not one of the four",
   "unknown-at-rule": "an at-rule name CSS does not have",
   "unknown-selector": "a pseudo-class or pseudo-element that is not one — the whole rule is dropped",
@@ -290,6 +291,8 @@ const CSS_LINES = {
   "value-not-allowed": "a value outside the closed list your `ramonda.css.ts` gave this property",
   "shorthand-not-allowed": "a shorthand your `ramonda.css.ts` switched off — write its longhands",
   "literal-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from variables",
+  "declaration-does-nothing":
+    "a declaration another one on the same element switches off — valid CSS the browser ignores",
   "unknown-variable": "`$.…` naming a variable your `ramonda.css.ts` does not declare",
   "too-many-values": "more values than the property takes — in CSS, or in your `ramonda.css.ts`",
   "missing-semicolon": "a declaration with no `;`, which swallows the line written under it",

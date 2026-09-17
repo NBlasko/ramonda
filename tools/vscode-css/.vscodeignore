@@ -6,9 +6,19 @@
 
 install.mjs
 # For whoever publishes it, not for whoever installs it.
+build-preview.mjs
+build-plugin.mjs
+preview.png.stamp
+# The picture on the marketplace page is served from GitHub — the marketplace does not resolve a
+# relative path in a README — so neither the generator nor the file itself belongs in the download.
 PUBLISHING.md
 .vscodeignore
 node_modules/**
+# …except the language-service plugin staged by `build-plugin.mjs`. It is what lets the editor's
+# SYNTAX server read a block: that server never opens a tsconfig, so a plugin named there never
+# reaches it, and this is the only path `tsserver` resolves a contributed plugin from.
+!node_modules/@ramonda/**
 **/*.map
 **/tsconfig.json
 **/*.test.*
+preview.png

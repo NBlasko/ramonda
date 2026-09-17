@@ -124,6 +124,15 @@ export interface CssArity {
   "stroke-opacity": 1;
 }
 
+/**
+ * The properties CSS measures in a plain number, so a project's closed list of them holds numbers.
+ *
+ * A quoted number on one of these used to type-check and then be refused at every use site, because
+ * a quoted value is not a number — so the config permitted what the checker would not take. Read
+ * from the same grammar the rules read, rather than listed by hand.
+ */
+export type CssNumeric = "-ms-hyphenate-limit-chars" | "-ms-hyphenate-limit-lines" | "-webkit-line-clamp" | "animation-iteration-count" | "box-flex" | "box-flex-group" | "box-ordinal-group" | "column-count" | "flex-grow" | "flex-shrink" | "font-weight" | "hyphenate-limit-chars" | "line-clamp" | "math-depth" | "max-lines" | "order" | "orphans" | "reading-order" | "stroke-miterlimit" | "widows" | "z-index";
+
 /** Every property the engines call a shorthand — the only ones a project may switch off. */
 export type CssShorthand = "-webkit-border-before" | "-webkit-mask" | "-webkit-mask-position" | "-webkit-text-stroke" | "all" | "animation" | "animation-range" | "background" | "background-position" | "border" | "border-block" | "border-block-color" | "border-block-end" | "border-block-start" | "border-block-style" | "border-block-width" | "border-bottom" | "border-color" | "border-image" | "border-inline" | "border-inline-color" | "border-inline-end" | "border-inline-start" | "border-inline-style" | "border-inline-width" | "border-left" | "border-radius" | "border-right" | "border-spacing" | "border-style" | "border-top" | "border-width" | "column-rule" | "columns" | "contain-intrinsic-size" | "container" | "corner-block-end-shape" | "corner-block-start-shape" | "corner-bottom-shape" | "corner-inline-end-shape" | "corner-inline-start-shape" | "corner-left-shape" | "corner-right-shape" | "corner-shape" | "corner-top-shape" | "flex" | "flex-flow" | "font" | "font-synthesis" | "font-variant" | "gap" | "grid" | "grid-area" | "grid-column" | "grid-gap" | "grid-row" | "grid-template" | "inset" | "inset-block" | "inset-inline" | "interest-delay" | "list-style" | "margin" | "margin-block" | "margin-inline" | "marker" | "mask" | "mask-border" | "mask-position" | "offset" | "outline" | "overflow" | "overscroll-behavior" | "padding" | "padding-block" | "padding-inline" | "perspective-origin" | "place-content" | "place-items" | "place-self" | "position-try" | "scroll-margin" | "scroll-margin-block" | "scroll-margin-inline" | "scroll-padding" | "scroll-padding-block" | "scroll-padding-inline" | "scroll-timeline" | "text-box" | "text-decoration" | "text-emphasis" | "text-wrap" | "timeline-trigger" | "transform-origin" | "transition" | "vertical-align" | "view-timeline" | "white-space";
 

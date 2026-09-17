@@ -84,23 +84,18 @@ function runtimePackages() {
 }
 
 /**
- * The peers a reader has to install themselves, alongside the package.
+ * A peer is NOT named in the install command, and the two it affected are the argument.
  *
- * `peerDependenciesMeta.optional` is the whole of the decision and it is already declared:
- * `@ramonda/form` names `bguard` as an optional peer, because only the `@ramonda/form/bguard`
- * entry point needs it, and `@ramonda/check` names `typescript` as a required one. Putting an
- * optional peer in the install line tells most readers to install something they will never use.
+ * `@ramonda/css` and `@ramonda/check` each require `typescript`, and the line read
+ * `npm install @ramonda/css typescript`. The user's words: *"brate niko ne pise peer dependencies u
+ * objasnjenju za instalaciju"* — and they are right twice over. It is not the convention anybody
+ * reading a README expects, and npm installs a missing required peer itself.
  *
- * `@ramonda/core` is dropped from every list: it is the framework, and somebody installing the
- * router into their app already has it. Naming it in nine install lines is noise, and core's own
- * README is where installing core belongs.
+ * It was also telling the reader something they already know: both of those packages exist to check
+ * TypeScript, so nobody arrives at either without it. Where a peer needs saying, the prose says it —
+ * `@ramonda/css`'s install section explains that the checking IS your compiler's, which is the fact
+ * the extra word was standing in for.
  */
-function requiredPeers(json) {
-  const optional = json.peerDependenciesMeta ?? {};
-  return Object.keys(json.peerDependencies ?? {}).filter(
-    (name) => name !== "@ramonda/core" && optional[name]?.optional !== true,
-  );
-}
 
 /**
  * The install command.
@@ -113,7 +108,7 @@ function installCommand(json, runtime) {
   const { name } = json;
   if (name === "create-ramonda") return "npm create ramonda@latest my-app";
   const flag = runtime.has(name) ? "" : "-D ";
-  return `npm install ${flag}${[name, ...requiredPeers(json)].join(" ")}`;
+  return `npm install ${flag}${name}`;
 }
 
 /** `@ramonda/core` → `%40ramonda%2Fcore`, which is what shields.io needs and what gets typed wrong. */
@@ -207,6 +202,17 @@ const stale = [];
 const missing = [];
 
 const packages = published();
+
+/**
+ * There have to BE packages, or `--check` reports every README up to date without reading one.
+ *
+ * Measured by pointing the glob at a folder that does not exist: *up to date — 0 published
+ * packages*, exit 0. A rename or a move leaves this green and idle.
+ */
+if (packages.length === 0) {
+  console.error(`\n[readmes] found no published packages — the glob matches nothing.\n`);
+  process.exit(1);
+}
 
 for (const { dir, json } of packages) {
   const file = join(repo, dir, "README.md");

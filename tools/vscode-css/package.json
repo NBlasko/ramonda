@@ -2,7 +2,7 @@
   "name": "css",
   "displayName": "Ramonda CSS",
   "description": "Real CSS beside your markup: syntax colouring, formatting and diagnostics for @@( … ) style blocks.",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "private": true,
   "publisher": "ramonda",
   "license": "MIT",
@@ -67,6 +67,12 @@
         "embeddedLanguages": {
           "meta.embedded.block.css": "css"
         }
+      }
+    ],
+    "typescriptServerPlugins": [
+      {
+        "name": "@ramonda/css/plugin",
+        "enableForWorkspaceTypeScriptVersions": true
       }
     ]
   },

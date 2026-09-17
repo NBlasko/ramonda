@@ -2572,59 +2572,309 @@ approach, always, is what makes a built package composable with a source one.
 
 `CONTRACT.md` §3 already fixes the prefix for this exact reason, and `config.ts` refuses `names`,
 `hash` and `prefix` as settings because identity is the one thing every consumer must agree about.
-The `names: "hash"` bundler option is the remaining way to disagree.
 
-### 3. A manifest carrying what a package REQUIRES — measured, and it does not exist
+#### CLOSED — measured, and nothing was left to build
 
-The user remembered a Ramonda build step writing a manifest that carries the app tree, and asked
-whether it could carry a package's required variables too.
+**There is one approach already.** The `names: "hash"` bundler option this note called *the remaining
+way to disagree* does not exist: both plugins take `runtime`, and esbuild also takes `filter`. A name
+is readable when it can be and a hash when it cannot, and the five cases that force a hash are
+properties of the declaration rather than of anybody's settings — a hole, no spelling for the
+context, a character a class name cannot hold, an underscore the author wrote, or a name over
+`NAME_BUDGET`.
 
-Measured: there is no such thing today. `apps/docs/scripts/build-manifest.mjs` is the docs app's own
-script and maps lazily-imported modules to chunk URLs — *"the piece nothing at runtime can know"* —
-and `@ramonda/build` exports bundler settings and nothing else. No package emits a manifest.
+**The packaging worry is answered, and is now a test.** The same declaration compiled under seven
+configs that disagree about units, kinds, shorthands, variables, silenced rules and `outDir` comes
+out as ONE class name each time. `what a project's config may not change` in `nameFor.test.ts` holds
+it; seen to fail by making a name depend on `units`.
 
-So this is a design question rather than a change: a built package that uses `$.color.accent.main`
-needs the consuming app to declare that variable, and nothing carries that requirement across the
-package boundary today. The `@property` registration in the built stylesheet is the nearest thing —
-it declares the name and its initial — which may be the whole answer, or may need a manifest beside
-it. Not decided.
-
-### 4. An unclosed call eats the block's closer
-
-Measured twice, in an earlier review and again in pass 3, unchanged:
+**Shorter is measured and has no defensible change.** Over forty declarations a real app writes:
 
 ```
-content: url(;
-
-unknown-value: `content` does not accept `Hello`.
-unknown-value: `content` does not accept `div`.
+38 readable, 2 hashed          the two are a `linear-gradient(…)` and a quoted font stack
+shortest 6   median 12   longest 30   (budget 32)
 ```
 
-Two words out of the author's own JSX, reported as CSS values — the value ran past `)}` into the
-markup, because `readValue` counts parens and a block's closer is a `)` like any other. The real
-fault, a missing `)`, is never named.
+The long ones are long because their VALUES are — `r-anim-spin_1s_linear_infinite` is thirty
+characters and twenty-three of them are the author's own text. Every unabbreviated property that
+turned up (`text-overflow`, `scroll-margin-top`, `will-change`, `object-fit`) is one with no
+conventional short spelling, and the abbreviation table's own note answers that: *an abbreviation
+nobody recognises is worse than the property's own name — it is shorter and it has to be learned.*
 
-The parens are BALANCED, so a cheap check does not exist, and the value scanner is what all 39 rules
-read. This one needs a design before code.
+### 3. `ramonda.graph.json` — a build artefact saying what a package needs and gives
 
----
+**Not built. Measured, scoped, and then widened by the user in a way that changes the shape** — so
+this is the record a next session starts from, and the shape below is not final.
 
-## `css-system/`, committed — and the argument that was wrong
+The user's own words for what it is for: *"neki json ili slicno nesto sto ramonda build bi trebalo
+da kreira, kako bi smo mogli to da damo drugim paketima koji se reuzaju da mogu da sastave citav
+graf"*.
 
-The generated files were `ramonda.css.generated.ts` and `.css` beside the config, both gitignored.
-The user asked about both halves at once: *"gledam playground i ovi generisani fajlovi su
-gitignorisani. Ja mislim da to ne treba da bude ignorisano, kao sto se i ostale codegen stvari ne
-ignorisu. Samo je pitanje da li je bolje da ove generisane stvari imaju svoj folder."*
+#### What it does not exist today
 
-**The reason for ignoring them was written down and it was wrong.** It said committing would let a
-config and its output drift apart in review. That is the right worry and the wrong answer, and this
-repository already answers it the other way for its own generator: `keywords.generated.ts` is in the
-tree and `build-css-properties.mjs --check` fails when it is stale. Hiding a file does not stop it
-drifting — it stops anybody SEEING that it has. And it costs a fresh clone its `$` until something
-builds, which an editor meets before any build runs.
+`@ramonda/build` exports bundler settings and two adapters, and nothing else — no package emits any
+artefact of this kind. `apps/docs/scripts/build-manifest.mjs` is the docs app's own script mapping
+lazily-imported modules to chunk URLs, which is a different question.
 
-So `check-css-system.mjs` runs codegen and compares, and is wired into `pnpm check` beside the other
-cheap read-only checks. Seen to fail: one hand-edited line and it names the file.
+#### The three things measured to be missing, each by a failure
+
+A library `@acme/ui` whose block writes `color: var(--acme-accent)`, published as `dist`:
+
+| what is missing | what happens today |
+|---|---|
+| **`requires`** — names the package reads and does not set | the page renders with the variable unset and NOTHING anywhere says so |
+| **`provides`** — names the package sets | the consuming app is **refused**: *nothing in this build sets `--acme-radius`* — a false report, worked around by listing the name by hand in `alsoSets` |
+| **`values`** — where the values are | a library declaring `$` produces `css-system/variables.css` holding `:root { --acme-accent: … }`, its `files` is `["dist"]` so it does not ship, and the consumer has no way to know it must import it |
+
+The `provides` row is the sharpest: it is not a silent fault but a build that **stops**, and the cure
+is hand-maintaining a list the package already computed.
+
+**And the build KNOWS all of it.** Measured on that library's own transform:
+
+```
+the file SETS:  []
+the file READS: ["--acme-accent"]
+```
+
+That is computed, used for one check, and thrown away.
+
+#### One thing measured and ruled OUT
+
+The cascade layers do not need carrying. Two packages' emitted stylesheets declare an identical
+nineteen-layer statement, so there is nothing for a consumer to reconcile.
+
+#### The shape as it stood before the last measurement
+
+```json
+{
+  "ramonda": 1,
+  "name": "@acme/ui",
+  "css": {
+    "requires": ["--acme-accent"],
+    "provides": ["--acme-radius"],
+    "values": "./css-system/variables.css"
+  }
+}
+```
+
+#### What widened it, and why the shape above is not final
+
+**The user raised injected dependencies**, and they are right that it changes this: *"zamisli da imas
+paket koji ocekuje funkciju foo, ali ta funkcija se kreira u drugom paketu i potrebno je
+injectovati."*
+
+A package expecting a value another package creates is the SAME question as a package expecting a
+custom property another package sets — `requires` and `provides`, for values rather than for names
+in a stylesheet. So the file is not a CSS artefact with a `css` key bolted on; it is a
+requires/provides record of which CSS is one kind.
+
+Today the mechanism for receiving something from elsewhere is `createContext`, exported from
+`@ramonda/core`. Whether a context is the thing to declare, and whether a package can know statically
+which ones it needs, is **unmeasured** — and it has to be measured before this file is designed,
+because it decides whether the CSS half can be written first without the shape moving under it.
+
+#### The rule that governs building it, whenever that is
+
+**No producer without a consumer.** This repository already has one of those written down: `format:
+{ indent }` was accepted, validated and documented in its own type, and NOTHING read it — a person
+could set it, be told nothing, and get two spaces. A `ramonda.graph.json` that nothing reads is the
+same fault in new packaging.
+
+So whatever is built first ships with the side that FAILS: an app installing a package with an
+unmet requirement hears about it at build time, with the package named, and an app reading a name an
+installed package provides stops being refused for it.
+
+### 4. An unclosed call eats the block's closer — FIXED
+
+`content: url(;` reported two words of the author's own JSX as CSS values, and the real fault — a
+missing `)` — was never named. The note parked this saying the parens are BALANCED so no cheap check
+exists.
+
+**That is true of the BLOCK and false of the DECLARATION**, which is what unlocked it: inside one,
+`url(` is short a `)` and counting says so. Two things the count has to do, both measured: skip a
+string (a naive count called `url("a)b.png"` balanced and `url("a(b.png")` unclosed, both
+backwards), and stop at the `;` — because the fault itself means the value has already swallowed the
+block's closer.
+
+Two halves, because a refusal runs before any rule: `unclosed-call` is what an editor shows, and the
+strict read carries the same sentence and reports at the CALL's own position. Measured through the
+CLI: `src/Card.tsx:2:12`, on `url(` itself, where it used to say line 4.
+
+### 5. A number where only keywords go — FIXED
+
+`display: 1` compiled in silence while `position: 1` was caught, and both take no number. The note
+had the design already: *the fix belongs in the GENERATOR — a positive fact, measured against the
+engines rather than guessed from a gap.*
+
+`scripts/build-numberless-properties.mjs` asks Chromium, Firefox and WebKit
+`CSS.supports(property, n)` for seven numbers, and records the 241 of 566 unprefixed properties that
+refuse all of them. Three decisions inside that, each measured:
+
+- **seven numbers, not one** — `1` alone would have called `font-weight` numberless;
+- **the INTERSECTION, not the union** — every other generator here takes a union because a keyword
+  any engine accepts is one somebody may write; this says a number is WRONG, so all three must
+  agree. Chromium alone claimed 301;
+- **a property an engine does not KNOW is dropped**, because silence is not agreement.
+
+The rule fires only when the number is the WHOLE value. `box-shadow: 1` is refused by all three and
+`box-shadow: 0 0 1px red` is accepted by all three — the `0` is a length. The first version reported
+both, and `transform: scale(2)` with them.
+
+### 6. Forbidding a pseudo-class — asked for nothing, and NOT built
+
+Measured: there is no way to say *this project does not use `:hover`*. `properties` is keyed by a
+property, a kind or `"*"`, and a selector is none of those; `rules` takes a rule id and there is no
+rule to silence. A block writing `&:hover { … }` under either spelling compiles, and nothing is
+reported.
+
+**Left alone deliberately.** Every other item in this chapter earned its place by something breaking
+quietly — a false report, a build that stops, a page that renders wrong with nothing said. This one
+breaks nothing: the CSS is correct, the compilation is correct, and the only thing missing is a
+prohibition nobody has asked for.
+
+Building it would also mean a fourth kind of key in `properties`, whose whole design is that the
+three it has nest — `"*"` then `"<kind>"` then a property name, each a narrowing of the one before.
+A selector is not a narrowing of a property; it would be a second axis, and that is a cost to pay
+when somebody wants it and not before.
+
+### 7. A block a PROP can constrain — asked for, NOT designed
+
+The user's words, recorded because the feature is not settled and the next session has to talk it
+through with them rather than build from this paragraph:
+
+> *"bilo bi lepo da moze da se gurne tip na `@@` sintaksu ili mozda `@@slot` sintaksu (mada bih
+> voleo da `@@` tako radi) u kojoj mozemo da ogranicimo opet sta moze da se salje. Usecase je kada
+> zelimo kroz props da posaljemo samo odredjene stilove za odredjen element ili skup elemenata."*
+
+The comparison they drew is an `sx` prop with a type that says what may be sent.
+
+**What is true today**, so the next session starts from a fact:
+
+- `@@( … )` has one type, `CssBlock` — an interface branded with a `unique symbol` and nothing else.
+  It carries no record of WHICH declarations the block made, so a prop typed `CssBlock` takes every
+  block there is. That is the gap, and it is also the only place a parameter could attach.
+- The type-level vocabulary for refusing something already exists and is used twice:
+  `CssSpreadable<T>` and `CssCondition<T>` both answer with a SENTENCE as the type name. A narrowed
+  block would be a third of the same kind.
+- Merging is `...{block}` and `if ({cond}) { … }`, both arguments of one merge, in written order,
+  later winning. Whatever a constrained block is, it has to merge by those rules or there are two.
+
+**What is open, in the user's own list:** whether the limit is only *may / may not*, whether a
+selector or a set of them is sayable, whether a child element may be targeted at all, and how much
+of it is type-safe and by what mechanism. Then, separately, how a constrained block merges inside
+the component that received it.
+
+**Measure first, before any of it is designed:** whether the virtual file has a position where a
+type argument on `@@` could be written at all. Everything else depends on that answer.
+
+### 8. A declaration that does nothing — layout faults inside ONE block — BUILT
+
+**`declaration-does-nothing`, with its own page at `/style-blocks/does-nothing`.** The user's words
+for the target: *"kada neko slucajno polomi layout"*.
+
+**Two of the four this section first named were removed by measurement, and both would have been
+false reports.** `z-index` on a static element WORKS when the parent is a flex or grid container,
+and the parent is a different block. `width` on `display: inline` works on `<input>` (308px) and
+`<button>` (300px) and not on `<span>` (39px) — it needs the tag, and a block is a value that can be
+spread onto anything. Both belong to §9.
+
+**What shipped instead is wider: ten rows.** Asking Chromium the same question of every neighbouring
+property found seven more of the same shape — `top`/`inset` beside `position: static`, `float`
+beside `position: absolute`, `resize` beside `overflow: visible`, `text-overflow` beside a wrapping
+`white-space` or a visible `overflow`, `aspect-ratio` beside both sizes, and the whole flex/grid
+container family beside a display that lays out nothing.
+
+**And measuring the LIST is what earned the most.** Of seventeen container properties, four act on a
+block container in current engines — `align-content`, `justify-items`, `place-items`,
+`place-content`. Written from memory they would have been four false reports on correct CSS.
+
+A block is ONE element's rule, so this compiler knows every declaration that lands on an element.
+Ordinary CSS cannot ask that question — nothing there knows which rules reach which element — and it
+is what makes these reportable at build time, with no browser and no test.
+
+Six pairs, measured in Chromium, each differing by one word:
+
+| | broken | fixed |
+|---|---|---|
+| `z-index` on `position: static` | does not stack above | stacks |
+| `gap` on `display: block` | gap 0 | 12 |
+| `width` on `display: inline` | width 108 (content) | 300 |
+| `text-overflow: ellipsis` without `white-space: nowrap` | wraps, no ellipsis | one line, ellipsis |
+| `align-self` on a block child | top 0 | 30 |
+| `float` on a flex child | ignored | floats |
+
+**The first reading of this measured the wrong thing, and it is the reason the whole item exists.**
+Read through `getComputedStyle`, three of the six looked correct: the browser reports `z-index: 10`
+on a static element and `width: 300px` on an inline one, having done neither. Computed is not used.
+So **a test that asserts computed styles passes on all six** — the declaration is there, its value
+is what the author wrote, and the browser did nothing with it. That is exactly the shape of a layout
+somebody broke by accident: nothing throws, nothing is reported, and no test anyone would write
+catches it.
+
+**Scope, measured: four of the six are answerable from one block** — `z-index`+`position`,
+`gap`+`display`, `width`+`display`, `ellipsis`+`white-space`+`overflow`. The other two
+(`align-self`, `float`) need the PARENT's declarations, and a parent is a different block. Those
+belong to item 9.
+
+This is the family `unknown-media-feature` and `override-out-of-order` already belong to — *compiles,
+ships, does nothing*. What is new is that these report a broken LAYOUT rather than broken CSS.
+
+### 9. Across blocks — what is knowable, and what the graph would have to carry
+
+Item 8 stops at one element. The question the user asked next is the harder half: *"desava se cesto
+u CSS da ja nesto promenim kod roditelja i tako sredim child"* — a change to a parent whose effect
+on descendants nobody looked at, in an application with more render scenarios than anyone can test.
+
+**It is not simply "runtime".** There are three tiers, and only the last needs one:
+
+1. **Inside one block** — fully static. Item 8.
+2. **Inside one component's JSX** — the nesting is in the TypeScript AST. **But the source tree is a
+   SUBSET of the runtime tree**, measured: an element passed as `children` really sits inside
+   whatever its host renders around it, and the source never says so. A probe that counted source
+   nesting called such an element "topmost" while at runtime it had a styled ancestor.
+3. **Across components** — this is what `ComponentGraph` is for. It is component-level today:
+   nodes are `component | hook | context | root | helper`, and it records **no host elements and no
+   blocks**. So the parent/child style relationship is not in it, and adding it is the work.
+
+**No snapshots.** The user ruled the shape out and gave the reason: *"na kraju svi krenu sa slepim
+updateom snapshota umesto da ulaze u diff"*. Everything here stays deterministic, with nothing to
+bless and nothing to keep in step.
+
+**And a forbidding rule is the wrong instrument.** The dangerous declarations are knowable — the
+inherited properties, plus the ones that establish a context (`display: flex|grid`, `position`,
+`overflow`, `transform`, `contain`, `z-index`). But the user named the flaw in forbidding them
+himself: *"opet je pitanje kako da znas da li je developer to hteo ili ne"*. A rule that refuses
+would be wrong about intent every time.
+
+**What answers the real problem is IMPACT, not assertion.** The complaint is not "I cannot write the
+test", it is "I cannot test n scenarios". A report saying what a change reaches turns n scenarios
+into the few that matter, and records nothing as an expectation — the opposite end from a snapshot.
+
+**But the obvious form of that report was measured and it does not work.** On `apps/docs` (362
+nodes, 931 edges):
+
+| asked | answered |
+|---|---|
+| paths from a root to one component | **462,036** |
+| what reaches `CodeBlock` from above | 286 of 362 components |
+| what a change reaches below it | 284 of 331 components reach 21+ |
+
+Everything in a real application funnels through shared shells, so "what does this touch" is very
+nearly "all of it". The graph's own note already said the first row — *the graph is small, the set of
+paths through it is not* — and the other two are the same fact from the other directions. A report
+that names 284 components is no report.
+
+**What may survive is narrower, and it is a CSS fact rather than a graph one.** A change to a parent
+can reach a descendant by only two routes: an **inherited** property (`color`, `font`,
+`line-height`, …), or a declaration that **establishes a context** (`display: flex|grid`,
+`position`, `overflow`, `contain`, `transform`). A parent's `padding` reaches no descendant at all.
+So the question is not *which components are below* but **which descendants declare something that
+depends on what changed** — a far smaller set.
+
+**Its size is UNMEASURED**, and cannot be measured until the graph carries blocks and elements.
+Nothing should be designed on it before that number exists.
+
+**This is a separate task, to be done WITH the checker and graph work**, at the user's instruction.
+See `ramonda.graph.json` in §3, which is the same file and the same question from another side.
 
 ### The name
 
@@ -2681,37 +2931,22 @@ against what a unit harness offers. Changes made under a review deserve the same
 code the review was about.
 
 
-### 6. Open after review pass 8 — a number where only keywords go
+### 6. Open after review pass 8 — a number where only keywords go — CLOSED
 
-**Measured, and left open on purpose.** Sweeping values after a numeric value became a number in the
-type, twenty-nine wrong declarations on closed-keyword properties went in and nineteen came back:
+**Left here as the pass's own record**, because the measurement that found it is what the fix was
+built on. What it discovered, sweeping values after `quoted` changed:
 
 ```
-  caught     display: flexx;    overflow: scrol;   cursor: poitner;   line-height: red;
-  caught     position: 1;       float: 1;          text-align: 1;     visibility: 1;
-  SILENT     display: 1;        overflow: 1;       white-space: 1;    cursor: 1;
-  SILENT     opacity: 50px;     opacity: 1px;      line-height: 1px2; font-weight: -5;
+  caught   display: flexx;   overflow: scrol;   cursor: poitner;
+  caught   position: 1;      float: 1;          text-align: 1;
+  SILENT   display: 1;       overflow: 1;       white-space: 1;   cursor: 1;
 ```
 
-Every MISSPELLED keyword is caught — `unknown-value` walks the words in a value and does its job.
-What is silent is a NUMBER where only keywords go, and it is silent inconsistently: `position: 1` is
-reported and `display: 1` is not.
+Every misspelled keyword caught; a NUMBER silent, and inconsistently. The pass wrote no rule on
+purpose — absence from `PRIMITIVE` means *the grammar was not reduced*, not *this takes no number* —
+and named where the answer belonged: the generator, as a positive fact measured against the engines.
 
-The cause is not the rule. `unknown-value` reads `KEYWORDS`, which has a set for both; `position` is
-also in `PRIMITIVE` and `display` is not, so only `position` gets a narrowed type that refuses a
-number. 373 properties have a keyword set and 226 of them — 205 unprefixed — are absent from
-`PRIMITIVE`, because the generator could not reduce their grammar: `display` is
-`[ <display-outside> || <display-inside> ] | …`, a combination rather than a plain alternation.
-
-**Why no rule was written for it.** Absence from `PRIMITIVE` means *the grammar was not resolved*,
-not *this takes no number*. Among the same 205 are `aspect-ratio`, `background-position`,
-`border-image-slice` and `line-height`, where a bare number is correct CSS. A rule keyed on the
-absence would report those, and a checker that cries wolf is one people switch off — which this
-package has already measured once, with `background-image: url("a.png")`.
-
-So the fix belongs in the GENERATOR: a positive fact saying a property's grammar admits no primitive
-at all, which is a measurement against the engines rather than a guess from a gap.
-
+That is what was built. See §5 above for what the measurement decided.
 ### 7. Review pass 9 — what every consumer does with a config it does not like
 
 The pass was chosen by measuring rather than by guessing. Nine files read the config; review pass 4

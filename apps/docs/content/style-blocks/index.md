@@ -35,12 +35,12 @@ change if you never install this.
 ## Install
 
 ```sh
-npm install @ramonda/css typescript
+npm install @ramonda/css
 ```
 
-TypeScript is a peer dependency because the checking is TypeScript's own: the package writes a
-virtual file your compiler reads, so a fault in a block arrives as a normal `tsc` diagnostic rather
-than as a report from a tool you have to run separately.
+The checking is TypeScript's own, so the package needs yours — it writes a virtual file your compiler
+reads, and a fault in a block arrives as an ordinary `tsc` diagnostic rather than as a report from a
+tool you have to run separately. Any TypeScript 5 will do.
 
 ## One plugin in the build
 
@@ -81,12 +81,13 @@ and `--check` fails in CI when what is committed no longer matches the config be
 
 A route that is already code-split gets its own stylesheet, without being asked. A block belongs to
 the module it was written in and each module imports its own CSS, so splitting is a decision the
-bundler was making anyway. Measured on a real build: a lazily-loaded module produced its own `.css`
-asset, carrying that module's rules and not the entry's.
+bundler was making anyway: a lazily-loaded module gets its own `.css` asset, carrying that module's
+rules and not the entry's.
 
-## Three things in your editor
+## Two things in your editor
 
-They are separate on purpose, and you can stop after the first.
+They are separate on purpose, and they answer different halves: the plugin decides what is an error,
+the extension decides what you see while typing.
 
 ### The compiler, for completion, hover and the red squiggles
 
@@ -99,28 +100,11 @@ A TypeScript language-service plugin, turned on in your own `tsconfig.json`:
 Your editor has to be running the **workspace's** TypeScript for any plugin to load. In VS Code:
 *TypeScript: Select TypeScript Version → Use Workspace Version*.
 
-### One setting, and it is not optional
+### The extension, for colours, formatting, and the second TypeScript server
 
-```json
-{ "typescript.tsserver.useSyntaxServer": "never" }
-```
-
-An editor runs **two** TypeScript servers — a syntax one for what needs no types, and a semantic one
-for everything else — and only the semantic one loads plugins. So the syntax server reads your file,
-which is not TypeScript, and walks into an assertion of its own. From a real editor's log:
-
-```
-[error] [vscode.typescript-language-features] provider FAILED
-[error] Error: <syntax> TypeScript Server Error (5.9.3)
-Debug Failure. False expression: Token end is child end
-```
-
-Nothing in a plugin can reach that server. The setting is what stops the editor asking it.
-
-### The colours, and format-on-save
-
-These come from an editor extension rather than from the plugin — colours are a grammar and cost
-nothing, and a project that has not asked for the compiler should not be given one.
+The colours are a TextMate grammar, which is why they are an extension and not part of the plugin:
+a grammar needs no program and costs nothing. The extension does two more things — it runs your own
+formatter over a block, and it carries the plugin to the editor's second TypeScript server.
 
 ```sh
 code --install-extension ramonda.css
@@ -158,6 +142,41 @@ every project it is in scope for:
 
 In a workspace it is also what everyone else on the project gets.
 
+**TypeScript's own formatter steps aside for a file that holds a block**, which is why one of the
+two above is not optional. The syntax is not TypeScript, and an edit the language service computed
+for it would land on the wrong characters and corrupt the file rather than merely look wrong — so it
+is refused for the whole file. In a file with a block, *Format Document* and *Format Selection* do
+nothing by themselves, even on lines nowhere near the block.
+
+#### Why the extension is not only colours
+
+An editor runs **two** TypeScript servers — a syntax one for what needs no types, and a semantic one
+for everything else. The syntax one owns formatting, code folding, the outline and expand-selection
+for as long as the editor is open, and it never opens your `tsconfig.json`. So a plugin named there
+never reaches it, and it reads your file as plain TypeScript. Your file is not plain TypeScript, and
+it walks into an assertion of its own. From a real editor's log:
+
+```
+[error] [vscode.typescript-language-features] provider FAILED
+[error] Error: <syntax> TypeScript Server Error (5.9.3)
+Debug Failure. False expression: Token end is child end
+```
+
+**The extension is what reaches it.** It carries the same plugin a second way, which VS Code hands
+to both servers — so formatting a block leaves it alone, and the outline matches. With the extension
+installed there is nothing to configure.
+
+**Without it, one setting is needed**, and it turns the syntax server off:
+
+```json
+{ "js/ts.tsserver.useSyntaxServer": "never" }
+```
+
+Nothing is lost by that: one server answers everything the two did. What the syntax one was buying
+is speed on a cold project — folding, the outline, *Format Document* and expand-selection answer
+before the program has loaded rather than after it. That is one wait, once per project. Older VS
+Code spells the setting `typescript.tsserver.useSyntaxServer`, and either is read.
+
 ## Check that it worked
 
 Write a block with a property that does not exist:
@@ -172,7 +191,7 @@ being asked — that is the setting above.
 
 ## Where to go next
 
-- **[Writing a block](/style-blocks/writing)** — the two spellings, holes for values that change,
+- **[Writing a block](/style-blocks/writing)** — where a block goes, holes for values that change,
   nesting and conditions.
 - **[What is checked](/style-blocks/checking)** — every rule, what it catches, and how to silence one
   that is wrong.

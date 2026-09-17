@@ -13,6 +13,7 @@ import {
   widthSlot,
 } from "./flatten";
 import { holeOutOfPlace } from "./errors";
+import { NUMBERLESS } from "./numberless.generated";
 import { PREFIXED } from "./prefixed.generated";
 import {
   ARITY,
@@ -122,10 +123,12 @@ export const RULE_IDS = [
   "unknown-at-rule",
   "unknown-selector",
   "unknown-flag",
+  "unclosed-call",
   "unknown-variable",
   "too-many-values",
   "missing-semicolon",
   "literal-not-allowed",
+  "declaration-does-nothing",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -322,7 +325,9 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   if (config !== undefined) unknownVariable(block, config, findings);
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
+  doesNothing(block, findings);
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
+  unclosedCall(block, findings);
   missingSemicolon(block, findings);
   /**
    * A block reported for a misplaced HOLE is not also asked about its property names.
@@ -337,10 +342,80 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
    */
   const misplaced = findings.some((one) => one.rule === "hole-out-of-place");
   const named = misplaced ? findings.filter((one) => one.rule !== "unknown-property") : findings;
+  const once = outermost(block, named);
 
   const silenced = config?.rules;
-  const kept = silenced === undefined ? named : named.filter((one) => silenced[one.rule] !== "off");
+  const kept = silenced === undefined ? once : once.filter((one) => silenced[one.rule] !== "off");
   return kept.sort((a, b) => a.at - b.at);
+}
+
+/**
+ * The rules a project's CONFIG turns on, in the order the fixes they ask for NEST.
+ *
+ * A declaration is decided outside in — which property, then how many values, then where the value
+ * comes from, then how it is spelt — and each later answer is a detail of the earlier one. So when
+ * more than one of these fires on one declaration, the outermost unanswered question is the one to
+ * ask, and the rest are about a declaration the author is still deciding the shape of.
+ *
+ * Reading them the other way round is the case that shows why this is an order and not a
+ * preference: `letter-spacing: 2rem` under `units: { length: ["px"] }` and a `<length>` taken from
+ * variables reports the unit AND the literal. Following the unit gives `2px`, which the same config
+ * still refuses — a round trip ending where the other message would have started them.
+ */
+const NESTED: readonly RuleId[] = [
+  "shorthand-not-allowed",
+  "too-many-values",
+  "literal-not-allowed",
+  // The closed LIST before the unit: the unit is a detail of a value that is not on the list, and
+  // reading it first sends the author to `2px` — which the list still refuses. The same round trip
+  // `literal-not-allowed` is placed above `unit-not-allowed` to avoid.
+  "value-not-allowed",
+  "unit-not-allowed",
+];
+
+/**
+ * One finding per declaration among {@link NESTED}, and every other finding untouched.
+ *
+ * **Per DECLARATION, which is the unit review pass 8 arrived at for the same question** on the other
+ * side of the tool: a line holds as many declarations as an author cares to write, and two faults on
+ * one line are two faults. The positions do not line up either — `shorthand-not-allowed` sits on the
+ * property and `literal-not-allowed` on the value — so nothing narrower than the declaration could
+ * group them.
+ *
+ * Anything outside this list is left alone on purpose. These five are the ones a project SWITCHED
+ * ON, so they overlap by construction; CSS's own rules do not.
+ *
+ * **`value-not-allowed` was missing from it**, against that same criterion, and the pair it left
+ * uncollapsed is an ordinary one: `width: 2rem` under a closed list and a units list gave both
+ * *`2rem` is not one of the values* and *`rem` is a unit this project does not use*, for one word.
+ */
+function outermost(block: Block, findings: readonly Finding[]): Finding[] {
+  if (findings.length < 2) return [...findings];
+
+  const dropped = new Set<Finding>();
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      if (item.at === undefined || item.end === undefined) continue;
+
+      const here = findings.filter((one) => NESTED.includes(one.rule) && one.at >= item.at! && one.at <= item.end!);
+      if (here.length < 2) continue;
+
+      const keep = here.reduce((a, b) => (NESTED.indexOf(a.rule) <= NESTED.indexOf(b.rule) ? a : b));
+      /**
+       * Only a DIFFERENT rule is dropped. Two findings of the SAME one are two faults, not two words
+       * about one — measured, `padding: 2rem 3em` names both units, and collapsing them would fix
+       * one and re-report the other on the next save.
+       */
+      for (const one of here) if (one.rule !== keep.rule) dropped.add(one);
+    }
+  };
+
+  walkItems(block.items);
+  return findings.filter((one) => !dropped.has(one));
 }
 
 /**
@@ -2211,7 +2286,41 @@ function unknownProperty(item: Declaration, findings: Finding[], body?: string):
   if (among === undefined || among.includes(name)) return;
   if (body === undefined && KNOWN.has(name)) return;
 
-  const meant = nearest(name, among);
+  /**
+   * A name whose only fault is its CASE is the same CSS, and `unknownValue`'s note already settled
+   * what to do about that: *saying it does not exist is a lie the author cannot act on.* That was
+   * applied to a value's keywords and not to the name beside them.
+   *
+   * Measured in Chromium, Firefox and WebKit: `COLOR: red` sets `color` to red in all three, and
+   * `CSS.supports("COLOR", "red")` is true in all three. So the verdict is the one that half
+   * reached — still refused, because a repository wants one spelling, and `non-canonical-spelling`
+   * is the id whose formatter rewrites it.
+   *
+   * **Before `nearest`, and that is not an ordering detail.** A distance measured in substitutions
+   * puts `COLOR` five away from `color`, so a mis-cased name got `is not a CSS property` with no
+   * suggestion at all — the least useful message of the two.
+   */
+  const lowered = name.toLowerCase();
+  if (lowered !== name && (body === undefined ? KNOWN.has(lowered) : among.includes(lowered))) {
+    findings.push({
+      rule: "non-canonical-spelling",
+      at: item.at,
+      length: name.length,
+      message:
+        `\`${name}\` and \`${lowered}\` are the same property to a browser. Write \`${lowered}\`, which ` +
+        `is the spelling this project uses — \`ramonda-css format\` does it for you.`,
+    });
+    return;
+  }
+
+  /**
+   * The near miss is measured against the LOWER-CASED name, so a typo shouted still gets one.
+   *
+   * `DSIPLAY` is six substitutions from `display` and none from `dsiplay`, so it came back with no
+   * suggestion while the same typo in lower case got one. The name in the message stays as the
+   * author wrote it.
+   */
+  const meant = nearest(lowered, among);
   const said = meant === undefined ? "" : ` Did you mean \`${meant}\`?`;
 
   findings.push({
@@ -2284,6 +2393,8 @@ function propertyNotAName(item: Declaration, findings: Finding[]): boolean {
 function unknownValue(item: Declaration, findings: Finding[]): void {
   const names = PROPERTY_NAMED[item.property];
   if (names !== undefined) return propertyNames(item, names, findings);
+
+  numberWhereKeywordsGo(item, findings);
 
   const accepted = KEYWORDS[item.property];
   if (accepted === undefined) return;
@@ -3123,6 +3234,55 @@ function stringNotAllowed(item: Declaration, findings: Finding[]): void {
 }
 
 /**
+ * A bare NUMBER written where the property takes only keywords.
+ *
+ * Every misspelled keyword was already caught and a number was not, inconsistently: `position: 1`
+ * was reported — its grammar reduced to a primitive, so the TYPE refused it — and `display: 1` was
+ * not, because `display` is `[ <display-outside> || <display-inside> ] | …`, which the generator
+ * could not reduce. Two properties that take no number, one reported.
+ *
+ * **The gap could not be the key.** Absence from `PRIMITIVE` means the grammar was not reduced, and
+ * `aspect-ratio`, `line-height` and `background-position` are absent too with a bare number being
+ * correct CSS. `NUMBERLESS` is the positive fact instead: the properties every one of Chromium,
+ * Firefox and WebKit refuses every bare number for. See `build-numberless-properties.mjs`.
+ *
+ * A HOLE is left alone, for the reason `non-canonical-spelling` gives: what a hole evaluates to is
+ * not text the author wrote, and the types are what answer for it.
+ */
+function numberWhereKeywordsGo(item: Declaration, findings: Finding[]): void {
+  if (!NUMBERLESS.includes(item.property)) return;
+
+  /**
+   * Only when the number is the WHOLE value, and that is the measurement's own boundary.
+   *
+   * `NUMBERLESS` records that a bare number alone is refused — `CSS.supports("box-shadow", "1")` is
+   * false in all three engines. It says nothing about a number INSIDE a longer value, and measured,
+   * `box-shadow: 0 0 1px red` is accepted by all three: the `0` there is a length, and the same is
+   * true of `transform: scale(2)` and every call's argument.
+   *
+   * So a value with anything else in it is left to the walk below, which asks about its WORDS. A
+   * number standing alone is the only shape this measurement licenses a word about.
+   */
+  const only = item.value.filter((part) => part.kind === "text" && !part.resolved);
+  if (only.length !== item.value.length || only.length !== 1) return;
+
+  const part = only[0];
+  if (part.kind !== "text" || part.at === undefined) return;
+
+  const text = part.text.slice(0, terminator(part.text)).trim();
+  if (!/^-?\d+(?:\.\d+)?$/.test(text)) return;
+
+  findings.push({
+    rule: "unknown-value",
+    at: part.at + part.text.indexOf(text),
+    length: text.length,
+    message:
+      `\`${item.property}\` does not accept \`${text}\`. It takes a keyword, and no browser measured ` +
+      `takes a number here.`,
+  });
+}
+
+/**
  * The bare identifiers in a value, and nothing else.
  *
  * Everything skipped here is something no keyword table could judge, and each was a false report
@@ -3217,6 +3377,107 @@ function words(parts: readonly ValuePart[]): Word[] {
   return out;
 }
 
+/**
+ * A `(` in a value that no `)` closes, named where it opens.
+ *
+ * ## The fault this answers, and why it was parked
+ *
+ * `content: url(;` is a missing `)`, and what the author was told had nothing to do with it. The
+ * value scanner counts parens and a block's own closer is a `)` like any other, so the value ran
+ * past `)}` into the author's own code:
+ *
+ *     content: url(;      →  `const d = (1 + 2)` is not a declaration
+ *                            reported on line 4, for a mistake on line 2
+ *
+ * The note that parked this said the parens are BALANCED so no cheap check exists. True of the
+ * block, false of the DECLARATION: inside one, `url(` is short a `)` and counting says so.
+ *
+ * ## What the count has to skip
+ *
+ * A string, and that is not a detail — measured, a naive count called `url("a)b.png"` balanced and
+ * `url("a(b.png")` unclosed, both backwards. `endOfString` is what the other value rules already
+ * use, so there is one answer to *where does this string end* rather than two.
+ *
+ * ## Why the last unclosed one is named
+ *
+ * `calc(min(1px, 2px` is short two, and the author's fix starts at the innermost — a `)` typed at
+ * the end closes `min` first. So the position reported is the last `(` still open, which is the one
+ * their cursor wants.
+ */
+function unclosedCall(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+
+      /** Every `(` still open at the end of the value, innermost last. */
+      const open: { at: number; name: string }[] = [];
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+        /**
+         * Only as far as the `;`, because the value has ALREADY swallowed the block's closer.
+         *
+         * That is the fault itself, seen from inside: `content: url(;` comes back as the single
+         * value `url(;\n)}>x</div>`, so a count over the whole part meets the block's own `)` and
+         * calls it balanced. The declaration ends at its `;` whatever the scanner did with the rest,
+         * and everything past that belongs to somebody else.
+         */
+        const text = part.text.slice(0, terminator(part.text));
+        for (let index = 0; index < text.length; index++) {
+          const code = text.charCodeAt(index);
+          if (code === 34 || code === 39) {
+            index = endOfString(text, index);
+            continue;
+          }
+          if (code === 40) {
+            let from = index;
+            while (from > 0 && /[\w-]/.test(text[from - 1] ?? "")) from--;
+            open.push({ at: part.at + from, name: `${text.slice(from, index)}(` });
+          } else if (code === 41) {
+            open.pop();
+          }
+        }
+      }
+
+      const last = open.at(-1);
+      if (last === undefined) continue;
+
+      findings.push({
+        rule: "unclosed-call",
+        at: last.at,
+        length: last.name.length,
+        message:
+          `\`${last.name}\` is never closed — it needs a \`)\`.\n\n        Until it is, the value runs ` +
+          `past the end of the block, and what gets reported is\n        whatever your own code says ` +
+          `after it.`,
+      });
+    }
+  };
+
+  walkItems(block.items);
+}
+
+/**
+ * Where a declaration's own `;` is, skipping one inside a string — or the end of the text.
+ *
+ * Its own walk rather than `indexOf(";")`, and that is measured: `content: url("a)b.png";` has a
+ * `;` only after the quote, and `content: "a;b";` has one inside it. Cutting at the first `;` read
+ * the second as a two-character value and called its parens balanced by accident.
+ */
+function terminator(text: string): number {
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = endOfString(text, index);
+      continue;
+    }
+    if (code === 59 /* ; */) return index;
+  }
+  return text.length;
+}
+
 function endOfString(text: string, start: number): number {
   const quote = text.charCodeAt(start);
   let index = start + 1;
@@ -3253,3 +3514,298 @@ const isWordCharacter = (code: number) => isWordStart(code) || (code >= 48 && co
 
 /** Re-exported where it has always been imported from. See `./nearest`. */
 export { nearest } from "./nearest";
+
+/**
+ * A declaration another declaration on the SAME element switches off.
+ *
+ * **The one question ordinary CSS cannot ask.** A stylesheet does not know which rules reach an
+ * element, so nothing there can say *this line does nothing*. A block is one element's rule, so
+ * here it is answerable — and what it reports is a broken LAYOUT rather than broken CSS: the
+ * property exists, the value is valid, the build is green, and the browser ignores it.
+ *
+ * **It is not visible through `getComputedStyle` either**, which is why no test anybody would write
+ * catches these. Measured in Chromium: the browser reports `z-index: 10` on a static element and
+ * `width: 300px` on an inline one, having done neither. Computed is not used.
+ *
+ * ## Every list here was MEASURED, and that is not a formality
+ *
+ * Each property was asked of Chromium beside the neighbour that should disable it and beside one
+ * that should not. **Four of seventeen candidates act on a block container** — `align-content`,
+ * `justify-items`, `place-items`, `place-content`, which modern engines apply to block layout — so
+ * a list written from memory would have shipped four false reports. They are not in the table.
+ *
+ * The same measurement fixed the `display` test: `flex`, `inline-flex`, `grid`, `inline-grid` and
+ * the two-value `block flex` / `inline grid` all use `gap`; `block`, `inline`, `inline-block`,
+ * `table`, `table-cell`, `list-item`, `flow-root` and `ruby` do not. A word test for `flex` or
+ * `grid` is exactly that boundary.
+ *
+ * ## Absence proves nothing, so absence is silent
+ *
+ * `flatten` drops a spread — `...{base}` merges declarations this never sees. So a row may only
+ * read a disabling declaration that is PRESENT. `top: 20px` on its own says nothing, because the
+ * block spread above it may be what positions the element, and a rule that guessed would report
+ * correct CSS. The same reasoning keeps `text-overflow` quiet when no `white-space` is written:
+ * that property is INHERITED, so an absent one may be `nowrap` from an ancestor.
+ *
+ * ## And a nested rule is a group of its own
+ *
+ * `&:hover` is the same element, so a base `display` really does decide a `gap` written under it —
+ * but `& > span` is a different element and the same reading would be wrong about that. One reading
+ * has to serve both, so the narrow one does: a declaration is decided only by its own group.
+ * Silence costs a report; the alternative costs a false one.
+ */
+interface Inert {
+  /** The properties this row can report. */
+  readonly subjects: readonly string[];
+  /** Which values of the subject are at risk. Every value, when this is absent. */
+  readonly when?: (value: string) => boolean;
+  /** Every property whose value this row reads. One missing from the group means SILENCE. */
+  readonly reads: readonly string[];
+  /** A property whose mere presence keeps the subject alive, whatever `reads` says. */
+  readonly rescuedBy?: readonly string[];
+  /** Given what it reads, is the subject switched off? */
+  readonly off: (seen: ReadonlyMap<string, string>) => boolean;
+  /** The sentence, given the subject and what was read. */
+  readonly says: (subject: string, seen: ReadonlyMap<string, string>) => string;
+}
+
+/**
+ * A `display` whose element arranges its own children, so the box properties mean something on it.
+ *
+ * Three words rather than two, and the third was a false report: `-webkit-box` and
+ * `-webkit-inline-box` lay out children and use `gap`, measured in Chromium, and a test for `flex`
+ * or `grid` alone reported both as faults on correct CSS.
+ *
+ * Covered by this: `flex`, `inline-flex`, `grid`, `inline-grid`, the two-value `block flex` and
+ * `inline grid`, every `-webkit-` spelling of those, and `-ms-flexbox` / `-ms-grid` — which measure
+ * as inert in Chromium and are left alone anyway, because silence is the safe direction.
+ *
+ * No display CSS has that is not one of these carries any of the three words.
+ */
+const LAYS_OUT_CHILDREN = (display: string): boolean => /\b(flex|grid|box)\b/.test(display);
+
+/**
+ * A `display` CSS actually has — because a row that fires when the value is NOT something must not
+ * fire on a word nobody has finished typing.
+ *
+ * `display: bolck` is a typo, and the author may be about to write `flex`, which makes the `gap`
+ * beside it exactly right. Reporting it is speaking about a declaration somebody is still fixing —
+ * the reading `unknown-property` already gives way to elsewhere in this file.
+ *
+ * Only this row needs it, and the asymmetry is why: `position: static` and `overflow: visible` fire
+ * when the value IS something, so a misspelling is not that value and they go quiet on their own.
+ *
+ * A vendor spelling needs no exception, and one written here was cut for changing no outcome: no
+ * generated row holds `-webkit-box`, so it fails this — and every vendor display CSS has carries
+ * `box`, `flex` or `grid` anyway, so the row was already quiet about it either way.
+ */
+const A_REAL_DISPLAY = (display: string): boolean => {
+  const known = KEYWORDS.display;
+  if (known === undefined) return true;
+  const words = new Set(known.split(" "));
+  return display
+    .replace(/\s*!\s*important\s*$/i, "")
+    .split(/\s+/)
+    .filter((one) => one !== "")
+    .every((one) => words.has(one) || GLOBAL.has(one));
+};
+
+/**
+ * A size a browser can use without laying anything out, which is what makes `aspect-ratio` inert.
+ *
+ * Measured, and the first version of the row was wrong about every other shape: beside
+ * `width: 140px`, a `height` of `50%`, `calc(50% - 2px)`, `min-content`, `max-content`,
+ * `fit-content`, `stretch` or `inherit` all leave `aspect-ratio` doing its job, because none of
+ * them is a size until something else has been laid out.
+ *
+ * So a plain dimension or a zero, and nothing else. `calc(60px - 2px)` is definite too and is left
+ * out: it costs a report nobody was going to write, and the alternative is arithmetic in a rule.
+ */
+const DEFINITE =
+  /^(0|[+-]?(\d+\.?\d*|\.\d+)(px|rem|em|ch|ex|cap|ic|lh|rlh|cm|mm|q|in|pt|pc|vw|vh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|vb|vi))$/i;
+
+/** A value nothing here can reason about: a keyword that resolves elsewhere, or a variable. */
+const OPAQUE = (value: string): boolean => GLOBAL.has(value) || value.includes("var(");
+
+/** `display: none` and `contents` make everything inert; that is not the fault this reports. */
+const NO_BOX = new Set(["none", "contents"]);
+
+/** Values of `white-space` that let a line wrap, so nothing ever overflows one. */
+const WRAPS = new Set(["normal", "pre-wrap", "pre-line", "break-spaces"]);
+
+const INERT: readonly Inert[] = [
+  {
+    // Measured on Chromium beside `display: block` and beside the display each one uses.
+    subjects: [
+      "gap",
+      "row-gap",
+      "column-gap",
+      "justify-content",
+      "align-items",
+      "flex-direction",
+      "flex-wrap",
+      "flex-flow",
+      "grid-template-columns",
+      "grid-template-rows",
+      "grid-auto-flow",
+      "grid-auto-columns",
+      "grid-auto-rows",
+    ],
+    reads: ["display"],
+    // Measured: a multi-column block uses `gap`, so any of these makes the pair correct CSS.
+    rescuedBy: ["columns", "column-count", "column-width"],
+    off: (seen) => {
+      const display = seen.get("display") ?? "";
+      return A_REAL_DISPLAY(display) && !LAYS_OUT_CHILDREN(display) && !NO_BOX.has(display);
+    },
+    says: (subject, seen) =>
+      `\`${subject}\` does nothing here: \`display: ${seen.get("display")}\` lays out no children of ` +
+      `its own, so there is nothing for it to arrange.\n\n        Write \`display: flex\` or ` +
+      `\`display: grid\`, or take the declaration out.`,
+  },
+  {
+    subjects: [
+      "top",
+      "right",
+      "bottom",
+      "left",
+      "inset",
+      "inset-block",
+      "inset-inline",
+      "inset-block-start",
+      "inset-block-end",
+      "inset-inline-start",
+      "inset-inline-end",
+    ],
+    reads: ["position"],
+    off: (seen) => seen.get("position") === "static",
+    says: (subject) =>
+      `\`${subject}\` does nothing here: \`position: static\` is the one position an offset does ` +
+      `not move.\n\n        Write \`position: relative\`, or take the declaration out.`,
+  },
+  {
+    subjects: ["float"],
+    reads: ["position"],
+    off: (seen) => seen.get("position") === "absolute" || seen.get("position") === "fixed",
+    says: (subject, seen) =>
+      `\`${subject}\` does nothing here: \`position: ${seen.get("position")}\` takes the element out ` +
+      `of the flow, and a float has no flow left to sit in.`,
+  },
+  {
+    subjects: ["resize"],
+    when: (value) => value !== "none",
+    reads: ["overflow"],
+    // A longhand written beside the shorthand is what the element really has, and it brings `resize`
+    // back — measured: `overflow: visible; overflow-x: auto` resizes.
+    rescuedBy: ["overflow-x", "overflow-y"],
+    off: (seen) => seen.get("overflow") === "visible",
+    says: (subject) =>
+      `\`${subject}\` does nothing here: \`overflow: visible\` leaves the element nothing to scroll, ` +
+      `and only a scroll container can be resized.\n\n        Write \`overflow: auto\`, or take the ` +
+      `declaration out.`,
+  },
+  {
+    subjects: ["text-overflow"],
+    when: (value) => value !== "clip",
+    reads: ["white-space"],
+    off: (seen) => WRAPS.has(seen.get("white-space") ?? ""),
+    says: (subject, seen) =>
+      `\`${subject}\` does nothing here: \`white-space: ${seen.get("white-space")}\` lets the text ` +
+      `wrap, so no line ever overflows for it to mark.\n\n        Write \`white-space: nowrap\`, or ` +
+      `take the declaration out.`,
+  },
+  {
+    subjects: ["text-overflow"],
+    when: (value) => value !== "clip",
+    reads: ["overflow"],
+    // As above: `overflow: visible; overflow-x: hidden` draws the ellipsis.
+    rescuedBy: ["overflow-x", "overflow-y"],
+    off: (seen) => seen.get("overflow") === "visible",
+    says: (subject) =>
+      `\`${subject}\` does nothing here: \`overflow: visible\` lets the text spill out instead of ` +
+      `being cut, so there is nothing to mark.\n\n        Write \`overflow: hidden\`, or take the ` +
+      `declaration out.`,
+  },
+  {
+    subjects: ["aspect-ratio"],
+    when: (value) => value !== "auto",
+    reads: ["width", "height"],
+    off: (seen) => DEFINITE.test(seen.get("width") ?? "") && DEFINITE.test(seen.get("height") ?? ""),
+    says: (subject) =>
+      `\`${subject}\` does nothing here: \`width\` and \`height\` are both set, so the box already ` +
+      `has both of its sizes.\n\n        Set one of them to \`auto\`, or take the declaration out.`,
+  },
+];
+
+/** What one group holds about one property: its winning value, where it was written, and its holes. */
+interface Written {
+  readonly value: string;
+  readonly at?: number;
+  readonly holes: number;
+}
+
+/**
+ * Every property `declaration-does-nothing` can report, for the page that lists them.
+ *
+ * The page and the table drifted apart within an hour of both being written: the rule was narrowed
+ * in a review — `-webkit-box` added, `aspect-ratio` restricted to plain lengths, the `overflow`
+ * longhands made a rescue — and the page went on describing the version before it. Nothing sees a
+ * page that is merely wrong, so this is what `docs.test.ts` compares it against.
+ */
+export const INERT_SUBJECTS: readonly string[] = [...new Set(INERT.flatMap((one) => one.subjects))];
+
+function doesNothing(block: Block, findings: Finding[]): void {
+  /** One group per element-and-context: the declarations a browser applies together. */
+  const groups = new Map<string, Map<string, Written>>();
+  for (const one of flatten(block)) {
+    const key = `${one.selector} @ ${one.conditions.join("|")}`;
+    let group = groups.get(key);
+    if (group === undefined) groups.set(key, (group = new Map()));
+    // The later of two wins, which is what the browser applies and so what this must read.
+    group.set(one.property, {
+      value: one.canonical.slice(one.property.length + 1, -1).trim(),
+      at: one.at,
+      holes: one.holes.length,
+    });
+  }
+
+  for (const group of groups.values()) {
+    /**
+     * One declaration, one finding — `text-overflow` has two rows and a block can fail both.
+     *
+     * Written with `white-space: normal` AND `overflow: visible` it was reported twice on the same
+     * line, which is the repository's own rule about one mistake being one report, broken inside a
+     * single rule. The first row to fire is the one that speaks.
+     */
+    const reported = new Set<string>();
+    for (const row of INERT) {
+      for (const subject of row.subjects) {
+        if (reported.has(subject)) continue;
+        const written = group.get(subject);
+        if (written === undefined || written.at === undefined) continue;
+        if (written.holes > 0) continue;
+        if (row.when !== undefined && !row.when(written.value)) continue;
+        if (row.rescuedBy?.some((one) => group.has(one)) === true) continue;
+
+        const seen = new Map<string, string>();
+        let readable = true;
+        for (const name of row.reads) {
+          const found = group.get(name);
+          // Absent, holding a hole, or a keyword that resolves elsewhere — all unanswerable.
+          if (found === undefined || found.holes > 0 || OPAQUE(found.value)) readable = false;
+          else seen.set(name, found.value);
+        }
+        if (!readable) continue;
+        if (!row.off(seen)) continue;
+
+        reported.add(subject);
+        findings.push({
+          rule: "declaration-does-nothing",
+          at: written.at,
+          length: subject.length,
+          message: row.says(subject, seen),
+        });
+      }
+    }
+  }
+}

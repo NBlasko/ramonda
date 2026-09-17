@@ -78,6 +78,20 @@ if (filters.length !== 2) {
 const whole = tasksFor(undefined);
 const halves = filters.map((filter) => ({ filter, tasks: tasksFor(filter) }));
 
+/**
+ * There has to BE something to schedule, or every comparison below is between empty sets.
+ *
+ * `missing`, `twice` and `extra` are all differences, and three empty differences read as success:
+ * this printed *0 + 0 = 0 test tasks, each run by exactly one job* and exited 0 in a repository
+ * running no tests at all. A `test` task dropped from `turbo.json`, a workspace glob that stops
+ * matching, a turbo that fails soft — each leaves CI running nothing with this saying it is fine,
+ * which is the sentence this file exists to make impossible.
+ */
+if (whole.size === 0) {
+  console.error(`\n[test-jobs] turbo schedules no \`test\` task at all, so there is nothing to run.\n`);
+  process.exit(1);
+}
+
 const covered = new Set(halves.flatMap((one) => [...one.tasks]));
 const missing = [...whole].filter((one) => !covered.has(one)).sort();
 const twice = [...halves[0].tasks].filter((one) => halves[1].tasks.has(one)).sort();

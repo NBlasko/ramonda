@@ -251,3 +251,88 @@ describe("what only the strict read refuses", () => {
     });
   });
 });
+
+/**
+ * An unclosed CALL, named before the block is refused for what the value swallowed.
+ *
+ * The value scanner counts parens and a block's own closer is a `)` like any other, so
+ * `content: url(;` runs past `)}` and takes the author's next line with it. What they were told was
+ * about that line:
+ *
+ *     `export const d = (1 + 2)` is not a declaration
+ *     reported on line 4, for a mistake on line 2
+ *
+ * The rule `unclosed-call` says the true thing, and it never got to speak: the strict read refuses
+ * the block first, so nothing checks it. This is the same shape as `//` beside it — a refusal that
+ * has to hand over to the rule that has the sentence — and the fix is the same: the refusal carries
+ * the rule's own words rather than a second wording of them.
+ */
+describe("a call that is never closed", () => {
+  const refused = (source: string) => {
+    const [site] = findBlocks(source);
+    try {
+      readBlock(source, site.open, "Card.tsx");
+      return "(not refused)";
+    } catch (error) {
+      return (error as Error).message;
+    }
+  };
+
+  test("says which call, not what the value ran into", () => {
+    const said = refused(`const a = <div css={@@(\n  content: url(;\n)}>x</div>;\nconst d = (1 + 2);\n`);
+
+    expect(said).toContain("url(");
+    expect(said).toContain(")");
+    expect(said).not.toContain("const d");
+  });
+
+  /**
+   * AND at the call's own place, which is the other half of the same fault.
+   *
+   * The refusal happens where the value ran out — line 4, the author's own code — and the mistake
+   * is on line 2. A right sentence at a wrong place still sends somebody to the wrong line.
+   */
+  test("at the line and column the call opens on", () => {
+    const source = `const a = <div css={@@(\n  content: url(;\n)}>x</div>;\nconst d = (1 + 2);\n`;
+    const [site] = findBlocks(source);
+
+    try {
+      readBlock(source, site.open, "Card.tsx");
+      throw new Error("it was not refused");
+    } catch (error) {
+      const at = error as { line?: number; column?: number };
+      expect(at.line).toBe(2);
+      // `url(` begins at column 12 — one past `  content: `.
+      expect(at.column).toBe(12);
+    }
+  });
+
+  test("and a closed one is read as it always was", () => {
+    expect(refused(`const a = <div css={@@(\n  content: url(a.png);\n)}>x</div>;\n`)).toBe("(not refused)");
+  });
+
+  /**
+   * A paren inside a STRING is text, and the count has to know — both ways round.
+   *
+   * These are the rows a naive count gets backwards, which is what makes the string skip the thing
+   * under test rather than an implementation detail. `url("a(b.png")` is CLOSED: the `(` inside the
+   * quotes is a character in a filename. `url("a)b.png"` is OPEN for the same reason — its only `)`
+   * is inside them too.
+   */
+  test("a `(` inside a string does not open a call", () => {
+    expect(refused(`const a = <div css={@@(\n  content: url("a(b.png");\n)}>x</div>;\n`)).toBe("(not refused)");
+  });
+
+  test("a `)` inside a string does not close one", () => {
+    const said = refused(`const a = <div css={@@(\n  content: url("a)b.png";\n)}>x</div>;\nconst d = (1);\n`);
+
+    expect(said).toContain("url(");
+  });
+
+  /** An escaped quote does not end the string, so the walk keeps going past it. */
+  test("an escaped quote is part of the string", () => {
+    const said = refused(`const a = <div css={@@(\n  content: url("a\\")b.png";\n)}>x</div>;\nconst d = (1);\n`);
+
+    expect(said).toContain("url(");
+  });
+});

@@ -6,6 +6,13 @@ A **style block** is `@@( … )`, and what goes inside it is CSS — properties,
 at-rules — with `{ … }` holes for TypeScript expressions. This extension colours them, and formats
 them on save.
 
+![A style block coloured by this extension: properties, values, a nested rule, a `$` variable and a
+TypeScript hole, each its own colour](https://raw.githubusercontent.com/NBlasko/ramonda/main/tools/vscode-css/preview.png)
+
+*The picture is here because the code below cannot be: this page is rendered by the marketplace's own
+highlighter, which has no way to load the grammars this extension is made of. It is generated from
+those grammars, so it cannot drift from what you get.*
+
 ```tsx
 <div css={@@(
   display: flex;
@@ -34,9 +41,19 @@ nothing to configure, and nothing to add to a project.
 
 **Colours** work on their own, in `.ts`, `.tsx`, `.js` and `.jsx`.
 
-**Diagnostics, completions and formatting** come from
-[`@ramonda/css`](https://www.npmjs.com/package/@ramonda/css) in the project, which is where the
-compiler lives. Install it and turn the language plugin on in `tsconfig.json`:
+**Diagnostics and completions** work too — the extension carries the compiler's language plugin, so
+a misspelt property is underlined the moment you type it.
+
+**Building is the project's own.** A style block is not TypeScript, and nothing in an editor can
+compile one: without `@ramonda/css` in the project a build refuses the file outright. So where the
+extension is answering on its own, it says that first, on the block, and goes on reporting the CSS
+underneath it:
+
+> `[no-compiler]` nothing in this project compiles a style block, so a build will refuse this file.
+
+Install [`@ramonda/css`](https://www.npmjs.com/package/@ramonda/css) and name the plugin in
+`tsconfig.json`. The line goes, and the editor answers with the version you pinned instead of the
+one in here:
 
 ```json
 { "compilerOptions": { "plugins": [{ "name": "@ramonda/css/plugin" }] } }
@@ -45,14 +62,18 @@ compiler lives. Install it and turn the language plugin on in `tsconfig.json`:
 A plugin only loads when the editor is running the workspace's own TypeScript: **TypeScript: Select
 TypeScript Version → Use Workspace Version**.
 
-## The setting the editor needs
+## Both TypeScript servers see your blocks
 
-VS Code runs two TypeScript servers, and only one of them loads language plugins. The other reads
-your file as plain TypeScript, which a style block is not, so turn it off:
+VS Code runs two TypeScript servers, and one of them never opens your `tsconfig.json` — which is
+where a project names this plugin. That is also the server that formats, folds and outlines your
+file for as long as the editor is open, so on its own it reads a style block as plain TypeScript and
+reformats it into something else.
 
-```json
-{ "typescript.tsserver.useSyntaxServer": "never" }
-```
+This extension carries the plugin to both of them, so a block is left alone by *Format Document* and
+folds where you would expect. There is nothing to configure for it.
+
+Where a project has `@ramonda/css` of its own, the copy in here steps aside for it — so the checking
+follows the version that project pinned, and the editor and the build agree about what is an error.
 
 ## Format on save
 
@@ -84,6 +105,16 @@ no edits, so format-on-save does nothing and neither Prettier nor biome is asked
 
 Inside a project that uses biome it covers a whole language rather than a folder: a file with no
 block is passed straight to biome, with that project's own configuration.
+
+**TypeScript's own formatter steps aside for a file that holds a block**, and that is what makes one
+of the two above necessary. A style block is not TypeScript: asked to format one, the language
+service rewrites it into something else. It could be left to guess, and an edit it computed would
+land on the wrong characters and corrupt the file rather than merely look wrong — so it is refused
+instead, for the whole file.
+
+That is worth knowing before it surprises you: in a file with a block, *Format Document* and *Format
+Selection* do nothing on their own, even on lines nowhere near the block. One of the two routes
+above is what formats it.
 
 ## Where the colours apply
 

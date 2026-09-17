@@ -9,7 +9,7 @@ import { knownNames, configReader, environmentOf } from "./config";
 import { findConfig } from "./config";
 import { propertiesFor } from "./generate";
 import { readModule } from "./modules";
-import { mayHoldABlock } from "./compiler/scan";
+import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
 /**
@@ -69,6 +69,15 @@ export interface Report {
   /** How many of them carry at least one block. */
   readonly styled: number;
   readonly findings: readonly Finding[];
+  /**
+   * The blocks that could not be READ, which is a subset of {@link Report.findings}.
+   *
+   * Separate because they and the rest are different claims. A refusal means the parser gave up on
+   * one block, so no virtual file exists for its module and nothing in the program was type-checked.
+   * What ELSE is in `findings` then comes from files that read perfectly, and is as true as it ever
+   * was — see the return that keeps them.
+   */
+  readonly refusals: readonly Finding[];
   /** A block could not be read, so nothing was type-checked. */
   readonly refused: boolean;
   /**
@@ -109,6 +118,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   const exempted: { file: string; line: number; reason: string }[] = [];
 
   for (const fileName of parsed.fileNames) {
+    if (!fileMayHoldABlock(fileName)) continue;
     const text = ts.sys.readFile(fileName);
     if (text === undefined || !mayHoldABlock(text)) continue;
 
@@ -186,8 +196,27 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     });
   }
 
+  /**
+   * A refusal stops the TYPE check, and it used to stop everything.
+   *
+   * The reason beside the printing is right — reporting the compiler's confusion about a file it
+   * could not read would be wrong answers — but it was applied to the whole project. Measured: one
+   * unreadable block in `Card.tsx` hid `colour: red` in `Other.tsx`, a file that read perfectly, so
+   * a typo anywhere meant fixing the repository one error per run.
+   *
+   * `css` holds only what files that READ produced — a file whose walk threw never reaches the push
+   * — so those findings are exactly the ones the reason does not cover. They are kept, and
+   * {@link Report.refusals} is what lets the caller print the two apart.
+   */
   if (refusals.length > 0) {
-    return { files: parsed.fileNames.length, styled: overlays.size, findings: refusals, refused: true, exempted };
+    return {
+      files: parsed.fileNames.length,
+      styled: overlays.size,
+      findings: [...refusals, ...css],
+      refusals,
+      refused: true,
+      exempted,
+    };
   }
 
   /**
@@ -225,6 +254,7 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     files: parsed.fileNames.length,
     styled: overlays.size,
     findings: [...setup.values(), ...inOrder(css, findings, sources)],
+    refusals: [],
     refused: false,
     exempted,
   };
@@ -471,30 +501,21 @@ function parseConfig(configPath: string): ts.ParsedCommandLine | Report {
   const read = ts.readConfigFile(configPath, ts.sys.readFile);
   if (read.error !== undefined) {
     const message = ts.flattenDiagnosticMessageText(read.error.messageText, " ");
-    return {
-      files: 0,
-      styled: 0,
-      refused: true,
-      exempted: [],
-      findings: [{ file: configPath, line: 1, column: 1, code: read.error.code, message }],
-    };
+    // Nothing was walked, so the one finding IS the refusal — both fields name the same array.
+    const findings = [{ file: configPath, line: 1, column: 1, code: read.error.code, message }];
+    return { files: 0, styled: 0, refused: true, exempted: [], findings, refusals: findings };
   }
 
   const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, dirname(configPath), undefined, configPath);
   if (parsed.errors.length > 0) {
-    return {
-      files: 0,
-      styled: 0,
-      refused: true,
-      exempted: [],
-      findings: parsed.errors.map((error) => ({
-        file: configPath,
-        line: 1,
-        column: 1,
-        code: error.code,
-        message: ts.flattenDiagnosticMessageText(error.messageText, " "),
-      })),
-    };
+    const findings = parsed.errors.map((error) => ({
+      file: configPath,
+      line: 1,
+      column: 1,
+      code: error.code,
+      message: ts.flattenDiagnosticMessageText(error.messageText, " "),
+    }));
+    return { files: 0, styled: 0, refused: true, exempted: [], findings, refusals: findings };
   }
 
   return parsed;

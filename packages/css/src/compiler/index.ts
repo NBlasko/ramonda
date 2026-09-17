@@ -35,7 +35,7 @@ export { checkBlock, checkText } from "./rules";
 export { MEDIA_FEATURES } from "./keywords.generated";
 export { checkSource } from "./source";
 export type { BlockSite } from "./scan";
-export { findBlocks, mayHoldABlock } from "./scan";
+export { fileMayHoldABlock, findBlocks, mayHoldABlock } from "./scan";
 export type { Placeheld } from "./tooling";
 export { placehold } from "./tooling";
 export type { EmittedBlock, SourceMap, TransformOptions, TransformResult } from "./transform";
