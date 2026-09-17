@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { dirname, relative, sep } from "node:path";
-import { mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
+import { fileMayHoldABlock, mayHoldABlock, virtualFile } from "@ramonda/css/compiler";
 import ts from "typescript";
 import { declarationEntryOf, fingerprint, loadFragment, packageRootOf } from "./fragment";
 import type { ComponentGraph, GraphEdge, GraphNode, Where } from "./graph";
@@ -3964,8 +3964,16 @@ function overlayHost(options: ts.CompilerOptions): ts.CompilerHost {
   const readFromDisk = host.readFile.bind(host);
   const sourceFromDisk = host.getSourceFile.bind(host);
 
-  /** Text → its virtual copy, or `undefined` when the file holds no block. One read per file. */
+  /**
+   * Text → its virtual copy, or `undefined` when the file holds no block. One read per file.
+   *
+   * **The name is asked before the text**, and it is the same question the compiler's own consumers
+   * ask — see `fileMayHoldABlock`. Measured on `apps/docs`: this host is handed 724 files and 9.4 MB,
+   * of which 171 are declaration files worth 3.8 MB — 40% of everything read, for a syntax that
+   * cannot appear in one. Twelve files in the whole program even contain `@@`.
+   */
   const virtual = (fileName: string): string | undefined => {
+    if (!fileMayHoldABlock(fileName)) return undefined;
     const text = readFromDisk(fileName);
     if (text === undefined || !mayHoldABlock(text)) return undefined;
     return virtualFile(text, { tolerant: true })?.code;

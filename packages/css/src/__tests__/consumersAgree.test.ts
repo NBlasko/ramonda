@@ -94,13 +94,28 @@ describe("which files can hold a block", () => {
   });
 
   /** And nobody keeps a copy of the question. */
-  test.each(["plugin.ts", "check.ts", "vite.ts", "esbuild.ts"])("%s does not ask it privately", async (file) => {
+  test.each([
+    "../../css/src/plugin.ts",
+    "../../css/src/check.ts",
+    "../../css/src/vite.ts",
+    "../../css/src/esbuild.ts",
+    // Another package, and the one the last sweep missed: it bundles this compiler and overlays
+    // every file a `ts.CompilerHost` is handed.
+    "../../check/src/analyze.ts",
+  ])("%s does not ask it privately", async (file) => {
     const { readFileSync } = await import("node:fs");
-    const { dirname, join, resolve } = await import("node:path");
+    const { dirname, resolve } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
-    const source = readFileSync(join(resolve(dirname(fileURLToPath(import.meta.url)), ".."), file), "utf8");
+    const source = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", file.replace("../../", "")),
+      "utf8",
+    );
 
-    expect(source).toContain("fileMayHoldABlock");
+    /**
+     * A CALL, not the name. The first version asserted the name and passed while the call had been
+     * deleted and only the import was left — twice, on two different consumers.
+     */
+    expect(source).toMatch(/fileMayHoldABlock\(/);
 
     /**
      * A regex of its own is allowed in exactly one shape: an esbuild `onLoad` filter, which esbuild
@@ -109,7 +124,7 @@ describe("which files can hold a block", () => {
      * predicate as their first line inside it.
      */
     const copies = source.match(/\/\\\.\[cm\]\?\[jt\]sx\?\$\//g) ?? [];
-    const allowed = file === "esbuild.ts" || file === "vite.ts" ? 1 : 0;
+    const allowed = file.endsWith("esbuild.ts") || file.endsWith("vite.ts") ? 1 : 0;
     expect(copies.length).toBeLessThanOrEqual(allowed);
     for (const _ of copies) expect(source).toMatch(/filter: [^}]*\}[\s\S]{0,240}?fileMayHoldABlock/);
   });
