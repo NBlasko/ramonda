@@ -27,6 +27,17 @@ describe("the page for a declaration that does nothing", () => {
   /** The section that lists them — the table and the paragraphs that expand its rows. */
   const table = page.slice(page.indexOf("## What is reported"), page.indexOf("## What stays silent"));
 
+  /**
+   * There have to BE subjects, or every case below is registered zero times.
+   *
+   * Measured: `test.each([])` runs nothing and the file passes, with no warning from vitest. So a
+   * rule emptied of its table would take this whole comparison with it, silently — the same shape
+   * as a gate that passes because it found nothing to check.
+   */
+  test("the rule has a table to compare against", () => {
+    expect(INERT_SUBJECTS.length).toBeGreaterThan(10);
+  });
+
   test.each(INERT_SUBJECTS)("names `%s`", (property) => {
     // A row may name one with its value — `text-overflow: ellipsis` — which still names it.
     expect(new RegExp(`\`${property}(\`|:)`).test(table)).toBe(true);

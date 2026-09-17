@@ -785,6 +785,11 @@ describe("what the rule reports, the formatter writes", () => {
    * would leave nothing anywhere — so it is asserted in both directions: nothing is said, and the
    * text still changes.
    */
+  /** A filter that matched nothing would register no cases at all — see `test.each([])`. */
+  test("the filter leaves something to rewrite", () => {
+    expect(spellings.filter((one) => !one.includes("2N")).length).toBeGreaterThan(0);
+  });
+
   test.each(spellings.filter((one) => !one.includes("2N")))("%s is rewritten and never reported", (written) => {
     const source = `const a = @@(\n  ${written}\n);\n`;
 
