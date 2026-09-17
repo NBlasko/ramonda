@@ -2830,9 +2830,32 @@ himself: *"opet je pitanje kako da znas da li je developer to hteo ili ne"*. A r
 would be wrong about intent every time.
 
 **What answers the real problem is IMPACT, not assertion.** The complaint is not "I cannot write the
-test", it is "I cannot test n scenarios". A report that says which elements and which call sites a
-change to this block can reach turns n scenarios into the few that matter. Nothing is recorded as an
-expectation, so there is nothing to maintain — the opposite end from a snapshot.
+test", it is "I cannot test n scenarios". A report saying what a change reaches turns n scenarios
+into the few that matter, and records nothing as an expectation — the opposite end from a snapshot.
+
+**But the obvious form of that report was measured and it does not work.** On `apps/docs` (362
+nodes, 931 edges):
+
+| asked | answered |
+|---|---|
+| paths from a root to one component | **462,036** |
+| what reaches `CodeBlock` from above | 286 of 362 components |
+| what a change reaches below it | 284 of 331 components reach 21+ |
+
+Everything in a real application funnels through shared shells, so "what does this touch" is very
+nearly "all of it". The graph's own note already said the first row — *the graph is small, the set of
+paths through it is not* — and the other two are the same fact from the other directions. A report
+that names 284 components is no report.
+
+**What may survive is narrower, and it is a CSS fact rather than a graph one.** A change to a parent
+can reach a descendant by only two routes: an **inherited** property (`color`, `font`,
+`line-height`, …), or a declaration that **establishes a context** (`display: flex|grid`,
+`position`, `overflow`, `contain`, `transform`). A parent's `padding` reaches no descendant at all.
+So the question is not *which components are below* but **which descendants declare something that
+depends on what changed** — a far smaller set.
+
+**Its size is UNMEASURED**, and cannot be measured until the graph carries blocks and elements.
+Nothing should be designed on it before that number exists.
 
 **This is a separate task, to be done WITH the checker and graph work**, at the user's instruction.
 See `ramonda.graph.json` in §3, which is the same file and the same question from another side.
