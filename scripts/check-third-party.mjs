@@ -1,5 +1,6 @@
 import { existsSync, globSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { VENDORED } from "./vendored.mjs";
 
 /**
  * Every published package that DISTRIBUTES somebody else's work ships the notice for it.
@@ -28,17 +29,6 @@ import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
 const TAG = "[third-party]";
-
-/** Copied content, and the distinctive bytes that prove a build carries it. */
-const VENDORED = [
-  {
-    work: "Phosphor Icons",
-    /** The opening of the `cursor-click` path — see `packages/theme/src/index.ts`. */
-    fingerprint: "M88,24V16a8,8,0,0,1,16,0v8a8,8,0,0,1-16,0Z",
-    /** What the notice must name, so a file that exists but says nothing does not pass. */
-    names: "Phosphor Icons",
-  },
-];
 
 /** Every package npm would publish, with the paths its `files` entry ships. */
 function published() {
@@ -105,3 +95,4 @@ if (problems.length > 0) {
 console.log(
   `${TAG} ${VENDORED.length} vendored work(s), carried by ${carried} published package(s), each with its notice`,
 );
+console.log(`${TAG} the .vsix is scanned where it is written — see scripts/package-extension.mjs`);

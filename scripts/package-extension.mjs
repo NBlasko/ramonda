@@ -26,6 +26,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { VENDORED } from "./vendored.mjs";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -173,6 +174,53 @@ execFileSync("pnpm", ["dlx", "@vscode/vsce@3", "package", "--out", out], {
  * cannot find. A `.vsix` is a zip, so its own listing is the assertion.
  */
 const listed = execFileSync("unzip", ["-Z1", join(here, out)], { encoding: "utf8" });
+
+/**
+ * **Somebody else's bytes, looked for in the archive itself.**
+ *
+ * `check-third-party.mjs` watches what npm publishes, and its own note says why the check is on the
+ * OUTPUT rather than on anybody's intention: copied work reaches a distribution through a bundler,
+ * through a dependency that is not published, through a refactor that moves a file. A `.vsix` is now
+ * one of those distributions — it carries a bundle of the whole compiler — and nothing looked at it.
+ *
+ * Measured when this was written: the archive holds three copyright lines and all three are this
+ * extension's own MIT, `magic-string` is not inlined, and the bundle requires only Node built-ins.
+ * Nothing is owed today. This is what will say so tomorrow.
+ *
+ * The fingerprints come from `vendored.mjs`, which is the list and nothing else: one list, two
+ * artefacts, and no script that runs somebody else's gate on import.
+ */
+const bytes = execFileSync("unzip", ["-p", join(here, out)], { encoding: "latin1", maxBuffer: 64 * 1024 * 1024 });
+const carries = VENDORED.filter((one) => bytes.includes(one.fingerprint));
+
+if (carries.length > 0) {
+  /**
+   * The notice has to be in `THIRD-PARTY.md`, not merely somewhere in the archive.
+   *
+   * The first version asked whether the words were anywhere in the bytes, and this extension's own
+   * MIT already carries *Permission is hereby granted* — so half the test was satisfied by our own
+   * licence, for somebody else's work. `check-third-party.mjs` asks the same question of npm and
+   * asks it of one named file; so does this.
+   */
+  const NOTICE = "extension/THIRD-PARTY.md";
+  const said = listed.includes(NOTICE)
+    ? execFileSync("unzip", ["-p", join(here, out), NOTICE], { encoding: "utf8" })
+    : "";
+  const owed = carries.filter((one) => !(said.includes(one.names) && /Permission is hereby granted/.test(said)));
+
+  if (owed.length > 0) {
+    console.error(`\n[extension] the .vsix carries somebody else's work and not their notice:\n`);
+    for (const one of owed) console.error(`    • ${one.work}`);
+    console.error(
+      `\n[extension] put a THIRD-PARTY.md beside the manifest naming it, with its permission notice,` +
+        `\n[extension] and make sure .vscodeignore lets it through.\n`,
+    );
+    rmSync(join(here, out), { force: true });
+    process.exit(1);
+  }
+  console.log(`[extension] ${carries.length} vendored work(s) in the archive, each with its notice`);
+}
+
 const missing = [
   "extension/node_modules/@ramonda/css/plugin.js",
   "extension/node_modules/@ramonda/css/dist/plugin.cjs",
