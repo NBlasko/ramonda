@@ -2736,6 +2736,36 @@ three it has nest — `"*"` then `"<kind>"` then a property name, each a narrowi
 A selector is not a narrowing of a property; it would be a second axis, and that is a cost to pay
 when somebody wants it and not before.
 
+### 7. A block a PROP can constrain — asked for, NOT designed
+
+The user's words, recorded because the feature is not settled and the next session has to talk it
+through with them rather than build from this paragraph:
+
+> *"bilo bi lepo da moze da se gurne tip na `@@` sintaksu ili mozda `@@slot` sintaksu (mada bih
+> voleo da `@@` tako radi) u kojoj mozemo da ogranicimo opet sta moze da se salje. Usecase je kada
+> zelimo kroz props da posaljemo samo odredjene stilove za odredjen element ili skup elemenata."*
+
+The comparison they drew is an `sx` prop with a type that says what may be sent.
+
+**What is true today**, so the next session starts from a fact:
+
+- `@@( … )` has one type, `CssBlock` — an interface branded with a `unique symbol` and nothing else.
+  It carries no record of WHICH declarations the block made, so a prop typed `CssBlock` takes every
+  block there is. That is the gap, and it is also the only place a parameter could attach.
+- The type-level vocabulary for refusing something already exists and is used twice:
+  `CssSpreadable<T>` and `CssCondition<T>` both answer with a SENTENCE as the type name. A narrowed
+  block would be a third of the same kind.
+- Merging is `...{block}` and `if ({cond}) { … }`, both arguments of one merge, in written order,
+  later winning. Whatever a constrained block is, it has to merge by those rules or there are two.
+
+**What is open, in the user's own list:** whether the limit is only *may / may not*, whether a
+selector or a set of them is sayable, whether a child element may be targeted at all, and how much
+of it is type-safe and by what mechanism. Then, separately, how a constrained block merges inside
+the component that received it.
+
+**Measure first, before any of it is designed:** whether the virtual file has a position where a
+type argument on `@@` could be written at all. Everything else depends on that answer.
+
 ### The name
 
 `.ramonda/` was proposed and refused by the user, for a reason worth keeping: **a leading dot reads
