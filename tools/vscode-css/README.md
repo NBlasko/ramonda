@@ -52,15 +52,18 @@ compiler lives. Install it and turn the language plugin on in `tsconfig.json`:
 A plugin only loads when the editor is running the workspace's own TypeScript: **TypeScript: Select
 TypeScript Version → Use Workspace Version**.
 
-## The setting the editor needs
+## Both TypeScript servers see your blocks
 
-VS Code runs two TypeScript servers. One of them never opens your `tsconfig.json`, where this
-plugin is named, so it reads your file as plain TypeScript — which a style block is not. Turn it
-off, and the other server answers everything it did:
+VS Code runs two TypeScript servers. One of them never opens your `tsconfig.json`, where the
+`@ramonda/css` plugin is named — and that is the server that formats, folds and outlines your file
+for as long as the editor is open. It used to read a style block as plain TypeScript.
 
-```json
-{ "typescript.tsserver.useSyntaxServer": "never" }
-```
+This extension contributes the plugin a second way, which VS Code hands to both servers. Nothing to
+configure, and `js/ts.tsserver.useSyntaxServer` can come out of your settings.
+
+A project that installs `@ramonda/css` is still checked by its own copy: the plugin in here steps
+aside wherever the project has one, so the version you pinned is the version that decides what is an
+error.
 
 ## Format on save
 

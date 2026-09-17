@@ -1,5 +1,21 @@
 # Ramonda CSS
 
+## 0.2.0
+
+- **The `useSyntaxServer` setting is no longer needed.** An editor runs two TypeScript servers, and
+  the syntax one — which owns formatting, folding, the outline and expand-selection for as long as
+  the editor is open — never reads a `tsconfig.json`. So the plugin named there never reached it,
+  and it treated a style block as plain TypeScript: asked to format one file, it wanted 20 edits the
+  other server did not.
+
+  The extension now contributes the plugin itself, which VS Code hands to both servers. Formatting a
+  block is left alone, folding and the outline match, and `"js/ts.tsserver.useSyntaxServer": "never"`
+  can come out of your settings.
+
+  A project that installs `@ramonda/css` keeps being checked by its own copy: the extension's plugin
+  steps aside wherever the project has one, so the version you pinned is still the version that
+  decides what is an error.
+
 ## 0.1.6
 
 - **The page now shows what a block looks like.** A marketplace page is rendered by the marketplace's

@@ -99,16 +99,13 @@ A TypeScript language-service plugin, turned on in your own `tsconfig.json`:
 Your editor has to be running the **workspace's** TypeScript for any plugin to load. In VS Code:
 *TypeScript: Select TypeScript Version → Use Workspace Version*.
 
-### One setting, and it is not optional
-
-```json
-{ "typescript.tsserver.useSyntaxServer": "never" }
-```
+### The second TypeScript server, and what reaches it
 
 An editor runs **two** TypeScript servers — a syntax one for what needs no types, and a semantic one
-for everything else. The syntax one never opens your `tsconfig.json`, which is where this plugin is
-named, so it reads your file as plain TypeScript. Your file is not plain TypeScript, and it walks
-into an assertion of its own. From a real editor's log:
+for everything else. The syntax one owns formatting, code folding, the outline and expand-selection
+for as long as the editor is open, and it never opens your `tsconfig.json`. So a plugin named there
+never reaches it, and it reads your file as plain TypeScript. Your file is not plain TypeScript, and
+it walks into an assertion of its own. From a real editor's log:
 
 ```
 [error] [vscode.typescript-language-features] provider FAILED
@@ -116,12 +113,20 @@ into an assertion of its own. From a real editor's log:
 Debug Failure. False expression: Token end is child end
 ```
 
-The setting is what stops the editor asking it, and nothing is lost by turning it off: one server
-answers everything the two did. What the syntax one was buying is speed on a cold project — code
-folding, the outline, *Format Document* and expand-selection answer before the program has loaded
-rather than after it. That is one wait, once per project.
+**The extension below is what reaches it.** It contributes the same plugin a second way, which VS
+Code hands to both servers, so formatting a block leaves it alone and the outline matches. With the
+extension installed there is nothing to configure.
 
-Recent VS Code spells the same setting `js/ts.tsserver.useSyntaxServer`, and reads either.
+**Without it, one setting is needed**, and it turns the syntax server off:
+
+```json
+{ "js/ts.tsserver.useSyntaxServer": "never" }
+```
+
+Nothing is lost by that: one server answers everything the two did. What the syntax one was buying
+is speed on a cold project — folding, the outline, *Format Document* and expand-selection answer
+before the program has loaded rather than after it. That is one wait, once per project. Older VS
+Code spells the setting `typescript.tsserver.useSyntaxServer`, and either is read.
 
 ### The colours, and format-on-save
 

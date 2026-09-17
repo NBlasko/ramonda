@@ -135,11 +135,55 @@ for (const name of readdirSync(here)) {
   if (name.endsWith(".vsix")) rmSync(join(here, name), { force: true });
 }
 
+/**
+ * The language-service plugin is staged FIRST, and from the build rather than from whatever is
+ * lying in the folder.
+ *
+ * `contributes.typescriptServerPlugins` names `@ramonda/css/plugin`, and VS Code passes it to both
+ * of an editor's TypeScript servers — including the syntax one, which has no `tsconfig.json` and so
+ * would otherwise read a style block as plain TypeScript. A `.vsix` cut without the staging step
+ * names a plugin that is not inside it, and an editor logs the failure at info level where nobody
+ * reads it.
+ */
+execFileSync("node", [join(here, "build-plugin.mjs")], { stdio: "inherit" });
+
 console.log(`[extension] ${id} ${manifest.version} — packaging\n`);
-execFileSync("pnpm", ["dlx", "@vscode/vsce@3", "package", "--no-dependencies", "--out", out], {
+/**
+ * **Without `--no-dependencies`, and that flag is why the plugin was missing.**
+ *
+ * `vsce` skips `node_modules` entirely under it — measured, and not only the dependencies it was
+ * told not to walk: with the `node_modules/**` line taken out of `.vscodeignore` as well, it still
+ * listed none. The staged plugin has to live there, because that is the only place `tsserver`
+ * resolves a contributed plugin from.
+ *
+ * Dropping the flag costs nothing here: this extension declares no `dependencies`, so there is
+ * nothing for `vsce` to walk, and `.vscodeignore` keeps the rest of `node_modules` out. Measured on
+ * the archive — three files, which are the three that were staged.
+ */
+execFileSync("pnpm", ["dlx", "@vscode/vsce@3", "package", "--out", out], {
   cwd: here,
   stdio: "inherit",
 });
+
+/**
+ * And the staged plugin really is IN the archive.
+ *
+ * `.vscodeignore` ignores `node_modules/**` and un-ignores this one subtree, which is a pair that
+ * can drift — and either way round the failure is silent: the extension names a plugin an editor
+ * cannot find. A `.vsix` is a zip, so its own listing is the assertion.
+ */
+const listed = execFileSync("unzip", ["-Z1", join(here, out)], { encoding: "utf8" });
+const missing = [
+  "extension/node_modules/@ramonda/css/plugin.js",
+  "extension/node_modules/@ramonda/css/dist/plugin.cjs",
+].filter((one) => !listed.includes(one));
+if (missing.length > 0) {
+  console.error(`\n[extension] the .vsix does not carry the plugin it contributes:\n`);
+  for (const one of missing) console.error(`    • ${one}`);
+  console.error(`\n[extension] check the \`!node_modules/@ramonda/**\` line in .vscodeignore.\n`);
+  rmSync(join(here, out), { force: true });
+  process.exit(1);
+}
 
 const size = statSync(join(here, out)).size;
 const where = relative(process.cwd(), join(here, out));
