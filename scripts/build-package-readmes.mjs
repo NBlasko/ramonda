@@ -203,6 +203,17 @@ const missing = [];
 
 const packages = published();
 
+/**
+ * There have to BE packages, or `--check` reports every README up to date without reading one.
+ *
+ * Measured by pointing the glob at a folder that does not exist: *up to date — 0 published
+ * packages*, exit 0. A rename or a move leaves this green and idle.
+ */
+if (packages.length === 0) {
+  console.error(`\n[readmes] found no published packages — the glob matches nothing.\n`);
+  process.exit(1);
+}
+
 for (const { dir, json } of packages) {
   const file = join(repo, dir, "README.md");
   if (!existsSync(file)) {
