@@ -22,6 +22,13 @@ properties from it — `align-content`, `justify-items`, `place-items` and `plac
 a block container in current browsers, and reporting them would have reported correct CSS. `gap`
 keeps its multi-column exception for the same reason.
 
+A review found four more shapes it was wrong about, each of them correct CSS it would have failed a
+build over: `display: -webkit-box` and `-webkit-inline-box` lay out children and use `gap`;
+`aspect-ratio` still applies beside a height of `50%`, `calc(50% - 2px)`, `min-content`,
+`fit-content` or `stretch`, because none of those is a size until something has been laid out; and
+an `overflow-x` or `overflow-y` written beside `overflow: visible` brings both `resize` and the
+ellipsis back. All four are silent now.
+
 Silence is the default wherever the answer is not certain. A `...{spread}` merges declarations the
 reading block cannot see, so a disabling declaration counts only where it is written; `white-space`
 is inherited, so an absent one is never assumed; a nested rule is judged on its own declarations;

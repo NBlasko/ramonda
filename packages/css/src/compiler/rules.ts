@@ -3561,8 +3561,34 @@ interface Inert {
   readonly says: (subject: string, seen: ReadonlyMap<string, string>) => string;
 }
 
-/** `flex`, `inline-flex`, `grid`, `inline-grid`, `block flex`, `inline grid` — measured, all of them. */
-const LAYS_OUT_CHILDREN = (display: string): boolean => /\b(flex|grid)\b/.test(display);
+/**
+ * A `display` whose element arranges its own children, so the box properties mean something on it.
+ *
+ * Three words rather than two, and the third was a false report: `-webkit-box` and
+ * `-webkit-inline-box` lay out children and use `gap`, measured in Chromium, and a test for `flex`
+ * or `grid` alone reported both as faults on correct CSS.
+ *
+ * Covered by this: `flex`, `inline-flex`, `grid`, `inline-grid`, the two-value `block flex` and
+ * `inline grid`, every `-webkit-` spelling of those, and `-ms-flexbox` / `-ms-grid` — which measure
+ * as inert in Chromium and are left alone anyway, because silence is the safe direction.
+ *
+ * No display CSS has that is not one of these carries any of the three words.
+ */
+const LAYS_OUT_CHILDREN = (display: string): boolean => /\b(flex|grid|box)\b/.test(display);
+
+/**
+ * A size a browser can use without laying anything out, which is what makes `aspect-ratio` inert.
+ *
+ * Measured, and the first version of the row was wrong about every other shape: beside
+ * `width: 140px`, a `height` of `50%`, `calc(50% - 2px)`, `min-content`, `max-content`,
+ * `fit-content`, `stretch` or `inherit` all leave `aspect-ratio` doing its job, because none of
+ * them is a size until something else has been laid out.
+ *
+ * So a plain dimension or a zero, and nothing else. `calc(60px - 2px)` is definite too and is left
+ * out: it costs a report nobody was going to write, and the alternative is arithmetic in a rule.
+ */
+const DEFINITE =
+  /^(0|[+-]?(\d+\.?\d*|\.\d+)(px|rem|em|ch|ex|cap|ic|lh|rlh|cm|mm|q|in|pt|pc|vw|vh|vmin|vmax|svw|svh|lvw|lvh|dvw|dvh|vb|vi))$/i;
 
 /** A value nothing here can reason about: a keyword that resolves elsewhere, or a variable. */
 const OPAQUE = (value: string): boolean => GLOBAL.has(value) || value.includes("var(");
@@ -3635,6 +3661,9 @@ const INERT: readonly Inert[] = [
     subjects: ["resize"],
     when: (value) => value !== "none",
     reads: ["overflow"],
+    // A longhand written beside the shorthand is what the element really has, and it brings `resize`
+    // back — measured: `overflow: visible; overflow-x: auto` resizes.
+    rescuedBy: ["overflow-x", "overflow-y"],
     off: (seen) => seen.get("overflow") === "visible",
     says: (subject) =>
       `\`${subject}\` does nothing here: \`overflow: visible\` leaves the element nothing to scroll, ` +
@@ -3655,6 +3684,8 @@ const INERT: readonly Inert[] = [
     subjects: ["text-overflow"],
     when: (value) => value !== "clip",
     reads: ["overflow"],
+    // As above: `overflow: visible; overflow-x: hidden` draws the ellipsis.
+    rescuedBy: ["overflow-x", "overflow-y"],
     off: (seen) => seen.get("overflow") === "visible",
     says: (subject) =>
       `\`${subject}\` does nothing here: \`overflow: visible\` lets the text spill out instead of ` +
@@ -3665,7 +3696,7 @@ const INERT: readonly Inert[] = [
     subjects: ["aspect-ratio"],
     when: (value) => value !== "auto",
     reads: ["width", "height"],
-    off: (seen) => seen.get("width") !== "auto" && seen.get("height") !== "auto",
+    off: (seen) => DEFINITE.test(seen.get("width") ?? "") && DEFINITE.test(seen.get("height") ?? ""),
     says: (subject) =>
       `\`${subject}\` does nothing here: \`width\` and \`height\` are both set, so the box already ` +
       `has both of its sizes.\n\n        Set one of them to \`auto\`, or take the declaration out.`,

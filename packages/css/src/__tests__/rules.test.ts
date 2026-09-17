@@ -4303,6 +4303,64 @@ describe("a declaration another one on the same element switches off", () => {
   });
 
   /**
+   * Values a browser accepts that the first version of the table was wrong about.
+   *
+   * Each row here reported correct CSS until it was measured. A rule that fails a build has to be
+   * wrong in the quiet direction, so every one of these is now silence.
+   */
+  test.each([
+    // `-webkit-box` and its inline form lay out children and use `gap`; `flex` and `grid` are not
+    // the only words that mean so.
+    ["display: -webkit-box; gap: 12px;"],
+    ["display: -webkit-inline-box; gap: 12px;"],
+    ["display: -webkit-flex; justify-content: flex-end;"],
+    // `aspect-ratio` applies whenever a size is not DEFINITE, and a percentage is not.
+    ["width: 140px; height: 50%; aspect-ratio: 1 / 3;"],
+    ["width: 140px; height: calc(50% - 2px); aspect-ratio: 1 / 3;"],
+    ["width: 140px; height: min-content; aspect-ratio: 1 / 3;"],
+    ["width: 140px; height: fit-content; aspect-ratio: 1 / 3;"],
+    ["width: 140px; height: stretch; aspect-ratio: 1 / 3;"],
+    // An `overflow` longhand written beside the shorthand is what the element really has.
+    ["overflow: visible; overflow-x: auto; resize: both;"],
+    ["overflow: visible; overflow-y: auto; resize: both;"],
+    ["white-space: nowrap; overflow: visible; overflow-x: hidden; text-overflow: ellipsis;"],
+  ])("`%s` is correct CSS and stays silent", (css) => {
+    expect(check(css).map((one) => one.rule)).not.toContain("declaration-does-nothing");
+  });
+
+  /**
+   * The VALUE is read out of the canonical text, so the shapes that text can take are their own
+   * question — separate from which properties the table names.
+   */
+  test.each([
+    // A variable is a value nothing here can read, so nothing beside it is judged.
+    ["display: var(--layout); gap: 12px;", false],
+    ["position: var(--place); top: 20px;", false],
+    // `!important` rides along in the value and must not hide the word that decides.
+    ["display: flex !important; gap: 12px;", false],
+    ["display: block !important; gap: 12px;", true],
+    // Order between the two is CSS's business, not this rule's: they are one element's declarations.
+    ["gap: 12px; display: block;", true],
+    // The later of two wins, which is what the browser applies.
+    ["display: block; display: flex; gap: 12px;", false],
+    ["display: flex; display: block; gap: 12px;", true],
+  ])("`%s` is reported: %s", (css, reported) => {
+    expect(
+      check(css)
+        .map((one) => one.rule)
+        .includes("declaration-does-nothing"),
+    ).toBe(reported);
+  });
+
+  /** And the definite sizes still are, so narrowing did not empty the row. */
+  test.each([["width: 140px; height: 4rem; aspect-ratio: 1 / 3;"], ["width: 140px; height: 0; aspect-ratio: 1 / 3;"]])(
+    "`%s` is still reported",
+    (css) => {
+      expect(check(css).map((one) => one.rule)).toContain("declaration-does-nothing");
+    },
+  );
+
+  /**
    * A nested rule is a different group, and that is deliberate.
    *
    * `&:hover` is the same ELEMENT, so a `display` in the base group really does decide a `gap`
