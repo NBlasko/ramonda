@@ -2766,6 +2766,77 @@ the component that received it.
 **Measure first, before any of it is designed:** whether the virtual file has a position where a
 type argument on `@@` could be written at all. Everything else depends on that answer.
 
+### 8. A declaration that does nothing — layout faults inside ONE block
+
+**Decided: this goes into the build, and gets a docs page of its own.** The user's words for the
+target: *"kada neko slucajno polomi layout"*.
+
+A block is ONE element's rule, so this compiler knows every declaration that lands on an element.
+Ordinary CSS cannot ask that question — nothing there knows which rules reach which element — and it
+is what makes these reportable at build time, with no browser and no test.
+
+Six pairs, measured in Chromium, each differing by one word:
+
+| | broken | fixed |
+|---|---|---|
+| `z-index` on `position: static` | does not stack above | stacks |
+| `gap` on `display: block` | gap 0 | 12 |
+| `width` on `display: inline` | width 108 (content) | 300 |
+| `text-overflow: ellipsis` without `white-space: nowrap` | wraps, no ellipsis | one line, ellipsis |
+| `align-self` on a block child | top 0 | 30 |
+| `float` on a flex child | ignored | floats |
+
+**The first reading of this measured the wrong thing, and it is the reason the whole item exists.**
+Read through `getComputedStyle`, three of the six looked correct: the browser reports `z-index: 10`
+on a static element and `width: 300px` on an inline one, having done neither. Computed is not used.
+So **a test that asserts computed styles passes on all six** — the declaration is there, its value
+is what the author wrote, and the browser did nothing with it. That is exactly the shape of a layout
+somebody broke by accident: nothing throws, nothing is reported, and no test anyone would write
+catches it.
+
+**Scope, measured: four of the six are answerable from one block** — `z-index`+`position`,
+`gap`+`display`, `width`+`display`, `ellipsis`+`white-space`+`overflow`. The other two
+(`align-self`, `float`) need the PARENT's declarations, and a parent is a different block. Those
+belong to item 9.
+
+This is the family `unknown-media-feature` and `override-out-of-order` already belong to — *compiles,
+ships, does nothing*. What is new is that these report a broken LAYOUT rather than broken CSS.
+
+### 9. Across blocks — what is knowable, and what the graph would have to carry
+
+Item 8 stops at one element. The question the user asked next is the harder half: *"desava se cesto
+u CSS da ja nesto promenim kod roditelja i tako sredim child"* — a change to a parent whose effect
+on descendants nobody looked at, in an application with more render scenarios than anyone can test.
+
+**It is not simply "runtime".** There are three tiers, and only the last needs one:
+
+1. **Inside one block** — fully static. Item 8.
+2. **Inside one component's JSX** — the nesting is in the TypeScript AST. **But the source tree is a
+   SUBSET of the runtime tree**, measured: an element passed as `children` really sits inside
+   whatever its host renders around it, and the source never says so. A probe that counted source
+   nesting called such an element "topmost" while at runtime it had a styled ancestor.
+3. **Across components** — this is what `ComponentGraph` is for. It is component-level today:
+   nodes are `component | hook | context | root | helper`, and it records **no host elements and no
+   blocks**. So the parent/child style relationship is not in it, and adding it is the work.
+
+**No snapshots.** The user ruled the shape out and gave the reason: *"na kraju svi krenu sa slepim
+updateom snapshota umesto da ulaze u diff"*. Everything here stays deterministic, with nothing to
+bless and nothing to keep in step.
+
+**And a forbidding rule is the wrong instrument.** The dangerous declarations are knowable — the
+inherited properties, plus the ones that establish a context (`display: flex|grid`, `position`,
+`overflow`, `transform`, `contain`, `z-index`). But the user named the flaw in forbidding them
+himself: *"opet je pitanje kako da znas da li je developer to hteo ili ne"*. A rule that refuses
+would be wrong about intent every time.
+
+**What answers the real problem is IMPACT, not assertion.** The complaint is not "I cannot write the
+test", it is "I cannot test n scenarios". A report that says which elements and which call sites a
+change to this block can reach turns n scenarios into the few that matter. Nothing is recorded as an
+expectation, so there is nothing to maintain — the opposite end from a snapshot.
+
+**This is a separate task, to be done WITH the checker and graph work**, at the user's instruction.
+See `ramonda.graph.json` in §3, which is the same file and the same question from another side.
+
 ### The name
 
 `.ramonda/` was proposed and refused by the user, for a reason worth keeping: **a leading dot reads
