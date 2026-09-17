@@ -93,13 +93,22 @@ describe("the bin", () => {
     expect(output).toContain("Did you mean `display`?");
   });
 
-  test("a block it cannot read is reported alone, and exits 1", () => {
+  /**
+   * "Nothing was TYPE-checked" is the claim, and the wording carries it.
+   *
+   * It used to say "nothing was checked", which was true of the whole run and is no longer: the CSS
+   * rules that ran over files which READ are reported after the refusal now. The compiler's own
+   * word is what a refusal withdraws, and only that.
+   */
+  test("a block it cannot read is reported first, and exits 1", () => {
     const { output, status } = run(
       project(`const a = (\n  <div css={@@(\n    {name}: 24px;\n  )}>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);
-    expect(output).toContain("could not be read, so nothing was checked");
+    expect(output).toContain("could not be read, so nothing was type-checked");
+    // One file, and it is the one that failed — so there is nothing else to print after it.
+    expect(output).not.toContain("problem(s) in files that read");
     expect(output).toContain("src/Card.tsx:3:5");
     // The position is printed once, not twice — the message carries its own and it is trimmed off.
     expect(output).not.toContain("Card.tsx:3:5  a hole");

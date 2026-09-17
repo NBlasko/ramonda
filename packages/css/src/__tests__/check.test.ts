@@ -1097,3 +1097,41 @@ describe("which config a file is checked against", () => {
     expect(report.findings[0].message).toContain("px");
   });
 });
+
+/**
+ * A block the parser gave up on, and a file that read perfectly beside it.
+ *
+ * The refusal stops the TYPE check — there is no virtual file for the module it failed in, so the
+ * compiler's word about anything is the confusion of a file it could not read. That reason does not
+ * reach a DIFFERENT file whose block parsed: the CSS rules ran over it and what they found is as
+ * true as it ever was.
+ *
+ * Measured before this was fixed: one unreadable block hid every other file's findings, so a typo
+ * anywhere meant fixing a repository one error per run.
+ */
+describe("a refusal, and the files that read anyway", () => {
+  const files = {
+    "Card.tsx": "export const first = @@(\n  content: url(;\n);\n",
+    "Other.tsx": "export const third = @@(\n  colour: red;\n);\n",
+  };
+
+  test("the refusal is reported on its own line", () => {
+    const report = check(files);
+
+    expect(report.refused).toBe(true);
+    expect(report.refusals).toHaveLength(1);
+    expect(report.refusals[0].file).toContain("Card.tsx");
+  });
+
+  test("and the other file's fault is reported too", () => {
+    const said = check(files).findings.filter((one) => one.file.includes("Other.tsx"));
+
+    expect(said).toHaveLength(1);
+    expect(said[0].code).toBe("unknown-property");
+  });
+
+  /** The compiler's own word stays out, which is what the refusal is about. */
+  test("while no TypeScript diagnostic is reported at all", () => {
+    expect(check(files).findings.filter((one) => typeof one.code === "number" && one.code !== 0)).toEqual([]);
+  });
+});

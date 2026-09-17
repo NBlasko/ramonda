@@ -160,16 +160,31 @@ if (report.findings.length === 0) {
 }
 
 /**
- * A refusal is a syntax error and it is printed alone: nothing was type-checked, and saying "3
- * errors" when two of them are the parser's confusion about a file it could not read would be
- * three wrong answers instead of one right one.
+ * A refusal is a syntax error and it is printed first and alone: nothing was TYPE-checked, and
+ * saying "3 errors" when two of them are the compiler's confusion about a file it could not read
+ * would be three wrong answers instead of one right one.
+ *
+ * **What that reason does not cover is printed after it**, and it used to be thrown away. The CSS
+ * rules that ran over files which READ perfectly are as true as ever — measured, one unreadable
+ * block in one file hid every other file's findings, so a typo anywhere meant fixing a repository
+ * one error per run. The compiler's own diagnostics stay out, which is what the reason is about.
  */
 if (report.refused) {
-  console.error(`\n${TAG} ${report.findings.length} block(s) could not be read, so nothing was checked:\n`);
-  for (const finding of report.findings) {
+  console.error(`\n${TAG} ${report.refusals.length} block(s) could not be read, so nothing was type-checked:\n`);
+  for (const finding of report.refusals) {
     console.error(`  ${where(finding.file)}:${finding.line}:${finding.column}`);
     console.error(`    ${finding.message.replace(/^.*?:\d+:\d+\s+/, "")}`);
     console.error("");
+  }
+
+  const rest = report.findings.filter((one) => !report.refusals.includes(one));
+  if (rest.length > 0) {
+    console.error(`${TAG} and ${rest.length} problem(s) in files that read:\n`);
+    for (const finding of rest) {
+      console.error(`  ${where(finding.file)}:${finding.line}:${finding.column}`);
+      console.error(`    ${typeof finding.code === "number" ? `TS${finding.code}` : finding.code}: ${finding.message}`);
+      console.error("");
+    }
   }
   process.exit(1);
 }
