@@ -152,30 +152,12 @@ nothing by themselves, even on lines nowhere near the block.
 
 An editor runs **two** TypeScript servers — a syntax one for what needs no types, and a semantic one
 for everything else. The syntax one owns formatting, code folding, the outline and expand-selection
-for as long as the editor is open, and it never opens your `tsconfig.json`. So a plugin named there
-never reaches it, and it reads your file as plain TypeScript. Your file is not plain TypeScript, and
-it walks into an assertion of its own. From a real editor's log:
-
-```
-[error] [vscode.typescript-language-features] provider FAILED
-[error] Error: <syntax> TypeScript Server Error (5.9.3)
-Debug Failure. False expression: Token end is child end
-```
+for as long as the editor is open, and it never opens your `tsconfig.json`, so a plugin named there
+never reaches it.
 
 **The extension is what reaches it.** It carries the same plugin a second way, which VS Code hands
-to both servers — so formatting a block leaves it alone, and the outline matches. With the extension
-installed there is nothing to configure.
-
-**Without it, one setting is needed**, and it turns the syntax server off:
-
-```json
-{ "js/ts.tsserver.useSyntaxServer": "never" }
-```
-
-Nothing is lost by that: one server answers everything the two did. What the syntax one was buying
-is speed on a cold project — folding, the outline, *Format Document* and expand-selection answer
-before the program has loaded rather than after it. That is one wait, once per project. Older VS
-Code spells the setting `typescript.tsserver.useSyntaxServer`, and either is read.
+to both servers — so formatting a block leaves it alone, and the outline matches. There is nothing
+to configure for any of it.
 
 ## Check that it worked
 
