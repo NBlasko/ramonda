@@ -40,6 +40,26 @@ const GRAMMAR = resolve(
 
 const load = (name: string) => JSON.parse(readFileSync(join(GRAMMAR, `${name}.tmLanguage.json`), "utf8"));
 
+/**
+ * **No time limit, and that is a measured bug in the highlighter rather than a preference.**
+ *
+ * `includeExplanation` makes shiki tokenise each line TWICE — once for scopes, once for the binary
+ * form — and it hands each pass the same limit, 500 ms by default. If one trips it and the other
+ * does not, the two disagree about where the line ends, and shiki walks the shorter list with an
+ * index from the longer one:
+ *
+ *     TypeError: Cannot read properties of undefined (reading 'startIndex')
+ *       ❯ _tokenizeWithTheme @shikijs/primitive/dist/index.mjs:692
+ *
+ * Seen once here, in a full-repo run where every package's tests were going at once, and not
+ * reproducible on an idle machine. Reproduced exactly by turning the limit DOWN: at 1 ms the same
+ * error every time, at 0 and at 500 none.
+ *
+ * Zero means no limit, and it is `vscode-textmate`'s own default — `if (timeLimit !== 0)` is the
+ * whole of the check. A limit has nothing to do with what these tests claim, which is the scope a
+ * grammar gives a piece of text.
+ */
+
 /** Every token's own scope, in order — never a merged colour run. */
 type Scoped = { text: string; scope: string };
 
@@ -71,7 +91,7 @@ beforeAll(async () => {
 
   const reading = (from: typeof highlighter) => (code: string) =>
     from
-      .codeToTokensBase(code, { lang: "tsx", theme: "github-dark", includeExplanation: true })
+      .codeToTokensBase(code, { lang: "tsx", theme: "github-dark", includeExplanation: true, tokenizeTimeLimit: 0 })
       .flat()
       .flatMap((token) => token.explanation ?? [])
       .filter((part) => part.content.trim() !== "")
@@ -369,7 +389,7 @@ describe("where an injection cannot reach", () => {
 
     const scopeOfZZZ = (code: string) =>
       highlighter
-        .codeToTokensBase(code, { lang: "tsx", theme: "github-dark", includeExplanation: true })
+        .codeToTokensBase(code, { lang: "tsx", theme: "github-dark", includeExplanation: true, tokenizeTimeLimit: 0 })
         .flat()
         .flatMap((token) => token.explanation ?? [])
         .find((part) => part.content.trim() === "ZZZ")
