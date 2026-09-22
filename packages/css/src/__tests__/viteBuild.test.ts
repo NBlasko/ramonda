@@ -548,25 +548,6 @@ describe("what development-only code costs a visitor", () => {
   });
 });
 
-test("zzdiagnose", () => {
-  const root = project(
-    `const base = @@(\n  @media (min-width: 1px) {\n    padding: 11px;\n  }\n);\n` +
-      `export const Card = () => <div css={@@(\n  ...{base};\n  padding-left: 4px;\n)}>x</div>;\n`,
-    `import { Card } from "./Card";\nconsole.log(Card());\n`,
-  );
-  const result = build(root);
-  const javascript = of(result.files, ".js");
-  const lines: string[] = [`bundle ${javascript.length} bytes`];
-  for (const needle of ["process.env", '"production"', "typeof process", "is composed later", "NODE_ENV"]) {
-    const at = javascript.indexOf(needle);
-    lines.push(
-      `  ${needle.padEnd(22)} ${at === -1 ? "absent" : `at ${at}  ...${JSON.stringify(javascript.slice(Math.max(0, at - 70), at + 70))}`}`,
-    );
-  }
-  require("node:fs").writeFileSync("/tmp/zzdiag.txt", lines.join("\n"));
-  expect(result.ok).toBe(true);
-});
-
 /**
  * The same wiring claim, asked of Vite.
  *

@@ -40,6 +40,20 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const FORBIDDEN = new Set(["process.stdout.write", "process.stderr.write", "console.debug"]);
 
 /**
+ * Where a probe writes when it has stopped printing — the same leftover, one step further out.
+ *
+ * Found 2026-09-22 by a review: `viteBuild.test.ts` — this file's own cautionary tale, again — held
+ * a `test("zzdiagnose")` that built a whole Vite production bundle, wrote what it found to
+ * `/tmp/zzdiag.txt`, and asserted only what the test above it already asserted. It printed nothing,
+ * so this check was quiet, and it had ridden through every green gate since it was committed.
+ *
+ * A test that needs a temporary file makes one — `mkdtempSync(join(tmpdir(), …))` is what every
+ * fixture here does, and it cleans up after itself. An absolute path typed into the source is a
+ * person watching a file while they debug, which is what this rejects.
+ */
+const SCRATCH = /^\/(tmp|var\/folders)\//;
+
+/**
  * Deliberate exceptions, each with the reason it is one.
  *
  * Empty, and it is meant to stay that way — but the shape is here because every other check in this
@@ -73,14 +87,24 @@ function probesIn(path) {
   const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
   const found = [];
 
+  const at = (node) => source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+
   const walk = (node) => {
     if (ts.isCallExpression(node)) {
       const called = chain(node.expression);
-      if (called !== undefined && FORBIDDEN.has(called)) {
-        const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
-        found.push({ called, line: line + 1 });
-      }
+      if (called !== undefined && FORBIDDEN.has(called)) found.push({ called, line: at(node) });
     }
+    /**
+     * A STRING is read for a scratch path, and only a string — the same reason the calls above are
+     * read off the AST. A path in a comment is somebody explaining where they looked, which is
+     * writing rather than running, and a template's HEAD is what carries the prefix when the name
+     * ends in a pid.
+     */
+    const text =
+      ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateHead(node)
+        ? node.text
+        : undefined;
+    if (text !== undefined && SCRATCH.test(text)) found.push({ called: `a scratch path, "${text}"`, line: at(node) });
     ts.forEachChild(node, walk);
   };
   walk(source);
@@ -107,9 +131,11 @@ function run() {
   if (reported.length > 0) {
     throw new Error(
       `[probes] ${reported.length} debug probe(s) left in a test:\n\n${reported.join("\n")}\n\n` +
-        `        A test's job is to assert. Anything it prints is either a leftover from chasing\n` +
-        `        something — which is what this exists for — or belongs in an assertion, where a\n` +
-        `        future reader can see what it claims.\n\n` +
+        `        A test's job is to assert. Anything it prints — or writes to a path somebody typed\n` +
+        `        out while watching it — is either a leftover from chasing something, which is what\n` +
+        `        this exists for, or belongs in an assertion where a future reader can see the claim.\n\n` +
+        `        A test that needs a temporary file makes one with \`mkdtempSync(join(tmpdir(), …))\`\n` +
+        `        and removes it, the way every fixture here does.\n\n` +
         `        If it is deliberate, add the file to DECIDED in scripts/check-test-probes.mjs with\n` +
         `        the reason.`,
     );
@@ -124,7 +150,7 @@ function run() {
     );
   }
 
-  console.log(`[probes] ${files.length} test files, none of them printing`);
+  console.log(`[probes] ${files.length} test files, none printing and none writing to a scratch path`);
 }
 
 /**
@@ -149,6 +175,26 @@ if (process.env.SELFTEST === "probe") {
     process.exit(0);
   }
   console.error("[probes] SELFTEST probe: the planted fault was NOT reported — this check is asleep");
+  process.exit(1);
+}
+
+// The scratch path, which prints nothing and so was invisible to this check until a review found one.
+if (process.env.SELFTEST === "scratch") {
+  const planted = join(tmpdir(), `scratch-${process.pid}.test.ts`);
+  writeFileSync(
+    planted,
+    'import { writeFileSync } from "node:fs";\nimport { test } from "vitest";\n' +
+      'test("x", () => {\n  writeFileSync("/tmp/what-i-saw.txt", "…");\n});\n',
+  );
+
+  const found = probesIn(planted);
+  rmSync(planted, { force: true });
+
+  if (found.length === 1 && found[0].called.includes("/tmp/what-i-saw.txt")) {
+    console.log("[probes] SELFTEST scratch: the planted scratch path was reported, as it must be");
+    process.exit(0);
+  }
+  console.error("[probes] SELFTEST scratch: a scratch path was NOT reported — this check is asleep");
   process.exit(1);
 }
 
