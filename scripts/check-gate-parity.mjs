@@ -58,8 +58,17 @@ const DECIDED = {
  * `[^&|\n]*` for the arguments, because a chain writes `a.mjs && b.mjs` on one line in
  * `package.json` and a workflow writes one per line under `run: |`. Whitespace is collapsed so the
  * two spellings of the same call are one string.
+ *
+ * **A leading `./`, a quote and extra whitespace are all tolerated, and that is not politeness.**
+ * The first version matched `node scripts/x.mjs` exactly, and a review of this file measured what
+ * the other spellings do. They are not symmetrical: in a WORKFLOW an unmatched spelling is a gate
+ * this cannot see CI running, which reports a gap that is not there — noisy, and somebody looks. In
+ * `package.json` it is the opposite and it is silent: the gate is never asked about, this check
+ * says every invocation is covered, and the one written `node ./scripts/x.mjs` is unguarded with
+ * nothing anywhere to say so. A check whose own blind spot reads as success is the shape it exists
+ * to refuse.
  */
-const INVOCATION = /(?:SELFTEST=([A-Za-z0-9_-]+)\s+)?node (scripts\/[a-z0-9-]+\.mjs)([^&|\n]*)/g;
+const INVOCATION = /(?:SELFTEST=([A-Za-z0-9_-]+)\s+)?node\s+["']?(?:\.\/)?(scripts\/[a-z0-9-]+\.mjs)["']?([^&|\n]*)/g;
 
 function invocationsIn(text) {
   const found = new Set();
@@ -88,11 +97,23 @@ function whatTheGateRuns(scripts, name, seen = new Set()) {
   return found;
 }
 
-function whatCiRuns(workflows) {
-  const found = new Set();
-  for (const file of readdirSync(workflows)) {
-    if (!/\.ya?ml$/.test(file)) continue;
-    for (const one of invocationsIn(readFileSync(join(workflows, file), "utf8"))) found.add(one);
+/**
+ * Every workflow, and every composite action a workflow can reach.
+ *
+ * `.github/actions/*` holds `action.yml` files that a job invokes with `uses:`, and a gate run from
+ * one is a gate CI runs. None does today — `setup` is the only action and it installs — but reading
+ * them costs nothing and closes the whole class rather than the instance, which is the difference
+ * between this being a check and being a note about today.
+ */
+function whatCiRuns(directory, found = new Set()) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      whatCiRuns(path, found);
+      continue;
+    }
+    if (!/\.ya?ml$/.test(entry.name)) continue;
+    for (const one of invocationsIn(readFileSync(path, "utf8"))) found.add(one);
   }
   return found;
 }
@@ -100,7 +121,7 @@ function whatCiRuns(workflows) {
 function missing() {
   const { scripts } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const local = whatTheGateRuns(scripts, "check");
-  const ci = whatCiRuns(join(root, ".github", "workflows"));
+  const ci = whatCiRuns(join(root, ".github"));
   return { local, gaps: [...local].filter((one) => !ci.has(one)).sort() };
 }
 
@@ -149,10 +170,29 @@ function run() {
  * kind that rots: it is about a file nobody edits often, and the message would be missed by anyone
  * not looking for it.
  */
+/**
+ * The spellings, which is where a review found this check reading its own blind spot as success.
+ *
+ * Asserted on `invocationsIn` directly, because the fault is in the reading rather than in the
+ * comparison: a spelling it cannot see in `package.json` is a gate it never asks about, and the run
+ * then prints that every invocation is covered.
+ */
+if (process.env.SELFTEST === "spelling") {
+  const same = ["node scripts/x.mjs", "node ./scripts/x.mjs", 'node "scripts/x.mjs"', "node  scripts/x.mjs"];
+  const read = same.map((one) => [...invocationsIn(one)][0]);
+
+  if (read.every((one) => one === "scripts/x.mjs")) {
+    console.log("[gate-parity] SELFTEST spelling: four spellings of one call read as one, as they must");
+    process.exit(0);
+  }
+  console.error(`[gate-parity] SELFTEST spelling: they read as ${JSON.stringify(read)} — a gate could hide here`);
+  process.exit(1);
+}
+
 if (process.env.SELFTEST === "missing") {
   const scripts = { check: "node scripts/check-nothing-runs-this.mjs && pnpm check:inner", "check:inner": "" };
   const local = whatTheGateRuns(scripts, "check");
-  const ci = whatCiRuns(join(root, ".github", "workflows"));
+  const ci = whatCiRuns(join(root, ".github"));
   const gaps = [...local].filter((one) => !ci.has(one));
 
   if (gaps.length === 1 && gaps[0] === "scripts/check-nothing-runs-this.mjs") {
@@ -173,7 +213,7 @@ if (process.env.SELFTEST === "missing") {
 if (process.env.SELFTEST === "present") {
   const scripts = { check: "SELFTEST=probe node scripts/check-test-probes.mjs && node scripts/check-tsconfigs.mjs" };
   const local = whatTheGateRuns(scripts, "check");
-  const ci = whatCiRuns(join(root, ".github", "workflows"));
+  const ci = whatCiRuns(join(root, ".github"));
   const gaps = [...local].filter((one) => !ci.has(one));
 
   if (gaps.length === 0) {

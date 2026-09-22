@@ -73,6 +73,7 @@ jobs:
       # what real browser engines say, which no local gate can.
       - name: Check CI runs every gate `pnpm check` does
         run: |
+          SELFTEST=spelling node scripts/check-gate-parity.mjs
           SELFTEST=missing node scripts/check-gate-parity.mjs
           SELFTEST=present node scripts/check-gate-parity.mjs
           node scripts/check-gate-parity.mjs
