@@ -60,6 +60,22 @@ jobs:
       # than beside the very tasks it is checking.
       - name: Check the test jobs partition the suite
         run: node scripts/check-test-jobs.mjs
+
+      # Every gate `pnpm check` runs must be run here too, or it protects the machine it was run on
+      # rather than `main`. Written after a measurement found TEN that were not — including the one
+      # whose own docstring records a debug probe reaching `main` through a green run, and a second
+      # leftover that reached `main` while it was missing.
+      #
+      # It compares whole invocations rather than file names, because `SELFTEST=` and `--check` are
+      # what a run means: `build-package-readmes.mjs` writes the READMEs and `--check` fails when
+      # they are stale, and a self-test that only ever runs on a laptop has not proved anything about
+      # `main`. It asks one direction only — CI doing MORE is fine, and four of these scripts read
+      # what real browser engines say, which no local gate can.
+      - name: Check CI runs every gate `pnpm check` does
+        run: |
+          SELFTEST=missing node scripts/check-gate-parity.mjs
+          SELFTEST=present node scripts/check-gate-parity.mjs
+          node scripts/check-gate-parity.mjs
       # Every pending changeset is one the release can process AND one it can consume. This ran only
       # in `pnpm check` until now, which is how two changesets for an ignored package reached `main`
       # and left the release unable to ever take its publish branch.
@@ -77,6 +93,7 @@ jobs:
           git rev-parse --verify main >/dev/null 2>&1 || git branch main origin/main
           SELFTEST=ignored node scripts/check-changesets.mjs
           SELFTEST=floor node scripts/check-changesets.mjs
+          SELFTEST=scaffold node scripts/check-changesets.mjs
           node scripts/check-changesets.mjs
 
       # The gates that read SOURCE and nothing else. They ran only in `pnpm check` until now, which
