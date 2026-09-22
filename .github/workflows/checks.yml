@@ -79,6 +79,35 @@ jobs:
           SELFTEST=floor node scripts/check-changesets.mjs
           node scripts/check-changesets.mjs
 
+      # The gates that read SOURCE and nothing else. They ran only in `pnpm check` until now, which
+      # made them a promise about the machine that happened to run it rather than about `main` — a
+      # PR could be merged with any of them broken, and the branch that added this had already
+      # merged a test holding a leftover diagnostic for exactly that reason.
+      #
+      # Each one's self-test runs first where it has one, since a check nobody has seen fail proves
+      # nothing. `preflight-node.mjs` is deliberately NOT here: it warns when the Node running the
+      # gate is not the Node CI runs, and in CI those are the same Node, so it could never speak.
+      - name: Check the source-only gates
+        run: |
+          node scripts/check-event-spelling.mjs
+          node scripts/check-tsconfigs.mjs
+          node scripts/check-decorator-duplication.mjs
+          SELFTEST=probe node scripts/check-test-probes.mjs
+          SELFTEST=string node scripts/check-test-probes.mjs
+          SELFTEST=scratch node scripts/check-test-probes.mjs
+          node scripts/check-test-probes.mjs
+          node scripts/build-package-readmes.mjs --check
+          node scripts/build-css-properties.mjs --check
+
+      # These two need `@ramonda/css` BUILT, which the step above already did for `pnpm lint`:
+      # `check-css-blocks` imports the compiler, and `check-css-system` runs `bin.mjs codegen
+      # --check`. Measured with every `dist` moved aside — the first dies in node's resolver and the
+      # second cannot run at all, so neither can pass quietly for want of a build.
+      - name: Check the generated CSS system is in step with its config
+        run: |
+          node scripts/check-css-blocks.mjs
+          node scripts/check-css-system.mjs
+
   typecheck:
     name: Type-check
     runs-on: ubuntu-latest
@@ -361,6 +390,20 @@ jobs:
           # that had been there long enough that nobody remembered.
           SELFTEST=escape node scripts/check-manifest-text.mjs
           node scripts/check-manifest-text.mjs
+
+      # The two gates that need the BUILT tree, which is why they are in this job and not beside the
+      # source-only ones in `lint`.
+      #
+      # `check-third-party` looks for each vendored work's fingerprint in what a package actually
+      # SHIPS, so it reads `dist`; measured with every `dist` moved aside, it reports a problem
+      # rather than passing on an empty corpus, which is the shape this repository has had to fix in
+      # five other gates. `check-css-splitting` reads the playground's own
+      # `dist/.vite/manifest.json` to ask that each chunk loads the rules it names, so it needs the
+      # app built above and not merely the packages.
+      - name: Check what the built packages carry, and how the CSS splits
+        run: |
+          node scripts/check-third-party.mjs
+          node scripts/check-css-splitting.mjs
 
       # In this job because it packs the built packages and installs them into a generated
       # project — the tarballs a publish would push, not what npm already has.
