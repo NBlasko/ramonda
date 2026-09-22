@@ -235,12 +235,16 @@ export function nameFor(declaration: {
   conditions: readonly string[];
   holes: readonly number[];
 }): string {
-  const hash = () => classNameFor(declaration.identity);
-
-  if (declaration.holes.length > 0) return hash();
-
-  const context = contextOf(declaration.selector, declaration.conditions);
-  if (context === undefined) return hash();
+  const key = keyToken(declaration);
+  /**
+   * The VALUE falls to a hash on its own now, and the key stays whatever it was.
+   *
+   * It used to be the whole name — a value with a quote in it, or a name over the budget, and the
+   * class became `r-QbofRLj5j` with nothing readable and no key in it. The key is what a merge
+   * reads, so it can never be given up; and once it is kept anyway, keeping the property readable
+   * beside an unreadable value costs nothing.
+   */
+  const hash = () => `r-${key}-${shortHash(declaration.identity, HASH_LENGTH)}`;
 
   // From the canonical text rather than from anywhere else, so the name and the rule cannot disagree
   // about what the value is.
@@ -262,10 +266,7 @@ export function nameFor(declaration: {
    */
   if (spelled.includes("_")) return hash();
 
-  const written = ABBREVIATIONS[declaration.property] ?? declaration.property;
-  if (!SAFE_PROPERTY.test(written)) return hash();
-
-  const name = `r-${context}${written}-${value}`;
+  const name = `r-${key}-${value}`;
   return name.length > NAME_BUDGET ? hash() : name;
 }
 
@@ -341,7 +342,101 @@ function contextOf(selector: string, conditions: readonly string[]): string | un
    */
   if (written.includes("_")) return undefined;
 
+  /**
+   * A `-` the AUTHOR wrote, which the KEY cannot hold — see {@link keyToken}.
+   *
+   * The key is everything up to the first `-` in the class name, so a context carrying one would
+   * end the key in the middle of itself. Encoding it as `_` would not do either: `_` already stands
+   * for a space, and `@media (min width)` against `@media (min-width)` would come out one string.
+   *
+   * It costs the contexts that matter most — `@media (min-width: 40rem)` is the ordinary one — so
+   * those keep a readable PROPERTY and a hashed context rather than falling to the hash whole.
+   */
+  if (written.includes("-")) return undefined;
+
   // A leading space is a DESCENDANT and is what `_` stands for; every other space is inside the
   // text the author wrote and becomes one too, so nothing about the shape is lost.
-  return `${written.replace(/ /g, "_")}-`;
+  return written.replace(/ /g, "_");
+}
+
+/**
+ * The KEY a class name carries: **what this declaration sets**, written into the name itself.
+ *
+ * ## Why a class has to carry it
+ *
+ * A merge keeps, per thing set, the one written later — and *the thing set* is the context and the
+ * property together, never the value. While a block travelled as a MAP the key was the map's own
+ * key and the class carried nothing. A block that travels as a string has only its classes, so the
+ * key has to be in them or a merge across a component boundary cannot decide anything.
+ *
+ * ## Where it sits, and how it ends
+ *
+ * First, and it ends at the **first `-`** — so everything after that is the value's, wherever the
+ * value happens to hold a `-` of its own (`-4px`, `sans-serif`, `a-b`). That is what the encodings
+ * below are protecting: nothing inside a key may be a `-`.
+ *
+ * ## The four shapes, and why each is distinguishable from the others
+ *
+ * | | |
+ * |---|---|
+ * | `c` | no context; the property, written |
+ * | `:hover.c` | a written context, a `.`, then the property |
+ * | `0Ab3k.c` | a context that could not be written, hashed; the property still readable |
+ * | `0Ab3kQ` | neither could be written, so the whole key is hashed |
+ *
+ * **A written key never begins with `0`**, because a CSS property cannot begin with a digit and
+ * every context form begins with `:`, `.`, `_`, `@` or `[`. So the leading `0` says *hashed* and
+ * cannot be mistaken for anything an author wrote. The `.` says where a hashed context ends: a
+ * property may not hold one, so the LAST `.` is always the boundary.
+ *
+ * **It is injective by construction**, which is the whole of what a key owes. Two declarations get
+ * one key only when their context and property are the same text — or when two hashes collide, and
+ * that is asserted where the sheet is assembled, with both rules named. See `Sheet.add`.
+ */
+export function keyToken(declaration: { property: string; selector: string; conditions: readonly string[] }): string {
+  const property = writableProperty(declaration.property);
+  const context = contextOf(declaration.selector, declaration.conditions);
+
+  if (property === undefined) {
+    return `0${shortHash(keyTextOf(declaration), 6)}`;
+  }
+  if (context === undefined) {
+    return `0${shortHash(keyTextOf({ ...declaration, property: "" }), 5)}.${property}`;
+  }
+  return context === "" ? property : `${context}.${property}`;
+}
+
+/** The exact text a key stands for, which is what a hash of it has to be a function of. */
+export function keyTextOf(declaration: { property: string; selector: string; conditions: readonly string[] }): string {
+  return [...declaration.conditions, declaration.selector, declaration.property].join("|");
+}
+
+/**
+ * A property name written into a key, with its `-` as `_`.
+ *
+ * A key may hold no `-` at all, and half of CSS's property names have one. The swap is injective
+ * because a property name in practice holds no `_` — and where one does, the readable form is
+ * refused rather than risked, which is the same answer `contextOf` gives an author's `_`.
+ *
+ * `--brand` becomes `__brand` and `-webkit-box-orient` becomes `_webkit_box_orient`, both of which
+ * read as themselves. The ABBREVIATION is preferred wherever there is one, so the common properties
+ * are a character or two.
+ */
+export function writableProperty(property: string): string | undefined {
+  const written = ABBREVIATIONS[property] ?? property;
+  if (!SAFE_PROPERTY.test(written) || written.includes("_")) return undefined;
+  return written.replace(/-/g, "_");
+}
+
+/** A hash of the given width, in the same base62 alphabet the class hash uses. */
+function shortHash(text: string, width: number): string {
+  const digest = createHash("sha256").update(text, "utf8").digest();
+  let left = digest.readBigUInt64BE(0) % 62n ** BigInt(width);
+
+  let name = "";
+  for (let index = 0; index < width; index++) {
+    name = ALPHABET[Number(left % 62n)] + name;
+    left /= 62n;
+  }
+  return name;
 }

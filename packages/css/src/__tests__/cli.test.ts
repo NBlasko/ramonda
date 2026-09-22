@@ -632,3 +632,35 @@ describe("`explain`", () => {
     expect(output).toContain("ramonda-css explain");
   });
 });
+
+/**
+ * The sentence under a failing run, and what it is FOR.
+ *
+ * It explains why a position inside a block can be trusted — the block is checked through a virtual
+ * file and every diagnostic is mapped home. That is worth saying when a block is involved, and it
+ * is noise about nothing when none is. A typed rule reports on a prop's declaration, so a project
+ * whose only fault is one of those has no block anywhere.
+ */
+describe("what a failing run says about blocks", () => {
+  test("it explains the mapping when a block is involved", () => {
+    const { output, status } = run(project(`const a = <div css={@@( dsiplay: flex; )}>x</div>;\nexport default a;\n`));
+
+    expect(status).toBe(1);
+    expect(output).toContain("carry a style block");
+  });
+
+  test("and says nothing about blocks when there are none", () => {
+    const { output, status } = run(
+      project(
+        `import type { CssBlock } from "@ramonda/css/properties";\n` +
+          `export function Card(props: { css?: CssBlock }) {\n` +
+          `  return <div>x</div>;\n}\n`,
+      ),
+    );
+
+    expect(status).toBe(1);
+    expect(output).toContain("style-prop-never-used");
+    expect(output).not.toContain("carry a style block");
+    expect(output).not.toContain("virtual file");
+  });
+});

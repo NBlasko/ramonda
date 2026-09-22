@@ -177,7 +177,8 @@ export function findBlocks(source: string): BlockSite[] {
         index = end;
         continue;
       }
-      // A template literal can only be a hole's, and a `)` inside one closes nothing here.
+      // A template literal's TEXT is quiet, and a `)` inside one closes nothing here. What is inside
+      // a `${ … }` is not quiet in any sense a reader would recognise — see `blocksInATemplate`.
       if (code === 96 /* ` */) {
         const end = endOfTemplate(source, index);
         quiet.push({ from: index, to: end });
@@ -790,4 +791,66 @@ function isNameCharacter(code: number): boolean {
     code === 45 ||
     code === 58
   );
+}
+
+/**
+ * Every `@@(` written inside a template literal's `${ … }`, which is where a block is INVISIBLE.
+ *
+ * ## Why it has to be reported rather than compiled
+ *
+ * A template literal is a quiet region to the scan above — a `(` or a `)` in one closes nothing, and
+ * a `@@` in one is text. So `` `lead ${@@( color: red; )}` `` finds no block at all: the file is
+ * handed on untouched, `@@(` survives into the bundler, and what an author gets is a syntax error
+ * somewhere else entirely, naming neither the block nor the line.
+ *
+ * **It became reachable when the `css` prop went.** A block is a string now and goes on `className`,
+ * so joining one with a class of the author's own is an ordinary thing to want, and a template is
+ * the first thing anybody would reach for. The answer is `mergeClassNames`, which takes both and is
+ * call argument like every other position — measured: attribute, assignment, call argument, object
+ * value, array element, `return`, arrow body and ternary all find a block, and a template
+ * substitution is the only one that does not.
+ *
+ * ## Why it is exact
+ *
+ * The substitutions are walked rather than pattern-matched: `endOfTemplate` already steps over them
+ * to find a template's end, so what is asked here is the same walk with the spans kept. A `@@(`
+ * inside a STRING inside a substitution is stepped over as a string, and one in the template's own
+ * text is not a substitution and is not reported.
+ */
+export function blocksInATemplate(source: string): number[] {
+  const found: number[] = [];
+
+  for (let index = 0; index < source.length; index++) {
+    const code = source.charCodeAt(index);
+    if (code === 34 || code === 39) {
+      index = (endOfQuoted(source, index) ?? index + 1) - 1;
+      continue;
+    }
+    if (code !== 96 /* ` */) continue;
+
+    const end = endOfTemplate(source, index);
+    for (let at = index + 1; at < end; at++) {
+      if (source.charCodeAt(at) !== 36 /* $ */ || source.charCodeAt(at + 1) !== 123 /* { */) continue;
+
+      const closes = endOfSubstitution(source, at + 2);
+      for (let inside = at + 2; inside < closes - 1; inside++) {
+        const here = source.charCodeAt(inside);
+        if (here === 34 || here === 39) {
+          inside = (endOfQuoted(source, inside) ?? inside + 1) - 1;
+          continue;
+        }
+        if (here === 96) {
+          inside = endOfTemplate(source, inside) - 1;
+          continue;
+        }
+        if (here === 64 && source.charCodeAt(inside + 1) === 64 && source.charCodeAt(inside + 2) === 40) {
+          found.push(inside);
+        }
+      }
+      at = closes - 1;
+    }
+    index = end - 1;
+  }
+
+  return found;
 }

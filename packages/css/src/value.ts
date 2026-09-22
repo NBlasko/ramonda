@@ -1,123 +1,13 @@
-import type { Fixed, Kind, Token, ValueByKind } from "./token";
-import type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
+import type { CssVar, Fixed, Kind, Token, ValueByKind } from "./token";
 
 /**
- * What may be read as a value: one that has been CALLED, or a descriptor with nothing to call it
- * with.
+ * SETTING a declared variable or a registered property on an element.
  *
- * The difference is a pair of parentheses, and a descriptor carries the same three fields, so
- * nothing about the shape tells them apart — but one of them is a function, and `apply` is what
- * every function has. Declaring it `never` makes a descriptor unassignable.
- *
- * **A block with NO holes is the exception, and it had to be**: there is nothing to pass it, so the
- * descriptor IS the value and `css={_s0}` is how it is written everywhere. `StyleBlock<readonly []>`
- * lets exactly that one through — a descriptor that takes an argument has a call signature the empty
- * one does not, so it stays refused, which is the case the framework reports as `RMD062`.
+ * What used to be here went with the hole. `block()` built a descriptor a call filled with a hole's
+ * values; `toStyleObject` turned one into `{ className, style }` for a renderer with no `css` prop
+ * of its own. A block sets nothing on an element any more and IS its class string, so a renderer
+ * writes `className={panel}` and there is nothing to adapt.
  */
-export type CalledStyleValue = (StyleValue & { readonly apply?: never }) | StyleBlock<readonly []>;
-
-/** Shared by every block with no holes, so the empty case allocates nothing at all. */
-const NONE: readonly string[] = Object.freeze([]);
-
-/**
- * The compiled form of one style block. **Emitted by the compiler; there is no reason to call it.**
- *
- * ```
- * const _s0 = block("r-8e271c6c1f3a4b02", ["--r-8e271c6c1f3a4b02-0"]);
- * <div css={_s0(isOnline ? "4px solid #10b981" : "4px solid #64748b")}>
- * ```
- *
- * The expression is an ARGUMENT. Nothing is concatenated, nothing becomes attribute text, and so
- * nothing has to be escaped — a value carrying a quote or a closing brace is applied with
- * `setProperty`, which takes it verbatim.
- */
-export function block<const P extends readonly string[]>(className: string, properties?: P): StyleBlock<P> {
-  const names = properties ?? (NONE as unknown as P);
-
-  const descriptor = (...values: HoleValues<P>): StyleValue => ({
-    className,
-    properties: names,
-    values: values as readonly StyleVarValue[],
-  });
-
-  descriptor.className = className;
-  descriptor.properties = names as readonly string[];
-  /**
-   * A descriptor is a value with no values, which is what the no-hole case needs and what makes the
-   * misuse readable: a block with two property names and no values is `css={_s0}` where `_s0(…)` was
-   * meant. The runtime diagnostic that reports it comes later — the shape it reads exists now.
-   */
-  descriptor.values = NONE as readonly StyleVarValue[];
-
-  return Object.freeze(descriptor) as StyleBlock<P>;
-}
-
-/**
- * A compiled value as `{ className, style }`, for a renderer that has no `css` prop of its own.
- *
- * This is the whole adapter surface. A wrapper on another JSX library spreads the result and gets
- * the same output Ramonda produces natively, which is what makes the package usable outside it.
- *
- * **A descriptor is refused by the type**, and that is the one thing this can do about the fault the
- * framework reports as `RMD062`: `toStyleObject(_s0)` where `_s0(…)` was meant used to type-check —
- * a descriptor structurally IS a value — and returned the class with no custom properties at all,
- * so every declaration reading one fell back, in silence. This package ships to a browser and
- * imports nothing, so it has no diagnostics to report it with; the type is what it has.
- */
-export function toStyleObject(value: CalledStyleValue): { className: string; style: Record<string, string> } {
-  const style: Record<string, string> = {};
-  for (let index = 0; index < value.properties.length; index++) {
-    const raw = value.values[index];
-    /**
-     * No value is not the empty value — the property is left unset, so the declaration reading it
-     * falls back to whatever the stylesheet said. Writing the text `"null"` instead would substitute
-     * something the property cannot parse, which is invalid at computed-value time and drops the
-     * declaration **and any earlier one for the same property**. This answered that differently from
-     * the framework's own path until it was measured; they answer it the same way now.
-     */
-    if (raw === undefined || raw === null) continue;
-    const text = textFor(raw);
-    if (text !== undefined) style[value.properties[index]] = text;
-  }
-  return { className: value.className, style };
-}
-
-/**
- * The text one hole's value is written as, or `undefined` for a value that is not written at all.
- *
- * ## The semicolon
- *
- * A hole's value is whatever the author's expression evaluated to, and an expression can read a
- * record — so "the author wrote it" is not a defence. `setProperty` refuses to create a second
- * declaration whatever it is handed, but this object does not reach `setProperty`: a renderer
- * spreads it, and a server-rendered page is serialized to HTML and PARSED back, where the grammar
- * applies to whatever text the serializer produced.
- *
- * Measured through exactly that round trip in the framework's own suite: the same value came back as
- * `position: fixed; width: 100vw; z-index: 9999`, real and applied. A semicolon is what separates
- * declarations, and CSS says a custom property's value may not contain one at the top level.
- * Refusing every semicolon rather than only the top-level ones costs a value like `content: "a;b"`
- * and buys a rule that needs no CSS parser to apply.
- *
- * ## The kind
- *
- * A custom property holds text, so `String(value)` produces something for anything — and the kinds a
- * hole is given by mistake all produce text no property can parse: `true`, `[object Object]`,
- * `() => 1`, `NaN`. Written, they leave the declaration to fall back in silence. `StyleVarValue` is
- * a string or a number, so nothing else arrives from checked source; this function is the adapter
- * surface, which is precisely where unchecked JavaScript arrives.
- *
- * The framework's own path asked the string question BEFORE the value became text, which let an
- * object with a `toString` through — the semicolon rule is about text, so both paths ask it of the
- * text now, and both refuse the same kinds. This package has no diagnostics to report it with; the
- * declaration is dropped rather than sanitised, so the element is left unstyled in that one respect:
- * a missing border beats an overlay somebody's record asked for.
- */
-function textFor(value: StyleVarValue): string | undefined {
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
-  if (typeof value !== "string") return undefined;
-  return value.includes(";") ? undefined : value;
-}
 
 /**
  * A variable to set, and what to set it to — one pair, with the value checked against its KIND.
@@ -126,7 +16,15 @@ function textFor(value: StyleVarValue): string | undefined {
  * `[Token<"color">, "30px"]` matches no member, because the colour member wants a colour and every
  * other member wants a different token.
  */
-export type Setting = { [K in Kind]: readonly [Token<K>, ValueByKind[K]] }[Kind];
+export type Setting =
+  | { [K in Kind]: readonly [Token<K>, ValueByKind[K]] }[Kind]
+  /**
+   * A REGISTERED property — `@@property( syntax: "<angle>"; … )` — beside a declared variable.
+   *
+   * Both are a name and a value whose kind was decided when it was declared, so both belong to one
+   * function. What differs is only where the name came from, which is not a question a caller asks.
+   */
+  | { [K in Kind]: readonly [CssVar<K>, ValueByKind[K]] }[Kind];
 
 /**
  * The same pairs, with each value checked against what ITS OWN variable may be.
@@ -143,7 +41,15 @@ type Permitted<P> = {
     ? [V] extends [R]
       ? P[I]
       : readonly [Token<K, R>, Refused<R>]
-    : never;
+    : /**
+       * A registered property has no RANGE — it has a `syntax`, which is the kind — so the check is
+       * the kind's own type and there is nothing narrower to hold it to.
+       */
+      P[I] extends readonly [CssVar<infer K>, infer V]
+      ? [V] extends [ValueByKind[K]]
+        ? P[I]
+        : readonly [CssVar<K>, ValueByKind[K]]
+      : never;
 };
 
 /**
@@ -181,6 +87,14 @@ type Refused<R> = [R] extends [Fixed<unknown>]
 const NAMED = /^var\((--[^),\s]+)\)$/;
 
 function nameOf(token: string): `--${string}` {
+  /**
+   * A REGISTERED property is already the name. `@@property( … )` binds `--r-…` itself, where a
+   * declared variable binds `var(--…)` — codegen writes the value a block reads, and a block reads
+   * a variable through `var()`. Two spellings, one question, so both are answered here rather than
+   * at every call site.
+   */
+  if (token.startsWith("--")) return token as `--${string}`;
+
   const found = NAMED.exec(token);
   if (found === null) {
     throw new Error(`[ramonda-css] \`${token}\` is not a variable this package wrote.`);
@@ -204,10 +118,52 @@ function nameOf(token: string): `--${string}` {
  * when it changes — and this is the right place to pay it: once per theme, rather than once per use,
  * which is what `$` inside a block avoids entirely.
  */
+/**
+ * **The CONSTRAINT is what refuses**, and that is why a wrong value is reported against `never`
+ * rather than against the type it should have been. Measured: widening it so `Permitted` could name
+ * the expected pair lost the refusal entirely — a pair whose value does not fit its own name stopped
+ * being an error at all. The message is the price of the check working.
+ */
 export function toStyle<const P extends readonly Setting[]>(settings: P & Permitted<P>): Record<`--${string}`, string> {
   const style: Record<string, string> = {};
-  for (const [token, value] of settings as readonly Setting[]) style[nameOf(token)] = String(value);
+  for (const [token, value] of settings as readonly Setting[]) {
+    const text = textFor(value);
+    if (text !== undefined) style[nameOf(token)] = text;
+  }
   return style;
+}
+
+/**
+ * The text one value is written as, or nothing at all for a value that may not be written.
+ *
+ * ## The semicolon
+ *
+ * A value is whatever the caller's expression evaluated to, and an expression can read a record — so
+ * "the author wrote it" is not a defence. This object ends up in a `style` attribute, and **a server
+ * render does not end at the DOM**: the element is serialized to HTML and the browser PARSES the
+ * attribute back, applying the CSS grammar to whatever text the serializer produced. Measured
+ * through `renderToString` and back through `innerHTML`, a value of
+ * `red; position: fixed; width: 100vw` came out as real, applied declarations — a full-viewport
+ * overlay out of a colour that came from a database.
+ *
+ * So a value carrying a `;` is not written, and the property is left UNSET rather than written as
+ * something else: an unset custom property makes the declaration reading it invalid at
+ * computed-value time, which drops that declaration and leaves whatever the stylesheet said. A
+ * missing border beats an overlay.
+ *
+ * **This is where the rule lives now.** It used to be `toStyleObject`'s and the framework's, for the
+ * values a `{expr}` hole carried; the hole is refused and `toStyleObject` is gone, and `toStyle` is
+ * how a value reaches an element. The hazard moved with it.
+ *
+ * ## The kinds
+ *
+ * A non-finite number is `NaN` or an infinity, which no property can parse. Anything that is not a
+ * string or a number cannot arrive through the types, so it came from JavaScript nobody checked.
+ */
+function textFor(value: unknown): string | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
+  if (typeof value !== "string") return undefined;
+  return value.includes(";") ? undefined : value;
 }
 
 /**

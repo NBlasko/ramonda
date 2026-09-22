@@ -140,20 +140,31 @@ describe("a build", () => {
     expect(css).toContain("@layer ramonda");
     expect(css).toContain("display: flex");
 
-    // The same class in the JavaScript and in the stylesheet, which is the only thing that matters.
-    // The whole string literal: a map key like `"border-left"` holds `r-left` inside it.
-    const named = /"(r-[^"]+)"/.exec(js ?? "")?.[1];
-    expect(css).toContain(`.${named}`);
+    // The same classes in the JavaScript and in the stylesheet, which is the only thing that matters.
+    // The literal holds them all, space separated, which is what a block compiles to.
+    const named = (/"(r-[^"]+)"/.exec(js ?? "")?.[1] ?? "").split(" ");
+
+    expect(named.length).toBeGreaterThan(0);
+    for (const one of named) expect(css, `${one} is named by the JavaScript`).toContain(`.${one}`);
   });
 
-  test("a hole becomes a custom property the element carries", async () => {
+  /**
+   * A value that comes from data reaches CSS through a REGISTERED property now, and this is that
+   * path all the way through a real build: the `@property` rule is in the stylesheet, the block
+   * reads it by the generated name, and the name is a string in the JavaScript for a setter to use.
+   */
+  test("a registered property reaches the stylesheet, and its name reaches the JavaScript", async () => {
     const root = project({
-      "index.tsx": `const w = 4;\nconst a = <div css={@@(\n  border-left: {\`\${w}px\`} solid red;\n)}>x</div>;\nexport default a;\n`,
+      "index.tsx":
+        `const w = @@property(\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0px;\n);\n` +
+        `export const at = (v: string) => ({ [w]: v });\n` +
+        `const a = <div css={@@(\n  border-left: var({w}) solid red;\n)}>x</div>;\nexport default a;\n`,
     });
     const { js, css } = outputs(await build(root));
 
-    expect(css).toMatch(/var\(--r-[0-9a-zA-Z][^"\s)]*-0\)/);
-    expect(js).toContain("`${w}px`");
+    expect(css).toMatch(/@property --r-[0-9a-zA-Z]+/);
+    expect(css).toMatch(/var\(--r-[0-9a-zA-Z]+\)/);
+    expect(js).toMatch(/"--r-[0-9a-zA-Z]+"/);
   });
 
   test("a file with no block is left exactly as esbuild had it", async () => {
@@ -267,14 +278,14 @@ describe("what a file is loaded as", () => {
 export default <div css={panel}>x</div>;
 `,
       "styles.ts": `const width: number = 4;
-export const panel = @@(\n  gap: {\`\${width}px\`};\n);
+export const panel = @@(\n  gap: 4px;\n  if ({width}) { padding: 8px; }\n);
 `,
     });
     const { js, css } = outputs(await build(root));
 
     // The annotation is TypeScript, and a `ts` loader is what strips it rather than choking on it.
     expect(js).not.toContain(": number");
-    expect(css).toMatch(/var\(--r-[0-9a-zA-Z][^"\s)]*-0\)/);
+    expect(css).toMatch(/gap:\s*4px/);
   });
 
   test("a block in a .jsx file keeps its JSX", async () => {

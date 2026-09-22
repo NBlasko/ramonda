@@ -1,5 +1,5 @@
 import { canonicalDeclaration, canonicalPrelude } from "./normalise";
-import { closingHole, opensAHole, readBlock } from "./read";
+import { MATCH, closingHole, opensAHole, readBlock } from "./read";
 import { findBlocks, mayHoldABlock } from "./scan";
 
 /**
@@ -479,6 +479,49 @@ function layout(body: string, indent: string, step: string, expression: Placehol
       continue;
     }
 
+    /**
+     * A `match`, which is a THIRD shape beside a declaration and a nested rule.
+     *
+     * It has to be caught before the hole branch, and that is the whole bug it fixes. `opensAHole`
+     * asks whether the text in front of a `{` is a declaration's head — `color:` is, so the `{`
+     * that opens a match body was read as a hole, and `closingHole` swallowed every arm as one run
+     * of text. Reported by the user, and what came back was:
+     *
+     *     color: match({this.tone}) {quiet => $.color.accent.quiet;
+     *       loud  => $.color.text.primary;};
+     *
+     * The arms line up on their `=>`, because a match IS a lookup table and a table reads aligned.
+     * The cost is real and is the ordinary cost of alignment: an arm with a longer key than any
+     * before it moves the others, so one edit is several lines of diff.
+     */
+    if (code === 123 /* { */ && OPENS_A_MATCH.test(line)) {
+      // `closingHole` answers just PAST the `}`, so the body is what lies between the braces.
+      const close = closingHole(body, index);
+      const stop = close === -1 ? body.length : close - 1;
+      const head = tightenedMatchHead(line.trim(), expression);
+
+      out.push(indent + step.repeat(depth) + `${head} {`);
+      for (const arm of armsIn(body.slice(index + 1, stop))) {
+        out.push(indent + step.repeat(depth + 1) + arm);
+      }
+
+      /**
+       * The `;` that ends the DECLARATION rides the closing brace, because that is what it ends.
+       * A match is a value, so the declaration holding it is not over until the `;` — and a `;` on
+       * a line of its own is the one shape nobody writes.
+       */
+      let after = stop + 1;
+      while (after < body.length && (body.charCodeAt(after) === 32 || body.charCodeAt(after) === 9)) after++;
+      const ends = body.charCodeAt(after) === 59; /* ; */
+      out.push(indent + step.repeat(depth) + (ends ? "};" : "}"));
+
+      line = "";
+      emitted = true;
+      fresh = false;
+      index = ends ? after : stop;
+      continue;
+    }
+
     if (code === 123 /* { */ && opensAHole(line)) {
       const close = closingHole(body, index);
       const stop = close === -1 ? body.length : close;
@@ -561,6 +604,70 @@ function layout(body: string, indent: string, step: string, expression: Placehol
   // A trailing blank line would put an empty one before the closing paren, which nobody wrote.
   while (out.length > 0 && out[out.length - 1] === "") out.pop();
   return out;
+}
+
+/**
+ * A declaration whose value is a `match(…)` waiting for its body — see where it is used.
+ *
+ * Anchored at the property, so `color: match({t})` is one and `background: url(a) match(b)` is not:
+ * a match is the WHOLE value or it is not a match, which is what the reader already refuses.
+ */
+const OPENS_A_MATCH = new RegExp(`:\\s*${MATCH}\\s*\\([\\s\\S]*\\)\\s*$`);
+
+/** The head of a match — `color: match({…})` — with its subject laid out by the project's tools. */
+function tightenedMatchHead(line: string, expression: PlaceholdOptions["expression"]): string {
+  const open = line.indexOf("{");
+  if (open === -1) return line;
+  const close = closingHole(line, open);
+  if (close === -1) return line;
+  return line.slice(0, open) + tightened(line.slice(open, close), expression) + line.slice(close);
+}
+
+/**
+ * One match body's arms, one per line, lined up on their `=>`.
+ *
+ * Split on the `;` that ends each arm, at paren depth zero and outside a string — `red;` ends one
+ * and `rgb(0 0 0 / 50%);` does not end in the middle of itself. An arm with no `;` is the last one
+ * written without a trailing semicolon, which the reader accepts and which comes back with one.
+ */
+function armsIn(body: string): string[] {
+  const arms: string[] = [];
+  let current = "";
+  let parens = 0;
+
+  for (let index = 0; index < body.length; index++) {
+    const code = body.charCodeAt(index);
+
+    if (code === 34 /* " */ || code === 39 /* ' */) {
+      const stop = endOfString(body, index);
+      current += body.slice(index, stop);
+      index = stop - 1;
+      continue;
+    }
+    if (code === 40 /* ( */) parens++;
+    if (code === 41 /* ) */) parens = Math.max(0, parens - 1);
+    if (parens === 0 && code === 59 /* ; */) {
+      arms.push(current);
+      current = "";
+      continue;
+    }
+    current += String.fromCharCode(code);
+  }
+  arms.push(current);
+
+  /** The key and the value of each arm, with the whitespace the author used taken out. */
+  const split = arms
+    .map((one) => one.replace(/\s+/g, " ").trim())
+    .filter((one) => one !== "")
+    .map((one) => {
+      const at = one.indexOf("=>");
+      return at === -1 ? { key: one, value: "" } : { key: one.slice(0, at).trim(), value: one.slice(at + 2).trim() };
+    });
+
+  const widest = split.reduce((width, one) => Math.max(width, one.key.length), 0);
+  return split.map(({ key, value }) =>
+    value === "" ? `${key};` : `${key.padEnd(widest)} => ${canonicalDeclaration(`x:${value}`).slice(2)};`,
+  );
 }
 
 /** Past the closing quote of the string starting at `at`, or the end of the text. */

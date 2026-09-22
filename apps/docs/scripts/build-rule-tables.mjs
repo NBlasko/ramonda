@@ -301,11 +301,26 @@ const CSS_LINES = {
   "non-canonical-spelling": "one CSS written two ways — `ramonda-css format` fixes it",
   "repeated-declaration": "the same property set twice to the same value",
   "override-out-of-order": "a declaration written to override one that will win anyway",
+  "style-prop-never-used": "a prop that takes a style block and never puts it on an element",
+  "style-prop-overridden": "a declaration below the spread that clears what a caller may send",
+  "blocks-joined-not-merged":
+    "two style blocks joined into one string, where `mergeClassNames` was meant — every class from both lands",
+  "state-is-a-tuple":
+    "a state in an allow-list typed `[{ … }]`, which constrains its first declaration and nothing under it",
+  "allow-list-is-an-interface":
+    "an allow-list written with `interface`, which can never match a block shape — write it as a `type`",
+  "registered-never-set": "a `@@property` a block reads and nothing sets, so every element gets its initial value",
+  "hole-not-allowed": "a runtime value in a declaration — write it out with `match`, or declare it with `@@property`",
+  "hole-in-a-match-arm": "an arm holding a value the render computes, where a class belongs",
+  "match-arm-repeated": "an arm that can never run, because one above it answers first",
+  "match-with-no-arms": "a `match` that sets nothing whatever its subject is",
   "variable-set-by-another-name": "a `var()` reading a name set with different capitals",
   "value-and-registered-syntax": "a value a registered custom property cannot hold",
   "initial-value-and-syntax": "`@@property` with a syntax and no initial value",
   "line-comment": "a `//` comment, which CSS does not have",
   "run-on-declaration": "a missing `;`, so the next line joined this value",
+  "block-in-a-template":
+    "a block inside a template literal's `${ … }`, where nothing can see it — use `mergeClassNames`",
   "block-as-a-jsx-attribute": "`css=@@( … )` — a block is a value, so it goes in the braces",
   "declaration-out-of-place": "a declaration where only a rule belongs",
   "rule-out-of-place": "a nested rule where only declarations belong",

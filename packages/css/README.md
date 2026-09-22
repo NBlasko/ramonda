@@ -1,12 +1,15 @@
 # @ramonda/css
 
-A style block written in real CSS beside the markup. At build time the static declarations become a
-class in a stylesheet and each carried expression becomes a CSS custom property on the element.
+A style block written in real CSS beside the markup. At build time every declaration becomes a class
+in a stylesheet, and the block becomes the classes it came to — a string, so `className` takes it.
 
 ```
-<div css={@@(
+<div className={@@(
   display: flex;
-  border-left: {isOnline ? "4px solid #10b981" : "4px solid #64748b"};
+  border-left: match({this.tone}) {
+    loud => 4px solid #10b981;
+    _    => 4px solid #64748b;
+  };
 )}>
 ```
 
@@ -34,15 +37,20 @@ Documentation: **[ramonda.dev/style-blocks](https://ramonda.dev/style-blocks)**
 So it goes wherever a value goes — in the attribute, or in a binding you name and use later:
 
 ```tsx
-<div css={@@( display: flex; )}>…</div>          inline
+<div className={@@( display: flex; )}>…</div>    inline
 const panel = @@( display: flex; );              named, and reusable
 ```
+
+A block compiles to its **classes**, so `className` is where it goes. Beside a class of your own it
+goes through `mergeClassNames` — `className={mergeClassNames("lead", @@( display: flex; ))}` — and
+not through a template literal, which is text to the compiler and is reported rather than compiled
+to silence.
 
 Nothing about a block requires JSX: **this extends TypeScript, not JSX**, and a block in a `.ts`
 file with no markup works the same way.
 
-`css=@@( … )` — a bare JSX attribute, with no braces — was a third spelling and is refused now, with
-a message naming the one to write. It could only be coloured as the first attribute on the tag's own
+`className=@@( … )` — a bare JSX attribute, with no braces — was a third spelling and is refused now,
+with a message naming the one to write. It could only be coloured as the first attribute on the tag's own
 line, because an editor stops consulting syntax injections the moment it enters an attribute list;
 and Prettier rewrote it to the braced form anyway, so the file you saved was not the file you
 wrote.
@@ -125,32 +133,30 @@ handled:
   ```
 
   Prettier prints an attribute value itself and never offers a plugin the chance to print one, which
-  is one of the two reasons the bare `css=@@( … )` spelling is no longer compiled: the formatter had
+  is one of the two reasons the bare `className=@@( … )` spelling is no longer compiled: the formatter had
   to hand back the braced form regardless.
 
 The syntax is not TypeScript, which is why this owns a parser and a virtual-file layer — the same way
 JSX is usable because somebody wrote the parser for it. Everything a block can say is type-checked:
-a property-name typo gets TypeScript's own *did you mean*, and a hole is checked against the type the
-property accepts.
+a property-name typo gets TypeScript's own *did you mean*, a value the property cannot take is
+reported with the ones it can, and a runtime value in a declaration is refused outright.
 
 ## What ships to the browser
 
 `@ramonda/css` is the compiled value and nothing else — no parser, no hash, no stylesheet. It imports
-nothing at all, not even the framework, which is what lets a wrapper put a `css` prop on another JSX
-library without dragging one in.
+nothing at all, not even the framework, which is what lets another JSX library take a block on its own
+`className` without dragging one in.
 
 ```ts
-import { block, toStyleObject } from "@ramonda/css";
+import { mergeClassNames } from "@ramonda/css";
 
-// One class and one custom property, by hand — for an adapter, not for a block you wrote.
-const bordered = block("r-8e271c6c1f3a4b02", ["--r-8e271c6c1f3a4b02-0"]);
-
-toStyleObject(bordered("4px solid #10b981"));
-// { className: "r-8e271c6c1f3a4b02", style: { "--r-8e271c6c1f3a4b02-0": "4px solid #10b981" } }
+// What a block compiles to: the classes, space separated. It keeps one class per thing set.
+mergeClassNames("r-pl-40px r-cur-pointer", "r-p-8px");
+// "r-cur-pointer r-p-8px"  — `padding` cleared the `padding-left` beneath it
 ```
 
-The expression is an **argument**, never concatenated into a string — so nothing has to be escaped,
-and no rule is ever created at runtime.
+**A block IS that string**, so `className={panel}` applies one and there is no adapter to import. No
+rule is ever created at runtime, and nothing is concatenated into one.
 
 ## What the build loads
 
@@ -171,18 +177,17 @@ const result = transform(readFileSync("Card.tsx", "utf8"), { filename: "Card.tsx
 The transform is what turns
 
 ```
-<div css={@@( display: flex; border-left: {accent}; )}>
+<div className={@@( display: flex; border-left: 4px solid red; )}>
 ```
 
-into a `_merge({ … })` naming one class per declaration, with the expression handed to it as an
-argument, plus one rule per declaration for the sheet:
+into one class per declaration, plus one rule per declaration for the sheet:
 
 ```tsx
-<div css={_merge({
-  "display": "r-disp-flex",
-  "border-left": ["r-wRCRfm4OS", accent],
-  "~border-left": ["border-left-color", "border-left-style", "border-left-width"],
-})}>
+import { mergeClassNames as _merge, shorthands as _clears } from "@ramonda/css";
+_clears({"bl":["blc","bls","blw"]});
+const _s0 = _merge("r-disp-flex r-bl-4px_solid_red");
+
+<div className={_s0}>
 ``` **Only the CSS between the expressions is replaced** — every expression's own
 bytes stay where they were written, which is what makes the source map exact.
 
@@ -206,13 +211,14 @@ const file = virtualFile(readFileSync("Card.tsx", "utf8"));
 
 Each block becomes an **object literal**, and that is the load-bearing choice: an object literal is
 what gets excess-property checking, and excess-property checking is what produces TypeScript's own
-*did you mean* for a CSS property name. Each hole's expression stays where it was written, so `this`,
-the imports and the generics are all the ones the author sees.
+*did you mean* for a CSS property name. Every expression the block still holds — a condition, a
+spread, a `match` subject — stays where it was written, so `this`, the imports and the generics are
+all the ones the author sees.
 
 ```
 dsiplay: flex;      TS2561 … 'dsiplay' does not exist. Did you mean to write 'display'?
 position: statik;   TS2820 … Did you mean '"static"'?
-padding: {f()};   TS2322 … 'boolean' is not assignable
+padding: {n};       hole-not-allowed … a style block takes no runtime value
 ```
 
 The property map is generated from MDN's own data — 551 properties, **123 of them a closed keyword
@@ -260,8 +266,8 @@ a sheet holding every rule three times is 3.5x the bytes and **1.1x gzipped**.
 ```
 
 Completion inside a block **is** object-literal completion: the property names while a name is being
-typed, and the values a property accepts while a value is. Hover over a hole gives the expression's
-own type. And a correct block gets no red squiggle, even though the file does not parse as TypeScript
+typed, and the values a property accepts while a value is. Hover over an expression gives its own
+type. And a correct block gets no red squiggle, even though the file does not parse as TypeScript
 — both kinds of diagnostic are read from the virtual file, because the real one would report the
 block itself as a syntax error.
 

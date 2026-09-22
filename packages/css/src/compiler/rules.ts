@@ -2,6 +2,7 @@ import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
+import { runtimeValuesIn } from "./ast";
 import {
   conflict,
   covers,
@@ -32,8 +33,9 @@ import {
   PRIMITIVE,
 } from "./keywords.generated";
 import { canonicalPrelude, canonicalValue, propertyName } from "./normalise";
-import { CONDITION, LINE_COMMENT, SPREAD, closingHole, holeIn, opensAHole } from "./read";
+import { CONDITION, LINE_COMMENT, MATCH, SPREAD, closingHole, holeIn, opensAHole } from "./read";
 import type { BlockSite } from "./scan";
+import { blocksInATemplate } from "./scan";
 
 /**
  * The CSS checker: the faults the type map deliberately cannot catch.
@@ -93,6 +95,8 @@ export const RULE_IDS = [
   "repeated-declaration",
   "hole-out-of-place",
   "block-as-a-jsx-attribute",
+  // A block inside a template literal's `${ … }`, where nothing can see it. See `checkTemplates`.
+  "block-in-a-template",
   "run-on-declaration",
   "line-comment",
   "unknown-unit",
@@ -129,6 +133,26 @@ export const RULE_IDS = [
   "missing-semicolon",
   "literal-not-allowed",
   "declaration-does-nothing",
+  // The three that need a `ts.Program`. They live in `typed.ts` — see its header for why they cannot
+  // be in this file — but their ids belong here, because this is the list a config is checked
+  // against and a rule a project cannot turn off is a rule with no escape hatch.
+  "style-prop-never-used",
+  "style-prop-overridden",
+  // A `@@property` every block reads and nothing sets, so every element gets its initial value.
+  "registered-never-set",
+  // Two blocks joined into one string, where a merge was meant. See `joinedNotMerged`.
+  "blocks-joined-not-merged",
+  // A state in an allow-list typed `[{ … }]`, which constrains its first declaration only. See
+  // `stateIsATuple`.
+  "state-is-a-tuple",
+  // An allow-list written with `interface`, which can never match a block shape. See
+  // `allowListIsAnInterface` — the one rule here that stands in for a compiler diagnostic.
+  "allow-list-is-an-interface",
+  "hole-not-allowed",
+  // What a `match` may not hold. See `matchArms`.
+  "hole-in-a-match-arm",
+  "match-arm-repeated",
+  "match-with-no-arms",
 ] as const;
 
 export type RuleId = (typeof RULE_IDS)[number];
@@ -185,6 +209,35 @@ export function checkSite(_source: string, site: BlockSite): Finding[] {
         `Prettier rewrote it anyway.`,
     },
   ];
+}
+
+/**
+ * A block written inside a template literal's `${ … }`, which compiles to nothing at all.
+ *
+ * **Silent without this, and silent in the worst way.** A template literal is a quiet region to the
+ * scan, so `` `lead ${@@( color: red; )}` `` finds no block: the file is handed on untouched, `@@(`
+ * survives into the bundler, and what an author gets is a syntax error somewhere else entirely,
+ * naming neither the block nor the line.
+ *
+ * **It became reachable when the `css` prop went.** A block is a string and goes on `className`, so
+ * joining one with a class of the author's own is an ordinary thing to want and a template is the
+ * first thing anybody reaches for. `mergeClassNames` is the answer and is found in a call argument
+ * other position — measured: attribute, assignment, call argument, object value, array element,
+ * `return`, arrow body and ternary all find a block; a template substitution is the only one that
+ * does not.
+ */
+export function checkTemplates(source: string): Finding[] {
+  return blocksInATemplate(source).map((at: number) => ({
+    rule: "block-in-a-template" as const,
+    at,
+    length: 3,
+    message:
+      `a style block inside a \`\${ … }\` compiles to nothing — a template literal is text, and ` +
+      `nothing here can see a block in one.\n\n        Join it with \`mergeClassNames\` instead: ` +
+      `\`className={mergeClassNames(@@( … ), "lead")}\`, which takes a block and a class name of ` +
+      `your own and ` +
+      `keeps one class per thing set.`,
+  }));
 }
 
 /**
@@ -320,6 +373,11 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   unitNotAllowedPerProperty(block, config?.properties, findings);
   valueNotAllowed(block, config?.properties, findings);
   shorthandNotAllowed(block, config?.properties, findings);
+  // Not inside a named site. `@@keyframes`, `@@font-face` and `@@property` hold frames and
+  // descriptors rather than an element's declarations, and `hole-in-a-named-block` already reports a
+  // hole in one — in its own words, about its own shape. Two reports on one character is one too many.
+  if (at === undefined) holeNotAllowed(block, findings);
+  matchArms(block, findings);
   if (at?.toLowerCase() === "property") initialValueAndSyntax(block, findings);
   if (references !== undefined && references.size > 0) setByAnotherName(block, references, findings);
   if (config !== undefined) unknownVariable(block, config, findings);
@@ -949,6 +1007,147 @@ function valueNotAllowed(block: Block, rules: PropertyRules | undefined, finding
           `and this is \`${written}\`.\n\n        Add it to \`values\` in \`ramonda.css.ts\`, or use ` +
           `one of those.`,
       });
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A RUNTIME value in a declaration — `color: {this.brand}`. **Refused, everywhere.**
+ *
+ * ## What it cost
+ *
+ * A hole was the one thing in a block with a per-element cost. Measured, the same colour written
+ * two ways: `color: red` emits `r-c-red { color:red; }` and the element carries a class, while
+ * `color: {this.brand}` emits `color:var(--r-…-0)` and every instance carries an inline custom
+ * property. A list of ten thousand rows is ten thousand style attributes.
+ *
+ * And it could not be shared. A hole belongs to the declaration it stands in, so two declarations
+ * wanting one value got two custom properties:
+ *
+ *     padding-left: {this.v}; padding-right: {this.v};       TWO variables
+ *     padding-left: var({pad}); padding-right: var({pad});   ONE, however many read it
+ *
+ * ## What replaced it
+ *
+ * Two doors, and between them they cover what a hole was reached for:
+ *
+ * - **`match`**, for variation that can be ENUMERATED — which is most of it. Every arm is its own
+ *   rule and its own class, so nothing is built while the page renders.
+ * - **`@@property`**, for a value that genuinely comes from data. One declared name, read by as
+ *   many declarations as want it, set once on the element.
+ *
+ * ## What is NOT a hole, though it has braces
+ *
+ * The braces are still how an expression gets in; what is refused is a value in a declaration.
+ * `if ({this.on}) { … }` and `...{on ? hot : cold}` choose between whole rules and write nothing on
+ * the element. `match({this.variant})` chooses between classes. `var({angle})` and `{angle}: 45deg`
+ * name a `@@property` site, which is text by the time the CSS is written.
+ *
+ * ## A declared variable is not a hole either — but the BRACES decide, not the name
+ *
+ * Measured, and it was assumed wrongly first: `color: $.color.brand` written bare parses as a
+ * `VariablePart` and becomes a `var()` in the stylesheet, while `color: {$.color.brand}` — the same
+ * variable, in braces — parses as a `HolePart` and set a custom property per element. So the second
+ * is reported and the bare spelling is the fix. `var(--brand)` written out is ordinary text and is
+ * never asked about.
+ */
+function holeNotAllowed(block: Block, findings: Finding[]): void {
+  for (const { declaration, part } of runtimeValuesIn(block)) {
+    const property = propertyName(declaration.property);
+
+    findings.push({
+      rule: "hole-not-allowed",
+      at: part.at ?? declaration.at ?? 0,
+      length: part.length ?? declaration.property.length,
+      message:
+        `A style block takes no runtime value, and \`${property}\` is given one.\n\n` +
+        `        If the value is one of a few, write them out with \`match\`:\n` +
+        `        \`${property}: match({…}) { a => …; _ => …; }\` — every arm is its own class.\n` +
+        `        If it really comes from data, declare it with \`@@property( … )\` and set it on\n` +
+        `        the element. To pick between whole rules, \`if ({…}) { … }\` still does.`,
+    });
+  }
+}
+
+/**
+ * What a `match` may hold, and the three things it may not.
+ *
+ * ## A hole in an ARM
+ *
+ * The whole reason a match can become classes is that every arm was decided when the block
+ * compiled. A hole is the render's own value, so an arm holding one would have to become a custom
+ * property — and then the match would cost exactly what it exists to avoid. The SUBJECT is a hole
+ * and is untouched: it chooses between the arms and never reaches the element.
+ *
+ * ## A key written twice
+ *
+ * The arms are tried in order and the first that answers wins, so a repeat can never be reached.
+ * A `_` written above another arm is the same fault: it answers for everything, so everything below
+ * it is dead. Reported at the arm that can never run, which is the one to delete or move.
+ *
+ * ## No arms at all
+ *
+ * `match({v}) { }` reads, and sets nothing whatever the subject is. That is a declaration written
+ * and then taken back, which is worth a word rather than a silent nothing — unlike `if ({c}) { }`,
+ * which mirrors an empty at-rule CSS itself allows.
+ */
+function matchArms(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      for (const part of item.value) {
+        if (part.kind !== "match") continue;
+
+        if (part.arms.length === 0) {
+          findings.push({
+            rule: "match-with-no-arms",
+            at: part.at ?? item.at ?? 0,
+            length: MATCH.length,
+            message:
+              "a `match` with no arms sets nothing, whatever its subject is.\n\n        Write an " +
+              "arm, or take the declaration out.",
+          });
+          continue;
+        }
+
+        const seen = new Set<string>();
+        let answered = false;
+        for (const arm of part.arms) {
+          for (const inside of arm.value) {
+            if (inside.kind !== "hole") continue;
+            findings.push({
+              rule: "hole-in-a-match-arm",
+              at: inside.at ?? arm.at ?? 0,
+              length: inside.length ?? 1,
+              message:
+                "an arm is a value decided when the block compiles, so it cannot hold one the " +
+                "render computes.\n\n        Write the value out, or match on it instead — " +
+                "`match({…}) { … }` is how a value that varies becomes\n        one of several " +
+                "that do not.",
+            });
+          }
+
+          const repeated = seen.has(arm.key);
+          if (repeated || answered) {
+            findings.push({
+              rule: "match-arm-repeated",
+              at: arm.at ?? part.at ?? 0,
+              length: arm.key.length,
+              message: repeated
+                ? `\`${arm.key}\` is matched twice, and the arm above answers first — so this one ` +
+                  "never runs.\n\n        Take it out, or give it the key it was meant to have."
+                : `\`_\` above this answers for everything, so \`${arm.key}\` never runs.` +
+                  "\n\n        Write `_` last, where it is the fallback rather than the answer.",
+            });
+          }
+          seen.add(arm.key);
+          if (arm.otherwise) answered = true;
+        }
+      }
     }
   };
   walkItems(block.items);

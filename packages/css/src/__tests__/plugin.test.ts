@@ -2442,3 +2442,398 @@ describe("a project with nothing that compiles a block", () => {
     expect(said.some((one) => one.includes("[no-compiler]"))).toBe(false);
   });
 });
+
+/**
+ * The rules that need a `ts.Program`, in the EDITOR.
+ *
+ * They were CI-only when they were written, which is half a feature: a rule a person meets on a
+ * push is a rule they meet after they have stopped thinking about the code. The language service
+ * has a program of its own, so there is no reason for the wait.
+ */
+describe("the typed rules, in the editor", () => {
+  test("a style prop nobody uses is reported where it is declared", () => {
+    const marked =
+      `import type { CssBlock } from "../properties";\n` +
+      `export function Card(props: { css?: CssBlock }) {\n` +
+      `  return <div css={@@( color: red; )}>x</div>;\n}\n`;
+    const { service, source } = editor(marked);
+    const found = service
+      .getSemanticDiagnostics(FILE)
+      .filter((one) => ts.flattenDiagnosticMessageText(one.messageText, " ").includes("[style-prop-never-used]"));
+
+    expect(found).toHaveLength(1);
+    expect(found[0].start).toBe(source.indexOf("css?: CssBlock"));
+  });
+
+  test("and one that is used is not", () => {
+    const marked =
+      `import type { CssBlock } from "../properties";\n` +
+      `export function Card(props: { css?: CssBlock }) {\n` +
+      `  return <div css={@@( color: red; ...{props.css}; )}>x</div>;\n}\n`;
+    const { service } = editor(marked);
+
+    expect(service.getSemanticDiagnostics(FILE)).toEqual([]);
+  });
+
+  test("a declaration below the spread that clears what a caller may send is reported", () => {
+    const marked =
+      `import type { CssBlock } from "../properties";\n` +
+      `export function Card(props: { css?: CssBlock<{ "padding-left"?: string }> }) {\n` +
+      `  return <div css={@@( ...{props.css}; padding: 8px; )}>x</div>;\n}\n`;
+    const { service, source } = editor(marked);
+    const found = service
+      .getSemanticDiagnostics(FILE)
+      .filter((one) => ts.flattenDiagnosticMessageText(one.messageText, " ").includes("[style-prop-overridden]"));
+
+    expect(found).toHaveLength(1);
+    expect(found[0].start).toBe(source.indexOf("padding: 8px"));
+  });
+
+  /**
+   * **A state typed as a tuple, in a file with no block at all.**
+   *
+   * The allow-list is a TYPE, so this one has nothing to do with where a block is written — and a
+   * file declaring the props of a component is often exactly that, a file with no block in it. The
+   * editor has to ask anyway, which is the same shape as the wrapper below.
+   */
+  test("a state written as a tuple is reported on the state", () => {
+    const marked =
+      `import type { CssBlock } from "../properties";\n` +
+      `export type CardStyle = { color?: string; "&:hover"?: [{ color?: string }] };\n` +
+      `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div css={props.css}>x</div>; }\n`;
+    const { service, source } = editor(marked);
+    const found = service
+      .getSemanticDiagnostics(FILE)
+      .filter((one) => ts.flattenDiagnosticMessageText(one.messageText, " ").includes("[state-is-a-tuple]"));
+
+    expect(found).toHaveLength(1);
+    expect(found[0].start).toBe(source.indexOf("[{ color?: string }]"));
+  });
+
+  /**
+   * **An allow-list written as an interface, and the `TS2344` it stands in for.**
+   *
+   * The editor is where this one matters most: a props file usually holds no block, and that path
+   * hands the compiler's diagnostics straight through. Two squiggles on one identifier, and the
+   * compiler's is the one that names an index signature and never says `interface`.
+   */
+  test("an interface allow-list is reported, and the compiler's TS2344 is not", () => {
+    const marked =
+      `import type { CssBlock } from "../properties";\n` +
+      `interface CardStyle { color?: string }\n` +
+      `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div css={props.css}>x</div>; }\n`;
+    const { service, source } = editor(marked);
+    const all = service.getSemanticDiagnostics(FILE);
+    const said = (id: string) =>
+      all.filter((one) => ts.flattenDiagnosticMessageText(one.messageText, " ").includes(id));
+
+    expect(said("[allow-list-is-an-interface]")).toHaveLength(1);
+    expect(said("[allow-list-is-an-interface]")[0].start).toBe(source.lastIndexOf("CardStyle"));
+    expect(all.filter((one) => one.code === 2344)).toEqual([]);
+  });
+
+  /** The same file with a `type` — nothing to say about it either way. */
+  test("and a type alias is quiet", () => {
+    const marked =
+      `import type { CssBlock } from "../properties";\n` +
+      `type CardStyle = { color?: string };\n` +
+      `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div css={props.css}>x</div>; }\n`;
+    const { service } = editor(marked);
+
+    expect(service.getSemanticDiagnostics(FILE)).toEqual([]);
+  });
+
+  /**
+   * **A file that declares a style prop and holds no block of its own** — a wrapper that only hands
+   * its prop on, which is an ordinary shape.
+   *
+   * The build reports it. The editor has to agree: a plugin that stayed quiet where the build
+   * refuses is the editor promising a page the build will not give, which is the one thing this
+   * package says it cannot afford.
+   */
+  test("a file with no block of its own is still asked about", () => {
+    const marked =
+      `import type { CssBlock } from "../properties";\n` +
+      `export function Card(props: { css?: CssBlock }) {\n` +
+      `  return <div className="card">x</div>;\n}\n`;
+    const { service } = editor(marked);
+    const said = service
+      .getSemanticDiagnostics(FILE)
+      .map((one) => ts.flattenDiagnosticMessageText(one.messageText, " "));
+
+    expect(said.filter((one) => one.includes("[style-prop-never-used]"))).toHaveLength(1);
+  });
+
+  /** The control: a file with a block and no style prop must be as quiet as it ever was. */
+  test("a file with no style prop is untouched", () => {
+    const { service } = editor(`const a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n`);
+
+    expect(service.getSemanticDiagnostics(FILE)).toEqual([]);
+  });
+
+  /**
+   * A host on its own, for a server built in one of the two REDUCED modes.
+   *
+   * It cannot reuse `editor`'s: that one is patched in place by the plugin and carries a
+   * `getSourceFileLike` pointing at a FULL program, which is exactly the thing a reduced server
+   * does not have — so borrowing it would measure a server that is not the one under test.
+   */
+  const reducedHost = (source: string): ts.LanguageServiceHost => {
+    const files: Record<string, string> = { [FILE]: source, [JSX_FILE]: JSX_TYPES };
+    return {
+      getScriptFileNames: () => [FILE, JSX_FILE],
+      getScriptVersion: () => "1",
+      getScriptSnapshot: (name) => {
+        const text = files[name] ?? ts.sys.readFile(name);
+        return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
+      },
+      getCurrentDirectory: () => PACKAGE,
+      getCompilationSettings: () => ({
+        jsx: ts.JsxEmit.Preserve,
+        strict: true,
+        target: ts.ScriptTarget.ES2022,
+        types: [],
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
+      }),
+      getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+      fileExists: (name) => files[name] !== undefined || ts.sys.fileExists(name),
+      readFile: (name) => files[name] ?? ts.sys.readFile(name),
+      readDirectory: ts.sys.readDirectory,
+      directoryExists: ts.sys.directoryExists,
+      getDirectories: ts.sys.getDirectories,
+    };
+  };
+
+  /**
+   * The SYNTAX server, which the extension contributes to as well.
+   *
+   * The worry was that these rules would fire wrongly there — a reduced program cannot resolve
+   * `CssBlock`, and a squiggle on every file an editor opens would be worse than no rule. Measured,
+   * the question does not arise: **TypeScript itself refuses the call.** `getSemanticDiagnostics`
+   * is *not allowed in LanguageServiceMode.PartialSemantic`, and a `Syntactic` service has no
+   * program at all. So a reduced server never asks, and the plugin never answers.
+   *
+   * What is asserted instead is the thing that would really break: that the plugin still STARTS
+   * under both modes. A throw in `create` is logged at INFO and leaves the un-proxied service, so
+   * it would take formatting and folding down silently — which is what the extension exists to fix.
+   */
+  test("the plugin starts under both reduced server modes", () => {
+    const marked =
+      `import type { CssBlock } from "../properties";\n` +
+      `export function Card(props: { css?: CssBlock }) {\n` +
+      `  return <div css={@@( color: red; )}>x</div>;\n}\n`;
+
+    for (const mode of [ts.LanguageServiceMode.PartialSemantic, ts.LanguageServiceMode.Syntactic]) {
+      const host = reducedHost(marked);
+      const service = init({ typescript: ts }).create({
+        languageService: ts.createLanguageService(host, undefined, mode),
+        languageServiceHost: host,
+        config: {},
+      });
+
+      // The outline is one of the commands a syntax server really answers, and the reason the
+      // extension contributes the plugin at all.
+      expect(() => service.getOutliningSpans(FILE), ts.LanguageServiceMode[mode]).not.toThrow();
+    }
+  });
+
+  /** And the measured reason the rules cannot misfire there: the call is refused before us. */
+  test("a reduced server is not even asked for semantic diagnostics", () => {
+    const host = reducedHost(`const a = <div css={@@( display: flex; )}>x</div>;\n`);
+    const plain = ts.createLanguageService(host, undefined, ts.LanguageServiceMode.PartialSemantic);
+
+    expect(() => plain.getSemanticDiagnostics(FILE)).toThrow(/not allowed in LanguageServiceMode/);
+  });
+});
+
+/**
+ * The editor, on a block that carries a RUNTIME VALUE.
+ *
+ * **Every test above uses a block with no hole, and the virtual file now has two helpers** — a
+ * block carrying a runtime value is emitted through the second one, so it has been taking a code
+ * path nothing here ever walked. What is asserted is that the editor cannot tell the difference:
+ * the same completions, the same diagnostics, the same quiet.
+ */
+/**
+ * A block carrying an EXPRESSION, which since the hole went means a `match` or a condition.
+ *
+ * The vehicle changed and the questions did not: the author's own text is left where they wrote it,
+ * so a typo beside it is still reported at the typo, completions still arrive, and the scaffolding
+ * the preamble declares is still kept out of what an editor offers.
+ */
+describe("a block carrying an expression", () => {
+  const WITH_A_MATCH = (body: string) =>
+    `class Host {\n  brand: "a" | "b" = "a";\n  render() {\n    return <div css={@@(\n${body}\n    )}>x</div>;\n  }\n}\nexport default Host;\n`;
+
+  const MATCH = `      color: match({this.brand}) { a => red; b => blue; };`;
+
+  test("a correct one is as quiet as a static one", () => {
+    const { service } = editor(WITH_A_MATCH(`${MATCH}\n      display: flex;`));
+
+    expect(service.getSyntacticDiagnostics(FILE)).toEqual([]);
+    expect(service.getSemanticDiagnostics(FILE)).toEqual([]);
+  });
+
+  test("a property typo beside it is still reported, at the property", () => {
+    const { service, source } = editor(WITH_A_MATCH(`${MATCH}\n      dsiplay: flex;`));
+    const [only, ...rest] = service.getSemanticDiagnostics(FILE);
+
+    expect(rest).toEqual([]);
+    expect(only.start).toBe(source.indexOf("dsiplay"));
+    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("[unknown-property]");
+  });
+
+  /**
+   * **The runtime value itself is reported here too**, which is what the editor owes: the build
+   * refuses it, so an editor that stayed quiet would send a person to a failing build.
+   */
+  test("a runtime value in a declaration is reported, on the hole the author wrote", () => {
+    const { service, source } = editor(
+      `class Host {\n  brand = "red";\n  render() {\n    return <div css={@@(\n      color: {this.brand};\n    )}>x</div>;\n  }\n}\nexport default Host;\n`,
+    );
+    const [only] = service.getSemanticDiagnostics(FILE);
+
+    expect(ts.flattenDiagnosticMessageText(only.messageText, " ")).toContain("[hole-not-allowed]");
+    expect(only.start).toBeGreaterThan(source.indexOf("@@("));
+    expect(only.start).toBeLessThan(source.indexOf(")}>x"));
+  });
+
+  test("property completions still arrive beside it", () => {
+    const got = names(WITH_A_MATCH(`${MATCH}\n      /*|*/`));
+
+    for (const one of SOME_PROPERTIES) expect(got, one).toContain(one);
+  });
+
+  /**
+   * The helpers are scaffolding, and they have to stay out of what an author is offered.
+   *
+   * **The caret has to be in a TYPESCRIPT position**, and the first version of this test put it
+   * inside the block — where the plugin serves CSS property names and the binding filter is never
+   * reached, so it passed with a helper deliberately left out of `bindings`. Outside the block is
+   * where TypeScript offers everything in scope, which is where the preamble leaks.
+   */
+  test("no helper is offered where TypeScript offers what is in scope", () => {
+    const got = names(
+      `class Host {\n  brand: "a" | "b" = "a";\n  render() {\n    return <div css={@@(\n${MATCH}\n    )}>x</div>;\n  }\n}\nconst near = /*|*/;\nexport default [Host, near];\n`,
+    );
+
+    expect(got.length).toBeGreaterThan(0);
+    expect(got.filter((one) => one.startsWith("__"))).toEqual([]);
+  });
+});
+
+/**
+ * The editor, on a buffer that CHANGES — which is the only state a real one is ever in.
+ *
+ * Two things answer here and they are not the same thing: the diagnostics come from the language
+ * service's PROGRAM, and their positions are mapped home through the plugin's cached VIRTUAL file.
+ * If those two ever hold different versions of the file, every position in it is wrong by however
+ * much the edit moved — and wrong quietly, because a squiggle in the wrong place still looks like a
+ * squiggle.
+ */
+describe("a file edited under the plugin", () => {
+  const SHORT = `class Host {\n  brand = "red";\n  render() {\n    return <div css={@@( dsiplay: flex; )}>x</div>;\n  }\n}\nexport default Host;\n`;
+  /** The same file with two long comments ABOVE it, so every offset below them moves. */
+  const LONG = `// ${"x".repeat(90)}\n// ${"y".repeat(90)}\n${SHORT}`;
+
+  /** A host whose buffer and version can both move, which `editor` deliberately fixes. */
+  function movable() {
+    let text = SHORT;
+    let version = 0;
+    const files: Record<string, string> = { [JSX_FILE]: JSX_TYPES };
+    const host: ts.LanguageServiceHost = {
+      getScriptFileNames: () => [FILE, JSX_FILE],
+      getScriptVersion: (name) => (name === FILE ? String(version) : "1"),
+      getScriptSnapshot: (name) => {
+        const found = name === FILE ? text : (files[name] ?? ts.sys.readFile(name));
+        return found === undefined ? undefined : ts.ScriptSnapshot.fromString(found);
+      },
+      getCurrentDirectory: () => PACKAGE,
+      getCompilationSettings: () => ({
+        jsx: ts.JsxEmit.Preserve,
+        strict: true,
+        target: ts.ScriptTarget.ES2022,
+        types: [],
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
+      }),
+      getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+      fileExists: (name) => name === FILE || files[name] !== undefined || ts.sys.fileExists(name),
+      readFile: (name) => (name === FILE ? text : (files[name] ?? ts.sys.readFile(name))),
+      readDirectory: ts.sys.readDirectory,
+      directoryExists: ts.sys.directoryExists,
+      getDirectories: ts.sys.getDirectories,
+    };
+    const plain = ts.createLanguageService(host);
+    (host as { getSourceFileLike?: (name: string) => ts.SourceFile | undefined }).getSourceFileLike = (name) =>
+      plain.getProgram()?.getSourceFile(name);
+    const service = init({ typescript: ts }).create({
+      languageService: plain,
+      languageServiceHost: host,
+      config: { properties: join(PACKAGE, "src", "properties") },
+    });
+
+    /** Put a new buffer in, the way an editor does, and read what the plugin says about it. */
+    return (next: string) => {
+      text = next;
+      version += 1;
+      return service.getSemanticDiagnostics(FILE).map((one) => ({
+        under: text.slice(one.start ?? 0, (one.start ?? 0) + "dsiplay".length),
+        said: ts.flattenDiagnosticMessageText(one.messageText, " "),
+      }));
+    };
+  }
+
+  test("a squiggle stays on the character it is about, across an edit that moves it", () => {
+    const ask = movable();
+
+    for (const [what, source] of [
+      ["as first written", SHORT],
+      ["after two lines are inserted above", LONG],
+      ["and after they are taken away again", SHORT],
+    ] as const) {
+      const [only, ...rest] = ask(source);
+
+      expect(rest, what).toEqual([]);
+      expect(only?.under, what).toBe("dsiplay");
+      expect(only?.said, what).toContain("[unknown-property]");
+    }
+  });
+});
+
+/**
+ * A project with no `@ramonda/css` at all, which is every unrelated project an editor opens.
+ *
+ * The extension contributes its own copy of the plugin, so this runs against a stranger's code all
+ * day. What it must say there is one thing — a block cannot be compiled here — and nothing else; a
+ * typed rule firing in a project that has never heard of style props would be the extension putting
+ * a squiggle in somebody's unrelated file.
+ */
+describe("the typed rules where nothing can be compiled", () => {
+  const withAProp =
+    `type CssBlock = { className: string };\n` +
+    `export function Card(props: { css?: CssBlock }) {\n` +
+    `  return <div className="card">x</div>;\n}\n`;
+
+  test("only the one diagnostic about compiling is given", () => {
+    const { service } = editor(withAProp, { [NO_COMPILER]: true });
+    const said = service
+      .getSemanticDiagnostics(FILE)
+      .map((one) => ts.flattenDiagnosticMessageText(one.messageText, " "));
+
+    expect(said.filter((one) => one.includes("style-prop"))).toEqual([]);
+  });
+
+  /**
+   * And with a name that LOOKS like ours: `CssBlock` here is the file's own type, declared two
+   * lines up, and nothing about it is a compiled block. The rules key on the declared name, so this
+   * is the shape that would catch them out.
+   */
+  test("a local type that happens to be called CssBlock is not one", () => {
+    const { service } = editor(withAProp);
+    const said = service
+      .getSemanticDiagnostics(FILE)
+      .map((one) => ts.flattenDiagnosticMessageText(one.messageText, " "));
+
+    expect(said.filter((one) => one.includes("style-prop"))).toEqual([]);
+  });
+});

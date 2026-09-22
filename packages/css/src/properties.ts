@@ -1,3 +1,4 @@
+import type { CssVar, KindOfSyntax } from "./token";
 /**
  * `@ramonda/css/properties` — the type a block is checked against.
  *
@@ -45,6 +46,16 @@ import type { StyleValue } from "./types";
  * that would load nothing becomes a type error rather than a rule of ours.
  */
 export type { CssFontFaceDescriptors, CssPropertyDescriptors } from "./properties.generated";
+export type { CssVar } from "./token";
+
+/**
+ * What `@@property( … )` binds: the generated name, carrying the kind its `syntax` declared.
+ *
+ * The binding is a string at run time — it is the name — so it reads in a block and goes straight
+ * in as a key where the value is set. The kind is what the name alone cannot carry, and it is what
+ * lets `toStyle` refuse a length where an angle was declared.
+ */
+export type CssRegistered<D> = CssVar<KindOfSyntax<D extends { syntax: infer S } ? S : never>>;
 
 import type { CssProperties, CssValue } from "./properties.generated";
 
@@ -104,30 +115,43 @@ export type CssBlockShape = Partial<CssProperties> & {
  */
 export type CssKeyframesShape = { [frame: string]: CssBlockShape[] };
 
-/**
- * The brand on a compiled block: not a field, and not forgeable.
- *
- * A hand-written `{ className, properties, values }` has the same three fields and is NOT a compiled
- * block — it carries no map, so spreading one would compose nothing, quietly. A `unique symbol` is
- * what makes the difference visible to the type checker; it emits nothing and exists at no runtime.
- */
-declare const COMPILED: unique symbol;
+declare const ALLOWS: unique symbol;
 
 /**
  * What a `@@( … )` compiles to, as an editor sees it.
  *
  * **The helper that stands for a block used to return `never`**, which is assignable everywhere and
  * so never got in the way — and read, on hover, as *this is nothing*. A binding holding a block is
- * exactly what an author points at to ask what a block IS, so the answer is the value the `css` prop
- * takes, under a name that says so.
+ * exactly what an author points at to ask what a block IS, so the answer is what `className` takes,
+ * under a name that says so.
  *
- * It extends {@link StyleValue} rather than restating it: the shape is declared twice already, once
- * here and once in the framework, and `scripts/check-css-contract.mjs` is what keeps those two from
- * drifting. A third copy would be a third place to drift.
+ * **It IS a string**: the classes an element carries, branded so that a plain `string` cannot stand
+ * in for one and so that concatenating two loses the brand — the merge cannot be bypassed with `+`.
+ * It extends {@link StyleValue} rather than restating the brand, which is also the whole of what the
+ * framework has to agree with: both sides say `string`, so there is no shape left to drift and the
+ * check that compared them is gone.
+ *
+ * ## `A` is what a PROP may constrain, and it is a phantom
+ *
+ * `CssBlock<{ color?: Token<"color"> }>` is a prop that takes a block setting a colour from the
+ * theme and nothing else. The allow-list is a {@link CssBlockShape} used as a TYPE rather than a
+ * vocabulary of its own, so a slot is written in the spelling a block is written in.
+ *
+ * **It reuses that name rather than introducing one**, and the reason is a measured regression: a
+ * project's properties module is GENERATED, so a name this package invents is a name older
+ * generated modules do not export — the constraint then fails to resolve, every block becomes
+ * `any`, and sixteen tests went silent at once. `CssBlockShape` is already in every copy there is.
+ *
+ * The parameter defaults to every shape there is, so a bare `CssBlock` is what it always was and
+ * every existing annotation keeps working — asserted in `check.test.ts`.
+ *
+ * It has to be READ somewhere or TypeScript would not infer it from a return position, which is
+ * the whole mechanism: the helper in the virtual file takes the allow-list from the CONTEXT and
+ * checks the author's literal against it, so a fault lands on the property or on the value rather
+ * than on the call. `[ALLOWS]` is where it is read. Nothing carries it at run time and nothing is
+ * there to carry.
  */
-export interface CssBlock extends StyleValue {
-  readonly [COMPILED]: true;
-}
+export type CssBlock<A extends CssBlockShape = CssBlockShape> = StyleValue & { readonly [ALLOWS]: A };
 
 /**
  * A condition that can never be false is a group that can never be off.
@@ -170,7 +194,14 @@ type FALSY = false | 0 | 0n | "" | null | undefined;
  * A compiled block is a value this compiler produced, so a hand-written object is not one however
  * closely it reads. `never` is what a block is in the virtual file — the helper that stands for one
  * returns it — and `never` is assignable to everything, which is exactly why a real block passes.
+ *
+ * **A block that may not be there is spreadable, and refusing one was the type being stricter than
+ * the thing it describes.** `sx?: CssBlock` is the ordinary shape for a style a caller MAY send, so
+ * it is the shape a constrained prop has nearly every time — and `...{cond && block}` is how a
+ * group is written conditionally. Measured against the real `merge`: `undefined`, `null` and `false`
+ * are each skipped and the neighbouring classes all arrive, which is what they have always done.
+ * The refusal itself is unchanged, and asserted still to fire in `check.test.ts`.
  */
-export type CssSpreadable<T> = [T] extends [CssBlock]
+export type CssSpreadable<T> = [T] extends [CssBlock | false | null | undefined]
   ? T
   : "only a style block can be spread — this is not one, so write the declarations out";

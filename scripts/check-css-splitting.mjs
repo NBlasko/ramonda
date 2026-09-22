@@ -66,6 +66,9 @@ const sheets = files.filter((name) => name.endsWith(".css"));
  */
 const escapeClass = (name) => name.replace(/[^a-zA-Z0-9_\u00a0-\uffff-]/g, (one) => `\\${one}`);
 
+/** A class name as a pattern, since one holds `.`, `(`, `#` and `+` — all of them regex syntax. */
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /** Every generated class a stylesheet names, as the selector spells it. */
 const classesIn = (name) => new Set(readFileSync(join(assets, name), "utf8").match(/\.r-(?:\\.|[\w-])+/g) ?? []);
 
@@ -99,12 +102,16 @@ for (const [key, entry] of Object.entries(manifest)) {
   if (entry.file === undefined || !entry.file.endsWith(".js")) continue;
 
   /**
-   * Out of the QUOTED strings, not out of the text: a block compiles to a map whose keys are
-   * property names, so the JavaScript holds `"border-left"` — and a pattern looking for `r-`
-   * anywhere finds `r-left` inside it.
+   * Out of the QUOTED strings, not out of the text: a pattern looking for `r-` anywhere finds
+   * `r-left` inside the word `border-left`, which a block's source is full of.
+   *
+   * **And each literal holds SEVERAL classes**, space separated, because that is what a block
+   * compiles to — `"r-disp-flex r-gap-8px"`. Splitting is what this check missed when the map became
+   * a string: every class but the first was invisible, and the sheet's half below reported all of
+   * them as shipped to nobody.
    */
   const source = readFileSync(join(dist, entry.file), "utf8");
-  const named = new Set([...source.matchAll(/"(r-[^"]+)"/g)].map((one) => one[1]));
+  const named = new Set([...source.matchAll(/"(r-[^"]+)"/g)].flatMap((one) => one[1].split(" ")));
   if (named.size === 0) continue;
 
   const loaded = loadedBy(key)
@@ -124,7 +131,8 @@ for (const sheet of sheets) {
   for (const named of classesIn(sheet)) {
     // The selector is escaped and the markup's name is not — compare in the markup's spelling.
     const bare = named.slice(1).replace(/\\(.)/g, "$1");
-    if (!scripts.some((code) => code.includes(`"${bare}"`))) {
+    // Named by a literal holding it alone, or one holding it among others — see the note above.
+    if (!scripts.some((code) => new RegExp(`"[^"]*\\b${escapeRegExp(bare)}(?:"| )`).test(code))) {
       faults.push(`${sheet} carries ${bare}, which no chunk names`);
     }
   }

@@ -1,10 +1,10 @@
 import type { Config } from "../config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
-import { type Finding, checkBlock, checkNamedSite, checkText } from "./rules";
+import { type Finding, checkBlock, checkNamedSite, checkTemplates, checkText } from "./rules";
 import { type Ignored, ignoredIn, isIgnored } from "./ignore";
 import { findBlocks } from "./scan";
-import { type VariableRead, type Variables, variablesIn } from "./variables";
+import { type RegisteredSite, type VariableRead, type Variables, variablesIn } from "./variables";
 
 /**
  * Everything the CSS rules say about one FILE's blocks.
@@ -61,17 +61,32 @@ export function checkedSource(
   source: string,
   fileName: string,
   options: SourceOptions = {},
-): { findings: Finding[]; variables: Variables; ignored: readonly Ignored[] } {
+): {
+  findings: Finding[];
+  variables: Variables;
+  /** The custom properties a BLOCK sets, without the registrations — see the return below. */
+  blockSets: readonly string[];
+  registered: readonly RegisteredSite[];
+  ignored: readonly Ignored[];
+} {
   const { read, config, tolerant } = options;
   const out: Finding[] = [];
-  const set: string[] = [];
+  /** What a BLOCK declares, which is the half that answers whether anything ever sets a name. */
+  const blockSets: string[] = [];
   const reads: VariableRead[] = [];
+  const readsRegistered: string[] = [];
+  /** Every `@@property( … )` this file declares — see {@link RegisteredSite}. */
+  const registered: RegisteredSite[] = [];
   // The same reader the build uses, or none — and none means a cross-module reference stays a hole,
   // which `hole-as-a-variable-name` reports. A checker that resolved less than the build would call
   // a working theme a fault; one that resolved more would miss one. Both consumers pass the same.
   const references = namedSites(source, { filename: fileName, read });
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
   const syntaxes = syntaxesIn(source, { filename: fileName, read });
+
+  // A block inside a `${ … }` is found by nothing below, because a template literal is text — see
+  // `checkTemplates`. Asked of the whole FILE, before the sites, since there is no site to hang it on.
+  out.push(...checkTemplates(source));
 
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName, { tolerant, resolve: (name) => references.get(name) });
@@ -98,11 +113,14 @@ export function checkedSource(
     // them. See `transform`.
     if (site.at === undefined) {
       const found = variablesIn(read.block);
-      set.push(...found.set);
+      blockSets.push(...found.set);
       reads.push(...found.read);
+      readsRegistered.push(...(found.readsRegistered ?? []));
     } else if (site.at === "property" && site.name !== "") {
-      const registered = references.get(site.name);
-      if (registered !== undefined) set.push(registered);
+      const name = references.get(site.name);
+      if (name !== undefined) {
+        registered.push({ name, binding: site.name, at: site.opening, length: site.open - site.opening });
+      }
     }
   }
 
@@ -116,7 +134,14 @@ export function checkedSource(
   const { ignored, findings } = ignoredIn(source);
   return {
     findings: [...findings, ...out.filter((finding) => !isIgnored(source, ignored, finding))],
-    variables: { set, read: reads },
+    /**
+     * A registration counts as SETTING the name, because it carries an initial value and so always
+     * resolves — that is what `Sheet.unknownVariables` asks. It is composed here rather than pushed
+     * as it is found, so `blockSets` keeps the other answer: whether anything ever assigns one.
+     */
+    variables: { set: [...blockSets, ...registered.map((one) => one.name)], read: reads, readsRegistered },
+    blockSets,
+    registered,
     ignored,
   };
 }

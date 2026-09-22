@@ -145,8 +145,11 @@ describe("a block, all the way through a production build", () => {
   test("the class reaches the JavaScript AND the stylesheet, and they are the same class", () => {
     const result = build(
       project(
-        `export const accent = "#10b981";\nexport const card = (\n  <div className="lead" css={@@(\n    display: flex;\n    border-left: 4px solid {accent};\n  )}>x</div>\n);\n`,
-        `import { card } from "./Card";\nconsole.log(card);\n`,
+        `export const accent = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: #10b981;\n);\n` +
+          `export const card = (\n  <div className="lead" css={@@(\n    display: flex;\n    border-left: 4px solid var({accent});\n  )}>x</div>\n);\n`,
+        // The property's binding is USED, or the bundler drops an export nothing imports and the
+        // name never reaches the JavaScript — which is half of what this test is about.
+        `import { card, accent } from "./Card";\nconsole.log(card, accent);\n`,
       ),
     );
 
@@ -159,9 +162,9 @@ describe("a block, all the way through a production build", () => {
      * The classes the transform chose, read out of the emitted JavaScript rather than assumed.
      *
      * **Two of them, because a block is one rule per DECLARATION now** — one for `display:flex` and
-     * one for the `border-left` that carries the hole. Which is which is not this test's business,
-     * so it asserts what must hold of the set: every class the markup names exists in the sheet, and
-     * the one with a hole reads the custom property named after ITSELF.
+     * one for the `border-left` that reads the registered property. Which is which is not this
+     * test's business, so it asserts what must hold of the set: every class the markup names exists
+     * in the sheet, and the reading rule reads the name the `@property` site registered.
      */
     /**
      * Read out of the QUOTED strings, not out of the text.
@@ -170,7 +173,7 @@ describe("a block, all the way through a production build", () => {
      * `"border-left"` — and a pattern looking for `r-` anywhere found `r-left` inside it. A class is
      * always a whole string literal, which is what this asks for.
      */
-    const named = [...new Set([...js.matchAll(/"(r-[^"]+)"/g)].map((one) => one[1]))];
+    const named = [...new Set([...js.matchAll(/"(r-[^"]+)"/g)].flatMap((one) => one[1].split(" ")))];
     expect(named.length).toBeGreaterThan(1);
 
     // The same names on both sides. This is the whole point: the markup names classes, and every one
@@ -180,12 +183,14 @@ describe("a block, all the way through a production build", () => {
     expect(css).toContain("display:flex");
     expect(css).toContain("@layer ramonda");
 
-    const holed = named.find((one) => css.includes(`var(--${one}-0)`));
-    expect(holed, "one rule reads a custom property named after its own class").toBeDefined();
-    expect(css).toContain(`.${holed}{border-left:4px solid var(--${holed}-0)}`);
+    // The registered name, read out of the stylesheet rather than assumed — it is a hash of the
+    // declaring module's own text, and no test should be spelling one of those out.
+    const registered = /@property (--r-[0-9a-zA-Z]+)/.exec(css)?.[1];
+    expect(registered, "the `@property` rule reached the stylesheet").toBeDefined();
+    expect(css).toContain(`border-left:4px solid var(${registered})`);
 
-    // And the hole is a value at the call site, not text the compiler built.
-    expect(js).toContain("#10b981");
+    // And the NAME is a string in the JavaScript, which is what a setter puts on an element.
+    expect(js).toContain(`"${registered}"`);
   });
 
   test("the stylesheet is linked, so a page actually loads it", () => {

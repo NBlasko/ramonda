@@ -233,6 +233,78 @@ describe("the CSS inside a block", () => {
     );
   });
 
+  /**
+   * A `match`, which is a THIRD shape beside a declaration and a nested rule — and was laid out as
+   * neither. Reported by the user from the playground, where what came back was:
+   *
+   *     color: match({this.tone}) {quiet => $.color.accent.quiet;
+   *       loud  => $.color.text.primary;};
+   *
+   * `opensAHole` asks whether the text in front of a `{` is a declaration's head, and `color:` is —
+   * so the brace that opens a match body was read as a hole and every arm was swallowed as one run
+   * of text nothing was allowed to touch.
+   */
+  describe("a match", () => {
+    test("puts every arm on its own line, lined up on the `=>`", () => {
+      const out = laid(
+        `const a = <div css={@@(\n  color: match({this.tone}) {quiet => red;\n    loud  => blue;};\n)}>x</div>;\n`,
+      );
+
+      expect(out).toBe(
+        `const a = <div css={@@(\n  color: match({this.tone}) {\n    quiet => red;\n    loud  => blue;\n  };\n)}>x</div>;\n`,
+      );
+    });
+
+    test("the `;` that ends the declaration rides the closing brace", () => {
+      const out = laid(`const a = <div css={@@(\n  color: match({t}) { a => red; };\n  padding: 8px;\n)}>x</div>;\n`);
+
+      expect(out).toContain("\n  };\n  padding: 8px;");
+    });
+
+    test("and a match with no `;` after it keeps a bare brace", () => {
+      const out = laid(`const a = <div css={@@(\n  color: match({t}) { a => red; }\n)}>x</div>;\n`);
+
+      expect(out).toContain("\n  }\n");
+      expect(out).not.toContain("};");
+    });
+
+    /** The arms line up on the LONGEST key, which is what makes a lookup table read as one. */
+    test("the padding is the longest key's, not a fixed width", () => {
+      const out = laid(
+        `const a = <div css={@@(\n  color: match({t}) { a => red; secondary => blue; _ => inherit; };\n)}>x</div>;\n`,
+      );
+
+      expect(out).toContain("    a         => red;");
+      expect(out).toContain("    secondary => blue;");
+      expect(out).toContain("    _         => inherit;");
+    });
+
+    /** A value holding a `;` inside parens is not the end of an arm. */
+    test("a `;` inside a call does not end an arm", () => {
+      const out = laid(
+        `const a = <div css={@@(\n  background: match({t}) { a => url("a;b.png"); _ => none; };\n)}>x</div>;\n`,
+      );
+
+      expect(out).toContain(`    a => url("a;b.png");`);
+      expect(out).toContain("    _ => none;");
+    });
+
+    /** Laying out what is already laid out changes nothing, or a formatter fights every save. */
+    test("running it twice says the same thing", () => {
+      const source = `const a = <div css={@@(\n  color: match({this.tone}) {quiet => red;\n    loud  => blue;};\n)}>x</div>;\n`;
+      const once = laid(source);
+
+      expect(laid(String(once))).toBe(once);
+    });
+
+    /** A one-line block is a deliberate shape, and that is decided above this. */
+    test("a match on one line stays on one line", () => {
+      const source = `const a = <div css={@@( color: match({t}) { a => red; }; )}>x</div>;\n`;
+
+      expect(laid(source)).toBe(source);
+    });
+  });
+
   test("and a rule inside a rule goes two steps in", () => {
     const out = laid(`const a = <div css={@@(\n  &:hover { & .title { color: red; } }\n)}>x</div>;\n`);
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { namedSites, syntaxesIn } from "../compiler/references";
+import { keyIn } from "../key";
 import { transform } from "../compiler/transform";
 
 /**
@@ -284,8 +285,9 @@ describe("two named sites with identical bodies", () => {
     const line =
       transform(source, { filename: "C.tsx" })
         ?.code.split("\n")
-        .find((one) => one.includes("_merge({")) ?? "";
-    const keys = [...line.matchAll(/"(--r-[^"]+)":/g)].map((one) => one[1]);
+        .find((one) => one.includes("_merge(")) ?? "";
+    // Two custom properties set by two different registered names, so two classes with two keys.
+    const keys = (line.match(/"([^"]*)"/)?.[1] ?? "").split(" ").filter(Boolean).map(keyIn);
 
     expect(keys).toHaveLength(2);
     expect(new Set(keys).size).toBe(2);

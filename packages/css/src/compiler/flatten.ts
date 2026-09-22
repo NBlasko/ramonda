@@ -1,4 +1,4 @@
-import type { Block, BlockItem } from "./ast";
+import type { Block, BlockItem, ValuePart } from "./ast";
 import { nameFor } from "./dollar";
 import { HOLE, canonicalValue, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, PROPERTIES, SHORTHANDS } from "./keywords.generated";
@@ -49,6 +49,15 @@ export interface AtomicDeclaration {
   readonly conditions: readonly string[];
   /** The BLOCK's hole indices this declaration uses, in the order it uses them. */
   readonly holes: readonly number[];
+  /**
+   * When this declaration is one ARM of a `match`: what the subject must be for it to apply.
+   *
+   * Every arm is its own rule with its own class — that is the point of a match, and why it can be
+   * a class at all — so flattening one produces several declarations rather than one. They share a
+   * `key`, because they are one thing set one way, and the emit turns a run of them into a single
+   * entry that chooses between the classes. See `MatchPart`.
+   */
+  readonly arm?: { readonly hole: number; readonly is: string; readonly otherwise: boolean };
   /** Where it was written, so a finding lands on it. */
   readonly at?: number;
 }
@@ -393,21 +402,44 @@ function walk(
       continue;
     }
 
-    run().push(declarationOf(item, selector, conditions));
+    run().push(...declarationsOf(item, selector, conditions));
   }
 }
 
-/** One declaration, with the context it was written in. */
-function declarationOf(
+/**
+ * A declaration as it reaches the sheet — SEVERAL of them when its value is a `match`.
+ *
+ * One arm is one rule and one class, which is what lets a match be chosen between at run time
+ * without anything being built there. They come back in the order they were written, because a `_`
+ * written above a key answers for it and the emit relies on the later arm winning.
+ */
+function declarationsOf(
   item: Extract<BlockItem, { kind: "declaration" }>,
   selector: string,
   conditions: readonly string[],
+): AtomicDeclaration[] {
+  const found = item.value.find((part) => part.kind === "match");
+  if (found !== undefined && found.kind === "match") {
+    return found.arms.map((one) =>
+      built(item, one.value, selector, conditions, { hole: found.hole, is: one.key, otherwise: one.otherwise }),
+    );
+  }
+  return [built(item, item.value, selector, conditions, undefined)];
+}
+
+function built(
+  item: Extract<BlockItem, { kind: "declaration" }>,
+  value$: readonly ValuePart[],
+  selector: string,
+  conditions: readonly string[],
+  arm: AtomicDeclaration["arm"],
 ): AtomicDeclaration {
   const property = propertyName(item.property);
   /** Local to this declaration, so the same declaration anywhere is the same text. See above. */
   const holes: number[] = [];
   let value = "";
-  for (const part of item.value) {
+  for (const part of value$) {
+    if (part.kind === "match") continue;
     if (part.kind === "text") {
       value += part.text;
       continue;
@@ -480,6 +512,7 @@ function declarationOf(
     selector,
     conditions: sorted,
     holes,
+    arm,
     at: item.at,
   };
 }

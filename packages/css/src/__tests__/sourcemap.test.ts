@@ -29,7 +29,7 @@ export class Card extends Component<{ id: string }> {
         flex-direction: column;
         padding: 24px;
         background-color: #0f172a;
-        border-left: {this.accent};
+        if ({this.accent}) { border-left: 4px solid #10b981; }
       )}>
         <span>{this.id}</span>
       </div>
@@ -73,7 +73,7 @@ describe("a position in the emitted JavaScript walks home to the author's own li
   test.each([
     ["the class declaration", "class Card", 3],
     ["a field above the block", '"#10b981"', 4],
-    ["the hole's expression", "this.accent", 13],
+    ["the expression inside the block", "this.accent", 13],
     ["a method BELOW the block", "afterTheBlock", 20],
     ["code below that again", "toUpperCase", 21],
   ])("%s", (_what, needle, line) => {
@@ -81,12 +81,15 @@ describe("a position in the emitted JavaScript walks home to the author's own li
   });
 
   /**
-   * The hole is the one that fails if the block is overwritten in a single span, and it fails
-   * quietly: measured while writing this, an expression on line 13 reported line 8, the block's
-   * opening. Replacing only the gaps BETWEEN expressions is what fixes it, and this is what keeps it
-   * fixed.
+   * An expression inside the block is the one that fails if the block is overwritten in a single
+   * span, and it fails quietly: measured while writing this, an expression on line 13 reported line
+   * 8, the block's opening. Replacing only the gaps BETWEEN expressions is what fixes it, and this
+   * is what keeps it fixed.
+   *
+   * It used to be a hole. A condition is the brace that carries an expression now, and it is the
+   * same question about the same mechanism — the transform keeps the author's text where it stands.
    */
-  test("and the hole in particular is not reported at the block's opening line", () => {
+  test("and the expression in particular is not reported at the block's opening line", () => {
     expect(home("this.accent")).not.toBe(8);
   });
 });
@@ -131,8 +134,8 @@ describe("the transformed file", () => {
   });
 
   test("still contains the author's expression, unmoved and unquoted", () => {
-    // The expression sits inside the map the block compiles to, where the author wrote it — the
+    // The expression guards the entry the block compiles to, where the author wrote it — the
     // transform rewrites the CSS BETWEEN expressions and never the expressions themselves.
-    expect(result?.code).toMatch(/\[\s*"r-[0-9a-zA-Z][^"\s)]*"\s*,\s*this\.accent\s*\]/);
+    expect(result?.code).toMatch(/this\.accent\s*&&\s*"r-/);
   });
 });

@@ -25,7 +25,12 @@
  */
 export type { Block, BlockItem, Declaration, HolePart, NestedRule, TextPart, ValuePart } from "./ast";
 export { CssBlockError, holeOutOfPlace, positionOf } from "./errors";
-export { HASH_LENGTH, classNameFor, substitute, variableNameFor } from "./names";
+/**
+ * `keyIn` is what reads a class back: a merge keeps one class per thing SET, and what a class sets
+ * is written into the class itself — see `keyToken`.
+ */
+export { HASH_LENGTH, classNameFor, keyTextOf, keyToken, substitute, variableNameFor } from "./names";
+export { keyIn, partsOf } from "../key";
 export { HOLE, normalise } from "./normalise";
 export type { ReadBlock, ReadOptions, Span } from "./read";
 export { Sheet } from "./sheet";

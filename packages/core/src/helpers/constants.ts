@@ -59,7 +59,6 @@ export const STYLE_SYM = Symbol("style");
  * the same position `ref` is in. This is what the element remembers so those properties can be
  * taken off again. See core/cssBlock.ts.
  */
-export const CSS_SYM = Symbol("css");
 
 /** The component whose render() built this vnode / this DOM node. See core/origin.ts. */
 export const ORIGIN_SYM = Symbol("origin");

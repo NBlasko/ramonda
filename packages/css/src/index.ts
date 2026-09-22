@@ -32,8 +32,15 @@ export type { CssColor, CssColorKeyword } from "./values.generated";
  * anything: a token's runtime value is the string `var(--color-primary-main)`, written straight into
  * the generated file, so there is no factory to call and no code to ship.
  */
-export type { Fixed, Kind, Token, ValueByKind } from "./token";
-export type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types";
+/**
+ * `CssVar` is what `@@property( … )` binds: the generated name, carrying the kind its `syntax` said.
+ *
+ * It is published because it is what somebody writes in their own annotation — a function that
+ * takes *any angle property this app registered* says so with `CssVar<"angle">`, and `toStyle`
+ * refuses a length against it.
+ */
+export type { CssVar, Fixed, Kind, Token, ValueByKind } from "./token";
+export type { StyleValue } from "./types";
 /**
  * What a project does with a declared variable OUTSIDE a block.
  *
@@ -43,6 +50,12 @@ export type { HoleValues, StyleBlock, StyleValue, StyleVarValue } from "./types"
  */
 export { read, toStyle } from "./value";
 export type { Setting } from "./value";
-export { block, toStyleObject } from "./value";
-export type { StyleEntry, StyleMap } from "./merge";
-export { compose, merge } from "./merge";
+/**
+ * `shorthands` and `conditionsOf` are called by EMITTED code and by nothing anybody writes.
+ *
+ * A block is a class string, and two things do not fit in one: what a shorthand clears, and the
+ * conditions a hashed key stands for. Each module registers what its own blocks need, so a page
+ * pays for the shorthands it writes rather than for a table of all ninety-eight. They are part of
+ * the surface because a build imports them by name, which is the same reason `mergeClassNames` and `pick` are.
+ */
+export { conditionsOf, mergeClassNames, namesOf, pick, shorthands } from "./merge";

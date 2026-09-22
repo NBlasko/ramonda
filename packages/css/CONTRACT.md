@@ -11,69 +11,65 @@ dropped; the normalisation table said a pseudo-class folds when nothing folds a 
 sixteen hex characters after nine base62 had shipped; and four things listed as undecided were
 decided.
 
-`scripts/check-css-contract.mjs` is what keeps the two halves' SHAPES in step across a package
-boundary neither may import — the fields of a compiled block, and both copies of the one rule a
-consumer must implement. It cannot check prose. So the prose is worth reading against the code
-whenever the code moves, and this paragraph is here so the next reader knows it is not automatic.
+`scripts/check-css-contract.mjs` used to keep the two halves' SHAPES in step across a package
+boundary neither may import. **It is gone, with the shape it compared**: a block is a string on both
+sides, there are no fields to drift, and the one rule a consumer had to implement is now this
+package's own — see §2. Nothing checks this prose, so it is worth reading against the code whenever
+the code moves, and this paragraph is here so the next reader knows it is not automatic.
 
-Read this and you can write the transform, the framework's `css` prop, the property types, the
+Read this and you can write the transform, a renderer's own handling of the value, the property types, the
 stylesheet assembler or a wrapper for another JSX library **without reading the other side**.
 
 ---
 
 ## 1. What a block compiles to
 
-One hoisted descriptor at module scope, one call at the site.
+One hoisted constant at module scope, or a merge at the site when the render decides something.
 
 ```
                                        source
-<div css=@@(
+<div className=@@(
   display: flex;
-  border-left: {isOnline ? "4px solid #10b981" : "4px solid #64748b"};
+  border-left: match({this.tone}) { loud => 4px solid #10b981; _ => 4px solid #64748b; };
 )>
 
                                        emitted
-import { merge as _merge } from "@ramonda/css";
+import { mergeClassNames as _merge, pick as _pick, shorthands as _clears } from "@ramonda/css";
+_clears({"bl":["blc","bls","blw"]});
 
-<div css={_merge({
-  "display": "r-disp-flex",
-  "border-left": ["r-wRCRfm4OS", isOnline ? "4px solid #10b981" : "4px solid #64748b"],
-  "~border-left": ["border-left-color", "border-left-style", "border-left-width"],
-})}>
+<div className={_merge("r-disp-flex", _pick(this.tone, {"loud":"r-bl-4px_solid_#10b981"}, "r-bl-4px_solid_#64748b"))}>
 ```
 
 and the stylesheet gains one rule per declaration
 
 ```css
 .r-disp-flex { display: flex; }
-.r-wRCRfm4OS { border-left: var(--r-wRCRfm4OS-0); }
+.r-bl-4px_solid_\#10b981 { border-left: 4px solid #10b981; }
+.r-bl-4px_solid_\#64748b { border-left: 4px solid #64748b; }
 ```
 
-The `~border-left` entry is the shorthand's clear-list — see *the merge* in §1b. And the two classes
-differ because the two declarations do: **a class is a function of the declaration alone**, so no two
-distinct declarations can share one. The example above said `r-p-12px` for both, which is a name for
-`padding: 12px` and could not have been either.
+`_clears` is the shorthand's clear-list, registered once per module — see §2. And two classes differ
+because their declarations do: **a class is a function of the declaration alone**, so no two distinct
+declarations can share one.
 
-**A block with NO holes is hoisted, and this was measured rather than assumed.** Its merged value
-cannot change, so it becomes `const _s0 = _merge({ … });` at module scope and the site reads
-`css={_s0}` — one allocation for the life of the program, however many elements carry it. 71% of the
-blocks written to be read in this repository carry no hole, and merging at the site would have cost
-0.86 µs per element against 0.001 µs for reading a hoisted value.
+**A block that decides nothing at render time is HOISTED, and this was measured rather than
+assumed.** It becomes `const _s0 = _merge("…");` at module scope and the site reads `className={_s0}` —
+one allocation for the life of the program, however many elements carry it. Merging at the site
+would have cost 0.86 µs per element against 0.001 µs for reading a hoisted value.
 
-A block WITH holes is built where it is written, because its values are the render's — one
-allocation, which is what a per-element value costs.
+A block holding a condition, a spread or a `match` is merged where it is written, because what it
+composes is the render's.
 
 Three properties of this shape are load-bearing:
 
 - **The expression is an argument.** The compiler concatenates nothing and builds no string, so
-  nothing has to be escaped at compile time — a value carrying a quote or a closing brace is carried
-  as a value and applied with `setProperty`, which takes text verbatim. What a value may not carry
-  is a semicolon; see *the one rule a consumer must implement* below.
+  nothing has to be escaped at compile time — and nothing an expression evaluates to ever reaches
+  the CSS, because a runtime value in a declaration is refused.
 - **The expression's own bytes never move.** The transform rewrites the CSS *between* the
   expressions and leaves each expression where the author wrote it, which is what keeps the source
   map landing on the author's line.
 - **The expression is not part of the block's identity.** Two blocks with identical CSS and
-  different expressions are one class and one rule; each element carries its own value.
+  different subjects are the same classes and the same rules.
 
 ## 1b. What a block compiles to under COMPOSITION — frozen 2026-09-05, built as AC0–AC8
 
@@ -82,60 +78,48 @@ order of classes in a `class` attribute decides nothing, so two whole-block clas
 one wins. The build is atomic — one rule per DECLARATION — and this is the part both halves have to
 agree on.
 
-**The cross-package contract does not change, and that was measured rather than hoped.** A merge
-produces exactly the `StyleValue` in §2: a class string, property names, values. The only difference
-is that the string holds several classes separated by spaces, which is what a class attribute is for
-— and the framework already handles that, asserted end to end in `CssBlock.test.tsx`. **Nothing in
-`@ramonda/core` changes.** Everything below lives inside `@ramonda/css`.
+**A merge produces exactly the `StyleValue` in §2**, which is now the class string itself. The
+framework adds it to `className` and does nothing else, asserted end to end in `CssBlock.test.tsx`.
 
-### The map
+### The classes
 
-A block compiles to a map from **what a declaration sets** to **the class that sets it**:
-
-```ts
-/** A declaration with no holes is its class; one with holes is its class and its values in order. */
-type StyleEntry = string | readonly [className: string, ...values: StyleVarValue[]];
-
-/** What one `@@( … )` becomes. Keys are canonical — see below. */
-type StyleMap = { readonly [key: string]: StyleEntry };
-```
+A block compiles to its **classes**, and each one carries what its declaration sets — see `keyToken`
+in `compiler/names.ts`. There is no map: the key used to be a map key and is in the class name now,
+which is what lets a block travel to another component as a string and still be merged.
 
 ```
                                        source
 const panel = @@(
   display: flex;
-  color: {accent};
+  color: $.color.accent;
   &:hover { color: #0e9f6e; }
 );
 
                                        emitted
-const panel = _merge({
-  "display": "r-disp-flex",
-  "color": ["r-OsXzXT1Qd", accent],
-  ":hover|color": "r-:hover-c-#0e9f6e",
-});
+const panel = _merge("r-disp-flex r-c-var(--color-accent) r-:hover.c-#0e9f6e");
 ```
 
-and the stylesheet gains one rule per entry:
+and the stylesheet gains one rule per class:
 
 ```css
 .r-disp-flex { display: flex }
-.r-OsXzXT1Qd { color: var(--r-OsXzXT1Qd-0) }
-.r-\:hover-c-\#0e9f6e:hover { color: #0e9f6e }
+.r-c-var\(--color-accent\) { color: var(--color-accent) }
+.r-\:hover\.c-\#0e9f6e:hover { color: #0e9f6e }
 ```
 
-**The map is an ARGUMENT to `merge`, not the value itself.** Written as a bare object it would have
-none of the things a `css` prop needs — see §2 — and a merge is what turns one map, or several, into
-a value. The characters a class name may not hold are escaped in the STYLESHEET and left alone in the
-map, because a class attribute holds the name and a selector holds its escaping.
+The characters a class name may not hold are escaped in the STYLESHEET and left alone in the string,
+because a class attribute holds the name and a selector holds its escaping.
 
-Note the key: `:hover|color`, with no `&`. The `&` is CSS nesting's way of saying "this element", and
-the key is what a selector composes to — so it is dropped rather than carried.
+**`mergeClassNames` is still the call, and a static block still makes it once**, at module scope: a shorthand
+inside one block clears its own longhands there too, and that is what the call is doing. A block
+holding a condition, a spread or a `match` merges where it is written, because what it composes is
+decided in the render.
 
 ### The key, and it is canonical rather than as-written
 
-`[at-rules, sorted] [selector, composed in order] property`, joined by `|`. Two rules, each for a
-reason:
+**What a declaration SETS**: its at-rules, its selector and its property. It is written into the
+class name — `r-<key>-<value>`, the first `-` ending the key — and `keyIn` reads it back out. Two
+rules for how it is composed, each for a reason:
 
 - **At-rules are SORTED**, because they commute — measured in Chromium,
   `@media X { @supports Y { … } }` and `@supports Y { @media X { … } }` are the same rule. Without
@@ -144,15 +128,10 @@ reason:
 - **Selector parts are COMPOSED IN ORDER**, because they do not commute: `&:hover` inside `& .title`
   is `& .title:hover`, and the reverse is a different selector.
 
-### The variable name for a hole
-
-`--<the declaration's own class>-<n>`, `n` counting holes within that declaration. The same rule as
-§3 one level down: scoped to what it belongs to, never positional across a block.
-
 ### The merge, which is where composition happens
 
 Later wins per key, and **a later shorthand clears its own longhands** — CSS's own cascade, from a
-table generated out of mdn-data. That second half is not a nicety: a shorthand and its longhand are
+table the module REGISTERS for the shorthands it writes; see §2. That second half is not a nicety: a shorthand and its longhand are
 different properties, so without it both classes land and the SHEET breaks the tie, possibly against
 the call site. Measured, it agrees with CSS in both directions for `padding`, `border-left` and `gap`.
 
@@ -161,7 +140,7 @@ nested `if` be COMPILED as a nested merge:
 
 ```
 if ({a}) { color: red; if ({b}) { color: blue; } }
-->  _merge(a && _merge({ "color": "r-c-red" }, b && { "color": "r-c-blue" }))
+->  _merge(a && _merge("r-c-red", b && "r-c-blue"))
 ```
 
 **Associativity is what makes that shape correct; it was never a guarantee that the transform emitted
@@ -169,7 +148,7 @@ it.** Measured on 2026-09-07, it did not: the outer guard was dropped, so the in
 its own. A guard can be written into the output exactly once — an expression stays where the author
 put it, which is what keeps the map exact — so a nested segment needs a merge of its own rather than
 a repeated guard. It opens one only when more than one thing sits under it, and a group with a single
-member is still the shorter `a && b && { … }`.
+member is still the shorter `a && b && "…"`.
 
 ### The sheet's emission order, which is a rule rather than an accident
 
@@ -179,118 +158,99 @@ longhand emitted before a shorthand loses to it.
 
 ---
 
-## 2. What a compiled value IS, and what the `css` prop accepts
+## 2. What a compiled value IS, and where it goes
 
 ```ts
-type StyleVarValue = string | number;
+declare const COMPILED: unique symbol;
 
-interface StyleValue {
-  readonly className: string;
-  readonly properties: readonly string[]; // custom property names, in hole order
-  readonly values: readonly StyleVarValue[]; // parallel to properties
-}
+/** The classes a block compiled to, space separated. */
+type StyleValue = string & { readonly [COMPILED]: true };
 
-type StyleBlock<P extends readonly string[]> = StyleValue & ((...values: HoleValues<P>) => StyleValue);
+type CssBlock<A extends CssBlockShape = CssBlockShape> = StyleValue & { readonly [ALLOWS]: A };
 ```
 
-- **`css` accepts a `StyleValue`, or nothing.** `css={cond ? _s0 : undefined}` removes the class
-  along with the variables — measured through a real hydration, both directions, and the DOM ends up
-  right either way.
-- **A hole may never be `undefined`**, and the type is what enforces it. This was a preference until
-  the four hydration directions were measured; both failing directions are the `undefined`
-  directions, and one of them leaves a stale value in the DOM with a diagnostic that does not repair
-  it. See `DESIGN.md`.
-- **A hole whose value differs between server and client is silent, and the client's wins.** Measured
-  once the framework side existed, and it supersedes the earlier reading: written as an object style
-  the same divergence was reported as `RMD007`, because the value was then part of an attribute the
-  comparator reads. A compiled block is not — the class is compared like any other class, and the
-  values are applied after the attribute pass. Silent and repaired is the better half of the two
-  directions the design measured; the one that was reported was the one that was NOT repaired.
-- **A hole may be a number** because plenty of properties take one. It is the per-property types that
-  refuse `padding: 24`, not this.
-- **The arity is checked.** `block()` takes the property names as a tuple, so a call with the wrong
-  number of arguments is a type error.
-- **`block()` is not what the compiler emits.** It emits `_merge({ … })`, one class per declaration,
-  which is what makes composition possible at all — see §1. `block` stays public for an adapter
-  building a value by hand. **This document, the README, `DESIGN.md` and `PLAN.md` all showed
-  `block(…)` as the compiler's output long after it stopped being one**, which is how a reader
-  learned to write `merge(block(…))`.
-- **A value carrying no map composes with nothing.** A map says what each class SETS; `block()`
-  throws that away, so such a value lands — its class and its holes — and takes part in no override.
-  Merging one used to read its own fields as declarations and put the word `undefined` into a class
-  attribute.
-- **One function turns a value into `{ className, style }`** — `toStyleObject`. That is the entire
-  adapter surface a wrapper on another JSX library needs; Ramonda applies it natively instead.
-- **There is no brand.** A runtime diagnostic — `RMD064` — tells a compiled value from a hand-written
-  object by its shape, and a hand-written object that matches the shape exactly is a working value.
-- **A value that is not a string or a finite number is not written, and neither is one containing a
-  `;`.** See below — this is a requirement on every consumer of a value, not an implementation detail
-  of one.
+- **`className` accepts a `StyleValue`, or nothing.** `className={cond ? _s0 : undefined}` removes
+  the classes — measured through a real hydration, both directions, and the DOM ends up right either
+  way. That is the whole adapter surface a wrapper on another JSX library needs: a block is a string,
+  so there is nothing to turn it into.
+- **There is no `css` prop.** It was one while a block was an object carrying custom property names
+  and this render's values for them, which `className` could not have held.
+- **The BRAND is a phantom.** It emits nothing and exists at no runtime — the value is the string.
+  What it buys is that a plain `string` cannot stand where a block is wanted, and that
+  **concatenation loses it**, so `` `${a} ${b}` `` cannot be handed to a block position and the merge
+  cannot be bypassed with `+`.
+- **A block that differs across hydration is reported on `class`**, like any other class, and
+  repaired. That is a change and a gain: the values a hole carried were applied after the attribute
+  pass, so nothing compared them and a divergence was silent.
+- **Nothing at run time tells a block from something else.** `RMD064` did, by asking whether the
+  value was the shape a compiler produced — and there is nothing left to ask: a block is a string,
+  `className` takes a string, and a hand-written one that looks like a block IS one. That is what
+  makes `className={panel}` work at all.
 
-Applying it, on the framework side, is: add `className`, then `setProperty(name, value)` per hole.
+### What a class string cannot carry, and who carries it
+
+Two things, and each is REGISTERED by the module whose blocks need it rather than shipped to every
+page. A table of all 98 shorthand families is 23 KB, 3.7 KB gzipped — larger than the whole runtime.
+
+- **`shorthands({ p: ["pl", "pr", "pt", "pb"] })`** — what a shorthand clears, keyed by the property
+  as a KEY writes it. The context composes itself: a key is `<context><property>`, so
+  `@media_print.p` clears `@media_print.pl` by putting the same context back in front, and that
+  works for a hashed context too because the hash is a function of the context alone.
+- **`conditionsOf` and `namesOf`** — the conditions a key sits under and the CSS name behind a
+  property form, read only by the development order-warning. Emitted inside a
+  `process.env.NODE_ENV !== "production"` guard, which a bundler drops.
 
 ### The one rule a consumer of a value must implement
 
-**A hole's value is whatever the author's expression evaluated to, and an expression can read a
-record.** "The author wrote it" is not a defence, so a hostile value has to be assumed.
+**There is none any more, and that is the change worth writing down.** A block sets nothing on an
+element: it is classes, and a class name is a name.
 
-`setProperty` closes it on the client: it writes ONE declaration whatever it is handed. Measured,
-the same value both ways —
+The rule there used to be belonged to the values a `{expr}` hole carried, which went into a `style`
+attribute. A value is whatever the author's expression evaluated to, and an expression can read a
+record — so a value holding a `;` became a SECOND declaration when a server-rendered attribute was
+parsed back out of HTML. Measured through `renderToString` and back through `innerHTML`:
+`red; position: fixed; width: 100vw` came out as real, applied declarations.
 
-```
-style.cssText = `--r-0: ${value}`   ->  position: fixed, width: 100vw — real, applied
-style.setProperty("--r-0", value)   ->  position: "", width: "" — nothing else exists
-```
-
-**It does not close it on the server, and that took a measurement to find.** A server render is
-serialized to HTML and the browser PARSES the style attribute back, and a parse applies the CSS
-grammar to whatever text the serializer produced. Run through `renderToString` and back through
-`innerHTML`, the same value came out as `position: fixed; width: 100vw; z-index: 9999` — real,
-applied declarations, on a page the client guarantee never touched.
-
-So **the value is checked rather than left to the DOM**, which only refuses it on one of the two
-paths. A semicolon is what separates declarations, and CSS says a custom property's value may not
-contain one at the top level; refusing every semicolon rather than only the top-level ones costs a
-value like `content: "a;b"` and buys a rule that needs no CSS parser to apply. The declaration is
-dropped rather than sanitised — a missing border beats an overlay somebody's record asked for.
-
-**The rule is about TEXT, so it is asked of the text, and the kind is asked first.** A custom
-property holds text, so `String(value)` produces something for anything — which means a consumer that
-asks `typeof value === "string"` before the value becomes text has not asked the question at all.
-Measured: `{ toString: () => "red; position: fixed; …" }` went past exactly that check and came back
-off a server render as applied declarations. And the kinds a hole is given by mistake — `true`, `{}`,
-a function, `NaN` — all produce text no property can parse, so writing them leaves the declaration to
-fall back with nothing said. A hole's value is **a string, or a number `Number.isFinite` accepts**,
-and nothing else is written.
-
-Implemented in both consumers that exist: `toStyleObject` here, and `applyCssBlock` in the framework.
-Both are named `textFor` and `scripts/check-css-contract.mjs` compares the two bodies as text.
-Saying it out loud to the author is the runtime diagnostic — `RMD063`, which names which of the two
-reasons it was.
+A runtime value in a declaration is refused now — `hole-not-allowed` — so the hazard moved to the one
+place a value still reaches an element, which is `toStyle` in this package. It refuses a value
+holding a `;`, a non-finite number, and anything that is not a string or a number, and leaves the
+property UNSET rather than writing something else: an unset custom property makes the declaration
+reading it invalid at computed-value time, so that declaration drops and whatever the stylesheet said
+stands. A missing border beats an overlay.
 
 ## 3. The names
 
 A class name says what its rule DOES, and falls back to a hash only when it cannot.
 
+`r-<key>-<value>`. The **key** is what the declaration sets — its context and its property — and the
+first `-` ends it, so nothing inside it may be one: a property's own dashes are written `_`, and the
+context joins the property with a `.`.
+
 | | |
 |---|---|
-| class, written | `r-`, a short spelling of the property, `-`, and the value as written — spaces as `_`, the context in front |
-| class, hashed | `r-` + **9** base62 characters of `sha256(normalised)` |
-| custom property | `--<class>-<n>`, `n` being the hole's 0-based index in source order |
+| key, written | the context, a `.`, then the property abbreviated or written with `_` for its dashes |
+| key, hashed | `0` + 5 base62 characters for the context alone, or `0` + 6 for the whole key |
+| value, written | as written, spaces as `_` |
+| value, hashed | **9** base62 characters of `sha256(normalised)` |
 
 ```
 padding: 12px                            r-p-12px
 display: flex                            r-disp-flex
-&:hover { color: red }                   r-:hover-c-red
-color: {accent}                          r-OsXzXT1Qd     a hole
-grid-template-columns: repeat(auto-…)    r-cb29PN6m0     over budget
-@media (min-width: 40rem) { gap: 8px }   r-e1HIiLE0b     an unspellable context
+&:hover { color: red }                   r-:hover.c-red
+outline-offset: 4px                      r-outline_offset-4px
+content: "a b"                           r-content-5dEHlFqj2   an unspellable value
+@media (min-width: 40rem) { gap: 8px }   r-03noXL.gap-8px      a context holding a `-`
 ```
 
-**The hash is the FLOOR, not the norm**, and there are four ways to reach it: the declaration holds a
-hole, the name would exceed its budget, the value holds a character a class name may not, or the
-context cannot be spelled. Measured on this repository's own blocks, 82% are written rather than
-hashed, at a median of 14 characters.
+**Each half falls back on its own, and the KEY is never given up**: a merge reads it, and a block
+that travels to another component has only its classes to say what it sets with. A written key never
+begins with `0`, because no CSS property may begin with a digit and every context begins with `:`,
+`.`, `_`, `@` or `[`.
+
+**The hash is the FLOOR, not the norm.** A value hashes when it would exceed the budget or holds a
+character a class name may not; a context hashes when it is a selector list, holds a quote, or holds
+a `-`. Measured on this repository's own blocks: 23 of 91 names had nothing readable in them before
+the key was written into them, and none do now.
 
 **Written names are SMALLER gzipped** — 1469 B → 1430 B on the measured corpus — because they share
 substrings with each other and hashes share none. Readability was not bought with bytes.
@@ -299,18 +259,14 @@ substrings with each other and hashes share none. Readability was not bought wit
 different names for the same block, and identical blocks deduplicating to one rule with no registry
 and no coordination is the property the whole design rests on.
 
-**The variable name is scoped to the block and never positional.** With `--r0` for every block's
-first hole, a card that styles its own title through a nested rule and a title that has a block of
-its own both name the same variable; the card's rule applies *to* the title, `var(--r0)` resolves on
-the element the declaration applies to, and the card's colour silently disappears. Neither component
-is wrong — only the pairing is, and no test of either alone would find it.
-
 **The length guarantees nothing.** Two different blocks landing on the same name is a birthday
 problem and probability is not a promise. The guarantee is the assertion made where the sheet is
 assembled, which sees every block at once; the hash's length only makes that assertion a tripwire
 that never trips. Nine base62 characters is about 53.6 bits, and a written name collides only if two
-different declarations spell the same — which they cannot, because the first `-` after the
-abbreviation is the boundary and no abbreviation holds one, so the spelling is injective.
+different declarations spell the same — which they cannot, because the encodings above are injective.
+**A KEY collision is asserted the same way**, and it has to be: two rules setting different things
+under one key would look to a merge like one thing set twice, and the earlier would be dropped from a
+page that renders.
 
 ## 4. Normalisation, which is the definition of identity
 
@@ -351,7 +307,7 @@ source order. **Written down as a rule, and tested as a table in
 |---|---|
 | runs of whitespace, and whitespace at the ends of a value or a prelude | whitespace inside a string — `content: "a  b"` |
 | the case of a property name (`COLOR`) | the case of a **custom** property (`--Accent`), which CSS reads as significant |
-| the whitespace the author put around a declaration's colon | the space before a hole, which is a token separator |
+| the whitespace the author put around a declaration's colon | the space before a `match`, which is a token separator |
 | a trailing semicolon, present or not | the order of two declarations |
 | | the case of anything in a prelude — `&:HOVER` stays, measured, because nothing here can tell a pseudo-class from a class name without a selector parser |
 | | number forms, colour forms, keyword case — see below |
@@ -363,38 +319,35 @@ it keeps the difference — `.5px` and `0.5px`, `#FFF` and `#ffffff`, `FLEX` and
 fold in principle and are deliberately not folded, because each needs a value parser to do safely and
 each buys back a rule that was going to be duplicated anyway.
 
-**Holes are placeholders while the text is hashed.** The names are circular — the variable name comes
-from the class, the class from the hash, the hash from this text — so a hole normalises to its index
-delimited by `U+0000`, and `substitute()` puts the real names in afterwards. `U+0000` becomes
-`U+FFFD` during CSS preprocessing, so no author can write one into a block and forge a placeholder.
-
 **Hashing happens before any post-processing, and post-processing may not rename.** The server build
 and the client build never speak; each hashes its own copy and both write the result into markup that
 has to match.
 
 ---
 
-## Where a hole may appear
+## Where `{ }` may appear
 
-A custom property holds a *value*. Refused at build time, with the source position, and reported by
-the checker first:
+A runtime value in a declaration is **refused**, everywhere — see `hole-not-allowed`. What is left is
+the braces that CHOOSE rather than inject, and none of them puts a value on an element. Refused at
+build time, with the source position, and reported by the checker first:
 
 ```
-border-left: {…};                ✓   becomes  border-left: var(--r-…-0)
-{cond ? "display:flex" : ""}     ✗   a declaration — nothing to put a variable in
-{name}: 24px;                    ✗   a property name — unless it RESOLVES, see below
+border-left: {width};            ✗   a runtime value — `match` or `@@property` instead
+{cond ? "display:flex" : ""}     ✗   a declaration — nothing to choose between
 &:{state} { … }                  ✗   a selector
-if ({cond}) { … }              ✓   a condition, and the parentheses are the at-rule's head
+if ({cond}) { … }                ✓   a condition, and the parentheses are the at-rule's head
 ...{base};                       ✓   a spread, in a declaration's position
+color: match({v}) { … }          ✓   a subject, choosing between whole classes
+{name}: 24px;                    ✓   a property name, when it RESOLVES — see below
 ```
 
-**A hole in a property NAME is the one exception, and it is the only way to set a registered
-property.** `{accent}: #f05` where `accent` is a `@@property( … )` declared in this file — or
-imported from a module, one relative hop — resolves to that site's generated name before any rule
-sees it. Unresolved, it is refused as above.
+**A name in a property position is the one that resolves rather than choosing, and it is how a
+registered property is set.** `{accent}: #f05` where `accent` is a `@@property( … )` declared in this
+file — or imported from a module, one relative hop — resolves to that site's generated name before
+any rule sees it, so it is TEXT by the time the CSS is written. Unresolved, it is refused as above.
 
-The same resolution is why `var({accent})` works and `var({runtimeValue})` cannot: `var()` takes a
-literal name, so a hole that stays a hole compiles to `var(var(--…))`, which computes to nothing —
+The same resolution is why `var({accent})` works and `var({anythingElse})` cannot: `var()` takes a
+literal name, so a brace that stays a brace compiles to `var(var(--…))`, which computes to nothing —
 measured in Chromium, dropping that declaration and leaving the one beside it applied. Reported as
 `hole-as-a-variable-name`.
 

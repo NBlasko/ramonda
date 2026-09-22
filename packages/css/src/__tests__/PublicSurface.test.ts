@@ -20,14 +20,27 @@ import * as api from "../index";
  * the boundary and produces the value the framework already takes.
  */
 const RUNTIME = [
-  "block",
-  "compose",
-  "merge",
+  /**
+   * What a module REGISTERS, which is the half a class string cannot carry.
+   *
+   * `shorthands` is what a `padding` needs to clear a caller's `padding-left`, and it ships because
+   * clearing is what a merge does. `conditionsOf` and `namesOf` are read only by the development
+   * warning, and the emitted call is guarded so a production bundle drops both.
+   */
+  "conditionsOf",
+  "mergeClassNames",
+  "namesOf",
+  /**
+   * What a `match` chooses between at run time. The compiler emits the call and the table, so this
+   * is here for the same reason `mergeClassNames` is: the emitted module imports it by name, and a name a
+   * build imports is part of the surface whether anybody writes it themselves or not.
+   */
+  "pick",
   // A declared variable OUTSIDE a block: setting one for a runtime theme, and reading one back.
   // Inside a block `$` is compiled away, so these are the only two that ever ship.
   "read",
+  "shorthands",
   "toStyle",
-  "toStyleObject",
 ];
 
 /**
@@ -49,20 +62,18 @@ const TYPES = [
   "CssLengthUnit",
   "CssResolutionUnit",
   "CssTimeUnit",
+  // The name `@@property( … )` binds, carrying its declared kind — what a setter checks against.
+  "CssVar",
   "CssUnit",
-  "HoleValues",
+
   // What `$.color.primary.main` is, for the module codegen writes. A type and nothing else: a
   // token's runtime value is the string `var(--name)`, written into that module, so importing `$`
   // pulls in no code from here at all.
   // A bare declaration's mark, named by the generated module and so part of the surface.
   "Fixed",
   "Kind",
-  "StyleBlock",
-  "StyleEntry",
-  "StyleMap",
   "Setting",
   "StyleValue",
-  "StyleVarValue",
   "Token",
   "ValueByKind",
 ];
@@ -97,7 +108,14 @@ const COMPILER = [
   "findBlocks",
   "mayHoldABlock",
   "holeOutOfPlace",
+  // The key a class carries — what its declaration SETS. `keyIn` reads one back out of a class name,
+  // which is how a merge decides anything once a block travels as a string. See `keyToken`.
+  "keyIn",
+  "keyTextOf",
+  "keyToken",
   "normalise",
+  // The key a class carries, split into the context it sits in and the property it sets.
+  "partsOf",
   "placehold",
   "positionOf",
   "readBlock",

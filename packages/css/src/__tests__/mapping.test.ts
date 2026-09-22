@@ -48,12 +48,14 @@ const SHAPES: [string, string][] = [
     `const a = <div css={@@(\n  color: red;\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
   ],
   [
-    "after a hole",
-    `declare const t: string;\nconst a = <div css={@@(\n  color: {t};\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
+    // An EXPRESSION kept verbatim is what moves every offset below it, and a condition is the brace
+    // that carries one now — a runtime value in a declaration is refused. Same mechanism, same test.
+    "after a condition",
+    `declare const t: string;\nconst a = <div css={@@(\n  if ({t}) { color: red; }\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
   ],
   [
-    "after two holes",
-    `declare const w: string;\ndeclare const t: string;\nconst a = <div css={@@(\n  border: {w} solid {t};\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
+    "after a match, whose subject and arms both move things",
+    `declare const t: "a" | "b";\nconst a = <div css={@@(\n  color: match({t}) { a => red; b => blue; };\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
   ],
   [
     "inside a nested rule",

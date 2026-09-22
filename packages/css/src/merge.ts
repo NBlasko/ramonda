@@ -1,119 +1,101 @@
 import { widthSlot } from "./conditions";
-import type { StyleValue, StyleVarValue } from "./types";
+import { keyIn, partsOf } from "./key";
+import type { StyleValue } from "./types";
 
 /**
- * A block's entry for one thing it sets: the class that sets it, and the values a hole carries.
+ * Composing blocks, over the CLASS STRING and nothing else.
  *
- * Two shapes because most declarations have no hole and pay nothing for one. A hole's custom
- * property is named after the CLASS — `--<class>-<n>` — so no name has to travel.
+ * ## Why a string
+ *
+ * A block used to be a MAP — what it sets, to the class that sets it — because a merge keeps, per
+ * thing set, the one written later, and the map's keys were where *the thing set* was written down.
+ * A map is an object, so a block written in the markup was a new object on every render and a child
+ * receiving it re-rendered for nothing. That is `RMD020`, and it is what started all of this.
+ *
+ * The key is in the CLASS NAME now — see `keyToken` — so the map has nothing left to say, and a
+ * block is the class string it always ended up as. Two merges with the same contents are the same
+ * string, compared the way every other prop is compared, so the identity question disappears rather
+ * than being answered.
+ *
+ * ## What the string cannot carry, and what does
+ *
+ * Two things, and both are REGISTERED by the module that needs them rather than shipped to every
+ * page — see {@link shorthands} and {@link conditionsOf}. A table of all 98 shorthand families is
+ * 23 KB, 3.7 KB gzipped, which is larger than this whole runtime, and a page that writes three
+ * shorthands would be paying for ninety-five it does not.
  */
-export type StyleEntry = string | readonly [className: string, ...values: StyleVarValue[]];
 
 /**
- * What a `~` key holds: the KEYS a property clears, in full.
+ * What one shorthand clears, by the PROPERTY as a key writes it — `p` clears `pl`, `pr`, `pt`, `pb`.
  *
- * A list rather than a joined string, and full keys rather than property names — both were nearly
- * wrong. A key carries its context (`@media (min-width: 40rem)|:hover|padding`), so `padding` inside
- * a `@media` must clear `padding-left` inside THAT `@media` and not the one outside it; and a key
- * may contain spaces, so anything joined by one could not be split back.
+ * Registered by the emitted module, for the shorthands that module actually writes. Keyed by the
+ * property alone and never by the whole key, because the CONTEXT composes itself: a key is
+ * `<context><property>`, so `@media_print.p` clears `@media_print.pl` by putting the same context
+ * back in front. That works for a hashed context too — the hash is a function of the context and is
+ * shared by every property sitting in it.
+ *
+ * Module-level state, and not the kind that was ruled out before: it is bounded by the source, it
+ * never grows while a page runs, and there is nothing in it to evict.
  */
-export type StyleClears = readonly string[];
+const CLEARS = new Map<string, readonly string[]>();
 
 /**
- * What one `@@( … )` compiles to: a map from what a declaration SETS to the class that sets it.
+ * Register the shorthands a module writes. Called by emitted code; never written by hand.
  *
- * A key beginning with `~` is not a declaration. It is the list of things the property named after
- * it clears — see {@link merge} — and it never reaches an element.
+ * Idempotent, and it has to be: two modules writing `padding` each register it, and a dev server
+ * re-runs a module on every save.
  */
-export type StyleMap = { readonly [key: string]: StyleEntry | StyleClears };
-
-/** How a clear-list is marked. No CSS property may begin with `~`, so nothing collides. */
-const CLEARS = "~";
-
-/**
- * Where a merged value keeps the map it came from.
- *
- * `const base = @@( … )` compiles to a VALUE, because that is what the `css` prop takes — and
- * `...{{base}};` in another block hands that value back to a merge, which needs the MAP. Without
- * this it failed quietly and only sometimes: iterating a value's own keys happens to yield a
- * plausible class string, so a base spread into a modifier still rendered — with nothing
- * overridable and nothing cleared.
- *
- * A symbol, so it is not a key any map can have and not a field anything serialises.
- */
-const FROM = Symbol.for("ramonda.css.map");
-
-/**
- * The map behind a merged value, or the map itself.
- *
- * **A value with NO map is the third case, and it used to be read as a map.** `block("r-x", ["--r-x-0"])("red")`
- * is what the public `block` produces, and it carries no map — so its own fields were read as
- * declarations: measured, `merge(block("r-def"))` came back with `className: "r-def undefined
- * undefined"`, the word `undefined` written into an element's class attribute.
- *
- * It cannot compose, and that is a fact about the value rather than a limitation here: a map says
- * what each class SETS, and a bare value has thrown that away. What it can still do is land — so it
- * contributes its class and its holes under its own class name as the key, which no CSS property can
- * collide with and no clear-list can name. It takes part in no override, which is the honest
- * consequence of having no map: there is nothing to decide with.
- *
- * Not reachable from compiled code, which emits `_merge({ … })` — but `block` and `merge` are both
- * public, and the README, `CONTRACT.md`, `DESIGN.md` and `PLAN.md` all showed `block(…)` as what the
- * compiler emits, which it has not for some time. The documents pointed straight at this.
- */
-function mapOf(one: StyleMap | StyleValue): StyleMap {
-  const behind = (one as { [FROM]?: StyleMap })[FROM];
-  if (behind !== undefined) return behind;
-
-  const value = one as Partial<StyleValue>;
-  if (typeof value.className !== "string" || !Array.isArray(value.values)) return one as StyleMap;
-  return { [value.className]: [value.className, ...(value.values as StyleVarValue[])] };
+export function shorthands(table: Readonly<Record<string, readonly string[]>>): void {
+  for (const property in table) CLEARS.set(property, table[property]);
 }
 
 /**
- * A DECLARATION WITH NOTHING TO SET, which is a hole whose value never arrived.
+ * A key's CONDITIONS, for the development-only warning below — registered the same way.
  *
- * `...{base}; color: {tint}` with `tint = null` used to delete the base's class for that key and
- * leave the modifier's, whose `var()` was then unset — so `color` computed to inherit instead of
- * falling back to the base's red. **The comments in this file and in `value.ts` both promised the
- * fall-back**, and each was right about its own step: the loss happened one step earlier, where the
- * key was displaced.
+ * The warning needs to compare how strongly two conditions override, and a key carries its context
+ * as the author's own text or as a hash. A hash cannot be read, so the text is registered beside it
+ * — by the module, for the keys it writes, and only where there is a condition and no selector,
+ * which is the only shape the warning can say anything about.
  *
- * Dropping the whole entry is safe because a class stands for exactly ONE declaration — there is
- * nothing else on it to lose. And it costs nothing, because a declaration reading an unset `var()`
- * is invalid at computed-value time and is dropped by the browser anyway: the class was never going
- * to apply, it was only in the way of the one that would have.
- *
- * ONE missing value among several is enough, for that same reason: `border-left: {w} solid {c}`
- * with `c` missing is one declaration, and it is dropped whole.
- *
- * The type refuses `null` and `undefined` in a hole — see `__val` in `compiler/virtual.ts` — so this
- * is the belt for what a type cannot hold: a cast, an `any`, a JavaScript caller, data off an API.
+ * **Emitted inside a development guard**, so a production bundle drops the call and this map stays
+ * empty. The warning is development-only, so nothing is lost where nothing would have been said.
  */
-function setsNothing(entry: StyleEntry | StyleClears | undefined): boolean {
-  if (entry === undefined || typeof entry === "string") return entry === undefined;
-  for (let index = 1; index < entry.length; index++) {
-    const value = entry[index];
-    /**
-     * **The empty string is this case too**, and it was not covered.
-     *
-     * Measured in Chromium, standards mode: a custom property set to the empty string substitutes as
-     * NOTHING, so the declaration reading it is invalid at computed-value time — `content: var(--c)`
-     * with `--c` empty computes to `none` rather than to `""`. An author who means `content: ""`
-     * passes the two quote characters, which is a different string.
-     *
-     * So it is exactly what the note above describes: a class that was never going to apply, only in
-     * the way of the one that would have. Left in, it took the base with it — measured through a real
-     * composition, `...{base}; color: {tint}` with an empty tint computed BLACK where the same two
-     * declarations by hand leave the base standing.
-     *
-     * **`0` and `false` are values and must not reach here.** `opacity: {o}` with `o = 0` is exactly
-     * what an author means, and it was measured working. This is a test for the absence of a value,
-     * not for falsiness.
-     */
-    if (value === undefined || value === null || value === "") return true;
-  }
-  return false;
+const CONDITIONS = new Map<string, string>();
+
+export function conditionsOf(table: Readonly<Record<string, string>>): void {
+  for (const key in table) CONDITIONS.set(key, table[key]);
+}
+
+/**
+ * The CSS name behind a key's property form — `p` is `padding` — for the warning's own sentence.
+ *
+ * A key writes a property the way a class name can hold it: abbreviated where there is an
+ * abbreviation, and with its dashes as `_` where there is not. That is unreadable in a message,
+ * and a message naming `pl` where the author wrote `padding-left` is a message that sends somebody
+ * looking for a string in no file.
+ *
+ * Registered with the conditions and dropped with them in a production build, because the only
+ * thing that reads either is the development warning.
+ */
+const NAMES = new Map<string, string>();
+
+export function namesOf(table: Readonly<Record<string, string>>): void {
+  for (const form in table) NAMES.set(form, table[form]);
+}
+
+/** What the author called it, or the form itself where nothing registered a name. */
+const nameOf = (form: string): string => NAMES.get(form) ?? form;
+
+const NONE: readonly string[] = [];
+
+/** The prefix every class this compiler writes carries — fixed, never configurable. */
+const OURS = "r-";
+
+/** The keys one key clears, in full — its own context put back in front of each longhand. */
+function clearedBy(key: string): readonly string[] {
+  const { context, property } = partsOf(key);
+  const covered = CLEARS.get(property);
+  return covered === undefined ? NONE : covered.map((one) => context + one);
 }
 
 /**
@@ -121,40 +103,42 @@ function setsNothing(entry: StyleEntry | StyleClears | undefined): boolean {
  *
  * Dev only, and it never grows in a production build: nothing reaches it, because the only caller is
  * inside the guard below and a bundler that replaces `process.env.NODE_ENV` drops the branch and
- * everything it alone referenced. Measured through a real Vite production build — neither the
- * sentence nor `process` appears in the output.
+ * everything it alone referenced.
  */
 const said = new Set<string>();
 
 /**
- * Forget what has been said, so a test can watch the warning happen more than once.
+ * Forget what a process has been told, so a test starts from nothing.
  *
- * Exported for the tests and for nothing else — the set is deliberately never cleared at runtime,
- * which is what makes a render loop say each thing once.
+ * Exported for the tests and for nothing else — none of these is cleared at runtime. The warnings
+ * are never cleared because saying each thing once is the point; the two registries are never
+ * cleared because a module registers on load and is loaded once.
  */
 export function forget(): void {
   said.clear();
+  CLEARS.clear();
+  CONDITIONS.clear();
+  NAMES.clear();
 }
 
 /** Whether this is a development build, spelled so that nothing breaks where nobody defines it. */
 const inDevelopment = (): boolean => typeof process !== "undefined" && process.env?.NODE_ENV !== "production";
 
 /**
- * How strongly a key's CONTEXT overrides, or `undefined` when the pair cannot be compared.
+ * How strongly a key's CONDITIONS override, or `undefined` when the pair cannot be compared.
  *
- * A key is `conditions… | selector? | property`, and its doc says it is never parsed back — the
- * parts share a separator a selector is allowed to contain, so `[title|="x"]` splits into nonsense.
- * The property is safe, being the tail after the LAST separator. The context is not, so this only
- * answers when every part of it begins with `@`, which a condition does and a selector cannot.
+ * Only a key whose module registered its conditions is answerable, and a module registers only
+ * where there is a condition and NO selector. A selector adds specificity, which beats source order
+ * on its own — so `&:hover { color: red }` against `@media { color: blue }` is settled by the
+ * selector and not by the sheet, and comparing them would report correct CSS, which is the failure
+ * mode this package has paid for before.
  *
- * **A selector is why that matters rather than being caution.** A selector adds specificity, which
- * beats source order on its own — so `&:hover { color: red }` against `@media { color: blue }` is
- * settled by the selector and not by the sheet. Comparing them would report correct CSS, which is
- * the failure mode this package has paid for before.
+ * A key with no context at all is slot 0, which is what an unconditional declaration is.
  */
-function slotOf(context: string): number | undefined {
-  if (context === "") return 0;
-  return context.split("|").every((one) => one.startsWith("@")) ? widthSlot([context]) : undefined;
+function slotOf(key: string): number | undefined {
+  const conditions = CONDITIONS.get(key);
+  if (conditions === undefined) return partsOf(key).context === "" ? 0 : undefined;
+  return conditions.split("|").every((one) => one.startsWith("@")) ? widthSlot([conditions]) : undefined;
 }
 
 /**
@@ -174,12 +158,12 @@ function slotOf(context: string): number | undefined {
  *
  * With the modes ordered against breakpoints the way Tailwind orders them this one is right, and the
  * mirror of it — a base with the breakpoint, a modifier with the mode — is the one that loses. Either
- * way something loses silently, and only the runtime holds both maps at once, so this is the only
+ * way something loses silently, and only the runtime holds both blocks at once, so this is the only
  * place the question can be asked at all.
  *
  * Said once per pair, because a render loop would otherwise say it a thousand times.
  */
-function warnAboutOrder(chosen: Record<string, StyleEntry | StyleClears>): void {
+function warnAboutOrder(chosen: ReadonlyMap<string, string>): void {
   /** Property -> what was composed that SETS it, in composition order. */
   const byProperty = new Map<string, { key: string; property: string; slot: number }[]>();
 
@@ -189,13 +173,11 @@ function warnAboutOrder(chosen: Record<string, StyleEntry | StyleClears>): void 
     else list.push(one);
   };
 
-  for (const key in chosen) {
-    if (key.startsWith(CLEARS)) continue;
-    const cut = key.lastIndexOf("|");
-    const slot = slotOf(cut === -1 ? "" : key.slice(0, cut));
+  for (const key of chosen.keys()) {
+    const slot = slotOf(key);
     if (slot === undefined) continue;
 
-    const property = cut === -1 ? key : key.slice(cut + 1);
+    const { property } = partsOf(key);
     const one = { key, property, slot };
     register(property, one);
 
@@ -205,20 +187,14 @@ function warnAboutOrder(chosen: Record<string, StyleEntry | StyleClears>): void 
      * Grouping by the exact property name meant `padding` and `padding-left` were never compared,
      * so a shorthand under a condition silently beat a longhand composed after it. Measured against
      * plain CSS in Chromium: `...{@media (min-width: 1px) { padding: 11px }}; padding-left: 4px`
-     * computed 11px where hand-written CSS gives 4px. Swept across the table: 98 families asked, 0
-     * warned.
+     * computed 11px where hand-written CSS gives 4px.
      *
-     * The single-file checker has always caught this, through `covers()` and the shorthand table —
-     * and the runtime may not import that table, which is why `conditions.ts` exists at all. It does
-     * not need to: **the clear-list is already in the map**, because clearing is how a shorthand
-     * displaces a longhand. Its keys carry their own context, which is stripped here, since the
-     * question being asked is about two entries in DIFFERENT contexts.
+     * The clear-list is what answers it, for the same reason it does the clearing: a shorthand's
+     * registration IS the list of longhands it sets. The context is stripped here, since the
+     * question being asked is about two keys in DIFFERENT contexts.
      */
-    const cleared = chosen[`${CLEARS}${key}`];
-    if (!Array.isArray(cleared)) continue;
-    for (const each of cleared as readonly string[]) {
-      const at = each.lastIndexOf("|");
-      const sets = at === -1 ? each : each.slice(at + 1);
+    for (const each of clearedBy(key)) {
+      const sets = partsOf(each).property;
       if (sets !== property) register(sets, one);
     }
   }
@@ -235,10 +211,10 @@ function warnAboutOrder(chosen: Record<string, StyleEntry | StyleClears>): void 
        * longhand against its own shorthand in the case above — where naming only the group would
        * say `padding-left` twice and point at neither line the author wrote.
        */
-      const later = one.property === property ? `\`${property}\`` : `\`${one.property}\``;
-      const earlier = strongest.property === property ? "it" : `\`${strongest.property}\`, which sets it too,`;
+      const later = nameOf(one.property === property ? property : one.property);
+      const earlier = strongest.property === property ? "it" : `\`${nameOf(strongest.property)}\`, which sets it too,`;
       const message =
-        `[@ramonda/css] ${later} is composed later under \`${context(one.key)}\` than ` +
+        `[@ramonda/css] \`${later}\` is composed later under \`${context(one.key)}\` than ` +
         `${earlier === "it" ? `under \`${context(strongest.key)}\`` : `${earlier} under \`${context(strongest.key)}\``}` +
         `, and it will not override it — the stylesheet emits the stronger condition last, so the ` +
         `earlier one wins wherever both apply. Put the two under one condition, or compose them the ` +
@@ -250,131 +226,109 @@ function warnAboutOrder(chosen: Record<string, StyleEntry | StyleClears>): void 
   }
 }
 
-/** A key's context, for the message — the whole key when it has none. */
-const context = (key: string): string => {
-  const cut = key.lastIndexOf("|");
-  return cut === -1 ? "no condition" : key.slice(0, cut);
-};
+/** A key's conditions, for the message — as the module registered them. */
+const context = (key: string): string => CONDITIONS.get(key) ?? "no condition";
 
 /**
- * Compose blocks into one map — the primitive, and the one that is closed over its own output.
+ * What a `match` chooses — the class its subject names, or the `_` arm, or nothing.
  *
- * `merge` returns the VALUE the framework takes, which is a different shape and cannot be composed
- * again; a nested group has to compose, so this is what it composes with. The clear-lists are
- * carried into the result for the same reason: a composed map has to behave like the maps it came
- * from, or `compose(compose(a, b), c)` would stop clearing halfway.
+ * ## Why nothing is a real answer
  *
- * **Associative**, which is what makes a nested `if` mean the same as a flattened one — and it is
- * the property the clearing rule could have broken, since clearing removes keys rather than
- * replacing them. Measured over 50,301 random groupings drawn from one shorthand family: zero
- * disagreements.
+ * A subject can hold a value no arm was written for: a type can be cast, data can arrive from a
+ * server, a union can grow. When that happens **no declaration applies** — nothing comes back, the
+ * merge skips it, and whatever was set above it stands. That is the same answer `if ({false})`
+ * gives, and it is the reason an arm can be a class at all: every outcome was decided when the
+ * block compiled, including the outcome of not matching.
+ *
+ * ## Why the table is built by the compiler
+ *
+ * Its keys are the arms as written and its values are their class names, both known at build time,
+ * so the object is a constant in the emitted module. Nothing is allocated here and nothing is
+ * remembered: this is a lookup, which is what makes a match cost a render nothing.
  */
-export function compose(...maps: readonly (StyleMap | StyleValue | false | null | undefined)[]): StyleMap {
-  /** Insertion-ordered, which is what keeps a composed map behaving like the sequence it came from. */
-  const chosen: Record<string, StyleEntry | StyleClears> = {};
-  /** How many maps actually arrived, for the dev warning below. */
-  let given = 0;
-
-  for (const one of maps) {
-    if (!one) continue;
-    given++;
-    const map = mapOf(one);
-    for (const key in map) {
-      if (key.startsWith(CLEARS)) continue;
-      // A declaration with nothing to set is not set, so it neither displaces nor clears anything.
-      if (setsNothing(map[key])) continue;
-
-      const cleared = map[`${CLEARS}${key}`];
-      if (Array.isArray(cleared)) {
-        for (const one of cleared) delete chosen[one];
-        chosen[`${CLEARS}${key}`] = cleared;
-      }
-      // Deleted first, so a key set twice moves to where it was set LAST rather than staying where
-      // it was set first — which is what "later wins" means for the order the classes come out in.
-      delete chosen[key];
-      chosen[key] = map[key];
-    }
-  }
-
-  /**
-   * Only when more than one map was composed. A single block's contradictions are the compiler's to
-   * report, at the author's own line, and it does — this exists for what a spread hides.
-   */
-  if (given > 1 && inDevelopment()) warnAboutOrder(chosen);
-
-  return chosen;
+export function pick(subject: unknown, arms: Readonly<Record<string, string>>, otherwise?: string): string | undefined {
+  if (subject === null || subject === undefined) return otherwise;
+  const found = arms[String(subject)];
+  return found === undefined ? otherwise : found;
 }
 
 /**
  * Compose blocks: later wins, per thing set.
+ *
+ * **Named for what it merges, because `@ramonda/core` exports a `merge` of its own** — a deep
+ * structural merge for state identity, `merge(previous, next, identity?)`. The two took the same
+ * name from opposite ends, and the collision is silent rather than loud: `merge("lead", block)`
+ * against core's signature typechecks clean (`previous` is `unknown`, `next` is `T`) and returns
+ * `block`, dropping `"lead"` — measured on this repository, in `tsc` and at run time. A file that
+ * imports from both packages is one line away from that, so the name says which merge this is.
  *
  * **This is the only place a call site can decide anything, and that is measured.** The order of
  * classes in a `class` attribute decides nothing — the stylesheet's order does, and with layers the
  * layer does — so two whole-block classes cannot express "this one wins". Keeping ONE class per
  * thing set means the merge picks which classes land, and there is never a tie to break.
  *
- * A falsy argument is a group that is switched off, which is what `disabled && block` compiles to.
+ * A falsy argument is a group that is switched off, which is what `disabled && block` compiles to,
+ * and what a `match` naming no arm gives back.
  *
  * ## A shorthand clears its own longhands
  *
- * `padding` and `padding-left` are different properties, so a merge keeps both and the SHEET breaks
- * the tie — measured in Chromium, and possibly against the call site. So this does what CSS's own
- * cascade does. The other direction needs nothing: the sheet emits longhands after shorthands, so a
- * longhand written later already wins.
+ * `padding` and `padding-left` are different properties, so a merge would keep both and the SHEET
+ * would break the tie — measured in Chromium, and possibly against the call site. So this does what
+ * CSS's own cascade does. The other direction needs nothing: the sheet emits longhands after
+ * shorthands, so a longhand written later already wins.
  *
- * **The list travels with the block that needs it**, under a `~` key, rather than from a table of
- * all 78 shorthands. That is what keeps this package's promise of shipping almost nothing: a page
- * pays for the shorthands its blocks actually write.
- *
- * ## What comes out
- *
- * The value the framework already takes — a class string, custom property names, values — so nothing
- * in `@ramonda/core` changes for any of this. The class string simply holds several classes, which
- * is what a class attribute is for.
- *
- * This is the BOUNDARY; {@link compose} is the primitive, and it is the one that composes with
- * itself.
+ * **Associative**, which is what makes a nested `if` mean the same as a flattened one — and it is
+ * the property the clearing rule could have broken, since clearing removes keys rather than
+ * replacing them. Measured over 50,301 random groupings drawn from one shorthand family: zero
+ * disagreements.
  */
-export function merge(...maps: readonly (StyleMap | StyleValue | false | null | undefined)[]): StyleValue {
-  const chosen = compose(...maps);
+export function mergeClassNames(...parts: readonly (string | false | null | undefined)[]): StyleValue {
+  /** Insertion-ordered, which is what keeps the classes in the order they were composed. */
+  const chosen = new Map<string, string>();
+  /** How many parts actually arrived, for the dev warning below. */
+  let given = 0;
 
-  let className = "";
-  const properties: string[] = [];
-  const values: StyleVarValue[] = [];
+  for (const part of parts) {
+    if (!part) continue;
+    given++;
 
-  for (const key in chosen) {
-    if (key.startsWith(CLEARS)) continue;
-    const entry = chosen[key] as StyleEntry;
+    for (const className of part.split(" ")) {
+      if (className === "") continue;
+      /**
+       * **A class this compiler did not write keys on ITSELF**, and that is not caution.
+       *
+       * `mergeClassNames("lead", @@( … ))` is how a block goes beside a class of the author's own
+       * now that `className` is where a block lands, so a foreign name reaching here is ordinary
+       * rather than a misuse. `keyIn` reads the key out of OUR spelling — everything between `r-` and the first
+       * `-` — and on a name that is not ours it reads letters: measured, `lead` and `head` both come
+       * to `ad`, so one would have silently displaced the other.
+       *
+       * Keyed on itself **behind a space**, which no key of ours can hold: a class attribute is
+       * whitespace-separated, so a space in a key is a thing a class name cannot be. Without it a
+       * class literally named `pl` was cleared by a `padding` beside it — measured, and it is the
+       * same coincidence one step along.
+       *
+       * Keyed that way a foreign class displaces nothing, clears nothing, and dedupes with an
+       * identical one. The prefix is fixed and not configurable — see `CONTRACT.md` §3 — which is
+       * what makes this test exact rather than a guess.
+       */
+      const key = className.startsWith(OURS) ? keyIn(className) : ` ${className}`;
 
-    if (typeof entry === "string") {
-      className = className === "" ? entry : `${className} ${entry}`;
-      continue;
-    }
-
-    const [name, ...carried] = entry;
-    className = className === "" ? name : `${className} ${name}`;
-    /**
-     * Every value is carried, because `compose` has already dropped any entry missing one — see
-     * {@link setsNothing}.
-     *
-     * This used to skip a missing value here and keep the class, which is the answer `toStyleObject`
-     * and the framework still give for a value handed to them directly. It is the wrong answer one
-     * step in: by the time it ran, the entry it was patching up had already displaced the base it
-     * was supposed to fall back to. One question, asked where it can be answered.
-     */
-    for (const [index, value] of carried.entries()) {
-      properties.push(`--${name}-${index}`);
-      values.push(value);
+      for (const cleared of clearedBy(key)) chosen.delete(cleared);
+      // Deleted first, so a key set twice moves to where it was set LAST rather than staying where
+      // it was set first — which is what "later wins" means for the order the classes come out in.
+      chosen.delete(key);
+      chosen.set(key, className);
     }
   }
 
   /**
-   * The map travels with the value, so a spread of it composes rather than iterating its fields.
-   *
-   * Not enumerable: it must not appear in a spread of the value, in `JSON.stringify`, or in anything
-   * that walks its keys — it is how a value is composed again, not part of what a value IS.
+   * Only when more than one part was composed. A single block's contradictions are the compiler's
+   * to report, at the author's own line, and it does — this exists for what a spread hides.
    */
-  const value = { className, properties, values };
-  Object.defineProperty(value, FROM, { value: chosen, enumerable: false });
-  return value;
+  if (given > 1 && inDevelopment()) warnAboutOrder(chosen);
+
+  let className = "";
+  for (const one of chosen.values()) className = className === "" ? one : `${className} ${one}`;
+  return className as StyleValue;
 }

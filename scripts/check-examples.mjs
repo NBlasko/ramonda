@@ -365,6 +365,18 @@ const PLANTED = `export class Planted extends Component {
  */
 function shape(code) {
   /**
+   * The shape is decided from the AUTHOR's code, kept before the virtual reading replaces it.
+   *
+   * The heuristics below ask whether a block uses `this.`, whether it already IS a class, and
+   * whether it opens with a `const` — and the virtual file answers all three wrongly. Its preamble
+   * is one long line that the author's first line continues, so `/^\s*class /m` finds nothing in a
+   * block that is a class declaration: measured, `class A extends Component<…>` holding a block was
+   * wrapped in a class BODY and reported `TS1184: Modifiers cannot appear here` six times, about a
+   * wrapper its author never wrote.
+   */
+  const written = code;
+
+  /**
    * The virtual reading, when there is one. Strict: a documented example of a syntax IS the place a
    * malformed block must be caught, and the tolerant reading would quietly accept `disp`.
    */
@@ -448,12 +460,12 @@ export {};
   // is legal and means nothing — and then every property on it is reported as possibly undefined,
   // about something the example never wrote. It belongs in a class.
   const needsClass =
-    (/\bthis\./.test(code) || /^\s*return\s/m.test(code)) &&
-    !/^\s*(?:@|class |export class |abstract class )/m.test(code);
+    (/\bthis\./.test(written) || /^\s*return\s/m.test(written)) &&
+    !/^\s*(?:@|class |export class |abstract class )/m.test(written);
 
   // A block with a top-level `const` cannot be a class BODY — it has to be inside a method. Both
   // shapes parse, so the choice has to be made here rather than left to the first that does.
-  const needsMethod = /^\s*(?:const|let|var)\s/m.test(code);
+  const needsMethod = /^\s*(?:const|let|var)\s/m.test(written);
 
   for (const [index, attempt] of attempts.entries()) {
     if (index === 0 && needsClass) continue;

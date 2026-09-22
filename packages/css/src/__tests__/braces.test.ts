@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { HOLE, normalise } from "../compiler/normalise";
 import { closingHole, readBlock } from "../compiler/read";
+import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";
 
 /**
@@ -39,6 +40,68 @@ const canonical = (source: string) =>
   normalise(readBlock(source, 2, "C.tsx").block)
     .split(HOLE)
     .join("@");
+
+/**
+ * A BLOCK INSIDE A TEMPLATE LITERAL'S `${ … }`, which compiles to nothing at all.
+ *
+ * A template literal is a quiet region to the scan — a `(` in one closes nothing and a `@@` in one
+ * is text — so a block written in a substitution is found by nothing: the file is handed on
+ * untouched, `@@(` survives into the bundler, and the author gets a syntax error somewhere else
+ * entirely, naming neither the block nor the line.
+ *
+ * **It became reachable when the `css` prop went.** A block is a string and goes on `className`, so
+ * joining one with a class of the author's own is an ordinary thing to want, and a template is the
+ * first thing anybody reaches for. Measured across every position a block can be written in —
+ * attribute, assignment, call argument, object value, array element, `return`, arrow body, ternary —
+ * a template substitution is the only one that finds nothing.
+ */
+describe("a block inside a template literal", () => {
+  const rules = (source: string) => checkSource(source, "C.tsx").map((one) => one.rule);
+
+  test("is reported, because nothing else would say a word about it", () => {
+    expect(rules("const a = <div className={`lead ${@@( color: red; )}`}>x</div>;")).toEqual(["block-in-a-template"]);
+  });
+
+  test("and the message names the spelling that works", () => {
+    const [only] = checkSource("const a = <div className={`lead ${@@( color: red; )}`}>x</div>;", "C.tsx");
+
+    expect(only.message).toContain("merge");
+    expect(only.message).toContain("className={mergeClassNames(");
+  });
+
+  /** `merge` in a call argument IS found — measured, along with every other position. */
+  test("while the same block in a call argument is compiled and quiet", () => {
+    expect(rules('const a = <div className={mergeClassNames(@@( color: red; ), "lead")}>x</div>;')).toEqual([]);
+  });
+
+  test.each([
+    ["a template holding no block", "const a = `lead ${name}`;"],
+    ["a template's own TEXT, which is not a substitution", "const a = `@@( color: red; )`;"],
+    ["a string that merely looks like one", 'const a = "${@@( x )}";'],
+  ])("%s is not reported", (_what, source) => {
+    expect(rules(source)).toEqual([]);
+  });
+
+  /**
+   * And a template that is legitimately INSIDE a block, which is every expression a block still
+   * holds: a condition, a `match` subject, a spread. A brace there is the author's own TypeScript
+   * and has nothing to do with this rule.
+   */
+  test.each([
+    ["a template in a condition", "const a = @@( if ({`${x}`}) { color: red; } );"],
+    ["a template in a match subject", "const a = @@( color: match({`${x}`}) { a => red; }; );"],
+    ["a template beside a block", "const a = @@( color: red; );\nconst b = `lead ${a}`;"],
+  ])("%s is not reported either", (_what, source) => {
+    expect(rules(source)).not.toContain("block-in-a-template");
+  });
+
+  /** And the BUILD refuses it, or the check would be the only thing that knew. */
+  test("the build refuses it rather than handing `@@(` to a bundler", () => {
+    expect(() =>
+      transform("const a = <div className={`lead ${@@( color: red; )}`}>x</div>;", { filename: "C.tsx" }),
+    ).toThrow(/merge/);
+  });
+});
 
 describe("a hole is one brace", () => {
   test("in a value", () => {

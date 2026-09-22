@@ -1,5 +1,6 @@
-import { describe, expect, test } from "vitest";
-import { merge } from "../merge";
+import { afterEach, describe, expect, test } from "vitest";
+import { keyToken } from "../compiler/names";
+import { conditionsOf, forget, mergeClassNames, namesOf, shorthands } from "../merge";
 import { transform } from "../compiler/transform";
 import { sheetRank } from "../compiler/flatten";
 
@@ -22,17 +23,23 @@ import { sheetRank } from "../compiler/flatten";
  */
 const emit = (source: string) => transform(source, { filename: "Card.tsx" })?.code ?? "";
 
+/** A class the compiler would have produced, so a runtime test is asked the compiler's own question. */
+const classOf = (property: string, value: string) =>
+  `r-${keyToken({ property, selector: "", conditions: [] })}-${value}`;
+
+afterEach(forget);
+
 describe("a spread", () => {
   test("becomes an argument of the merge, in the position it was written", () => {
     const out = emit(`const card = @@(\n  ...{base};\n  opacity: 0.5;\n);\n`);
 
-    expect(out).toMatch(/_merge\(base,\s*\{"opacity":"r-[0-9a-zA-Z][^"\s)]*",\}\)/);
+    expect(out).toMatch(/_merge\(base,\s*"r-o-[^"]+"\)/);
   });
 
   test("what is written above it merges first, which is what later-wins means", () => {
     const out = emit(`const card = @@(\n  display: flex;\n  ...{base};\n);\n`);
 
-    expect(out).toMatch(/_merge\(\{"display":"r-[0-9a-zA-Z][^"\s)]*",\},\s*base\)/);
+    expect(out).toMatch(/_merge\("r-disp-[^"]+",\s*base\)/);
   });
 
   test("the expression is the author's own, byte for byte", () => {
@@ -52,9 +59,72 @@ describe("a spread", () => {
  * A REUSE INSIDE A REUSE, which the user asked to be measured rather than assumed.
  *
  * `one` is spread into `two`, `two` into `three`, and each level overrides one thing. It works
- * because `merge` is associative and a merged value carries the map it came from — but nothing
+ * because `mergeClassNames` is associative and a merged value carries the map it came from — but nothing
  * asserted the chain, and "it composes" is exactly the claim that stops being true quietly.
  */
+/**
+ * WHAT A MODULE REGISTERS, and whether it has done so by the time a merge needs it.
+ *
+ * A class string cannot carry what a shorthand clears, so the module that writes one registers it —
+ * see `shorthands` in `merge.ts`. That is module-level state, and the question a reader will ask is
+ * the ordering one: can a merge run before the registration it depends on?
+ *
+ * It cannot, and the reason is where each one sits. A module's registration is in its PROLOGUE,
+ * above everything else it contains, and a module's imports are evaluated before its own body. So a
+ * block that composes another module's block is merged after both prologues have run.
+ */
+describe("what a module registers", () => {
+  test("the registration is emitted above the merge that needs it", () => {
+    const out = emit("const a = @@( padding-left: 4px; padding: 8px; );\n");
+    const clears = out.indexOf("_clears(");
+    const merged = out.indexOf('_merge("r-');
+
+    expect(clears).toBeGreaterThan(-1);
+    expect(clears).toBeLessThan(merged);
+  });
+
+  /**
+   * **Across two modules, RUN rather than read.** The module writing the shorthand is not the one
+   * writing the longhand, which is the shape a base and a modifier have, and the only thing that
+   * makes it work is that a module's imports are evaluated first.
+   */
+  test("and a block from another module is cleared by a shorthand in this one", () => {
+    const base = emit("export const base = @@( padding-left: 40px; cursor: pointer; );\n");
+    const card = emit('import { base } from "./base";\nexport const card = @@( ...{base}; padding: 8px; );\n');
+
+    const run = (code: string, names: Record<string, unknown>) =>
+      new Function(
+        "_merge",
+        "_clears",
+        "_under",
+        "_named",
+        ...Object.keys(names),
+        `${code
+          .split("\n")
+          .filter((line) => !line.startsWith("import "))
+          .join("\n")
+          .replace(/^export /gm, "")}\nreturn typeof card === "undefined" ? base : card;`,
+      )(mergeClassNames, shorthands, conditionsOf, namesOf, ...Object.values(names));
+
+    // The base's module runs first, the way an import does; then the modifier's.
+    const theBase = run(base, {}) as string;
+    const theCard = run(card, { base: theBase }) as string;
+
+    // `padding` cleared the base's `padding-left`, and left the cursor it does not set.
+    expect(theCard.split(" ").sort()).toEqual(
+      [...theBase.split(" ").filter((one) => !one.startsWith("r-pl-")), "r-p-8px"].sort(),
+    );
+  });
+
+  /** Two modules writing one shorthand each register it, and the second must not undo the first. */
+  test("registering the same shorthand twice is the same answer", () => {
+    shorthands({ p: ["pl", "pr"] });
+    shorthands({ p: ["pl", "pr"] });
+
+    expect(mergeClassNames(classOf("padding-left", "4px"), classOf("padding", "8px"))).toBe(classOf("padding", "8px"));
+  });
+});
+
 describe("a reuse inside a reuse", () => {
   const chain =
     `const one = @@( color: red; gap: 1px; );\n` +
@@ -67,9 +137,14 @@ describe("a reuse inside a reuse", () => {
       .split("\n")
       .filter((line) => !line.startsWith("import "))
       .join("\n");
-    const value = new Function("_merge", `${code}\nreturn three;`)(merge) as { className: string };
+    const value = new Function("_merge", "_clears", "_under", "_named", `${code}\nreturn three;`)(
+      mergeClassNames,
+      shorthands,
+      conditionsOf,
+      namesOf,
+    ) as string;
 
-    const named = value.className.split(" ");
+    const named = value.split(" ");
     const rules = new Map((out?.blocks ?? []).map((one) => [one.className, one.css]));
     expect(named.map((one) => rules.get(one)).sort()).toEqual(["color:red;", "gap:2px;", "padding:3px;"]);
   });
@@ -77,8 +152,8 @@ describe("a reuse inside a reuse", () => {
   test("and the innermost one is still a constant, so the chain costs one allocation per level", () => {
     const out = transform(chain, { filename: "Card.tsx" })?.code ?? "";
 
-    // `one` holds no hole, so it is hoisted; `two` and `three` hold a spread and cannot be.
-    expect(out).toContain("const _s0 = _merge({");
+    // `one` holds no expression, so it is hoisted; `two` and `three` hold a spread and cannot be.
+    expect(out).toMatch(/const _s0 = _merge\("r-/);
     expect(out).toMatch(/const two = _merge\(one,/);
     expect(out).toMatch(/const three = _merge\(two,/);
   });
@@ -109,9 +184,7 @@ describe("a conditional group", () => {
   test("becomes an argument guarded by its condition", () => {
     const out = emit(`const card = @@(\n  cursor: pointer;\n  if ({this.off}) {\n    cursor: not-allowed;\n  }\n);\n`);
 
-    expect(out).toMatch(
-      /_merge\(\{"cursor":"r-[0-9a-zA-Z][^"\s)]*",\},\s*this\.off && \{"cursor":"r-[0-9a-zA-Z][^"\s)]*",\}\)/,
-    );
+    expect(out).toMatch(/_merge\("r-cur-[^"]+",\s*this\.off && "r-cur-[^"]+"\)/);
   });
 
   test("the two `cursor` entries are different classes, so the merge has something to choose", () => {
@@ -124,15 +197,15 @@ describe("a conditional group", () => {
   test("a nested group is a conjunction, because that is what nesting means", () => {
     const out = emit(`const card = @@(\n  if ({a}) {\n    if ({b}) { opacity: 0.5; }\n  }\n);\n`);
 
-    expect(out).toMatch(/_merge\(a && b && \{"opacity":"r-[0-9a-zA-Z][^"\s)]*",\}\)/);
+    expect(out).toMatch(/_merge\(a && b && "r-o-[^"]+"\)/);
   });
 
   test("declarations around a group keep their place", () => {
     const out = emit(`const card = @@(\n  color: red;\n  if ({c}) { color: blue; }\n  background: white;\n);\n`);
     const args = out.slice(out.indexOf("_merge("));
 
-    expect(args.indexOf('"color"')).toBeLessThan(args.indexOf("c &&"));
-    expect(args.indexOf("c &&")).toBeLessThan(args.indexOf('"background"'));
+    expect(args.indexOf('"r-c-red"')).toBeLessThan(args.indexOf("c &&"));
+    expect(args.indexOf("c &&")).toBeLessThan(args.indexOf('"r-bg-white"'));
   });
 
   test("a selector inside a group is still a selector on its own rule", () => {
@@ -140,7 +213,7 @@ describe("a conditional group", () => {
 
     // The class is readable now, and a readable one carries the selector — so the pattern has to
     // stop at the closing quote rather than at the first `)` or `:`.
-    expect(out).toMatch(/c && \{"&:hover\|color":"r-[^"]+",\}/);
+    expect(out).toMatch(/c && "r-:hover\.c-[^"]+"/);
   });
 
   test("and a group inside a selector means the same thing", () => {
@@ -157,7 +230,7 @@ describe("the two together", () => {
     const args = out.slice(out.indexOf("_merge("));
 
     expect(args.indexOf("base")).toBeLessThan(args.indexOf("this.off &&"));
-    expect(args.indexOf("this.off &&")).toBeLessThan(args.indexOf('"width"'));
+    expect(args.indexOf("this.off &&")).toBeLessThan(args.indexOf('"r-w-100%"'));
   });
 });
 
@@ -299,13 +372,13 @@ describe("the nesting shapes nothing reached", () => {
     }
     expect(out).toMatch(/a\s*&&\s*_merge\(/);
     expect(out).toMatch(/b\s*&&\s*_merge\(/);
-    expect(out).toMatch(/c\s*&&\s*\{"padding"/);
+    expect(out).toMatch(/c\s*&&\s*"r-p-/);
   });
 
   test("and two of them close on one segment", () => {
     const out = emit(`const card = @@(\n  if ({a}) {\n    if ({b}) { gap: 8px; }\n  }\n  color: red;\n);\n`);
 
-    expect(out).toMatch(/,\s*\{"color":"r-[^"]*",\}\)/);
+    expect(out).toMatch(/,\s*"r-c-[^"]*"\)/);
   });
 
   test("a run resumed after a nested group, still inside a guard", () => {
@@ -313,7 +386,7 @@ describe("the nesting shapes nothing reached", () => {
       `const card = @@(\n  if ({a}) {\n    color: red;\n    if ({b}) { gap: 8px; }\n    opacity: 0.5;\n  }\n);\n`,
     );
 
-    expect(out).toMatch(/b\s*&&\s*\{"gap"[^}]*\}\s*,\s*\{"opacity"/);
+    expect(out).toMatch(/b\s*&&\s*"r-gap-[^"]*"\s*,\s*"r-o-/);
     expect(out.match(/\ba\b/g)).toHaveLength(1);
     expect(out.match(/\bb\b/g)).toHaveLength(1);
   });
@@ -321,7 +394,7 @@ describe("the nesting shapes nothing reached", () => {
   test("a spread beside declarations inside a guard", () => {
     const out = emit(`const card = @@(\n  if ({a}) {\n    ...{base};\n    color: red;\n  }\n);\n`);
 
-    expect(out).toMatch(/a\s*&&\s*_merge\(\s*base\s*,\s*\{"color"/);
+    expect(out).toMatch(/a\s*&&\s*_merge\(\s*base\s*,\s*"r-c-/);
   });
 
   test("a spread alone under a guard opens no merge", () => {
@@ -337,12 +410,18 @@ describe("the nesting shapes nothing reached", () => {
    * the key carries the context. `transform.ts` makes this exact claim in a comment and only
    * `merge.test.ts` checked it, against a map somebody typed by hand.
    */
-  test("a shorthand under a selector clears its longhands under that selector only", () => {
+  /**
+   * A shorthand's clear-list is registered by the PROPERTY alone, and the context composes itself at
+   * run time — `:hover.p` clears `:hover.pl` by putting the same context back in front. One entry
+   * answers for every context the shorthand is written in, which is what keeps the registration to
+   * the shorthands a file writes rather than one per context it writes them in.
+   */
+  test("a shorthand registers its longhands once, by property, whatever context it sits in", () => {
     const out = emit(`const card = @@(\n  &:hover { padding: 8px; }\n);\n`);
 
-    expect(out).toContain('"~&:hover|padding"');
-    expect(out).toContain('"&:hover|padding-left"');
-    expect(out).not.toContain('"~padding"');
+    expect(out).toContain('_clears({"p":[');
+    expect(out).toContain('"pl"');
+    expect(out).toContain('"r-:hover.p-8px"');
   });
 });
 
@@ -352,15 +431,15 @@ describe("a group with nothing in it", () => {
 
     // The guard is still evaluated — a browser evaluates `@media print` too — and contributes
     // nothing. What must never happen is the map appearing twice.
-    expect(out.match(/"color"/g)).toHaveLength(1);
+    expect(out.match(/"r-c-red"/g)).toHaveLength(1);
     expect(out).toContain("this.compact");
   });
 
   test("and the expressions on either side of it stay where they were written", () => {
-    const out = emit(`const card = @@( if ({a}) { } color: {v}; );\n`);
+    const out = emit(`const card = @@( if ({a}) { } if ({v}) { color: red; } );\n`);
 
-    expect(out).toMatch(/\["r-[0-9a-zA-Z][^"\s\]]*",\s*v\]/);
-    expect(out).toContain("a");
+    expect(out).toContain("a &&");
+    expect(out).toContain("v &&");
   });
 
   test("a block that is nothing but an empty group does not become its own condition", () => {
@@ -375,7 +454,7 @@ describe("a group with nothing in it", () => {
   test("and a group whose only content is an empty group is compiled, not thrown from", () => {
     const out = emit(`const card = @@(\n  color: red;\n  if ({a}) { if ({b}) { } }\n);\n`);
 
-    expect(out.match(/"color"/g)).toHaveLength(1);
+    expect(out.match(/"r-c-red"/g)).toHaveLength(1);
     expect(out).toContain("a");
     expect(out).toContain("b");
   });
@@ -388,7 +467,7 @@ describe("a group with nothing in it", () => {
   ])("%s counts as nothing, and is still legal", (_what, body) => {
     const out = emit(`const card = @@(\n  color: red;\n  if ({c}) { ${body} }\n);\n`);
 
-    expect(out.match(/"color"/g)).toHaveLength(1);
+    expect(out.match(/"r-c-red"/g)).toHaveLength(1);
   });
 });
 
@@ -397,6 +476,7 @@ describe("a group inside a group", () => {
   const emitted = (source: string) => {
     const code = emit(source);
     if (code === "") throw new Error("the transform found no block");
+    // Past the prologue, which is the import and whatever this file registers with the runtime.
     return code.slice(code.indexOf("\n\n") + 2);
   };
 
@@ -406,7 +486,7 @@ describe("a group inside a group", () => {
     );
 
     // Whatever the shape, `this.off` must gate the inner group as well as the outer one.
-    const inner = code.slice(code.indexOf("r-c-yellow") - 80, code.indexOf("r-c-yellow"));
+    const inner = code.slice(0, code.indexOf("r-c-yellow"));
     expect(inner).toContain("this.off");
     expect(inner).toContain("this.roomy");
   });
@@ -439,12 +519,12 @@ describe("a group inside a group", () => {
  * ticked, and the compiled text alone would not have shown it.
  */
 describe("a nested guard, evaluated", () => {
-  /** The four states of two conditions, through the real `merge`. */
+  /** The four states of two conditions, through the real `mergeClassNames`. */
   const classes = (off: boolean, roomy: boolean) => {
     // Exactly the shape the transform emits for a nested group — see the tests above.
-    const inner = roomy && { color: "r-c-yellow" };
-    const outer = off && merge({ cursor: "r-cur-none" }, inner);
-    return merge({ opacity: "r-o-0.5" }, outer).className.split(" ");
+    const inner = roomy && "r-c-yellow";
+    const outer = off && mergeClassNames("r-cur-none", inner);
+    return mergeClassNames("r-o-0.5", outer).split(" ");
   };
 
   test.each([
@@ -481,11 +561,10 @@ describe("a nested guard, evaluated", () => {
  * position has to decide — which is why those are refused when both can hold.
  */
 describe("two conditions the code decides", () => {
-  const block = (p: boolean, q: boolean) =>
-    merge(p && { color: "r-c-red" }, q && { color: "r-c-blue" }) as { className: string };
+  const block = (p: boolean, q: boolean) => mergeClassNames(p && "r-c-red", q && "r-c-blue");
 
   test("both true is the one written last", () => {
-    expect(block(true, true).className).toBe("r-c-blue");
+    expect(block(true, true)).toBe("r-c-blue");
   });
 
   test.each([
@@ -493,7 +572,7 @@ describe("two conditions the code decides", () => {
     ["only the second", false, true, "r-c-blue"],
     ["neither", false, false, ""],
   ])("%s", (_what, p, q, expected) => {
-    expect(block(p, q).className).toBe(expected);
+    expect(block(p, q)).toBe(expected);
   });
 
   /** And the compiled shape is what makes that true, rather than an accident of this merge. */
@@ -502,6 +581,6 @@ describe("two conditions the code decides", () => {
       `const a = (p: boolean, q: boolean) => @@(\n  if ({p}) { color: red; }\n  if ({q}) { color: blue; }\n);\n`,
     );
 
-    expect(out).toMatch(/_merge\(p && \{[^}]*"color":"r-c-red"[^}]*\},\s*q && \{[^}]*"color":"r-c-blue"/);
+    expect(out).toMatch(/_merge\(p && "r-c-red",\s*q && "r-c-blue"\)/);
   });
 });

@@ -329,7 +329,11 @@ describe("what an app has to write", () => {
  * in the stylesheet. Nothing throws. The page renders, unstyled, with nothing to blame.
  */
 describe("the assembled stylesheet", () => {
-  const SOURCE = `const a = <div css={@@( color: {c}; )}>x</div>;\n`;
+  // A `var()` in the stylesheet comes from a REGISTERED property now, which is what the last test
+  // here needs: a hole used to put one on the element, and a runtime value is refused.
+  const SOURCE =
+    `const c = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: red;\n);\n` +
+    `const a = <div css={@@( color: var({c}); )}>x</div>;\n`;
 
   /** The plugin after one file has been through it, and the CSS it produced. */
   const built = () => {
@@ -369,11 +373,20 @@ describe("the assembled stylesheet", () => {
     expect(() => plugin.generateBundle?.call({}, {}, bundleOf(renamed))).toThrow(/renamed or removed/);
   });
 
-  test("refuses when a custom property the markup carries was dropped", () => {
+  /**
+   * The `@property` rule, which the markup depends on as surely as it depends on a class.
+   *
+   * An element sets `--r-…` from JavaScript; without the registration the name is an unregistered
+   * custom property, so the `syntax` no longer guards the value and the `initial-value` is not
+   * there to fall back to. Nothing about the page looks broken and the value silently does less.
+   */
+  test("refuses when the `@property` rule the markup depends on was renamed", () => {
     const { plugin, css } = built();
-    const dropped = css.replace(/var\([^)]+\)/g, "red");
+    const renamed = css.replace(/--r-[0-9a-zA-Z]+/g, "--a1");
 
-    expect(() => plugin.generateBundle?.call({}, {}, bundleOf(dropped))).toThrow(/var\(/);
+    // The control: the sheet really did emit one, so an empty replacement cannot pass for free.
+    expect(renamed).not.toBe(css);
+    expect(() => plugin.generateBundle?.call({}, {}, bundleOf(renamed))).toThrow(/renamed or removed/);
   });
 
   /**

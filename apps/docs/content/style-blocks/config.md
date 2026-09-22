@@ -2,7 +2,7 @@
 title: The config file
 description: What ramonda.css.ts holds — the variables a project declares, and the CSS it decides not to allow.
 section: Style blocks
-order: 113
+order: 115
 ---
 
 # The config file

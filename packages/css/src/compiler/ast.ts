@@ -74,7 +74,63 @@ export interface NestedRule {
   readonly items: readonly BlockItem[];
 }
 
-export type ValuePart = TextPart | HolePart | VariablePart;
+export type ValuePart = TextPart | HolePart | VariablePart | MatchPart;
+
+/**
+ * `match({this.variant}) { primary => red; _ => inherit; }` — one subject, several answers.
+ *
+ * ## Why it is not a hole
+ *
+ * A hole carries the render's own value onto the element, as a custom property. A match carries
+ * nothing: every arm is known when the block compiles, so every arm is a CLASS, and the render only
+ * chooses between them. That is the whole of why it exists — it takes variation that is enumerable
+ * and turns it back into the thing a stylesheet can hold.
+ *
+ * ## Why the arms are `ValuePart[]` and not text
+ *
+ * An arm holds a whole value — `4px solid red`, or `$.color.accent`, which must reach the virtual
+ * file as a real expression the same way it does anywhere else. **A hole inside an arm is refused**,
+ * because it would put the render's value back where a class is supposed to be; that is a rule
+ * rather than a shape, so the parser reads one and the checker speaks about it.
+ *
+ * ## What it is NOT
+ *
+ * Pattern matching. The subject is one expression, the arms are literals, and there is no
+ * destructuring, no guard and no custom matcher. The name is borrowed for how it reads.
+ */
+export interface MatchPart {
+  readonly kind: "match";
+  /**
+   * The subject's hole, by the same index a condition's is recorded under.
+   *
+   * It is a hole in the READER's numbering because that is how an expression reaches the emit —
+   * see `ReadBlock.holes`. It is not a hole in the sense the value-level rules mean, and nothing
+   * downstream should treat it as one: it selects, it does not carry.
+   */
+  readonly hole: number;
+  readonly arms: readonly MatchArm[];
+  /** Where `match` begins in the author's file, and how far its closing brace is. */
+  readonly at?: number;
+  readonly length?: number;
+}
+
+/** One arm: what the subject must be, and what the declaration is then. */
+export interface MatchArm {
+  /**
+   * The key as the author wrote it, unquoted — `primary`, `12`, `extra large`.
+   *
+   * A string rather than a parsed literal, because what it means is the SUBJECT's business: the
+   * virtual file compares it against the subject's own type, which is where a key that cannot occur
+   * is caught. The parser has no types and asks for none.
+   */
+  readonly key: string;
+  /** `_`, which answers for everything the arms above did not. */
+  readonly otherwise: boolean;
+  readonly value: readonly ValuePart[];
+  /** Where the key starts, for a diagnostic about this arm rather than about the match. */
+  readonly at?: number;
+  readonly length?: number;
+}
 
 /**
  * `$.color.primary.main` — a variable the PROJECT declared, named by the path it was declared at.
@@ -162,4 +218,31 @@ export interface HolePart {
    */
   readonly at?: number;
   readonly length?: number;
+}
+
+/**
+ * Every RUNTIME value in a block — a hole standing in a declaration's value — with the declaration
+ * holding it.
+ *
+ * One walk, because three things ask about these and a second copy of the criterion is where this
+ * package keeps finding faults: the `hole-not-allowed` rule wants each one's POSITION, the virtual
+ * file wants only whether there are any, and the type its helper returns follows from that.
+ *
+ * **`ReadBlock.holes` is not the same list**, and reaching for it was the first mistake:
+ * composition is written with the same braces, so `...{base}` and `if ({on})` are in the reader's
+ * holes while neither puts anything on an element. Only a hole in a VALUE does.
+ */
+export function runtimeValuesIn(block: Block): readonly { declaration: Declaration; part: HolePart }[] {
+  const found: { declaration: Declaration; part: HolePart }[] = [];
+  const inItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        inItems(item.items);
+        continue;
+      }
+      for (const part of item.value) if (part.kind === "hole") found.push({ declaration: item, part });
+    }
+  };
+  inItems(block.items);
+  return found;
 }

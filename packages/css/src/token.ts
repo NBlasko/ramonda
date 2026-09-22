@@ -54,6 +54,40 @@ export type Token<K extends Kind = Kind, V = unknown> = string & {
   readonly [TOKEN]: readonly [K, V];
 };
 
+declare const VAR: unique symbol;
+
+/**
+ * A custom property this compiler REGISTERED — what `@@property( … )` binds.
+ *
+ * ## Why it is a branded string
+ *
+ * At run time it IS the generated name, so it goes straight in as a key where the value is set and
+ * reads as itself inside a block. The brand is what the name alone cannot carry: the `syntax` the
+ * property declared, so a value can be held to it. That is the same arrangement {@link Token} has,
+ * for the same reason — a name is a string, and a string refuses nothing.
+ *
+ * ## Why the kind and not the syntax
+ *
+ * `syntax: "<angle>"` is a CSS grammar; `angle` is what this package already maps to a TypeScript
+ * type, in {@link ValueByKind}. Carrying the kind means a registered property and a declared
+ * variable answer to one table rather than two — and `toStyle` takes both without knowing which it
+ * was handed.
+ *
+ * A phantom: nothing reads `[VAR]` at run time and nothing is there to read.
+ */
+export type CssVar<K extends Kind = Kind> = string & {
+  readonly [VAR]: K;
+};
+
+/**
+ * The KIND a `syntax` descriptor names — `"<angle>"` is an angle.
+ *
+ * The descriptor's value carries its own quotes, because CSS `syntax` takes a string and the block
+ * is written as CSS. Anything that is not one of the kinds this package maps to a type — a compound
+ * grammar such as `"<length> | auto"`, or `"*"` — is `any`, which takes what CSS itself would.
+ */
+export type KindOfSyntax<S> = S extends `"<${infer K}>"` ? (K extends Kind ? K : "any") : "any";
+
 declare const FIXED: unique symbol;
 
 /**

@@ -4,28 +4,29 @@ import { Component } from "../base/Component";
 import { state } from "../base/decorators";
 import { resetDiagnostics } from "../debug/diagnostics";
 import { configureDev } from "../index";
-import type { CssBlockValue } from "../types/cssBlock";
 
 /**
  * The `css` prop — the framework's half of a compiled style block.
  *
- * A block is written in real CSS beside the markup and compiled, before the build, into a class that
- * already exists in a stylesheet plus one custom property per carried expression. **Nothing here
- * parses anything**: by the time a value reaches the framework it is a class name, a list of custom
- * property names, and a list of values. See `packages/css/CONTRACT.md`.
+ * A block is written in real CSS beside the markup and compiled, before the build, into classes that
+ * already exist in a stylesheet. **Nothing here parses anything**: by the time a value reaches the
+ * framework it is the string that goes in the `class` attribute. See `packages/css/CONTRACT.md`.
  *
- * The values are built by hand below rather than imported. `@ramonda/css` may not import the
- * framework and the framework may not depend on it, so the shape is declared on both sides and
- * `scripts/check-css-contract.mjs` is what keeps the two declarations from drifting.
+ * ## What this file used to be
+ *
+ * Half of it was about CUSTOM PROPERTIES. A `{expr}` hole compiled to `var(--r-…)` in the rule and
+ * the value was set on the element, so the framework wrote properties, released the ones a changed
+ * block no longer had, and refused a value that would parse back out of a server-rendered `style`
+ * attribute as a second declaration. A runtime value in a declaration is refused now — see
+ * `hole-not-allowed` in `@ramonda/css` — so there are none of those, and the `;` rule lives where
+ * the hazard moved: `toStyle`, which is how a value reaches an element at all.
+ *
+ * What is left is the class, which has always travelled the ordinary attribute path.
  */
 
-/** What the compiler emits at module scope, written out. */
-function block(className: string, properties: string[] = []): (...values: (string | number)[]) => CssBlockValue {
-  return (...values) => ({ className, properties, values });
-}
-
-const bordered = block("r-8e271c6c1f3a4b02", ["--r-8e271c6c1f3a4b02-0"]);
-const flex: CssBlockValue = { className: "r-1111111111111111", properties: [], values: [] };
+/** What the compiler emits at module scope: the classes, space separated. */
+const flex: string = "r-disp-flex";
+const bordered: string = "r-bl-4px_solid_red";
 
 const styled = (container: Element) => container.querySelector("[class]") as HTMLElement;
 
@@ -38,9 +39,7 @@ describe("what a compiled block puts on the element", () => {
       render() {
         return (
           <div>
-            <div className="lead" css={flex}>
-              x
-            </div>
+            <div className={`${flex} lead`}>x</div>
           </div>
         );
       }
@@ -50,7 +49,7 @@ describe("what a compiled block puts on the element", () => {
     await app.settle();
 
     const element = styled(app.container);
-    expect(element.classList.contains("r-1111111111111111")).toBe(true);
+    expect(element.classList.contains("r-disp-flex")).toBe(true);
     expect(element.classList.contains("lead")).toBe(true);
   });
 
@@ -59,7 +58,7 @@ describe("what a compiled block puts on the element", () => {
       render() {
         return (
           <div>
-            <div css={flex}>x</div>
+            <div className={flex}>x</div>
           </div>
         );
       }
@@ -68,41 +67,7 @@ describe("what a compiled block puts on the element", () => {
     const app = await getDOM<Panel>(<Panel />);
     await app.settle();
 
-    expect(styled(app.container).getAttribute("class")).toBe("r-1111111111111111");
-  });
-
-  test("each hole becomes a custom property with its value", async () => {
-    class Panel extends Component {
-      render() {
-        return (
-          <div>
-            <div css={bordered("4px solid #10b981")}>x</div>
-          </div>
-        );
-      }
-    }
-
-    const app = await getDOM<Panel>(<Panel />);
-    await app.settle();
-
-    expect(styled(app.container).style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("4px solid #10b981");
-  });
-
-  test("a number arrives as text, because a custom property holds text", async () => {
-    class Panel extends Component {
-      render() {
-        return (
-          <div>
-            <div css={bordered(24)}>x</div>
-          </div>
-        );
-      }
-    }
-
-    const app = await getDOM<Panel>(<Panel />);
-    await app.settle();
-
-    expect(styled(app.container).style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("24");
+    expect(styled(app.container).getAttribute("class")).toBe("r-disp-flex");
   });
 
   test("`css` never becomes an attribute of its own", async () => {
@@ -110,7 +75,7 @@ describe("what a compiled block puts on the element", () => {
       render() {
         return (
           <div>
-            <div css={bordered("red")}>x</div>
+            <div className={bordered}>x</div>
           </div>
         );
       }
@@ -123,127 +88,17 @@ describe("what a compiled block puts on the element", () => {
   });
 });
 
-describe("a value the expression produced, not the author", () => {
-  beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
-  afterEach(() => vi.restoreAllMocks());
-
-  /**
-   * The reason the values are applied with `setProperty` rather than written into a style string.
-   *
-   * A hole's value is whatever the expression evaluated to, and an expression can read a database —
-   * so "the author wrote it" is not a defence. Measured in this harness, both ways, with the same
-   * hostile value:
-   *
-   *     style.cssText = `--r-0: ${value}`   ->  position: fixed, width: 100vw — real, applied
-   *     style.setProperty("--r-0", value)   ->  position: "", width: "" — nothing else exists
-   *
-   * A full-viewport fixed overlay out of a colour that came from a record. `setProperty` cannot
-   * create a second declaration whatever it is handed, so this direction holds even for a value the
-   * framework let through — which is what it asserts. The test below covers the other half.
-   */
-  test("a hostile value cannot become a second declaration", async () => {
-    const hostile = "red; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999";
-
-    class Panel extends Component {
-      render() {
-        return (
-          <div>
-            <div css={bordered(hostile)}>x</div>
-          </div>
-        );
-      }
-    }
-
-    const app = await getDOM<Panel>(<Panel />);
-    await app.settle();
-
-    const element = styled(app.container);
-    expect(element.style.position).toBe("");
-    expect(element.style.width).toBe("");
-    expect(element.style.zIndex).toBe("");
-  });
-
-  /**
-   * And the property is not written either, which is the half `setProperty` does NOT give.
-   *
-   * A server render is serialized to HTML and parsed back, and the parse turns the same text into
-   * real declarations — measured, see `hydration/CssBlockSsr.test.tsx`. So the value is refused here
-   * rather than left to a DOM that only refuses it on one of the two paths, and the declaration is
-   * simply dropped: a missing border beats an overlay somebody's record asked for.
-   */
-  test("and the property is not written at all", async () => {
-    class Panel extends Component {
-      render() {
-        return (
-          <div>
-            <div css={bordered("red; position: fixed")}>x</div>
-          </div>
-        );
-      }
-    }
-
-    const app = await getDOM<Panel>(<Panel />);
-    await app.settle();
-
-    expect(styled(app.container).style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("");
-  });
-
-  test("a value that changes from hostile to ordinary is written", async () => {
-    class Panel extends Component {
-      @state accent = "red; position: fixed";
-      render() {
-        return (
-          <div>
-            <div css={bordered(this.accent)}>x</div>
-          </div>
-        );
-      }
-    }
-
-    const app = await getDOM<Panel>(<Panel />);
-    await app.settle();
-    expect(styled(app.container).style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("");
-
-    app.instance.accent = "#10b981";
-    await app.settle();
-    expect(styled(app.container).style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("#10b981");
-  });
-});
-
 describe("what happens on the next render", () => {
   beforeEach(() => vi.spyOn(console, "log").mockImplementation(() => {}));
   afterEach(() => vi.restoreAllMocks());
 
-  test("a changed hole updates its property", async () => {
-    class Panel extends Component {
-      @state accent = "#10b981";
-      render() {
-        return (
-          <div>
-            <div css={bordered(this.accent)}>x</div>
-          </div>
-        );
-      }
-    }
-
-    const app = await getDOM<Panel>(<Panel />);
-    await app.settle();
-
-    app.instance.accent = "#ff0000";
-    await app.settle();
-
-    expect(styled(app.container).style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("#ff0000");
-  });
-
-  test("a block that goes away takes its class and its properties with it", async () => {
+  test("a block that goes away takes its class with it", async () => {
     class Panel extends Component {
       @state on = true;
       render() {
         return (
           <div>
-            <div className="lead" css={this.on ? bordered("red") : undefined}>
-              x
-            </div>
+            <div className={this.on ? `${bordered} lead` : "lead"}>x</div>
           </div>
         );
       }
@@ -251,28 +106,24 @@ describe("what happens on the next render", () => {
 
     const app = await getDOM<Panel>(<Panel />);
     await app.settle();
-    expect(styled(app.container).style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("red");
+    expect(styled(app.container).classList.contains("r-bl-4px_solid_red")).toBe(true);
 
     app.instance.on = false;
     await app.settle();
 
     const element = styled(app.container);
     // The class the block generated is gone; the author's own is not.
-    expect(element.classList.contains("r-8e271c6c1f3a4b02")).toBe(false);
+    expect(element.classList.contains("r-bl-4px_solid_red")).toBe(false);
     expect(element.classList.contains("lead")).toBe(true);
-    // And the property with it, or the element keeps a value nothing sets any more.
-    expect(element.style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("");
   });
 
   test("a block replaced by a different one leaves nothing of the first behind", async () => {
-    const other = block("r-2222222222222222", ["--r-2222222222222222-0"]);
-
     class Panel extends Component {
       @state first = true;
       render() {
         return (
           <div>
-            <div css={this.first ? bordered("red") : other("blue")}>x</div>
+            <div className={this.first ? bordered : "r-c-blue"}>x</div>
           </div>
         );
       }
@@ -285,13 +136,21 @@ describe("what happens on the next render", () => {
     await app.settle();
 
     const element = styled(app.container);
-    expect(element.style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("");
-    expect(element.style.getPropertyValue("--r-2222222222222222-0")).toBe("blue");
-    expect(element.classList.contains("r-8e271c6c1f3a4b02")).toBe(false);
-    expect(element.classList.contains("r-2222222222222222")).toBe(true);
+    expect(element.classList.contains("r-bl-4px_solid_red")).toBe(false);
+    expect(element.classList.contains("r-c-blue")).toBe(true);
   });
 });
 
+/**
+ * **A block is a STRING now, so two renders that compose the same thing are the same value** — and
+ * `RMD020`, which reports a prop whose identity changes for nothing, has nothing left to report.
+ *
+ * It used to be an object, freshly built per render, and the check was exempted for `css` the way it
+ * is for `children`: the value was generated and a fresh identity meant nothing to anybody. That
+ * exemption was the whole reason this describe exists, and the reason the hole was removed. What is
+ * asserted here now is that the check is quiet because there is nothing to report, with a control
+ * that proves it is still running.
+ */
 describe("the double-render check and the value the compiler generated", () => {
   let logs: string[] = [];
 
@@ -309,19 +168,13 @@ describe("the double-render check and the value the compiler generated", () => {
     vi.restoreAllMocks();
   });
 
-  /**
-   * A `css` value with holes is a fresh object on every render — that is what a per-element value
-   * IS — so RMD020 sees exactly what it is built to report and would be right about every element
-   * carrying a block. It is exempt for the same reason `children` is: the value is generated, and a
-   * fresh identity for it means nothing to anybody.
-   */
-  test("a block with holes is not reported", async () => {
+  test("a block is not reported, because two renders give the same string", async () => {
     class Panel extends Component {
       @state accent = "#10b981";
       render() {
         return (
           <div>
-            <div css={bordered(this.accent)}>x</div>
+            <div className={bordered}>{this.accent}</div>
           </div>
         );
       }
@@ -339,7 +192,7 @@ describe("the double-render check and the value the compiler generated", () => {
       render() {
         return (
           <div>
-            <div css={bordered(this.accent)} onclick={() => this.accent}>
+            <div className={bordered} onclick={() => this.accent}>
               x
             </div>
           </div>
@@ -371,7 +224,7 @@ describe("on an SVG element", () => {
         return (
           <div>
             <svg viewBox="0 0 10 10">
-              <circle cx="5" cy="5" r="4" css={bordered("red")} />
+              <circle cx="5" cy="5" r="4" className={bordered} />
             </svg>
           </div>
         );
@@ -382,40 +235,26 @@ describe("on an SVG element", () => {
     await app.settle();
 
     const circle = app.container.querySelector("circle") as SVGElement;
-    expect(circle.getAttribute("class")).toBe("r-8e271c6c1f3a4b02");
-    expect(circle.style.getPropertyValue("--r-8e271c6c1f3a4b02-0")).toBe("red");
+    expect(circle.getAttribute("class")).toBe("r-bl-4px_solid_red");
   });
 });
 
 /**
- * A value whose `className` holds SEVERAL classes, which is what composition will produce.
+ * A value holding SEVERAL classes, which is what every composed block is.
  *
- * The next design for `@ramonda/css` is atomic: one class per declaration, merged at the call site,
- * so a compiled value carries a list of classes rather than one. **Measured here before that is
- * built, because the answer decides how much of it reaches this package: nothing.** The value's
- * shape is unchanged — a class string, property names, values — and the only difference is that the
- * string has spaces in it, which is what a class attribute is for.
- *
- * The order inside it decides nothing, and this file's own `classNameWithBlock` already says so: a
- * class attribute's order is not a cascade, the stylesheet's order is. So these assert what must
- * hold — every class arrives, the author's own survives, and the properties still land — and not
- * which order they arrive in.
+ * A block is one class per DECLARATION, merged at the call site, so a value carries a list. The
+ * order inside it decides nothing — a class attribute's order is not a cascade, the stylesheet's
+ * order is — so these assert what must hold: every class arrives, and the author's own survives.
  */
 describe("a value carrying several classes", () => {
-  const composed: CssBlockValue = {
-    className: "r-1111111111111111 r-2222222222222222 r-3333333333333333",
-    properties: ["--r-2222222222222222"],
-    values: ["#10b981"],
-  };
+  const composed: string = "r-disp-flex r-gap-8px r-c-red";
 
   test("every class reaches the element, and the author's own with them", async () => {
     class Panel extends Component {
       render() {
         return (
           <div>
-            <div className="lead" css={composed}>
-              x
-            </div>
+            <div className={`${composed} lead`}>x</div>
           </div>
         );
       }
@@ -424,27 +263,16 @@ describe("a value carrying several classes", () => {
     const app = await getDOM<Panel>(<Panel />);
     await app.settle();
 
-    const element = styled(app.container);
-    expect([...element.classList].sort()).toEqual([
-      "lead",
-      "r-1111111111111111",
-      "r-2222222222222222",
-      "r-3333333333333333",
-    ]);
-    expect(element.style.getPropertyValue("--r-2222222222222222")).toBe("#10b981");
+    expect([...styled(app.container).classList].sort()).toEqual(["lead", "r-c-red", "r-disp-flex", "r-gap-8px"]);
   });
 
   test("and swapping it for a different set leaves none of the first behind", async () => {
-    const other: CssBlockValue = { className: "r-4444444444444444", properties: [], values: [] };
-
     class Panel extends Component {
       @state first = true;
       render() {
         return (
           <div>
-            <div className="lead" css={this.first ? composed : other}>
-              x
-            </div>
+            <div className={`${this.first ? composed : "r-o-.5"} lead`}>x</div>
           </div>
         );
       }
@@ -456,8 +284,6 @@ describe("a value carrying several classes", () => {
     app.instance.first = false;
     await app.settle();
 
-    const element = styled(app.container);
-    expect([...element.classList].sort()).toEqual(["lead", "r-4444444444444444"]);
-    expect(element.style.getPropertyValue("--r-2222222222222222")).toBe("");
+    expect([...styled(app.container).classList].sort()).toEqual(["lead", "r-o-.5"]);
   });
 });

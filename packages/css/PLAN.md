@@ -6,8 +6,13 @@ is in `src/`; this file carries only the order of work, what blocks what, and wh
 what. Where they disagree, `CONTRACT.md` wins on the shapes and `DESIGN.md` on the reasons — this
 file is the one that goes stale.
 
+> **Stale from 2026-09-22, deliberately.** Six steps have landed since this was last true — `match`,
+> `@@property`'s typed setter, the hole refused, a key in every class name, `merge` over strings, and
+> the `css` prop removed. **`DESIGN.md` §15 is the live record of all six**, with what each one cost.
+> This file is the order of work and has done its job; it is not being rewritten to follow.
+
 **Phase 0, track B, A1, A2, track C, D, G, A3, E, H, I, I2 and K are done.** The contract is written and implemented; the framework
-takes a `css` prop and applies it; the parser and transform turn a file into valid TSX with a source
+took a `css` prop and applied it — a block goes on `className` now; the parser and transform turn a file into valid TSX with a source
 map that lands on the author's own line and column; the virtual file gets that file type-checked
 by `tsc` with every diagnostic mapped home; and the property map is generated from MDN's data, so a
 property name and 123 properties' values are checked for real; and `ramonda-css` runs all of that

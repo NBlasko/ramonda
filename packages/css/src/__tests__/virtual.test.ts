@@ -129,13 +129,23 @@ describe("what a block becomes", () => {
 
     // Not `never`, which is what it used to return: assignable everywhere and so never in the way,
     // and read on hover as *this is nothing*. A binding holding a block is what an author points at.
+    // Generic, so a PROP can narrow what may be sent — and `A` is inferable only from the return
+    // position, which is what puts a slot's fault on the property rather than on the call.
+    // ONE of them. There were two, and the second carried a flag saying the block held a runtime
+    // value, so a prop could refuse one. A runtime value in a declaration is refused everywhere now,
+    // so there is nothing to flag and `CssBlock` lost the parameter that held it.
     expect(preamble).toContain(
-      `declare function __block(declarations: import("./properties").CssBlockShape[]): import("./properties").CssBlock;`,
+      `declare function __block<A extends import("./properties").CssBlockShape = import("./properties").CssBlockShape>` +
+        `(declarations: NoInfer<{ [P in keyof A]?: A[P] }>[]): import("./properties").CssBlock<A>;`,
+    );
+    // `match`'s own helper: the subject, the keys it may be, and the arms — see its declaration.
+    expect(preamble).toContain(
+      `declare function __match<S, const K extends readonly S[]>(subject: S, keys: K): never;`,
     );
     expect(preamble).toContain(`__cond<T>(condition: import("./properties").CssCondition<T>): never;`);
     expect(preamble).toContain(`__from<T>(block: import("./properties").CssSpreadable<T>): never;`);
     expect(preamble).toContain(`__val<T extends import("./properties").CssValue>(value: T): T;`);
-    expect(preamble.split("declare function")).toHaveLength(5);
+    expect(preamble.split("declare function")).toHaveLength(6);
     expect(preamble).not.toMatch(/^\s*import /m);
   });
 
@@ -150,7 +160,7 @@ describe("what a block becomes", () => {
   test("a file that already names the helper does not get it taken away", () => {
     const file = build(`const __block = 1;\nconst a = <div css={@@( display: flex; )}>x</div>;\n`);
 
-    expect(file?.code).toContain("declare function ___block(");
+    expect(file?.code).toContain("declare function ___block<A extends");
     expect(file?.code).toContain("const __block = 1;");
   });
 
@@ -161,7 +171,9 @@ describe("what a block becomes", () => {
   test("a block found inside another block is passed over rather than read twice", () => {
     const file = build(`const a = <div css={@@( color: { <b css={@@( color: red; )}/> })}>x</div>;\n`);
 
-    expect(file?.code.match(/__block\(\[/g)).toHaveLength(1);
+    // EITHER helper: this block carries a hole, so it gets the one whose flag says so. What the
+    // test is about is the COUNT — one call, not two — and naming a single helper hid that.
+    expect(file?.code.match(/__blockH?\(\[/g)).toHaveLength(1);
   });
 });
 

@@ -2,7 +2,7 @@
 title: Composing, and who wins
 description: Merging one block into another, conditions that bring whole groups, and the cascade layer that decides against your own stylesheet.
 section: Style blocks
-order: 112
+order: 113
 ---
 
 # Composing, and who wins
@@ -32,7 +32,7 @@ class Button extends Component {
 
   render() {
     return (
-      <button css={@@(
+      <button className={@@(
         ...{button};
         ...{variants[this.variant]};
 
@@ -41,7 +41,8 @@ class Button extends Component {
           cursor: not-allowed;     /* wins over `cursor: pointer`, because it is BELOW it */
         }
 
-        width: {this.full ? "100%" : "auto"};
+        width: auto;
+        if ({this.full}) { width: 100%; }
       )}>press</button>
     );
   }
@@ -56,8 +57,62 @@ Both are arguments of the same merge, in the order you wrote them.
 
 **There is no `@else`.** For a choice between several blocks, spread a *lookup* — the one above,
 keyed by the variant. TypeScript then checks the map covers the union, so adding a third variant and
-forgetting the map is reported. For a two-way choice of a single *value*, write a hole with a
-ternary.
+forgetting the map is reported. For a choice of a single *value*, write a
+[`match`](#match-one-value-several-outcomes): each arm becomes its own class, so nothing is built while the page renders.
+
+## `match` — one value, several outcomes
+
+`if` chooses between whole groups. `match` chooses between **values of one property**:
+
+```tsx
+class Chip extends Component<{ tone: "hot" | "cold" | "quiet" }> {
+  render() {
+    return (
+      <span className={@@(
+        padding: 4px 10px;
+        color: match({this.props.tone}) {
+          hot   => #ff0055;
+          cold  => #0ea5e9;
+          _     => inherit;
+        };
+      )}>{this.props.tone}</span>
+    );
+  }
+}
+```
+
+**Every arm is its own rule and its own class.** The stylesheet gets `.r-c-#ff0055`,
+`.r-c-#0ea5e9` and `.r-c-inherit`, and at render the subject picks one of them. Nothing is built,
+and nothing is written onto the element.
+
+### It is a lookup table, not pattern matching
+
+One expression, one value per arm. There is no destructuring, no guard and no custom matcher — if
+you want those, compute the subject before the block and match on what comes out.
+
+- **The keys are checked against the subject's type.** An arm for a value the subject can never hold
+  is a fault on the key, and a missing one is a fault too unless there is a `_`.
+- **`_` answers for everything the arms above did not.** Without it, a subject that names no arm sets
+  **nothing at all**, and whatever was written above it stands — the same answer `if` gives.
+- **An arm holds a literal.** `hot => {this.x}` is refused (`hole-in-a-match-arm`): an arm carrying
+  the render's own value would cost exactly what a match exists to avoid. A `$` variable is fine, and
+  needs no import, because an arm is CSS.
+- **An arm that can never run** (`match-arm-repeated`) and **a match with no arms**
+  (`match-with-no-arms`) are reported.
+
+### A boolean subject is an `if`
+
+Arm keys are written as CSS words and checked as strings, so `true =>` does not match a `boolean`.
+That is not a gap to work around — a two-way choice is what `if` is for:
+
+```tsx
+declare const full: boolean;
+
+const button = @@(
+  width: auto;
+  if ({full}) { width: 100%; }
+);
+```
 
 ## Why the condition is inside `{ }`
 
@@ -146,7 +201,7 @@ So **your own stylesheet always wins**:
 ```
 
 ```tsx
-const panel = <div className="panel" css={@@( padding: 12px; )}>…</div>;
+const panel = <div className={mergeClassNames("panel", @@( padding: 12px; ))}>…</div>;
 ```
 
 The element gets `padding: 0`. Not because of where the files load, and not because one selector is
@@ -181,7 +236,7 @@ Without that statement the order is whichever layer the browser meets first, whi
 ## What a block cannot hold is `@layer` itself
 
 ```tsx expect-report:layer-in-a-block
-const a = <div css={@@(
+const a = <div className={@@(
   @layer buttons {
     color: red;
   }

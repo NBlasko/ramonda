@@ -144,8 +144,8 @@ export const theme = toStyle([
 export const now: string = read($.color.primary.main, document.documentElement);
 
 // A value made outside a block, annotated with what the property accepts — the reason Value exists.
-const gap: Value<"padding-left"> = "8px";
-export const spaced = <div css={@@( padding-left: {gap}; )}>x</div>;
+// It does not go INTO a block: a runtime value in a declaration is refused.
+export const gap: Value<"padding-left"> = "8px";
 `,
     );
     writeFileSync(
@@ -441,26 +441,28 @@ describe("a value made outside a block", () => {
     }
   };
 
-  test("a bare `string` is refused by a property this project narrowed", () => {
-    const output = checkedWith(
-      `declare const s: string;\nexport const a = <div css={@@( letter-spacing: {s}; )}>x</div>;\n`,
-    );
-
-    expect(output).toContain("problem");
-  });
-
-  test("and `Value` is what an author annotates with to satisfy it", () => {
-    const output = checkedWith(
-      `const spacing: Value<"letter-spacing"> = "0.05em";\nexport const b = <div css={@@( letter-spacing: {spacing}; )}>x</div>;\n`,
-    );
+  /**
+   * **The block is no longer where these are met.** A runtime value in a declaration is refused, so
+   * a value made outside a block does not go INTO one — it is annotated where it is made, and what
+   * `Value<K>` owes is that the annotation says what that property takes in THIS project.
+   *
+   * That is the same promise it always made; only the place it is checked moved, from the hole to
+   * the declaration. Measured through the real bin, against a real generated module.
+   */
+  test("`Value` narrows to what this project's config allows", () => {
+    const output = checkedWith(`export const spacing: Value<"letter-spacing"> = "0.05em";\n`);
 
     expect(output).not.toContain("problem");
   });
 
+  test("and refuses a bare `string`, which is what narrowing means", () => {
+    const output = checkedWith(`declare const s: string;\nexport const spacing: Value<"letter-spacing"> = s;\n`);
+
+    expect(output).toContain("problem");
+  });
+
   test("a property nothing narrowed still takes a string, because its grammar is composite", () => {
-    const output = checkedWith(
-      `declare const s: string;\nexport const c = <div css={@@( border-left: {s} solid red; )}>x</div>;\n`,
-    );
+    const output = checkedWith(`declare const s: string;\nexport const c: Value<"border-left"> = s;\n`);
 
     expect(output).not.toContain("problem");
   });
@@ -1284,8 +1286,25 @@ export default {
       test("a value toggled between two variables of a kind", () => {
         const output = withBoth(
           CONFIG,
-          `${HEAD}const tone: Var<"color"> = toggle ? $.color.accent.quiet : $.color.accent.main;\n` +
-            `export const a = <div css={@@( color: {tone}; )}>x</div>;\n`,
+          `${HEAD}export const tone: Var<"color"> = toggle ? $.color.accent.quiet : $.color.accent.main;\n`,
+        );
+
+        expect(output).not.toContain("problem");
+      });
+
+      /**
+       * **And where that value now goes, which is a `match` rather than a hole.**
+       *
+       * Toggling between two variables used to mean computing one in TypeScript and putting it in a
+       * hole. A runtime value in a declaration is refused, so the choice is written in the block —
+       * where each arm is its own class and nothing is decided while the page renders. The arms are
+       * `$` paths, which is what makes this a replacement rather than a loss.
+       */
+      test("and the block writes the choice out, with a `$` variable in each arm", () => {
+        const output = withBoth(
+          CONFIG,
+          `import { $ } from "../css-system";\ndeclare const tone: "loud" | "quiet";\n` +
+            `export const a = <div css={@@( color: match({tone}) { loud => $.color.accent.main; _ => $.color.accent.quiet; }; )}>x</div>;\n`,
         );
 
         expect(output).not.toContain("problem");
@@ -1296,6 +1315,23 @@ export default {
         const output = withBoth(CONFIG, `${HEAD}const tone: Var<"color"> = $.size.radius.pill;\n`);
 
         expect(output).toMatch(/Type '"length"' is not assignable to type '"color"'/);
+      });
+
+      /**
+       * **The message is the product here, and it was unreadable.** A kind's variables are a union
+       * of branded tokens, and a union alias EXPANDS where it is printed — so refusing one colour
+       * printed six `Token<"color", Fixed<"#10b981">>` and then `… 5 more …`, and a reader could
+       * not find the property name in it.
+       *
+       * Measured against the shape the package already relies on: `Keyword<…>` prints by name
+       * because `K` stands naked in its union, while `VarByKind[K]` is an indexed access that
+       * TypeScript resolves on sight. A NAMED alias per kind prints by name through both.
+       */
+      test("a kind's variables print under one name rather than expanding", () => {
+        const output = withBoth(CONFIG, `${HEAD}const tone: Var<"color"> = "#ff0055";\n`);
+
+        expect(output).toContain("ColorVar");
+        expect(output).not.toContain('Token<"color"');
       });
 
       test("a kind this project declares nothing of is not a key", () => {
@@ -1314,9 +1350,9 @@ export default {
       test("inference alone carries the local case", () => {
         const output = withBoth(
           CONFIG,
-          `import { $ } from "../css-system";\ndeclare const toggle: boolean;\n` +
+          `import { $, type Var } from "../css-system";\ndeclare const toggle: boolean;\n` +
             `const tone = toggle ? $.color.accent.quiet : $.color.accent.main;\n` +
-            `export const a = <div css={@@( color: {tone}; )}>x</div>;\n`,
+            `export const held: Var<"color"> = tone;\n`,
         );
 
         expect(output).not.toContain("problem");

@@ -13,7 +13,7 @@ import {
   interval,
   timeout,
 } from "@ramonda/core";
-import type { Value } from "../../css-system";
+import { mergeClassNames, toStyle } from "@ramonda/css";
 
 /* ── Nested hooks: CounterHook uses HistoryHook (hook-of-a-hook) ────────── */
 class HistoryHook extends Hook<{ value: number }> {
@@ -237,6 +237,20 @@ export class LifecycleDemo extends Component {
  * `css=@@( … )` is only coloured as the FIRST attribute on the tag name's own line. In expression
  * position there is no such limit, and nothing else about the block changes.
  */
+/**
+ * ONE name, read by two declarations — which is the whole argument for declaring it.
+ *
+ * This used to be two holes holding one value. A hole belongs to the declaration it stands in, so
+ * nothing could tell it that `border-left` and `padding-left` wanted the same number: two custom
+ * properties, two names, both set on every element. A registered property is one name however many
+ * read it, and the browser knows its `syntax`, so `transition` can interpolate it.
+ */
+const WEIGHT = @@property(
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 4px;
+);
+
 export class StyleBlock extends Component {
   @state weight = 4;
 
@@ -245,39 +259,26 @@ export class StyleBlock extends Component {
   }
 
   render() {
-    /**
-     * Named, rather than written into the block.
-     *
-     * A hole carries its own unit, because `{n}px` compiles to `var(--…)px` and computes to nothing
-     * — so the template literal is not decoration. Written inline it was the densest line in this
-     * repository, and the density was the expression sitting inside the declaration rather than the
-     * braces around it. This is the same shape the block below uses for `accent`.
-     *
-     * **`Value<…>` is the annotation, and without it these do not compile.** `padding-left` says it
-     * takes a length in this project, and a bare template literal is a `string` — which could be
-     * anything at run time. The name comes from `css-system`, so if the config ever
-     * narrows the units, this line moves with it and nothing here has to be edited.
-     */
-    const border: Value<"border-left-width"> = `${this.weight}px`;
-    const inset: Value<"padding-left"> = `${this.weight + 8}px`;
-
     return (
       <div
-        className="panel"
-        css={@@(
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          padding: 4px 0;
-          border-left: {border} solid #ff0055;
-          padding-left: {inset};
-          transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
-          &:hover {
-            border-left-color: #00b37e;
-          }
+        className={mergeClassNames(
+          "panel",
+          @@(
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 4px 0;
+            border-left: var({WEIGHT}) solid #ff0055;
+            padding-left: calc(var({WEIGHT}) + 8px);
+            transition: border-left-width 150ms ease-in-out, padding-left 150ms ease-in-out;
+            &:hover {
+              border-left-color: #00b37e;
+            }
+          ),
         )}
+        style={toStyle([[WEIGHT, `${this.weight}px`]])}
       >
-        <p className="label">one class, one custom property per hole</p>
+        <p className="label">one declared name, two declarations reading it</p>
         <button onclick={this.thicker}>border {this.weight}px — thicker</button>
       </div>
     );
@@ -357,27 +358,31 @@ export class StyleBlockComposed extends Component {
   render() {
     return (
       <div
-        className="panel"
-        css={@@(
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-          padding: 4px 0;
+        className={mergeClassNames(
+          "panel",
+          @@(
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 4px 0;
+          ),
         )}
       >
         <p
-          className="label"
-          css={@@(
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-            color: #9a9a9a;
+          className={mergeClassNames(
+            "label",
+            @@(
+              letter-spacing: 0.04em;
+              text-transform: uppercase;
+              color: #9a9a9a;
+            ),
           )}
         >
           composition — every tag has its own block
         </p>
 
         <div
-          css={@@(
+          className={@@(
             ...{CONTROL};
             ...{TONES[this.tone]};
 
@@ -406,12 +411,12 @@ export class StyleBlockComposed extends Component {
           <code>button</code>, and unlayered CSS beats <code>@layer ramonda</code>, which is what the layer is for.
         </p>
 
-        <div css={@@( display: flex; gap: 12px; align-items: center; )}>
-          <label css={@@( display: inline-flex; gap: 6px; align-items: center; )}>
+        <div className={@@( display: flex; gap: 12px; align-items: center; )}>
+          <label className={@@( display: inline-flex; gap: 6px; align-items: center; )}>
             <input type="checkbox" checked={this.off} onchange={this.toggleOff} />
             off
           </label>
-          <label css={@@( display: inline-flex; gap: 6px; align-items: center; )}>
+          <label className={@@( display: inline-flex; gap: 6px; align-items: center; )}>
             <input type="checkbox" checked={this.roomy} onchange={this.toggleRoomy} />
             roomy
           </label>
@@ -436,20 +441,17 @@ export class StyleBlockComposed extends Component {
  * both compile, which is what lets a hover style and its reduced-motion answer sit beside each other
  * instead of in two places.
  *
- * **The hole is still one value.** `{ … }` is a custom property, so it works the same inside a
- * nested rule as at the top — the property is set on the ELEMENT and the nested rule reads it, which
- * is why one value can drive a colour that only appears on hover.
+ * **A custom property is still one value.** `--accent` is set on the ELEMENT and every nested rule
+ * reads it, which is why one value can drive a colour that only appears on hover.
  *
- * **And one hole drives four declarations here, deliberately.** A hole belongs to the declaration it
- * is written in: each one becomes its own rule reading its own `--r-…` name, so writing `{accent}`
- * four times puts four custom properties on the element, all holding the same colour. Measured, and
- * it has to be that way — a rule is shared by every element that names it, so its variable cannot be
- * named after anything but itself.
+ * **And one name drives four declarations here, deliberately.** It used to be a hole written four
+ * times, which put four custom properties on the element all holding the same colour — a hole
+ * belongs to the declaration it stands in, so nothing could tell it they meant one thing. Naming it
+ * once is what CSS authors already do, and the four readers below are static classes that dedupe
+ * with every other block writing the same thing.
  *
- * What the AUTHOR can do is what CSS authors already do: declare one custom property from the hole
- * and read it. The four declarations below have no hole at all then, so they are static classes that
- * dedupe with every other block writing the same thing — one entry in the style attribute instead of
- * four, and more sharing rather than less.
+ * **The choice itself is a condition**, not a value injected into the declaration: two rules in the
+ * stylesheet and one of them applied. See `hole-not-allowed`.
  */
 export class StyleBlockNested extends Component {
   @state urgent = false;
@@ -459,74 +461,77 @@ export class StyleBlockNested extends Component {
   }
 
   render() {
-    const accent = this.urgent ? "#ff0055" : "#10b981";
-
     return (
       <div
-        className="panel"
         data-urgent={String(this.urgent)}
-        css={@@(
-          /* One hole, read four times below — see the note above. */
-          --accent: {accent};
+        className={mergeClassNames(
+          "panel",
+          @@(
+            /* One name, read four times below — see the note above. */
+            --accent: #10b981;
+            if ({this.urgent}) {
+              --accent: #ff0055;
+            }
 
-          display: grid;
-          grid-template-columns: auto 1fr;
-          gap: 4px 12px;
-          align-items: center;
-          padding: 12px;
-          border: 1px solid #2a2a2a;
-          border-radius: 8px;
-          border-left: 4px solid var(--accent);
-          transition: border-color 150ms ease-in-out, transform 150ms ease-in-out;
-
-          & .title {
-            font-weight: 600;
-            color: #e6e6e6;
-          }
-
-          & .body {
-            grid-column: 2;
-            color: #9a9a9a;
-          }
-
-          &::after {
-            content: "";
-            grid-row: 1;
-            grid-column: 1;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: var(--accent);
-          }
-
-          &[data-urgent="true"] {
-            border-color: var(--accent);
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 4px 12px;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent);
+            transition: border-color 150ms ease-in-out, transform 150ms ease-in-out;
 
             & .title {
-              color: var(--accent);
+              font-weight: 600;
+              color: #e6e6e6;
             }
-          }
 
-          &:hover, &:focus-within {
-            transform: translateY(-1px);
-
-            & .title {
-              text-decoration: underline;
+            & .body {
+              grid-column: 2;
+              color: #9a9a9a;
             }
-          }
 
-          @media (min-width: 40rem) {
-            padding: 16px 20px;
-            gap: 6px 16px;
-          }
+            &::after {
+              content: "";
+              grid-row: 1;
+              grid-column: 1;
+              width: 10px;
+              height: 10px;
+              border-radius: 50%;
+              background: var(--accent);
+            }
 
-          @media (prefers-reduced-motion: reduce) {
-            transition: none;
+            &[data-urgent="true"] {
+              border-color: var(--accent);
+
+              & .title {
+                color: var(--accent);
+              }
+            }
 
             &:hover, &:focus-within {
-              transform: none;
+              transform: translateY(-1px);
+
+              & .title {
+                text-decoration: underline;
+              }
             }
-          }
+
+            @media (min-width: 40rem) {
+              padding: 16px 20px;
+              gap: 6px 16px;
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+              transition: none;
+
+              &:hover, &:focus-within {
+                transform: none;
+              }
+            }
+          ),
         )}
       >
         <p className="title" style="grid-column: 2">

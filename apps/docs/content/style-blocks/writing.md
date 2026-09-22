@@ -1,6 +1,6 @@
 ---
 title: Writing a block
-description: The two places a block goes, what each declaration becomes, nesting with &, and holes for the values that change.
+description: The two places a block goes, what each declaration becomes, nesting with &, and where a value that changes goes instead.
 section: Style blocks
 order: 107
 ---
@@ -9,63 +9,41 @@ order: 107
 
 A block is `@@( … )`, and what goes inside it is CSS.
 
-## A block is a value
+## A block is a value, and that value is a string
 
-So it goes wherever a value goes — in the attribute, or in a binding you name and use later:
+The classes it compiled to, space separated — so it goes on `className`, in the attribute or in a
+binding you name and use later:
 
 ```tsx
-const card = <div css={@@( display: flex; )}>inline</div>;
+const card = <div className={@@( display: flex; )}>inline</div>;
 
 const panel = @@( display: flex; );
-const named = <div css={panel}>named, and reusable</div>;
+const named = <div className={panel}>named, and reusable</div>;
 ```
 
 Name it when it is long, when two elements share it, or when you want to
 [compose](/style-blocks/composing) it into another.
 
+**Beside a class of your own, use `mergeClassNames`:**
+
+```tsx
+import { mergeClassNames } from "@ramonda/css";
+
+const row = <div className={mergeClassNames("lead", @@( display: flex; ))}>a row</div>;
+```
+
+Not a template literal. `` `lead ${@@( … )}` `` is text to the compiler, so a block written in one is
+found by nothing at all — it is reported rather than compiled to silence. `mergeClassNames` is also what keeps
+one class per thing set when two blocks meet; joining them with a space would keep both and let the
+stylesheet break the tie.
+
 **Nothing about a block requires JSX.** `const panel = @@( … )` is a value like any other, and a
 block in a `.ts` file with no markup in it works the same way — this extends TypeScript, not JSX.
-
-### A block at module scope reads its holes ONCE
-
-A block is a value, and a value at module scope is built when the module loads. So a hole in one is
-read at import time and then frozen:
-
-```tsx
-let theme = "#10b981";
-
-// Every element using this carries #10b981 for the life of the page, even
-// after `theme` changes. The hole was read when this module loaded.
-export const panel = @@( border-left: 4px solid {theme}; );
-```
-
-What the block compiles to is `_merge({"border-left": ["r-…", theme]})` — an ordinary expression in
-an ordinary initialiser, so it is evaluated once, when the module loads. Nothing reports this.
-
-**It bites hardest where a shared block is most tempting: a default somebody imports everywhere.**
-That is the one place a stale value spreads across the whole app rather than one component.
-
-Three shapes that do not have the problem:
-
-```tsx
-// 1. No hole — nothing to freeze, and the class is shared by every element that names it.
-export const panel = @@( display: flex; gap: 8px; );
-
-// 2. A function, so the hole is read per call.
-export const panelFor = (theme: string) => @@( border-left: 4px solid {theme}; );
-
-// 3. A custom property, which is what a value the whole app shares should be anyway.
-export const panel2 = @@( border-left: 4px solid var(--theme); );
-```
-
-**The third is the real answer for a theme**, and it is cheaper as well as correct — see
-[a hole is not a theme](/style-blocks/variables#a-hole-is-not-a-theme), where the same choice is
-measured at 41 bytes on every element.
 
 ## Each declaration becomes one class
 
 ```tsx
-const row = <div css={@@( display: flex; gap: 8px; )}>x</div>;
+const row = <div className={@@( display: flex; gap: 8px; )}>x</div>;
 ```
 
 ships as
@@ -104,146 +82,76 @@ Two of CSS's own rules surprise people, so they are worth saying out loud:
 - **A prelude that names no parent gets one.** `div { … }` inside a block means `& div`, which is
   what CSS Nesting says a bare selector means. The two compile to the same class.
 
-## Holes, for the values that change
+## A value in a declaration is written out
 
-A `{ … }` hole carries a TypeScript expression into the CSS. Each one becomes **one CSS custom
-property on the element**, so a value that differs per instance costs a property rather than a rule:
+Everything in a block is decided when the block compiles. `{ … }` in a declaration's value — a hole —
+was how a TypeScript expression used to get in, and it is refused:
+
+```
+color: {this.brand};             ✗  hole-not-allowed
+```
+
+Two things replaced it, and between them they cover what a hole was reached for.
+
+**If the value is one of a few, write them out.** [`match`](/style-blocks/composing#match-one-value-several-outcomes) makes each
+arm its own rule and its own class, so the subject only picks between classes that already exist:
 
 ```tsx
-class Row extends Component {
-  @state weight = 4;
-
+class Chip extends Component<{ tone: "hot" | "cold" }> {
   render() {
     return (
-      <div css={@@(
-        border-left: {`${this.weight}px`} solid #ff0055;
-        &:hover { border-left-color: #00b37e; }
-      )}>
-        a row
-      </div>
+      <span className={@@(
+        padding: 4px 10px;
+        color: match({this.props.tone}) {
+          hot  => #ff0055;
+          cold => #0ea5e9;
+        };
+      )}>{this.props.tone}</span>
     );
   }
 }
 ```
 
-The expression stays where you wrote it, so `this.weight` is the field beside it and is type-checked
-in that scope.
-
-### A hole holds a value, and only a value
-
-```
-border-left: {width};             ✓  a value
-{name}: 24px;                     ✗  a property name
-&:{state} { … }                   ✗  a selector
-{on ? "display:flex" : ""}        ✗  a whole declaration
-```
-
-The last is refused rather than mangled. A value carrying a `;` is refused outright — on the server
-too, where it would otherwise become real declarations in the markup.
-
-There is one exception to the second line: a name that came from `@@property( … )` may stand where a
-property name goes, because the compiler generated that name and nothing else can write it. See
-[names the whole stylesheet sees](/style-blocks/variables).
-
-### The unit goes inside the hole
-
-```
-padding-left: {`${n}px`};          ✓  the hole carries its own unit
-padding-left: calc({n} * 1px);     ✓  the arithmetic is CSS's
-padding-left: {n}px;               ✗  reported
-```
-
-A `var()` is substituted as **tokens**, so the `12` and the `px` in `var(--w)px` never become one
-length. With `--w: 12`, a browser computes these:
-
-| written | computed |
-|---|---|
-| `padding-left: var(--w)px` | **`0px`** |
-| `padding-left: 8px; padding-left: var(--w)px` | **`0px`** — the fallback above it is lost too |
-| `padding-left: calc(var(--w) * 1px)` | `12px` |
-| `--w: 12px; padding-left: var(--w)` | `12px` |
-
-Invalid at computed-value time is worse than invalid at parse time: the property falls back to its
-initial value **and takes any earlier declaration of it with it**. So text written against a hole is
-reported — a unit, a suffix, a `#` in front, on either side.
-
-## One value, read many times
-
-Write the hole wherever you need the value. That is the whole answer for almost every block:
+**If it really comes from data, declare it.** `@@property( … )` gives you a name the whole stylesheet
+can read and your element can set — one name however many declarations read it:
 
 ```tsx
-import type { Value } from "../css-system";
+const width = @@property( syntax: "<percentage>"; initial-value: 0%; inherits: false; );
 
-declare const accent: Value<"color">;
-
-const card = @@(
-  border-left: 4px solid {accent};
-  background: {accent};
-  color: {accent};
-);
+const meter = @@( height: 8px; width: var({width}); );
 ```
 
-A hole belongs to the declaration it is written in, so this puts **three** custom properties on the
-element rather than one, all holding the same value — a rule is shared by every element that names
-it, so its variable cannot be named after anything but itself.
+That page is [values that come from data](/style-blocks/dynamic), and it is worth reading before you
+reach for either.
 
-**Whether that matters is a number, and the number is small.** On a real block reading one value
-five times, measured: the `style` attribute is 102 B written directly, and 24 B if you declare a
-custom property once and read it. **Seventy-eight bytes an element.** On one card that is nothing;
-on a list of a hundred rows it is 7.8 KB of markup, and then it is worth a line:
+### Why a hole is not simply allowed
 
-```tsx
-declare const accent: string;
+It cost something on every element, and it could not be shared. Measured, the same colour written two
+ways: `color: red` emits `r-c-red { color:red; }` and the element carries a class, while
+`color: {this.brand}` emitted `color:var(--r-…-0)` with the value written on every instance. A list
+of ten thousand rows was ten thousand style attributes.
 
-const row = @@(
-  --accent: {accent};
-  border-left: 4px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent);
-);
-```
-
-The three declarations below it have no hole at all now, so they are static classes that dedupe with
-every other block writing the same thing. **Reach for this when a block repeats across many
-elements, not by default** — the direct form is shorter to read and to write, and 78 bytes is not a
-reason.
-
-**The name is yours, and a custom property INHERITS.** `--accent` is set on the element and is
-visible to everything inside it: measured, a descendant that reads `var(--accent)` and never sets one
-picks up the ancestor's value, a descendant that sets its own shadows it, and an element outside the
-subtree falls back. That is a feature when you mean it and a collision when you do not — a card
-setting `--accent` changes any descendant whose own block reads that name.
-
-So pick a name you would be happy to see inherited, or one nobody else would write. The names the
-compiler generates for holes never have this problem: `--r-<class>-0` is derived from the declaration
-itself, so two different declarations can never agree on one by accident.
-
-## A hole may not be empty
-
-`string | number`, and nothing else. `undefined` and `null` are refused, so a value that might not be
-there needs a fallback written where it is used:
+And a hole belonged to the declaration it stood in, so two declarations wanting one value got two
+custom properties:
 
 ```
-color: {tint};                   ✗  TS2345 — `null` is not a value
-color: {tint ?? "inherit"};      ✓
+padding-left: {v}; padding-right: {v};             TWO variables, two classes
+padding-left: var({pad}); padding-right: var({pad});   ONE, however many read it
 ```
 
-An empty hole is not a declaration you can see. It is a `var()` with nothing behind it, which makes
-the whole declaration invalid at computed-value time — so the property falls back past **every
-earlier declaration of it**, including the one you spread in above.
+**The braces are still how an expression gets in**, and three of them are untouched, because none of
+them puts a value on an element: `if ({…})` and `...{…}` choose between whole rules,
+`match({…})` chooses between classes, and `var({name})` names a `@@property` site the compiler
+resolves before the CSS is written.
 
-On a server-rendered page it is worse in one direction: a hole that has a value on the server and
-none on the client is a divergence, and the page keeps showing the server's value. Write the empty
-case out and neither happens.
+## A value you build in TypeScript can be typed
 
-## The value carrying a unit can be typed
+Nothing goes into a block from TypeScript, but plenty goes onto an ELEMENT — the value you set a
+[registered property](/style-blocks/dynamic) to, or a theme you hand to `toStyle`. Those are strings
+you build, and they can be held to a shape.
 
-A hole's value is `string | number`, and it has to be: **349 of 551 properties are composite**.
-`border-left` is `<line-width> || <line-style> || <color>`, so `4px solid red` in any order — a type
-narrow enough to refuse `4px sollid red` would refuse `red 4px solid`, which is correct CSS.
-
-So the type goes where the value is **made**, which is the better place anyway: the error lands on
-the line somebody wrote.
+**The type goes where the value is made**, which is where the error is worth having: on the line
+somebody wrote, not on the element that used it.
 
 ```
 const border: CssDimension = `${weight}px`;      ✓
@@ -293,20 +201,24 @@ declare const n: number;
 const gap: Value<"gap"> = `${n}px`;
 ```
 
-One property, one name, and the answer moves when the config does. `Value<"color">` is what the hole
-example above is annotated with, for the same reason.
+One property, one name, and the answer moves when the config does.
 
-And `Var<"color">` is *any variable this project declares of that kind* — which is what you want
-when a function chooses between them:
+And `Var<"color">` is *any variable this project declares of that kind* — which is what you want when
+a function chooses between them and hands the one it picked to `toStyle`:
 
 ```tsx
+import { toStyle } from "@ramonda/css";
 import { $ } from "../css-system";
 import type { Var } from "../css-system";
 
 declare const loud: boolean;
 
 const pick = (): Var<"color"> => (loud ? $.color.accent : $.color.surface);
+const theme = toStyle([[pick(), "#10b981"]]);
 ```
+
+**Inside a block, a choice between two variables is a [`match`](/style-blocks/composing#match-one-value-several-outcomes)
+instead** — each arm holds a `$` path, and the arms become classes.
 
 ## Comments
 
@@ -333,11 +245,13 @@ Semicolon` — naming nothing about the block, the file, or the line it came fro
 somewhere else entirely, because of a comment. So it is reported before it gets there, as
 `line-comment`, on the `//` itself.
 
-Inside a hole a comment is TypeScript's, because that is what a hole holds:
+Inside braces a comment is TypeScript's, because that is what the braces hold:
 
 ```tsx
+declare const loud: boolean;
+
 const card = @@(
-  color: {/* the brand, not the accent */ "#ff0055"};
+  if ({/* the brand, not the accent */ loud}) { color: #ff0055; }
 );
 ```
 
