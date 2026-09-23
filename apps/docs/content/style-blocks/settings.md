@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => ({
 ```
 
 **Rules your project agrees on** belong in a `ramonda.css.ts` beside your `tsconfig.json` — because
-`ramonda-css check`, `ramonda-css format`, the build and your editor all have to read the same
+`ramonda-css`, `ramonda-css format`, the build and your editor all have to read the same
 answer, and none of them reads a bundler's config:
 
 ```ts alternatives

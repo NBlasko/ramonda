@@ -11,6 +11,20 @@ The syntax is not TypeScript, so the package owns a parser and a virtual-file la
 JSX is usable because somebody wrote the parser for it. That layer is what buys the checking: a fault
 in a block arrives as an ordinary `tsc` diagnostic, on the character you wrote, in your own file.
 
+## Running it
+
+The checker takes a project, not a file — every block becomes a virtual file and the whole program
+goes to `tsc` once, which is what makes a report land on your own character:
+
+```sh
+npx ramonda-css                 # the `tsconfig.json` beside you
+npx ramonda-css app/tsconfig.json
+```
+
+There is no `check` verb: the bare command IS the check, and `format`, `lint`, `codegen` and
+`explain` are the ones that are not. It exits non-zero when it reports anything, so it is a CI step
+as it stands.
+
 ## What your editor tells you
 
 - **A property that does not exist** is TypeScript's own *did you mean*, on the property.

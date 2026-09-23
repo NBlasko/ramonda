@@ -9,7 +9,7 @@ order: 115
 
 `ramonda.css.ts` sits at the root of a project and does two jobs. It **declares** what the project
 owns — the variables [`$` reads](/style-blocks/variables) — and it **narrows** what a block may
-say. Both reach every consumer: your editor, `ramonda-css check`, and the build.
+say. Both reach every consumer: your editor, `ramonda-css`, and the build.
 
 It is TypeScript rather than JSON because a setting may depend on the environment, and because you
 get completion for the property names.
