@@ -1103,6 +1103,88 @@ export default [a, after];
   });
 
   /**
+   * **The twelve that are answered with NOTHING, and the one predicate all of them hang on.**
+   *
+   * Each is written `overlaid(fileName) ? [] : service.…(…)`: on a file holding a block they return
+   * the empty answer on purpose, because their spans are computed against the virtual copy and a
+   * span that is too long DELETES CODE — the note on the completion proxy measured that. On any
+   * other file they must delegate, and that is `overlaid` being false.
+   *
+   * So a single wrong predicate takes all twelve at once, and until this they were named by no test
+   * at all. They are not obscure: this is Cmd-/, inlay hints, the JSX tag an editor closes for you,
+   * and the colours. Every project a person opens with this extension installed goes through them.
+   *
+   * Both halves are asserted, because only one of them is safe to get wrong in silence.
+   */
+  const PLAIN = `const before = 1;\nconst after = before;\nexport default after;\n`;
+  const COMMENTED = `// const before = 1;\nconst after = 2;\nexport default after;\n`;
+  const NOTED = `/* a note */\nconst after = 2;\nexport default after;\n`;
+  const TAGS = `const a = <div>x</div>;\nexport default a;\n`;
+  /** `getJsxClosingTagAtPosition` answers while a tag is being TYPED — so the tag is unclosed. */
+  const TYPING = `const a = <div>\n`;
+
+  type Ask = (service: ts.LanguageService, source: string) => unknown;
+
+  test.each<[string, Ask, string]>([
+    ["commentSelection", (s, t) => s.commentSelection(FILE, { pos: 0, end: t.indexOf("\n") }), PLAIN],
+    ["uncommentSelection", (s, t) => s.uncommentSelection(FILE, { pos: 0, end: t.indexOf("\n") }), COMMENTED],
+    ["toggleLineComment", (s, t) => s.toggleLineComment(FILE, { pos: 0, end: t.indexOf("\n") }), PLAIN],
+    ["toggleMultilineComment", (s, t) => s.toggleMultilineComment(FILE, { pos: 0, end: t.indexOf("\n") }), PLAIN],
+    [
+      "provideInlayHints",
+      (s, t) => s.provideInlayHints(FILE, { start: 0, length: t.length }, { includeInlayVariableTypeHints: true }),
+      PLAIN,
+    ],
+    ["getJsxClosingTagAtPosition", (s, t) => s.getJsxClosingTagAtPosition(FILE, t.indexOf("<div>") + 5), TYPING],
+    ["getLinkedEditingRangeAtPosition", (s, t) => s.getLinkedEditingRangeAtPosition(FILE, t.indexOf("div") + 1), TAGS],
+    ["getSpanOfEnclosingComment", (s, t) => s.getSpanOfEnclosingComment(FILE, t.indexOf("note"), false), NOTED],
+    [
+      "getSyntacticClassifications",
+      (s, t) => s.getSyntacticClassifications(FILE, { start: 0, length: t.length }),
+      PLAIN,
+    ],
+    [
+      "getSemanticClassifications",
+      (s, t) =>
+        s.getSemanticClassifications(
+          FILE,
+          { start: 0, length: t.length },
+          ts.SemanticClassificationFormat.TwentyTwenty,
+        ),
+      PLAIN,
+    ],
+    [
+      "getEncodedSyntacticClassifications",
+      (s, t) => s.getEncodedSyntacticClassifications(FILE, { start: 0, length: t.length }),
+      PLAIN,
+    ],
+  ])("%s falls through on a file with no block", (_name, ask, fixture) => {
+    const { service, plain, source } = editor(fixture);
+
+    // The plain answer must SAY something, or the comparison passes on two empty lists and this
+    // test could not fail — measured, six of these did exactly that on a file with nothing in it.
+    expect(ask(plain, source)).toBeDefined();
+    expect(ask(plain, source)).not.toEqual([]);
+    expect(ask(service, source)).toEqual(ask(plain, source));
+  });
+
+  /**
+   * And the other half: on a file that HOLDS a block the same proxies answer with nothing. A span
+   * from the virtual copy applied to the author's text is not a worse answer, it is a destructive
+   * one — which is why the empty answer is the deliberate one.
+   */
+  test.each<[string, Ask]>([
+    ["commentSelection", (s, t) => s.commentSelection(FILE, { pos: 0, end: t.indexOf("\n") })],
+    ["toggleLineComment", (s, t) => s.toggleLineComment(FILE, { pos: 0, end: t.indexOf("\n") })],
+    ["provideInlayHints", (s, t) => s.provideInlayHints(FILE, { start: 0, length: t.length }, {})],
+    ["getSyntacticClassifications", (s, t) => s.getSyntacticClassifications(FILE, { start: 0, length: t.length })],
+  ])("%s answers with nothing on a file that holds one", (_name, ask) => {
+    const { service, source } = editor(`const a = <div className={@@( display: flex; )}>x</div>;\nexport default a;\n`);
+
+    expect(ask(service, source)).toEqual([]);
+  });
+
+  /**
    * A file with no block is not ours, and every one of these has to behave as if the plugin were not
    * installed — asserted as sameness, because "it answered something" is what a broken proxy does too.
    */
