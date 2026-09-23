@@ -4123,8 +4123,54 @@ clears everything old that it has to. The direction is "toward stronger", which 
 statement (largest count declared first) is minus one; flipping the scale would make it literally
 plus one. At a scale of 1000 that is a thousand shifts per unit.
 
-So the rule is one line, with nothing to remember: **when the table changes, shift the whole
-assignment one place.**
+### Shift only when it is needed, and let a gate say when
+
+Shifting on every table change is the rule with nothing to remember, and at a scale of 1000 it lasts
+about a century. It is also unnecessary: a collision needs a LEAF to grow to exactly the count its
+own shorthand used to have, which is a much rarer event than the table changing.
+
+So the shift happens only when a gate says it must, and the gate is what makes that safe — it does
+not assume a shift was enough, it checks.
+
+The rule it checks, for every covering pair `S ⊃ L`, against a past table:
+
+```
+name_new(L) < name_old(S)      a new longhand still outranks an old shorthand
+name_old(L) < name_new(S)      and an old longhand still outranks a new one
+```
+
+Both directions, because which stylesheet is the old one is not ours to decide.
+
+Prototyped against the current table, with the event synthesised — `background-position-x` grown
+into a shorthand over two sub-properties:
+
+```
+control   same table, shift 0:   0 collisions
+event     shift 0:               1  background-position-x(new 2000)
+                                    does not outrank background-position(old 2000)
+event     shift 1:               0  safe
+```
+
+The control is the part that matters: with an unchanged table the gate must be silent, or it says
+nothing when it fires. **Aliases have to be excluded first** — `gap`/`grid-gap` and the three
+`-webkit-` pairs each cover the other, so no ordering can separate them and they produced twelve
+collisions against an unchanged table until they were taken out.
+
+What the gate needs:
+
+- **an append-only history of COUNTS**, one entry per release that changed the table. Only the
+  counts, not the tables: which property covers which can come from today's, because that relation
+  only grows. About a hundred numbers per entry;
+- **a comparison against every past entry**, not only the previous one — a package on the page may
+  have been built by any release;
+- **the current shift, in the source.** When the gate fails, raise it until the gate is clean and
+  append the new entry.
+
+Its honest limit: it protects against releases it has an entry for, so the history has to start with
+today's table.
+
+So the rule is: **the table may change freely; the gate says when the assignment must shift, and by
+how much.**
 
 ### Where this stands
 
@@ -4133,4 +4179,5 @@ Nothing is built. The order to build it in:
 1. the self-describing marker and the remap in the vite plugin — smallest, and the only piece that
    helps a package that is already published;
 2. count-based names over a pre-declared range, for stylesheets no build can reach;
-3. the hand-written override table, the first time a property's count actually moves.
+3. the history of counts and the gate over it — before the first release that changes the table,
+   because the history has to begin with today's.
