@@ -8,16 +8,20 @@ import * as api from "../index";
 /**
  * What each entry exports, asserted as a list — the same tripwire the other packages have.
  *
- * There are two entries and they are not the same audience. `@ramonda/css` is loaded by every page
- * that renders a block, so anything added to it is shipped to a browser; `@ramonda/css/compiler`
- * runs in a build and may reach for `node:crypto`. The split is what keeps the second out of the
- * first, and a list per entry is what keeps the split honest.
+ * The entries are not one audience. `@ramonda/css` is loaded by every page that renders a block, so
+ * anything added to it is shipped to a browser; `@ramonda/css/compiler` runs in a build and may
+ * reach for `node:crypto`. The split is what keeps the second out of the first, and a list per entry
+ * is what keeps the split honest.
+ *
+ * **It used to say "there are two entries", and there are eight.** Two were asserted and six were
+ * not, and `./properties` — the one this package's users import `CssBlock` from, and the one a
+ * release reshaped most — was among them. A tripwire that watches a quarter of a surface is a
+ * tripwire with a quarter of a claim.
  */
 /**
- * `merge` and `compose` are composition's half: a block compiles to a map, and merging maps at the
- * call site is the only place precedence can be decided — measured, the order of classes in a
- * `class` attribute decides nothing. `compose` is the primitive and composes with itself; `merge` is
- * the boundary and produces the value the framework already takes.
+ * `mergeClassNames` is composition's half: the order of classes in a `class` attribute decides
+ * nothing — measured — so keeping ONE class per thing set is the only place precedence can be
+ * decided, and the call site is where it happens.
  */
 const RUNTIME = [
   /**
@@ -125,6 +129,50 @@ const COMPILER = [
   "virtualFile",
 ];
 
+/**
+ * `ramonda.css.ts` imports from here and nothing else does. `defineConfig` and `kind` are what a
+ * config file calls; the five types are what it is checked against.
+ */
+const CONFIG = ["Config", "Declared", "Kind", "ValueByKind", "Variable", "defineConfig", "kind"];
+
+/**
+ * The types a COMPONENT is written against, and the entry a reader is sent to for them.
+ *
+ * `CssBlock` is here rather than on the runtime entry, which is worth a list of its own: a project
+ * with a `ramonda.css.ts` gets it re-exported through the generated `css-system`, and one without a
+ * config imports it from here. Either way this is where it lives.
+ */
+const PROPERTIES = [
+  "CssBlock",
+  "CssBlockShape",
+  "CssCondition",
+  "CssFontFaceDescriptors",
+  "CssGlobal",
+  "CssKeyframesShape",
+  "CssProperties",
+  "CssPropertyDescriptors",
+  "CssRegistered",
+  "CssSpreadable",
+  "CssValue",
+  "CssVar",
+  "Keyword",
+  "Narrowed",
+  "StyleValue",
+];
+
+/** A bundler adapter is one function and the shapes of what it is handed. */
+const VITE = ["Bundle", "CssPluginLike", "CssPluginOptions", "HotUpdate", "ramondaCss"];
+const ESBUILD = ["EsbuildCssPluginLike", "EsbuildCssPluginOptions", "EsbuildLike", "loaderFor", "ramondaCss"];
+
+/**
+ * One default and nothing beside it, for both of these.
+ *
+ * Prettier loads a plugin by its default export and a TypeScript language service loads one by
+ * `init`, which `plugin.cjs.ts` default-exports. A named export added here would be a thing neither
+ * host looks at, which is the kind of surface that grows unnoticed.
+ */
+const ONE_DEFAULT = ["default"];
+
 describe("public API surface", () => {
   test("the runtime entry exports exactly what it means to", () => {
     expect(Object.keys(api).sort()).toEqual([...RUNTIME].sort());
@@ -138,6 +186,23 @@ describe("public API surface", () => {
     const entry = join(dirname(fileURLToPath(import.meta.url)), "..", "index.ts");
 
     expect(exportsOf(entry)).toEqual([...RUNTIME, ...TYPES].sort());
+  });
+
+  /**
+   * The six entries nothing watched. Read from SOURCE, like the types test above — `Object.keys`
+   * cannot see a type, and `./properties` is nothing but types.
+   */
+  test.each([
+    ["configEntry.ts", CONFIG],
+    ["properties.ts", PROPERTIES],
+    ["vite.ts", VITE],
+    ["esbuild.ts", ESBUILD],
+    ["prettier.ts", ONE_DEFAULT],
+    ["plugin.cjs.ts", ONE_DEFAULT],
+  ])("%s exports exactly what it means to", (file, expected) => {
+    const entry = join(dirname(fileURLToPath(import.meta.url)), "..", file);
+
+    expect(exportsOf(entry)).toEqual([...expected].sort());
   });
 
   test("the runtime entry does not re-export the compiler", () => {
