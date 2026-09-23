@@ -127,6 +127,38 @@ describe("a column on a line the transform never touched", () => {
   });
 });
 
+/**
+ * **The prologue is a LINE, and every position below it moves by one.**
+ *
+ * A module that writes a shorthand, a condition or a `match` gets registrations prepended — what a
+ * class string cannot carry. None of the cases above has one: the map was written before those
+ * existed, so the shape that shifts every line in the file was the one shape it never saw. A map
+ * that lost a line here would put every report in a real project one line off, in silence, which is
+ * the fault this whole file is about.
+ */
+describe("a file whose registrations push everything down", () => {
+  const WITH_A_PROLOGUE =
+    `const first = 1;\n` +
+    `declare const t: "a" | "b";\n` +
+    `const card = @@(\n  padding: 8px;\n  cursor: match({t}) { a => pointer; b => default; };\n` +
+    `  @media (min-width: 40rem) { color: red; }\n);\n` +
+    `const marker = 2;\n` +
+    `const a = <div className={card}>x</div>;\n`;
+
+  test("a line below it still walks home", () => {
+    const out = transform(WITH_A_PROLOGUE, { filename: FILE });
+    const code = out?.code ?? "";
+    const map = new TraceMap(JSON.parse(JSON.stringify(out?.map)) as never);
+
+    const emitted = code.split("\n").findIndex((line) => line.includes("const marker")) + 1;
+    const author = WITH_A_PROLOGUE.split("\n").findIndex((line) => line.includes("const marker")) + 1;
+
+    // The prologue really did move it — a test that passes because nothing shifted proves nothing.
+    expect(emitted).toBeGreaterThan(author);
+    expect(originalPositionFor(map, { line: emitted, column: 6 }).line).toBe(author);
+  });
+});
+
 describe("the transformed file", () => {
   test("is valid TSX, which is the only reason the second map exists at all", () => {
     expect(emitted.code).toContain("afterTheBlock");

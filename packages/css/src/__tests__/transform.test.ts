@@ -276,7 +276,92 @@ describe("what it refuses, and where", () => {
   });
 });
 
+/**
+ * **The same source compiles to the same bytes**, which is the claim caching rests on.
+ *
+ * A class name is a hash, the registrations are objects, and both are built by walking collections.
+ * If any of that depended on insertion order across FILES — a module-level map, a counter, a cache
+ * keyed on what was seen first — two builds of one repository would emit different names, and
+ * nothing would fail. The stylesheet would simply be a different file every time: a cold cache on
+ * every deploy, a `dist` diff full of noise, and no error anywhere.
+ *
+ * Measured across separate processes and hash seeds while this was written, all identical. What is
+ * asserted here is the half a test can hold: the same source twice, and the same source after a
+ * DIFFERENT one has been through the compiler, which is what a module-level cache would break.
+ */
+describe("what a second build gets", () => {
+  const SOURCE =
+    `declare const t: "a" | "b";\n` +
+    `const card = @@(\n  padding: 8px;\n  cursor: match({t}) { a => pointer; b => default; };\n` +
+    `  @media (min-width: 40rem) { color: red; }\n  &[data-on] { gap: 2px; }\n);\n` +
+    `const a = <div className={card}>x</div>;\n`;
+
+  test("the same source twice is the same bytes", () => {
+    expect(emit(SOURCE)?.code).toBe(emit(SOURCE)?.code);
+  });
+
+  test("and is not changed by what went through before it", () => {
+    const alone = emit(SOURCE)?.code;
+    emit(`const other = <div className={@@( color: blue; margin: 1px; )}>y</div>;\n`);
+    emit(`const third = <p className={@@( @media print { gap: 9px; } )}>z</p>;\n`);
+
+    expect(emit(SOURCE)?.code).toBe(alone);
+  });
+
+  /** The classes in particular, since they are what the markup and the stylesheet must agree on. */
+  test("and the classes it names are the same both times", () => {
+    const classes = (code: string | undefined) => /_merge\("([^"]*)"\)/.exec(code ?? "")?.[1];
+
+    expect(classes(emit(SOURCE)?.code)).toBe(classes(emit(SOURCE)?.code));
+  });
+});
+
 describe("the prologue's place in the file", () => {
+  /**
+   * **The COMBINATIONS, which each of the cases below tests one half of.**
+   *
+   * Each head has a rule of its own — a shebang owns line one, a directive stops being one the
+   * moment anything precedes it, a leading comment is where TypeScript reads `@jsxImportSource` and
+   * `@ts-nocheck` from — and the prologue has to satisfy all of them at once. Measured across every
+   * combination rather than one at a time, because a rule that holds alone is not a rule that holds
+   * beside another, and this is the file where a prologue lands between them.
+   */
+  test.each([
+    ["a shebang and a directive", '#!/usr/bin/env node\n"use client";\n'],
+    ["a shebang and a licence", "#!/usr/bin/env node\n/* @license MIT */\n"],
+    ["a directive then a licence", '"use client";\n/* @license MIT */\n'],
+    ["a licence then a directive", '/* @license MIT */\n"use client";\n'],
+    ["all three", '#!/usr/bin/env node\n/* @license MIT */\n"use client";\n'],
+    ["two comments and a directive", '/* a */\n// b\n"use client";\n'],
+  ])("%s keep what each of them owns", (_what, head) => {
+    const lines = (emit(`${head}const a = <div className={@@( color: red; )}>x</div>;\n`)?.code ?? "").split("\n");
+
+    if (head.startsWith("#!")) expect(lines[0]).toBe("#!/usr/bin/env node");
+    if (head.includes('"use client"')) {
+      const at = lines.findIndex((line) => line.trim() === `"use client";`);
+      const above = lines.slice(0, at).filter((line) => line.trim() !== "");
+      // A shebang and comments may precede a directive. An `import` may not — that is the fault.
+      expect(above.filter((line) => !line.startsWith("#!") && !/^\s*(\/\/|\/\*|\*)/.test(line))).toEqual([]);
+    }
+  });
+
+  /**
+   * **The pragma a leading comment can carry, which is why the prologue goes BELOW the trivia.**
+   *
+   * `@jsxImportSource` names a per-file JSX runtime and `tsc` reads it from the FIRST comment.
+   * Measured when this was written: an import prepended above it made `tsc` fall back to
+   * `react/jsx-runtime`, silently. This asserts the order that keeps it working.
+   */
+  test("a `@jsxImportSource` pragma stays above the import", () => {
+    const lines = (
+      emit(`/** @jsxImportSource preact */\nconst a = <div className={@@( color: red; )}>x</div>;\n`)?.code ?? ""
+    ).split("\n");
+
+    expect(lines.findIndex((line) => line.includes("jsxImportSource"))).toBeLessThan(
+      lines.findIndex((line) => line.startsWith("import {")),
+    );
+  });
+
   test("a shebang stays on line one", () => {
     const result = emit(`#!/usr/bin/env node\nconst a = <div className={@@( display: flex; )}>x</div>;\n`);
 
