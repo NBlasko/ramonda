@@ -1178,7 +1178,17 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
             ...one,
             highlightSpans: one.highlightSpans.flatMap((span) => {
               const textSpan = back(its, span.textSpan);
-              return textSpan === undefined ? [] : [{ ...span, textSpan }];
+              /**
+               * **The CONTEXT span too, which this was the one place not to map.**
+               *
+               * A highlight carries the name and the statement an editor shows around it.
+               * `elsewhere` and `findReferences` bring both home; here only the first came, and
+               * measured on a file of 103 characters the context came back at 948 — inside the
+               * preamble of the virtual copy. An editor reading that range reads past the end of
+               * the file it is showing.
+               */
+              const contextSpan = span.contextSpan === undefined ? undefined : back(its, span.contextSpan);
+              return textSpan === undefined ? [] : [{ ...span, textSpan, contextSpan }];
             }),
           };
         });

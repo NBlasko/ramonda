@@ -2559,6 +2559,148 @@ describe("a project with nothing that compiles a block", () => {
  * push is a rule they meet after they have stopped thinking about the code. The language service
  * has a program of its own, so there is no reason for the wait.
  */
+/**
+ * **Every span the plugin hands back lands inside the author's own file.**
+ *
+ * This is the invariant the whole overlay rests on, and the note on the completion proxy says what
+ * breaking it costs: *a span that is too short costs a completion; a span that is too long DELETES
+ * CODE*. An editor does not check — it applies what it is given.
+ *
+ * `spanOf` clamps a span to the run it starts in, so the property should hold for every offset in
+ * every shape. Eighteen of the fifty proxies return one and none of them was compared against
+ * anything; this asks the question that actually matters of all of them at once, at every position
+ * in the file rather than at one chosen to pass.
+ */
+describe("no span the plugin returns can reach outside the file", () => {
+  const SHAPES: [string, string][] = [
+    [
+      "a block among ordinary code",
+      `const n = 1;\nconst a = <div className={@@( color: red; padding: 8px; )}>x</div>;\nconst m = n;\nexport default [a, m];\n`,
+    ],
+    [
+      "a block on several lines",
+      `const a = (\n  <div\n    id="x"\n    className={@@(\n      color: red;\n      &:hover { gap: 2px; }\n    )}\n  >x</div>\n);\nexport default a;\n`,
+    ],
+    [
+      "two blocks in one file",
+      `const a = <div className={@@( color: red; )}>x</div>;\nconst b = <p className={@@( gap: 1px; )}>y</p>;\nexport default [a, b];\n`,
+    ],
+    [
+      "a block with a condition and a match",
+      `declare const t: "a" | "b";\nconst a = <div className={@@( if ({t}) { color: red; } cursor: match({t}) { a => pointer; b => default; }; )}>x</div>;\nexport default a;\n`,
+    ],
+  ];
+
+  /**
+   * Every `{ start, length }` in an answer that is about THIS file.
+   *
+   * A `fileName` anywhere in the answer says which file the spans under it belong to — a definition
+   * in `lib.d.ts` carries offsets into `lib.d.ts`, and measuring those against the author's length
+   * is measuring nothing. The first version of this did exactly that and reported 152 escapes in a
+   * file of 120 characters, which was the probe rather than the plugin.
+   */
+  function spansIn(value: unknown, mine: boolean, found: ts.TextSpan[] = [], seen = new WeakSet()): ts.TextSpan[] {
+    if (value === null || typeof value !== "object") return found;
+    // An answer can hold a `ts.Type` or a `ts.Symbol`, and those point back at themselves. Walking
+    // one without this overflows the stack — which is what the first version of this did.
+    if (seen.has(value as object)) return found;
+    seen.add(value as object);
+    if (Array.isArray(value)) {
+      for (const one of value) spansIn(one, mine, found, seen);
+      return found;
+    }
+    const record = value as Record<string, unknown>;
+    const here = typeof record.fileName === "string" ? record.fileName === FILE : mine;
+    if (here && typeof record.start === "number" && typeof record.length === "number") {
+      found.push({ start: record.start, length: record.length });
+    }
+    for (const one of Object.values(record)) spansIn(one, here, found, seen);
+    return found;
+  }
+
+  /**
+   * **`contextSpan`, which one member of this family forgot.**
+   *
+   * A highlight, a reference and a definition each carry two spans: `textSpan`, the name itself, and
+   * `contextSpan`, the statement an editor shows around it. `elsewhere` and `findReferences` map
+   * both; `getDocumentHighlights` mapped only the first. Measured on a file of 103 characters:
+   *
+   *     at 6    text 6+1     context 948+12
+   *     at 19   text 19+1    context 961+64
+   *
+   * The name came home and the context stayed in the virtual copy, a thousand characters past the
+   * end of the author's file — where the preamble lives. What an editor does with that is read a
+   * range that is not there.
+   */
+  test("a highlight's contextSpan comes home too, not just its textSpan", () => {
+    const { service, source } = editor(
+      `const n = 1;\nconst a = <div className={@@( color: red; )}>x</div>;\nconst m = n;\nexport default [a, m];\n`,
+    );
+
+    const contexts = [];
+    for (let at = 0; at <= source.length; at++) {
+      for (const one of service.getDocumentHighlights(FILE, at, [FILE]) ?? []) {
+        for (const span of one.highlightSpans) if (span.contextSpan !== undefined) contexts.push(span.contextSpan);
+      }
+    }
+
+    // There must BE some, or this asserts nothing.
+    expect(contexts.length).toBeGreaterThan(0);
+    expect(contexts.filter((one) => one.start + one.length > source.length)).toEqual([]);
+  });
+
+  test.each(SHAPES)("%s", (_what, fixture) => {
+    const { service, source } = editor(fixture);
+    const asked: ts.TextSpan[] = [];
+
+    const fromMethod = new Map<string, ts.TextSpan[]>();
+    const note = (name: string, spans: ts.TextSpan[]) => {
+      for (const one of spans) (fromMethod.get(name) ?? fromMethod.set(name, []).get(name)!).push(one);
+      void 0;
+      return spans;
+    };
+    void note;
+    for (let at = 0; at <= source.length; at++) {
+      asked.push(
+        ...note("getDefinitionAtPosition", spansIn(service.getDefinitionAtPosition(FILE, at), true)),
+        ...note("getReferencesAtPosition", spansIn(service.getReferencesAtPosition(FILE, at), true)),
+        ...note("getDocumentHighlights", spansIn(service.getDocumentHighlights(FILE, at, [FILE]), true)),
+        ...note("getSmartSelectionRange", spansIn(service.getSmartSelectionRange(FILE, at), true)),
+        ...note("getBraceMatchingAtPosition", spansIn(service.getBraceMatchingAtPosition(FILE, at), true)),
+        ...note("getNameOrDottedNameSpan", spansIn(service.getNameOrDottedNameSpan(FILE, at, at), true)),
+        ...note("getSpanOfEnclosingComment", spansIn(service.getSpanOfEnclosingComment(FILE, at, false), true)),
+        ...note("getDefinitionAndBoundSpan", spansIn(service.getDefinitionAndBoundSpan(FILE, at), true)),
+        ...note("getSignatureHelpItems", spansIn(service.getSignatureHelpItems(FILE, at, undefined), true)),
+        ...note(
+          "getCompletionsAtPosition",
+          spansIn(service.getCompletionsAtPosition(FILE, at, undefined, undefined), true),
+        ),
+      );
+    }
+    asked.push(
+      ...note("getOutliningSpans", spansIn(service.getOutliningSpans(FILE), true)),
+      ...note("getNavigationTree", spansIn(service.getNavigationTree(FILE), true)),
+      ...note("getNavigationBarItems", spansIn(service.getNavigationBarItems(FILE), true)),
+      ...note("getSemanticDiagnostics", spansIn(service.getSemanticDiagnostics(FILE), true)),
+      ...note("getSuggestionDiagnostics", spansIn(service.getSuggestionDiagnostics(FILE), true)),
+    );
+
+    // The sweep has to have ASKED something, or "no span escaped" is a claim about an empty list.
+    expect(asked.length).toBeGreaterThan(20);
+    const bad: string[] = [];
+    for (const [name, spans] of fromMethod) {
+      for (const one of spans) {
+        if (one.start < 0 || one.length < 0 || one.start + one.length > source.length) {
+          bad.push(`${name} ${one.start}+${one.length} > ${source.length}`);
+        }
+      }
+    }
+    // Named in the failure rather than written to a file: the method is what a reader needs, and it
+    // is what took three passes to learn while this was being written.
+    expect([...new Set(bad)]).toEqual([]);
+  });
+});
+
 describe("the typed rules, in the editor", () => {
   test("a style prop nobody uses is reported where it is declared", () => {
     const marked =
