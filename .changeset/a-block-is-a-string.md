@@ -29,9 +29,9 @@ What went with it:
   what that is now.
 - **`StyleMap`, `StyleEntry`, `StyleBlock`, `HoleValues`, `StyleVarValue`** — the shapes of a value
   that carried values.
-- In `@ramonda/core`: `applyCssBlock` and everything it did with custom properties, and the two
-  runtime diagnostics about them, **`RMD062`** and **`RMD063`**. `RMD064` stays and says what a block
-  is now.
+- In `@ramonda/core`: `applyCssBlock` and everything it did with custom properties, and the three
+  runtime diagnostics about them — **`RMD062`**, **`RMD063`** and **`RMD064`**. A block is a string
+  on `className` now, so there is nothing left for any of them to be about.
 
 **Two things a class string cannot carry, and each module registers what its own blocks need.** A
 table of all 98 shorthand families is 23 KB, 3.7 KB gzipped — larger than this whole runtime, and a

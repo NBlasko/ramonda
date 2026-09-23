@@ -1802,8 +1802,10 @@ function holeInANamedBlock(block: Block, at: string, findings: Finding[]): void 
           at: hole.at ?? item.valueAt ?? item.at ?? 0,
           length: hole.length ?? 1,
           message:
-            `a hole cannot go in \`@@${at}( … )\` — a hole is a custom property on an ELEMENT, and ` +
-            `this names something the whole stylesheet uses.`,
+            `a hole cannot go in \`@@${at}( … )\` — this names something the whole stylesheet uses, ` +
+            `and there is no element here for a value to come from. Declare the value with ` +
+            `\`@@property( … )\`, read it as \`var({name})\` inside this site, and set it on the ` +
+            `element that uses it.`,
         });
       }
     }
@@ -3101,9 +3103,9 @@ function gluedHole(item: Declaration, findings: Finding[]): void {
       at: part.at ?? item.valueAt ?? item.at ?? 0,
       length: part.length ?? Math.max(1, (item.end ?? 0) - (item.valueAt ?? 0)),
       message:
-        "a hole becomes one custom property, and text written against it is not part of that value — " +
-        "`{n}px` becomes `var(--…)px`, which computes to nothing and takes any earlier declaration " +
-        "of the property with it. Put the unit inside the hole, or write `calc({n} * 1px)`.",
+        "text written against a hole is not part of its value — `{n}px` becomes `var(--…)px`, which " +
+        "computes to nothing and takes any earlier declaration of the property with it. Put the unit " +
+        "inside the hole, or write `calc({n} * 1px)`.",
     });
   }
 }

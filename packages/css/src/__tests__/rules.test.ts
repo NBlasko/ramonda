@@ -273,10 +273,10 @@ describe("the same declaration written twice", () => {
   });
 });
 
-describe("a hole where a custom property cannot go", () => {
+describe("a hole where the stylesheet needs text", () => {
   /**
-   * The rule that keeps the design honest. A custom property holds a VALUE, so a hole cannot be a
-   * property name, a selector, or a whole declaration.
+   * The rule that keeps the design honest. A property name, a selector and a frame are TEXT by the
+   * time a stylesheet is written, so a hole cannot be one — and a declaration needs a property.
    *
    * The build refuses these outright — there is no correct compilation — so this exists to say it
    * FIRST: in an editor, while it is being typed, rather than at the end of a build.
@@ -290,7 +290,26 @@ describe("a hole where a custom property cannot go", () => {
 
     expect(rest).toEqual([]);
     expect(only.rule).toBe("hole-out-of-place");
-    expect(only.message).toContain("value");
+  });
+
+  /**
+   * **The advice has to name a door that is OPEN**, and it did not.
+   *
+   * It read *a custom property holds a value, so write `property: {…}` and put the choice inside
+   * it* — written when a hole in a declaration compiled to a custom property on the element. A
+   * runtime value in a declaration is refused everywhere now, so following that sentence moved
+   * somebody from this rule to `hole-not-allowed`. Measured, all three spellings in one run:
+   *
+   *     @@( {pick}; )             a hole cannot be a whole declaration
+   *     @@( color: {pick}; )      hole-not-allowed
+   *     @@( color: var({A}); )    clean
+   */
+  test("and the advice names what works, not the next refusal", () => {
+    const [only] = check(`  {cond ? "display:flex" : ""};`);
+
+    expect(only.message).toContain("@@property");
+    expect(only.message).toContain("match");
+    expect(only.message).not.toContain("write `property: {…}`");
   });
 
   test("and a hole in a value is where a hole at least PARSES, whatever else is said about it", () => {
