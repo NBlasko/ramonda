@@ -84,7 +84,22 @@ function blocksIn(file) {
   for (const match of text.matchAll(pattern)) {
     const [, lang, attrs, code] = match;
     if (!CHECKED.has(lang)) continue;
-    if (code.trim().split("\n").length < 2) continue;
+    /**
+     * A ONE-LINE fence is a fragment, not a program — and it is kept rather than dropped.
+     *
+     * It used to be a bare `continue`, the only skip in this file with no reason written beside it,
+     * and it took the fence out of BOTH halves. Two of them carry an `expect-report`, which says a
+     * rule fires on them; nothing ever asked. Worse, the stale-marker check at the foot of this file
+     * walks `units`, so a marker on a dropped fence was invisible in both directions — never
+     * verified, and never reported as silencing nothing. A check with a hole of exactly the shape it
+     * exists to close.
+     *
+     * So a fragment is a unit that the TYPE half leaves out. `<Row item={item} />` cannot be a
+     * program — `Row` and `item` are nobody's — which is what the skip was really about. The CSS
+     * rules need no program, so a one-liner holding a block is checked like any other, and a marker
+     * that silences nothing is reported by the check that already exists for it.
+     */
+    const fragment = code.trim().split("\n").length < 2;
     // ```ts expect-error — a block that shows what a MISTAKE looks like. The bguard page teaches
     // that `ctx.sibling((row) => row.kynd)` does not compile; reporting it would be reporting the
     // lesson. markdown-it hands the language and the attributes separately, so the marker costs no
@@ -120,7 +135,7 @@ function blocksIn(file) {
     // later, so the first example is reported and is not wrong. Naming the rule keeps every OTHER
     // rule live on the block, which is the difference between a gate and a gate people switch off.
     // Several rules are separated by `+`.
-    out.push({ code, line, provides, expectReport: reportsAllowedBy(attrs) });
+    out.push({ code, line, provides, fragment, expectReport: reportsAllowedBy(attrs) });
   }
   return out;
 }
@@ -659,6 +674,8 @@ for (const file of files) {
       ambient,
       /** What this page's `module:` fences declared, so the CSS rules can resolve an import. */
       provided,
+      /** A one-liner: the CSS rules read it, the type check cannot — see `blocksIn`. */
+      fragment: block.fragment,
       expectReport: block.expectReport,
     });
   });
@@ -834,7 +851,10 @@ for (const group of groups.values()) {
     byUnit.set(unit, list);
   }
 
-  const program = ts.createProgram([globalsFile, ...ambientFiles, ...group.units.map((u) => u.path)], options);
+  const program = ts.createProgram(
+    [globalsFile, ...ambientFiles, ...group.units.filter((unit) => !unit.fragment).map((u) => u.path)],
+    options,
+  );
   for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
     const source = diagnostic.file;
     if (!source) continue;
@@ -922,9 +942,13 @@ if (selftest) {
 
 const total = [...byUnit.values()].reduce((n, list) => n + list.length, 0);
 
+const fragments = units.filter((unit) => unit.fragment).length;
 const skipped =
   (unparseable.length === 0 ? "" : `, ${unparseable.length} not standalone code and skipped`) +
-  (expected.length === 0 ? "" : `, ${expected.length} marked as not one program`);
+  (expected.length === 0 ? "" : `, ${expected.length} marked as not one program`) +
+  // Said out loud rather than left to be inferred: a one-liner is read by the CSS rules and not by
+  // the type check, and a summary that counted it with the rest would claim more than it did.
+  (fragments === 0 ? "" : `, ${fragments} one-liners read by the CSS rules only`);
 
 const stale = units.filter(
   (unit) =>

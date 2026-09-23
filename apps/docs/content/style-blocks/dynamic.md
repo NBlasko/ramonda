@@ -33,6 +33,8 @@ generates one, so it cannot collide with anything and cannot be mistyped.
 ## Reading it
 
 ```tsx
+const width = @@property( syntax: "<percentage>"; initial-value: 0%; inherits: false; );
+
 const bar = @@( height: 8px; background: $.color.accent; width: var({width}); );
 ```
 
