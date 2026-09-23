@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
 import { BREADTH_LAYERS, LAYER_ORDER, layerPathFor } from "../compiler/flatten";
+import { forget, mergeClassNames, shorthands } from "../merge";
 
 /**
  * The layer a rule lands in, from the same function the sheet uses.
@@ -346,6 +347,48 @@ describe("the layers", () => {
     // Every breadth an unconditional rule can have, and one for everything conditional.
     expect(declared.match(/ramonda\.u/g)).toHaveLength(BREADTH_LAYERS.length);
     expect(declared).toContain("ramonda.c;");
+  });
+
+  /**
+   * **A longhand's layer comes after its shorthand's, which is what decides between two classes an
+   * element really carries.**
+   *
+   * The merge clears in one direction only: a `padding` written after a `padding-left` takes it
+   * away, and a `padding-left` written after a `padding` does NOT — measured, the element keeps
+   * `r-p-8px r-pl-40px`. Both selectors are one class, so specificity is a tie at (0,1,0) and the
+   * order of names in a `class` attribute decides nothing. The LAYER is the whole answer.
+   *
+   * Nothing asserted it. The layers are asserted to exist, to be declared whole, and to separate a
+   * conditional rule from an unconditional one — but no test compared two breadths, which is the
+   * property every reuse in this package rests on.
+   *
+   * Asked of the index rather than the name, so this is about the ordering rather than about the
+   * generated data — and of three families, because `border-left-color` under `border-left` under
+   * `border` is where a single comparison would not have been enough.
+   */
+  test.each([
+    ["padding", "padding-left"],
+    ["margin", "margin-inline"],
+    ["margin-inline", "margin-left"],
+    ["border", "border-left"],
+    ["border-left", "border-left-color"],
+  ])("`%s` is in an earlier layer than `%s`", (broad, narrow) => {
+    const at = (property: string) => BREADTH_LAYERS.indexOf(layerPathFor({ property })[0].slice(1));
+
+    expect(at(broad)).toBeLessThan(at(narrow));
+  });
+
+  /**
+   * And the pair really does land on one element, or the ordering above would be a claim about
+   * something that never happens.
+   */
+  test("and both classes really are on the element, so the layer has something to decide", () => {
+    forget();
+    shorthands({ p: ["pl", "pr", "pt", "pb"] });
+
+    expect(mergeClassNames("r-p-8px", "r-pl-40px").split(" ").sort()).toEqual(["r-p-8px", "r-pl-40px"]);
+    // The other direction is the merge's job, not the layer's: the shorthand clears what it covers.
+    expect(mergeClassNames("r-pl-40px", "r-p-8px")).toBe("r-p-8px");
   });
 
   /**
