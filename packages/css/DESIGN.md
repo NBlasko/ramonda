@@ -3997,3 +3997,140 @@ it is the same shape the dev-server harness already records for chokidar.
 mistake that harness note records making once already: *the first repair was a longer wait, which is
 what one reaches for when the cause is a guess. It made the window smaller and left the race.* If it
 returns, the thing to measure first is whether shiki's registry is safe to share across tests at all.
+
+## A published package meets an application — the cascade across a version boundary
+
+**Measured 2026-09-23, in Chromium, against real stylesheets from the real `Sheet`. NOT built.**
+
+The vite plugin skips `node_modules` (`vite.ts:258`, `vite.ts:415`), so a library that uses
+`@ramonda/css` ships its own compiled CSS and two stylesheets meet in one document. That is the only
+place any of this bites: inside one project, every measurement agrees with hand-written CSS in both
+write orders.
+
+### The fault
+
+A layer name is global to the document, and the name is an INDEX into `BREADTHS` — a list derived
+from the generated shorthand table (18 distinct counts today: `559 53 25 21 20 16 15 12 11 10 8 7 6
+5 4 3 2 0`, with gaps at 9, 13, 14). A CSS release that changes how many DISTINCT counts exist
+renumbers everything below the change.
+
+Worse, the two statements then differ in LENGTH. CSS fixes the order on the first statement it sees
+and can only APPEND an unseen name to the END, past `ramonda.c`. Measured, one version apart:
+
+```
+same version, library first        blue   ok
+same version, app first            blue   ok
+one version apart, library first   RED    wrong
+one version apart, app first       blue   ok
+```
+
+Concretely: a `Button` whose block carries `@media (min-width: 40rem) { padding-left: 20px }` loses
+to an application's unconditional `padding-left: 4px`, and the media query never runs. Nothing
+reports it, and which stylesheet loads first is the bundler's choice.
+
+### What the layers are for, and why this cannot be dodged
+
+Measured against hand-written CSS, both directions agree:
+
+```
+padding then padding-left   hand-written 4px    ramonda 4px
+padding-left then padding   hand-written 10px   ramonda 10px
+```
+
+Write order is settled by `mergeClassNames` (a later shorthand CLEARS its longhands); the LAYER is
+consulted only when both classes survive. So the layer is not a new rule — it is what keeps CSS's
+own answer from depending on which file the bundler put first.
+
+Panda CSS has no version-skew problem because its five names (`reset, base, tokens, recipes,
+utilities`) are semantic and never grow — but it cannot order a shorthand against a longhand at all,
+calls that a *known limitation*, and ships a `prefer-longhand-properties` lint rule instead. StyleX
+avoids it the other way: the application transforms every StyleX package in `node_modules`, so there
+is one table. Nobody else derives layer names from a generated CSS table, which is why nobody else
+has this problem.
+
+Splitting every shorthand into longhands would remove the need for breadth layers — measured, the
+merge alone then answers both directions — but it does not scale: `padding` is 4 classes (9 B → 39 B
+of class attribute), `border` is 17, `font` is 20 (199 B), and `lightningcss` does not expand
+shorthands, so each family's splitter would be hand-written. The families that are hardest to split
+(`background`, `animation`, `font`, `grid`) are exactly the ones authors combine with longhands.
+
+### The decision: a self-describing marker, and the application remaps
+
+The package's CSS passes through the application's bundler when the application imports it, and the
+plugin already has a `transform` hook. So the emitted CSS carries what its layer names MEAN:
+
+```css
+/*! ramonda-css breadths=559,53,25,21,20,16,15,12,11,10,8,7,6,5,4,3,2,0 */
+@layer ramonda.u00,…,ramonda.u17,ramonda.c;
+```
+
+~50 bytes. On a foreign stylesheet whose marker does not match, the plugin rewrites the layer names
+into the application's own numbering, and the bundle carries ONE numbering. Skew cannot survive.
+
+**A marker carrying the MEANING rather than a version number**, because a version number needs a
+history of every past table — and a package built by a NEWER `@ramonda/css` than the application is
+a history the application does not have. The breadth list translates in both directions with no
+lookup.
+
+Two limits, both accepted:
+
+- **The CSS must pass through the application's build.** An `import` does; a `<link>` to a CDN does
+  not.
+- **A package published before the marker exists does not carry one.** The plugin can only assume
+  the current table and say so. This is a reason to ship the marker before anyone publishes.
+
+### For the `<link>` case: name the layer by what it COVERS
+
+Where no remap can happen, the name must not be a position. Measured over 1068 covering pairs: if
+`S` covers `L` then `count(S) > count(L)` in EVERY version, because `S` covers what `L` covers plus
+`L` itself. All 1068 hold but six, and those six are aliases (`gap`/`grid-gap`,
+`-webkit-border-before`/`border-block-start`, `-webkit-mask-position`/`mask-position`) — one property
+under two names, to be treated as one.
+
+So the name becomes the count, over a fully pre-declared descending range, which every version emits
+identically:
+
+```css
+@layer ramonda.u1023,ramonda.u1022,…,ramonda.u0001,ramonda.u0000;
+```
+
+`1024` names cost 2152 B gzipped, once per page (esbuild merges identical layer blocks); 560 cost
+1156 B. Measured against a five-year-old package, both load orders, both directions, with the counts
+drifted: all correct.
+
+**The residual flaw, measured:** the tightest margin is 2, across 86 pairs — `background-position`
+(2) over `background-position-x` (0). It breaks only if a LEAF gains two sub-properties while an old
+package stays frozen. Today's scheme breaks on the first change to the set of distinct counts, and
+takes every family with it; this one takes only the family that moved.
+
+**Scaling the name by 1000** (`padding` → `u010000`) does not widen that margin — the failure
+condition is unchanged — but it buys what closes it: a UNIFORM SHIFT, and no table of exceptions.
+When the breadth table changes, the whole new assignment moves one place toward the STRONGER end.
+
+Measured, `background-position` (2) over `background-position-x` (0) with the leaf grown to 2:
+
+```
+no shift, package first     4px    ok
+no shift, app first         10px   wrong     ← one layer, source order decides
+shift toward stronger       4px    ok, both load orders
+shift toward weaker         10px   wrong, both
+```
+
+The old package holds `background-position` at 2000; the new world puts `background-position-x` at
+1999, which outranks it, and the old package's own leaf at 0 still outranks the new
+`background-position` at 3999. Relative order inside each version is untouched, and everything new
+clears everything old that it has to. The direction is "toward stronger", which with a descending
+statement (largest count declared first) is minus one; flipping the scale would make it literally
+plus one. At a scale of 1000 that is a thousand shifts per unit.
+
+So the rule is one line, with nothing to remember: **when the table changes, shift the whole
+assignment one place.**
+
+### Where this stands
+
+Nothing is built. The order to build it in:
+
+1. the self-describing marker and the remap in the vite plugin — smallest, and the only piece that
+   helps a package that is already published;
+2. count-based names over a pre-declared range, for stylesheets no build can reach;
+3. the hand-written override table, the first time a property's count actually moves.
