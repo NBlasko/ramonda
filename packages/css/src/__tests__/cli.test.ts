@@ -33,7 +33,7 @@ function project(card: string): string {
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(
     join(root, "src", "jsx.d.ts"),
-    `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
   );
   writeFileSync(join(root, "src", "Card.tsx"), card);
   writeFileSync(
@@ -76,7 +76,9 @@ describe("the bin", () => {
   });
 
   test("says what it checked, and exits 0", () => {
-    const { output, status } = run(project(`const a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n`));
+    const { output, status } = run(
+      project(`const a = <div className={@@( display: flex; )}>x</div>;\nexport default a;\n`),
+    );
 
     expect(status).toBe(0);
     expect(output).toContain("[ramonda-css]");
@@ -85,7 +87,7 @@ describe("the bin", () => {
 
   test("names the fault at the author's own line, and exits 1", () => {
     const { output, status } = run(
-      project(`const a = (\n  <div css={@@(\n    dsiplay: flex;\n  )}>x</div>\n);\nexport default a;\n`),
+      project(`const a = (\n  <div className={@@(\n    dsiplay: flex;\n  )}>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);
@@ -102,7 +104,7 @@ describe("the bin", () => {
    */
   test("a block it cannot read is reported first, and exits 1", () => {
     const { output, status } = run(
-      project(`const a = (\n  <div css={@@(\n    {name}: 24px;\n  )}>x</div>\n);\nexport default a;\n`),
+      project(`const a = (\n  <div className={@@(\n    {name}: 24px;\n  )}>x</div>\n);\nexport default a;\n`),
     );
 
     expect(status).toBe(1);
@@ -157,12 +159,12 @@ describe("--stdin-file-path", () => {
    * before, and the file they disagreed about was the ordinary one.
    */
   test("formats the text it was given and writes nothing else", () => {
-    const source = `const a = <div   css={@@(\n  display: flex;\n)}>x</div>;\nexport default a;\n`;
+    const source = `const a = <div   className={@@(\n  display: flex;\n)}>x</div>;\nexport default a;\n`;
     const { output, status } = through(source);
 
     expect(status).toBe(0);
     expect(output).toBe(
-      `const a = (\n  <div\n    css={@@(\n      display: flex;\n    )}\n  >\n    x\n  </div>\n);\nexport default a;\n`,
+      `const a = (\n  <div\n    className={@@(\n      display: flex;\n    )}\n  >\n    x\n  </div>\n);\nexport default a;\n`,
     );
   });
 
@@ -211,7 +213,7 @@ describe("a file bigger than a pipe", () => {
 
   test("comes back whole, not cut at 64KB", () => {
     const text =
-      `const a = <div css={@@( display: flex; )}>x</div>;\n` +
+      `const a = <div className={@@( display: flex; )}>x</div>;\n` +
       Array.from({ length: LINES }, (_, index) => `export const n${index} = ${index};`).join("\n") +
       "\n";
 
@@ -295,7 +297,7 @@ describe("an argument that is not a project", () => {
   }
 
   test("a source file is answered by saying what this takes", () => {
-    const { output, status } = runWith(project(`const a = <div css={@@( display: flex; )}>x</div>;\n`), [
+    const { output, status } = runWith(project(`const a = <div className={@@( display: flex; )}>x</div>;\n`), [
       "src/Card.tsx",
     ]);
 
@@ -643,7 +645,9 @@ describe("`explain`", () => {
  */
 describe("what a failing run says about blocks", () => {
   test("it explains the mapping when a block is involved", () => {
-    const { output, status } = run(project(`const a = <div css={@@( dsiplay: flex; )}>x</div>;\nexport default a;\n`));
+    const { output, status } = run(
+      project(`const a = <div className={@@( dsiplay: flex; )}>x</div>;\nexport default a;\n`),
+    );
 
     expect(status).toBe(1);
     expect(output).toContain("carry a style block");

@@ -21,7 +21,7 @@ import { mergeClassNames, pick } from "../merge";
 
 /** The parts of the first declaration's value. */
 function parts(css: string): readonly ValuePart[] {
-  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const source = `<div className={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   const { block } = readBlock(source, site.open, "Card.tsx", { tolerant: true });
   const [first] = block.items;
@@ -159,7 +159,7 @@ describe("what a match does at run time", () => {
 
 describe("what a match may not hold", () => {
   const rules = (css: string) => {
-    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
     const [site] = findBlocks(source);
     return checkBlock(readBlock(source, site.open, "Card.tsx", { tolerant: true }).block).map((one) => one.rule);
   };

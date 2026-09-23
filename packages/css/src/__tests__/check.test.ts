@@ -21,7 +21,7 @@ const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const JSX_TYPES = `
 declare namespace JSX {
   interface IntrinsicElements {
-    div: { className?: string; css?: unknown; children?: unknown };
+    div: { id?: string; className?: string; css?: unknown; children?: unknown };
   }
   interface Element { readonly _brand: unique symbol }
 }
@@ -96,7 +96,7 @@ describe("a file that only looked like it held a block", () => {
 describe("a project that is right", () => {
   test("reports nothing, and says how much of it carries a block", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div className="lead" css={@@(\n    display: flex;\n    gap: 8px;\n  )}>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div id="lead" className={@@(\n    display: flex;\n    gap: 8px;\n  )}>x</div>\n);\nexport default a;\n`,
       "Plain.tsx": `const b = <div>x</div>;\nexport default b;\n`,
     });
 
@@ -116,7 +116,7 @@ describe("a project that is right", () => {
         `const accent = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: #10b981;\n);\n` +
         `export const tint = (value: string) => ({ [accent]: value });\n` +
         `export class Card {\n  render() {\n` +
-        `    return <div css={@@( border-left: 4px solid var({accent}); )}>x</div>;\n` +
+        `    return <div className={@@( border-left: 4px solid var({accent}); )}>x</div>;\n` +
         `  }\n}\n`,
     });
 
@@ -127,7 +127,7 @@ describe("a project that is right", () => {
 describe("a project that is not", () => {
   test("a property typo is reported at the author's own line and column", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div css={@@(\n    dsiplay: flex;\n  )}>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div className={@@(\n    dsiplay: flex;\n  )}>x</div>\n);\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -154,7 +154,7 @@ describe("a project that is not", () => {
     ["an open one", "color"],
   ])("a hole in %s is reported once, by us, wherever its type would have landed", (_what, property) => {
     const report = check({
-      "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div css={@@( ${property}: {this.wide}; )}>x</div>;\n  }\n}\n`,
+      "Card.tsx": `export class Card {\n  wide = true;\n  render() {\n    return <div className={@@( ${property}: {this.wide}; )}>x</div>;\n  }\n}\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -169,7 +169,7 @@ describe("a project that is not", () => {
    */
   test("an ordinary type error in a file with a block is reported too", () => {
     const report = check({
-      "Card.tsx": `const n: number = "no";\nconst a = <div css={@@( display: flex; )}>x</div>;\nexport default [n, a];\n`,
+      "Card.tsx": `const n: number = "no";\nconst a = <div className={@@( display: flex; )}>x</div>;\nexport default [n, a];\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -179,7 +179,7 @@ describe("a project that is not", () => {
 
   test("and one in a file with no block at all", () => {
     const report = check({
-      "Card.tsx": `const a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const a = <div className={@@( display: flex; )}>x</div>;\nexport default a;\n`,
       "Plain.ts": `export const n: number = "no";\n`,
     });
 
@@ -195,7 +195,7 @@ describe("a project that is not", () => {
    */
   test("every fault in one block is reported at once, each at its own line", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div css={@@(\n    dsiplay: flex;\n    position: statik;\n    &:hover {\n      colr: red;\n    }\n  )}>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div className={@@(\n    dsiplay: flex;\n    position: statik;\n    &:hover {\n      colr: red;\n    }\n  )}>x</div>\n);\nexport default a;\n`,
     });
 
     expect(report.findings.map((f) => f.line)).toEqual([3, 4, 6]);
@@ -206,8 +206,8 @@ describe("a project that is not", () => {
 
   test("two files each report their own", () => {
     const report = check({
-      "One.tsx": `const a = <div css={@@( dsiplay: flex; )}>x</div>;\nexport default a;\n`,
-      "Two.tsx": `const b = <div css={@@( positon: absolute; )}>x</div>;\nexport default b;\n`,
+      "One.tsx": `const a = <div className={@@( dsiplay: flex; )}>x</div>;\nexport default a;\n`,
+      "Two.tsx": `const b = <div className={@@( positon: absolute; )}>x</div>;\nexport default b;\n`,
     });
 
     expect(report.findings).toHaveLength(2);
@@ -222,7 +222,7 @@ describe("the CSS rules, beside the type errors", () => {
    */
   test("a fault only the rules can see is reported", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div css={@@(\n    display: flexx;\n  )}>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div className={@@(\n    display: flexx;\n  )}>x</div>\n);\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -233,7 +233,7 @@ describe("the CSS rules, beside the type errors", () => {
 
   test("both kinds arrive in the order a person reads the file", () => {
     const report = check({
-      "Card.tsx": `const n: number = "no";\nconst a = (\n  <div css={@@(\n    display: flexx;\n  )}>x</div>\n);\nexport default [n, a];\n`,
+      "Card.tsx": `const n: number = "no";\nconst a = (\n  <div className={@@(\n    display: flexx;\n  )}>x</div>\n);\nexport default [n, a];\n`,
     });
 
     expect(report.findings.map((finding) => [finding.line, finding.code])).toEqual([
@@ -249,7 +249,7 @@ describe("the CSS rules, beside the type errors", () => {
    */
   test("and the compiler's word is dropped where a rule of ours said it better", () => {
     const report = check({
-      "Card.tsx": `const a = (\n  <div css={@@(\n    flex-dirction: row;\n  )}>x</div>\n);\nexport default a;\n`,
+      "Card.tsx": `const a = (\n  <div className={@@(\n    flex-dirction: row;\n  )}>x</div>\n);\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -312,7 +312,7 @@ describe("a block that cannot be read at all", () => {
    */
   test("is reported alone, and nothing is type-checked", () => {
     const report = check({
-      "Card.tsx": `const n: number = "no";\nconst a = <div css={@@(\n  {name}: 24px;\n)}>x</div>;\nexport default [n, a];\n`,
+      "Card.tsx": `const n: number = "no";\nconst a = <div className={@@(\n  {name}: 24px;\n)}>x</div>;\nexport default [n, a];\n`,
     });
 
     expect(report.refused).toBe(true);
@@ -335,7 +335,7 @@ describe("a setup that would otherwise pass silently", () => {
     // types alone reported; since pass 6 the RULE reports a plain property name too — so the block
     // would carry a fault of its own and the count would stop being about the setup.
     const report = checkProject(
-      project({ "Card.tsx": `const a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n` }, null),
+      project({ "Card.tsx": `const a = <div className={@@( display: flex; )}>x</div>;\nexport default a;\n` }, null),
     );
 
     expect(report.findings).toHaveLength(1);
@@ -350,7 +350,7 @@ describe("a setup that would otherwise pass silently", () => {
 
     const report = checkProject(
       project(
-        { "Card.tsx": `const a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n` },
+        { "Card.tsx": `const a = <div className={@@( display: flex; )}>x</div>;\nexport default a;\n` },
         join(root, "empty.ts"),
       ),
     );
@@ -369,7 +369,7 @@ describe("a setup that would otherwise pass silently", () => {
   test("and it is reported once, whatever the project's size", () => {
     const files: Record<string, string> = {};
     for (let n = 0; n < 4; n++)
-      files[`C${n}.tsx`] = `const a${n} = <div css={@@( display: flex; )}>x</div>;\nexport default a${n};\n`;
+      files[`C${n}.tsx`] = `const a${n} = <div className={@@( display: flex; )}>x</div>;\nexport default a${n};\n`;
 
     const report = checkProject(project(files, null));
 
@@ -800,7 +800,7 @@ describe("a reference to a named site", () => {
 describe("a file whose first lines are directives", () => {
   test("`@ts-nocheck` switches the file off, block and all", () => {
     const report = check({
-      "Card.tsx": `// @ts-nocheck\nconst n: number = "no";\nconst a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `// @ts-nocheck\nconst n: number = "no";\nconst a = <div className={@@( display: flex; )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -808,7 +808,7 @@ describe("a file whose first lines are directives", () => {
 
   test("and it does not switch off a file that never asked", () => {
     const report = check({
-      "Card.tsx": `const n: number = "no";\nconst a = <div css={@@( display: flex; )}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const n: number = "no";\nconst a = <div className={@@( display: flex; )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -821,7 +821,7 @@ describe("a file whose first lines are directives", () => {
   test("a triple-slash reference still pulls its types in", () => {
     const report = check({
       "../outside/globals.d.ts": `declare const PLANTED: string;\n`,
-      "Card.tsx": `/// <reference path="../outside/globals.d.ts" />\nconst a = <div css={@@( display: flex; )}>{PLANTED}</div>;\nexport default a;\n`,
+      "Card.tsx": `/// <reference path="../outside/globals.d.ts" />\nconst a = <div className={@@( display: flex; )}>{PLANTED}</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -829,7 +829,7 @@ describe("a file whose first lines are directives", () => {
 
   test("a licence header above a block does not move anything", () => {
     const report = check({
-      "Card.tsx": `/*\n * Copyright somebody.\n */\nconst a = <div css={@@(\n  dsiplay: flex;\n)}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `/*\n * Copyright somebody.\n */\nconst a = <div className={@@(\n  dsiplay: flex;\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -847,7 +847,7 @@ describe("a file whose first lines are directives", () => {
 describe("a conditional group", () => {
   test("an ordinary condition is not a fault", () => {
     const report = check({
-      "Card.tsx": `class C {\n  off = false;\n  r() {\n    return <div css={@@( cursor: pointer; if ({this.off}) { cursor: not-allowed; } )}>x</div>;\n  }\n}\nexport default C;\n`,
+      "Card.tsx": `class C {\n  off = false;\n  r() {\n    return <div className={@@( cursor: pointer; if ({this.off}) { cursor: not-allowed; } )}>x</div>;\n  }\n}\nexport default C;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -855,7 +855,7 @@ describe("a conditional group", () => {
 
   test("and so is one that may be missing, which is the shape a prop has", () => {
     const report = check({
-      "Card.tsx": `declare const maybe: { a: 1 } | undefined;\nconst a = <div css={@@( if ({maybe}) { opacity: 0.5; } )}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const maybe: { a: 1 } | undefined;\nconst a = <div className={@@( if ({maybe}) { opacity: 0.5; } )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -865,22 +865,34 @@ describe("a conditional group", () => {
   test.each([
     [
       "a method that was not called",
-      `class C { off() {} r() { return <div css={@@( if ({this.off}) { opacity: 0.5; } )}>x</div>; } }`,
+      `class C { off() {} r() { return <div className={@@( if ({this.off}) { opacity: 0.5; } )}>x</div>; } }`,
     ],
-    ["an object", `declare const o: { a: 1 };\nconst a = <div css={@@( if ({o}) { opacity: 0.5; } )}>x</div>;`],
-    ["a promise", `declare const p: Promise<number>;\nconst a = <div css={@@( if ({p}) { opacity: 0.5; } )}>x</div>;`],
+    ["an object", `declare const o: { a: 1 };\nconst a = <div className={@@( if ({o}) { opacity: 0.5; } )}>x</div>;`],
+    [
+      "a promise",
+      `declare const p: Promise<number>;\nconst a = <div className={@@( if ({p}) { opacity: 0.5; } )}>x</div>;`,
+    ],
     // **Measured and MISSED before this line existed.** The check asked whether the type was an
     // object, and a literal is not one — so every one of these passed while never being false.
-    ["a string literal", `declare const s: "yes";\nconst a = <div css={@@( if ({s}) { opacity: 0.5; } )}>x</div>;`],
-    ["a union of them", `declare const s: "a" | "b";\nconst a = <div css={@@( if ({s}) { opacity: 0.5; } )}>x</div>;`],
-    ["a union of numbers", `declare const n: 1 | 2;\nconst a = <div css={@@( if ({n}) { opacity: 0.5; } )}>x</div>;`],
+    [
+      "a string literal",
+      `declare const s: "yes";\nconst a = <div className={@@( if ({s}) { opacity: 0.5; } )}>x</div>;`,
+    ],
+    [
+      "a union of them",
+      `declare const s: "a" | "b";\nconst a = <div className={@@( if ({s}) { opacity: 0.5; } )}>x</div>;`,
+    ],
+    [
+      "a union of numbers",
+      `declare const n: 1 | 2;\nconst a = <div className={@@( if ({n}) { opacity: 0.5; } )}>x</div>;`,
+    ],
     [
       "a template type that cannot be empty",
-      `declare const t: \`x\${string}\`;\nconst a = <div css={@@( if ({t}) { opacity: 0.5; } )}>x</div>;`,
+      `declare const t: \`x\${string}\`;\nconst a = <div className={@@( if ({t}) { opacity: 0.5; } )}>x</div>;`,
     ],
     [
       "an array, which is an object wearing a length",
-      `declare const xs: number[];\nconst a = <div css={@@( if ({xs}) { opacity: 0.5; } )}>x</div>;`,
+      `declare const xs: number[];\nconst a = <div className={@@( if ({xs}) { opacity: 0.5; } )}>x</div>;`,
     ],
   ])("%s is reported, because it is always truthy", (_what, code) => {
     const report = check({ "Card.tsx": `${code}\nexport {};\n` });
@@ -906,7 +918,7 @@ describe("a conditional group", () => {
     ["a comparison", "declare const n: number;", "n > 2"],
   ])("%s is allowed", (_what, declare, expression) => {
     const report = check({
-      "Card.tsx": `${declare}\nconst a = <div css={@@( if ({${expression}}) { opacity: 0.5; } )}>x</div>;\nexport {};\n`,
+      "Card.tsx": `${declare}\nconst a = <div className={@@( if ({${expression}}) { opacity: 0.5; } )}>x</div>;\nexport {};\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -914,7 +926,7 @@ describe("a conditional group", () => {
 
   test("a typo inside a group is the same fault it is outside one", () => {
     const report = check({
-      "Card.tsx": `declare const c: boolean;\nconst a = <div css={@@(\n  if ({c}) {\n    dsiplay: flex;\n  }\n)}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const c: boolean;\nconst a = <div className={@@(\n  if ({c}) {\n    dsiplay: flex;\n  }\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -929,7 +941,7 @@ describe("a conditional group", () => {
    */
   test("a wrong condition does not hide the faults under it", () => {
     const report = check({
-      "Card.tsx": `declare const o: { a: 1 };\nconst a = <div css={@@(\n  if ({o}) {\n    dsiplay: flex;\n    colr: red;\n  }\n)}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const o: { a: 1 };\nconst a = <div className={@@(\n  if ({o}) {\n    dsiplay: flex;\n    colr: red;\n  }\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(3);
@@ -940,7 +952,7 @@ describe("a conditional group", () => {
 describe("a spread", () => {
   test("of a block is not a fault", () => {
     const report = check({
-      "Card.tsx": `const base = @@( display: flex; );\nconst a = <div css={@@( ...{base}; opacity: 0.5; )}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const base = @@( display: flex; );\nconst a = <div className={@@( ...{base}; opacity: 0.5; )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -948,7 +960,7 @@ describe("a spread", () => {
 
   test("of something that is not a block is reported", () => {
     const report = check({
-      "Card.tsx": `declare const plain: { color: string };\nconst a = <div css={@@( ...{plain}; )}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const plain: { color: string };\nconst a = <div className={@@( ...{plain}; )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -957,7 +969,7 @@ describe("a spread", () => {
 
   test("and the fault lands on the expression the author wrote", () => {
     const report = check({
-      "Card.tsx": `declare const plain: string;\nconst a = <div css={@@(\n  display: flex;\n  ...{plain};\n)}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `declare const plain: string;\nconst a = <div className={@@(\n  display: flex;\n  ...{plain};\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings[0].line).toBe(4);
@@ -1006,7 +1018,7 @@ describe("a spread", () => {
  */
 describe("a runtime value in a declaration", () => {
   const held = (declaration: string, head = "") =>
-    check({ "Card.tsx": `${head}const a = <div css={@@(\n  ${declaration}\n)}>x</div>;\nexport default a;\n` });
+    check({ "Card.tsx": `${head}const a = <div className={@@(\n  ${declaration}\n)}>x</div>;\nexport default a;\n` });
 
   test.each([
     ["a whole value", "  color: {brand};", "declare const brand: string;\n"],
@@ -1065,7 +1077,7 @@ describe("a runtime value in a declaration", () => {
     const report = check({
       "Card.tsx":
         `const angle = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `const a = <div css={@@( {angle}: 45deg; transform: rotate(var({angle})); )}>x</div>;\nexport default a;\n`,
+        `const a = <div className={@@( {angle}: 45deg; transform: rotate(var({angle})); )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1088,12 +1100,12 @@ describe("the editor and the build, on the same file", () => {
   test.each([
     [
       "a spread inside a selector",
-      "const base = @@( color: red; );\nconst a = <div css={@@(\n  &:hover { ...{base}; }\n)}>x</div>;\nexport default a;\n",
+      "const base = @@( color: red; );\nconst a = <div className={@@(\n  &:hover { ...{base}; }\n)}>x</div>;\nexport default a;\n",
       "spread-out-of-place",
     ],
     [
       "a spread inside a `@media`",
-      "const base = @@( color: red; );\nconst a = <div css={@@(\n  @media print { ...{base}; }\n)}>x</div>;\nexport default a;\n",
+      "const base = @@( color: red; );\nconst a = <div className={@@(\n  @media print { ...{base}; }\n)}>x</div>;\nexport default a;\n",
       "spread-out-of-place",
     ],
     [
@@ -1118,7 +1130,7 @@ describe("the editor and the build, on the same file", () => {
     const report = check({
       "Card.tsx":
         `const base = @@( color: red; );\ndeclare const on: boolean;\ndeclare const w: number;\n` +
-        `const a = <div css={@@(\n${body}\n)}>x</div>;\nexport default a;\n`,
+        `const a = <div className={@@(\n${body}\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1162,7 +1174,7 @@ describe("the editor and the build, on the same file", () => {
   /** And a typo inside a bare selector is still the typo it was — the key changed, not the check. */
   test("a property typo inside a bare selector is still caught", () => {
     const report = check({
-      "Card.tsx": `const a = <div css={@@(\n  div { colr: red; }\n)}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const a = <div className={@@(\n  div { colr: red; }\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -1184,7 +1196,7 @@ describe("the editor and the build, on the same file", () => {
 describe("a variable nothing in the project sets", () => {
   test("is reported, at the name and with every way to fix it", () => {
     const report = check({
-      "Card.tsx": `const a = <div css={@@(\n  color: var(--brand);\n)}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const a = <div className={@@(\n  color: var(--brand);\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -1197,8 +1209,8 @@ describe("a variable nothing in the project sets", () => {
 
   test("a name ANOTHER file sets is fine, which is why this is asked here at all", () => {
     const report = check({
-      "Theme.tsx": `const t = <div css={@@(\n  --brand: #10b981;\n)}>x</div>;\nexport default t;\n`,
-      "Card.tsx": `const a = <div css={@@(\n  color: var(--brand);\n)}>x</div>;\nexport default a;\n`,
+      "Theme.tsx": `const t = <div className={@@(\n  --brand: #10b981;\n)}>x</div>;\nexport default t;\n`,
+      "Card.tsx": `const a = <div className={@@(\n  color: var(--brand);\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1213,8 +1225,8 @@ describe("a variable nothing in the project sets", () => {
       "Card.tsx":
         body === ""
           ? `const brand = @@property(\n  syntax: "<color>";\n  inherits: true;\n  initial-value: #10b981;\n);\n` +
-            `const a = <div css={@@(\n  color: var({brand});\n)}>x</div>;\nexport default [brand, a];\n`
-          : `const a = <div css={@@(\n${body}\n)}>x</div>;\nexport default a;\n`,
+            `const a = <div className={@@(\n  color: var({brand});\n)}>x</div>;\nexport default [brand, a];\n`
+          : `const a = <div className={@@(\n${body}\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1223,8 +1235,8 @@ describe("a variable nothing in the project sets", () => {
   /** The suggestion comes from every name in the project now, not from the one block's own. */
   test("a near miss in another file is offered", () => {
     const report = check({
-      "Theme.tsx": `const t = <div css={@@(\n  --accent: #10b981;\n)}>x</div>;\nexport default t;\n`,
-      "Card.tsx": `const a = <div css={@@(\n  color: var(--ackcent);\n)}>x</div>;\nexport default a;\n`,
+      "Theme.tsx": `const t = <div className={@@(\n  --accent: #10b981;\n)}>x</div>;\nexport default t;\n`,
+      "Card.tsx": `const a = <div className={@@(\n  color: var(--ackcent);\n)}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -1246,7 +1258,7 @@ describe("the type a block has", () => {
 
   test("and it still goes where a compiled value goes", () => {
     const report = check({
-      "Card.tsx": `const panel = @@( display: flex; );\nconst a = <div css={panel}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const panel = @@( display: flex; );\nconst a = <div className={panel}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1256,7 +1268,7 @@ describe("the type a block has", () => {
     const report = check({
       "Card.tsx":
         `const forged = { className: "r-x", properties: [], values: [] };\n` +
-        `const a = <div css={@@( ...{forged}; )}>x</div>;\nexport default a;\n`,
+        `const a = <div className={@@( ...{forged}; )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -1274,7 +1286,7 @@ describe("the type a block has", () => {
  * the file, they cannot disagree. See `configReader`.
  */
 describe("which config a file is checked against", () => {
-  const SOURCE = `const a = <div css={@@(\n  padding: 1em;\n)}>x</div>;\nexport default a;\n`;
+  const SOURCE = `const a = <div className={@@(\n  padding: 1em;\n)}>x</div>;\nexport default a;\n`;
 
   test("each package's own, inside one project", () => {
     const report = check({
@@ -1360,7 +1372,7 @@ describe("a block a prop can constrain", () => {
     `  gap?: "8px" | "16px";\n` +
     `  "&:hover"?: { color?: string }[];\n` +
     `};\n` +
-    `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div css={props.css}>x</div>; }\n`;
+    `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div className={props.css}>x</div>; }\n`;
 
   const calling = (block: string) => ({
     "Card.tsx": CARD,
@@ -1442,7 +1454,7 @@ describe("a block a prop can constrain", () => {
     const report = check({
       "Card.tsx":
         `const panel = @@( padding: 4px; display: flex; color: red; & > span { gap: 20px; } );\n` +
-        `const a = <div css={panel}>x</div>;\nexport default a;\n`,
+        `const a = <div className={panel}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1456,7 +1468,7 @@ describe("a block a prop can constrain", () => {
    */
   test("and an ordinary block's own faults are still reported", () => {
     const report = check({
-      "Card.tsx": `const panel = @@( colr: red; );\nconst a = <div css={panel}>x</div>;\nexport default a;\n`,
+      "Card.tsx": `const panel = @@( colr: red; );\nconst a = <div className={panel}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -1480,7 +1492,7 @@ describe("a state written as a tuple", () => {
     "Card.tsx":
       `import type { CssBlock } from "@ramonda/css/properties";\n` +
       `export type CardStyle = {\n  color?: string;\n  ${state}\n};\n` +
-      `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div css={props.css}>x</div>; }\n`,
+      `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div className={props.css}>x</div>; }\n`,
     "Use.tsx": `import { Card } from "./Card";\nconst a = <Card css={@@( color: red; )} />;\nexport default a;\n`,
   });
 
@@ -1518,7 +1530,7 @@ describe("a state written as a tuple", () => {
     const report = check({
       "Card.tsx":
         `export type Pair = { "&weird"?: [{ nothing?: string }] };\n` +
-        `const panel = @@( color: red; );\nconst a = <div css={panel}>x</div>;\nexport default a;\n`,
+        `const panel = @@( color: red; );\nconst a = <div className={panel}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1578,7 +1590,7 @@ describe("a state written as a tuple", () => {
         "Card.tsx":
           `import type { CssBlock } from "@ramonda/css/properties";\n` +
           `export interface CardStyle { color?: string;${state} }\n` +
-          `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div css={props.css}>x</div>; }\n`,
+          `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div className={props.css}>x</div>; }\n`,
       });
 
     expect(iface(` "&:hover"?: { color?: string }[];`).findings.map((one) => one.code)).toEqual([
@@ -1611,7 +1623,7 @@ describe("an allow-list written as an interface", () => {
   const card = (shape: string) => ({
     "Card.tsx":
       `import type { CssBlock } from "@ramonda/css/properties";\n${shape}` +
-      `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div css={props.css}>x</div>; }\n`,
+      `export function Card(props: { css?: CssBlock<CardStyle> }) { return <div className={props.css}>x</div>; }\n`,
   });
 
   test("is reported, and says to use a type", () => {
@@ -1640,7 +1652,7 @@ describe("an allow-list written as an interface", () => {
       "Card.tsx":
         `export interface Other { color?: string }\n` +
         `export type CardStyle = { color?: string };\n` +
-        `const panel = @@( color: red; );\nconst a = <div css={panel}>x</div>;\nexport default a;\n`,
+        `const panel = @@( color: red; );\nconst a = <div className={panel}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1664,7 +1676,7 @@ describe("a style prop nobody uses", () => {
     });
 
   test("a prop that takes a block and never reaches one is reported", () => {
-    const report = card(`  return <div css={@@( color: red; )}>x</div>;`);
+    const report = card(`  return <div className={@@( color: red; )}>x</div>;`);
 
     expect(report.findings).toHaveLength(1);
     expect(report.findings[0].code).toBe("style-prop-never-used");
@@ -1672,19 +1684,19 @@ describe("a style prop nobody uses", () => {
   });
 
   test("spread into a block, it is quiet", () => {
-    expect(card(`  return <div css={@@( color: red; ...{props.css}; )}>x</div>;`).findings).toEqual([]);
+    expect(card(`  return <div className={@@( color: red; ...{props.css}; )}>x</div>;`).findings).toEqual([]);
   });
 
   /** The false report the FORWARD walk gave, which is why the pass runs backward from the spread. */
   test("reached through a local, it is quiet", () => {
-    expect(card(`  const mine = props.css;\n  return <div css={@@( ...{mine}; )}>x</div>;`).findings).toEqual([]);
+    expect(card(`  const mine = props.css;\n  return <div className={@@( ...{mine}; )}>x</div>;`).findings).toEqual([]);
   });
 
   test("handed on to another component's style prop, it is quiet", () => {
     const report = check({
       "Inner.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `export function Inner(props: { titleCss?: CssBlock }) { return <div css={@@( ...{props.titleCss}; )}>x</div>; }\n`,
+        `export function Inner(props: { titleCss?: CssBlock }) { return <div className={@@( ...{props.titleCss}; )}>x</div>; }\n`,
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\nimport { Inner } from "./Inner";\n` +
         `export function Card(props: { titleCss?: CssBlock }) { return <Inner titleCss={props.titleCss} />; }\n`,
@@ -1700,11 +1712,11 @@ describe("a style prop nobody uses", () => {
    * quietly.
    */
   test("put straight on an element, it is quiet", () => {
-    expect(card(`  return <div css={props.css}>x</div>;`).findings).toEqual([]);
+    expect(card(`  return <div className={props.css}>x</div>;`).findings).toEqual([]);
   });
 
   test("used for something that is not a style, it is still reported", () => {
-    const report = card(`  console.log(props.css);\n  return <div css={@@( color: red; )}>x</div>;`);
+    const report = card(`  console.log(props.css);\n  return <div className={@@( color: red; )}>x</div>;`);
 
     expect(report.findings).toHaveLength(1);
     expect(report.findings[0].code).toBe("style-prop-never-used");
@@ -1718,7 +1730,7 @@ describe("a style prop nobody uses", () => {
     const used = check({
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `export function Card({ css }: { css?: CssBlock }) { return <div css={@@( ...{css}; )}>x</div>; }\n`,
+        `export function Card({ css }: { css?: CssBlock }) { return <div className={@@( ...{css}; )}>x</div>; }\n`,
     });
 
     expect(used.findings).toEqual([]);
@@ -1728,7 +1740,7 @@ describe("a style prop nobody uses", () => {
     const report = check({
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `export function Card({ css }: { css?: CssBlock }) { return <div css={@@( color: red; )}>x</div>; }\n`,
+        `export function Card({ css }: { css?: CssBlock }) { return <div className={@@( color: red; )}>x</div>; }\n`,
     });
 
     expect(report.findings).toHaveLength(1);
@@ -1745,7 +1757,7 @@ describe("a style prop nobody uses", () => {
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: CssBlock }) {\n` +
         `  const { css } = props;\n` +
-        `  return <div css={@@( ...{css}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...{css}; )}>x</div>;\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1770,7 +1782,7 @@ describe("a style prop nobody uses", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\nimport { Component } from "./base";\n` +
         `export class Card extends Component<{ css?: CssBlock }> {\n` +
-        `  render() { return <div css={@@( ...{this.props.css}; )}>x</div>; }\n}\n`,
+        `  render() { return <div className={@@( ...{this.props.css}; )}>x</div>; }\n}\n`,
     });
 
     expect(used.findings).toEqual([]);
@@ -1780,7 +1792,7 @@ describe("a style prop nobody uses", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\nimport { Component } from "./base";\n` +
         `export class Card extends Component<{ css?: CssBlock }> {\n` +
-        `  render() { return <div css={@@( color: red; )}>x</div>; }\n}\n`,
+        `  render() { return <div className={@@( color: red; )}>x</div>; }\n}\n`,
     });
 
     expect(unused.findings).toHaveLength(1);
@@ -1801,7 +1813,7 @@ describe("a style prop nobody uses", () => {
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: CssBlock }) {\n` +
         `  const { css: mine } = props;\n` +
-        `  return <div css={@@( ...{mine}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...{mine}; )}>x</div>;\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1813,7 +1825,7 @@ describe("a style prop nobody uses", () => {
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: CssBlock }) {\n` +
         `  const { css: mine } = props;\n` +
-        `  return <div css={@@( color: red; )}>{String(mine)}</div>;\n}\n`,
+        `  return <div className={@@( color: red; )}>{String(mine)}</div>;\n}\n`,
     });
 
     expect(report.findings.map((one) => one.code)).toEqual(["style-prop-never-used"]);
@@ -1824,7 +1836,7 @@ describe("a style prop nobody uses", () => {
     const report = check({
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `function wrap(b: CssBlock | undefined) { return <div css={@@( ...{b}; )}>y</div>; }\n` +
+        `function wrap(b: CssBlock | undefined) { return <div className={@@( ...{b}; )}>y</div>; }\n` +
         `export function Card(props: { css?: CssBlock }) { return wrap(props.css); }\n`,
     });
 
@@ -1838,7 +1850,7 @@ describe("a style prop nobody uses", () => {
         `export class Card {\n` +
         `  props!: { css?: CssBlock };\n` +
         `  get mine() { return this.props.css; }\n` +
-        `  render() { return <div css={@@( ...{this.mine}; )}>x</div>; }\n}\n`,
+        `  render() { return <div className={@@( ...{this.mine}; )}>x</div>; }\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1860,7 +1872,7 @@ describe("a style prop nobody uses", () => {
       "Card.tsx":
         `type CssBlock = { className: string };\n` +
         `export function Card(props: { css?: CssBlock }) { return <div className="c">x</div>; }\n`,
-      "Other.tsx": `const a = <div css={@@( color: red; )}>x</div>;\nexport default a;\n`,
+      "Other.tsx": `const a = <div className={@@( color: red; )}>x</div>;\nexport default a;\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1869,7 +1881,7 @@ describe("a style prop nobody uses", () => {
   /** The control that guards every other prop in every project: this rule speaks about blocks only. */
   test("a prop that is not a block is never mentioned", () => {
     const report = check({
-      "Card.tsx": `export function Card(props: { title?: string }) { return <div css={@@( color: red; )}>x</div>; }\n`,
+      "Card.tsx": `export function Card(props: { title?: string }) { return <div className={@@( color: red; )}>x</div>; }\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1882,7 +1894,7 @@ describe("a style prop the block overrides below the spread", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: CssBlock<${allows}> }) {\n` +
-        `  return <div css={@@( ${block} )}>x</div>;\n}\n`,
+        `  return <div className={@@( ${block} )}>x</div>;\n}\n`,
     });
 
   test("a shorthand below the spread clears what the caller may send", () => {
@@ -1913,7 +1925,7 @@ describe("a style prop the block overrides below the spread", () => {
     const report = check({
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `export function Card(props: { css?: CssBlock }) { return <div css={@@( ...{props.css}; padding: 8px; )}>x</div>; }\n`,
+        `export function Card(props: { css?: CssBlock }) { return <div className={@@( ...{props.css}; padding: 8px; )}>x</div>; }\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1933,7 +1945,7 @@ describe("a spread of something that may be absent", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: ${type} }) {\n` +
-        `  return <div css={@@( color: red; ...{props.css}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( color: red; ...{props.css}; )}>x</div>;\n}\n`,
     });
 
   test("an optional block spreads", () => {
@@ -1945,7 +1957,7 @@ describe("a spread of something that may be absent", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { on: boolean; css: CssBlock }) {\n` +
-        `  return <div css={@@( color: red; ...{props.on && props.css}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( color: red; ...{props.on && props.css}; )}>x</div>;\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -1992,7 +2004,7 @@ describe("a spread of something that may be absent", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { a: CssBlock; b: CssBlock }) {\n` +
-        `  return <div css={@@( ...{\`\${props.a} \${props.b}\`}; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...{\`\${props.a} \${props.b}\`}; )}>x</div>;\n}\n`,
     });
 
     const said = report.findings.map((one) => one.message).join("\n");
@@ -2059,7 +2071,7 @@ describe("a runtime value sent to a prop", () => {
     check({
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
-        `export function Card(props: { css?: CssBlock }) { return <div css={props.css}>x</div>; }\n`,
+        `export function Card(props: { css?: CssBlock }) { return <div className={props.css}>x</div>; }\n`,
       "Use.tsx":
         `import { Card } from "./Card";\n` +
         `class Host { brand = "red"; render() { return <Card css={@@( ${block} )} />; } }\n` +
@@ -2164,7 +2176,7 @@ describe("what counts as below the spread", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { on: boolean; css?: CssBlock<${allows}> }) {\n` +
-        `  return <div css={@@( ${block} )}>x</div>;\n}\n`,
+        `  return <div className={@@( ${block} )}>x</div>;\n}\n`,
     });
 
   const rules = (block: string) => card(block).findings.map((one) => one.code);
@@ -2212,7 +2224,7 @@ describe("what counts as below the spread", () => {
         `  a?: CssBlock<{ "padding-left"?: string }>;\n` +
         `  b?: CssBlock<{ "padding-top"?: string }>;\n` +
         `}) {\n` +
-        `  return <div css={@@( ...{props.a}; ...{props.b}; padding: 8px; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...{props.a}; ...{props.b}; padding: 8px; )}>x</div>;\n}\n`,
     });
 
     expect(report.findings.map((one) => one.code)).toEqual(["style-prop-overridden"]);
@@ -2233,7 +2245,7 @@ describe("silencing a typed rule", () => {
   const unused =
     `import type { CssBlock } from "@ramonda/css/properties";\n` +
     `export function Card(props: { css?: CssBlock }) {\n` +
-    `  return <div css={@@( color: red; )}>x</div>;\n}\n`;
+    `  return <div className={@@( color: red; )}>x</div>;\n}\n`;
 
   test("it is reported when nothing says otherwise", () => {
     expect(check({ "Card.tsx": unused }).findings.map((one) => one.code)).toEqual(["style-prop-never-used"]);
@@ -2253,7 +2265,7 @@ describe("silencing a typed rule", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export function Card(props: { css?: CssBlock<{ "padding-left"?: string }> }) {\n` +
-        `  return <div css={@@( ...{props.css}; padding: 8px; )}>x</div>;\n}\n`,
+        `  return <div className={@@( ...{props.css}; padding: 8px; )}>x</div>;\n}\n`,
       "ramonda.css.ts": `export default { rules: { "style-prop-overridden": "off" } };\n`,
     });
 
@@ -2268,7 +2280,7 @@ describe("silencing a typed rule", () => {
         `  // ramonda-css-ignore the prop is forwarded by a wrapper this file cannot see\n` +
         `  props: { css?: CssBlock },\n` +
         `) {\n` +
-        `  return <div css={@@( color: red; )}>x</div>;\n}\n`,
+        `  return <div className={@@( color: red; )}>x</div>;\n}\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -2354,7 +2366,7 @@ describe("a typed rule beside the compiler", () => {
       "Card.tsx":
         `import type { CssBlock } from "@ramonda/css/properties";\n` +
         `export interface CardProps { css?: CssBlock }\n` +
-        `export function Card(props: CardProps) { return <div css={@@( ...{props.css}; )}>x</div>; }\n`,
+        `export function Card(props: CardProps) { return <div className={@@( ...{props.css}; )}>x</div>; }\n`,
     });
 
     expect(report.findings).toEqual([]);
@@ -2371,7 +2383,7 @@ describe("a typed rule beside the compiler", () => {
 describe("a match, type-checked", () => {
   const card = (block: string, field = `variant: "primary" | "secondary" = "primary"`) =>
     check({
-      "Card.tsx": `class Card {\n  ${field};\n  render() {\n    return <div css={@@( ${block} )}>x</div>;\n  }\n}\nexport default Card;\n`,
+      "Card.tsx": `class Card {\n  ${field};\n  render() {\n    return <div className={@@( ${block} )}>x</div>;\n  }\n}\nexport default Card;\n`,
     });
 
   test("arms the subject can hold are quiet", () => {

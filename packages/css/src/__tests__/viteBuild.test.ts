@@ -146,7 +146,7 @@ describe("a block, all the way through a production build", () => {
     const result = build(
       project(
         `export const accent = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: #10b981;\n);\n` +
-          `export const card = (\n  <div className="lead" css={@@(\n    display: flex;\n    border-left: 4px solid var({accent});\n  )}>x</div>\n);\n`,
+          `export const card = (\n  <div id="lead" className={@@(\n    display: flex;\n    border-left: 4px solid var({accent});\n  )}>x</div>\n);\n`,
         // The property's binding is USED, or the bundler drops an export nothing imports and the
         // name never reaches the JavaScript — which is half of what this test is about.
         `import { card, accent } from "./Card";\nconsole.log(card, accent);\n`,
@@ -196,7 +196,7 @@ describe("a block, all the way through a production build", () => {
   test("the stylesheet is linked, so a page actually loads it", () => {
     const result = build(
       project(
-        `export const card = <div css={@@( display: flex; )}>x</div>;\n`,
+        `export const card = <div className={@@( display: flex; )}>x</div>;\n`,
         `import { card } from "./Card";\nconsole.log(card);\n`,
       ),
     );
@@ -210,7 +210,7 @@ describe("a block, all the way through a production build", () => {
   test("a block it cannot read fails the build, at the author's own line and column", () => {
     const result = build(
       project(
-        `export const card = (\n  <div css={@@(\n    {name}: 24px;\n  )}>x</div>\n);\n`,
+        `export const card = (\n  <div className={@@(\n    {name}: 24px;\n  )}>x</div>\n);\n`,
         `import { card } from "./Card";\nconsole.log(card);\n`,
       ),
     );
@@ -412,7 +412,7 @@ test("a `@property` ships as a top-level at-rule holding its descriptors", () =>
   const result = build(
     project(
       `export const ANGLE = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `export const card = (\n  <div className="lead" css={@@(\n    transform: rotate(var({ANGLE}));\n  )}>x</div>\n);\n`,
+        `export const card = (\n  <div id="lead" className={@@(\n    transform: rotate(var({ANGLE}));\n  )}>x</div>\n);\n`,
       `import { card, ANGLE } from "./Card";\nconsole.log(card, ANGLE);\n`,
     ),
   );
@@ -443,7 +443,7 @@ test("a token declared in one module and read in another", () => {
   const result = build(
     project(
       `import { accent, gap } from "./theme";\n` +
-        `export const card = (\n  <div className="lead" css={@@(\n    color: var({accent});\n    border-color: var({accent});\n    padding: var({gap});\n  )}>x</div>\n);\n`,
+        `export const card = (\n  <div id="lead" className={@@(\n    color: var({accent});\n    border-color: var({accent});\n    padding: var({gap});\n  )}>x</div>\n);\n`,
       `import { card } from "./Card";\nconsole.log(card);\n`,
       {
         "theme.tsx":
@@ -480,7 +480,7 @@ test("a token declared in one module and read in another", () => {
  */
 test("a unit the project's `ramonda.css.ts` does not allow fails the build", () => {
   const root = project(
-    `export const card = <div className="lead" css={@@( padding: 1em; )}>x</div>;\n`,
+    `export const card = <div id="lead" className={@@( padding: 1em; )}>x</div>;\n`,
     `import { card } from "./Card";\nconsole.log(card);\n`,
     { "../ramonda.css.ts": `export default { units: { length: ["px", "rem"] } };\n` },
   );
@@ -510,7 +510,7 @@ describe("what development-only code costs a visitor", () => {
   test("the order warning's words are in no production asset", () => {
     const root = project(
       `const base = @@(\n  @media (min-width: 1px) {\n    padding: 11px;\n  }\n);\n` +
-        `export const Card = () => <div css={@@(\n  ...{base};\n  padding-left: 4px;\n)}>x</div>;\n`,
+        `export const Card = () => <div className={@@(\n  ...{base};\n  padding-left: 4px;\n)}>x</div>;\n`,
       `import { Card } from "./Card";\nconsole.log(Card());\n`,
     );
 
@@ -534,7 +534,7 @@ describe("what development-only code costs a visitor", () => {
    */
   test("and neither is the slot table it compares with", () => {
     const root = project(
-      `export const Card = () => <div css={@@(\n  @media (min-width: 40rem) {\n    gap: 8px;\n  }\n)}>x</div>;\n`,
+      `export const Card = () => <div className={@@(\n  @media (min-width: 40rem) {\n    gap: 8px;\n  }\n)}>x</div>;\n`,
       `import { Card } from "./Card";\nconsole.log(Card());\n`,
     );
 
@@ -558,7 +558,7 @@ describe("what development-only code costs a visitor", () => {
 describe("codegen through the vite plugin", () => {
   test("the pair is written, and a block using `$` compiles to a plain var()", () => {
     const root = project(
-      `export const Card = () => <div css={@@( color: $.color.primary.main; )}>x</div>;\n`,
+      `export const Card = () => <div className={@@( color: $.color.primary.main; )}>x</div>;\n`,
       `import { Card } from "./Card";\nconsole.log(Card);\n`,
     );
     writeFileSync(

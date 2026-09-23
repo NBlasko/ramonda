@@ -321,7 +321,7 @@ const CSS_LINES = {
   "run-on-declaration": "a missing `;`, so the next line joined this value",
   "block-in-a-template":
     "a block inside a template literal's `${ … }`, where nothing can see it — use `mergeClassNames`",
-  "block-as-a-jsx-attribute": "`css=@@( … )` — a block is a value, so it goes in the braces",
+  "block-as-a-jsx-attribute": "`className=@@( … )` — a block is a value, so it goes in the braces",
   "declaration-out-of-place": "a declaration where only a rule belongs",
   "rule-out-of-place": "a nested rule where only declarations belong",
   "at-rule-out-of-place": "an at-rule that names something for the whole stylesheet",

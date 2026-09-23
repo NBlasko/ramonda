@@ -137,7 +137,7 @@ Every one of them fails the build. 52 of them, and each is a key you can switch 
 | `unknown-value` | a word this property does not take |
 | `repeated-declaration` | the same property set twice to the same value |
 | `hole-out-of-place` | a hole where CSS needs text, like a property name |
-| `block-as-a-jsx-attribute` | `css=@@( … )` — a block is a value, so it goes in the braces |
+| `block-as-a-jsx-attribute` | `className=@@( … )` — a block is a value, so it goes in the braces |
 | `block-in-a-template` | a block inside a template literal's `${ … }`, where nothing can see it — use `mergeClassNames` |
 | `run-on-declaration` | a missing `;`, so the next line joined this value |
 | `line-comment` | a `//` comment, which CSS does not have |

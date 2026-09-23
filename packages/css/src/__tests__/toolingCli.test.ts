@@ -78,7 +78,7 @@ function run(root: string, args: string[]): { output: string; status: number } {
 
 const STYLED = `export const Card = (props: { id: string }) => {
   return (
-    <div css={@@(
+    <div className={@@(
       display: flex;
       border-left: {props.id};
     )}>
@@ -101,7 +101,7 @@ describe("format", () => {
     // …and the block is still the author's own text, unreformatted.
     expect(out).toContain("display: flex;");
     expect(out).toContain("border-left: {props.id};");
-    expect(out).toContain("css={@@(");
+    expect(out).toContain("className={@@(");
   });
 
   /**
@@ -118,7 +118,7 @@ describe("format", () => {
   test("a hole's expression is laid out by the project's own formatter, and settles", () => {
     const root = project({
       "Card.tsx":
-        `export const a = <div css={@@(\n` +
+        `export const a = <div className={@@(\n` +
         `  color: {t ? one    : two};\n` +
         `  padding-left: {gap   +   2}px;\n` +
         `  content: {items.map((one)=>one.name).join( 'x' )};\n` +
@@ -152,7 +152,7 @@ describe("format", () => {
   test("the formatter lowers a keyword's case, which is what makes the rule's silence safe", () => {
     const root = project({
       "Card.tsx":
-        `export const a = <div css={@@(\n` +
+        `export const a = <div className={@@(\n` +
         `  color: currentColor;\n` +
         `  background-color: Canvas;\n` +
         `  display: FLEX;\n` +
@@ -494,8 +494,8 @@ describe("a tool that says more than a megabyte", () => {
 describe("a block beside another attribute", () => {
   const TWO = `export const Card = () => (
   <div
-    className="panel"
-    css={@@(
+    id="panel"
+    className={@@(
       display: flex;
       gap: 8px;
     )}
@@ -532,12 +532,12 @@ describe("a block beside another attribute", () => {
   /** A one-line block is a shape the author chose, and joining those attributes is biome's call. */
   test("a one-line block is left to the formatter's own judgement", () => {
     const root = project({
-      "Card.tsx": `export const Card = () => (\n  <div\n    id="x"\n    css={@@( display: flex; )}\n  >\n    y\n  </div>\n);\n`,
+      "Card.tsx": `export const Card = () => (\n  <div\n    id="x"\n    className={@@( display: flex; )}\n  >\n    y\n  </div>\n);\n`,
     });
 
     run(root, ["format", "src/Card.tsx"]);
     const out = readFileSync(join(root, "src", "Card.tsx"), "utf8");
 
-    expect(lineWith(out, "id=")).toContain("css=");
+    expect(lineWith(out, "id=")).toContain("className=");
   });
 });

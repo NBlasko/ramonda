@@ -39,7 +39,7 @@ import { transform } from "../compiler/transform";
 
 /** The findings for one block's text, which is how a person reads a rule's claim. */
 function check(css: string): Finding[] {
-  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const source = `<div className={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
   // Both halves, the way the real callers ask: the parse for what a declaration says, the text for
@@ -52,7 +52,7 @@ const messages = (css: string) => check(css).map((finding) => finding.message);
 
 /** The rule ids for one block, checked with a project config — for the config-driven rules. */
 function rulesWith(css: string, config: import("../config").Config): string[] {
-  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const source = `<div className={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
   return checkBlock(read.block, { config }).map((finding) => finding.rule);
@@ -60,7 +60,7 @@ function rulesWith(css: string, config: import("../config").Config): string[] {
 
 /** The same, as messages — for the rules whose WORDING is the thing being asserted. */
 function messagesWith(css: string, config: import("../config").Config): string[] {
-  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const source = `<div className={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
   return checkBlock(read.block, { config }).map((finding) => finding.message);
@@ -329,7 +329,7 @@ describe("the two generated lists, which are not the same list", () => {
 
 describe("more than one fault in a block", () => {
   test("comes back in the order a person reads the block", () => {
-    const source = `<div css={@@(\n  display: flexx;\n  flex-dirction: row;\n  overflow: hiddn;\n)}>x</div>`;
+    const source = `<div className={@@(\n  display: flexx;\n  flex-dirction: row;\n  overflow: hiddn;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -360,7 +360,7 @@ describe("more than one fault in a block", () => {
 
 describe("what a finding carries", () => {
   test("the position of the fault itself, not of the block", () => {
-    const source = `<div css={@@(\n  display: flex;\n  flex-dirction: row;\n)}>x</div>`;
+    const source = `<div className={@@(\n  display: flex;\n  flex-dirction: row;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -369,7 +369,7 @@ describe("what a finding carries", () => {
   });
 
   test("and a value fault points at the word, not at the declaration", () => {
-    const source = `<div css={@@(\n  border-left: 4px sollid red;\n)}>x</div>`;
+    const source = `<div className={@@(\n  border-left: 4px sollid red;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -2036,7 +2036,7 @@ describe("a quoted string where the property has no place for one", () => {
   });
 
   test("the whole string is what is underlined, quotes included", () => {
-    const source = `<div css={@@(\n  color: "yellow";\n)}>x</div>`;
+    const source = `<div className={@@(\n  color: "yellow";\n)}>x</div>`;
     const [site] = findBlocks(source);
     const [only] = checkBlock(readBlock(source, site.open, "Card.tsx", { tolerant: true }).block);
 
@@ -2075,7 +2075,7 @@ describe("a quoted string where the property has no place for one", () => {
 
   /** A project that means it can turn it off, the same as any other rule. */
   test("silenced by the project's own config", () => {
-    const source = `<div css={@@(\n  color: "yellow";\n)}>x</div>`;
+    const source = `<div className={@@(\n  color: "yellow";\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -2185,7 +2185,7 @@ describe("valid CSS these rules must not report", () => {
    */
   describe("a unit that is not a unit because it is inside something", () => {
     const withUnits = (css: string) => {
-      const source = `<div css={@@(\n${css}\n)}>x</div>`;
+      const source = `<div className={@@(\n${css}\n)}>x</div>`;
       const [site] = findBlocks(source);
       const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
       return checkBlock(read.block, { config: { units: { length: ["px", "rem"], percentage: ["%"] } } }).map(
@@ -3410,7 +3410,7 @@ describe("a colour written out, where the project said variables only", () => {
  */
 describe("units, by family", () => {
   const under = (units: Config["units"], css: string) => {
-    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     return checkBlock(read.block, { config: { units } }).map((one) => one.rule);
@@ -3448,7 +3448,7 @@ describe("units, by family", () => {
   });
 
   test("the message names the family, so the fix is the one the author meant", () => {
-    const source = `<div css={@@(\n  padding: 2em;\n)}>x</div>`;
+    const source = `<div className={@@(\n  padding: 2em;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     const [found] = checkBlock(read.block, { config: { units: lengths } });
@@ -3674,7 +3674,7 @@ describe("a literal that reached the page anyway", () => {
  */
 describe("case and the atomic class", () => {
   const classesOf = (css: string) => {
-    const result = transform(`const a = <div css={@@(${css})}>x</div>;`, { filename: "C.tsx" });
+    const result = transform(`const a = <div className={@@(${css})}>x</div>;`, { filename: "C.tsx" });
     return [...(result?.code ?? "").matchAll(/"(r-[^"]+)"/g)].map((one) => one[1]);
   };
 
@@ -3689,7 +3689,7 @@ describe("case and the atomic class", () => {
   });
 
   test("and the emitted CSS is the same text, not merely the same name", () => {
-    const of = (css: string) => transform(`const a = <div css={@@(${css})}>x</div>;`, { filename: "C.tsx" });
+    const of = (css: string) => transform(`const a = <div className={@@(${css})}>x</div>;`, { filename: "C.tsx" });
 
     expect(of(" color: currentColor; ")?.code).toBe(of(" color: currentcolor; ")?.code);
   });
@@ -4051,7 +4051,7 @@ describe("a config rule inside a nested rule", () => {
   };
 
   const under = (css: string) => {
-    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     return checkBlock(read.block, { config }).map((one) => one.rule);
@@ -4140,7 +4140,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
   };
 
   const under = (css: string) => {
-    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     return checkBlock(read.block, { config }).map((one) => one.rule);
@@ -4168,7 +4168,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
       units: { length: ["px"] },
       properties: { width: { values: ["8px", "12px"] } },
     };
-    const source = "<div css={@@(\n  width: 2rem;\n)}>x</div>";
+    const source = "<div className={@@(\n  width: 2rem;\n)}>x</div>";
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
 
@@ -4213,7 +4213,7 @@ describe("a declaration that breaks more than one of a project's rules", () => {
  */
 describe("a call that is never closed", () => {
   const under = (css: string) => {
-    const source = `<div css={@@(\n${css}\n)}>x</div>`;
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     return checkBlock(read.block, {});
@@ -4273,7 +4273,7 @@ describe("a call that is never closed", () => {
  */
 describe("a number where only keywords go", () => {
   const under = (css: string) => {
-    const source = `<div css={@@(\n  ${css}\n)}>x</div>`;
+    const source = `<div className={@@(\n  ${css}\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     return checkBlock(read.block, {});
@@ -4332,7 +4332,7 @@ describe("a number where only keywords go", () => {
  */
 describe("a property name in the wrong case", () => {
   const under = (css: string) => {
-    const source = `<div css={@@(\n  ${css}\n)}>x</div>`;
+    const source = `<div className={@@(\n  ${css}\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     return checkBlock(read.block, {});

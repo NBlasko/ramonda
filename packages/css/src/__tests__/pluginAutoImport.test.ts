@@ -29,7 +29,7 @@ const THEME = join(PACKAGE, "src", "__tests__", "theme.ts");
 const editor = (source: string) => {
   const files: Record<string, string> = {
     [FILE]: source,
-    [JSX]: `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    [JSX]: `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     [THEME]: `export const palette = "#10b981";\n`,
   };
 
@@ -89,7 +89,7 @@ const importFor = (source: string) => {
 };
 
 const WITH_A_BLOCK = `const gap = 8;
-export const a = <div css={@@( padding: 8px; )}>x</div>;
+export const a = <div className={@@( padding: 8px; )}>x</div>;
 export const b = palette;
 `;
 
@@ -128,7 +128,7 @@ describe("accepting an auto-import in a file that carries a block", () => {
   test("after the last existing import, when there is one", () => {
     const source = `import { join } from "node:path";
 const gap = join("a", "b");
-export const a = <div css={@@( padding: 8px; )}>x</div>;
+export const a = <div className={@@( padding: 8px; )}>x</div>;
 export const b = palette;
 `;
     const [change] = importFor(source);
@@ -142,7 +142,7 @@ export const b = palette;
   /** A block BEFORE the caret is the shape that shifts every offset — the user's own file. */
   test("a block above the import site does not move it", () => {
     const source = `import { join } from "node:path";
-export const a = <div css={@@( padding: 8px; color: red; )}>x</div>;
+export const a = <div className={@@( padding: 8px; color: red; )}>x</div>;
 const gap = join("a", "b");
 export const b = palette;
 `;

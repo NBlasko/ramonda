@@ -315,15 +315,15 @@ describe("a block in expression position", () => {
     ["outside JSX", `const panel = @@(\n  display: flex;\n);\nconst after = 1;\n`],
     [
       "braced, as the second attribute",
-      `const a = <div id="x" css={@@( display: flex; )}>y</div>;\nconst after = 1;\n`,
+      `const a = <div id="x" className={@@( display: flex; )}>y</div>;\nconst after = 1;\n`,
     ],
     [
       "braced, three lines into the tag",
-      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    css={@@(\n      display: flex;\n    )}\n  >y</div>\n);\nconst after = 1;\n`,
+      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    className={@@(\n      display: flex;\n    )}\n  >y</div>\n);\nconst after = 1;\n`,
     ],
     [
       "braced, with spaces inside the braces",
-      `const a = <div css={ @@( display: flex; ) }>y</div>;\nconst after = 1;\n`,
+      `const a = <div className={ @@( display: flex; ) }>y</div>;\nconst after = 1;\n`,
     ],
   ])("%s is CSS", (_what, code) => {
     expect(scopeOf(code, "display")).toBe("support.type.property-name.css");
@@ -566,14 +566,17 @@ describe("a named site", () => {
  */
 describe("a block on a nested element", () => {
   test.each([
-    ["braced", `const a = (\n  <div>\n    <span css={@@( display: flex; )}>x</span>\n  </div>\n);\nconst after = 1;\n`],
+    [
+      "braced",
+      `const a = (\n  <div>\n    <span className={@@( display: flex; )}>x</span>\n  </div>\n);\nconst after = 1;\n`,
+    ],
     [
       "braced, with a sibling above it",
-      `const a = (\n  <div>\n    <p>t</p>\n    <span css={@@( display: flex; )}>x</span>\n  </div>\n);\nconst after = 1;\n`,
+      `const a = (\n  <div>\n    <p>t</p>\n    <span className={@@( display: flex; )}>x</span>\n  </div>\n);\nconst after = 1;\n`,
     ],
     [
       "braced, several levels down",
-      `const a = (\n  <div>\n    <section>\n      <span css={@@( display: flex; )}>x</span>\n    </section>\n  </div>\n);\nconst after = 1;\n`,
+      `const a = (\n  <div>\n    <section>\n      <span className={@@( display: flex; )}>x</span>\n    </section>\n  </div>\n);\nconst after = 1;\n`,
     ],
   ])("%s is CSS, and the file below it is untouched", (_what, code) => {
     expect(scopeOf(code, "display")).toBe("support.type.property-name.css");
@@ -581,7 +584,7 @@ describe("a block on a nested element", () => {
   });
 
   test("the tags after it are still tags, not type parameters", () => {
-    const code = `const a = (\n  <div>\n    <span css={@@( display: flex; )}>x</span>\n    <em>y</em>\n  </div>\n);\n`;
+    const code = `const a = (\n  <div>\n    <span className={@@( display: flex; )}>x</span>\n    <em>y</em>\n  </div>\n);\n`;
 
     expect(scopeOf(code, "em")).toBe("entity.name.tag.tsx");
     expect(scopeOf(code, "div")).toBe("entity.name.tag.tsx");
@@ -595,7 +598,7 @@ describe("a block on a nested element", () => {
   });
 
   test("a hole inside a nested block is still the expression it holds", () => {
-    const code = `const a = (\n  <div>\n    <span css={@@( color: {accent}; )}>x</span>\n  </div>\n);\n`;
+    const code = `const a = (\n  <div>\n    <span className={@@( color: {accent}; )}>x</span>\n  </div>\n);\n`;
 
     expect(scopeOf(code, "accent")).toBe("variable.other.readwrite.tsx");
   });
@@ -654,7 +657,7 @@ describe("the composition markers", () => {
  */
 describe("the `@@` marker's colour", () => {
   const CODE =
-    `const a = <div css={@@(\n  ...{CONTROL};\n  if ({on}) { opacity: 0.5; }\n)}>x</div>;\n` +
+    `const a = <div className={@@(\n  ...{CONTROL};\n  if ({on}) { opacity: 0.5; }\n)}>x</div>;\n` +
     `const b = @@keyframes( from { opacity: 0; } );\n` +
     `const c = <div css=@@( color: red; )>y</div>;\n`;
 

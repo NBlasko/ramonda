@@ -22,6 +22,7 @@ const JSX_TYPES = `
 declare namespace JSX {
   interface IntrinsicElements {
     div: {
+      id?: string;
       className?: string;
       css?: { readonly className: string; readonly properties: readonly string[]; readonly values: readonly (string | number)[] };
       children?: unknown;
@@ -69,8 +70,8 @@ describe("what a block becomes", () => {
    * and the author meets the next on the next run. An array reports all three at once.
    */
   test("an array of one-declaration object literals", () => {
-    expect(body(`const a = <div css={@@( display: flex; gap: 8px; )}>x</div>;\n`)).toBe(
-      `const a = <div css={__block([{display:"flex"},{gap:"8px"},])}>x</div>;\n`,
+    expect(body(`const a = <div className={@@( display: flex; gap: 8px; )}>x</div>;\n`)).toBe(
+      `const a = <div className={__block([{display:"flex"},{gap:"8px"},])}>x</div>;\n`,
     );
   });
 
@@ -80,41 +81,43 @@ describe("what a block becomes", () => {
    * bare is.
    */
   test("a name that is a valid identifier is written bare, because quotes cost the suggestion", () => {
-    expect(body(`const a = <div css={@@( color: red; )}>x</div>;\n`)).toContain("{color:");
+    expect(body(`const a = <div className={@@( color: red; )}>x</div>;\n`)).toContain("{color:");
   });
 
   test("a dashed name has to be quoted, and that is the limit", () => {
-    expect(body(`const a = <div css={@@( flex-direction: row; )}>x</div>;\n`)).toContain(`{"flex-direction":`);
+    expect(body(`const a = <div className={@@( flex-direction: row; )}>x</div>;\n`)).toContain(`{"flex-direction":`);
   });
 
   test("a value that is entirely one hole is the expression itself, so its own type is checked", () => {
-    expect(body(`const a = <div css={@@( padding: {size}; )}>x</div>;\n`)).toContain(`{padding:__val((size))}`);
+    expect(body(`const a = <div className={@@( padding: {size}; )}>x</div>;\n`)).toContain(`{padding:__val((size))}`);
   });
 
   test("text and a hole together become a template literal, which keeps the pattern", () => {
-    expect(body(`const a = <div css={@@( padding: {n}px; )}>x</div>;\n`)).toContain("{padding:`${__val((n))}px`}");
+    expect(body(`const a = <div className={@@( padding: {n}px; )}>x</div>;\n`)).toContain(
+      "{padding:`${__val((n))}px`}",
+    );
   });
 
   test("a nested rule holds an array of its own, so its declarations are checked one by one too", () => {
-    expect(body(`const a = <div css={@@( &:hover { color: red; } )}>x</div>;\n`)).toContain(
+    expect(body(`const a = <div className={@@( &:hover { color: red; } )}>x</div>;\n`)).toContain(
       `{"&:hover":[{color:"red"},]},`,
     );
   });
 
   test("a property's case is folded, because CSS reads it that way", () => {
-    expect(body(`const a = <div css={@@( DISPLAY: flex; )}>x</div>;\n`)).toContain("{display:");
+    expect(body(`const a = <div className={@@( DISPLAY: flex; )}>x</div>;\n`)).toContain("{display:");
   });
 
   test("a custom property keeps its case, because CSS keeps it", () => {
-    expect(body(`const a = <div css={@@( --Brand: red; )}>x</div>;\n`)).toContain(`"--Brand"`);
+    expect(body(`const a = <div className={@@( --Brand: red; )}>x</div>;\n`)).toContain(`"--Brand"`);
   });
 
   test("the expression is parenthesised, so a comma inside cannot change the call", () => {
-    expect(body(`const a = <div css={@@( color: {(a, b)}; )}>x</div>;\n`)).toContain(`{color:__val(((a, b)))}`);
+    expect(body(`const a = <div className={@@( color: {(a, b)}; )}>x</div>;\n`)).toContain(`{color:__val(((a, b)))}`);
   });
 
   test("a backtick in the CSS cannot end the template literal it lands in", () => {
-    expect(body('const a = <div css={@@( content: "`${x}" {y}; )}>x</div>;\n')).toContain("\\`\\${x}");
+    expect(body('const a = <div className={@@( content: "`${x}" {y}; )}>x</div>;\n')).toContain("\\`\\${x}");
   });
 
   /**
@@ -124,7 +127,7 @@ describe("what a block becomes", () => {
    * TYPE in a type position does not.
    */
   test("the preamble is declarations, not imports, so a script does not become a module", () => {
-    const file = build(`const a = <div css={@@( display: flex; )}>x</div>;\n`);
+    const file = build(`const a = <div className={@@( display: flex; )}>x</div>;\n`);
     const preamble = file?.code.slice(0, file.preamble) ?? "";
 
     // Not `never`, which is what it used to return: assignable everywhere and so never in the way,
@@ -158,7 +161,7 @@ describe("what a block becomes", () => {
   });
 
   test("a file that already names the helper does not get it taken away", () => {
-    const file = build(`const __block = 1;\nconst a = <div css={@@( display: flex; )}>x</div>;\n`);
+    const file = build(`const __block = 1;\nconst a = <div className={@@( display: flex; )}>x</div>;\n`);
 
     expect(file?.code).toContain("declare function ___block<A extends");
     expect(file?.code).toContain("const __block = 1;");
@@ -169,7 +172,7 @@ describe("what a block becomes", () => {
    * it over, because a virtual file exists to be type-checked and a refusal belongs to the build.
    */
   test("a block found inside another block is passed over rather than read twice", () => {
-    const file = build(`const a = <div css={@@( color: { <b css={@@( color: red; )}/> })}>x</div>;\n`);
+    const file = build(`const a = <div className={@@( color: { <b className={@@( color: red; )}/> })}>x</div>;\n`);
 
     // EITHER helper: this block carries a hole, so it gets the one whose flag says so. What the
     // test is about is the COUNT — one call, not two — and naming a single helper hid that.
@@ -188,14 +191,14 @@ describe("line for line", () => {
    * and has no source map to consult.
    */
   test("the virtual file has as many lines as the author's", () => {
-    const source = `const before = 1;\nconst a = (\n  <div css={@@(\n    display: flex;\n    gap: 8px;\n  )}>x</div>\n);\nconst after = 2;\n`;
+    const source = `const before = 1;\nconst a = (\n  <div className={@@(\n    display: flex;\n    gap: 8px;\n  )}>x</div>\n);\nconst after = 2;\n`;
     const file = build(source);
 
     expect(file?.code.split("\n")).toHaveLength(source.split("\n").length);
   });
 
   test("and every line that is not part of a block is the same line", () => {
-    const source = `const before = 1;\nconst a = (\n  <div css={@@(\n    display: flex;\n  )}>x</div>\n);\nconst after = 2;\n`;
+    const source = `const before = 1;\nconst a = (\n  <div className={@@(\n    display: flex;\n  )}>x</div>\n);\nconst after = 2;\n`;
     const author = source.split("\n");
     const virtual = (build(source)?.code ?? "").split("\n");
 
@@ -212,7 +215,7 @@ describe("line for line", () => {
    * on 185. The newlines go between the items.
    */
   test("a declaration is on the line the author put it on", () => {
-    const source = `const a = (\n  <div css={@@(\n    display: flex;\n    gap: 8px;\n    &:hover {\n      color: red;\n    }\n  )}>x</div>\n);\n`;
+    const source = `const a = (\n  <div className={@@(\n    display: flex;\n    gap: 8px;\n    &:hover {\n      color: red;\n    }\n  )}>x</div>\n);\n`;
     const author = source.split("\n");
     const virtual = (build(source)?.code ?? "").split("\n");
 
@@ -224,7 +227,7 @@ describe("line for line", () => {
   });
 
   test("two blocks in one file each put their own newlines back", () => {
-    const source = `const a = (\n  <div css={@@(\n    display: flex;\n  )}>x</div>\n);\nconst b = (\n  <p css={@@(\n    color: red;\n  )}>y</p>\n);\nconst after = 3;\n`;
+    const source = `const a = (\n  <div className={@@(\n    display: flex;\n  )}>x</div>\n);\nconst b = (\n  <p className={@@(\n    color: red;\n  )}>y</p>\n);\nconst after = 3;\n`;
     const virtual = (build(source)?.code ?? "").split("\n");
 
     expect(virtual).toHaveLength(source.split("\n").length);
@@ -239,7 +242,7 @@ describe("the declaration a caret is in", () => {
    * So a question that lands nowhere is asked again at the declaration, which is what a reader was
    * asking about anyway.
    */
-  const source = `const a = <div css={@@(\n  flex-direction: column;\n  &:hover { color: red; }\n)}>x</div>;\n`;
+  const source = `const a = <div className={@@(\n  flex-direction: column;\n  &:hover { color: red; }\n)}>x</div>;\n`;
   const file = build(source);
   if (file === undefined) throw new Error("the virtual file found no block");
 
@@ -285,7 +288,7 @@ describe("the declaration a caret is in", () => {
 });
 
 describe("the way home", () => {
-  const source = `const accent = 1;\nconst a = <div css={@@( display: flex; color: {accent}; )}>x</div>;\n`;
+  const source = `const accent = 1;\nconst a = <div className={@@( display: flex; color: {accent}; )}>x</div>;\n`;
   const file = build(source);
   if (file === undefined) throw new Error("the virtual file found no block");
 
@@ -425,7 +428,7 @@ describe("through tsc, and back to the author's own file", () => {
   });
 
   test("and in one written inside the braces JSX already has", () => {
-    const source = `const a = (\n  <div\n    className="lead"\n    css={@@(\n      dsiplay: flex;\n    )}\n  >x</div>\n);\n`;
+    const source = `const a = (\n  <div\n    id="lead"\n    className={@@(\n      dsiplay: flex;\n    )}\n  >x</div>\n);\n`;
     const [only, ...rest] = check(source);
 
     expect(rest).toEqual([]);
@@ -442,7 +445,7 @@ describe("through tsc, and back to the author's own file", () => {
   });
 
   test("a property-name typo is TypeScript's own did-you-mean, on the property", () => {
-    const source = `const a = (\n  <div css={@@(\n    dsiplay: flex;\n  )}>x</div>\n);\n`;
+    const source = `const a = (\n  <div className={@@(\n    dsiplay: flex;\n  )}>x</div>\n);\n`;
     const [only, ...rest] = check(source);
 
     expect(rest).toEqual([]);
@@ -462,7 +465,7 @@ describe("through tsc, and back to the author's own file", () => {
    * other kind.
    */
   test("a value typo is a did-you-mean too, reported on its declaration", () => {
-    const source = `const a = (\n  <div css={@@(\n    display: flexx;\n  )}>x</div>\n);\n`;
+    const source = `const a = (\n  <div className={@@(\n    display: flexx;\n  )}>x</div>\n);\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2820);
@@ -473,7 +476,7 @@ describe("through tsc, and back to the author's own file", () => {
   test("a hole is checked against the property it stands in, in its own lexical scope", () => {
     // `this.size` resolves to the class's own field, which is the whole point of leaving the
     // expression where the author wrote it rather than lifting it out.
-    const source = `class Card {\n  size = true;\n  render() {\n    return (\n      <div css={@@(\n        padding: {this.size};\n      )}>x</div>\n    );\n  }\n}\n`;
+    const source = `class Card {\n  size = true;\n  render() {\n    return (\n      <div className={@@(\n        padding: {this.size};\n      )}>x</div>\n    );\n  }\n}\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2322);
@@ -483,7 +486,7 @@ describe("through tsc, and back to the author's own file", () => {
   });
 
   test("a typo inside a nested rule is reported inside the nested rule", () => {
-    const source = `const a = (\n  <div css={@@(\n    &:hover {\n      colr: red;\n    }\n  )}>x</div>\n);\n`;
+    const source = `const a = (\n  <div className={@@(\n    &:hover {\n      colr: red;\n    }\n  )}>x</div>\n);\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2561);
@@ -492,7 +495,7 @@ describe("through tsc, and back to the author's own file", () => {
   });
 
   test("a name that does not exist is reported where it is written", () => {
-    const source = `const a = (\n  <div css={@@(\n    color: {missing};\n  )}>x</div>\n);\n`;
+    const source = `const a = (\n  <div className={@@(\n    color: {missing};\n  )}>x</div>\n);\n`;
     const [only] = check(source);
 
     expect(only.code).toBe(2304);
@@ -501,7 +504,7 @@ describe("through tsc, and back to the author's own file", () => {
   });
 
   test("a block that is right reports nothing at all", () => {
-    const source = `const size = "8px" as const;\nconst a = (\n  <div css={@@(\n    display: flex;\n    padding: {size};\n    &:hover { color: red; }\n    --brand: red;\n  )}>x</div>\n);\n`;
+    const source = `const size = "8px" as const;\nconst a = (\n  <div className={@@(\n    display: flex;\n    padding: {size};\n    &:hover { color: red; }\n    --brand: red;\n  )}>x</div>\n);\n`;
 
     expect(check(source)).toEqual([]);
   });
@@ -512,7 +515,7 @@ describe("through tsc, and back to the author's own file", () => {
    * one.
    */
   test("and the file this wrote does not report itself", () => {
-    const source = `const a = <div css={@@( display: flex; )}>x</div>;\n`;
+    const source = `const a = <div className={@@( display: flex; )}>x</div>;\n`;
     const file = virtualFile(source, { properties: "/properties" });
 
     expect(file?.code).toContain("__block");
@@ -550,21 +553,23 @@ describe("a rewritten run whose length happens to match the author's", () => {
    * run is the only honest answer for a rewritten one, and it is what comes back.
    */
   test("a value with three interior spaces, which folds to exactly its own length", () => {
-    expect(spanOver(`const a = <div css={@@( border-left-style: sol   id; )}>x</div>;\n`, "sol")).toBe("sol   id");
+    expect(spanOver(`const a = <div className={@@( border-left-style: sol   id; )}>x</div>;\n`, "sol")).toBe(
+      "sol   id",
+    );
   });
 
   test("and two trailing spaces, which does the same", () => {
-    expect(spanOver(`const a = <div css={@@( flex-direction: col  ; )}>x</div>;\n`, "col")).toBe("col  ");
+    expect(spanOver(`const a = <div className={@@( flex-direction: col  ; )}>x</div>;\n`, "col")).toBe("col  ");
   });
 
   /** One trailing space: the lengths differ, so this always took the rewritten branch. The control. */
   test("one trailing space, which the inference happened to get right", () => {
-    expect(spanOver(`const a = <div css={@@( flex-direction: col ; )}>x</div>;\n`, "col")).toBe("col ");
+    expect(spanOver(`const a = <div className={@@( flex-direction: col ; )}>x</div>;\n`, "col")).toBe("col ");
   });
 
   /** And a genuinely copied run still maps both ends — a hole's contents are the author's own text. */
   test("a hole's expression is copied, and maps offset for offset", () => {
-    expect(spanOver(`const a = <div css={@@( color: {this.tone}; )}>x</div>;\n`, "this.tone")).toBe("this.tone");
+    expect(spanOver(`const a = <div className={@@( color: {this.tone}; )}>x</div>;\n`, "this.tone")).toBe("this.tone");
   });
 });
 
@@ -591,8 +596,8 @@ describe("what the virtual file hands TypeScript", () => {
   };
 
   test.each([
-    ["an ordinary block", "const a = <div css={@@(\n  color: red;\n)}>x</div>;\n"],
-    ["a braced one", "const a = <div css={@@(\n  color: red;\n)}>x</div>;\n"],
+    ["an ordinary block", "const a = <div className={@@(\n  color: red;\n)}>x</div>;\n"],
+    ["a braced one", "const a = <div className={@@(\n  color: red;\n)}>x</div>;\n"],
     ["a plain value", "const a = @@(\n  color: red;\n);\n"],
     ["a nested rule", "const a = @@(\n  &:hover { color: red; }\n);\n"],
     ["a hole", "const a = @@(\n  color: {tint};\n);\n"],

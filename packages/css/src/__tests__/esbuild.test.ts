@@ -81,7 +81,7 @@ describe("which build this is", () => {
   /** A config that is a function of the environment — the reason it is TypeScript rather than JSON. */
   const CONFIG = `export default (env) => ({ units: { length: env.production ? ["px"] : ["px", "rem"] } });\n`;
   /** Permitted in development, refused in production. */
-  const APP = `const a = <div css={@@( padding-left: 2rem; )}>x</div>;\nexport default a;\n`;
+  const APP = `const a = <div className={@@( padding-left: 2rem; )}>x</div>;\nexport default a;\n`;
 
   const underEsbuild = async (options: Parameters<typeof esbuild.build>[0], env: string | undefined) => {
     const root = project({ "index.tsx": APP, "ramonda.css.ts": CONFIG });
@@ -130,7 +130,7 @@ describe("which build this is", () => {
 });
 
 describe("a build", () => {
-  const APP = `const a = <div css={@@(\n  display: flex;\n  gap: 8px;\n)}>x</div>;\nexport default a;\n`;
+  const APP = `const a = <div className={@@(\n  display: flex;\n  gap: 8px;\n)}>x</div>;\nexport default a;\n`;
 
   test("compiles the block, and the class is in both halves", async () => {
     const root = project({ "index.tsx": APP });
@@ -158,7 +158,7 @@ describe("a build", () => {
       "index.tsx":
         `const w = @@property(\n  syntax: "<length>";\n  inherits: false;\n  initial-value: 0px;\n);\n` +
         `export const at = (v: string) => ({ [w]: v });\n` +
-        `const a = <div css={@@(\n  border-left: var({w}) solid red;\n)}>x</div>;\nexport default a;\n`,
+        `const a = <div className={@@(\n  border-left: var({w}) solid red;\n)}>x</div>;\nexport default a;\n`,
     });
     const { js, css } = outputs(await build(root));
 
@@ -177,7 +177,7 @@ describe("a build", () => {
 
   /** The refusal has to arrive as a position in the author's file, not as a stack trace. */
   test("a block it cannot read is reported on the author's line", async () => {
-    const root = project({ "index.tsx": `const a = <div css={@@(\n  {whole}\n)}>x</div>;\n` });
+    const root = project({ "index.tsx": `const a = <div className={@@(\n  {whole}\n)}>x</div>;\n` });
 
     await expect(build(root)).rejects.toMatchObject({
       errors: [expect.objectContaining({ location: expect.objectContaining({ line: 2 }) })],
@@ -231,8 +231,8 @@ describe("a build", () => {
 describe("a rebuild", () => {
   test("a file that loses its last block does not leave the sheet promising its class", async () => {
     const root = project({
-      "index.tsx": `import Card from "./Card";\nconst a = <div css={@@( display: flex; )}>{Card}</div>;\nexport default a;\n`,
-      "Card.tsx": `const card = <div css={@@( color: red; )}>x</div>;\nexport default card;\n`,
+      "index.tsx": `import Card from "./Card";\nconst a = <div className={@@( display: flex; )}>{Card}</div>;\nexport default a;\n`,
+      "Card.tsx": `const card = <div className={@@( color: red; )}>x</div>;\nexport default card;\n`,
     });
 
     const context = await esbuild.context({
@@ -275,7 +275,7 @@ describe("what a file is loaded as", () => {
   test("a value block in a .ts file is loaded as TypeScript", async () => {
     const root = project({
       "index.tsx": `import { panel } from "./styles";
-export default <div css={panel}>x</div>;
+export default <div className={panel}>x</div>;
 `,
       "styles.ts": `const width: number = 4;
 export const panel = @@(\n  gap: 4px;\n  if ({width}) { padding: 8px; }\n);
@@ -293,7 +293,7 @@ export const panel = @@(\n  gap: 4px;\n  if ({width}) { padding: 8px; }\n);
       "index.tsx": `import { c } from "./card";
 export default c;
 `,
-      "card.jsx": `export const c = <div css={@@( display: flex; )}>x</div>;
+      "card.jsx": `export const c = <div className={@@( display: flex; )}>x</div>;
 `,
     });
 
@@ -336,7 +336,7 @@ describe("a build that writes to disk", () => {
    */
   test("is checked through the metafile", async () => {
     const root = project({
-      "index.tsx": `const a = <div css={@@(\n  display: flex;\n)}>x</div>;
+      "index.tsx": `const a = <div className={@@(\n  display: flex;\n)}>x</div>;
 export default a;
 `,
     });
@@ -349,7 +349,7 @@ export default a;
 
   test("and says nothing when it can see neither", async () => {
     const root = project({
-      "index.tsx": `const a = <div css={@@( display: flex; )}>x</div>;
+      "index.tsx": `const a = <div className={@@( display: flex; )}>x</div>;
 export default a;
 `,
     });
@@ -390,7 +390,7 @@ describe("which config a file is measured against", () => {
       join(repo, "packages", "admin", "ramonda.css.ts"),
       `export default { units: { length: ["px", "em"] } };\n`,
     );
-    const app = `const a = <div css={@@(\n  padding: 1em;\n)}>x</div>;\nexport default a;\n`;
+    const app = `const a = <div className={@@(\n  padding: 1em;\n)}>x</div>;\nexport default a;\n`;
     for (const name of ["web", "admin"]) writeFileSync(join(repo, "packages", name, "index.tsx"), app);
     return repo;
   };
@@ -509,7 +509,7 @@ console.log(b);
 describe("codegen through the plugin", () => {
   test("the pair is written into the build's own root, before anything is resolved", async () => {
     const root = project({
-      "index.tsx": `const a = <div css={@@( color: $.color.primary.main; )}>x</div>;\nexport default a;\n`,
+      "index.tsx": `const a = <div className={@@( color: $.color.primary.main; )}>x</div>;\nexport default a;\n`,
       "ramonda.css.ts": `import { kind } from "@ramonda/css/config";\nexport default { variables: { color: kind("color", { primary: { main: "#3b82f6" } }) } };\n`,
     });
 
@@ -523,7 +523,7 @@ describe("codegen through the plugin", () => {
 
   test("a project with no config is built without one being invented", async () => {
     const root = project({
-      "index.tsx": `const a = <div css={@@( color: red; )}>x</div>;\nexport default a;\n`,
+      "index.tsx": `const a = <div className={@@( color: red; )}>x</div>;\nexport default a;\n`,
     });
 
     await build(root, { absWorkingDir: root });

@@ -75,7 +75,7 @@ function editorWith(rules: string, marked: string, variables: Record<string, str
 
   const files: Record<string, string> = {
     [FILE]: source,
-    [JSX_FILE]: `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    [JSX_FILE]: `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
   };
 
   const host: ts.LanguageServiceHost = {
@@ -136,7 +136,7 @@ function editorWith(rules: string, marked: string, variables: Record<string, str
  */
 describe("a config the editor cannot read", () => {
   const BROKEN = `RAW:export default { units: "px" };\n`;
-  const CARD = `const a = <div css={@@( padding-left: 2rem; )}>x</div>;\nexport default a;\n`;
+  const CARD = `const a = <div className={@@( padding-left: 2rem; )}>x</div>;\nexport default a;\n`;
 
   test("is reported, naming the config and saying the rules are not running", () => {
     const { reported } = editorWith(BROKEN, CARD);
@@ -148,7 +148,7 @@ describe("a config the editor cannot read", () => {
   });
 
   test("and the completions still work, which is what the silence was protecting", () => {
-    const { offered } = editorWith(BROKEN, `const a = <div css={@@( pad/*|*/ )}>x</div>;\n`);
+    const { offered } = editorWith(BROKEN, `const a = <div className={@@( pad/*|*/ )}>x</div>;\n`);
 
     expect(offered()).toContain("padding-left");
   });
@@ -171,7 +171,7 @@ describe("a property this project switched off", () => {
   const OFF = `{ "*": { shorthand: false }, margin: { shorthand: true } }`;
 
   test("is not offered where a property name goes", () => {
-    const { offered } = editorWith(OFF, `const a = <div css={@@( /*|*/ )}>x</div>;\n`);
+    const { offered } = editorWith(OFF, `const a = <div className={@@( /*|*/ )}>x</div>;\n`);
     const names = offered();
 
     // The control comes first: a list that is empty would pass the assertion below for free.
@@ -180,19 +180,19 @@ describe("a property this project switched off", () => {
   });
 
   test("the one brought back by name IS offered", () => {
-    const { offered } = editorWith(OFF, `const b = <div css={@@( /*|*/ )}>x</div>;\n`);
+    const { offered } = editorWith(OFF, `const b = <div className={@@( /*|*/ )}>x</div>;\n`);
 
     expect(offered()).toContain("margin");
   });
 
   test("and writing it anyway is reported", () => {
-    const { reported } = editorWith(OFF, `const c = <div css={@@( padding: 8px; )}>x</div>;\n`);
+    const { reported } = editorWith(OFF, `const c = <div className={@@( padding: 8px; )}>x</div>;\n`);
 
     expect(reported().join("\n")).toMatch(/padding/);
   });
 
   test("its longhand is silent, which is what switching it off is for", () => {
-    const { reported } = editorWith(OFF, `const d = <div css={@@( padding-left: 8px; )}>x</div>;\n`);
+    const { reported } = editorWith(OFF, `const d = <div className={@@( padding-left: 8px; )}>x</div>;\n`);
 
     expect(reported()).toEqual([]);
   });
@@ -206,7 +206,7 @@ describe("a property narrowed to a list of values", () => {
    * after the colon belongs to no run yet and is answered with the property names, measured.
    */
   test("the editor offers those values and nothing else", () => {
-    const { offered } = editorWith(LIST, `const e = <div css={@@( z-index: 5/*|*/ )}>x</div>;\n`);
+    const { offered } = editorWith(LIST, `const e = <div className={@@( z-index: 5/*|*/ )}>x</div>;\n`);
     const names = offered();
 
     expect(names).toContain("5");
@@ -226,7 +226,7 @@ describe("a property narrowed to a list of values", () => {
    * looks at.
    */
   test("a value outside the list is reported once, by the rule", () => {
-    const { reported } = editorWith(LIST, `const f = <div css={@@( z-index: 3; )}>x</div>;\n`);
+    const { reported } = editorWith(LIST, `const f = <div className={@@( z-index: 3; )}>x</div>;\n`);
     const said = reported();
 
     expect(said).toHaveLength(1);
@@ -235,11 +235,11 @@ describe("a property narrowed to a list of values", () => {
   });
 
   test.each([
-    ["a unit", `<div css={@@( letter-spacing: 2rem; )}>x</div>`, "[unit-not-allowed]"],
-    ["a shorthand", `<div css={@@( margin: 8px; )}>x</div>`, "[shorthand-not-allowed]"],
+    ["a unit", `<div className={@@( letter-spacing: 2rem; )}>x</div>`, "[unit-not-allowed]"],
+    ["a shorthand", `<div className={@@( margin: 8px; )}>x</div>`, "[shorthand-not-allowed]"],
     // A quoted value where the property takes a number: the quotes are the fault and the rule says
     // so, while the type refuses `"\"1\""` in terms nobody can act on.
-    ["a quoted value", `<div css={@@( z-index: "1"; )}>x</div>`, "[string-not-allowed]"],
+    ["a quoted value", `<div className={@@( z-index: "1"; )}>x</div>`, "[string-not-allowed]"],
   ])("%s is reported once too", (_what, written, said) => {
     const reported = editorWith(
       `{ "*": { units: ["px"] }, margin: { shorthand: false }, "z-index": { values: [0, 1] } }`,
@@ -251,7 +251,7 @@ describe("a property narrowed to a list of values", () => {
   });
 
   test("and one inside it is silent", () => {
-    const { reported } = editorWith(LIST, `const g = <div css={@@( z-index: 5; )}>x</div>;\n`);
+    const { reported } = editorWith(LIST, `const g = <div className={@@( z-index: 5; )}>x</div>;\n`);
 
     expect(reported()).toEqual([]);
   });
@@ -269,7 +269,7 @@ describe("`$` without an import", () => {
   const VARS = `{}`;
 
   test("completes one level at a time", () => {
-    const { offered } = editorWith(VARS, `const a = <div css={@@( color: $./*|*/ )}>x</div>;\n`, {
+    const { offered } = editorWith(VARS, `const a = <div className={@@( color: $./*|*/ )}>x</div>;\n`, {
       color: `kind("color", { accent: { main: "#10b981" } })`,
       space: `kind("length", { gutter: { tight: "8px" } })`,
     });
@@ -278,7 +278,7 @@ describe("`$` without an import", () => {
   });
 
   test("and the next level down", () => {
-    const { offered } = editorWith(VARS, `const b = <div css={@@( color: $.color.accent./*|*/ )}>x</div>;\n`, {
+    const { offered } = editorWith(VARS, `const b = <div className={@@( color: $.color.accent./*|*/ )}>x</div>;\n`, {
       color: `kind("color", { accent: { main: "#10b981", quiet: "#00b37e" } })`,
     });
 
@@ -288,7 +288,7 @@ describe("`$` without an import", () => {
   test("a path is silent, mixed into a value and alone", () => {
     const { reported } = editorWith(
       VARS,
-      `const c = <div css={@@( gap: 4px $.space.gutter.tight; color: $.color.accent.main; )}>x</div>;\n`,
+      `const c = <div className={@@( gap: 4px $.space.gutter.tight; color: $.color.accent.main; )}>x</div>;\n`,
       {
         color: `kind("color", { accent: { main: "#10b981" } })`,
         space: `kind("length", { gutter: { tight: "8px" } })`,
@@ -299,7 +299,7 @@ describe("`$` without an import", () => {
   });
 
   test("and nothing names jQuery, whatever else it says", () => {
-    const { reported } = editorWith(VARS, `const d = <div css={@@( color: $.nope.at.all; )}>x</div>;\n`, {
+    const { reported } = editorWith(VARS, `const d = <div className={@@( color: $.nope.at.all; )}>x</div>;\n`, {
       color: `kind("color", { accent: { main: "#10b981" } })`,
     });
 
@@ -324,7 +324,7 @@ describe("a kind this project takes only from variables", () => {
   const VARIABLES = { brand: `kind("color", { main: "#10b981" })` };
 
   test("its keywords are not offered", () => {
-    const { offered } = editorWith(ONLY, `const a = <div css={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
+    const { offered } = editorWith(ONLY, `const a = <div className={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
     const names = offered();
 
     expect(names).not.toContain("rebeccapurple");
@@ -332,7 +332,7 @@ describe("a kind this project takes only from variables", () => {
   });
 
   test("but what the setting leaves alone still is", () => {
-    const { offered } = editorWith(ONLY, `const a = <div css={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
+    const { offered } = editorWith(ONLY, `const a = <div className={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
     const names = offered();
 
     expect(names).toContain("currentcolor");
@@ -340,13 +340,13 @@ describe("a kind this project takes only from variables", () => {
   });
 
   test("and a property of another kind is untouched", () => {
-    const { offered } = editorWith(ONLY, `const a = <div css={@@( position: /*|*/ )}>x</div>;\n`, VARIABLES);
+    const { offered } = editorWith(ONLY, `const a = <div className={@@( position: /*|*/ )}>x</div>;\n`, VARIABLES);
 
     expect(offered()).toContain("absolute");
   });
 
   test("with no such setting, the colours are offered as they always were", () => {
-    const { offered } = editorWith(`{}`, `const b = <div css={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
+    const { offered } = editorWith(`{}`, `const b = <div className={@@( color: /*|*/ )}>x</div>;\n`, VARIABLES);
 
     expect(offered()).toContain("rebeccapurple");
   });

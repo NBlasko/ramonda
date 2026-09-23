@@ -532,7 +532,10 @@ describe("what a project's config may not change", () => {
       const names = new Set<string>();
       for (const config of CONFIGS) {
         try {
-          const out = transform(`const a = <div css={@@( ${css}; )}>x</div>;\n`, { filename: "C.tsx", config })?.code;
+          const out = transform(`const a = <div className={@@( ${css}; )}>x</div>;\n`, {
+            filename: "C.tsx",
+            config,
+          })?.code;
           const found = /"(r-[^"]+)"/.exec(out ?? "")?.[1];
           if (found !== undefined) names.add(found);
         } catch {

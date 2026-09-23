@@ -189,11 +189,11 @@ describe("a block that is not an attribute", () => {
   test.each([
     ["a value, outside JSX", `const panel = @@( display: flex; );\n`, "panel"],
     ["a value, exported", `export const panel = @@( display: flex; );\n`, "panel"],
-    ["a braced attribute", `const a = <div css={@@( display: flex; )}>x</div>;\n`, "css"],
+    ["a braced attribute", `const a = <div className={@@( display: flex; )}>x</div>;\n`, "className"],
     [
       "a braced attribute, four lines into the tag",
-      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    css={@@( display: flex; )}\n  >x</div>\n);\n`,
-      "css",
+      `const a = (\n  <div\n    id="x"\n    onclick={f}\n    className={@@( display: flex; )}\n  >x</div>\n);\n`,
+      "className",
     ],
   ])("%s is found, and is not wrapped", (_what, source, name) => {
     const [site, ...rest] = findBlocks(source);
@@ -508,7 +508,7 @@ describe("a block written in JSX text is prose", () => {
     ["a ternary", `const a = on ? @@( color: red; ) : none;\n`],
     ["an object value", `const a = { k: @@( color: red; ) };\n`],
     ["a bare attribute", `const a = <div css=@@( color: red; )>x</div>;\n`],
-    ["a braced attribute", `const a = <div css={@@( color: red; )}>x</div>;\n`],
+    ["a braced attribute", `const a = <div className={@@( color: red; )}>x</div>;\n`],
     ["a JSX child", `const a = <div>{@@( color: red; )}</div>;\n`],
     ["a spread", `const a = { ...@@( color: red; ) };\n`],
     ["default export", `export default @@( color: red; );\n`],

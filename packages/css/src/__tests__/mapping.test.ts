@@ -6,7 +6,7 @@ import { expect, test } from "vitest";
 import { checkProject } from "../check";
 
 const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const JSX = `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`;
+const JSX = `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`;
 
 const check = (card: string) => {
   const root = mkdtempSync(join(tmpdir(), "p5-"));
@@ -42,37 +42,40 @@ const check = (card: string) => {
  * reason it names is worth nothing, and this repository has been caught by that before.
  */
 const SHAPES: [string, string][] = [
-  ["first declaration", `const a = <div css={@@(\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`],
+  ["first declaration", `const a = <div className={@@(\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`],
   [
     "second declaration",
-    `const a = <div css={@@(\n  color: red;\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
+    `const a = <div className={@@(\n  color: red;\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
   ],
   [
     // An EXPRESSION kept verbatim is what moves every offset below it, and a condition is the brace
     // that carries one now — a runtime value in a declaration is refused. Same mechanism, same test.
     "after a condition",
-    `declare const t: string;\nconst a = <div css={@@(\n  if ({t}) { color: red; }\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
+    `declare const t: string;\nconst a = <div className={@@(\n  if ({t}) { color: red; }\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
   ],
   [
     "after a match, whose subject and arms both move things",
-    `declare const t: "a" | "b";\nconst a = <div css={@@(\n  color: match({t}) { a => red; b => blue; };\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
+    `declare const t: "a" | "b";\nconst a = <div className={@@(\n  color: match({t}) { a => red; b => blue; };\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
   ],
   [
     "inside a nested rule",
-    `const a = <div css={@@(\n  &:hover {\n    @@@position: statik;\n  }\n)}>x</div>;\nexport default a;\n`,
+    `const a = <div className={@@(\n  &:hover {\n    @@@position: statik;\n  }\n)}>x</div>;\nexport default a;\n`,
   ],
   [
     "two levels deep",
-    `const a = <div css={@@(\n  &:hover { & .t {\n    @@@position: statik;\n  } }\n)}>x</div>;\nexport default a;\n`,
+    `const a = <div className={@@(\n  &:hover { & .t {\n    @@@position: statik;\n  } }\n)}>x</div>;\nexport default a;\n`,
   ],
   [
     "inside a media query",
-    `const a = <div css={@@(\n  @media (min-width: 40rem) {\n    @@@position: statik;\n  }\n)}>x</div>;\nexport default a;\n`,
+    `const a = <div className={@@(\n  @media (min-width: 40rem) {\n    @@@position: statik;\n  }\n)}>x</div>;\nexport default a;\n`,
   ],
-  ["after a comment", `const a = <div css={@@(\n  /* why */\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`],
+  [
+    "after a comment",
+    `const a = <div className={@@(\n  /* why */\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
+  ],
   [
     "after a string",
-    `const a = <div css={@@(\n  content: "a;b";\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
+    `const a = <div className={@@(\n  content: "a;b";\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
   ],
   [
     "in the second block",
@@ -80,11 +83,11 @@ const SHAPES: [string, string][] = [
   ],
   [
     "after a custom property",
-    `const a = <div css={@@(\n  --row: 2rem;\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
+    `const a = <div className={@@(\n  --row: 2rem;\n  @@@position: statik;\n)}>x</div>;\nexport default a;\n`,
   ],
   [
     "CRLF",
-    `const a = <div css={@@(\r\n  color: red;\r\n  @@@position: statik;\r\n)}>x</div>;\r\nexport default a;\r\n`,
+    `const a = <div className={@@(\r\n  color: red;\r\n  @@@position: statik;\r\n)}>x</div>;\r\nexport default a;\r\n`,
   ],
 ];
 
