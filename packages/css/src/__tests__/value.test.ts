@@ -55,6 +55,43 @@ describe("a value that may not be written", () => {
     expect(toStyle([[tone, "red; position: fixed; width: 100vw" as never]])).toEqual({});
   });
 
+  /**
+   * **And the same belt on the NAME, which had none.**
+   *
+   * The value's guard exists because a `style` attribute is parsed back out of HTML on a
+   * server-rendered page. The NAME is written into that same attribute and was returned verbatim
+   * whenever it began with `--`, so the identical hazard came through the other door. Measured end
+   * to end — server render, then the browser's own parser on those bytes:
+   *
+   *     `;` in the value    declarations=[]
+   *     `;` in the NAME     declarations=[--brand=red, --evil=red]
+   *
+   * Two applied declarations from one setting. Reachable only past the types, which is the threat
+   * model this whole describe is written for.
+   *
+   * It THROWS rather than skipping, unlike a value: `nameOf` already throws for a token that is not
+   * this package's, and a malformed name is the same thing — not data that turned out wrong, but a
+   * name nothing here ever wrote.
+   */
+  test.each([
+    ["a `;`", "--brand: red; --evil"],
+    ["a space", "--brand red"],
+    ["a `:`", "--brand:x"],
+    ['a `"`', '--brand" onload="alert(1)'],
+    ["a `}`", "--brand}"],
+    ["nothing after the dashes", "--"],
+  ])("a name carrying %s is refused", (_what, token) => {
+    expect(() => toStyle([[token as never, "red" as never]])).toThrow(/not a variable this package wrote/);
+  });
+
+  /** The control: the names this package really writes are accepted, measured from a real build. */
+  test.each([["--color-accent-main"], ["--r-6lbmZbNkr"], ["--space-gutter-normal"], ["--x_1"]])(
+    "%s is a name this package writes, and is kept",
+    (token) => {
+      expect(toStyle([[token as never, "red" as never]])).toEqual({ [token]: "red" });
+    },
+  );
+
   test("and only that value — the others beside it are written", () => {
     expect(
       toStyle([

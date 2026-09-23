@@ -86,6 +86,26 @@ type Refused<R> = [R] extends [Fixed<unknown>]
 /** `var(--name)` — what codegen writes for a variable, and the only shape this has to read. */
 const NAMED = /^var\((--[^),\s]+)\)$/;
 
+/**
+ * A custom property name this package could have written.
+ *
+ * **The name goes into the same `style` attribute the value does, and only the value was guarded.**
+ * A server render serializes that attribute and the browser PARSES it back, so a `;` in the NAME is
+ * the hazard `textFor` exists for, arriving through the other door. Measured end to end — rendered,
+ * then read back through the browser's own parser:
+ *
+ *     `;` in the value    declarations=[]
+ *     `;` in the NAME     declarations=[--brand=red, --evil=red]
+ *
+ * Two applied declarations out of one setting, from a name nothing here wrote.
+ *
+ * The alphabet is CSS's own ident, which is what a custom property name is — and it is not a guess:
+ * every name in a real build of both apps is `--` and then `[A-Za-z0-9_-]`, and non-ASCII is allowed
+ * for the same reason `SAFE_PROPERTY` in `names.ts` allows it. Anything holding a space, a `;`, a
+ * `:`, a quote or a brace is not a name, whatever a cast says.
+ */
+const OURS = /^--[A-Za-z0-9_\u00a1-\uffff-]+$/;
+
 function nameOf(token: string): `--${string}` {
   /**
    * A REGISTERED property is already the name. `@@property( … )` binds `--r-…` itself, where a
@@ -93,7 +113,10 @@ function nameOf(token: string): `--${string}` {
    * a variable through `var()`. Two spellings, one question, so both are answered here rather than
    * at every call site.
    */
-  if (token.startsWith("--")) return token as `--${string}`;
+  if (token.startsWith("--")) {
+    if (!OURS.test(token)) throw new Error(`[ramonda-css] \`${token}\` is not a variable this package wrote.`);
+    return token as `--${string}`;
+  }
 
   const found = NAMED.exec(token);
   if (found === null) {
