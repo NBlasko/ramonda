@@ -951,6 +951,38 @@ describe("the build and the checker agree about a rule a project switched off", 
  *
  * It is also a claim made earlier in this review after measuring ONE door.
  */
+/**
+ * **The checker never ran `checkSite`**, so a bare attribute was a build failure and a clean run of
+ * `ramonda-css` — which is what a project's CI runs.
+ *
+ * Three flows read one set of rules. `transform` calls `checkSite`, `checkNamedSite`, `checkText`
+ * and `checkBlock`; `checkSource` called every one of those but the first. The editor reports it
+ * through a path of its own, so the only tool that was quiet is the one a build pipeline asks.
+ */
+describe("the checker sees a bare attribute, the way the build does", () => {
+  const BARE = `const a = <div className=@@( color: red; )>x</div>;\n`;
+
+  test("both name it", () => {
+    expect(() => transform(BARE, { filename: "/a.tsx" })).toThrow(CssBlockError);
+    expect(checkSource(BARE, "/a.tsx").map((one) => one.rule)).toContain("block-as-a-jsx-attribute");
+  });
+
+  test("and both fall silent when a project switches it off", () => {
+    const config = { rules: { "block-as-a-jsx-attribute": "off" } } as never;
+
+    expect(() => transform(BARE, { filename: "/a.tsx", config })).not.toThrow();
+    expect(checkSource(BARE, "/a.tsx", { config }).map((one) => one.rule)).not.toContain("block-as-a-jsx-attribute");
+  });
+
+  /** And the braced spelling stays clean in both, or this would be reporting the documented form. */
+  test("while the spelling the documentation teaches is clean in both", () => {
+    const braced = `const a = <div className={@@( color: red; )}>x</div>;\n`;
+
+    expect(() => transform(braced, { filename: "/a.tsx" })).not.toThrow();
+    expect(checkSource(braced, "/a.tsx")).toEqual([]);
+  });
+});
+
 describe("a directive cannot silence what the build must refuse", () => {
   const IN_A_TEMPLATE = "const a = <div className={`x ${@@( color: red; )}`}>y</div>;\n";
   const WITH_A_DIRECTIVE = `// ramonda-css-ignore a vendor tool writes it this way\n${IN_A_TEMPLATE}`;

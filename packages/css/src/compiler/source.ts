@@ -1,7 +1,7 @@
 import type { Config } from "../config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
-import { type Finding, checkBlock, checkNamedSite, checkTemplates, checkText } from "./rules";
+import { type Finding, checkBlock, checkNamedSite, checkSite, checkTemplates, checkText } from "./rules";
 import { type Ignored, ignoredIn, isIgnored } from "./ignore";
 import { findBlocks } from "./scan";
 import { type RegisteredSite, type VariableRead, type Variables, variablesIn } from "./variables";
@@ -115,7 +115,18 @@ export function checkedSource(
      * tools disagreeing about one fault, which is the thing the refusal's own note says cannot
      * happen.
      */
-    const named = checkNamedSite(site).filter((one) => config?.rules?.[one.rule] !== "off");
+    /**
+     * **The SITE as well as the named site**, which this door did not ask about.
+     *
+     * `transform` runs `checkSite` beside `checkNamedSite` — a bare JSX attribute is no longer a
+     * spelling it compiles, and it refuses one. This flow called every other checker the build does
+     * and not that one, so a bare attribute was a build failure and a clean run of `ramonda-css`,
+     * which is the tool a project's CI asks. The editor reports it through a path of its own, so the
+     * only quiet tool was the one that gates a pipeline.
+     */
+    const named = [...checkSite(source, site), ...checkNamedSite(site)].filter(
+      (one) => config?.rules?.[one.rule] !== "off",
+    );
     out.push(
       ...named,
       ...(named.length > 0

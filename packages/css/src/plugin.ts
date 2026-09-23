@@ -10,7 +10,7 @@ import {
   AT_RULE_LINKS,
 } from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
-import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding, checkSite } from "./compiler/rules";
+import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding } from "./compiler/rules";
 import { variablesOnlyKinds } from "./codegen";
 import { checkedSource } from "./compiler/source";
 import { fileMayHoldABlock, findBlocks } from "./compiler/scan";
@@ -113,8 +113,6 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           version: string;
           file: VirtualFile | undefined;
           css: Finding[];
-          /** What an editor can act on and a build must not fail over. Drawn as suggestions. */
-          hints: Finding[];
           author: ts.SourceFile | undefined;
           /** Where the CSS, the holes and the values are — read once per version, asked on every paint. */
           where: Regions;
@@ -303,7 +301,6 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           file,
           author,
           css,
-          hints: text === undefined ? [] : siteFindings(text),
           where,
           read: readHere,
         });
@@ -399,23 +396,6 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
         );
         if (said.size === 0) return from;
         return from.filter((one) => !(one.code === 2344 && said.has(one.start)));
-      };
-
-      /**
-       * What is true of the SITE rather than of its CSS — see `checkSite`.
-       *
-       * **An error, at the category the rest of them use.** It was a suggestion, and that was right
-       * while the only thing `checkSite` said was "an editor will not colour this": nothing was
-       * wrong, and failing a file over a grammar nobody can see would have been the editor
-       * promising a page the build would have given anyway.
-       *
-       * The build refuses a bare attribute now, so the opposite is true — a yellow squiggle under
-       * something that does not compile is the editor promising a page the build will NOT give.
-       */
-      const hintsFor = (fileName: string): ts.Diagnostic[] => {
-        overlay(fileName, readSnapshot);
-        const cached = cache.get(fileName);
-        return cached === undefined ? [] : ours(cached.hints, cached.author);
       };
 
       /**
@@ -973,7 +953,6 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           ...cannotCompile(fileName),
           ...brokenConfig(fileName),
           ...ours,
-          ...hintsFor(fileName),
           ...typed,
           ...withoutTheInterfaceRepeat(
             typed,
@@ -1645,12 +1624,10 @@ function properties(info: PluginCreateInfo): string | undefined {
  * squiggle.
  */
 function cssFindings(text: string, fileName: string, read: Imported["read"], config: Config): Finding[] {
+  // Site rules — what is true of `className=@@( … )` rather than of the CSS in it — arrive through
+  // here too. The editor used to ask `checkSite` itself, which was a second door onto one rule set
+  // and reported a bare attribute twice once `checkedSource` grew the same call.
   return checkedSource(text, fileName, { read, config, tolerant: true }).findings;
-}
-
-/** What is true of the SITE rather than of the CSS in it — see `checkSite`. */
-function siteFindings(text: string): Finding[] {
-  return findBlocks(text).flatMap((site) => checkSite(text, site));
 }
 
 /**
