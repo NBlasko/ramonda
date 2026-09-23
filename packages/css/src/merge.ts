@@ -44,9 +44,29 @@ const CLEARS = new Map<string, readonly string[]>();
  *
  * Idempotent, and it has to be: two modules writing `padding` each register it, and a dev server
  * re-runs a module on every save.
+ *
+ * **The UNION, because two registrations can disagree.** `set` alone is idempotent only while the
+ * lists match, and one build never produces two different lists for a key — the emitter writes the
+ * whole family. Two builds do: a library shipping blocks compiled against another version of this
+ * package carries its own `_clears({ … })`, and an application on a newer one has both. Measured
+ * with `set`: a shorter list registered second took the first one's longhands away, and a
+ * `padding-left` survived a `padding` written after it — silently, decided by whichever module the
+ * bundler put last.
+ *
+ * The union rather than first-wins: these are one family described twice, and clearing a longhand a
+ * newer version has dropped costs nothing, because no class carries it.
+ *
+ * **`conditionsOf` and `namesOf` keep `set`, and the difference is the VALUE rather than the
+ * caution.** Each of those maps a key to one string — the query a hash stands for, the name an
+ * abbreviation stands for — and two different strings cannot be unioned. Both are read only by the
+ * development warning and dropped from a production build, so a disagreement between two builds
+ * costs a sentence in a warning rather than a declaration on a page.
  */
 export function shorthands(table: Readonly<Record<string, readonly string[]>>): void {
-  for (const property in table) CLEARS.set(property, table[property]);
+  for (const property in table) {
+    const already = CLEARS.get(property);
+    CLEARS.set(property, already === undefined ? table[property] : [...new Set([...already, ...table[property]])]);
+  }
 }
 
 /**

@@ -123,6 +123,45 @@ describe("what a module registers", () => {
 
     expect(mergeClassNames(classOf("padding-left", "4px"), classOf("padding", "8px"))).toBe(classOf("padding", "8px"));
   });
+
+  /**
+   * **And when the two lists DISAGREE, which is the case the claim is closest to.**
+   *
+   * `shorthands` is documented as idempotent — *two modules writing `padding` each register it* —
+   * and `CLEARS.set` is idempotent only while the lists match. Measured, a second registration with
+   * a shorter list took the first one's longhands away and `padding-left` survived a `padding`
+   * written after it.
+   *
+   * One build never produces two different lists for a key: the emitter writes the whole family. Two
+   * do. A library that ships blocks compiled against another version of this package carries its own
+   * `_clears({ … })`, and an application on a newer one has both — so whichever module the bundler
+   * put last decides whether a shorthand clears anything at all, silently.
+   *
+   * The union is the answer rather than first-wins or last-wins: these are the same family described
+   * twice, and clearing a longhand that a newer version has dropped costs nothing, because no class
+   * carries it.
+   */
+  test.each([
+    [
+      "the full family, then a shorter one",
+      [
+        ["pl", "pr", "pt", "pb"],
+        ["pt", "pb"],
+      ],
+    ],
+    [
+      "a shorter one, then the full family",
+      [
+        ["pt", "pb"],
+        ["pl", "pr", "pt", "pb"],
+      ],
+    ],
+    ["an empty list after a full one", [["pl", "pr", "pt", "pb"], []]],
+  ])("%s still clears what either of them named", (_what, lists) => {
+    for (const list of lists as string[][]) shorthands({ p: list });
+
+    expect(mergeClassNames(classOf("padding-left", "4px"), classOf("padding", "8px"))).toBe(classOf("padding", "8px"));
+  });
 });
 
 describe("a reuse inside a reuse", () => {
