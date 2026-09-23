@@ -84,9 +84,18 @@ export function checkedSource(
   // What each registered property may HOLD, beside what it is called — see `syntaxesIn`.
   const syntaxes = syntaxesIn(source, { filename: fileName, read });
 
-  // A block inside a `${ … }` is found by nothing below, because a template literal is text — see
-  // `checkTemplates`. Asked of the whole FILE, before the sites, since there is no site to hang it on.
-  out.push(...checkTemplates(source));
+  /**
+   * A block inside a `${ … }` is found by nothing below, because a template literal is text — see
+   * `checkTemplates`. Asked of the whole FILE, before the sites, since there is no site to hang it on.
+   *
+   * **Kept OUT of what a directive can silence**, and that is the one place this list differs from
+   * the rest. Every other rule here is one a person may take responsibility for; this one is not,
+   * because nothing rewrites a block in a template and it reaches the bundler as `@@(` — so the
+   * build refuses it whatever a comment says. A directive that quieted the checker and not the build
+   * would leave an author with a green editor, a green `ramonda-css`, and a failing build, which is
+   * the one direction this package cannot afford.
+   */
+  const unsilenceable = checkTemplates(source);
 
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName, { tolerant, resolve: (name) => references.get(name) });
@@ -142,7 +151,7 @@ export function checkedSource(
    */
   const { ignored, findings } = ignoredIn(source);
   return {
-    findings: [...findings, ...out.filter((finding) => !isIgnored(source, ignored, finding))],
+    findings: [...findings, ...unsilenceable, ...out.filter((finding) => !isIgnored(source, ignored, finding))],
     /**
      * A registration counts as SETTING the name, because it carries an initial value and so always
      * resolves — that is what `Sheet.unknownVariables` asks. It is composed here rather than pushed

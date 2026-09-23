@@ -935,6 +935,44 @@ describe("the build and the checker agree about a rule a project switched off", 
   });
 });
 
+/**
+ * **A directive the build cannot honour must not silence the checker either.**
+ *
+ * `ramonda-css-ignore` covers every rule, and `block-in-a-template` is the one it must not: a block
+ * inside a `${ … }` is rewritten by nothing, so it reaches the bundler as `@@(` and the build has to
+ * refuse whatever a comment says. It does. The CHECKER went quiet — measured:
+ *
+ *     the build,   with a directive    refused
+ *     the checker, with a directive    clean
+ *
+ * So an author writes the comment, their editor stops complaining, `ramonda-css` says the file is
+ * fine, and the build fails. That is the one direction this package says it cannot afford: an editor
+ * quieter than the build promises a page the build will not give.
+ *
+ * It is also a claim made earlier in this review after measuring ONE door.
+ */
+describe("a directive cannot silence what the build must refuse", () => {
+  const IN_A_TEMPLATE = "const a = <div className={`x ${@@( color: red; )}`}>y</div>;\n";
+  const WITH_A_DIRECTIVE = `// ramonda-css-ignore a vendor tool writes it this way\n${IN_A_TEMPLATE}`;
+
+  test("the build refuses it with or without one", () => {
+    expect(() => transform(IN_A_TEMPLATE, { filename: "/a.tsx" })).toThrow(CssBlockError);
+    expect(() => transform(WITH_A_DIRECTIVE, { filename: "/a.tsx" })).toThrow(CssBlockError);
+  });
+
+  test("and the checker keeps reporting it, so the two agree", () => {
+    expect(checkSource(IN_A_TEMPLATE, "/a.tsx").map((one) => one.rule)).toContain("block-in-a-template");
+    expect(checkSource(WITH_A_DIRECTIVE, "/a.tsx").map((one) => one.rule)).toContain("block-in-a-template");
+  });
+
+  /** And an ordinary rule is still silenced, or this would be a directive that does nothing. */
+  test("while an ordinary rule in the same file is still covered", () => {
+    const source = `const a = @@(\n  // ramonda-css-ignore a vendor stylesheet defines this\n  dsiplay: flex;\n);\n`;
+
+    expect(checkSource(source, "/a.tsx").map((one) => one.rule)).not.toContain("unknown-property");
+  });
+});
+
 describe("the build refuses what the checker finds", () => {
   test("a `@property` inside a block, which used to ship as invalid CSS", () => {
     expect(() => emit(`const s = @@(\n  @property --x { syntax: "<color>"; }\n  color: red;\n);\n`)).toThrow(

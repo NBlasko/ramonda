@@ -1363,6 +1363,43 @@ describe("a refusal, and the files that read anyway", () => {
  * taking every property there is; a slot that narrowed ordinary blocks would be a regression
  * affecting every file in every project.
  */
+/**
+ * **A block in a `${ … }`, which produces no site — so nothing downstream of one can see it.**
+ *
+ * `transform` learned this and says so where it refuses: *asked before the early return, since a
+ * file whose only block is in a template finds no site at all*. `checkProject` asks AFTER — the
+ * whole CSS pass sits behind `if (virtual !== undefined)` — so the rule never ran and the file went
+ * to `tsc` as written. Measured, what a person got from `ramonda-css`:
+ *
+ *     TS1005: ')' expected.
+ *     TS1003: Identifier expected.
+ *     TS2322: Type '{ className: string; red: true; }' is not assignable …
+ *
+ * Six of them, naming neither the block nor the line — which is the sentence `block-in-a-template`
+ * exists to replace, quoted from its own docstring.
+ */
+describe("a block inside a template literal, through the project checker", () => {
+  const IN_A_TEMPLATE = "const a = <div className={`x ${@@( color: red; )}`}>y</div>;\nexport default a;\n";
+
+  test("is reported by its own rule", () => {
+    const report = check({ "Card.tsx": IN_A_TEMPLATE });
+
+    expect(report.findings.map((one) => String(one.code))).toContain("block-in-a-template");
+  });
+
+  /**
+   * And the compiler's word about the same file goes with it. The file cannot be parsed until the
+   * block moves, so every syntax error in it is about the one fault already named — the same trade
+   * `inOrder` makes everywhere else.
+   */
+  test("and the compiler's syntax errors about that file are not piled on top", () => {
+    const report = check({ "Card.tsx": IN_A_TEMPLATE });
+    const numbers = report.findings.filter((one) => typeof one.code === "number").map((one) => one.code);
+
+    expect(numbers).toEqual([]);
+  });
+});
+
 describe("a block a prop can constrain", () => {
   /** A component whose `css` takes a colour from the theme, one of two gaps, and a hover colour. */
   const CARD =

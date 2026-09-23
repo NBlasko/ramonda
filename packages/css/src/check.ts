@@ -10,6 +10,7 @@ import { knownNames, configReader, environmentOf } from "./config";
 import { findConfig } from "./config";
 import { propertiesFor } from "./generate";
 import { readModule } from "./modules";
+import { checkTemplates } from "./compiler/rules";
 import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
 import { TYPED_RULES, registeredNeverSet, typedFindings } from "./compiler/typed";
 import type { RegisteredSite } from "./compiler/variables";
@@ -114,6 +115,15 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   const refusals: Finding[] = [];
   /** What the CSS rules found — the faults the types deliberately cannot catch. */
   const css: Finding[] = [];
+  /**
+   * Files the compiler cannot parse because a block sits in a template literal.
+   *
+   * Nothing rewrites one, so `tsc` reads `@@(` as written and answers with six syntax errors about
+   * the same character — none of which names the block. `block-in-a-template` names it, so the
+   * compiler's word about that file is dropped, the way `inOrder` drops it wherever a rule of ours
+   * has already spoken.
+   */
+  const unparseable = new Set<string>();
   /** Only the variables are wanted from it — see below. */
   const sheet = new Sheet();
   const sources = new Map<string, string>();
@@ -163,6 +173,27 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
        * that named one meant it.
        */
       const properties = options.properties ?? propertiesFor(fileName);
+      /**
+       * **A block inside a `${ … }` is asked about BEFORE the overlay**, because it produces no site
+       * and so nothing downstream of one can see it.
+       *
+       * `transform` says the same thing where it refuses — *a file whose only block is in a template
+       * finds no site at all, so asking after that return is asking where nothing is left to ask* —
+       * and this pass asked after. The rule never ran and the file went to `tsc` as written, so what
+       * a person got was six syntax errors naming neither the block nor the line, which is the
+       * sentence `block-in-a-template` exists to replace.
+       */
+      const inATemplate = checkTemplates(text).map((finding) => ({
+        file: fileName,
+        ...positionOf(text, finding.at),
+        code: finding.rule,
+        message: finding.message,
+      }));
+      css.push(...inATemplate);
+      // The file cannot be parsed until the block moves, so every compiler diagnostic in it is about
+      // the fault already named. The same trade `inOrder` makes wherever a rule of ours speaks first.
+      if (inATemplate.length > 0) unparseable.add(fileName);
+
       const virtual = virtualFile(text, { properties, filename: fileName, read: readModule });
       // `mayHoldABlock` is allowed to say maybe — a string or a comment can hold the syntax, and
       // a file that turns out to hold no block needs no overlay.
@@ -315,7 +346,14 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   return {
     files: parsed.fileNames.length,
     styled: overlays.size,
-    findings: [...setup.values(), ...inOrder(css, findings, sources)],
+    findings: [
+      ...setup.values(),
+      ...inOrder(
+        css,
+        findings.filter((one) => !unparseable.has(one.file)),
+        sources,
+      ),
+    ],
     refusals: [],
     refused: false,
     exempted,
