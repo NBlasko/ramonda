@@ -306,7 +306,24 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * a suggestion the build never saw, which was right while the spelling was supported.
      */
     // shape to check its body against, so anything else said about it is a guess. See `checkedSource`.
-    const siteFindings = [...checkSite(source, site), ...checkNamedSite(site)];
+    /**
+     * **A site finding goes through `rules` too**, and it did not.
+     *
+     * The refusal below prints the id in front of the sentence so a reader knows which key to write
+     * in `ramonda.css.ts` — and for these two the key did nothing. Measured: a project that switched
+     * `block-as-a-jsx-attribute` off still failed its build, while a `ramonda-css-ignore` above the
+     * line let the same file through and compiled it correctly. Two escape hatches the documentation
+     * offers as equals, one of them shut.
+     *
+     * `checkBlock` has done this since it took a config; these come from `checkSite` and
+     * `checkNamedSite`, which never saw one. The rule that must NOT be silenced — a block inside a
+     * `${ … }`, which would reach the bundler as `@@(` — is refused above this and names no key, so
+     * it is untouched by the filter and stays that way.
+     */
+    const silenced = options.config?.rules;
+    const siteFindings = [...checkSite(source, site), ...checkNamedSite(site)].filter(
+      (one) => silenced?.[one.rule] !== "off",
+    );
     const [finding] = (
       siteFindings.length > 0
         ? siteFindings

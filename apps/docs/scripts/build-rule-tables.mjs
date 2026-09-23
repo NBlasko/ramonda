@@ -359,7 +359,9 @@ if (undescribed.length > 0 || stale.length > 0) {
 const cssRegion = [
   CSS_START,
   "",
-  `Every one of them fails the build. ${cssIds.length} of them, and each is a key you can switch off.`,
+  `Every one of them fails the build. ${cssIds.length} of them, and each is a key you can switch off — ` +
+    "except `block-in-a-template`, which names no key because there is nothing safe to switch off: a " +
+    "block inside a `${ … }` reaches the bundler as `@@(`, and silencing the report would ship that.",
   "",
   "| rule | reported when |",
   "|---|---|",

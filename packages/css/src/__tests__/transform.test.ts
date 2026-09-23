@@ -975,6 +975,36 @@ describe("a refusal names the rule that made it", () => {
   });
 
   /**
+   * **And a key it names has to BE one**, which is the same principle from the other side.
+   *
+   * A fault about the SITE — where the block is written, rather than what is in it — was refused
+   * with its id in front of the sentence and then ignored the `rules` key that id names. Measured:
+   * `block-as-a-jsx-attribute` and `unknown-named-block` refused a build whether the project had
+   * switched them off or not, while a `ramonda-css-ignore` above the line let both through and the
+   * output was correct either way. Two escape hatches, one working.
+   *
+   * `block-in-a-template` is the one that must not be silenced — a block in a `${ … }` reaches the
+   * bundler as `@@(` — and it is already right: it names no key, and neither hatch opens it.
+   */
+  test.each([
+    ["block-as-a-jsx-attribute", `const a = <div className=@@( color: red; )>x</div>;\n`],
+    ["unknown-named-block", `const a = @@wat( color: red; );\n`],
+  ])("%s is a key a project can actually switch off", (id, source) => {
+    expect(refused(source)).toContain(`${id}:`);
+    expect(() => transform(source, { filename: "/a.tsx", config: { rules: { [id]: "off" } } })).not.toThrow();
+  });
+
+  /** And the one that names no key stays refused, because silencing it would ship `@@(`. */
+  test("a block in a template cannot be switched off, and names no key", () => {
+    const source = "const a = <div className={`x ${@@( color: red; )}`}>y</div>;\n";
+
+    expect(refused(source)).not.toMatch(/^\/a\.tsx:\d+:\d+\s+[a-z-]+:/);
+    expect(() =>
+      transform(source, { filename: "/a.tsx", config: { rules: { "block-in-a-template": "off" } } }),
+    ).toThrow();
+  });
+
+  /**
    * A refusal the PARSER makes has no rule behind it — there is no key to switch off, so naming one
    * would send a reader looking for something that is not there.
    */
