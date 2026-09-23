@@ -21,6 +21,16 @@ class Card extends Component<{ css?: CssBlock }> {
 `CssBlock` on its own takes every block there is. A caller may change the padding, the position, the
 display — anything — and the component finds out when something looks wrong on a page.
 
+**`CssBlock` is a type you import**, and where from depends on whether your project has a
+[`ramonda.css.ts`](/style-blocks/config). With one, codegen puts it in the generated `css-system`
+beside `$` and `Var`, which is the one import a component needs:
+
+```ts
+import type { CssBlock, Var } from "./css-system";
+```
+
+Without a config there is no `css-system`, and it comes from `@ramonda/css/properties`.
+
 ## The allow-list
 
 Give the type an allow-list, and it becomes an answer. The properties are the keys, and each key's
