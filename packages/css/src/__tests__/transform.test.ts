@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { CssBlockError } from "../compiler/errors";
+import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";
 import { namedSites } from "../compiler/references";
 
@@ -902,6 +903,38 @@ describe("the same declaration in two contexts", () => {
  * and the next one would forget. `transform` has exactly two callers, `vite.ts` and `esbuild.ts`,
  * and both of them must refuse.
  */
+/**
+ * **The build and the checker answer the same question the same way**, including when a project has
+ * switched a rule off.
+ *
+ * `transform` and `checkSource` are two doors onto one set of rules, and the note on the refusal
+ * says why they must agree: *a fault that read differently depending on which tool found it would
+ * be two faults to a reader*. A site rule is where they came apart — `checkBlock` has taken a config
+ * since it had one, and the site checks never did. Fixing that in the BUILD alone left the checker
+ * reporting a rule the build had been told to let through, which is the same family of mistake one
+ * step along: one sibling changed, the other did not.
+ *
+ * Asserted as AGREEMENT rather than as two separate expectations, because that is the property —
+ * either tool moving on its own is the fault.
+ */
+describe("the build and the checker agree about a rule a project switched off", () => {
+  const SITE_RULES: [string, string, string][] = [
+    ["unknown-named-block", "unknown-named-block", `const a = @@wat( color: red; );\n`],
+    ["block-as-a-jsx-attribute", "block-as-a-jsx-attribute", `const a = <div className=@@( color: red; )>x</div>;\n`],
+  ];
+
+  test.each(SITE_RULES)("%s", (_what, rule, source) => {
+    const config = { rules: { [rule]: "off" } } as never;
+
+    // On: both speak.
+    expect(() => transform(source, { filename: "/a.tsx" })).toThrow(CssBlockError);
+
+    // Off: neither does.
+    expect(() => transform(source, { filename: "/a.tsx", config })).not.toThrow();
+    expect(checkSource(source, "/a.tsx", { config }).map((one) => one.rule)).not.toContain(rule);
+  });
+});
+
 describe("the build refuses what the checker finds", () => {
   test("a `@property` inside a block, which used to ship as invalid CSS", () => {
     expect(() => emit(`const s = @@(\n  @property --x { syntax: "<color>"; }\n  color: red;\n);\n`)).toThrow(

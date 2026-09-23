@@ -97,7 +97,16 @@ export function checkedSource(
      * guess was `rule-out-of-place`, which read `from { … }` as the selector `& from` and reported
      * a nested rule. A wrong message is worse than none: it sends a person to the wrong line.
      */
-    const named = checkNamedSite(site);
+    /**
+     * **Through `rules` too, the way the build reads them.**
+     *
+     * `checkBlock` below is handed the config and drops what a project switched off; the site check
+     * never was, in either door. The build learned to filter these and this one did not, which left
+     * `ramonda-css` and an editor reporting a rule the build had been told to let through — two
+     * tools disagreeing about one fault, which is the thing the refusal's own note says cannot
+     * happen.
+     */
+    const named = checkNamedSite(site).filter((one) => config?.rules?.[one.rule] !== "off");
     out.push(
       ...named,
       ...(named.length > 0
