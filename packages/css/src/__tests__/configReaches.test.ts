@@ -75,7 +75,7 @@ function editorWith(rules: string, marked: string, variables: Record<string, str
 
   const files: Record<string, string> = {
     [FILE]: source,
-    [JSX_FILE]: `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    [JSX_FILE]: `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
   };
 
   const host: ts.LanguageServiceHost = {

@@ -124,7 +124,7 @@ describe("the generated module", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(
       join(root, "src", "Card.tsx"),
@@ -209,7 +209,7 @@ export const gap: Value<"padding-left"> = "8px";
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(
       join(root, "src", "Card.tsx"),
@@ -324,7 +324,7 @@ describe("a variable of the wrong kind", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), `import { $ } from "../css-system";\n\n${card}`);
     writeFileSync(
@@ -418,7 +418,7 @@ describe("a value made outside a block", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), `import { type Value } from "../css-system";\n\n${card}`);
     writeFileSync(
@@ -494,7 +494,7 @@ describe("what a project's property rules do", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), card);
     writeFileSync(
@@ -626,7 +626,7 @@ describe("a block nested more than once", () => {
 
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(
       join(root, "src", "Card.tsx"),
@@ -755,7 +755,7 @@ describe("a shorthand's kind", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), card);
     writeFileSync(
@@ -849,7 +849,7 @@ describe("a variable against a property's range", () => {
     writeGenerated(root, ts);
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), card);
     writeFileSync(

@@ -33,7 +33,7 @@ function project(card: string): string {
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(
     join(root, "src", "jsx.d.ts"),
-    `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
   );
   writeFileSync(join(root, "src", "Card.tsx"), card);
   writeFileSync(

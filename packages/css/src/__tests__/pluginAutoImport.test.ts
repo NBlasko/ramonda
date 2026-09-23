@@ -29,7 +29,7 @@ const THEME = join(PACKAGE, "src", "__tests__", "theme.ts");
 const editor = (source: string) => {
   const files: Record<string, string> = {
     [FILE]: source,
-    [JSX]: `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+    [JSX]: `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     [THEME]: `export const palette = "#10b981";\n`,
   };
 

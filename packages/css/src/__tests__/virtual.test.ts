@@ -15,8 +15,14 @@ import { virtualFile } from "../compiler/virtual";
  * The JSX the author's own project would have. Without it every element is `TS7026`, which would
  * drown the diagnostics this is actually about.
  *
- * `css` is typed the way the framework types it — a value nothing hand-writes — so this also asserts
- * the virtual file's `__block(…)` is assignable to the real prop.
+ * **`className?: string` is the assignability claim, and it is made by every fixture below.** A
+ * block compiles to a branded string, so `__block(…)` landing on `className` is the whole contract
+ * between this file and a real project — and a fixture that broke it would be a `TS2322` here.
+ *
+ * There used to be a `css?: { readonly className; readonly properties; readonly values }` beside it,
+ * with a comment saying it asserted exactly that. It asserted nothing: it named a prop that no
+ * longer exists, typed as the MAP a block stopped being in step 5, and removing it left all 75
+ * tests green. A claim in a comment that nothing runs is the shape this repository keeps finding.
  */
 const JSX_TYPES = `
 declare namespace JSX {
@@ -24,7 +30,6 @@ declare namespace JSX {
     div: {
       id?: string;
       className?: string;
-      css?: { readonly className: string; readonly properties: readonly string[]; readonly values: readonly (string | number)[] };
       children?: unknown;
     };
   }

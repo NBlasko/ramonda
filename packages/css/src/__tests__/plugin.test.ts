@@ -28,7 +28,7 @@ const JSX_FILE = join(PACKAGE, "src", "__tests__", "jsx.d.ts");
 const JSX_TYPES = `
 declare namespace JSX {
   interface IntrinsicElements {
-    div: { id?: string; className?: string; css?: unknown; children?: unknown };
+    div: { id?: string; className?: string; children?: unknown };
   }
   interface Element { readonly _brand: unique symbol }
 }
