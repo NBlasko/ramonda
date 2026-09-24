@@ -4043,6 +4043,30 @@ match({this.loud ? "on" : "off"}) { on => red; off => blue; }
 So the ternary is available after all, just not in the arm. That is a workaround rather than a
 design, and it is written nowhere a reader would find it.
 
+### 13. A logical longhand and a physical one share a layer — MEASURED, shipped, not fixed
+
+Found while checking whether splitting needs a group clear. `padding-inline-start` and
+`padding-left` set the same used value, neither covers the other, so both cover 0 properties and
+both land in `ramonda.u17`. Measured in Chromium, one class each, same layer:
+
+```
+inline-start then left   10px
+left then inline-start    2px
+```
+
+The load order decides, which is the one thing the layers exist to stop. Every logical/physical pair
+is like this — `margin-block-start` against `margin-top`, and so on down the box model.
+
+**Splitting does not fix it**, so it is not the splitter's to carry: there is no breadth to order by
+when neither property covers the other.
+
+**And CSS gives no answer either.** In a hand-written stylesheet the later declaration wins, and
+that is all the specification says. Ramonda cannot preserve the author's order across files — inside
+one block it could, but two blocks merged on one element have no order between them.
+
+So it wants a decision rather than a repair: pick one side to win, always, and say so. The
+measurement above is what a choice has to beat.
+
 ## A published package meets an application — the cascade across a version boundary
 
 **Measured 2026-09-23, in Chromium, against real stylesheets from the real `Sheet`. NOT built.**
@@ -4665,8 +4689,20 @@ The order:
    merge and `--check` as `build-shorthand-leaves.mjs`. The learner moves out of the prototype and
    into a module both it and the generator use, because two copies of it is the fault this
    repository keeps finding;
-2. **the group clear in `mergeClassNames`** — the emitted classes say which shorthand they came
-   from, so a later one still clears the family. Without it the split loses the reset;
+2. ~~**the group clear in `mergeClassNames`**~~ — **not needed for the positional families**, and
+   that was worth measuring rather than assuming. A positional split emits every longhand the
+   engine's own expansion names, so a later shorthand displaces an earlier longhand BY KEY and the
+   reset costs nothing extra. End to end, through the real merge and the real key naming:
+
+   ```
+   padding: 10px                    →  r-pt-10px r-pr-10px r-pb-10px r-pl-10px
+   padding-left: 4px, then padding  →  r-pt r-pr r-pb r-pl-10px    the 4px is displaced
+   padding, then padding-left: 4px  →  r-pt r-pr r-pb r-pl-4px     only the left moves
+   ```
+
+   Both directions right, with no group clear and the cascade never asked, because every surviving
+   class sets a different property. The group clear is still owed by the TYPE-dispatched families,
+   whose split emits only what the author wrote;
 3. **the corpus as a gate**, over the real splitter rather than a modelled one;
 4. **then** the splitter in the compiler, behind the gate.
 
