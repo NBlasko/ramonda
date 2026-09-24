@@ -118,6 +118,10 @@ jobs:
           node scripts/build-css-properties.mjs --check
           node scripts/build-shorthand-shapes.mjs --check
           node scripts/build-token-shapes.mjs --check
+          SELFTEST=collide node scripts/check-layer-names.mjs
+          SELFTEST=drift node scripts/check-layer-names.mjs
+          SELFTEST=crowd node scripts/check-layer-names.mjs
+          node scripts/check-layer-names.mjs
           SELFTEST=slot node scripts/check-shorthand-split.mjs
           node scripts/check-shorthand-split.mjs
 

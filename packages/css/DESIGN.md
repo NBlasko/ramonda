@@ -4266,7 +4266,32 @@ clears everything old that it has to. The direction is "toward stronger", which 
 statement (largest count declared first) is minus one; flipping the scale would make it literally
 plus one. At a scale of 1000 that is a thousand shifts per unit.
 
-### Shift only when it is needed, and let a gate say when
+### Shift only when it is needed, and let a gate say when — BUILT
+
+`scripts/check-layer-names.mjs`, in `pnpm check` and in CI, with the counts as of the last release
+committed beside it in `packages/css/layer-counts.json`. Three checks, each with a selftest of its
+own:
+
+```
+covers   inside ONE version: a shorthand is weaker than everything it covers
+across   and against the recorded release, BOTH directions — which stylesheet is the older
+         one is not ours to decide
+range    at most one family past the end of the range, because everything past it shares `a`
+```
+
+Today: 143 covering pairs, no violation, and the tightest margin is 4 — `grid` at 7 over
+`grid-template` at 3. **Splitting is what widened them.** The prototype below measured the tightest
+margin at 2 across 86 pairs, when every longhand had a count of its own; a longhand has none now, so
+it left the comparison entirely and only shorthand-over-shorthand remains.
+
+**A selftest that passes for the wrong reason says nothing.** All three passed on the first writing
+and all three were caught by `covers`, because widening a narrow family's count breaks that
+invariant at the same time — `drift` never reached the cross-version check and `crowd` never reached
+the range one. Each finding carries the name of the check that made it now, and a selftest fails
+unless its OWN check is the one that fired. `drift` had to be written against the recorded snapshot
+rather than the current table for the same reason: editing the current one answers at `covers` first.
+
+### ~~Shift only when it is needed, and let a gate say when~~ — the prototype it was built from
 
 Shifting on every table change is the rule with nothing to remember, and at a scale of 1000 it lasts
 about a century. It is also unnecessary: a collision needs a LEAF to grow to exactly the count its

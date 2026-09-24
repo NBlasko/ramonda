@@ -217,7 +217,7 @@ export function sheetRank(declaration: { property?: string; conditions?: readonl
  *     1024   2158 B
  * ```
  */
-const WIDEST = 64;
+export const WIDEST = 64;
 
 /**
  * A shorthand covering MORE than the range holds gets the weakest layer of all, and `all` is it.
