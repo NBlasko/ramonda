@@ -167,6 +167,14 @@ const TYPES = {
   wrapping2: ["balance", "pretty"],
   "space-keyword": ["pre", "collapse"],
   align: ["baseline", "middle"],
+  track: ["1fr", "2fr"],
+  "track-size": ["minmax(0, 1fr)", "minmax(0, 2fr)"],
+  "grid-area-name": ['"a"', '"b"'],
+  flow: ["auto-flow", "dense"],
+  "font-style": ["italic", "oblique"],
+  "font-weight": ["bold", "bolder"],
+  "font-stretch": ["condensed", "expanded"],
+  "font-variant": ["small-caps", "all-small-caps"],
   axis: ["block", "inline"],
   "axis-xy": ["x", "y"],
   "timeline-name": ["--one", "--two"],
@@ -413,7 +421,18 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
          * its own meant those groups never formed at all and the families had no shape, when the
          * only thing missing was a companion the family already accepts.
          */
-        const carrier = PROBE.find((one) => Object.keys(expand(name, one)).length > 0);
+        /**
+         * The shortest thing the family accepts, which may be a PAIR.
+         *
+         * `font` takes no single component at all — a size without a family is refused, and so is a
+         * family without a size — so a one-token carrier left every `font` token unclassifiable and
+         * the family shapeless. `font: 3px aaa` is accepted, and that is enough to carry the rest.
+         */
+        const carrier =
+          PROBE.find((one) => Object.keys(expand(name, one)).length > 0) ??
+          PROBE.flatMap((one) => PROBE.map((other) => `${one} ${other}`)).find(
+            (pair) => Object.keys(expand(name, pair)).length > 0,
+          );
         const signatureOf = (token) => {
           const holders = (got) => Object.keys(got).filter((one) => got[one] === held(one, token));
           const alone = holders(expand(name, token));

@@ -4353,16 +4353,16 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Five shapes, and 84 of 94 families
+#### Five shapes, and 87 of 94 families
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 84   firefox 70   webkit 77
+chromium 87   firefox 73   webkit 80
 
-covered in every engine that HAS it   84 families, 7789 values checked
-present and covered in all three      69
+covered in every engine that HAS it   87 families, 8489 values checked
+present and covered in all three      72
 properties not every engine has       16
 
 positional (52)     padding, margin, inset, overflow, border-radius,
@@ -4565,8 +4565,20 @@ probe tokens, and a word that classifies as nothing being offered the word after
 value is given up on, moved it from *no shape* to *a shape that is wrong in ten of twenty-five
 values* — which is a diagnosis rather than a fix, and worth having as one.
 
-**Three with no shape learned**: `font`, `grid`, `grid-template`. All three are genuinely a grammar
-of their own.
+**No family is without a shape now**, and the last three came in without a sixth one.
+
+**The carrier can be a PAIR.** `font` accepts no single component at all — a size without a family
+is refused and so is a family without a size — so a one-token carrier left every `font` token
+unclassifiable and the family shapeless. `font: 3px aaa` is accepted, and that is enough to carry
+the rest.
+
+**And the rest was vocabulary, again.** Font keywords (`italic`, `bold`, `condensed`,
+`small-caps`) and grid ones (`1fr`, `minmax(0, 1fr)`, `"a"`, `auto-flow`) brought in `font`, `grid`
+and `grid-template` — the three families this note called "genuinely a grammar of their own" one
+round earlier. They were not. Of the fourteen it has named that way over the whole exercise,
+fourteen turned out to be the probe's words missing rather than CSS being irregular.
+
+Two families are still learned wrong: `position-try` (3 of 44) and `text-box` (10 of 25).
 
 **And one thing that has now been tried twice and cost more than it gained both times.** A constant
 for a longhand another group owns is indistinguishable from that probe's leftovers: `text-box: cap
