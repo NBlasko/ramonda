@@ -4094,10 +4094,12 @@ is one table. Nobody else derives layer names from a generated CSS table, which 
 has this problem.
 
 Splitting every shorthand into longhands would remove the need for breadth layers — measured, the
-merge alone then answers both directions — but it does not scale: `padding` is 4 classes (9 B → 39 B
-of class attribute), `border` is 17, `font` is 20 (199 B), and `lightningcss` does not expand
-shorthands, so each family's splitter would be hand-written. The families that are hardest to split
-(`background`, `animation`, `font`, `grid`) are exactly the ones authors combine with longhands.
+merge alone then answers both directions. **First estimated as not scaling, and that estimate was
+wrong**: counting a faithful expansion put `padding` at 4 classes, `border` at 17 and `font` at 20
+(199 B of class attribute), because a shorthand RESETS everything it covers. It does not have to
+emit that — the reset is already `mergeClassNames`'s job — so with the group clear `font` is 5
+classes and `background: red` is one. See the section below, which supersedes this paragraph;
+`lightningcss` not expanding shorthands is the only part of it that held.
 
 ### The decision: a self-describing marker, and the application remaps
 
@@ -4413,17 +4415,19 @@ learned but WRONG                      0
 no shape learned                       0
 no expansion in this engine            4
 
-positional (52)     padding, margin, inset, overflow, border-radius,
-                    border-width/color/style, background-position, mask-position,
-                    grid-area/column/row, place-content, place-items, place-self,
-                    overscroll-behavior, container, font-variant, the whole
-                    corner-*-shape branch, scroll-*, and every logical variant
-by signature (23)   the whole border branch, border-image, mask-border, outline,
-                    column-rule, list-style, text-decoration, flex, offset,
-                    flex-flow, text-emphasis, text-wrap, white-space
-comma list (7)      animation, transition, background, mask, column-rule,
-                    scroll-timeline, view-timeline
-flags (1)           font-synthesis
+positional (53)        padding, margin, inset, overflow, border-radius,
+                       border-width/color/style, background-position, mask-position,
+                       grid-area/column/row, place-content, place-items, place-self,
+                       overscroll-behavior, container, font-variant, marker,
+                       the whole corner-*-shape branch, scroll-*, every logical variant
+by signature (26)      the whole border branch, border-image, mask-border, outline,
+                       column-rule, list-style, text-decoration, offset, flex-flow,
+                       text-emphasis, text-wrap, white-space, text-box, font, grid,
+                       grid-template
+by signature, order (1) flex
+comma list (8)         animation, transition, background, mask, position-try,
+                       scroll-timeline, view-timeline, timeline-trigger
+flags (1)              font-synthesis
 ```
 
 **FLAGS is the fifth shape, and every other learner was blind to it by construction.**
@@ -4670,9 +4674,11 @@ And it goes in a pull request of its own. This one is already large, it is measu
 and decisions, and the splitter changes what every user's page carries — mixing them makes neither
 reviewable.
 
-#### ~~What is not done~~ — the older list
+#### How it got there, round by round
 
-`position-try`, 3 of 44, above.
+Not a list of what is left — that is above, and it is four families this engine never expands. This
+is the log, kept because every entry is a thing that read as the splitter WORKING, and because the
+same mistakes are the ones the real implementation will be free to make again.
 
 **A probe token is a COMPONENT, not a word.** `text-box`'s edge is `cap alphabetic`, and `cap`
 alone is refused, so no single word ever classified and the family had no shape at all. Multi-word
