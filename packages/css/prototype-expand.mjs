@@ -312,6 +312,14 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
         return getComputedStyle(el).getPropertyValue(longhand);
       };
 
+      /** What a longhand COMPUTES to when set to this value — for telling a real constant from a reset. */
+      const computes = (longhand, value) => {
+        const el = document.getElementById("y");
+        el.style.cssText = "";
+        el.style.setProperty(longhand, value);
+        return getComputedStyle(el).getPropertyValue(longhand);
+      };
+
       const held = (longhand, token) => {
         const el = document.getElementById("x");
         el.style.cssText = "";
@@ -379,9 +387,54 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
          * the name that had already been placed — `animation: dashed ease-in` came out nameless.
          */
         const owned = new Set([...groups.keys()].flatMap((one) => one.split("|")));
+        /**
+         * A group's shape PER ARITY, learned the way the positional one is.
+         *
+         * Two things need it and neither can come from a single probe. `flex: 7 7` puts the basis
+         * at `0%` while `flex: 7` puts it at `0%` too but `flex: 3px` leaves the grow at 1 — so the
+         * constants depend on how MANY tokens of the group were written, not just on which group.
+         * And `offset: 3px 3px` gives one longhand BOTH tokens (`offset-position: 3px 3px`), which
+         * is the same `{slots:[i,j]}` the positional learner already writes down.
+         *
+         * A constant is only taken for a longhand no OTHER group owns. `border: 1px solid red` has
+         * three groups in one value, and a literal learned from a probe of one of them is that
+         * probe's leftovers for the other two.
+         */
         for (const [signature, group] of groups) {
           const mine = new Set(signature.split("|"));
           const [a, b] = group.tokens;
+          group.arity = {};
+          for (let n = 1; n <= (b === undefined ? 1 : 2); n++) {
+            const values = n === 1 ? [a] : [a, b];
+            const got = expand(name, values.join(" "));
+            if (Object.keys(got).length === 0) continue;
+            group.arity[n] = Object.fromEntries(
+              Object.entries(got)
+                .map(([longhand, value]) => {
+                  /**
+                   * A token matches a sentinel either as WRITTEN or as the engine reports it, and
+                   * both halves were found the hard way.
+                   *
+                   * Only through `held` and a longhand holding SEVERAL tokens never matches —
+                   * `offset-position: 3px` comes back `3px center`, so `offset: 3px 3px` split into
+                   * `3px 9px`, the probe's own sentinels. Only raw, and a normalised one never
+                   * matches: `url(a.png)` comes back `url("a.png")`, so `mask: 3px url(b.png)`
+                   * emitted `url("a.png")` — a different file.
+                   */
+                  const slots = tokens(value).map((one) =>
+                    values.findIndex((v) => one === v || one === held(longhand, v)),
+                  );
+                  if (slots.length > 0 && slots.every((one) => one >= 0)) return [longhand, { slots }];
+                  if (owned.has(longhand) && !mine.has(longhand)) return null;
+                  // A literal that COMPUTES to the untouched value is this probe's reset, not this
+                  // group's constant. Keeping them let the last group processed clobber the rest:
+                  // `mask: 3px url(a.png)` lost the `center` the length had just put on the y axis.
+                  if (computes(longhand, value) === initialOf(longhand)) return null;
+                  return [longhand, { literal: value }];
+                })
+                .filter((one) => one !== null),
+            );
+          }
           if (b === undefined) continue;
           const two = expand(name, `${a} ${b}`);
           if (Object.keys(two).length === 0) continue;
@@ -425,6 +478,21 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
             if (early.refuse) return null;
             if (early.done) return early.done;
 
+            /**
+             * ONE token, and the family's own answer for it.
+             *
+             * `flex: 3px` is `1 1 3px` — the slots nobody wrote take constants that depend on WHERE
+             * the written token landed: a length fills the basis and leaves grow at 1, a number
+             * fills the grow and leaves the basis at `0%`. That is a fact per family and per group,
+             * not a rule, so it is read rather than derived. The compiler would hold it as a small
+             * learned table beside the breadth one; the probe asks the engine, which is the same
+             * answer by a shorter road.
+             */
+            if (tokens(value).length === 1 && tokens(value, /\//).length === 1) {
+              const solo = expand(name, value);
+              if (Object.keys(solo).length > 0) return solo;
+            }
+
             const out = { ...base };
             const seen = {};
             const filled = new Set();
@@ -449,43 +517,62 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
               rest = front;
             }
 
+            /**
+             * Group the tokens first, then use each group's mapping FOR THAT COUNT.
+             *
+             * Walking token by token cannot see how many of a group there are, and the answer
+             * depends on it: `flex: 7` and `flex: 7 7` put the basis at `0%` while `flex: 3px`
+             * leaves the grow at `1`. Grouping first also gives a longhand that consumes SEVERAL
+             * tokens — `offset: 3px 3px` is one position, not a position and a distance — and it
+             * settles `animation: ease-in ease-in` without a rule of its own, because the arity-two
+             * probe already saw the engine make the second one a name.
+             */
+            const order = [];
+            const byGroup = new Map();
             for (const one of tokens(rest)) {
               const signature = signatureOf(one);
-              const group = signature === null ? undefined : groups.get(signature);
-              if (group === undefined) return null;
-              if (group.order === undefined) {
-                if (group.slots.every((slot) => filled.has(slot))) {
+              if (signature === null || !groups.has(signature)) return null;
+              if (!byGroup.has(signature)) {
+                byGroup.set(signature, []);
+                order.push(signature);
+              }
+              byGroup.get(signature).push(one);
+            }
+
+            for (const signature of order) {
+              const group = groups.get(signature);
+              const written = byGroup.get(signature);
+              const mapping = group.arity?.[written.length];
+              if (mapping !== undefined) {
+                for (const [longhand, how] of Object.entries(mapping)) {
+                  out[longhand] = how.literal !== undefined ? how.literal : how.slots.map((i) => written[i]).join(" ");
+                }
+                continue;
+              }
+              // More tokens of one group than any probe taught: fall back to placing them one at a
+              // time, and to CSS's own rule where a slot is already taken.
+              for (const one of written) {
+                if (group.order === undefined) {
                   const other = elsewhere(one);
                   if (other === null) return null;
                   out[other] = one;
                   filled.add(other);
                   continue;
                 }
-                const solo = expand(name, one);
-                for (const slot of group.slots) {
-                  out[slot] = solo[slot];
+                const at = (seen[signature] ??= 0);
+                seen[signature] = at + 1;
+                const which = group.slots.filter((_, i) => group.order[i] === at);
+                if (which.length === 0) {
+                  const other = elsewhere(one);
+                  if (other === null) return null;
+                  out[other] = one;
+                  filled.add(other);
+                  continue;
+                }
+                for (const slot of which) {
+                  out[slot] = one;
                   filled.add(slot);
                 }
-                continue;
-              }
-              const at = (seen[signature] ??= 0);
-              seen[signature] = at + 1;
-              if (at === 0) {
-                for (const [slot, how] of Object.entries(group.fill)) {
-                  if (how.literal !== undefined) out[slot] = how.literal;
-                }
-              }
-              const which = group.slots.filter((_, i) => group.order[i] === at);
-              if (which.length === 0) {
-                const other = elsewhere(one);
-                if (other === null) return null;
-                out[other] = one;
-                filled.add(other);
-                continue;
-              }
-              for (const slot of which) {
-                out[slot] = one;
-                filled.add(slot);
               }
             }
             return out;
@@ -538,7 +625,14 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
          */
         const two = expand(name, `${a}, ${b}`);
         const shared = new Set();
-        for (const [x, y] of Object.values(TYPES)) {
+        // MIXED pairs as well as same-type ones. A colour is only legal in the LAST layer, so
+        // `background: rgb(1, 1, 1), rgb(2, 2, 2)` is invalid and no same-type probe ever touches
+        // `background-color` — it went undetected as shared, and `3px, rgb(1, 2, 3)` came out with
+        // the colour joined into `rgba(0, 0, 0, 0), rgb(1, 2, 3)`, which is not a colour.
+        const pairs = [];
+        const firsts = Object.values(TYPES).map(([one]) => one);
+        for (const x of firsts) for (const y of firsts) pairs.push([x, y]);
+        for (const [x, y] of pairs) {
           const probe = expand(name, `${x}, ${y}`);
           if (Object.keys(probe).length === 0) continue;
           const parts = Object.fromEntries(Object.keys(probe).map((one) => [one, tokens(probe[one], /,/).length]));

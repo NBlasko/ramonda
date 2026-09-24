@@ -4353,22 +4353,30 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Three shapes, and 55 of 94 families
+#### Three shapes, and 57 of 94 families
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 57   firefox 56   webkit 60
-in all three: 55 families, 4527 values checked
+chromium 59   firefox 57   webkit 62
+in all three: 57 families, 4743 values checked
 
 positional (37)     padding, margin, inset, overflow, border-radius,
                     border-width/color/style, background-position, mask-position,
                     grid-area, grid-column, grid-row, overscroll-behavior,
                     place-self, scroll-*, and every logical variant
-by signature (14)   the whole border branch, outline, list-style, text-decoration
-comma list (4)      animation, transition, background, mask, column-rule
+by signature (15)   the whole border branch, border-image, outline, list-style,
+                    text-decoration
+comma list (5)      animation, transition, background, mask, column-rule
 ```
+
+**A group's shape is learned PER ARITY**, and the tokens are grouped before any is placed. Walking
+one at a time cannot see how many of a group there are, and the answer depends on it: `flex: 7` and
+`flex: 7 7` put the basis at `0%` while `flex: 3px` leaves the grow at `1`. Grouping first also
+gives a longhand that consumes SEVERAL tokens — `offset: 3px 3px` is one position, not a position
+and a distance — and it settles `animation: ease-in ease-in` with no rule of its own, because the
+arity-two probe already watched the engine make the second one a name.
 
 **A slash is not always one value split in half.** `border-radius: 1px / 2px` is a horizontal and a
 vertical radius; `grid-area: 1 / 2 / 3 / 4` is four independent slots. So a pattern is the length of
@@ -4467,14 +4475,26 @@ mapping can hold:
   from the last layer only, but `background: 3px, 9px` leaves it at `initial`, which reads exactly
   like an untouched per-layer longhand — so `3px, rgb(1, 2, 3)` joined the colour into
   `rgba(0, 0, 0, 0), rgb(1, 2, 3)`, which is not a colour. Every type pair that parses has to be
-  probed, not the first one that does.
+  probed — and MIXED pairs as well as same-type ones, because a colour is legal only in the last
+  layer, so no `colour, colour` probe is valid CSS and none of them ever touched it;
+- **a token matches a sentinel as WRITTEN or as the engine reports it, and both halves cost a
+  bug.** Matching only through the longhand misses any longhand holding SEVERAL tokens —
+  `offset-position: 3px` comes back `3px center`, so `offset: 3px 3px` split into the probe's own
+  sentinels, `3px 9px`. Matching only the raw text misses a normalised one — `url(a.png)` comes
+  back `url("a.png")`, so `mask: 3px url(b.png)` emitted `url("a.png")`, a different file;
+- **a literal that COMPUTES to the untouched value is that probe's reset, not the group's
+  constant.** Keeping them let the last group processed clobber the rest: `mask: 3px url(a.png)`
+  lost the `center` the length had just put on the y axis.
 
 #### What is not done
 
-`flex`, whose one-value form gives `flex-grow: 1` where every learned shape says the slot is
-untouched, and `offset`, `border-image`. And 33 families where no shape is learned at all — mostly
-the probe's sentinel domains still being too narrow (`place-content`, `place-items`,
-`transform-origin`, `text-wrap`, `vertical-align`, `white-space` are positional over keyword sets
-nothing here offers, and the `corner-*-shape` branch is eleven of the 33). Genuinely their own
-grammar: `font`, `grid`, `grid-template`, `font-variant`, `container`, `all`.
+`flex` is 8 of 51 values out: `flex: 7 7` puts the basis at `0%` and no probe of the number group
+teaches that, because arity two is as far as the learning goes. `offset` is 28 of 75, and its
+remaining trouble is that a length means the position in one place and the distance in another.
+
+And 33 families where no shape is learned at all — mostly the probe's sentinel domains still being
+too narrow (`place-content`, `place-items`, `transform-origin`, `text-wrap`, `vertical-align`,
+`white-space` are positional over keyword sets nothing here offers, and the `corner-*-shape` branch
+is eleven of the 33). Genuinely their own grammar: `font`, `grid`, `grid-template`, `font-variant`,
+`container`, `all`.
 
