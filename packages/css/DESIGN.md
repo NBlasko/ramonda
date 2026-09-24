@@ -4638,19 +4638,24 @@ ship the answer. That is the same method this package already uses for what a sh
 it is why the prototype learning from the engines rather than from a written rule was worth the
 trouble: the learning IS the generator.
 
-#### What is decided, and the one thing that is not
+#### DECIDED: the splitter is adopted, in a pull request of its own
 
-Everything above is measured. What is NOT settled is whether to adopt the splitter at all, and that
-is not a detail to be inferred from how well it measures — it replaces a scheme that is SHIPPED and
-working, changes what every user's page carries, and supersedes most of the layer arithmetic in the
-sections above. It needs a yes, not a green number.
+Taken 2026-09-24. What it costs is recorded beside it and neither half was measured, because
+neither is a measurement: the class attribute grows — `padding: 10px` becomes four classes, and
+every element carrying it pays that in every SSR page — and the docs, the checker's messages and
+the reader pages all describe a block as compiling to one class per declaration.
 
-Against it, and neither was measured because neither is a measurement: the class attribute grows
-(`padding: 10px` becomes four classes, and every element carrying it pays that in every SSR page),
-and the docs, the checker's messages and the reader pages all describe a block as compiling to one
-class per declaration.
+**It does NOT remove the layers, and the sections above are not dead.** Splitting makes every
+declaration a longhand, so no two classes on an element set the same property and the cascade is
+never asked — for UNCONDITIONAL rules. A `@media` rule and a plain one set the same property and
+both must survive the merge, so the layer scheme stays for conditionals, and its own structure
+(`ramonda.c` and the digit layers) does not move between versions because it is not derived from
+the shorthand table. What shrinks is the BREADTH half: the eighteen `u` layers and everything above
+about naming them, the marker, the remap and the shift are answering a question the splitter
+removes. They stay written down because the conditional half still needs a layer scheme that two
+builds agree on, and because the measurements say what each answer cost.
 
-If the answer is yes, the order is:
+The order:
 
 1. **the shapes as a generated table** — `build-shorthand-shapes.mjs`, three engines, the same
    merge and `--check` as `build-shorthand-leaves.mjs`. The learner moves out of the prototype and
@@ -4661,9 +4666,9 @@ If the answer is yes, the order is:
 3. **the corpus as a gate**, over the real splitter rather than a modelled one;
 4. **then** the splitter in the compiler, behind the gate.
 
-If the answer is no, what is written down still pays for itself: the layer work in the sections
-above stands on its own, and the measurements here say exactly what it would have cost to replace
-it.
+And it goes in a pull request of its own. This one is already large, it is measurements and rules
+and decisions, and the splitter changes what every user's page carries — mixing them makes neither
+reviewable.
 
 #### ~~What is not done~~ — the older list
 
