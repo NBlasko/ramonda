@@ -171,7 +171,7 @@ const TYPES = {
   "axis-xy": ["x", "y"],
   "timeline-name": ["--one", "--two"],
   "box-edge": ["cap", "ex"],
-  trim: ["trim-start", "trim-end"],
+  trim: ["trim-both", "trim-start"],
 };
 
 /** In the page: set a declaration and read the longhands it expanded into. */
@@ -395,14 +395,32 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
        * overlap that forced the choice cannot arise, and the classifier at split time is the same
        * function as the one that learned — there is no table in between to be wrong.
        */
+      /** For the report only: what the signature learner could see, per family. */
+      const sawGroups = new Map();
+
       const learnBySignature = (name) => {
         const PROBE = Object.values(TYPES).flat();
 
-        /** Where a token lands when the family is given it ALONE: the longhands that HOLD it. */
+        /**
+         * Where a token lands — alone if the family takes it alone, and beside a CARRIER if not.
+         *
+         * Some components cannot stand by themselves. `scroll-timeline: block` is refused and
+         * `scroll-timeline: --one block` is not, because the name is required; `position-try:
+         * normal` is refused and `position-try: normal --fallback` is not. Probing every token on
+         * its own meant those groups never formed at all and the families had no shape, when the
+         * only thing missing was a companion the family already accepts.
+         */
+        const carrier = PROBE.find((one) => Object.keys(expand(name, one)).length > 0);
         const signatureOf = (token) => {
-          const got = expand(name, token);
-          const keys = Object.keys(got).filter((one) => got[one] === held(one, token));
-          return keys.length === 0 ? null : keys.join("|");
+          const holders = (got) => Object.keys(got).filter((one) => got[one] === held(one, token));
+          const alone = holders(expand(name, token));
+          if (alone.length > 0) return alone.join("|");
+          if (carrier === undefined || carrier === token) return null;
+          for (const text of [`${carrier} ${token}`, `${token} ${carrier}`]) {
+            const beside = holders(expand(name, text));
+            if (beside.length > 0) return beside.join("|");
+          }
+          return null;
         };
 
         const groups = new Map();
@@ -413,10 +431,18 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
           group.tokens.push(token);
           groups.set(signature, group);
         }
+        sawGroups.set(name, `${groups.size} group(s): ${[...groups.keys()].join(" / ").slice(0, 110)}`);
         if (groups.size < 2) return null;
 
-        const first = groups.values().next().value;
-        const longhands = Object.keys(expand(name, first.tokens[0]));
+        /**
+         * The family's longhands, read through the CARRIER rather than through the first group's
+         * first token — which may be a component that cannot stand alone.
+         *
+         * `scroll-timeline`'s first group is the axis, and `scroll-timeline: block` is refused, so
+         * the list came back empty and the whole family was reported as having no shape when it had
+         * two perfectly good groups.
+         */
+        const longhands = Object.keys(expand(name, carrier));
         if (longhands.length === 0) return null;
         const base = Object.fromEntries(longhands.map((one) => [one, "initial"]));
 
@@ -824,7 +850,12 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
             .flat()
             .concat(["initial", "none", "normal", "auto"])
             .some((one) => Object.keys(expand(name, one)).length > 0);
-          uncovered.push({ name, why: expands ? "no shape learned" : "does not expand here", bare: !expands });
+          uncovered.push({
+            name,
+            why: expands ? "no shape learned" : "does not expand here",
+            bare: !expands,
+            groups: sawGroups.get(name) ?? "0 group(s)",
+          });
           continue;
         }
 
@@ -962,5 +993,6 @@ if (disagreed.length > 0) {
 }
 const nothing = perEngine[engines[0]].uncovered.filter((one) => !one.first && !one.bare && !one.absent);
 const bare = perEngine[engines[0]].uncovered.filter((one) => one.bare);
-console.log(`   no shape learned (${nothing.length}): ${nothing.map((one) => one.name).join(", ")}`);
+console.log(`   no shape learned (${nothing.length}):`);
+for (const one of nothing) console.log(`     ${one.name.padEnd(18)} ${one.groups}`);
 console.log(`   no expansion in this engine (${bare.length}): ${bare.map((one) => one.name).join(", ")}\n`);

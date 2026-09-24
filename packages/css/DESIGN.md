@@ -4353,15 +4353,15 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Three shapes, and 81 of 94 families
+#### Three shapes, and 83 of 94 families
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 81   firefox 69   webkit 74
+chromium 83   firefox 69   webkit 76
 
-covered in every engine that HAS it   81 families, 7820 values checked
+covered in every engine that HAS it   83 families, 7882 values checked
 present and covered in all three      68
 properties not every engine has       16
 
@@ -4522,6 +4522,14 @@ start` is an order and a fallback, not two values of one thing. It changed no nu
 that family has no second candidate either; it is here so the next one does not have to be found
 the same way.
 
+**Some components cannot stand alone, and probing every token by itself hid three families.**
+`scroll-timeline: block` is refused where `scroll-timeline: --one block` is not, because the name is
+required; `position-try: normal` is refused where `position-try: normal --fallback` is not. So a
+token the family will not take alone is probed beside a CARRIER — the first probe token it does
+take. And the family's list of longhands is read through that carrier too: `scroll-timeline`'s
+first group is the axis, so the list came back empty and a family with two perfectly good groups was
+reported as having no shape at all.
+
 **A token matches a sentinel as WRITTEN or as the engine reports it — and that one rule had to be
 put in FOUR separate places**, each time after a family had already been lost to its absence. The
 combination learner (`mask: 3px url(b.png)` emitting `url("a.png")`, a different file), the
@@ -4539,10 +4547,20 @@ learner needs two groups in a family before it can say anything, and for `flex-f
 
 `position-try`, 3 of 44, above.
 
-**Seven with no shape learned**: `font`, `font-synthesis`, `grid`, `grid-template`,
-`scroll-timeline`, `view-timeline`, `text-box`. `font-synthesis` is a shape none of these is — a
-FLAG list, where naming a keyword turns its longhand on and leaving it out turns it off, so no
-token is ever "held" by the longhand it addresses.
+**Five with no shape learned**, and the report now says what the learner could SEE of each, which
+is the difference between a missing shape and a missing word:
+
+```
+font             0 groups
+font-synthesis   0 groups
+grid             0 groups
+grid-template    0 groups
+text-box         1 group: text-box-trim
+```
+
+Four of them are genuinely a grammar of their own. `font-synthesis` is a shape none of these is — a
+FLAG list, where naming a keyword turns its longhand on and leaving it out turns it off, so no token
+is ever HELD by the longhand it addresses, and every learner here asks exactly that question.
 
 **Four that never expand in the engine at all** — `all`, `perspective-origin`, `transform-origin`,
 `vertical-align`. They are in the shorthand table because SOME engine resets longhands through
