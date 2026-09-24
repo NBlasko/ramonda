@@ -167,6 +167,8 @@ const TYPES = {
   wrapping2: ["balance", "pretty"],
   "space-keyword": ["pre", "collapse"],
   align: ["baseline", "middle"],
+  "try-order": ["most-width", "most-height"],
+  "try-tactic": ["flip-block", "flip-inline"],
   track: ["1fr", "2fr"],
   "track-size": ["minmax(0, 1fr)", "minmax(0, 2fr)"],
   "grid-area-name": ['"a"', '"b"'],
@@ -521,16 +523,22 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
                    * matches: `url(a.png)` comes back `url("a.png")`, so `mask: 3px url(b.png)`
                    * emitted `url("a.png")` — a different file.
                    */
+                  // The WHOLE value against a sentinel first, because a probe token can be several
+                  // words: `text-box`'s edge sentinel is `cap alphabetic`, and comparing word by
+                  // word matched neither, so the mapping became a literal and `ex text` came out as
+                  // the probe's own `cap alphabetic`.
+                  const whole = values.findIndex((v) => value === v || value === held(longhand, v));
+                  if (whole >= 0) return [longhand, { slots: [whole] }];
                   const slots = tokens(value).map((one) =>
                     values.findIndex((v) => one === v || one === held(longhand, v)),
                   );
                   if (slots.length > 0 && slots.every((one) => one >= 0)) return [longhand, { slots }];
-                  if (owned.has(longhand) && !mine.has(longhand)) return null;
+                  const foreign = owned.has(longhand) && !mine.has(longhand);
                   // A literal that COMPUTES to the untouched value is this probe's reset, not this
                   // group's constant. Keeping them let the last group processed clobber the rest:
                   // `mask: 3px url(a.png)` lost the `center` the length had just put on the y axis.
                   if (computes(longhand, value) === initialOf(longhand)) return null;
-                  return [longhand, { literal: value }];
+                  return [longhand, { literal: value, foreign }];
                 })
                 .filter((one) => one !== null),
             );
@@ -582,15 +590,21 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
                * literal, so `9px url(a.png)` emitted the probe's own `3px center`.
                */
               mapping: Object.fromEntries(
-                Object.entries(got).map(([longhand, value]) => [
-                  longhand,
-                  {
-                    parts: tokens(value).map((one) => {
-                      const slot = [a, b].findIndex((v) => one === v || one === held(longhand, v));
-                      return slot >= 0 ? { slot } : { text: one };
-                    }),
-                  },
-                ]),
+                Object.entries(got).map(([longhand, value]) => {
+                  // The WHOLE value first, because a probe token can be several words — the same
+                  // thing the arity learner needed, and missed in the same way.
+                  const whole = [a, b].findIndex((v) => value === v || value === held(longhand, v));
+                  if (whole >= 0) return [longhand, { parts: [{ slot: whole }] }];
+                  return [
+                    longhand,
+                    {
+                      parts: tokens(value).map((one) => {
+                        const slot = [a, b].findIndex((v) => one === v || one === held(longhand, v));
+                        return slot >= 0 ? { slot } : { text: one };
+                      }),
+                    },
+                  ];
+                }),
               ),
             });
           }
@@ -715,14 +729,27 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
               }
             }
 
+            const literals = [];
+            const slotted = [];
             for (const signature of order) {
               const group = groups.get(signature);
               const written = byGroup.get(signature);
               const mapping = group.arity?.[written.length];
               if (mapping !== undefined) {
+                /**
+                 * Constants first, across every group, and only then the slots.
+                 *
+                 * A group's probe leaves values on longhands it does not own, and those cannot be
+                 * told apart from constants it really does set: `text-box: cap alphabetic` sets
+                 * the trim to `trim-both` with no trim word written. Dropping them loses that;
+                 * applying them in ONE pass let the last group processed clobber a slot an earlier
+                 * one had already filled. Two passes keeps both — a constant can be overwritten by
+                 * a slot, never the other way round.
+                 */
                 for (const [longhand, how] of Object.entries(mapping)) {
-                  out[longhand] = how.literal !== undefined ? how.literal : how.slots.map((i) => written[i]).join(" ");
+                  if (how.literal !== undefined) literals.push([longhand, how.literal]);
                 }
+                slotted.push([written, mapping]);
                 continue;
               }
               // More tokens of one group than any probe taught: fall back to placing them one at a
@@ -749,6 +776,12 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
                   out[slot] = one;
                   filled.add(slot);
                 }
+              }
+            }
+            for (const [longhand, value] of literals) out[longhand] = value;
+            for (const [written, mapping] of slotted) {
+              for (const [longhand, how] of Object.entries(mapping)) {
+                if (how.slots !== undefined) out[longhand] = how.slots.map((i) => written[i]).join(" ");
               }
             }
             return out;

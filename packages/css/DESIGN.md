@@ -4353,17 +4353,20 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Five shapes, and 87 of 94 families
+#### Five shapes, and every family that expands
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 87   firefox 73   webkit 80
+chromium 89   firefox 74   webkit 81
 
-covered in every engine that HAS it   87 families, 8489 values checked
-present and covered in all three      72
+covered in every engine that HAS it   89 families, 8763 values checked
+present and covered in all three      73
 properties not every engine has       16
+learned but WRONG                      0
+no shape learned                       0
+no expansion in this engine            4
 
 positional (52)     padding, margin, inset, overflow, border-radius,
                     border-width/color/style, background-position, mask-position,
@@ -4557,6 +4560,21 @@ learner needs two groups in a family before it can say anything, and for `flex-f
 
 #### What is not done
 
+Nothing, within this probe's reach. Every family that expands in an engine is split correctly in
+every engine that has it, verified over 8763 values. What remains is not a shape:
+
+**Four never expand in this engine at all** — `all`, `perspective-origin`, `transform-origin`,
+`vertical-align`. They are in the shorthand table because SOME engine resets longhands through them.
+
+**Sixteen are not in all three engines**, `corner-*-shape` and `animation-range` among them, so
+"covered in all three" is 73 rather than 89. Absence is not disagreement.
+
+The work that is left is not in the prototype: writing the splitter into the compiler, where the
+classifier must come from the generated keyword tables rather than from asking an engine at split
+time, and the corpus must become a checked-in gate rather than a script.
+
+#### ~~What is not done~~ — the older list
+
 `position-try`, 3 of 44, above.
 
 **A probe token is a COMPONENT, not a word.** `text-box`'s edge is `cap alphabetic`, and `cap`
@@ -4578,9 +4596,23 @@ and `grid-template` — the three families this note called "genuinely a grammar
 round earlier. They were not. Of the fourteen it has named that way over the whole exercise,
 fourteen turned out to be the probe's words missing rather than CSS being irregular.
 
-Two families are still learned wrong: `position-try` (3 of 44) and `text-box` (10 of 25).
+**Nothing is left wrong.** `position-try` needed its order and tactic words (`most-width`,
+`flip-block`) and nothing else. `text-box` needed three things, and the third is the one worth
+keeping:
 
-**And one thing that has now been tried twice and cost more than it gained both times.** A constant
+- **constants first, across every group, and only then the slots.** A group's probe leaves values on
+  longhands it does not own, and those cannot be told apart from constants it really does set —
+  `text-box: cap alphabetic` sets the trim to `trim-both` with no trim word written. Dropping them
+  loses that; applying them in ONE pass let the last group processed clobber a slot an earlier one
+  had filled. Two passes keeps both, because a constant can be overwritten by a slot and never the
+  other way round. **This is the third attempt at that problem**, and the note below records the two
+  that failed — the difference is the ordering, not the filtering;
+- **the WHOLE value against a sentinel before any word of it**, since a probe token can be several
+  words. Word by word matched neither half of `cap alphabetic`, so the mapping became a literal and
+  `ex text` came out as the probe's own `cap alphabetic`;
+- and the same fix again in the COMBINATION learner, which had missed it in the same way.
+
+**And the two attempts that failed, kept because the third one is only a small step from them.** A constant
 for a longhand another group owns is indistinguishable from that probe's leftovers: `text-box: cap
 alphabetic` really does set the trim to `trim-both` with no trim word written, and `border: 1px
 solid red`'s colour probe really does leave a width behind. Keeping those literals and filtering
