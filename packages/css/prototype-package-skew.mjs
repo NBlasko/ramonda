@@ -13,11 +13,17 @@
  *
  * ## What is different about this one, and it has to be said
  *
- * `prototype-layers.mjs` drives the REAL `Sheet`, because the scheme it checks is built. This one
- * checks a scheme that is NOT built — see `DESIGN.md`, "A published package meets an application".
- * So it models the naming. The rule bodies, the `@layer ramonda { }` wrapper and the nesting are
- * taken from the real `Sheet` and only the layer NAMES are rewritten, which keeps everything but
- * the one thing under test honest.
+ * **SUPERSEDED — the scheme it modelled is built, and `scripts/check-layer-skew.mjs` checks the
+ * real thing.** That gate drives the real compiler, the real `Sheet` and the real
+ * `mergeClassNames`, in all three engines and both load orders, and it runs in `pnpm check`.
+ * This is kept for the measurement it made while the design was still a proposal: seven
+ * arrangements, three of which had to FAIL, and event C — the newcomer having to LOSE — is what
+ * made the pre-declared range load-bearing rather than merely tidy.
+ *
+ * What it does is model the NAMING: the rule bodies, the `@layer ramonda { }` wrapper and the
+ * nesting are taken from the real `Sheet` and only the layer names are rewritten. That was the
+ * right shape for a proposal and is the wrong shape for a gate, because it can agree with a
+ * compiler that no longer writes what it models.
  *
  * That makes the CONTROLS load-bearing rather than decorative. A probe for an unbuilt scheme can
  * always be made to agree with itself, so this one is arranged to fail in four places on purpose:

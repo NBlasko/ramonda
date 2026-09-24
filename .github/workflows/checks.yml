@@ -122,6 +122,8 @@ jobs:
           SELFTEST=drift node scripts/check-layer-names.mjs
           SELFTEST=crowd node scripts/check-layer-names.mjs
           node scripts/check-layer-names.mjs
+          SELFTEST=order node scripts/check-layer-skew.mjs
+          node scripts/check-layer-skew.mjs
           SELFTEST=slot node scripts/check-shorthand-split.mjs
           node scripts/check-shorthand-split.mjs
 
