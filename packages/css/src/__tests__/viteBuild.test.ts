@@ -145,8 +145,11 @@ describe("a block, all the way through a production build", () => {
   test("the class reaches the JavaScript AND the stylesheet, and they are the same class", () => {
     const result = build(
       project(
-        `export const accent = "#10b981";\nexport const card = (\n  <div className="lead" css={@@(\n    display: flex;\n    border-left: 4px solid {accent};\n  )}>x</div>\n);\n`,
-        `import { card } from "./Card";\nconsole.log(card);\n`,
+        `export const accent = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: #10b981;\n);\n` +
+          `export const card = (\n  <div id="lead" className={@@(\n    display: flex;\n    border-left: 4px solid var({accent});\n  )}>x</div>\n);\n`,
+        // The property's binding is USED, or the bundler drops an export nothing imports and the
+        // name never reaches the JavaScript — which is half of what this test is about.
+        `import { card, accent } from "./Card";\nconsole.log(card, accent);\n`,
       ),
     );
 
@@ -159,9 +162,9 @@ describe("a block, all the way through a production build", () => {
      * The classes the transform chose, read out of the emitted JavaScript rather than assumed.
      *
      * **Two of them, because a block is one rule per DECLARATION now** — one for `display:flex` and
-     * one for the `border-left` that carries the hole. Which is which is not this test's business,
-     * so it asserts what must hold of the set: every class the markup names exists in the sheet, and
-     * the one with a hole reads the custom property named after ITSELF.
+     * one for the `border-left` that reads the registered property. Which is which is not this
+     * test's business, so it asserts what must hold of the set: every class the markup names exists
+     * in the sheet, and the reading rule reads the name the `@property` site registered.
      */
     /**
      * Read out of the QUOTED strings, not out of the text.
@@ -170,7 +173,7 @@ describe("a block, all the way through a production build", () => {
      * `"border-left"` — and a pattern looking for `r-` anywhere found `r-left` inside it. A class is
      * always a whole string literal, which is what this asks for.
      */
-    const named = [...new Set([...js.matchAll(/"(r-[^"]+)"/g)].map((one) => one[1]))];
+    const named = [...new Set([...js.matchAll(/"(r-[^"]+)"/g)].flatMap((one) => one[1].split(" ")))];
     expect(named.length).toBeGreaterThan(1);
 
     // The same names on both sides. This is the whole point: the markup names classes, and every one
@@ -180,18 +183,20 @@ describe("a block, all the way through a production build", () => {
     expect(css).toContain("display:flex");
     expect(css).toContain("@layer ramonda");
 
-    const holed = named.find((one) => css.includes(`var(--${one}-0)`));
-    expect(holed, "one rule reads a custom property named after its own class").toBeDefined();
-    expect(css).toContain(`.${holed}{border-left:4px solid var(--${holed}-0)}`);
+    // The registered name, read out of the stylesheet rather than assumed — it is a hash of the
+    // declaring module's own text, and no test should be spelling one of those out.
+    const registered = /@property (--r-[0-9a-zA-Z]+)/.exec(css)?.[1];
+    expect(registered, "the `@property` rule reached the stylesheet").toBeDefined();
+    expect(css).toContain(`border-left:4px solid var(${registered})`);
 
-    // And the hole is a value at the call site, not text the compiler built.
-    expect(js).toContain("#10b981");
+    // And the NAME is a string in the JavaScript, which is what a setter puts on an element.
+    expect(js).toContain(`"${registered}"`);
   });
 
   test("the stylesheet is linked, so a page actually loads it", () => {
     const result = build(
       project(
-        `export const card = <div css={@@( display: flex; )}>x</div>;\n`,
+        `export const card = <div className={@@( display: flex; )}>x</div>;\n`,
         `import { card } from "./Card";\nconsole.log(card);\n`,
       ),
     );
@@ -205,7 +210,7 @@ describe("a block, all the way through a production build", () => {
   test("a block it cannot read fails the build, at the author's own line and column", () => {
     const result = build(
       project(
-        `export const card = (\n  <div css={@@(\n    {name}: 24px;\n  )}>x</div>\n);\n`,
+        `export const card = (\n  <div className={@@(\n    {name}: 24px;\n  )}>x</div>\n);\n`,
         `import { card } from "./Card";\nconsole.log(card);\n`,
       ),
     );
@@ -407,7 +412,7 @@ test("a `@property` ships as a top-level at-rule holding its descriptors", () =>
   const result = build(
     project(
       `export const ANGLE = @@property(\n  syntax: "<angle>";\n  inherits: false;\n  initial-value: 0deg;\n);\n` +
-        `export const card = (\n  <div className="lead" css={@@(\n    transform: rotate(var({ANGLE}));\n  )}>x</div>\n);\n`,
+        `export const card = (\n  <div id="lead" className={@@(\n    transform: rotate(var({ANGLE}));\n  )}>x</div>\n);\n`,
       `import { card, ANGLE } from "./Card";\nconsole.log(card, ANGLE);\n`,
     ),
   );
@@ -438,7 +443,7 @@ test("a token declared in one module and read in another", () => {
   const result = build(
     project(
       `import { accent, gap } from "./theme";\n` +
-        `export const card = (\n  <div className="lead" css={@@(\n    color: var({accent});\n    border-color: var({accent});\n    padding: var({gap});\n  )}>x</div>\n);\n`,
+        `export const card = (\n  <div id="lead" className={@@(\n    color: var({accent});\n    border-color: var({accent});\n    padding: var({gap});\n  )}>x</div>\n);\n`,
       `import { card } from "./Card";\nconsole.log(card);\n`,
       {
         "theme.tsx":
@@ -475,7 +480,7 @@ test("a token declared in one module and read in another", () => {
  */
 test("a unit the project's `ramonda.css.ts` does not allow fails the build", () => {
   const root = project(
-    `export const card = <div className="lead" css={@@( padding: 1em; )}>x</div>;\n`,
+    `export const card = <div id="lead" className={@@( padding: 1em; )}>x</div>;\n`,
     `import { card } from "./Card";\nconsole.log(card);\n`,
     { "../ramonda.css.ts": `export default { units: { length: ["px", "rem"] } };\n` },
   );
@@ -505,7 +510,7 @@ describe("what development-only code costs a visitor", () => {
   test("the order warning's words are in no production asset", () => {
     const root = project(
       `const base = @@(\n  @media (min-width: 1px) {\n    padding: 11px;\n  }\n);\n` +
-        `export const Card = () => <div css={@@(\n  ...{base};\n  padding-left: 4px;\n)}>x</div>;\n`,
+        `export const Card = () => <div className={@@(\n  ...{base};\n  padding-left: 4px;\n)}>x</div>;\n`,
       `import { Card } from "./Card";\nconsole.log(Card());\n`,
     );
 
@@ -529,7 +534,7 @@ describe("what development-only code costs a visitor", () => {
    */
   test("and neither is the slot table it compares with", () => {
     const root = project(
-      `export const Card = () => <div css={@@(\n  @media (min-width: 40rem) {\n    gap: 8px;\n  }\n)}>x</div>;\n`,
+      `export const Card = () => <div className={@@(\n  @media (min-width: 40rem) {\n    gap: 8px;\n  }\n)}>x</div>;\n`,
       `import { Card } from "./Card";\nconsole.log(Card());\n`,
     );
 
@@ -543,25 +548,6 @@ describe("what development-only code costs a visitor", () => {
   });
 });
 
-test("zzdiagnose", () => {
-  const root = project(
-    `const base = @@(\n  @media (min-width: 1px) {\n    padding: 11px;\n  }\n);\n` +
-      `export const Card = () => <div css={@@(\n  ...{base};\n  padding-left: 4px;\n)}>x</div>;\n`,
-    `import { Card } from "./Card";\nconsole.log(Card());\n`,
-  );
-  const result = build(root);
-  const javascript = of(result.files, ".js");
-  const lines: string[] = [`bundle ${javascript.length} bytes`];
-  for (const needle of ["process.env", '"production"', "typeof process", "is composed later", "NODE_ENV"]) {
-    const at = javascript.indexOf(needle);
-    lines.push(
-      `  ${needle.padEnd(22)} ${at === -1 ? "absent" : `at ${at}  ...${JSON.stringify(javascript.slice(Math.max(0, at - 70), at + 70))}`}`,
-    );
-  }
-  require("node:fs").writeFileSync("/tmp/zzdiag.txt", lines.join("\n"));
-  expect(result.ok).toBe(true);
-});
-
 /**
  * The same wiring claim, asked of Vite.
  *
@@ -572,7 +558,7 @@ test("zzdiagnose", () => {
 describe("codegen through the vite plugin", () => {
   test("the pair is written, and a block using `$` compiles to a plain var()", () => {
     const root = project(
-      `export const Card = () => <div css={@@( color: $.color.primary.main; )}>x</div>;\n`,
+      `export const Card = () => <div className={@@( color: $.color.primary.main; )}>x</div>;\n`,
       `import { Card } from "./Card";\nconsole.log(Card);\n`,
     );
     writeFileSync(

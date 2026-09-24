@@ -28,7 +28,7 @@ function hooks() {
   return { plugin, transform, load, resolveId };
 }
 
-const STYLED = `const a = <div css={@@( display: flex; )}>x</div>;\n`;
+const STYLED = `const a = <div className={@@( display: flex; )}>x</div>;\n`;
 
 describe("where it sits in the pipeline", () => {
   test("before esbuild, which is a requirement rather than a preference", () => {
@@ -48,7 +48,7 @@ describe("what it transforms", () => {
     const { transform } = hooks();
     const result = transform.call({}, STYLED, "/src/Card.tsx");
 
-    expect(result?.code).toContain("css={_s0}");
+    expect(result?.code).toContain("className={_s0}");
     expect(result).toHaveProperty("map");
   });
 
@@ -80,7 +80,7 @@ describe("what it transforms", () => {
     // file whose blocks silently do not compile.
     const { transform } = hooks();
 
-    expect(transform.call({}, STYLED, "/src/Card.tsx?v=deadbeef")?.code).toContain("css={_s0}");
+    expect(transform.call({}, STYLED, "/src/Card.tsx?v=deadbeef")?.code).toContain("className={_s0}");
   });
 });
 
@@ -174,8 +174,8 @@ describe("a save, which is what a dev server does all day", () => {
 
   test("a block the author deleted leaves the sheet with it", () => {
     const { transform, load } = hooks();
-    transform.call({}, `const a = <div css={@@( display: flex; )}>x</div>;\n`, "/src/Card.tsx");
-    transform.call({}, `const a = <div css={@@( display: grid; )}>x</div>;\n`, "/src/Card.tsx");
+    transform.call({}, `const a = <div className={@@( display: flex; )}>x</div>;\n`, "/src/Card.tsx");
+    transform.call({}, `const a = <div className={@@( display: grid; )}>x</div>;\n`, "/src/Card.tsx");
 
     const css = load.call({}, cssOf("/src/Card.tsx"));
     expect(css).toContain("display:grid;");
@@ -245,16 +245,16 @@ describe("a save, which is what a dev server does all day", () => {
 
     transform.call(
       context,
-      `const a = <div css={@@( display: flex; )}>x</div>;\nconst b = <p css={@@( color: red; )}>y</p>;\n`,
+      `const a = <div className={@@( display: flex; )}>x</div>;\nconst b = <p className={@@( color: red; )}>y</p>;\n`,
       "/src/One.tsx",
     );
-    transform.call(context, `const c = <div css={@@( color: red; )}>z</div>;\n`, "/src/Two.tsx");
+    transform.call(context, `const c = <div className={@@( color: red; )}>z</div>;\n`, "/src/Two.tsx");
     expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("color:red;");
 
     reloaded.length = 0;
     // One.tsx keeps `display:flex` and drops `color:red`, so it still has blocks — a different path
     // from losing every one of them.
-    transform.call(context, `const a = <div css={@@( display: flex; )}>x</div>;\n`, "/src/One.tsx");
+    transform.call(context, `const a = <div className={@@( display: flex; )}>x</div>;\n`, "/src/One.tsx");
 
     expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("color:red;");
     expect(reloaded).toEqual([]);
@@ -273,7 +273,7 @@ describe("a block it cannot read", () => {
     const { transform } = hooks();
 
     try {
-      transform.call({}, `const a = <div css={@@( {name}: 24px; )}>x</div>;\n`, "/src/Card.tsx");
+      transform.call({}, `const a = <div className={@@( {name}: 24px; )}>x</div>;\n`, "/src/Card.tsx");
       expect.unreachable("the plugin should have refused");
     } catch (error) {
       const refusal = error as Error & { id?: string; loc?: { line: number; column: number } };
@@ -286,14 +286,15 @@ describe("a block it cannot read", () => {
        * error anywhere to find it. Measured on a real parse error at a known position: `@` on
        * 1-based column 20 came back as `1:19`, caret under it.
        *
-       * The hole's `{` is at 1-based column 25 in the source below — it was 24 while a block could
-       * be written as a bare attribute, and the brace the braced spelling adds moved every column
-       * after it by one. The numbers are asserted from the source rather than written out for
-       * exactly this reason.
+       * The hole's `{` is at 1-based column 31 in the source below. It has moved twice: 24 while a
+       * block could be written as a bare attribute, 25 once the braced spelling added its brace, and
+       * 31 now that the attribute is `className` rather than the `css` prop that is gone. Each move
+       * was a number in this file, which is why they are asserted FROM the source rather than
+       * written out — the assertion below proves the source really says what the prose claims.
        */
-      const source = `const a = <div css={@@( {name}: 24px; )}>x</div>;\n`;
-      expect(source.indexOf("{", source.indexOf("@@(") + 3) + 1).toBe(25);
-      expect(refusal.loc).toEqual({ line: 1, column: 24 });
+      const source = `const a = <div className={@@( {name}: 24px; )}>x</div>;\n`;
+      expect(source.indexOf("{", source.indexOf("@@(") + 3) + 1).toBe(31);
+      expect(refusal.loc).toEqual({ line: 1, column: 30 });
     }
   });
 });
@@ -329,7 +330,11 @@ describe("what an app has to write", () => {
  * in the stylesheet. Nothing throws. The page renders, unstyled, with nothing to blame.
  */
 describe("the assembled stylesheet", () => {
-  const SOURCE = `const a = <div css={@@( color: {c}; )}>x</div>;\n`;
+  // A `var()` in the stylesheet comes from a REGISTERED property now, which is what the last test
+  // here needs: a hole used to put one on the element, and a runtime value is refused.
+  const SOURCE =
+    `const c = @@property(\n  syntax: "<color>";\n  inherits: false;\n  initial-value: red;\n);\n` +
+    `const a = <div className={@@( color: var({c}); )}>x</div>;\n`;
 
   /** The plugin after one file has been through it, and the CSS it produced. */
   const built = () => {
@@ -369,11 +374,20 @@ describe("the assembled stylesheet", () => {
     expect(() => plugin.generateBundle?.call({}, {}, bundleOf(renamed))).toThrow(/renamed or removed/);
   });
 
-  test("refuses when a custom property the markup carries was dropped", () => {
+  /**
+   * The `@property` rule, which the markup depends on as surely as it depends on a class.
+   *
+   * An element sets `--r-…` from JavaScript; without the registration the name is an unregistered
+   * custom property, so the `syntax` no longer guards the value and the `initial-value` is not
+   * there to fall back to. Nothing about the page looks broken and the value silently does less.
+   */
+  test("refuses when the `@property` rule the markup depends on was renamed", () => {
     const { plugin, css } = built();
-    const dropped = css.replace(/var\([^)]+\)/g, "red");
+    const renamed = css.replace(/--r-[0-9a-zA-Z]+/g, "--a1");
 
-    expect(() => plugin.generateBundle?.call({}, {}, bundleOf(dropped))).toThrow(/var\(/);
+    // The control: the sheet really did emit one, so an empty replacement cannot pass for free.
+    expect(renamed).not.toBe(css);
+    expect(() => plugin.generateBundle?.call({}, {}, bundleOf(renamed))).toThrow(/renamed or removed/);
   });
 
   /**
@@ -404,7 +418,7 @@ describe("the assembled stylesheet", () => {
     const plugin = ramondaCss();
     plugin.transform.call(
       {},
-      `const a = <div css={@@( color: var(--nothing-sets-this); )}>x</div>;\n`,
+      `const a = <div className={@@( color: var(--nothing-sets-this); )}>x</div>;\n`,
       "/src/Card.tsx",
     );
 
@@ -461,7 +475,7 @@ describe("what the plugin tells a config about the build", () => {
       plugin.config({}, { mode: "production" });
       const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
       try {
-        transform.call({}, `const a = <div css={@@( padding: 1em; )}>x</div>;\n`, join(dir, "Card.tsx"));
+        transform.call({}, `const a = <div className={@@( padding: 1em; )}>x</div>;\n`, join(dir, "Card.tsx"));
         return "accepted";
       } catch (error) {
         return (error as Error).message;
@@ -478,7 +492,7 @@ describe("what the plugin tells a config about the build", () => {
       plugin.config({}, { mode: "development" });
       const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
       try {
-        transform.call({}, `const a = <div css={@@( padding: 1em; )}>x</div>;\n`, join(dir, "Card.tsx"));
+        transform.call({}, `const a = <div className={@@( padding: 1em; )}>x</div>;\n`, join(dir, "Card.tsx"));
         return "accepted";
       } catch (error) {
         return (error as Error).message;
@@ -517,7 +531,7 @@ describe("the dependency scan", () => {
     const { load } = scanner();
     const path = written(
       "Card.tsx",
-      `import { thing } from "./thing";\nconst a = <div css={@@( display: flex; )}>x</div>;\n`,
+      `import { thing } from "./thing";\nconst a = <div className={@@( display: flex; )}>x</div>;\n`,
     );
 
     const result = load?.({ path });
@@ -536,7 +550,7 @@ describe("the dependency scan", () => {
   /** A scan is not where an author should meet a diagnostic — the real transform reports it. */
   test("a block it cannot read is passed over rather than thrown from", () => {
     const { load } = scanner();
-    const path = written("Broken.tsx", `const a = <div css={@@( {whatever}: 4px; )}>x</div>;\n`);
+    const path = written("Broken.tsx", `const a = <div className={@@( {whatever}: 4px; )}>x</div>;\n`);
 
     expect(() => load?.({ path })).not.toThrow();
     expect(load?.({ path })).toBeNull();
@@ -581,7 +595,7 @@ describe("which config a transform is measured against", () => {
     }
   };
 
-  const transforming = (file: string, source = `const a = <div css={@@( padding: 1em; )}>x</div>;\n`) => {
+  const transforming = (file: string, source = `const a = <div className={@@( padding: 1em; )}>x</div>;\n`) => {
     const plugin = ramondaCss();
     plugin.config({}, { mode: "development" });
     const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
@@ -623,7 +637,7 @@ describe("which config a transform is measured against", () => {
     const transform = plugin.transform as (this: unknown, code: string, id: string) => unknown;
     const run = () => {
       try {
-        transform.call({}, `const a = <div css={@@( padding: 1em; )}>x</div>;\n`, file);
+        transform.call({}, `const a = <div className={@@( padding: 1em; )}>x</div>;\n`, file);
         return "accepted";
       } catch (error) {
         return (error as Error).message;

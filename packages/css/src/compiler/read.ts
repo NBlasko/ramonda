@@ -1,4 +1,4 @@
-import type { Block, BlockItem, ValuePart } from "./ast";
+import type { Block, BlockItem, MatchArm, MatchPart, ValuePart } from "./ast";
 import { HOLE } from "./normalise";
 import { holeOutOfPlace, refuse } from "./errors";
 
@@ -50,6 +50,14 @@ import { holeOutOfPlace, refuse } from "./errors";
  */
 export const CONDITION = "if";
 
+/**
+ * What opens a lookup in a VALUE — `color: match({this.variant}) { … }`.
+ *
+ * Not a rule and not a condition: it stands where a value stands, and what it produces is one of the
+ * values written inside it. See {@link MatchPart} for why that is the whole point.
+ */
+export const MATCH = "match";
+
 /** `if` and its opening paren, with any whitespace between them — see where it is used. */
 const CONDITION_HEAD = new RegExp(`^${CONDITION}\\s*\\($`);
 
@@ -66,6 +74,8 @@ const CONDITION_HEAD = new RegExp(`^${CONDITION}\\s*\\($`);
  * selector writes `& if { … }`, which names the parent and is not this shape.
  */
 const OPENS_A_CONDITION = new RegExp(`^${CONDITION}\\b`);
+/** `match` and then its parenthesis, which only a lookup has. */
+const MATCH_HEAD = new RegExp(`^${MATCH}\\s*\\(`);
 
 /** What a condition used to be spelled, so the rename says so rather than failing as something else. */
 const OLD_CONDITION_HEAD = new RegExp(`^@@${CONDITION}\\s*\\($`);
@@ -591,6 +601,82 @@ export function readBlock(source: string, open: number, filename: string, option
     return part;
   }
 
+  /**
+   * `match({subject}) { key => value; … }`, read from the `m`.
+   *
+   * Tolerant throughout, because an editor sees this half-written more often than finished: a
+   * missing brace, an arm with no `=>`, a key and nothing after it. Every one of those ends the read
+   * with what was understood so far, and the rules say what is wrong — a refusal here would take the
+   * whole file's completions away while somebody is still typing the second arm.
+   */
+  function readMatch(): MatchPart {
+    const opens = at;
+    at += MATCH.length;
+    skipTrivia();
+    if (source.charCodeAt(at) === 40 /* ( */) at++;
+    skipTrivia();
+
+    /**
+     * The subject is a HOLE in the reader's numbering, which is how its expression reaches the
+     * emit. It is not a hole in the sense the value rules mean — it chooses a class, it does not
+     * carry a value onto an element — and `MatchPart` says so where a reader will look.
+     */
+    let hole = holes.length;
+    if (source.charCodeAt(at) === 123 /* { */) {
+      const read = pastHole();
+      if (read.kind === "hole") hole = read.index;
+    }
+    skipTrivia();
+    if (source.charCodeAt(at) === 41 /* ) */) at++;
+    skipTrivia();
+    if (source.charCodeAt(at) === 123 /* { */) at++;
+
+    const arms: MatchArm[] = [];
+    for (;;) {
+      skipTrivia();
+      if (at >= source.length) break;
+      if (source.charCodeAt(at) === 125 /* } */) {
+        at++;
+        break;
+      }
+
+      const keyAt = at;
+      const key = readArmKey();
+      if (key === undefined) break;
+
+      skipTrivia();
+      if (source.startsWith("=>", at)) at += 2;
+      const value = readValue(125 /* } */);
+      if (source.charCodeAt(at) === 59 /* ; */) at++;
+
+      arms.push({ key, otherwise: key === "_", value, at: keyAt, length: at - keyAt });
+    }
+
+    return { kind: "match", hole, arms, at: opens, length: at - opens };
+  }
+
+  /**
+   * An arm's key: a quoted string, or everything up to the arrow.
+   *
+   * Quoted for what is not an identifier, bare for what is — the distinction CSS already makes, and
+   * the one an author will reach for without being told.
+   */
+  function readArmKey(): string | undefined {
+    if (source.charCodeAt(at) === 34 || source.charCodeAt(at) === 39) {
+      const start = at;
+      pastString();
+      return source.slice(start + 1, at - 1);
+    }
+    const from = at;
+    while (at < source.length) {
+      const code = source.charCodeAt(at);
+      if (code === 61 /* = */ || code === 59 /* ; */ || code === 125 /* } */ || code === 10) break;
+      at++;
+    }
+    const written = source.slice(from, at).trim();
+    return written === "" ? undefined : written;
+  }
+
   /* ---- deciding what an item is ---------------------------------------------------------------- */
 
   function skipTrivia(): void {
@@ -862,6 +948,23 @@ export function readBlock(source: string, open: number, filename: string, option
 
   /** A declaration's value: text and holes, up to `;` or whatever closes the block it is in. */
   function readValue(closer: number): ValuePart[] {
+    /**
+     * A value that IS a lookup, read whole before anything else is tried.
+     *
+     * It has to be the whole value rather than a part of one: `1px solid match(…) { … }` would put
+     * a brace-delimited list inside a value that is otherwise read character by character, and the
+     * arms would have to be found by counting braces past a value that may hold its own. Requiring
+     * it to stand alone costs an author nothing — an arm holds a whole value, so `1px solid red` is
+     * written in the arm.
+     */
+    {
+      const mark = at;
+      skipTrivia();
+      const found = MATCH_HEAD.exec(source.slice(at));
+      if (found !== null) return [readMatch()];
+      at = mark;
+    }
+
     const parts: ValuePart[] = [];
     let text = "";
     let depth = 0;

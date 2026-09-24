@@ -3,13 +3,17 @@ import ts from "typescript";
 import { CssBlockError } from "./compiler/errors";
 import { REPLACED_CODES, SPEAKS_OVER_TYPES } from "./compiler/rules";
 import { Sheet, messageFor } from "./compiler/sheet";
+import { type Ignored, ignoredIn, isIgnored } from "./compiler/ignore";
 import { checkedSource } from "./compiler/source";
 import { positionOf } from "./compiler/errors";
 import { knownNames, configReader, environmentOf } from "./config";
 import { findConfig } from "./config";
 import { propertiesFor } from "./generate";
 import { readModule } from "./modules";
+import { checkTemplates } from "./compiler/rules";
 import { fileMayHoldABlock, mayHoldABlock } from "./compiler/scan";
+import { TYPED_RULES, registeredNeverSet, typedFindings } from "./compiler/typed";
+import type { RegisteredSite } from "./compiler/variables";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 
 /**
@@ -111,11 +115,30 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
   const refusals: Finding[] = [];
   /** What the CSS rules found — the faults the types deliberately cannot catch. */
   const css: Finding[] = [];
+  /**
+   * Files the compiler cannot parse because a block sits in a template literal.
+   *
+   * Nothing rewrites one, so `tsc` reads `@@(` as written and answers with six syntax errors about
+   * the same character — none of which names the block. `block-in-a-template` names it, so the
+   * compiler's word about that file is dropped, the way `inOrder` drops it wherever a rule of ours
+   * has already spoken.
+   */
+  const unparseable = new Set<string>();
   /** Only the variables are wanted from it — see below. */
   const sheet = new Sheet();
   const sources = new Map<string, string>();
   /** What the author took responsibility for — see {@link Report.exempted}. */
   const exempted: { file: string; line: number; reason: string }[] = [];
+  /** Each file's `ramonda-css-ignore` directives, kept because the TYPED rules run later. */
+  const directives = new Map<string, readonly Ignored[]>();
+  /**
+   * The three halves of `registered-never-set`, gathered across every file because none of them is
+   * a question one file can answer: a property is declared in one, read in another and set in a
+   * third, and that is the ordinary shape of a theme rather than an unusual one.
+   */
+  const registered: { file: string; site: RegisteredSite }[] = [];
+  const blockSets = new Set<string>();
+  const readsRegistered = new Set<string>();
 
   for (const fileName of parsed.fileNames) {
     if (!fileMayHoldABlock(fileName)) continue;
@@ -150,6 +173,27 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
        * that named one meant it.
        */
       const properties = options.properties ?? propertiesFor(fileName);
+      /**
+       * **A block inside a `${ … }` is asked about BEFORE the overlay**, because it produces no site
+       * and so nothing downstream of one can see it.
+       *
+       * `transform` says the same thing where it refuses — *a file whose only block is in a template
+       * finds no site at all, so asking after that return is asking where nothing is left to ask* —
+       * and this pass asked after. The rule never ran and the file went to `tsc` as written, so what
+       * a person got was six syntax errors naming neither the block nor the line, which is the
+       * sentence `block-in-a-template` exists to replace.
+       */
+      const inATemplate = checkTemplates(text).map((finding) => ({
+        file: fileName,
+        ...positionOf(text, finding.at),
+        code: finding.rule,
+        message: finding.message,
+      }));
+      css.push(...inATemplate);
+      // The file cannot be parsed until the block moves, so every compiler diagnostic in it is about
+      // the fault already named. The same trade `inOrder` makes wherever a rule of ours speaks first.
+      if (inATemplate.length > 0) unparseable.add(fileName);
+
       const virtual = virtualFile(text, { properties, filename: fileName, read: readModule });
       // `mayHoldABlock` is allowed to say maybe — a string or a comment can hold the syntax, and
       // a file that turns out to hold no block needs no overlay.
@@ -166,7 +210,11 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
           })),
         );
         sheet.add(fileName, [], { ...walked.variables, known: knownNames(config) });
+        for (const site of walked.registered) registered.push({ file: fileName, site });
+        for (const name of walked.blockSets) blockSets.add(name);
+        for (const name of walked.variables.readsRegistered ?? []) readsRegistered.add(name);
         sources.set(fileName, text);
+        directives.set(fileName, walked.ignored);
         for (const one of walked.ignored) exempted.push({ file: fileName, line: one.line, reason: one.reason });
       }
     } catch (error) {
@@ -250,10 +298,62 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
     if (finding !== undefined) findings.push(finding);
   }
 
+  /**
+   * The rules that need the program, folded in beside the CSS rules rather than beside the
+   * compiler's diagnostics — they have a rule id and a sentence, which is what those are.
+   *
+   * An overlay's `source` is the author's text; a file with no overlay holds no block, so the
+   * program's own copy already IS the author's text.
+   */
+  /**
+   * A registered property is a CANDIDATE when the CSS half has already said both things about it:
+   * some block reads it, and no block sets it. Only then is the program asked, because the program
+   * question is the expensive one — a walk over every identifier in the project — and a project
+   * whose properties are all set pays nothing for the rule at all.
+   */
+  const candidates = registered.filter(({ site }) => readsRegistered.has(site.name) && !blockSets.has(site.name));
+
+  for (const found of [...typedFindings(program, overlays), ...registeredNeverSet(program, overlays, candidates)]) {
+    const text = overlays.get(found.file)?.source ?? program.getSourceFile(found.file)?.text;
+    if (text === undefined) continue;
+
+    /**
+     * **Both ways of saying a rule is wrong, because a rule with neither has no escape hatch.**
+     * Every rule in `rules.ts` gets these for free — `checkBlock` drops the silenced ones and
+     * `checkedSource` drops the ignored ones — and these two take neither path, so they were
+     * unsilenceable until it was asserted. The directive is read from the file it was written in,
+     * which is why the walk above keeps them.
+     */
+    if (configFor(found.file).rules?.[found.rule] === "off") continue;
+
+    /**
+     * **A file with no block has no entry above**, and a component that only hands its prop on is
+     * exactly that shape — so its directives are read here, once, the first time this pass has
+     * something to say about it. Measured: without this the directive worked in a file holding a
+     * block and silently did nothing in one that did not.
+     */
+    let ignored = directives.get(found.file);
+    if (ignored === undefined) {
+      ignored = ignoredIn(text).ignored;
+      directives.set(found.file, ignored);
+      for (const one of ignored) exempted.push({ file: found.file, line: one.line, reason: one.reason });
+    }
+    if (isIgnored(text, ignored, found)) continue;
+
+    css.push({ file: found.file, ...positionOf(text, found.at), code: found.rule, message: found.message });
+  }
+
   return {
     files: parsed.fileNames.length,
     styled: overlays.size,
-    findings: [...setup.values(), ...inOrder(css, findings, sources)],
+    findings: [
+      ...setup.values(),
+      ...inOrder(
+        css,
+        findings.filter((one) => !unparseable.has(one.file)),
+        sources,
+      ),
+    ],
     refusals: [],
     refused: false,
     exempted,
@@ -284,7 +384,19 @@ export function checkProject(tsconfig: string, options: CheckOptions = {}): Repo
  * `//`, because the next rule to land on a key would have doubled too.
  */
 function inOrder(css: readonly Finding[], types: readonly Finding[], sources: ReadonlyMap<string, string>): Finding[] {
-  const said = new Set(css.map((finding) => at(finding)));
+  /**
+   * Where a rule of OURS already said what the compiler is about to — see the `TS2353` note below.
+   *
+   * The TYPED rules are left out on purpose: they answer a question TypeScript cannot ask, so a
+   * collision is two different faults at one character rather than one fault said twice. Measured
+   * on a wrapper passing a block on — the compiler's *`padding` does not exist in type* vanished
+   * behind `style-prop-overridden`, which never mentioned it.
+   */
+  const said = new Set(
+    css
+      .filter((finding) => !(TYPED_RULES as readonly string[]).includes(String(finding.code)))
+      .map((finding) => at(finding)),
+  );
   const where = declarations(sources);
 
   /**
@@ -351,7 +463,41 @@ function inOrder(css: readonly Finding[], types: readonly Finding[], sources: Re
     css.filter((finding) => (SPEAKS_OVER_TYPES as readonly string[]).includes(String(finding.code))).map(where),
   );
 
+  /**
+   * A DECLARATION whose hole is refused outright, so nothing the compiler says about it is kept.
+   *
+   * A runtime value in a declaration is refused everywhere now, and the fix is to delete it — for
+   * `match`, for `@@property`, or for a value written out. So every type diagnostic about what that
+   * expression evaluates to is advice about a shape that has to go, and an author who acts on it
+   * has done work and still has the finding. Measured on `position: {this.wide}`: the pair was
+   * `hole-not-allowed` and `TS2345 … 'boolean' is not assignable to 'CssValue'`, and only the first
+   * says anything to do.
+   *
+   * By declaration rather than by line, for the reason `where` exists: two declarations can share
+   * a line, and one of them being refused says nothing about the other.
+   */
+  const holeNotAllowed = new Set(css.filter((finding) => finding.code === "hole-not-allowed").map(where));
+
+  /**
+   * The one TYPED rule that stands IN FOR the compiler instead of speaking past it.
+   *
+   * Every other typed rule is excluded from `said` above on purpose, because a collision there is
+   * two faults at one character. `allow-list-is-an-interface` is the exception and the exclusion
+   * would be wrong for it: the compiler reports the very same mistake as `TS2344`, naming an index
+   * signature the author never wrote and never saying the word `interface`. Ours says what to do,
+   * so the pair is one fault told twice and the worse telling goes.
+   *
+   * By CHARACTER, because the rule is deliberately reported on the same node the compiler used —
+   * the type argument. That is what makes this a position match rather than a guess about which
+   * `TS2344` belongs to which allow-list.
+   */
+  const interfaceRefused = new Set(
+    css.filter((finding) => finding.code === "allow-list-is-an-interface").map((finding) => at(finding)),
+  );
+
   const kept = types.filter((finding) => {
+    if (holeNotAllowed.has(where(finding))) return false;
+    if (finding.code === 2344 && interfaceRefused.has(at(finding))) return false;
     if (finding.code === 2353 && said.has(at(finding))) return false;
     if (finding.code === 2322 && finding.message.startsWith("Type 'CssValue' is not assignable")) {
       return !holeRefused.has(where(finding));

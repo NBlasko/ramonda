@@ -800,13 +800,40 @@ function byKind(named: readonly Named[]): string {
   }
   if (kinds.size === 0) return "";
 
-  const rows = [...kinds.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([kind, each]) => `  ${JSON.stringify(kind)}: ${each.join(" | ")};`)
+  /**
+   * One NAMED alias per kind, and the name is what keeps a diagnostic readable.
+   *
+   * A kind's variables are a union of branded tokens, and a union EXPANDS wherever TypeScript
+   * prints it: refusing one colour used to read `Token<"color", Fixed<"#10b981">> | Token<…> | …
+   * 5 more …`, in which a reader cannot find the property they got wrong. Measured, the same
+   * refusal under a named alias prints `ColorVar`.
+   *
+   * It is the shape `Keyword<…>` already uses in the property map, arrived at from the other side:
+   * `Keyword<K>` survives printing because `K` stands naked in its union, while `VarByKind[K]` is
+   * an indexed access TypeScript resolves on sight — so the alias has to be given a name of its own
+   * rather than made lazy. Measured: it then prints by name through `Var<"color">` as well.
+   */
+  const aliasFor = (kind: string) =>
+    `${kind
+      .split("-")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join("")}Var`;
+
+  const ordered = [...kinds.entries()].sort(([a], [b]) => a.localeCompare(b));
+
+  const aliases = ordered
+    .map(
+      ([kind, each]) =>
+        `/** Every \`${kind}\` variable this project declares. */\n` +
+        `export type ${aliasFor(kind)} = ${each.join(" | ")};\n`,
+    )
     .join("\n");
 
+  const rows = ordered.map(([kind]) => `  ${JSON.stringify(kind)}: ${aliasFor(kind)};`).join("\n");
+
   return (
-    `\n/** Every variable this project declares, by kind — what \`Var\` reads. */\n` +
+    `\n${aliases}\n` +
+    `/** Every variable this project declares, by kind — what \`Var\` reads. */\n` +
     `export interface VarByKind {\n${rows}\n}\n\n` +
     `/** Any variable of a kind — \`const tone: Var<"color"> = toggle ? $.a.b : $.a.c\`. */\n` +
     `export type Var<K extends keyof VarByKind> = VarByKind[K];\n`
@@ -844,8 +871,15 @@ const PASSED_THROUGH = [
   "CssGlobal",
   "CssKeyframesShape",
   "CssPropertyDescriptors",
+  // What `@@property( … )` binds — the generated name, carrying the kind its `syntax` declared. It
+  // is the return type of a named site the virtual file writes, so it has to be reachable from the
+  // same module the shapes are, or the site's own declaration does not resolve.
+  "CssRegistered",
   "CssSpreadable",
   "CssValue",
+  // What `@@property( … )` binds, and what `CssRegistered` resolves to — a project annotating a
+  // setter writes this one, so it has to arrive from the module the project already imports.
+  "CssVar",
   "Keyword",
   "Narrowed",
   "StyleValue",

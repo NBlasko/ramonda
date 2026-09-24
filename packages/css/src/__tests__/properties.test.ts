@@ -33,7 +33,7 @@ interface Reported {
 const JSX_TYPES = `
 declare namespace JSX {
   interface IntrinsicElements {
-    div: { css?: unknown; children?: unknown };
+    div: { id?: string; className?: string; children?: unknown };
   }
   interface Element { readonly _brand: unique symbol }
 }
@@ -44,7 +44,7 @@ declare namespace JSX {
  * `properties.ts`, so the import resolves to what the package actually ships.
  */
 function check(css: string): Reported[] {
-  const source = `const a = (\n  <div css={@@(\n${css}\n  )}>x</div>\n);\n`;
+  const source = `const a = (\n  <div className={@@(\n${css}\n  )}>x</div>\n);\n`;
   const file = virtualFile(source, { properties: "../properties" });
   if (file === undefined) throw new Error("the virtual file found no block");
 
@@ -162,7 +162,7 @@ describe("the limit, said out loud rather than hidden", () => {
 
 describe("a hole, checked against the property it stands in", () => {
   test("a value that cannot be one is reported on its declaration", () => {
-    const source = `class Card {\n  wide = true;\n  render() {\n    return (\n      <div css={@@(\n        position: {this.wide};\n      )}>x</div>\n    );\n  }\n}\n`;
+    const source = `class Card {\n  wide = true;\n  render() {\n    return (\n      <div className={@@(\n        position: {this.wide};\n      )}>x</div>\n    );\n  }\n}\n`;
     const file = virtualFile(source, { properties: "../properties" });
 
     expect(file?.code).toContain("position:__val((this.wide))");

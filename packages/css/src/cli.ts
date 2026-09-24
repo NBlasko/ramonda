@@ -197,10 +197,20 @@ for (const finding of report.findings) {
   console.error(`    ${typeof finding.code === "number" ? `TS${finding.code}` : finding.code}: ${finding.message}`);
   console.error("");
 }
-console.error(
-  `  ${report.styled} of those file(s) carry a style block. A position inside one is the author's own —\n` +
-    `  the block is checked through a virtual file, and every diagnostic is mapped back to it.\n`,
-);
+/**
+ * Only when a block is involved, because that is the whole of what it explains.
+ *
+ * It answers *why can I trust a position inside a block* — the block is checked through a virtual
+ * file and every diagnostic is mapped home. A run whose faults are all outside one has nothing to
+ * explain: measured, a project whose only fault was a style prop nobody uses printed *0 of those
+ * file(s) carry a style block* and then explained how a block is checked.
+ */
+if (report.styled > 0) {
+  console.error(
+    `  ${report.styled} of those file(s) carry a style block. A position inside one is the author's own —\n` +
+      `  the block is checked through a virtual file, and every diagnostic is mapped back to it.\n`,
+  );
+}
 process.exit(1);
 
 /* ── format and lint ───────────────────────────────────────────────────────────────────────── */

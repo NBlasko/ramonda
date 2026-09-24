@@ -45,7 +45,8 @@ export function messageFor(one: UnknownVariable): string {
   );
 }
 import { BREADTH_LAYERS, DIGIT_LAYERS, LAYER_ORDER, layerPathFor, sheetRank, withParent } from "./flatten";
-import { escapeClass } from "./names";
+import { keyIn } from "../key";
+import { escapeClass, keyTextOf } from "./names";
 import type { EmittedBlock } from "./transform";
 
 /**
@@ -295,6 +296,8 @@ export class Sheet {
    * author deleted has to go.
    */
   private readonly variables = new Map<string, FileVariables>();
+  /** Key → the text it stands for, so a hashed key that collides is a build failure and not a page. */
+  private readonly keys = new Map<string, { text: string; file: string }>();
 
   /** What a file with no blocks contributes: nothing, which is a value rather than an absence. */
   private static readonly NONE: FileVariables = Object.freeze({ set: [], read: [] });
@@ -373,7 +376,54 @@ export class Sheet {
       claimed.push(block.className);
     }
 
+    this.verifyKeys(file, blocks);
     this.byFile.set(file, claimed);
+  }
+
+  /**
+   * **Two declarations that set DIFFERENT things may not carry the same key**, and this is where
+   * that is checked.
+   *
+   * A class name carries what its declaration sets — see `keyToken` — and a merge keeps one class
+   * per key. Most keys are the author's own text and cannot collide; the two hashed forms can, at
+   * one in 916 million and one in 57 billion. **The failure is silent and is the worst this package
+   * has**: two rules setting different things would look to a merge like one thing set twice, and
+   * the earlier one would be dropped from a page that renders.
+   *
+   * So it is a build failure instead, with both texts named. The same argument the class hash makes
+   * about its own length — see `HASH_LENGTH` — and the same answer: probability is not a promise,
+   * an assertion is.
+   *
+   * A NAMED site is not asked. `@keyframes` and `@font-face` set nothing on an element, so they
+   * have no key and never reach a merge.
+   */
+  private verifyKeys(file: string, blocks: readonly EmittedBlock[]): void {
+    for (const block of blocks) {
+      // A named site has no key; so has a block built by hand, which carries no property either.
+      if (block.at !== undefined || block.property === undefined) continue;
+      const key = keyIn(block.className);
+      const text = keyTextOf({
+        property: block.property,
+        selector: block.selector ?? "",
+        conditions: block.conditions ?? [],
+      });
+
+      const seen = this.keys.get(key);
+      if (seen === undefined) {
+        this.keys.set(key, { text, file });
+        continue;
+      }
+      if (seen.text === text) continue;
+
+      throw new CssBlockError(
+        `two declarations that set different things carry the key \`${key}\` — \`${seen.text}\` in ` +
+          `${seen.file} and \`${text}\` here. A merge keeps one class per key, so one of these would ` +
+          `be dropped from a page that renders. This cannot happen by accident — please report it.`,
+        file,
+        1,
+        1,
+      );
+    }
   }
 
   /**

@@ -27,11 +27,27 @@ export class CssBlockError extends Error {
  *
  * One sentence, one place: the build refuses these and the CSS checker reports them, and a fault that
  * read differently depending on which tool found it would be two faults to a reader.
+ *
+ * **The advice used to send an author into the next refusal.** It read *a custom property holds a
+ * value, so write `property: {…}` and put the choice inside it* — written when a hole in a
+ * declaration compiled to a custom property on the element. It does not any more: a runtime value in
+ * a declaration is refused everywhere, so following that sentence moved somebody from
+ * `hole-out-of-place` to `hole-not-allowed`. Measured, all three spellings in one run:
+ *
+ *     @@( {pick}; )              a hole cannot be a whole declaration   <- what they wrote
+ *     @@( color: {pick}; )       hole-not-allowed                       <- what it told them
+ *     @@( color: var({A}); )     clean                                  <- what works
+ *
+ * So it names the door that is open. A hole still stands in exactly one place — the NAME of a
+ * `@@property( … )` from this file — which is the half of the old sentence that was true.
  */
 export function holeOutOfPlace(what: "a declaration" | "a property name" | "a selector" | "a frame"): string {
+  const door =
+    " A value that comes from data is declared with `@@property( … )` and read as `var({name})`; one" +
+    " that is a choice between a few is written out with `match`.";
   return what === "a declaration"
-    ? "a hole cannot be a whole declaration — a custom property holds a value, so write `property: {…}` and put the choice inside it. The one name a hole may stand in is a `@@property( … )` declared in this file."
-    : `a hole cannot stand in ${what} — a custom property holds a value, and ${what} is not one.` +
+    ? `a hole cannot be a whole declaration — a declaration needs a property, and a block takes no runtime value in one.${door}`
+    : `a hole cannot stand in ${what} — ${what} is text when the stylesheet is written, and a hole is not.` +
         (what === "a property name"
           ? " The one exception is a `@@property( … )` declared in this file, whose name only this compiler knows."
           : "");

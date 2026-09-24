@@ -8,6 +8,13 @@ adapters and a formatter wrapper.
 This file is the *why*, and it is the oldest of the three. `PLAN.md` is the *when*; `CONTRACT.md` is
 what both halves must agree on.
 
+> **Everything above §15 is a RECORD of what was decided when, and its examples are written in the
+> spelling of the day.** Six steps landed on 2026-09-22 and §15 is their live account: `match`,
+> `@@property`'s typed setter, the hole refused, a key in every class name, `merge` over strings, and
+> the `css` prop removed — a block goes on `className`. Where an example above writes `css=@@( … )`
+> or a map, read §15 for what it is now. Rewriting the record would delete the reasoning that led
+> here, which is the one thing this file is for.
+
 **It can drift, and it had — read on 2026-09-07 against the code it describes, six claims were
 wrong.** The header above was one. Decision 1 forbade a hole in a property name, which is now the one
 thing that makes a generated custom property settable; decision 2 promised an `initial` floor that is
@@ -2736,35 +2743,368 @@ three it has nest — `"*"` then `"<kind>"` then a property name, each a narrowi
 A selector is not a narrowing of a property; it would be a second axis, and that is a cost to pay
 when somebody wants it and not before.
 
-### 7. A block a PROP can constrain — asked for, NOT designed
+### 7. A block a PROP can constrain — DESIGNED, not built
 
-The user's words, recorded because the feature is not settled and the next session has to talk it
-through with them rather than build from this paragraph:
+The user asked for a type on `@@` that limits what may be sent through a prop, drawing the
+comparison with a typed `sx`:
 
-> *"bilo bi lepo da moze da se gurne tip na `@@` sintaksu ili mozda `@@slot` sintaksu (mada bih
-> voleo da `@@` tako radi) u kojoj mozemo da ogranicimo opet sta moze da se salje. Usecase je kada
-> zelimo kroz props da posaljemo samo odredjene stilove za odredjen element ili skup elemenata."*
+> *"bilo bi lepo da moze da se gurne tip na `@@` sintaksu … u kojoj mozemo da ogranicimo opet sta
+> moze da se salje. Usecase je kada zelimo kroz props da posaljemo samo odredjene stilove za
+> odredjen element ili skup elemenata."*
 
-The comparison they drew is an `sx` prop with a type that says what may be sent.
+Designed with them on 2026-09-18. Everything below was measured in scratch; **none of it is in the
+package yet**. Their brief for the shape of the answer: *"da bude smisleno, da rezultat na kraju
+bude dobar DX i da ne dozvolimo previse sposobnosti koje ce na kraju da nas ujedu."*
 
-**What is true today**, so the next session starts from a fact:
+#### What StyleX does, read rather than recalled
 
-- `@@( … )` has one type, `CssBlock` — an interface branded with a `unique symbol` and nothing else.
-  It carries no record of WHICH declarations the block made, so a prop typed `CssBlock` takes every
-  block there is. That is the gap, and it is also the only place a parameter could attach.
-- The type-level vocabulary for refusing something already exists and is used twice:
-  `CssSpreadable<T>` and `CssCondition<T>` both answer with a SENTENCE as the type name. A narrowed
-  block would be a third of the same kind.
-- Merging is `...{block}` and `if ({cond}) { … }`, both arguments of one merge, in written order,
-  later winning. Whatever a constrained block is, it has to merge by those rules or there are two.
+`@stylexjs/stylex@0.19.1`, from its own `.d.ts` files, because it is the only other project that
+has shipped this and its boundaries are worth knowing before ours are drawn.
 
-**What is open, in the user's own list:** whether the limit is only *may / may not*, whether a
-selector or a set of them is sayable, whether a child element may be targeted at all, and how much
-of it is type-safe and by what mechanism. Then, separately, how a constrained block merges inside
-the component that received it.
+- **A prop carries a compiled class name, not a style.** `StyleXClassNameFor<Key, Value>` is an
+  opaque `string` with the key and the value kept in the brand. That is what makes both sides
+  typable at all.
+- **The allow-list is a type parameter**, `StyleXStyles<{ color?: string }>`, and the refusal of
+  everything else is an intersection that types every OTHER known property as `never` — so the
+  error names the offending property rather than the whole object. They also ship the deny-list
+  (`StyleXStylesWithout`) and a stricter pair that refuses runtime values (`StaticStyles`).
+- **Conditions attach to a VALUE**, not to a block: `color: { default: 'red', ':hover': 'blue' }`.
+  The condition key is typed `` `:${string}` | `@${string}` ``, so `:hover` and `:nth-child(2n)`
+  are the same to the type. Their rule `no-lookahead-selectors` then bans some in LINT — evidence
+  that a vocabulary of permitted pseudo-classes cannot live in the type.
+- **Pseudo-elements are a hand-written closed list** of keys, with `::part()` and `::slotted()`
+  given up on in a comment as "a pattern and not a static key".
+- **Descendants cannot be expressed at all** — there is no key shape for a combinator.
 
-**Measure first, before any of it is designed:** whether the virtual file has a position where a
-type argument on `@@` could be written at all. Everything else depends on that answer.
+**What they do NOT catch is the thing the user was most worried about:** a child that declares the
+prop and never applies it. Nothing in their types or their nine lint rules sees it.
+
+#### And how the two MERGES compare, measured through both runtimes
+
+The user asked which is safer. Neither dominates — they are strict about different things.
+
+| | StyleX (`styleq`) | ours (`merge`) |
+|---|---|---|
+| the merge key | the property name | `condition\|property` |
+| `color` then `color` | `c-blue` | `r-blue` — the same |
+| a hover colour, then a plain one | **`c-green`** — the hover is gone | **`r-hov-blue r-green`** — it survives |
+| a longhand then a shorthand | cannot be written at all | `r-p-8` — cleared exactly |
+| a shorthand arriving past a spread | — | `r-p-8` — the clear-list travels |
+| `padding` inside a `@media` | — | `r-pl-40 r-m-p-8` — cleared only in THERE |
+
+**We are stricter on shorthands.** StyleX does not solve the shorthand/longhand merge; it removes
+it. Its lint rule reads *"Require shorthand properties to be split into individual properties"*, so
+`padding: 8px` may not be written. Ours emits `~padding` carrying all ten longhands, and the key
+carries context — measured, a `padding` inside a `@media` cleared the `padding-left` inside that
+same query and left the outer one standing. And the difference in the KIND of guarantee matters:
+theirs is a lint rule, which one comment disables; ours is in the compiled output, which nothing
+does.
+
+**On conditions they differ, and it is not a strictness difference — it was written up as one here
+and that was wrong.** For them one property is one unit: replacing `color` takes its `:hover` with
+it. For us `color` and `&:hover|color` are different keys and both survive.
+
+Ours is the behaviour plain CSS has, which `behave-like-css` requires. Measured: both land in the
+same layer, `.r-\:hover-c-blue:hover` is (0,2,0) against `.r-c-green` at (0,1,0), so the hover wins
+while hovering whatever order they were written in. Nothing is ambiguous and no rule is needed —
+`override-out-of-order` does NOT fire on this pair and never would, because it is about two
+conditions that TIE in the sheet, which a pseudo-class and a bare selector never do.
+
+What StyleX buys with total replacement is a different override CONTRACT: a caller who writes
+`color: green` gets green in every state, and can never inherit a state they did not write. That is
+a real property. It costs them agreement with CSS, and this package has already chosen the other
+side of that trade.
+
+**The one strictness they have that this design does not:** `StaticStyles` refuses runtime values
+outright — *you may style me, but with nothing computed*. A slot here can constrain what a hole
+evaluates to (`Token<"color">` refuses a bare string in a hole, measured) but cannot forbid a hole.
+Whether that is wanted is open; it is named here so it is not mistaken for an oversight.
+
+Their `no-conflicting-props`, which bans `className` and `style` beside a spread of
+`stylex.props()`, has no counterpart here and needs none: `css` and `className` are separate props
+that both land, so the collision it guards against does not exist.
+
+So StyleX is stricter by **removing capability**; this package is stricter by **tracking more**. The
+second costs a clear-list and a rule, and takes nothing away from the author.
+
+#### The shape, and the decisions taken
+
+```ts
+type Sx = {
+  color?: Token<"color">;                    // a property -> a constraint on its value
+  gap?: "8px" | "16px";
+  "&:hover"?: { color?: Token<"color"> }[];  // a state -> a FLAT list of its own
+};
+```
+
+Written in the vocabulary that already exists — `CssProperties` for the names, `Token<Kind>` for a
+declared variable — so no second dialect appears beside `ramonda.css.ts`. The names are the CSS
+names, dashed and quoted, the same spelling a block uses.
+
+Decided with the user:
+
+- **The short form is in.** `Slot<"color" | "gap">` when the values do not matter. The map is the
+  full form and the union of names is the shortcut.
+- **Pseudo-elements are out.** They make a box the child does not control, and `content` and
+  positioning are exactly where a silent break happens. A child that needs one exposes a second
+  slot.
+- **One slot is one element.** A child that wants to expose an inner part names another slot for it,
+  rather than letting a caller reach through a combinator. Its own structure is not its API.
+
+#### What the prop is CALLED, and it is `css` both times
+
+Measured before deciding: **no component in this repository takes a block through a prop**, so this
+feature creates the convention rather than joining one.
+
+**`css` for the element a component IS, and `<part>Css` for each named part.**
+
+```tsx
+function Card(props: { css?: CssBlock<Root>; titleCss?: CssBlock<Title> }) {
+  return <div css={@@( display: flex; ...{props.css}; )}>
+           <h2 css={@@( ...{props.titleCss}; )}>…</h2>
+         </div>;
+}
+```
+
+The host attribute keeps its name and is not renamed to anything. It is the older name for this
+idea — a `css` prop taking styles written in CSS shipped years before the system-prop spelling that
+is easy to reach for — and that other spelling carries a promise this package does not keep: there,
+values go through a theme scale, so `p: 2` means a multiple. Here a value is a CSS value. Beyond
+that it is declared in `CONTRACT.md`, implemented in the framework, and exists so a wrapper can put
+it on another JSX library; renaming it is a break across two packages for nothing.
+
+Using the same name for a component's own prop was measured to be safe: the framework intercepts
+`css` only where `"tagName" in node` — a host element — so on a component it is an ordinary prop it
+never touches.
+
+Three reasons it beats a generic name, and each follows from a decision already taken:
+
+- **One slot is one element**, so a component with parts has several props. A generic name cannot
+  say which element it styles; `titleCss` can, and it scales where the generic one stops at two.
+- **A caller need not know what `Card` is.** `css={…}` means the same thing on a `<div>` and on a
+  `<Card>`.
+- **Nothing fails quietly.** A component that did not declare the prop refuses it as an unknown
+  prop, which is an ordinary type error.
+
+#### The mechanism, and it is the only one of three that works
+
+```ts
+declare function __block<A extends Allow = Allow>(d: NoInfer<{ [P in keyof A]?: A[P] }>[]): CssBlock<A>;
+```
+
+`NoInfer` is load-bearing: the allow-list has to be **fixed from the return position before the
+block is read**. The two alternatives were measured and both put the fault in the wrong place.
+
+| shape | what happened |
+|---|---|
+| infer `A` from the argument | every line reported, including the correct ones |
+| compare `CssBlock<Keys>` on the result | one error on the whole call, naming `Block2<…>` — scaffolding the author never wrote |
+| `NoInfer`, the allow-list fixed first | the fault lands on the value, on the property, or inside the state |
+
+Measured with the real generated types, against `Sx` above:
+
+| the caller writes | where the error lands |
+|---|---|
+| `color: {brand}` | quiet |
+| `color: red` | the **value** — *`string` is not assignable to `Token<"color">`* |
+| `padding: 4px` | the **property** — *`padding` does not exist in type `{ color?: …; gap?: … }`* |
+| `&:hover { padding: 4px }` | `padding`, **inside** the state |
+| `&:focus { … }` | the state — it is not in the list |
+| `& > span { … }` | the selector |
+
+**The control:** an ordinary block, in no slot at all, carrying `padding`, `display` and `color`
+together, is silent. Existing blocks are untouched.
+
+The user agreed to raise the `typescript` peer floor to 5.4 for `NoInfer` — *"mozes slobodno i da
+podignes, a ko neko pocinje projekat, pocinju ga sa novim typescriptom"*. A pre-5.4 spelling,
+`[T][T extends unknown ? 0 : never]`, was measured to behave identically if it is ever wanted back.
+
+#### Three things that need no rule of their own
+
+- **A combinator is refused because it is not a key.** `& > span` fails by the same mechanism as
+  `padding`. There is no list of forbidden selectors to keep.
+- **`!important` closes itself.** The moment a value is narrowed to `"8px" | "16px"`,
+  `"8px !important"` stops being assignable.
+- **Pseudo-classes are not a category.** `&:hover` passes only because the child wrote it, and
+  `&:focus` fails because it did not. This is the same conclusion StyleX reached from the other
+  direction, and it means the measurement that found no vocabulary of element-local pseudo-classes
+  costs nothing here.
+
+#### Three things measurement refused
+
+**Nested is an ARRAY.** The compiler emits `{"&:hover":[{color:"blue"}]}`. The first allow-list
+type used an object and failed against the real emitter. Read what is emitted; do not assume it.
+
+**Forwarding belongs to the CHECKER, not to the type — measured after three type-level attempts
+failed.** A child allowing `{ color, gap }` may hand its slot to a grandchild allowing only
+`{ color }`. Plain assignability stays quiet, because extra entries are optional. Required-ifying
+the entries then broke the safe direction, refusing a block that sends LESS than permitted. And a
+keys witness — `{ keys: keyof A; allow: A }` — is correct written out by hand and stops working the
+moment it is behind a generic alias, because **TypeScript measures variance for a generic reference
+and takes that shortcut instead of comparing structurally**: `{ keys: keyof A1 }` against
+`{ keys: "color" }` is refused, and `Brand<A1>` against `Brand<A2>` is not.
+
+So the comparison is done where it is trivial. Measured: from the contextual type of the forwarded
+expression and the type of the expression itself, the checker reads both allow-lists and takes the
+difference of their keys —
+
+    forwarding {color,gap} into {color}       ->  REPORT: gap
+    forwarding {color,gap} into {color,gap}   ->  quiet
+
+— and it **names the offending key**, which no assignability error could. This is the same division
+the section reaches for composition: the type checks a literal against a fixed shape, which it does
+excellently; anything that compares two allow-lists is ordinary code with a program in hand.
+
+**677 of the 832 properties are `CssValue`, which is `string | number`.** `color`,
+`background-color`, `padding`, `margin`, `gap`, `display`, `width`, `height`, `font-size`,
+`border-radius` — all of them. Only 155 are closed keyword sets, and of a realistic list only
+`flex-direction` and `text-align` were among them. So **the default constraint constrains almost
+nothing**, and only two constraints are worth teaching: `Token<"color">`, which is the one that
+earns the feature — *you may recolour me, but only from the theme* — and a literal union.
+
+#### Two rules the slot brings with it, and a new category for them
+
+`rules.ts` states in its own header that a rule reads a parsed `Block`, not a `ts.Program`, and may
+not import `@ramonda/check`. Both rules below need a program, so they do not belong in `rules.ts`.
+They are **typed rules**, beside the existing ones rather than among them.
+
+**Rule 1 — a slot nobody consumes.** The user's own worry, in their words: *"Najvise me brine da
+neko ne stavi nesto da ide kroz props, a ja ga ne konzumiram na strani deteta, to je cesto slucaj da
+se tiho rastave stvari."* Eight shapes measured, and two controls each flipping exactly one of them.
+
+- **Walk BACKWARD from every `__from` and `__val`, following initialisers.** The forward walk, from
+  the declaration to its references, falsely reported `const s = this.css; ...{s}` — a prop that is
+  used, through one local. Breaking the initialiser-following on purpose put that false report back,
+  which is how the fix is known to be the fix.
+- **A destructured prop is TWO slot-typed declarations.** For `function M({ css }: { css?: Slot })`
+  the `BindingElement` and the `PropertySignature` are different symbols, and the subject was
+  reported twice — once quiet, once wrongly. They have to be linked.
+- **The honest limit:** a slot consumed inside a method nobody calls passes quietly. That is
+  reachability, a different tool. The rule catches *never consumed*, not *consumed on a dead path*.
+- **The control that passed first time:** a prop that is not a slot is never mentioned at all.
+
+**Rule 2 — a slot that silently loses.** The user asked it directly: if the child spreads the slot
+and then writes a shorthand below it, does anything scream? Measured: **nothing does, twice over.**
+TypeScript sees `padding` and `padding-left` as two unrelated keys, and `flatten` does not put a
+spread in the block at all, so the rule has nothing to look at.
+
+The allow-list is what makes a spread legible for the first time. The relation machinery already
+exists and is right — `covers` and `conflict` in `flatten.ts`, checked across nine shorthand
+families including the logical ones (`margin` over `margin-block-start`, `inset` over `top`).
+
+> **The rule: nothing the slot allows may be written below the spread.**
+
+**The runtime is not wrong here, and that is the point.** Measured: the merge emits `~padding` with
+the full clear-list and the list travels through the spread, so `padding` really does clear the
+caller's `padding-left` — and a `padding` inside a `@media` clears only the `padding-left` inside
+that same `@media`, leaving the outer one alone. So this rule is not about a broken merge. It is
+about a child that PROMISED a property in its allow-list and then took it back.
+
+`...{css}; padding: 8px` with `padding-left` allowed is `covers(padding, padding-left)`;
+`...{css}; color: red` with `color` allowed is `conflict(color, color)`. `padding: 8px; ...{css}` is
+quiet, and that is the order a slot is for. There are two fixes and both are right — move the spread
+down, or take the property out of the allow-list. The second turns a CSS ordering mistake into a
+question about the API: *why promise `padding-left` and then clear it?*
+
+`overrideOutOfOrder` deliberately stays quiet on `padding-left: 40px; padding: 8px` when the author
+wrote **both** lines, with a measurement behind that call, and it is still right. This is a
+different question, because the earlier value came from somebody who cannot see the later line.
+
+#### Where a typed rule can run, and why it is not ours alone
+
+| | has a `ts.Program` | can run a typed rule |
+|---|---|---|
+| `ramonda-css check` (CI) | yes, builds one at `check.ts:242` | yes |
+| the tsserver plugin (the editor) | yes, via `languageService.getProgram()` | yes — unused today |
+| the vite and esbuild plugins | **no** — `createProgram` appears 0 times in either | no |
+
+So this is **not** a build-time feature. Both adapters only transform and never see a type.
+
+**It needs nothing from `@ramonda/check`** — no graph, no component model, no decorator. The
+manifest is the proof: `@ramonda/css` depends on `magic-string` alone, with `typescript` as a peer.
+Measured on plain `function` components with no class and no decorator, the rule behaves
+identically. It wants three things — a program, the `__from`/`__val` bindings, and the identity of
+the slot type — and all three are in this package. Whatever renders the elements is irrelevant.
+
+#### Composition does not need a type, and that division is the design
+
+Raised by the user with an example of their own, and it is the better question:
+
+```tsx
+const base = @@( @media (prefers-color-scheme: dark) { color: white; } );
+
+const card = <div css={@@(
+  ...{base};
+  @media (min-width: 40rem) { color: blue; }
+)}>…</div>;
+```
+
+**It is not a fault.** The real emitted stylesheet puts the scheme query first and the width query
+second at equal specificity, so the width wins — and it is the same answer when `base` is in
+another file, when both are written inline, and **when the files are added in the opposite order**.
+`widthSlot` ranks them 2 and 5644: different bands, so the sheet can order them and does. There is
+nothing here to type, and a type parameter that never changes an answer is cost without benefit.
+
+**The same-band case IS a fault, and it is silent through a spread.** Two `@supports` in one block
+are reported by `override-out-of-order`; the moment one arrives by `...{base}` the rule sees
+nothing. So the single fault — *a spread is opaque* — has two faces: **merge time**, where a
+shorthand clears a longhand, and **sheet time**, where two same-band conditions tie.
+
+**But only one of the two needs a type**, and this is the rule to keep:
+
+- **`...{base}`** — there is a declaration to follow. Measured: the checker resolves the import
+  across modules and reads the block verbatim. The COMPILER deliberately does not — `...{base}`
+  emits `_merge(base, {"@media (min-width: 40rem)|color": "r-…"})`, a runtime merge of class maps
+  keyed `condition|property`. The checker is not the compiler, and it can read what the compiler
+  chose not to.
+- **`...{this.css}`** — there is no declaration. The value comes from a caller who has not been
+  written. Only the type can describe it.
+
+**The block type must NOT carry both its contents and its allow-list.** Measured: it works, and the
+message degrades from *`padding` does not exist in type `{ color?: … }`* on the property to
+`TS2345 … & NoInfer<…>[]` on the whole argument — losing exactly what made the mechanism worth
+choosing. The type carries the allow-list; composition is read from source.
+
+#### Refusing a runtime value — reachable, and it costs no expressiveness
+
+Measured, the difference a hole makes is real: `color: red` emits `r-c-red { color:red; }` and the
+element carries a class, while `color: {this.brand}` emits `color:var(--r-OsXzXT1Qd-0)` and every
+instance carries an inline custom property. Ten thousand rows is ten thousand style attributes.
+
+**The reason this can be refused without losing variants is that a condition is not a hole.**
+StyleX has three mechanisms and `StaticStyles` refuses only the third — selecting a precompiled
+style by a condition, conditions inside a value, and a style function returning
+`[compiledStyles, InlineStyles]`. This package has all three, and the first compiles to pure class
+selection:
+
+    if ({this.active}) { color: blue; }
+      CSS    r-c-red{color:red;}  r-c-blue{color:blue;}
+      value  _merge({"color":"r-c-red"}, this.active && {"color":"r-c-blue"})
+
+    color: {this.brand}
+      CSS    r-OsXzXT1Qd{color:var(--r-OsXzXT1Qd-0);}
+      value  _merge({"color":["r-OsXzXT1Qd", this.brand]})
+
+No custom property, no inline attribute, two static rules in the sheet. `...{cond ? hot : cold}`
+is the same. So a project or a slot that forbids holes loses nothing it cannot say another way.
+
+**Two levels, both measured.**
+
+- **Project-wide** is an ordinary rule over the AST — `HolePart` is already in the tree, so it needs
+  no program and belongs in `rules.ts` with the rest.
+- **Per slot** is a flag on the block type, `CssBlock<A, S extends boolean>`. `CssBlock<A, false>`
+  is refused where `CssBlock<A, true>` is wanted, and both pass where `boolean` is. It works where
+  the allow-list COMPARISON did not, and the reason is worth keeping: a boolean literal is not a
+  structural comparison, so the variance shortcut cannot mis-answer it.
+
+  The flag must not be written as an explicit type argument — TypeScript takes type arguments
+  all-or-nothing, so `__block<A, true>` would lose the contextual `A` that the whole mechanism
+  rests on. **Two emitters instead**, one per shape, the compiler picking the one the block IS.
+  Measured: the slot's faults still land on the value and on the property exactly as before.
+
+#### What is still open
+
+Nothing in the shape.
 
 ### 8. A declaration that does nothing — layout faults inside ONE block — BUILT
 
@@ -2875,6 +3215,412 @@ Nothing should be designed on it before that number exists.
 
 **This is a separate task, to be done WITH the checker and graph work**, at the user's instruction.
 See `ramonda.graph.json` in §3, which is the same file and the same question from another side.
+
+### 10. A combinator the formatter leaves alone — TODO, measured
+
+Raised by the user while reading the slot work: whether `& :hover` and `&:hover` are two spellings
+of one thing, and whether the formatter should settle it.
+
+**They are two different selectors and neither is a formatting choice.** The space is the descendant
+combinator, so one is the element itself and the other is a descendant of it. Measured through the
+real emitter:
+
+    &:hover     ->  .r-\:hover-c-red:hover      the element, hovered
+    & :hover    ->  .r-_\:hover-c-red :hover    a DESCENDANT, hovered
+    &.active    ->  .r-\.active-c-red.active
+    & .active   ->  .r-_\.active-c-red .active
+
+The generated names differ too — `_` marks the space — so nothing downstream confuses them, and CSS
+nesting itself reads the two exactly this way. Nothing to fix there.
+
+**But the probe found a real inconsistency next door.** The formatter normalises whitespace around
+the DESCENDANT combinator and does nothing about the others. Measured, running `ramonda-css format`
+on one block:
+
+    &  :hover   ->  & :hover     two spaces collapsed to one
+    &>span      ->  &>span       unchanged
+
+And the oracle disagrees with the second. Prettier's own CSS formatter, on the same selectors
+written as plain nested CSS, produces `& > span`, `& + b` and `& ~ c` — spaced.
+
+So the formatter is right about `:hover` and inconsistent about `>`, `+` and `~`. It is a small,
+contained fix and it belongs with the formatter rather than with anything above.
+
+### 11. An allow-list nothing checks against CSS — TODO, measured
+
+Found by the user while reading the playground demo. They changed
+
+    "font-weight"?: 400 | 600;   ->   "font-weight"?: "notexisting";
+
+and were right about both halves of what happened: the CALLER was refused, which makes sense, and
+the component holding the slot said nothing — which they expected it to.
+
+**Why it says nothing.** The component never writes `font-weight`. It spreads the slot and nothing
+else, so there is no declaration of its own to be wrong about. The nonsense is in a TYPE, and no
+rule reads a type as CSS.
+
+**Why the entry was legal at all**, measured:
+
+    const a: CssProperties["font-weight"] = "notexisting";   // compiles — a loose property
+    const b: CssProperties["position"]    = "notexisting";   // refused — a closed keyword set
+
+`font-weight` is one of the **677 of 832** properties typed `CssValue`, so `"notexisting"` is a
+perfectly good subtype of what it accepts: the allow-list is saying *you may set `font-weight`, and
+only to the literal string `notexisting`*, which is coherent and useless. Written on `position` the
+allow-list itself would have been refused on the spot.
+
+**What would close it.** The same machinery `unknown-value` already uses, pointed at a TYPE rather
+than at a written declaration: a typed rule can read an allow-list's literal types and ask, for each
+one, whether the property accepts that value as CSS. It is a typed rule because only the checker can
+see the type — see §7 for where those live and what they cost.
+
+**Measure first:** how many allow-list entries in a real project are literal types at all. A
+constraint written as `Var<"color">` or `Token<"length">` has nothing to check, and if those are the
+shapes people write, the rule would be reading a mostly empty set.
+
+### 12. What a generated file's header should say — TODO, measured
+
+Asked by the user: is `/* Generated by @ramonda/css from ramonda.css.ts. Do not edit. */` enough,
+should it say how to regenerate, and should it be wrapped in stars to stand out.
+
+**The repo's convention is one line and no stars**, and this header already follows it. Six
+generated files carry the same shape — what wrote it, what it was written from, and *Do not edit* —
+and none of them says how to regenerate. Wrapping one of them in stars would make that one the odd
+file rather than the visible one.
+
+**But this one is not like the other five, and that is the argument for saying more.** The rest are
+internal to this repository; `css-system/index.ts` is the only generated file that ships into
+somebody ELSE's repository, committed beside their own code. The likely reader is a person who
+opened it in their own project and wants to change something in it.
+
+**What it tells that person, and what it does not.** It names `ramonda.css.ts`, which is the
+important half — where to make the change. It does not name the command. The command exists and is
+good, but it is only ever read after CI fails:
+
+    [ramonda-css] 1 generated file(s) no longer match ramonda.css.ts:
+      - css-system/index.ts
+        Run `ramonda-css codegen` here and commit the result. Nothing was written.
+
+So the loop closes, one failed build later than it could.
+
+**The shape to try**, keeping the line count and the greppable phrase:
+
+    /* Generated by @ramonda/css from ramonda.css.ts. Do not edit. */
+    /* Change `ramonda.css.ts` and run `ramonda-css codegen`. */
+
+**Measure first:** whether the header survives where people actually meet the file. A diff hides the
+top of a file, an editor's outline does not show comments, and a search result is one line out of
+five hundred. If the answer is *nowhere*, a longer header is a longer thing nobody reads and the
+work belongs in the `settings` page instead.
+
+### 13. A narrowed value refuses `inherit` — a DECISION to take, measured
+
+Found while checking the claims on the new `/style-blocks/prop` page against a real project.
+
+    type CardStyle = { color?: Token<"color"> };
+
+    color: red       ->  TS2322  Type 'string' is not assignable to type 'Token<"color">'
+    color: inherit   ->  TS2322  the same
+
+The first is the point of the feature. The second takes away `inherit`, `initial`, `unset` and
+`revert` — the CSS-wide keywords, which are what CSS itself provides rather than anything the
+project decided.
+
+**The rest of this package is careful about exactly this.** `Keyword<K>` is
+`K | CssGlobal | var(…) | !important` for that reason, and `variablesOnly`'s own note says
+*refusing them would be refusing what CSS itself provides*. The allow-list is the one narrowing
+mechanism here that does not keep them.
+
+**Two ways out, and the choice is the user's:**
+
+- **Say it, and let an author opt in.** `color?: Token<"color"> | CssGlobal` is one union longer and
+  it is what the page now documents. Nothing is surprising: the author wrote a type and got that
+  type.
+- **Keep them automatically**, the way `Keyword<K>` does — `{ color?: Token<"color"> }` would mean
+  `Token<"color"> | CssGlobal`. Consistent with the rest of the package, and surprising in the other
+  direction: a type that quietly admits more than it says.
+
+Documented as the first for now, because a review is not where a design changes. **Measure before
+deciding:** how often `inherit` is written into a constrained prop at all — if the honest answer is
+*almost never*, the union stays a footnote and nothing needs building.
+
+### 14. A block rebuilt every render — AGREED for `if`, OPEN for variables
+
+Reported by the user from the playground as `RMD020` on `Chip.labelCss`: two renders in one tick
+produced values with identical contents and different identity, so the child re-renders for nothing.
+
+**A block with no runtime value was already fine** — it is hoisted to a module constant, measured.
+Two shapes are not, and they were settled separately.
+
+#### AGREED — a block holding an `if`
+
+    <Chip labelCss={@@( font-weight: 400; if ({this.loud}) { font-weight: 600; } )} />
+      ->  _merge({"font-weight":"r-fw-400",}, this.loud && {"font-weight":"r-fw-600",})
+
+**The compiler hoists every combination and leaves only a choice in the render.** A block with `n`
+conditions has `2^n` possible results, all of them known at build time and none depending on data:
+
+    const _s0 = _merge(A);        // the condition false
+    const _s1 = _merge(A, B);     // the condition true
+    …  this.loud ? _s1 : _s0
+
+Nothing is written at run time, so there is no question of when anything is deleted. A list of any
+size picks from the same fixed set, so no row can displace another. Identity is stable for the life
+of the module, and the values are SHARED between instances — which the user noted is a gain rather
+than a cost.
+
+**Needs a cut-off**: the count doubles per condition, so above some `n` the compiler falls back to
+merging at the site. `n` is one to three in practice.
+
+Does not apply to a block carrying a hole — see below.
+
+#### OPEN — a block carrying a runtime value
+
+    @@( color: {this.brand}; )   ->   _merge({"color":["r-x", this.brand],})
+
+The object is rebuilt because its value is the render's. Two rows with different values SHOULD be
+two objects; the waste is a row re-rendering with the value it already had.
+
+**Nothing has been agreed here.** What is shipped meanwhile is a one-slot cache in `merge`, keyed on
+the class name — measured to cover a list of conditional blocks completely (20/20, two objects for
+twenty rows) and to do nothing for a list where each row carries its own value (each evicts the
+next; the values stay correct throughout).
+
+#### Ruled out, and why — so none of it is proposed again
+
+| | why it fell |
+|---|---|
+| the whole value as one string | the user will not have stringify and parse |
+| only the VARIABLES as a string | the prop is the object, and the object is still new — the string is stable and nothing compares it |
+| a keyed cache with a cap | a cap is a cliff: a list larger than it keeps NOTHING, because the second pass evicts what the first stored |
+| `WeakRef` + `FinalizationRegistry` | collection time is not knowable, and unpredictable behaviour is refused |
+| doing nothing | contradicts the framework's own rule about render stability |
+| exempting a compiled block from `RMD020` | *"necemo da ucutkujemo framework zbog naseg loseg resenja"* |
+| comparing the prop by content in `@ramonda/core` | *"mora da radi i u reactu"* — it would help one consumer only |
+| the framework's per-key shallow-compare escape | refused deliberately: *"mi pravimo kompajler i zasluzujemo najbolje resenje"* |
+| generations rolled over on a microtask | assumes a render pass fits in one turn, which lazy loading, deferred mounting and a child that renders only when its parent changes all break |
+| an OWNER (`this`) as a `WeakMap` key | not framework-agnostic — a React function component has no stable one — and the value in a hole is any expression, not a field |
+
+#### Where it stands
+
+**The shape of the answer is still missing.** Per-element state has to live somewhere, and every
+somewhere proposed so far has been ruled out for a reason that holds. To be continued with the user
+on Tuesday, on the variables alone — the `if` half is closed.
+
+### 15. `match`, and a block with no room for a runtime value — DECIDED, not built
+
+The user's decision, 2026-09-22, after the `RMD020` thread ran out of answers in §14: **`@@` has no
+room for dynamism.** A value that varies per element is not a thing a compiled class can hold, so it
+stops being written in a block at all.
+
+Two things replace it. `match` absorbs variation that is ENUMERABLE — which is most of it, measured
+by kind rather than by count: of the five holes in this repository one was a constant written as a
+hole, two were two-way choices, and two were arithmetic over a small integer. `@@property` is the
+door for what is left, and it already works.
+
+**The field agrees about the mechanism and differs only about the spelling.** Tailwind puts a
+literal value in the class name and a runtime one in an inline custom property, and warns against
+building class names in code. vanilla-extract ships `createVar()` + `assignInlineVars()` — the same
+two places, declared. StyleX wraps it in a style function and pays for it: measured in their runtime,
+`styleq` sets `nextCache = null` the moment an inline value appears, abandoning its cache. All three
+end at an inline custom property.
+
+#### `match`
+
+```
+color: match({this.variant}) {
+  primary   => #10b981;
+  secondary => #6b7280;
+  _         => inherit;
+};
+```
+
+**It is a lookup table, not pattern matching.** TC39's proposal has destructuring, guards and custom
+matchers; none of it is wanted, and the documentation has to say so or the name promises it.
+
+- `=>` rather than `:`, because `:` already separates a property from its value.
+- A bare word where it is an identifier or a number, quoted where it is not — the distinction CSS
+  already makes between an ident and a string.
+- **Arms hold literals only.** `primary => {this.x}` must be refused, or the hole is back through a
+  side door.
+- **Exhaustive, or `_`.** The checker can see the union. When nothing matches at run time — which a
+  cast can always arrange — **no declaration applies**, which is the same answer `if ({false})`
+  already gives.
+
+**`match` and `if` do not overlap**, and the user drew the line: `if` takes any expression that comes
+out true or false; `match` takes one expression with several outcomes. So a block-level `match` is
+not needed to replace `if`, and is left out — it can be added later, which is the direction that
+costs nothing.
+
+**The combinations multiply rather than add** — `if` is 2, a `match` of `n` arms is `n` — but the
+user is not concerned, and the reason is sound: if the value is a STRING, hoisting the combinations
+is an optimisation rather than a requirement, because a string with the same contents is already
+equal by value.
+
+#### The hole goes
+
+`{expr}` in a declaration's value is refused, and the message points at `match` and `@@property`.
+`if ({cond})` and `...{block}` keep their braces — neither injects a value, both choose between
+classes.
+
+Two measured facts argue for it beyond stability:
+
+    padding-left: {this.v}; padding-right: {this.v};   ->  TWO variables, two classes
+    padding-left: var({pad}); padding-right: var({pad}); ->  ONE variable, two classes
+
+A hole cannot know that two declarations want one value. A declared property is one name however
+many read it.
+
+#### `CssBlock` becomes a branded string — measured
+
+```ts
+type CssBlock<A extends CssBlockShape = CssBlockShape> = string & {
+  readonly [COMPILED]: true;
+  readonly [ALLOWS]: A;
+};
+```
+
+Every type-level power survives, checked against the real types: the allow-list still refuses a bad
+VALUE and an unlisted PROPERTY on the right token; a plain `string` is refused as a block; a block
+is accepted where a `string` is wanted, so `className={block}` needs nothing; `CssSpreadable` still
+refuses a hand-written object. Removing the brand collapses four of those refusals, so the check is
+not vacuous.
+
+And one thing is gained: **concatenation loses the brand**, so `` `${a} ${b}` `` cannot be handed to
+a block position. The merge cannot be bypassed with `+`, which today is not even expressible.
+
+#### The order to build it in
+
+1. ~~**`match`**~~ — **DONE.** Additive, and nothing else could land before authors had the
+   replacement.
+2. ~~**`@@property`'s typed setter**, plus a rule for a property read by a block and set by
+   nothing.~~ — **DONE.** The binding is `CssVar<K>`, read from the `syntax` it declared, so
+   `toStyle` refuses a length where an angle was asked for; `registered-never-set` is the rule.
+   Measured while building it: an IMPORT of the binding is not a set. A block's reference to it is
+   substituted for the generated name before the TypeScript is written, so after the transform the
+   import is referenced by nothing — counting it would have meant the rule could never fire on a
+   shared theme, which is the one place it is worth most.
+3. ~~**Refuse the hole.**~~ — **DONE**, and it took the `holes` setting AND `StaticCssBlock` with
+   it. Both were ways of saying *not here*, and a refusal nobody can get past needs no second
+   spelling. `CssBlock` lost its second type parameter, the virtual file lost its second block
+   helper, and every block is hoisted now.
+
+   Two things fell out that the plan did not predict, and they are the notes for the rest:
+
+   - **`Value<K>` and `Var<K>` lost their use site inside a block.** Both were annotations for a
+     value computed in TypeScript and put in a hole. What is left for them is `toStyle` and an
+     ordinary annotation; inside a block, a choice between two variables is a `match` whose arms are
+     `$` paths.
+   - **`match` cannot take a boolean subject.** Arm keys are emitted as string literals, so
+     `match({this.full}) { true => …; }` is `"true"` against `boolean` and does not type-check. `if`
+     is the answer for a boolean, and that is what the documentation says — but the rule that would
+     SAY so does not exist yet.
+4. ~~**A property key in every class name.**~~ — **DONE.** A class is `r-<key>-<value>`: the first
+   `-` ends the key, so nothing in it may be one — a property's dashes are written `_` and the
+   context joins the property with a `.`. Each half falls back on its own, and a hashed context is
+   marked by a leading `0`, which nothing an author wrote can start with.
+
+   Measured before building, on this repository's 91 declarations: a 5-character key prefix on every
+   class would have cost **+40%** of the class attribute (1352 → 1898 bytes). Writing the key where
+   it can be written costs **+17%** instead, and **23 of 91 names that had nothing readable in them
+   now all name their property**.
+
+   What it cost: a context holding a `-` — `[data-on]`, and every `@media (min-width: …)` — hashes
+   where it used to be written. Measured: 8 of 91, and the property beside it still reads.
+
+   **A key collision is a build failure**, in `Sheet.add`, with both texts named. Two hashed keys
+   colliding would look to a merge like one thing set twice and drop the earlier rule from a page
+   that renders — the one failure mode here that is silent.
+5. ~~**`merge` over strings**, and `CssBlock` as the branded string.~~ — **DONE**, and the function
+   is called `mergeClassNames` — see *The name it ended up with*, below.
+
+   The clear-list question was answered by a REGISTRATION per module, measured before building: the
+   whole table is 98 families, 23 KB raw and 3.7 KB gzipped — larger than the runtime — and this
+   repository writes 13 of the 98. So a module registers the shorthands it writes, keyed by the
+   property alone, and the runtime composes the context itself: a key is `<context><property>`, so
+   `@media_print.p` clears `@media_print.pl` by putting the same context back in front. That works
+   for a hashed context too, because the hash is a function of the context and is shared by every
+   property sitting in it.
+
+   **Two things the plan did not predict, both found by asking what would be LOST:**
+
+   - **The order warning could no longer read a key's conditions.** It compares how strongly two
+     conditions override, and `@media (min-width: 40rem)` hashes its context — so the warning would
+     have gone silent on exactly the queries it was built for. The same registration carries the
+     conditions, guarded by `process.env.NODE_ENV` so a production bundle drops it.
+   - **And it named the wrong thing.** A key writes `pl` where the author wrote `padding-left`, so
+     the message sent somebody looking for a string in no file. The property names are registered
+     with the conditions and dropped with them.
+
+   **The `;` rule moved with its hazard.** `toStyleObject` and the framework each refused a value
+   holding one, because a `style` attribute is parsed back out of HTML on a server-rendered page and
+   such a value came out applied. A block sets nothing on an element now, so `toStyle` is where a
+   value reaches one, and `toStyle` is what refuses it.
+
+   Gone with the map: `compose`, `block()`, `toStyleObject`, `StyleMap`, `StyleEntry`, `StyleBlock`,
+   `HoleValues`, `StyleVarValue`, the one-slot canonical cache, `applyCssBlock` and `CSS_SYM` in
+   core, `RMD062`, `RMD063`, and `scripts/check-css-contract.mjs` — there is no shape left for the
+   two packages to disagree about.
+
+6. ~~**`css` becomes sugar over `className`**, or goes.~~ — **GONE**, decided by the user.
+
+   A block is a string, so `className` takes one and there is nothing a second prop can do. Declared
+   as a MESSAGE rather than deleted, because deleting it would be silent: the element attribute type
+   ends in `[val: Lowercase<string>]: any`, so a removed `css` would be `any` — the block would
+   compile and its class string would be written onto the element as a `css` attribute with nothing
+   to say so.
+
+   **The gap it opened, and the measurement that found it.** Joining a block with a class of one's
+   own is ordinary now, and a template literal is what anybody reaches for first — and a template
+   literal is TEXT to the scan, so a block in a `${ … }` was found by NOTHING. Measured across every
+   position a block can be written in:
+
+   | | |
+   |---|---|
+   | attribute, assignment, call argument, object value, array element, `return`, arrow body, ternary | found |
+   | **a template substitution** | **not found** |
+
+   So `` `lead ${@@( … )}` `` compiled to silence, `@@(` survived into the bundler, and the author
+   got a syntax error naming neither the block nor the line. `block-in-a-template` reports it and
+   names `mergeClassNames`, which is found in a call argument like everything else.
+
+Steps 4 to 6 are the architecture; 1 to 3 are what an author sees. Nothing after 3 is possible
+before it.
+
+### The name it ended up with
+
+`merge` was the name through all six steps. It ships as **`mergeClassNames`**, and the reason is a
+collision measured after the steps were done rather than guessed at: **`@ramonda/core` exports a
+`merge` of its own** — `merge(previous, next, identity?)`, the deep structural merge that keeps a
+refetched row's identity.
+
+The collision is not the loud kind. It does not arrive as a duplicate identifier, because a file
+imports one or the other. It arrives as a call that means the wrong thing:
+
+```ts
+import { merge } from "@ramonda/core";   // the WRONG merge for this
+const out = merge("lead", card);          // meant: a class beside a block
+```
+
+| | measured |
+|---|---|
+| `tsc -p` on the playground | **clean** — `previous` is `unknown`, `next` is `T`, so the call is well typed |
+| at run time | returns `card`; **`"lead"` is gone**, silently |
+
+`apps/playground-core/src/demos/panels.tsx` imports from both packages already, so that file was one
+line from it.
+
+**What was rejected.** Leaving `merge` exported and calling it internal-by-convention — considered
+first, and it does not work: an export is an export, and the silent call above stays reachable
+whether or not anybody is *supposed* to write it. Also rejected: keeping `merge` as a deprecated
+alias, which would keep exactly the collision the rename exists to remove.
+
+`mergeClasses` was considered and dropped — `class` means `class Component` in this framework, so it
+would promise the wrong thing. The name says it merges class *names*, which after step 4 is literally
+what it does.
+
+The cost was five hand-written calls in the playground, one test file, and one string in the emitted
+import, which was already aliased (`mergeClassNames as _merge`). Pre-1.0, breaking is a `minor`.
 
 ### The name
 
@@ -3251,3 +3997,734 @@ it is the same shape the dev-server harness already records for chokidar.
 mistake that harness note records making once already: *the first repair was a longer wait, which is
 what one reaches for when the cause is a guess. It made the window smaller and left the race.* If it
 returns, the thing to measure first is whether shiki's registry is safe to share across tests at all.
+
+### 12. `match` takes a STRING subject, and says so as a `TS2322` — NOT for this PR
+
+Asked while the splitter work was running: *"da li nasa match funkcija prima samo string? nekada je
+potrebno da imamo true / false slucaj"*. It does, and it is not only booleans.
+
+Measured through the real checker, a block on a plain `const` so no JSX types are in the way:
+
+```
+string literal union    "hot" | "cold"      quiet
+plain string            string              quiet
+number literal union    1 | 2               TS2322: Type 'string' is not assignable to type '2 | 1'
+number                  number              TS2322
+boolean                 boolean             TS2322: Type 'string' is not assignable to type 'boolean'
+```
+
+The transform is happy with all of them — `match({this.loud}) { true => red; false => blue; }`
+compiles and emits `r-c-red` and `r-c-blue`. It is the TYPE that refuses, and the cause is one line
+in `virtual.ts`:
+
+```js
+derived(JSON.stringify(arm.key), arm.at, arm.length);
+```
+
+An arm's key is always written into the virtual file as a STRING literal, so against a `boolean` or
+a `number` subject it can never match.
+
+**The message is the worse half.** A reader gets a raw `TS2322` about `string` and `boolean`, which
+says nothing about `match` having a constraint — it reads as a fault in their own type.
+
+**The obvious repair has a trap.** Writing the key unquoted when it is `true`, `false` or numeric
+makes those subjects work — and breaks an arm key of `1` on a string subject (`"1" | "2"`), because
+the virtual file does not know the subject's type and cannot decide from the key alone. The way out
+is for the constraint in `properties.ts` to accept a literal OR its string spelling, which is a
+change to `lookup` and wants its own measurement.
+
+**What authors do today**, undocumented: put the ternary in the SUBJECT, where a hole is an ordinary
+expression.
+
+```tsx
+match({this.loud ? "on" : "off"}) { on => red; off => blue; }
+```
+
+So the ternary is available after all, just not in the arm. That is a workaround rather than a
+design, and it is written nowhere a reader would find it.
+
+## A published package meets an application — the cascade across a version boundary
+
+**Measured 2026-09-23, in Chromium, against real stylesheets from the real `Sheet`. NOT built.**
+
+The vite plugin skips `node_modules` (`vite.ts:258`, `vite.ts:415`), so a library that uses
+`@ramonda/css` ships its own compiled CSS and two stylesheets meet in one document. That is the only
+place any of this bites: inside one project, every measurement agrees with hand-written CSS in both
+write orders.
+
+### The fault
+
+A layer name is global to the document, and the name is an INDEX into `BREADTHS` — a list derived
+from the generated shorthand table (18 distinct counts today: `559 53 25 21 20 16 15 12 11 10 8 7 6
+5 4 3 2 0`, with gaps at 9, 13, 14). A CSS release that changes how many DISTINCT counts exist
+renumbers everything below the change.
+
+Worse, the two statements then differ in LENGTH. CSS fixes the order on the first statement it sees
+and can only APPEND an unseen name to the END, past `ramonda.c`. Measured, one version apart:
+
+```
+same version, library first        blue   ok
+same version, app first            blue   ok
+one version apart, library first   RED    wrong
+one version apart, app first       blue   ok
+```
+
+Concretely: a `Button` whose block carries `@media (min-width: 40rem) { padding-left: 20px }` loses
+to an application's unconditional `padding-left: 4px`, and the media query never runs. Nothing
+reports it, and which stylesheet loads first is the bundler's choice.
+
+### What the layers are for, and why this cannot be dodged
+
+Measured against hand-written CSS, both directions agree:
+
+```
+padding then padding-left   hand-written 4px    ramonda 4px
+padding-left then padding   hand-written 10px   ramonda 10px
+```
+
+Write order is settled by `mergeClassNames` (a later shorthand CLEARS its longhands); the LAYER is
+consulted only when both classes survive. So the layer is not a new rule — it is what keeps CSS's
+own answer from depending on which file the bundler put first.
+
+Panda CSS has no version-skew problem because its five names (`reset, base, tokens, recipes,
+utilities`) are semantic and never grow — but it cannot order a shorthand against a longhand at all,
+calls that a *known limitation*, and ships a `prefer-longhand-properties` lint rule instead. StyleX
+avoids it the other way: the application transforms every StyleX package in `node_modules`, so there
+is one table. Nobody else derives layer names from a generated CSS table, which is why nobody else
+has this problem.
+
+Splitting every shorthand into longhands would remove the need for breadth layers — measured, the
+merge alone then answers both directions. **First estimated as not scaling, and that estimate was
+wrong**: counting a faithful expansion put `padding` at 4 classes, `border` at 17 and `font` at 20
+(199 B of class attribute), because a shorthand RESETS everything it covers. It does not have to
+emit that — the reset is already `mergeClassNames`'s job — so with the group clear `font` is 5
+classes and `background: red` is one. See the section below, which supersedes this paragraph;
+`lightningcss` not expanding shorthands is the only part of it that held.
+
+### The decision: a self-describing marker, and the application remaps
+
+The package's CSS passes through the application's bundler when the application imports it, and the
+plugin already has a `transform` hook. So the emitted CSS carries what its layer names MEAN:
+
+```css
+/*! ramonda-css breadths=559,53,25,21,20,16,15,12,11,10,8,7,6,5,4,3,2,0 */
+@layer ramonda.u00,…,ramonda.u17,ramonda.c;
+```
+
+~50 bytes. On a foreign stylesheet whose marker does not match, the plugin rewrites the layer names
+into the application's own numbering, and the bundle carries ONE numbering. Skew cannot survive.
+
+**A marker carrying the MEANING rather than a version number**, because a version number needs a
+history of every past table — and a package built by a NEWER `@ramonda/css` than the application is
+a history the application does not have. The breadth list translates in both directions with no
+lookup.
+
+Two limits, both accepted:
+
+- **The CSS must pass through the application's build.** An `import` does; a `<link>` to a CDN does
+  not.
+- **A package published before the marker exists does not carry one.** The plugin can only assume
+  the current table and say so. This is a reason to ship the marker before anyone publishes.
+
+### For the `<link>` case: name the layer by what it COVERS
+
+Where no remap can happen, the name must not be a position. Measured over 1068 covering pairs: if
+`S` covers `L` then `count(S) > count(L)` in EVERY version, because `S` covers what `L` covers plus
+`L` itself. All 1068 hold but six, and those six are aliases (`gap`/`grid-gap`,
+`-webkit-border-before`/`border-block-start`, `-webkit-mask-position`/`mask-position`) — one property
+under two names, to be treated as one.
+
+So the name becomes the count, over a fully pre-declared descending range, which every version emits
+identically:
+
+```css
+@layer ramonda.u1023,ramonda.u1022,…,ramonda.u0001,ramonda.u0000;
+```
+
+`1024` names cost 2152 B gzipped, once per page (esbuild merges identical layer blocks); 560 cost
+1156 B. Measured against a five-year-old package, both load orders, both directions, with the counts
+drifted: all correct.
+
+**The residual flaw, measured:** the tightest margin is 2, across 86 pairs — `background-position`
+(2) over `background-position-x` (0). It breaks only if a LEAF gains two sub-properties while an old
+package stays frozen. Today's scheme breaks on the first change to the set of distinct counts, and
+takes every family with it; this one takes only the family that moved.
+
+**The shift is a NESTED LAYER, not a smaller number** — and the first draft of this said otherwise.
+Scaling the name by 1000 so a shift has somewhere to go is unaffordable, because the room has to be
+DECLARED: every integer a shift can land on must already be in every statement. Measured, gzipped,
+one statement:
+
+```
+scale    names        gzip
+    1     1024       2156 B
+    4     4096       9283 B
+    8     8192      19334 B
+   16    16384      38716 B
+ 1000  1024000      ~14 MB raw — not possible
+```
+
+A nested layer needs no room at all. Measured: a sublayer sits after the layer declared before its
+parent and before its parent's own rules, in either load order. So the shift moves the new
+assignment INSIDE the next-stronger declared name, the top-level statement never changes, and the
+range stays the dense 1024 names at 2156 B:
+
+```
+no shift            u0002           the count's own layer
+one step stronger   u0001 > s       inside the next-stronger name
+one step weaker     u0002 > s       inside its own — the direction control
+```
+
+**A second shift cannot nest deeper**, and that is the edge case the first write-up only gestured
+at. Measured: `u0001 > s > s` is WEAKER than `u0001 > s`, because a sublayer loses to its parent's
+own rules — so depth buys nothing. Each shift consumes a STRONGER NAME instead, and a property at
+count 2 has exactly two of them, `u0001` and `u0000`:
+
+```
+1st shift   u0001 > s   beats u0002       ok
+2nd shift   u0000 > s   beats u0001 > s   ok
+deeper      u0001 > s > s                 WEAKER — no
+2nd shift still loses to the leaves in u0000   ok
+```
+
+So each layer declares a fixed set of SUBLAYER names inside itself, from day one — the same trick
+one level down, and about twenty bytes in the layers that carry rules:
+
+```css
+@layer u0001 { @layer s0,s1,s2,s3; @layer s0 { … } }
+```
+
+The budget becomes stronger-names × sublayers: eight for the tightest property with four, twenty
+with ten. Measured, all of it in both load orders — siblings order among themselves, a sublayer
+beats an old package's rule in the next-weaker name, and it still loses to its own parent's rules.
+
+**An old package that never heard of the inner statement is unaffected**, which is the row that
+matters: its rule sits directly in the layer, and a layer's own rules outrank every sublayer of it.
+
+When the breadth table changes, the whole new assignment moves one place toward the STRONGER end.
+
+`prototype-package-skew.mjs` holds all of it, in Chromium, on stylesheets from the real `Sheet`
+with only the layer NAMES rewritten — the scheme is not built, so the probe models the naming and
+the controls carry the weight:
+
+```
+control · today, table unchanged        4px / 4px     ok
+control · proposed, table unchanged     4px / 4px     ok
+event A · today                         10px / 4px    breaks
+event A · proposed                      4px / 4px     ok
+event C · proposed, newcomer must LOSE  4px / 4px     ok
+event B · proposed, no shift            4px / 10px    breaks
+event B · proposed, shift stronger      4px / 4px     ok
+event B · proposed, shift weaker        10px / 10px   breaks
+```
+
+**Event A and event B are not the same event and do not break on the same pair.** A is the set of
+distinct breadths changing, which changes the statement's LENGTH — the appended name lands past
+`ramonda.c`, so the pair has to straddle `c`: a conditional rule against an unconditional one.
+Measured, a shorthand/longhand pair under event A is correct by luck. B is a leaf growing to its own
+shorthand's old count, which needs the shorthand/longhand pair.
+
+**Event C is what makes the pre-declared range load-bearing**, and it was missing from the first
+draft: cutting the range from 1024 names to four left every other row passing. Appending an unseen
+name puts it at the STRONGEST position, so it only does damage where the newcomer was meant to be
+WEAK — every other pair here wants the newer half to win and is rescued by the very thing that is
+supposed to be the fault. C swaps the sides: the package holds the longhand, the application a
+shorthand whose count the old table did not have.
+
+Two modelling errors the probe caught, both of which would have read as the scheme working: handing
+one naming to both sides passes the application's shift to the frozen package; and a subset
+statement is invisible while both sides emit the same one.
+
+The old package holds `background-position` at 2000; the new world puts `background-position-x` at
+1999, which outranks it, and the old package's own leaf at 0 still outranks the new
+`background-position` at 3999. Relative order inside each version is untouched, and everything new
+clears everything old that it has to. The direction is "toward stronger", which with a descending
+statement (largest count declared first) is minus one; flipping the scale would make it literally
+plus one. At a scale of 1000 that is a thousand shifts per unit.
+
+### Shift only when it is needed, and let a gate say when
+
+Shifting on every table change is the rule with nothing to remember, and at a scale of 1000 it lasts
+about a century. It is also unnecessary: a collision needs a LEAF to grow to exactly the count its
+own shorthand used to have, which is a much rarer event than the table changing.
+
+So the shift happens only when a gate says it must, and the gate is what makes that safe — it does
+not assume a shift was enough, it checks.
+
+The rule it checks, for every covering pair `S ⊃ L`, against a past table:
+
+```
+name_new(L) < name_old(S)      a new longhand still outranks an old shorthand
+name_old(L) < name_new(S)      and an old longhand still outranks a new one
+```
+
+Both directions, because which stylesheet is the old one is not ours to decide.
+
+Prototyped against the current table, with the event synthesised — `background-position-x` grown
+into a shorthand over two sub-properties:
+
+```
+control   same table, shift 0:   0 collisions
+event     shift 0:               1  background-position-x(new 2000)
+                                    does not outrank background-position(old 2000)
+event     shift 1:               0  safe
+```
+
+The control is the part that matters: with an unchanged table the gate must be silent, or it says
+nothing when it fires. **Aliases have to be excluded first** — `gap`/`grid-gap` and the three
+`-webkit-` pairs each cover the other, so no ordering can separate them and they produced twelve
+collisions against an unchanged table until they were taken out.
+
+What the gate needs:
+
+- **an append-only history of COUNTS**, one entry per release that changed the table. Only the
+  counts, not the tables: which property covers which can come from today's, because that relation
+  only grows. About a hundred numbers per entry;
+- **a comparison against every past entry**, not only the previous one — a package on the page may
+  have been built by any release;
+- **the current shift, in the source.** When the gate fails, raise it until the gate is clean and
+  append the new entry.
+
+Its honest limit: it protects against releases it has an entry for, so the history has to start with
+today's table.
+
+So the rule is: **the table may change freely; the gate says when the assignment must shift, and by
+how much.**
+
+### Who owns the assignment, and whether a shift ever goes away
+
+`@ramonda/css` owns it, in its own source: a file mapping a property to its layer path, alongside
+the generated breadth table. Nobody outside the package writes a layer name — not an application,
+not the author of a published package, not someone loading a stylesheet with a `<link>`. Each of
+them gets whatever assignment the release they compiled against carried.
+
+**A shift is permanent.** It is a property of the assignment rather than of any one package, so
+rebuilding a package emits the same path it did before, and the assignment accumulates nesting over
+time. That is a real cost, and a small one: a level is a few bytes, and a shift only happens when
+the gate says it must.
+
+The remap does NOT collapse it, and saying otherwise would be the easy mistake. An application
+cannot know whether some stylesheet on the page arrived outside its build, so it has to assume one
+did: it emits the current assignment, shifts and all, and rewrites foreign sheets into that. What
+the remap buys is that the shifts are never CONSULTED across a version boundary in a bundle — not
+that they are gone.
+
+### The way out: split every shorthand, and the cascade is never asked
+
+All of the above is arithmetic on layer names, and every variant of it has a residual because a
+name or an assignment can drift. There is one move that removes the question instead of answering
+it: **if every declaration a block emits is a LONGHAND, no two classes on an element ever set the
+same property.** `mergeClassNames` then settles every conflict by key, at runtime, and the cascade
+is never consulted — so nothing has to agree across a version boundary.
+
+Measured against hand-written CSS, all six in one layer with no ordering at all:
+
+```
+font-weight then font            ISTO   2 classes, 20 B
+font then font-weight            ISTO   3 classes, 30 B
+background-size then background  ISTO   1 class,    9 B
+background then background-size  ISTO   2 classes, 21 B
+padding-left then padding        ISTO   4 classes, 39 B
+padding then padding-left        ISTO   4 classes, 38 B
+```
+
+**A shorthand does not have to expand into everything it resets**, which is where the cost was
+first mis-estimated at twenty classes and 199 B for a `font`. The resetting is already
+`mergeClassNames`'s job — `shorthands()` knows the family — so only what the author WROTE needs a
+class, provided the merge is told the classes arrived as a group. That is a small addition to the
+emitted code, not a new mechanism. Faithfully the engine gives 19 longhands for
+`font: italic bold 12px/1.5 Arial`; fourteen of them are `normal`/`none`/`auto`, and drop out.
+
+Measured through the engines' own expansion (`element.style`, which gives SPECIFIED values, so no
+resolution creeps in):
+
+```
+                        faithful   with group clearing
+padding: 10px 20px          4             4
+grid: "a b" 1fr … / …       6             3
+background: … , red         9             6
+font: italic bold …        19             5
+```
+
+Multi-layer `background` splits cleanly — the commas become lists in each longhand and the second
+layer takes `initial`. `grid`'s area templates carry across as a value.
+
+#### The splitter, taught and checked by the engines
+
+`prototype-expand-positional.mjs` builds one for the positional families and verifies it against
+Chromium, Firefox and WebKit. Nothing about the rule is written in it: each family is fed distinct
+sentinels **per arity**, and whichever longhand comes back holding sentinel *i* is position *i*; one
+holding something that is no sentinel has a constant there. Learning per arity is what made the
+awkward shapes need no special case — `border-radius`'s `/` pairs the two sides, and
+`background-position: 1px` is `x: 1px, y: center` rather than a repeat.
+
+```
+94 shorthands, 3 engines
+chromium 27   firefox 25   webkit 28
+in all three: 25 families, 3545 values checked
+```
+
+The corpus is the point, and it found three rules that are about CSS rather than about a family,
+plus one bug in the probe itself:
+
+- splitting on every space tore `rgb(1, 1, 1)` into three values. Top-level whitespace only. The
+  oracle caught it before a line of the real thing existed;
+- a CSS-WIDE KEYWORD alone (`inherit`, `initial`, `unset`, `revert`) is not positional — it goes on
+  every longhand. `background-position: inherit` inherits BOTH axes;
+- one of those keywords beside another value is invalid CSS, so there is nothing to split;
+- **a `var()` in a shorthand cannot be split at all.**
+
+#### `var()`, and the one thing that makes it splittable anyway
+
+The variable's content is unknown until computed-value time and may carry several values. Measured:
+`border-color: var(--c)` with `--c: red blue` gives the engine red/blue/red/blue, while putting
+`var(--c)` on each longhand gives four invalid declarations and a black border.
+
+But a REGISTERED custom property is a different thing, and this is a guarantee from the browser
+rather than a convention. Measured, identical in all three engines:
+
+```
+registered <length>, one value     shorthand and split AGREE
+registered <length>, TWO values    AGREE — the registration refuses it, both fall back
+syntax: "*", two values            DISAGREE
+unregistered var(), two values     DISAGREE
+```
+
+So: **a shorthand holding a `var()` is splittable exactly when every variable in it is registered
+with a single-value `syntax`.** Codegen already emits an `@property` per declared variable, with the
+`syntax` taken from its kind — and thirteen of the fifteen kinds are single-valued. Only `any`
+(`*`) and `transform-list` are not, and the compiler knows which is which from its own config.
+
+What stays unsplittable: a raw `var()` into a name this compiler did not declare, and the two
+list-valued kinds. Those declarations keep their shorthand, and the cascade decides for them alone —
+so the layers do not disappear, but what depends on them shrinks from every family to a few
+declarations.
+
+#### Five shapes, and every family that expands
+
+`prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
+
+```
+94 shorthands, 3 engines
+chromium 89   firefox 74   webkit 81
+
+covered in every engine that HAS it   89 families, 8763 values checked
+present and covered in all three      73
+properties not every engine has       16
+learned but WRONG                      0
+no shape learned                       0
+no expansion in this engine            4
+
+positional (53)        padding, margin, inset, overflow, border-radius,
+                       border-width/color/style, background-position, mask-position,
+                       grid-area/column/row, place-content, place-items, place-self,
+                       overscroll-behavior, container, font-variant, marker,
+                       the whole corner-*-shape branch, scroll-*, every logical variant
+by signature (26)      the whole border branch, border-image, mask-border, outline,
+                       column-rule, list-style, text-decoration, offset, flex-flow,
+                       text-emphasis, text-wrap, white-space, text-box, font, grid,
+                       grid-template
+by signature, order (1) flex
+comma list (8)         animation, transition, background, mask, position-try,
+                       scroll-timeline, view-timeline, timeline-trigger
+flags (1)              font-synthesis
+```
+
+**FLAGS is the fifth shape, and every other learner was blind to it by construction.**
+`font-synthesis: weight style` turns two longhands on and leaves the third off. The keyword is not a
+value the longhand can hold — `font-synthesis-weight` takes `auto` and `none` — and all four shapes
+above ask exactly one question, *which longhand HOLDS this token*, so all four drew a blank.
+
+What identifies the pair is naming both at once: whatever a longhand is when every keyword is
+written is its ON value, and a token owns the longhand that reaches it with this token and not with
+the others. A longhand that matches under every token is owned by none of them —
+`font-synthesis-small-caps` has no probe word here — and stays off.
+
+**A pair of groups is the unit, not a group.** A group learned on its own cannot answer for a value
+holding another group too, and the last two stragglers failed on exactly that: `flex: 3px 7` is
+grow 7 and basis 3px, while `flex: 7 7` is grow 7, shrink 7 and basis `0%` — the same number group,
+a different answer, because of what sits beside it. `offset: url(a.png) 3px` puts the length on the
+DISTANCE where `offset: 3px` puts it on the position. Groups are two to five per family, so every
+ordered pair is a handful of probes and each is the engine's own answer for that combination.
+
+And a longhand's value is recorded TOKEN BY TOKEN, because it can hold a slot and a constant side by
+side: `offset: 3px url(a.png)` gives `offset-position: 3px center`, the written length and a keyword
+the family supplies. All-or-nothing made it a literal, so `9px url(a.png)` emitted the probe's own
+`3px center`.
+
+**"Covered in all three" was the wrong bar**, and finding that out is worth more than the number it
+gave. `corner-shape` is Chromium-only today, so asking every engine to agree about it refuses a
+family two of them have never heard of — a bar nothing can clear rather than a fault found. Absence
+is not disagreement: the question is whether a family is covered in every engine that HAS it, and
+16 of the 94 are not in all three.
+
+The other half of the jump was the probe's own vocabulary. Four keyword domains — alignment
+(`start`, `end`, `stretch`…), corner shapes (`round`, `bevel`, `scoop`…), white-space and
+vertical-align — brought in `place-content`, `place-items`, `container`, `font-variant` and the
+eleven `corner-*-shape` families. They were never a grammar of their own; they were positional over
+keyword sets nothing here offered.
+
+**A group's shape is learned PER ARITY**, and the tokens are grouped before any is placed. Walking
+one at a time cannot see how many of a group there are, and the answer depends on it: `flex: 7` and
+`flex: 7 7` put the basis at `0%` while `flex: 3px` leaves the grow at `1`. Grouping first also
+gives a longhand that consumes SEVERAL tokens — `offset: 3px 3px` is one position, not a position
+and a distance — and it settles `animation: ease-in ease-in` with no rule of its own, because the
+arity-two probe already watched the engine make the second one a name.
+
+**A slash is not always one value split in half.** `border-radius: 1px / 2px` is a horizontal and a
+vertical radius; `grid-area: 1 / 2 / 3 / 4` is four independent slots. So a pattern is the length of
+every slash-separated SIDE rather than a flag, and its key is written the way the value is — `2/2`,
+`1/1/1/1`.
+
+And the patterns decide which DOMAIN a family takes, not only how it is taught. Asking whether a
+family accepts two values side by side read `grid-column` as having no positional shape at all: it
+takes `1 / 3` and refuses `1 3`, so the single probe that chose the domain was the one probe it
+could never pass. Trying every pattern brought `grid-area`, `grid-column` and `grid-row` in, and
+`overscroll-behavior` and `place-self` came with them.
+
+**BY SIGNATURE** is `border: 1px solid red` — which longhand a token goes to depends on WHAT it is
+rather than where it sits, and where a type has several slots (`flex: 1 1 0`) their order finishes
+the job. **COMMA LIST** is one shape applied per layer and zipped back:
+split on top-level commas, run the per-layer splitter on each, join each longhand's answers with a
+comma — except the one longhand that is shared rather than per-layer, which the engine identifies
+by holding a single part where the others hold two.
+
+Neither needs a component grammar written here, and that is the point: the classifier is the ENGINE.
+A token fed to the family alone lands on exactly the longhands its type owns, so splitting is
+per-token solo expansion, merged. The real compiler would classify from its own keyword tables; this
+measures whether the DECOMPOSITION is sound, which is the question worth answering first.
+
+#### Every family needs an exhaustive test, and that is not optional
+
+A splitter that is wrong changes a style silently, in a project that never touched the code. There
+is no symptom to notice and no gate that would see it — so the corpus IS the feature, and a family
+is not done when its splitter is written but when its corpus is.
+
+What makes that affordable rather than punishing: **the oracle is free and exact.** `element.style`
+expands a shorthand in the engine itself, and comparing the COMPUTED result of the shorthand against
+the computed result of our longhands, on two elements, answers for any value worth trying — in three
+engines, before anything ships. The cost is writing the values down, not deciding what is right.
+
+Six bugs it has already caught, every one of which would have read as the splitter working:
+
+- splitting on every space tore `rgb(1, 1, 1)` into three values;
+- comparing SPECIFIED text called every normalisation a failure — `0` against `0px`, `#abc` against
+  `rgb(170, 187, 204)` — and buried the one real finding under a hundred false ones;
+- classifying a token against a baseline that already held a value put `border: 3px rgb(1, 2, 3)`'s
+  colour into the width slot;
+- taking the reset from a probe's leftovers left `animation: 7` with a `dashed` in `animation-name`;
+- a slot cannot be seen from ONE token: `animation: 1.5s` sets the duration and leaves the delay at
+  zero, so `1.5s 1.5s` lost its delay until the shape was learned from `1.5s 2.5s` instead;
+- `initial, initial` is not valid CSS, so a keyword reset collapses inside a comma list — but the
+  computed initial is not the reset either (`border-top-width` is `medium`, not the `0px` it
+  computes to with no style), and writing that one put every border width at zero and took the
+  whole border branch from 13 families to 2. The keyword stays, and is resolved only where a list
+  is joined.
+
+So the standard for a family: every arity it accepts, every type its grammar admits in every order,
+the CSS-wide keywords, a `var()`, and the values that are valid CSS and unusual — `calc()`, `min()`,
+`env()`, percentages, zero, negatives. Checked in Chromium, Firefox and WebKit, because they
+disagree: 49, 48 and 51 families pass today, and only 47 pass in all three.
+
+#### The vocabulary of types was the bottleneck, and it is gone
+
+`background` and `mask` need two things the other shapes do not: a SLASH inside a layer (position in
+front, size behind), and PER-ARITY CONSTANTS for a type's unfilled slots — `background: 3px` leaves
+`background-position-y` at `center`, not at its initial value.
+
+Adding the constants fixed `mask` and took `animation` and `transition` out. Restricting them to
+families whose types were disjoint put those back and dropped `mask` again. The two excluded each
+other, and that is what a wrong abstraction looks like from the inside:
+
+> **The probe's vocabulary of TYPES conflated things that are not the same.** `dashed` is a line
+> style to `border` and a NAME to `animation`. A constant learned through one is a constant for
+> neither, and no special case repairs a vocabulary that is wrong per family.
+
+So nothing is named any more. **Two tokens are the same type when they address the same SET of
+longhands**, and that set is its own name. Signatures partition by construction, so the overlap that
+forced the choice cannot arise, and the classifier used at split time is the same function that did
+the learning — there is no table in between to be wrong.
+
+```
+                    families in all three   background
+named types                    49           84 of 141 wrong
+signatures                     50            passes, and so do animation,
+                                             transition, mask and column-rule
+```
+
+Three bugs stood between the rewrite and that, and each is a rule about CSS that no per-group
+mapping can hold:
+
+- **a slot that is another group's SIGNATURE is not this group's to take.** The pair probe writes
+  two tokens of one group side by side, and the family may read the second as something else
+  entirely: `animation: ease-in ease-out` is valid, and the engine makes the second one a NAME. The
+  easing group claimed `animation-name` with a constant of `none`, so the first easing in any value
+  wiped a name already placed — `animation: dashed ease-in` came out nameless;
+- **a token takes the FIRST free slot that accepts it**, in the order the family declares its
+  longhands. `animation: ease-in ease-in` is an easing and then a NAME — the same word twice,
+  meaning two different things — and no mapping can say that, because the token's type depends on
+  what is still unfilled;
+- **a SHARED longhand is invisible in a probe that does not touch it.** `background-color` comes
+  from the last layer only, but `background: 3px, 9px` leaves it at `initial`, which reads exactly
+  like an untouched per-layer longhand — so `3px, rgb(1, 2, 3)` joined the colour into
+  `rgba(0, 0, 0, 0), rgb(1, 2, 3)`, which is not a colour. Every type pair that parses has to be
+  probed — and MIXED pairs as well as same-type ones, because a colour is legal only in the last
+  layer, so no `colour, colour` probe is valid CSS and none of them ever touched it;
+- **a token matches a sentinel as WRITTEN or as the engine reports it, and both halves cost a
+  bug.** Matching only through the longhand misses any longhand holding SEVERAL tokens —
+  `offset-position: 3px` comes back `3px center`, so `offset: 3px 3px` split into the probe's own
+  sentinels, `3px 9px`. Matching only the raw text misses a normalised one — `url(a.png)` comes
+  back `url("a.png")`, so `mask: 3px url(b.png)` emitted `url("a.png")`, a different file;
+- **a literal that COMPUTES to the untouched value is that probe's reset, not the group's
+  constant.** Keeping them let the last group processed clobber the rest: `mask: 3px url(a.png)`
+  lost the `center` the length had just put on the y axis.
+
+**Shapes are tried in turn and the first that SURVIVES its corpus wins**, which is not the same as
+the first that can be learned. `position-try` is where that shows: the positional learner claims it
+because the alignment sentinels happen to parse, and then gets it wrong — `position-try: normal
+start` is an order and a fallback, not two values of one thing. It changed no number today, because
+that family has no second candidate either; it is here so the next one does not have to be found
+the same way.
+
+**Some components cannot stand alone, and probing every token by itself hid three families.**
+`scroll-timeline: block` is refused where `scroll-timeline: --one block` is not, because the name is
+required; `position-try: normal` is refused where `position-try: normal --fallback` is not. So a
+token the family will not take alone is probed beside a CARRIER — the first probe token it does
+take. And the family's list of longhands is read through that carrier too: `scroll-timeline`'s
+first group is the axis, so the list came back empty and a family with two perfectly good groups was
+reported as having no shape at all.
+
+**A token matches a sentinel as WRITTEN or as the engine reports it — and that one rule had to be
+put in FOUR separate places**, each time after a family had already been lost to its absence. The
+combination learner (`mask: 3px url(b.png)` emitting `url("a.png")`, a different file), the
+per-arity learner, the DOMAIN test (`marker: url(a.png)` comes back `url("a.png")`, so the image
+domain was judged not to fit and `marker` had no shape at all) and the positional learner's own
+slot mapping (`marker: none` emitting the probe's own file). The fourth was hiding behind a
+parameter named `held`, shadowing the helper of that name that would have fixed it.
+
+**And nine more came in from the classifier's vocabulary, not from a new shape.** The signature
+learner needs two groups in a family before it can say anything, and for `flex-flow`,
+`text-emphasis`, `text-wrap` and `white-space` none of the value types ever parsed. Keyword groups
+— directions, wrapping, edges, synthesis, emphasis — were all they needed.
+
+#### What is not done
+
+Nothing, within this probe's reach. Every family that expands in an engine is split correctly in
+every engine that has it, verified over 8763 values. What remains is not a shape:
+
+**Four never expand in this engine at all** — `all`, `perspective-origin`, `transform-origin`,
+`vertical-align`. They are in the shorthand table because SOME engine resets longhands through them.
+
+**Sixteen are not in all three engines**, `corner-*-shape` and `animation-range` among them, so
+"covered in all three" is 73 rather than 89. Absence is not disagreement.
+
+#### The classifier cannot come from the tables, and that is not a gap
+
+`prototype-expand.mjs` asks the engine at split time which longhand a token belongs to, and a
+compiler has no browser. `prototype-classify-from-tables.mjs` asks whether `KEYWORDS` and
+`PRIMITIVE` could answer instead, over every (family, token) pair the engine classifies:
+
+```
+the tables agree              63
+the tables say something else 45
+the tables say nothing       296
+```
+
+**63 of 404.** And the 296 are not a table that needs filling: `KEYWORDS` holds only properties
+whose grammar is CLOSED, which is exactly right for its own job of reporting a wrong word —
+`animation-name` takes a free identifier and can never have a list. The 45 are the other half of the
+same fact: `1.5s` matches `animation-duration` and `animation-delay` by primitive, and nothing in a
+type says which comes first.
+
+So the learned mapping has to become a generated table of its own, written the way
+`build-shorthand-leaves.mjs` writes its one — ask the engines ONCE, when the table is built, and
+ship the answer. That is the same method this package already uses for what a shorthand resets, and
+it is why the prototype learning from the engines rather than from a written rule was worth the
+trouble: the learning IS the generator.
+
+#### DECIDED: the splitter is adopted, in a pull request of its own
+
+Taken 2026-09-24. What it costs is recorded beside it and neither half was measured, because
+neither is a measurement: the class attribute grows — `padding: 10px` becomes four classes, and
+every element carrying it pays that in every SSR page — and the docs, the checker's messages and
+the reader pages all describe a block as compiling to one class per declaration.
+
+**It does NOT remove the layers, and the sections above are not dead.** Splitting makes every
+declaration a longhand, so no two classes on an element set the same property and the cascade is
+never asked — for UNCONDITIONAL rules. A `@media` rule and a plain one set the same property and
+both must survive the merge, so the layer scheme stays for conditionals, and its own structure
+(`ramonda.c` and the digit layers) does not move between versions because it is not derived from
+the shorthand table. What shrinks is the BREADTH half: the eighteen `u` layers and everything above
+about naming them, the marker, the remap and the shift are answering a question the splitter
+removes. They stay written down because the conditional half still needs a layer scheme that two
+builds agree on, and because the measurements say what each answer cost.
+
+The order:
+
+1. **the shapes as a generated table** — `build-shorthand-shapes.mjs`, three engines, the same
+   merge and `--check` as `build-shorthand-leaves.mjs`. The learner moves out of the prototype and
+   into a module both it and the generator use, because two copies of it is the fault this
+   repository keeps finding;
+2. **the group clear in `mergeClassNames`** — the emitted classes say which shorthand they came
+   from, so a later one still clears the family. Without it the split loses the reset;
+3. **the corpus as a gate**, over the real splitter rather than a modelled one;
+4. **then** the splitter in the compiler, behind the gate.
+
+And it goes in a pull request of its own. This one is already large, it is measurements and rules
+and decisions, and the splitter changes what every user's page carries — mixing them makes neither
+reviewable.
+
+#### How it got there, round by round
+
+Not a list of what is left — that is above, and it is four families this engine never expands. This
+is the log, kept because every entry is a thing that read as the splitter WORKING, and because the
+same mistakes are the ones the real implementation will be free to make again.
+
+**A probe token is a COMPONENT, not a word.** `text-box`'s edge is `cap alphabetic`, and `cap`
+alone is refused, so no single word ever classified and the family had no shape at all. Multi-word
+probe tokens, and a word that classifies as nothing being offered the word after it before the
+value is given up on, moved it from *no shape* to *a shape that is wrong in ten of twenty-five
+values* — which is a diagnosis rather than a fix, and worth having as one.
+
+**No family is without a shape now**, and the last three came in without a sixth one.
+
+**The carrier can be a PAIR.** `font` accepts no single component at all — a size without a family
+is refused and so is a family without a size — so a one-token carrier left every `font` token
+unclassifiable and the family shapeless. `font: 3px aaa` is accepted, and that is enough to carry
+the rest.
+
+**And the rest was vocabulary, again.** Font keywords (`italic`, `bold`, `condensed`,
+`small-caps`) and grid ones (`1fr`, `minmax(0, 1fr)`, `"a"`, `auto-flow`) brought in `font`, `grid`
+and `grid-template` — the three families this note called "genuinely a grammar of their own" one
+round earlier. They were not. Of the fourteen it has named that way over the whole exercise,
+fourteen turned out to be the probe's words missing rather than CSS being irregular.
+
+**Nothing is left wrong.** `position-try` needed its order and tactic words (`most-width`,
+`flip-block`) and nothing else. `text-box` needed three things, and the third is the one worth
+keeping:
+
+- **constants first, across every group, and only then the slots.** A group's probe leaves values on
+  longhands it does not own, and those cannot be told apart from constants it really does set —
+  `text-box: cap alphabetic` sets the trim to `trim-both` with no trim word written. Dropping them
+  loses that; applying them in ONE pass let the last group processed clobber a slot an earlier one
+  had filled. Two passes keeps both, because a constant can be overwritten by a slot and never the
+  other way round. **This is the third attempt at that problem**, and the note below records the two
+  that failed — the difference is the ordering, not the filtering;
+- **the WHOLE value against a sentinel before any word of it**, since a probe token can be several
+  words. Word by word matched neither half of `cap alphabetic`, so the mapping became a literal and
+  `ex text` came out as the probe's own `cap alphabetic`;
+- and the same fix again in the COMBINATION learner, which had missed it in the same way.
+
+**And the two attempts that failed, kept because the third one is only a small step from them.** A constant
+for a longhand another group owns is indistinguishable from that probe's leftovers: `text-box: cap
+alphabetic` really does set the trim to `trim-both` with no trim word written, and `border: 1px
+solid red`'s colour probe really does leave a width behind. Keeping those literals and filtering
+them at SPLIT time against the groups actually present is the obvious answer, and it took the count
+from 84 to 82 the first time and from 84 to 82 again after the architecture had changed underneath
+it. Whatever separates the two, it is not that.
+
+**Four that never expand in the engine at all** — `all`, `perspective-origin`, `transform-origin`,
+`vertical-align`. They are in the shorthand table because SOME engine resets longhands through
+them, and this one hands back nothing: there is no decomposition to find, and reporting them beside
+`font` and `grid` read as thirteen families needing a grammar when it is nine.
+

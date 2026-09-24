@@ -1,50 +1,19 @@
 /**
  * The compiled value, which is the whole boundary between this package and whatever renders it.
  *
- * A block never becomes a rule at runtime and never becomes attribute text. It becomes a class that
- * already exists in a stylesheet, plus one custom property per hole — so the only thing that has to
- * cross into the renderer is a class name and a list of name/value pairs.
+ * A block never becomes a rule at runtime and never becomes attribute text. It becomes classes that
+ * already exist in a stylesheet — so the only thing that crosses into the renderer is a string.
  */
 
 /**
- * What a hole may evaluate to.
+ * The brand on a compiled block: not a field, and not forgeable.
  *
- * `undefined` is absent on purpose and it is not a preference. Measured against a real server render
- * and hydration: a hole that is `undefined` on the server and a value on the client is repaired
- * silently, and a hole that is a value on the server and `undefined` on the client is reported as a
- * divergence and **not** repaired — the stale value survives. Both failing directions are the
- * `undefined` directions, so the signature is what removes them. See DESIGN.md.
- *
- * `number` is here because plenty of properties take one (`opacity`, `z-index`, `flex-grow`), and it
- * is the per-property types — not this — that refuse `padding: 24` where a unit is required.
+ * A `unique symbol` member on a string type emits nothing and exists at no runtime — the value IS
+ * the string. What it buys is that a plain `string` cannot be handed where a block is wanted, and
+ * that **concatenation loses it**: `` `${a} ${b}` `` is a `string` and not a block, so the merge
+ * cannot be bypassed with `+`.
  */
-export type StyleVarValue = string | number;
+declare const COMPILED: unique symbol;
 
-/** What the `css` prop accepts. Produced by {@link StyleBlock}, never written by hand. */
-export interface StyleValue {
-  /** The generated class, `r-` plus the hash of the normalised block. */
-  readonly className: string;
-  /** The custom property names, in hole order. Empty when the block has no holes. */
-  readonly properties: readonly string[];
-  /** The values, parallel to {@link properties}. Empty on a descriptor that has not been called. */
-  readonly values: readonly StyleVarValue[];
-}
-
-/**
- * One argument per hole, with the arity taken from the property-name tuple.
- *
- * The compiler writes both halves, so this is the compiler checking itself: emitting two property
- * names and one argument stops being a class of bug that reaches a browser.
- */
-export type HoleValues<P extends readonly string[]> = { -readonly [K in keyof P]: StyleVarValue };
-
-/**
- * A block as the compiler hoists it: the descriptor for the block, and the call that fills its holes.
- *
- * It is both because the two cases have different costs. A block with no holes has nothing to fill,
- * so the descriptor IS the value and the site reads `css={_s0}` — one allocation for the life of the
- * program however many elements carry it. A block with holes reads `css={_s0(expr)}` and allocates
- * per element, which is what a per-element value costs.
- */
-export type StyleBlock<P extends readonly string[] = readonly string[]> = StyleValue &
-  ((...values: HoleValues<P>) => StyleValue);
+/** What the `css` prop and `className` accept. Produced by the compiler, never written by hand. */
+export type StyleValue = string & { readonly [COMPILED]: true };

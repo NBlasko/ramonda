@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { CssBlockError } from "../compiler/errors";
+import { checkSource } from "../compiler/source";
 import { transform } from "../compiler/transform";
 import { namedSites } from "../compiler/references";
 
@@ -50,28 +51,18 @@ describe("what is not a block", () => {
 
 describe("what a block becomes", () => {
   test("no holes: the descriptor is the value, so the site is not a call", () => {
-    const out = body(`const a = <div css={@@( display: flex; )}>x</div>;\n`);
+    const out = body(`const a = <div className={@@( display: flex; )}>x</div>;\n`);
 
-    expect(out).toMatch(/const a = <div css=\{_s0\}>x<\/div>;/);
-  });
-
-  test("one hole: the expression stays where it was, inside its declaration's entry", () => {
-    const out = body(`const a = <div css={@@( color: {this.accent}; )}>x</div>;\n`);
-
-    expect(out).toMatch(/css=\{_merge\(\{"color":\["r-[0-9a-zA-Z][^"\s)]*",this\.accent\],\}\)\}/);
+    expect(out).toMatch(/const a = <div className=\{_s0\}>x<\/div>;/);
   });
 
   /**
-   * The unit is INSIDE the hole, and that is not tidying — `padding: {{b}}px` is the `glued-hole`
-   * fault, which the build now refuses. It stood in this fixture until the build began running the
-   * checker, which is a small demonstration of what was shipping.
+   * A RUNTIME VALUE never gets this far. The build runs the same rules the check does, so
+   * `color: {this.accent}` is refused here rather than compiled into a custom property — which is
+   * what these two tests used to measure, and what `hole-not-allowed` replaced.
    */
-  test("several holes arrive in source order, each with the declaration it belongs to", () => {
-    const out = body(`const a = <div css={@@( color: {a}; padding: {b}; )}>x</div>;\n`);
-
-    expect(out).toMatch(/"color":\["r-[0-9a-zA-Z][^"\s)]*",a\],/);
-    expect(out).toMatch(/"padding":\["r-[0-9a-zA-Z][^"\s)]*",b\],/);
-    expect(out.indexOf('"color"')).toBeLessThan(out.indexOf('"padding"'));
+  test("a runtime value in a declaration is refused by the build, not compiled", () => {
+    expect(() => emit(`const a = <div className={@@( color: {this.accent}; )}>x</div>;\n`)).toThrow(/match/);
   });
 
   test("the attribute keeps whatever name the author wrote", () => {
@@ -81,25 +72,24 @@ describe("what a block becomes", () => {
   });
 
   /**
-   * A block with NO holes is hoisted; one with holes is built where it is written, because its
-   * values are the render's. **Measured, and it is why this is not simply a call at every site:**
-   * 71% of the blocks written to be read in this repository carry no hole, and merging at the site
-   * would allocate per element per render for a value that cannot change — 0.86 µs against 0.001 µs
-   * for reading a hoisted one.
+   * **EVERY block is hoisted now**, because no block carries a value the render decides.
+   *
+   * There used to be two paths: a block with no hole was hoisted to module scope, and one with a
+   * hole was built at the site, because its values were the render's. The second is gone with the
+   * hole — measured here, and it is the whole return on refusing it: merging at a site allocates
+   * per element per render, 0.86 µs against 0.001 µs for reading a hoisted one.
    */
-  test("the import is hoisted above everything, and a block with no holes with it", () => {
-    const holed = emit(`const a = <div css={@@( color: {x}; )}>y</div>;\n`);
-    const still = emit(`const a = <div css={@@( color: red; )}>y</div>;\n`);
+  test("the import is hoisted above everything, and every block with it", () => {
+    const out = emit(`const a = <div className={@@( color: red; )}>y</div>;\n`);
 
-    expect(holed?.code.split("\n")[0]).toBe(`import { merge as _merge } from "@ramonda/css";`);
-    expect(holed?.code).not.toContain("const _s0");
-    expect(still?.code).toMatch(/const _s0 = _merge\(\{"color":/);
-    expect(still?.code).toContain("css={_s0}");
+    expect(out?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
+    expect(out?.code).toMatch(/const _s0 = _merge\("r-c-red"\);/);
+    expect(out?.code).toContain("className={_s0}");
   });
 
   test("a directive prologue keeps its place at the top of the file", () => {
     // `"use client"` stops being a directive the moment anything precedes it.
-    const result = emit(`"use client";\nconst a = <div css={@@( display: flex; )}>x</div>;\n`);
+    const result = emit(`"use client";\nconst a = <div className={@@( display: flex; )}>x</div>;\n`);
 
     expect(result?.code.split("\n")[0]).toBe(`"use client";`);
     expect(result?.code).toContain("_merge");
@@ -107,16 +97,16 @@ describe("what a block becomes", () => {
 
   test("two identical blocks are one rule and one hoisted value", () => {
     const result = emit(
-      `const a = <div css={@@( display: flex; )}>x</div>;\nconst b = <p css={@@(display:flex;)}>y</p>;\n`,
+      `const a = <div className={@@( display: flex; )}>x</div>;\nconst b = <p className={@@(display:flex;)}>y</p>;\n`,
     );
 
     expect(result?.blocks).toHaveLength(1);
     expect(result?.code.match(/const _s\d = _merge/g)).toHaveLength(1);
-    expect(result?.code.match(/css=\{_s0\}/g)).toHaveLength(2);
+    expect(result?.code.match(/className=\{_s0\}/g)).toHaveLength(2);
   });
 
   test("an identifier the file already uses does not get shadowed", () => {
-    const result = emit(`const _s0 = 1;\nconst a = <div css={@@( display: flex; )}>x</div>;\n`);
+    const result = emit(`const _s0 = 1;\nconst a = <div className={@@( display: flex; )}>x</div>;\n`);
 
     expect(result?.code).not.toMatch(/const _s0 = _merge/);
     expect(result?.code).toContain("const _s0 = 1;");
@@ -130,19 +120,21 @@ describe("the blocks it found", () => {
    * the sheet can write the selector onto its own class and the condition around it.
    */
   test("a class per declaration, its body, and the properties it declares", () => {
-    const result = emit(`const a = <div css={@@( display: flex; border-left: {accent}; )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( display: flex; border-left: 4px solid red; )}>x</div>;\n`);
     const [flex, border] = result?.blocks ?? [];
 
     expect(result?.blocks).toHaveLength(2);
     expect(flex.className).toMatch(/^r-[0-9a-zA-Z][^"\s)]*$/);
     expect(flex.css).toBe("display:flex;");
+    // Nothing declares a custom property of its own any more: a block carries no runtime value, so
+    // the only names on an element are the ones a `@@property` site registered.
     expect(flex.properties).toEqual([]);
-    expect(border.css).toBe(`border-left:var(--${border.className}-0);`);
-    expect(border.properties).toEqual([`--${border.className}-0`]);
+    expect(border.css).toBe("border-left:4px solid red;");
+    expect(border.properties).toEqual([]);
   });
 
   test("a nested rule becomes a selector on its own rule, not a rule inside one", () => {
-    const result = emit(`const a = <div css={@@( color: red; &:hover { color: blue; } )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( color: red; &:hover { color: blue; } )}>x</div>;\n`);
     const [plain, hovered] = result?.blocks ?? [];
 
     expect(plain.css).toBe("color:red;");
@@ -152,23 +144,15 @@ describe("the blocks it found", () => {
   });
 
   test("an at-rule becomes a condition around it", () => {
-    const result = emit(`const a = <div css={@@( @media (min-width: 40rem) { display: grid; } )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( @media (min-width: 40rem) { display: grid; } )}>x</div>;\n`);
     const [only] = result?.blocks ?? [];
 
     expect(only.css).toBe("display:grid;");
     expect(only.conditions).toEqual(["@media (min-width: 40rem)"]);
   });
 
-  test("a hole inside a nested rule belongs to its own declaration", () => {
-    const result = emit(`const a = <div css={@@( &:hover { color: {hot}; } )}>x</div>;\n`);
-    const [only] = result?.blocks ?? [];
-
-    expect(only.css).toBe(`color:var(--${only.className}-0);`);
-    expect(only.selector).toBe("&:hover");
-  });
-
   test("a comment in the block is not part of it", () => {
-    const result = emit(`const a = <div css={@@( /* why */ display: flex; )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( /* why */ display: flex; )}>x</div>;\n`);
 
     expect(result?.blocks[0].css).toBe("display:flex;");
   });
@@ -177,15 +161,15 @@ describe("the blocks it found", () => {
 describe("what it refuses, and where", () => {
   /** A custom property holds a value. Everything below is a position one cannot occupy. */
   test.each([
-    ["a hole as a property name", `<div css={@@( {name}: 24px; )}>x</div>`],
-    ["a hole in a selector", `<div css={@@( &:{state} { color: red; } )}>x</div>`],
-    ["a hole standing as a whole declaration", `<div css={@@( {cond ? "display:flex" : ""} )}>x</div>`],
+    ["a hole as a property name", `<div className={@@( {name}: 24px; )}>x</div>`],
+    ["a hole in a selector", `<div className={@@( &:{state} { color: red; } )}>x</div>`],
+    ["a hole standing as a whole declaration", `<div className={@@( {cond ? "display:flex" : ""} )}>x</div>`],
   ])("%s", (_what, source) => {
     expect(() => emit(`const a = ${source};\n`)).toThrow(CssBlockError);
   });
 
   test("the refusal carries the file and the position of the hole itself", () => {
-    const source = `const a = (\n  <div css={@@(\n    {name}: 24px;\n  )}>x</div>\n);\n`;
+    const source = `const a = (\n  <div className={@@(\n    {name}: 24px;\n  )}>x</div>\n);\n`;
 
     try {
       emit(source);
@@ -231,19 +215,19 @@ describe("what it refuses, and where", () => {
 
   /** The braced spellings are what it is pointing at, so they had better not be refused. */
   test.each([
-    ["a braced attribute", `const a = <div css={@@( display: flex; )}>x</div>;\n`],
-    ["a braced attribute after another", `const a = <div id="p" css={@@( display: flex; )}>x</div>;\n`],
+    ["a braced attribute", `const a = <div className={@@( display: flex; )}>x</div>;\n`],
+    ["a braced attribute after another", `const a = <div id="p" className={@@( display: flex; )}>x</div>;\n`],
     ["a value outside JSX", `const panel = @@( display: flex; );\nexport default panel;\n`],
   ])("%s compiles", (_what, source) => {
     expect(() => emit(source)).not.toThrow();
   });
 
   test("a block that is never closed is refused rather than eating the file", () => {
-    expect(() => emit(`const a = <div css={@@( display: flex;\n`)).toThrow(CssBlockError);
+    expect(() => emit(`const a = <div className={@@( display: flex;\n`)).toThrow(CssBlockError);
   });
 
   test("a hole that is never closed is refused too", () => {
-    expect(() => emit(`const a = <div css={@@( color: {{accent )}>x</div>;\n`)).toThrow(CssBlockError);
+    expect(() => emit(`const a = <div className={@@( color: {{accent )}>x</div>;\n`)).toThrow(CssBlockError);
   });
 
   /**
@@ -278,16 +262,109 @@ describe("what it refuses, and where", () => {
    * offset into the imported text, which is a position in a file that has no such content.
    */
   test("a NUL in an imported module is left to that module's own compile", () => {
-    const source = `import { brand } from "./theme";\nconst a = @@( color: {brand}; );\n`;
-    const read = () => `export const brand = @@property( syntax: "\u0000"; );\n`;
+    // No reference to it: the imported module is READ whatever this file does with it, which is
+    // what carries an imported site's rule across — and what made an offset into it land here.
+    const source = `import { brand } from "./theme";\nconst a = @@( color: red; );\n`;
+    let reads = 0;
+    const read = () => {
+      reads++;
+      return `export const brand = @@property( syntax: "\u0000"; );\n`;
+    };
 
     expect(() => transform(source, { filename: "Card.tsx", read })).not.toThrow();
+    // Or the silence would be the module never being read, which is not the thing under test.
+    expect(reads).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * **The same source compiles to the same bytes**, which is the claim caching rests on.
+ *
+ * A class name is a hash, the registrations are objects, and both are built by walking collections.
+ * If any of that depended on insertion order across FILES — a module-level map, a counter, a cache
+ * keyed on what was seen first — two builds of one repository would emit different names, and
+ * nothing would fail. The stylesheet would simply be a different file every time: a cold cache on
+ * every deploy, a `dist` diff full of noise, and no error anywhere.
+ *
+ * Measured across separate processes and hash seeds while this was written, all identical. What is
+ * asserted here is the half a test can hold: the same source twice, and the same source after a
+ * DIFFERENT one has been through the compiler, which is what a module-level cache would break.
+ */
+describe("what a second build gets", () => {
+  const SOURCE =
+    `declare const t: "a" | "b";\n` +
+    `const card = @@(\n  padding: 8px;\n  cursor: match({t}) { a => pointer; b => default; };\n` +
+    `  @media (min-width: 40rem) { color: red; }\n  &[data-on] { gap: 2px; }\n);\n` +
+    `const a = <div className={card}>x</div>;\n`;
+
+  test("the same source twice is the same bytes", () => {
+    expect(emit(SOURCE)?.code).toBe(emit(SOURCE)?.code);
+  });
+
+  test("and is not changed by what went through before it", () => {
+    const alone = emit(SOURCE)?.code;
+    emit(`const other = <div className={@@( color: blue; margin: 1px; )}>y</div>;\n`);
+    emit(`const third = <p className={@@( @media print { gap: 9px; } )}>z</p>;\n`);
+
+    expect(emit(SOURCE)?.code).toBe(alone);
+  });
+
+  /** The classes in particular, since they are what the markup and the stylesheet must agree on. */
+  test("and the classes it names are the same both times", () => {
+    const classes = (code: string | undefined) => /_merge\("([^"]*)"\)/.exec(code ?? "")?.[1];
+
+    expect(classes(emit(SOURCE)?.code)).toBe(classes(emit(SOURCE)?.code));
   });
 });
 
 describe("the prologue's place in the file", () => {
+  /**
+   * **The COMBINATIONS, which each of the cases below tests one half of.**
+   *
+   * Each head has a rule of its own — a shebang owns line one, a directive stops being one the
+   * moment anything precedes it, a leading comment is where TypeScript reads `@jsxImportSource` and
+   * `@ts-nocheck` from — and the prologue has to satisfy all of them at once. Measured across every
+   * combination rather than one at a time, because a rule that holds alone is not a rule that holds
+   * beside another, and this is the file where a prologue lands between them.
+   */
+  test.each([
+    ["a shebang and a directive", '#!/usr/bin/env node\n"use client";\n'],
+    ["a shebang and a licence", "#!/usr/bin/env node\n/* @license MIT */\n"],
+    ["a directive then a licence", '"use client";\n/* @license MIT */\n'],
+    ["a licence then a directive", '/* @license MIT */\n"use client";\n'],
+    ["all three", '#!/usr/bin/env node\n/* @license MIT */\n"use client";\n'],
+    ["two comments and a directive", '/* a */\n// b\n"use client";\n'],
+  ])("%s keep what each of them owns", (_what, head) => {
+    const lines = (emit(`${head}const a = <div className={@@( color: red; )}>x</div>;\n`)?.code ?? "").split("\n");
+
+    if (head.startsWith("#!")) expect(lines[0]).toBe("#!/usr/bin/env node");
+    if (head.includes('"use client"')) {
+      const at = lines.findIndex((line) => line.trim() === `"use client";`);
+      const above = lines.slice(0, at).filter((line) => line.trim() !== "");
+      // A shebang and comments may precede a directive. An `import` may not — that is the fault.
+      expect(above.filter((line) => !line.startsWith("#!") && !/^\s*(\/\/|\/\*|\*)/.test(line))).toEqual([]);
+    }
+  });
+
+  /**
+   * **The pragma a leading comment can carry, which is why the prologue goes BELOW the trivia.**
+   *
+   * `@jsxImportSource` names a per-file JSX runtime and `tsc` reads it from the FIRST comment.
+   * Measured when this was written: an import prepended above it made `tsc` fall back to
+   * `react/jsx-runtime`, silently. This asserts the order that keeps it working.
+   */
+  test("a `@jsxImportSource` pragma stays above the import", () => {
+    const lines = (
+      emit(`/** @jsxImportSource preact */\nconst a = <div className={@@( color: red; )}>x</div>;\n`)?.code ?? ""
+    ).split("\n");
+
+    expect(lines.findIndex((line) => line.includes("jsxImportSource"))).toBeLessThan(
+      lines.findIndex((line) => line.startsWith("import {")),
+    );
+  });
+
   test("a shebang stays on line one", () => {
-    const result = emit(`#!/usr/bin/env node\nconst a = <div css={@@( display: flex; )}>x</div>;\n`);
+    const result = emit(`#!/usr/bin/env node\nconst a = <div className={@@( display: flex; )}>x</div>;\n`);
 
     expect(result?.code.split("\n")[0]).toBe("#!/usr/bin/env node");
   });
@@ -297,46 +374,46 @@ describe("the prologue's place in the file", () => {
   });
 
   test("several directives all keep their place", () => {
-    const result = emit(`"use client";\n"use strict";\nconst a = <div css={@@( color: red; )}>x</div>;\n`);
+    const result = emit(`"use client";\n"use strict";\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
     const lines = result?.code.split("\n") ?? [];
 
     expect(lines[0]).toBe(`"use client";`);
     expect(lines[1]).toBe(`"use strict";`);
-    expect(lines[2]).toBe(`import { merge as _merge } from "@ramonda/css";`);
+    expect(lines[2]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
   });
 
   test("a blank line above a directive does not stop it being one", () => {
-    const result = emit(`\n\n"use client";\nconst a = <div css={@@( color: red; )}>x</div>;\n`);
+    const result = emit(`\n\n"use client";\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
 
     expect(result?.code.split("\n")[2]).toBe(`"use client";`);
   });
 
   test("a block comment above a directive does not stop it being one", () => {
-    const result = emit(`/* why */\n"use client";\nconst a = <div css={@@( color: red; )}>x</div>;\n`);
+    const result = emit(`/* why */\n"use client";\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
 
     expect(result?.code.split("\n")[1]).toBe(`"use client";`);
   });
 
   test("a directive may hold an escaped quote, and space before its semicolon", () => {
-    const result = emit(`"use \\"x\\"" ;\nconst a = <div css={@@( color: red; )}>x</div>;\n`);
+    const result = emit(`"use \\"x\\"" ;\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
 
     expect(result?.code.split("\n")[0]).toBe(`"use \\"x\\"" ;`);
   });
 
   test("a directive on the same line as real code is not one", () => {
-    const result = emit(`"use client"; const a = <div css={@@( color: red; )}>x</div>;\n`);
+    const result = emit(`"use client"; const a = <div className={@@( color: red; )}>x</div>;\n`);
 
-    expect(result?.code.split("\n")[0]).toBe(`import { merge as _merge } from "@ramonda/css";`);
+    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
   });
 
   test("a string with no closing quote is not a directive", () => {
-    const result = emit(`"use client\nconst a = <div css={@@( color: red; )}>x</div>;\n`);
+    const result = emit(`"use client\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
 
-    expect(result?.code.split("\n")[0]).toBe(`import { merge as _merge } from "@ramonda/css";`);
+    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
   });
 
   test("a CRLF file keeps its directive", () => {
-    const result = emit(`"use client";\r\nconst a = <div css={@@( color: red; )}>x</div>;\r\n`);
+    const result = emit(`"use client";\r\nconst a = <div className={@@( color: red; )}>x</div>;\r\n`);
 
     expect(result?.code.split("\r\n")[0]).toBe(`"use client";`);
   });
@@ -358,42 +435,42 @@ describe("the prologue's place in the file", () => {
     ["a licence header", `/* Copyright someone */`],
   ])("the prologue goes below a leading comment, not above it: %s", (_what, comment) => {
     const result = emit(`${comment}
-const a = <div css={@@( color: red; )}>x</div>;
+const a = <div className={@@( color: red; )}>x</div>;
 `);
     const lines = result?.code.split("\n") ?? [];
 
     expect(lines[0]).toBe(comment);
-    expect(lines[1]).toBe(`import { merge as _merge } from "@ramonda/css";`);
+    expect(lines[1]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
   });
 
   test("and below one that follows a directive, which is where both rules meet", () => {
     const result = emit(
       `"use client";
 /** @jsxImportSource preact */
-const a = <div css={@@( color: red; )}>x</div>;
+const a = <div className={@@( color: red; )}>x</div>;
 `,
     );
     const lines = result?.code.split("\n") ?? [];
 
     expect(lines[0]).toBe(`"use client";`);
     expect(lines[1]).toBe(`/** @jsxImportSource preact */`);
-    expect(lines[2]).toBe(`import { merge as _merge } from "@ramonda/css";`);
+    expect(lines[2]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
   });
 
   test("a comment above a directive does not stop it being one", () => {
-    const result = emit(`// why\n"use client";\nconst a = <div css={@@( color: red; )}>x</div>;\n`);
+    const result = emit(`// why\n"use client";\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
 
     expect(result?.code.split("\n")[1]).toBe(`"use client";`);
   });
 
   test("a string that is not a directive is left where it is", () => {
-    const result = emit(`const s = "x";\nconst a = <div css={@@( color: red; )}>x</div>;\n`);
+    const result = emit(`const s = "x";\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
 
-    expect(result?.code.split("\n")[0]).toBe(`import { merge as _merge } from "@ramonda/css";`);
+    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from "@ramonda/css";`);
   });
 
   test("the runtime it imports from can be pointed somewhere else", () => {
-    const result = transform(`const a = <div css={@@( color: red; )}>x</div>;\n`, { runtime: "my-wrapper" });
+    const result = transform(`const a = <div className={@@( color: red; )}>x</div>;\n`, { runtime: "my-wrapper" });
 
     expect(result?.code).toContain(`from "my-wrapper"`);
   });
@@ -413,72 +490,79 @@ const a = <div css={@@( color: red; )}>x</div>;
     ["a quote", 'a"b'],
     ["a newline", "a\nb"],
   ])("and the module it names is escaped, not interpolated: %s", (_what, runtime) => {
-    const result = transform(`const a = <div css={@@( color: red; )}>x</div>;\n`, { runtime });
+    const result = transform(`const a = <div className={@@( color: red; )}>x</div>;\n`, { runtime });
 
-    expect(result?.code.split("\n")[0]).toBe(`import { merge as _merge } from ${JSON.stringify(runtime)};`);
+    expect(result?.code.split("\n")[0]).toBe(`import { mergeClassNames as _merge } from ${JSON.stringify(runtime)};`);
     // And it parses, which is the thing the unescaped version did not do.
     expect(() => new Function(`return ${JSON.stringify(runtime)}`)()).not.toThrow();
   });
 
   test("a file that already names the import binding does not get it taken away", () => {
-    const result = emit(`const _merge = 1;\nconst a = <div css={@@( color: red; )}>x</div>;\n`);
+    const result = emit(`const _merge = 1;\nconst a = <div className={@@( color: red; )}>x</div>;\n`);
 
     expect(result?.code).toContain("const _merge = 1;");
-    expect(result?.code).toContain("import { merge as __merge }");
+    expect(result?.code).toContain("import { mergeClassNames as __merge }");
   });
 });
 
 describe("what the block's own text may contain", () => {
   test("a closing paren inside a string does not end the block", () => {
-    const result = emit(`const a = <div css={@@( content: ")"; )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( content: ")"; )}>x</div>;\n`);
 
     expect(result?.blocks[0].css).toBe(`content:")";`);
   });
 
   test("a url() keeps its parens", () => {
-    const result = emit(`const a = <div css={@@( background: url(a.png) no-repeat; )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( background: url(a.png) no-repeat; )}>x</div>;\n`);
 
     expect(result?.blocks[0].css).toBe("background:url(a.png) no-repeat;");
   });
 
+  /**
+   * Every one of these is about the READER carrying an expression through verbatim, and the vehicle
+   * is a CONDITION. It used to be a hole in a value; a runtime value in a declaration is refused
+   * now, and a condition is the brace that still holds any expression an author can write.
+   */
   test("an expression may contain braces, strings and parens of its own", () => {
-    const out = body(`const a = <div css={@@( color: {pick({ on: "}}" })};)}>x</div>;\n`);
+    const out = body(`const a = <div className={@@( if ({pick({ on: "}}" })}) { color: red; } )}>x</div>;\n`);
 
     expect(out).toContain(`pick({ on: "}}" })`);
   });
 
   test("an expression may be a template literal, substitutions and all", () => {
-    const out = body("const a = <div css={@@( color: {`rgb(${r}, ${g}, 0)`};)}>x</div>;\n");
+    const out = body("const a = <div className={@@( if ({`rgb(${r}, ${g}, 0)`}) { color: red; } )}>x</div>;\n");
 
     expect(out).toContain("`rgb(${r}, ${g}, 0)`");
   });
 
   test("a comment inside an expression is the expression's own", () => {
-    const out = body(`const a = <div css={@@( color: {/* why */ accent // and this\n};)}>x</div>;\n`);
+    const out = body(
+      `const a = <div className={@@( if ({/* why */ accent // and this\n}) { color: red; } )}>x</div>;\n`,
+    );
 
     expect(out).toContain("/* why */ accent // and this\n");
   });
 
   test("an escaped quote inside a CSS string does not end it", () => {
-    const result = emit(`const a = <div css={@@( content: "a\\")"; )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( content: "a\\")"; )}>x</div>;\n`);
 
     expect(result?.blocks[0].css).toBe(`content:"a\\")";`);
   });
 
   test("an empty declaration says nothing, so the block does not carry one", () => {
-    const result = emit(`const a = <div css={@@( ;; display: flex;; )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( ;; display: flex;; )}>x</div>;\n`);
 
     expect(result?.blocks[0].css).toBe("display:flex;");
   });
 
   test("a comment between a property and its value is a separator, not nothing", () => {
-    const result = emit(`const a = <div css={@@( margin: 1px /* gap */ 2px; )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( margin: 1px /* gap */ 2px; )}>x</div>;\n`);
 
     expect(result?.blocks[0].css).toBe("margin:1px 2px;");
   });
 
   test("a comment inside a selector is dropped from the prelude", () => {
-    const result = emit(`const a = <div css={@@( &/* why */:hover { color: red; } )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( &/* why */:hover { color: red; } )}>x</div>;\n`);
 
     // The comment leaves a space behind, because a comment separates tokens — so the selector is a
     // DESCENDANT of the class rather than a pseudo-class on it, which is what the author wrote.
@@ -487,48 +571,48 @@ describe("what the block's own text may contain", () => {
   });
 
   test("a nested block is refused rather than silently left behind", () => {
-    expect(() => emit(`const a = <div css={@@( color: { <b css={@@( color: red; )}/> }; )}>x</div>;\n`)).toThrow(
-      CssBlockError,
-    );
+    expect(() =>
+      emit(`const a = <div className={@@( color: { <b className={@@( color: red; )}/> }; )}>x</div>;\n`),
+    ).toThrow(CssBlockError);
   });
 
   test("a declaration with no colon at all is refused", () => {
-    expect(() => emit(`const a = <div css={@@( display flex; )}>x</div>;\n`)).toThrow(CssBlockError);
+    expect(() => emit(`const a = <div className={@@( display flex; )}>x</div>;\n`)).toThrow(CssBlockError);
   });
 
   test("a lone word where a declaration belongs is refused at the block's end too", () => {
-    expect(() => emit(`const a = <div css={@@( display )}>x</div>;\n`)).toThrow(CssBlockError);
+    expect(() => emit(`const a = <div className={@@( display )}>x</div>;\n`)).toThrow(CssBlockError);
   });
 
   test("a block with neither a semicolon nor a brace before the end is refused", () => {
-    expect(() => emit(`const a = <div css={@@( display: flex`)).toThrow(CssBlockError);
+    expect(() => emit(`const a = <div className={@@( display: flex`)).toThrow(CssBlockError);
   });
 
   test("a selector may contain a string, spaces and all", () => {
-    const result = emit(`const a = <div css={@@( &[data-x="a b"] { color: red; } )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( &[data-x="a b"] { color: red; } )}>x</div>;\n`);
 
     expect(result?.blocks[0].selector).toBe(`&[data-x="a b"]`);
     expect(result?.blocks[0].css).toBe("color:red;");
   });
 
   test("an escaped quote inside an expression's string does not end it", () => {
-    const out = body(`const a = <div css={@@( color: {{pick("a\\"}}b")}}; )}>x</div>;\n`);
+    const out = body(`const a = <div className={@@( if ({{pick("a\\"}}b")}}) { color: red; } )}>x</div>;\n`);
 
     expect(out).toContain(`pick("a\\"}}b")`);
   });
 
   test("an unterminated string inside an expression is refused, not run past", () => {
-    expect(() => emit(`const a = <div css={@@( color: {{pick("a )>x</div>;\n`)).toThrow(CssBlockError);
+    expect(() => emit(`const a = <div className={@@( color: {{pick("a )>x</div>;\n`)).toThrow(CssBlockError);
   });
 
   test("a template with braces and strings in its substitutions is one expression", () => {
-    const out = body("const a = <div css={@@( color: {`a${ { x: `}` } }b`}; )}>x</div>;\n");
+    const out = body("const a = <div className={@@( if ({`a${ { x: `}` } }b`}) { color: red; } )}>x</div>;\n");
 
     expect(out).toContain("`a${ { x: `}` } }b`");
   });
 
   test("a template that is never closed inside an expression is refused", () => {
-    expect(() => emit("const a = <div css={@@( color: {{`a${ b )>x</div>;\n")).toThrow(CssBlockError);
+    expect(() => emit("const a = <div className={@@( color: {{`a${ b )>x</div>;\n")).toThrow(CssBlockError);
   });
 });
 
@@ -550,23 +634,14 @@ describe("a block written as a value", () => {
   });
 
   test("inside the braces JSX already has, only the block is replaced", () => {
-    const code = emit(`const a = <div id="x" css={@@( display: flex; )}>y</div>;\n`)?.code;
+    const code = emit(`const a = <div id="x" className={@@( display: flex; )}>y</div>;\n`)?.code;
 
-    expect(code).toContain(`<div id="x" css={_s0}>y</div>`);
-  });
-
-  test("a hole builds the map where it was written, in both places", () => {
-    expect(emit(`const panel = @@( color: {c}; );\n`)?.code).toMatch(
-      /const panel = _merge\(\{"color":\["r-[0-9a-zA-Z][^"\s)]*",c\],\}\);/,
-    );
-    expect(emit(`const a = <div css={@@( color: {c}; )}>y</div>;\n`)?.code).toMatch(
-      /css=\{_merge\(\{"color":\["r-[0-9a-zA-Z][^"\s)]*",c\],\}\)\}/,
-    );
+    expect(code).toContain(`<div id="x" className={_s0}>y</div>`);
   });
 
   /** The same CSS is the same class however the site was written — the value has one identity. */
   test("the spelling does not change what is compiled", () => {
-    const attribute = emit(`const a = <div css={@@( display: flex; )}>y</div>;\n`);
+    const attribute = emit(`const a = <div className={@@( display: flex; )}>y</div>;\n`);
     const value = emit(`const panel = @@( display: flex; );\n`);
 
     expect(value?.blocks).toEqual(attribute?.blocks);
@@ -704,12 +779,9 @@ describe("a reference to a named site", () => {
     expect(a.className).not.toBe(b.className);
   });
 
-  /** Anything else in a hole is a runtime value, and nothing about this changes that. */
-  test("an expression that is not one of them is still a hole", () => {
-    const out = emit(`const card = @@( animation: {name} 3s; );\n`);
-
-    expect(out?.blocks[0].properties).toHaveLength(1);
-    expect(out?.blocks[0].css).toContain("var(--");
+  /** Anything else in a hole is a runtime value, and nothing about this makes one allowed. */
+  test("an expression that is not one of them is refused as the runtime value it is", () => {
+    expect(() => emit(`const card = @@( animation: {name} 3s; );\n`)).toThrow(/match/);
   });
 
   /** A hole in a property name stays a refusal for everything that is not a registered property. */
@@ -831,6 +903,108 @@ describe("the same declaration in two contexts", () => {
  * and the next one would forget. `transform` has exactly two callers, `vite.ts` and `esbuild.ts`,
  * and both of them must refuse.
  */
+/**
+ * **The build and the checker answer the same question the same way**, including when a project has
+ * switched a rule off.
+ *
+ * `transform` and `checkSource` are two doors onto one set of rules, and the note on the refusal
+ * says why they must agree: *a fault that read differently depending on which tool found it would
+ * be two faults to a reader*. A site rule is where they came apart — `checkBlock` has taken a config
+ * since it had one, and the site checks never did. Fixing that in the BUILD alone left the checker
+ * reporting a rule the build had been told to let through, which is the same family of mistake one
+ * step along: one sibling changed, the other did not.
+ *
+ * Asserted as AGREEMENT rather than as two separate expectations, because that is the property —
+ * either tool moving on its own is the fault.
+ */
+describe("the build and the checker agree about a rule a project switched off", () => {
+  const SITE_RULES: [string, string, string][] = [
+    ["unknown-named-block", "unknown-named-block", `const a = @@wat( color: red; );\n`],
+    ["block-as-a-jsx-attribute", "block-as-a-jsx-attribute", `const a = <div className=@@( color: red; )>x</div>;\n`],
+  ];
+
+  test.each(SITE_RULES)("%s", (_what, rule, source) => {
+    const config = { rules: { [rule]: "off" } } as never;
+
+    // On: both speak.
+    expect(() => transform(source, { filename: "/a.tsx" })).toThrow(CssBlockError);
+
+    // Off: neither does.
+    expect(() => transform(source, { filename: "/a.tsx", config })).not.toThrow();
+    expect(checkSource(source, "/a.tsx", { config }).map((one) => one.rule)).not.toContain(rule);
+  });
+});
+
+/**
+ * **A directive the build cannot honour must not silence the checker either.**
+ *
+ * `ramonda-css-ignore` covers every rule, and `block-in-a-template` is the one it must not: a block
+ * inside a `${ … }` is rewritten by nothing, so it reaches the bundler as `@@(` and the build has to
+ * refuse whatever a comment says. It does. The CHECKER went quiet — measured:
+ *
+ *     the build,   with a directive    refused
+ *     the checker, with a directive    clean
+ *
+ * So an author writes the comment, their editor stops complaining, `ramonda-css` says the file is
+ * fine, and the build fails. That is the one direction this package says it cannot afford: an editor
+ * quieter than the build promises a page the build will not give.
+ *
+ * It is also a claim made earlier in this review after measuring ONE door.
+ */
+/**
+ * **The checker never ran `checkSite`**, so a bare attribute was a build failure and a clean run of
+ * `ramonda-css` — which is what a project's CI runs.
+ *
+ * Three flows read one set of rules. `transform` calls `checkSite`, `checkNamedSite`, `checkText`
+ * and `checkBlock`; `checkSource` called every one of those but the first. The editor reports it
+ * through a path of its own, so the only tool that was quiet is the one a build pipeline asks.
+ */
+describe("the checker sees a bare attribute, the way the build does", () => {
+  const BARE = `const a = <div className=@@( color: red; )>x</div>;\n`;
+
+  test("both name it", () => {
+    expect(() => transform(BARE, { filename: "/a.tsx" })).toThrow(CssBlockError);
+    expect(checkSource(BARE, "/a.tsx").map((one) => one.rule)).toContain("block-as-a-jsx-attribute");
+  });
+
+  test("and both fall silent when a project switches it off", () => {
+    const config = { rules: { "block-as-a-jsx-attribute": "off" } } as never;
+
+    expect(() => transform(BARE, { filename: "/a.tsx", config })).not.toThrow();
+    expect(checkSource(BARE, "/a.tsx", { config }).map((one) => one.rule)).not.toContain("block-as-a-jsx-attribute");
+  });
+
+  /** And the braced spelling stays clean in both, or this would be reporting the documented form. */
+  test("while the spelling the documentation teaches is clean in both", () => {
+    const braced = `const a = <div className={@@( color: red; )}>x</div>;\n`;
+
+    expect(() => transform(braced, { filename: "/a.tsx" })).not.toThrow();
+    expect(checkSource(braced, "/a.tsx")).toEqual([]);
+  });
+});
+
+describe("a directive cannot silence what the build must refuse", () => {
+  const IN_A_TEMPLATE = "const a = <div className={`x ${@@( color: red; )}`}>y</div>;\n";
+  const WITH_A_DIRECTIVE = `// ramonda-css-ignore a vendor tool writes it this way\n${IN_A_TEMPLATE}`;
+
+  test("the build refuses it with or without one", () => {
+    expect(() => transform(IN_A_TEMPLATE, { filename: "/a.tsx" })).toThrow(CssBlockError);
+    expect(() => transform(WITH_A_DIRECTIVE, { filename: "/a.tsx" })).toThrow(CssBlockError);
+  });
+
+  test("and the checker keeps reporting it, so the two agree", () => {
+    expect(checkSource(IN_A_TEMPLATE, "/a.tsx").map((one) => one.rule)).toContain("block-in-a-template");
+    expect(checkSource(WITH_A_DIRECTIVE, "/a.tsx").map((one) => one.rule)).toContain("block-in-a-template");
+  });
+
+  /** And an ordinary rule is still silenced, or this would be a directive that does nothing. */
+  test("while an ordinary rule in the same file is still covered", () => {
+    const source = `const a = @@(\n  // ramonda-css-ignore a vendor stylesheet defines this\n  dsiplay: flex;\n);\n`;
+
+    expect(checkSource(source, "/a.tsx").map((one) => one.rule)).not.toContain("unknown-property");
+  });
+});
+
 describe("the build refuses what the checker finds", () => {
   test("a `@property` inside a block, which used to ship as invalid CSS", () => {
     expect(() => emit(`const s = @@(\n  @property --x { syntax: "<color>"; }\n  color: red;\n);\n`)).toThrow(
@@ -901,6 +1075,36 @@ describe("a refusal names the rule that made it", () => {
     expect(said).toContain(`${id}:`);
     // And the sentence is still there, whole.
     expect(said.length).toBeGreaterThan(id.length + 20);
+  });
+
+  /**
+   * **And a key it names has to BE one**, which is the same principle from the other side.
+   *
+   * A fault about the SITE — where the block is written, rather than what is in it — was refused
+   * with its id in front of the sentence and then ignored the `rules` key that id names. Measured:
+   * `block-as-a-jsx-attribute` and `unknown-named-block` refused a build whether the project had
+   * switched them off or not, while a `ramonda-css-ignore` above the line let both through and the
+   * output was correct either way. Two escape hatches, one working.
+   *
+   * `block-in-a-template` is the one that must not be silenced — a block in a `${ … }` reaches the
+   * bundler as `@@(` — and it is already right: it names no key, and neither hatch opens it.
+   */
+  test.each([
+    ["block-as-a-jsx-attribute", `const a = <div className=@@( color: red; )>x</div>;\n`],
+    ["unknown-named-block", `const a = @@wat( color: red; );\n`],
+  ])("%s is a key a project can actually switch off", (id, source) => {
+    expect(refused(source)).toContain(`${id}:`);
+    expect(() => transform(source, { filename: "/a.tsx", config: { rules: { [id]: "off" } } })).not.toThrow();
+  });
+
+  /** And the one that names no key stays refused, because silencing it would ship `@@(`. */
+  test("a block in a template cannot be switched off, and names no key", () => {
+    const source = "const a = <div className={`x ${@@( color: red; )}`}>y</div>;\n";
+
+    expect(refused(source)).not.toMatch(/^\/a\.tsx:\d+:\d+\s+[a-z-]+:/);
+    expect(() =>
+      transform(source, { filename: "/a.tsx", config: { rules: { "block-in-a-template": "off" } } }),
+    ).toThrow();
   });
 
   /**

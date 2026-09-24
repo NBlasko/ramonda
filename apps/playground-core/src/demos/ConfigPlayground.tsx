@@ -18,15 +18,18 @@ export default class ConfigPlayground extends Component {
    * A value made OUTSIDE the block, which is what `Value<…>` is for.
    *
    * `padding-left` says it takes a length, and a bare template literal is a `string` — which could
-   * be anything at run time. Delete the annotation and this stops compiling; that is the cost of a
+   * be anything at run time. Change this to `"12pxx"` and it stops compiling; that is the cost of a
    * property saying what it takes, and the annotation is the whole of the answer.
+   *
+   * It does not go INTO the block: a runtime value in a declaration is refused. This is the shape a
+   * value takes when it is set on the element, or handed to `toStyle`.
    */
-  private readonly inset: Value<"padding-left"> = "12px";
+  readonly inset: Value<"padding-left"> = "12px";
 
   render() {
     return (
       <div
-        css={@@(
+        className={@@(
           /* ── variables: `$` reaches what the config declares ───────────────────────
              Try `$.color.accent.` and watch the group complete one level at a time.
              Try `$.color.accent.nope` — reported twice, by the type and by the rule.
@@ -56,7 +59,7 @@ export default class ConfigPlayground extends Component {
              `padding` and `background` above stop existing — and are gone from the
              completion list too, because the names come from the block's own type.
              `padding-left` and `background-color` are untouched, which is the point.   */
-          padding-left: {this.inset};
+          padding-left: 12px;
 
           &:hover {
             border-left-color: $.color.accent.quiet;
@@ -67,7 +70,7 @@ export default class ConfigPlayground extends Component {
           }
         )}
       >
-        <span class="label">Edit ramonda.css.ts and watch this file</span>
+        <span className="label">Edit ramonda.css.ts and watch this file</span>
       </div>
     );
   }

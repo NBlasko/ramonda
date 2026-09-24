@@ -124,16 +124,16 @@ describe("the generated module", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(
       join(root, "src", "Card.tsx"),
       `import { read, toStyle } from "@ramonda/css";
 import { $, type Value } from "../css-system";
 
-export const good = <div css={@@( color: $.color.primary.main; )}>x</div>;
-export const inACall = <div css={@@( width: calc($.size.control.md * 2); )}>x</div>;
-export const digits = <div css={@@( padding: $.space.inline.2xl; )}>x</div>;
+export const good = <div className={@@( color: $.color.primary.main; )}>x</div>;
+export const inACall = <div className={@@( width: calc($.size.control.md * 2); )}>x</div>;
+export const digits = <div className={@@( padding: $.space.inline.2xl; )}>x</div>;
 export const outside: string = $.color.primary.main;
 
 // The two things a project does with a variable outside a block, against the real generated object.
@@ -144,8 +144,8 @@ export const theme = toStyle([
 export const now: string = read($.color.primary.main, document.documentElement);
 
 // A value made outside a block, annotated with what the property accepts — the reason Value exists.
-const gap: Value<"padding-left"> = "8px";
-export const spaced = <div css={@@( padding-left: {gap}; )}>x</div>;
+// It does not go INTO a block: a runtime value in a declaration is refused.
+export const gap: Value<"padding-left"> = "8px";
 `,
     );
     writeFileSync(
@@ -209,9 +209,12 @@ export const spaced = <div css={@@( padding-left: {gap}; )}>x</div>;
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
-    writeFileSync(join(root, "src", "Card.tsx"), `export const a = <div css={@@( padding-left: ${path}; )}>x</div>;\n`);
+    writeFileSync(
+      join(root, "src", "Card.tsx"),
+      `export const a = <div className={@@( padding-left: ${path}; )}>x</div>;\n`,
+    );
     writeFileSync(
       join(root, "tsconfig.json"),
       JSON.stringify({
@@ -321,7 +324,7 @@ describe("a variable of the wrong kind", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), `import { $ } from "../css-system";\n\n${card}`);
     writeFileSync(
@@ -352,7 +355,9 @@ describe("a variable of the wrong kind", () => {
   };
 
   test("a colour in a length slot is refused, and the message names both kinds", () => {
-    const output = checkedWith(`export const a = <div css={@@( padding-left: $.color.primary.main; )}>x</div>;\n`);
+    const output = checkedWith(
+      `export const a = <div className={@@( padding-left: $.color.primary.main; )}>x</div>;\n`,
+    );
 
     expect(output).toContain("problem");
     expect(output).toMatch(/"color"/);
@@ -360,7 +365,9 @@ describe("a variable of the wrong kind", () => {
   });
 
   test("a length in a colour slot is refused", () => {
-    const output = checkedWith(`export const b = <div css={@@( background-color: $.size.control.md; )}>x</div>;\n`);
+    const output = checkedWith(
+      `export const b = <div className={@@( background-color: $.size.control.md; )}>x</div>;\n`,
+    );
 
     expect(output).toContain("problem");
     expect(output).toMatch(/CssColor|"color"/);
@@ -383,7 +390,7 @@ describe("a variable of the wrong kind", () => {
     ["a quoted value beside it", `z-index: "1"; background-color: $.size.control.md;`],
     ["a property typo beside it", `dsiplay: flex; background-color: $.size.control.md;`],
   ])("%s is one fault, and the kind mismatch sharing its line is another", (_what, block) => {
-    const output = checkedWith(`export const d = <div css={@@( ${block} )}>x</div>;\n`);
+    const output = checkedWith(`export const d = <div className={@@( ${block} )}>x</div>;\n`);
 
     expect(output).toMatch(/2 problem\(s\)/);
     expect(output).toMatch(/CssColor|"color"/);
@@ -391,7 +398,7 @@ describe("a variable of the wrong kind", () => {
 
   test("and the matching kinds still go in, which is the half that must not regress", () => {
     const output = checkedWith(
-      `export const c = <div css={@@( padding-left: $.size.control.md; background-color: $.color.primary.main; )}>x</div>;\n`,
+      `export const c = <div className={@@( padding-left: $.size.control.md; background-color: $.color.primary.main; )}>x</div>;\n`,
     );
 
     expect(output).not.toContain("problem");
@@ -411,7 +418,7 @@ describe("a value made outside a block", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), `import { type Value } from "../css-system";\n\n${card}`);
     writeFileSync(
@@ -441,26 +448,28 @@ describe("a value made outside a block", () => {
     }
   };
 
-  test("a bare `string` is refused by a property this project narrowed", () => {
-    const output = checkedWith(
-      `declare const s: string;\nexport const a = <div css={@@( letter-spacing: {s}; )}>x</div>;\n`,
-    );
-
-    expect(output).toContain("problem");
-  });
-
-  test("and `Value` is what an author annotates with to satisfy it", () => {
-    const output = checkedWith(
-      `const spacing: Value<"letter-spacing"> = "0.05em";\nexport const b = <div css={@@( letter-spacing: {spacing}; )}>x</div>;\n`,
-    );
+  /**
+   * **The block is no longer where these are met.** A runtime value in a declaration is refused, so
+   * a value made outside a block does not go INTO one — it is annotated where it is made, and what
+   * `Value<K>` owes is that the annotation says what that property takes in THIS project.
+   *
+   * That is the same promise it always made; only the place it is checked moved, from the hole to
+   * the declaration. Measured through the real bin, against a real generated module.
+   */
+  test("`Value` narrows to what this project's config allows", () => {
+    const output = checkedWith(`export const spacing: Value<"letter-spacing"> = "0.05em";\n`);
 
     expect(output).not.toContain("problem");
   });
 
+  test("and refuses a bare `string`, which is what narrowing means", () => {
+    const output = checkedWith(`declare const s: string;\nexport const spacing: Value<"letter-spacing"> = s;\n`);
+
+    expect(output).toContain("problem");
+  });
+
   test("a property nothing narrowed still takes a string, because its grammar is composite", () => {
-    const output = checkedWith(
-      `declare const s: string;\nexport const c = <div css={@@( border-left: {s} solid red; )}>x</div>;\n`,
-    );
+    const output = checkedWith(`declare const s: string;\nexport const c: Value<"border-left"> = s;\n`);
 
     expect(output).not.toContain("problem");
   });
@@ -485,7 +494,7 @@ describe("what a project's property rules do", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), card);
     writeFileSync(
@@ -518,7 +527,7 @@ describe("what a project's property rules do", () => {
   test("a shorthand switched off no longer exists, and writing one is reported", () => {
     const output = withRules(
       `{ "*": { shorthand: false } }`,
-      `export const a = <div css={@@( padding: 8px; )}>x</div>;\n`,
+      `export const a = <div className={@@( padding: 8px; )}>x</div>;\n`,
     );
 
     expect(output).toMatch(/padding/);
@@ -529,7 +538,7 @@ describe("what a project's property rules do", () => {
   test("and its longhand still goes in, which is what switching it off is FOR", () => {
     const output = withRules(
       `{ "*": { shorthand: false } }`,
-      `export const b = <div css={@@( padding-left: 8px; )}>x</div>;\n`,
+      `export const b = <div className={@@( padding-left: 8px; )}>x</div>;\n`,
     );
 
     expect(output).not.toContain("problem");
@@ -538,7 +547,7 @@ describe("what a project's property rules do", () => {
   test("one shorthand may be brought back by name", () => {
     const output = withRules(
       `{ "*": { shorthand: false }, margin: { shorthand: true } }`,
-      `export const c = <div css={@@( margin: 8px; )}>x</div>;\n`,
+      `export const c = <div className={@@( margin: 8px; )}>x</div>;\n`,
     );
 
     expect(output).not.toContain("problem");
@@ -547,11 +556,11 @@ describe("what a project's property rules do", () => {
   test("a closed list of values refuses everything else", () => {
     const refused = withRules(
       `{ "z-index": { values: [1, 2, 5, 10] } }`,
-      `export const d = <div css={@@( z-index: 3; )}>x</div>;\n`,
+      `export const d = <div className={@@( z-index: 3; )}>x</div>;\n`,
     );
     const accepted = withRules(
       `{ "z-index": { values: [1, 2, 5, 10] } }`,
-      `export const e = <div css={@@( z-index: 5; )}>x</div>;\n`,
+      `export const e = <div className={@@( z-index: 5; )}>x</div>;\n`,
     );
 
     // The message has to be ABOUT the value. A generated module that does not compile would also
@@ -572,11 +581,11 @@ describe("what a project's property rules do", () => {
   test("a unit list refuses a unit outside it, and the property still takes the ones in it", () => {
     const refused = withRules(
       `{ "*": { units: ["px"] } }`,
-      `export const f = <div css={@@( letter-spacing: 0.05em; )}>x</div>;\n`,
+      `export const f = <div className={@@( letter-spacing: 0.05em; )}>x</div>;\n`,
     );
     const accepted = withRules(
       `{ "*": { units: ["px"] } }`,
-      `export const g = <div css={@@( letter-spacing: 2px; )}>x</div>;\n`,
+      `export const g = <div className={@@( letter-spacing: 2px; )}>x</div>;\n`,
     );
 
     // The RULE's message since review pass 4, for the reason above: a unit said on a property
@@ -590,7 +599,7 @@ describe("what a project's property rules do", () => {
   test("a project with rules and NO variables still gets its module", () => {
     const output = withRules(
       `{ "z-index": { values: [1] } }`,
-      `export const h = <div css={@@( z-index: 9; )}>x</div>;\n`,
+      `export const h = <div className={@@( z-index: 9; )}>x</div>;\n`,
     );
 
     expect(output).toContain("problem");
@@ -617,11 +626,11 @@ describe("a block nested more than once", () => {
 
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(
       join(root, "src", "Card.tsx"),
-      `export const a = <div css={@@(\n  color: red;\n  &:hover {\n    & .title {\n      color: blue;\n      &::after { content: ""; }\n    }\n  }\n)}>x</div>;\n`,
+      `export const a = <div className={@@(\n  color: red;\n  &:hover {\n    & .title {\n      color: blue;\n      &::after { content: ""; }\n    }\n  }\n)}>x</div>;\n`,
     );
     writeFileSync(
       join(root, "tsconfig.json"),
@@ -746,7 +755,7 @@ describe("a shorthand's kind", () => {
     mkdirSync(join(root, "src"), { recursive: true });
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), card);
     writeFileSync(
@@ -777,14 +786,14 @@ describe("a shorthand's kind", () => {
   };
 
   test("a colour in a `gap` is refused, naming both kinds", () => {
-    const output = checkedWith(`export const a = <div css={@@( gap: $.color.primary.main; )}>x</div>;\n`);
+    const output = checkedWith(`export const a = <div className={@@( gap: $.color.primary.main; )}>x</div>;\n`);
 
     expect(output).toMatch(/"color"/);
     expect(output).toMatch(/"length"/);
   });
 
   test("a length in a `gap` goes in", () => {
-    expect(checkedWith(`export const b = <div css={@@( gap: $.size.control.md; )}>x</div>;\n`)).not.toContain(
+    expect(checkedWith(`export const b = <div className={@@( gap: $.size.control.md; )}>x</div>;\n`)).not.toContain(
       "problem",
     );
   });
@@ -798,8 +807,10 @@ describe("a shorthand's kind", () => {
    * wrong kind.
    */
   test("several values go in where CSS gives several", () => {
-    expect(checkedWith(`export const c = <div css={@@( padding: 8px 12px; )}>x</div>;\n`)).not.toContain("problem");
-    expect(checkedWith(`export const d = <div css={@@( gap: 4px 8px; )}>x</div>;\n`)).not.toContain("problem");
+    expect(checkedWith(`export const c = <div className={@@( padding: 8px 12px; )}>x</div>;\n`)).not.toContain(
+      "problem",
+    );
+    expect(checkedWith(`export const d = <div className={@@( gap: 4px 8px; )}>x</div>;\n`)).not.toContain("problem");
   });
 
   /**
@@ -808,7 +819,7 @@ describe("a shorthand's kind", () => {
    * always right; nothing read the virtual file's shape until a multi-value type did.
    */
   test("a value mixing text and a variable keeps the space between them", () => {
-    expect(checkedWith(`export const e = <div css={@@( gap: 4px $.size.control.md; )}>x</div>;\n`)).not.toContain(
+    expect(checkedWith(`export const e = <div className={@@( gap: 4px $.size.control.md; )}>x</div>;\n`)).not.toContain(
       "problem",
     );
   });
@@ -838,7 +849,7 @@ describe("a variable against a property's range", () => {
     writeGenerated(root, ts);
     writeFileSync(
       join(root, "src", "jsx.d.ts"),
-      `declare namespace JSX {\n  interface IntrinsicElements { div: { css?: unknown; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
+      `declare namespace JSX {\n  interface IntrinsicElements { div: { id?: string; className?: string; children?: unknown } }\n  interface Element { readonly _brand: unique symbol }\n}\n`,
     );
     writeFileSync(join(root, "src", "Card.tsx"), card);
     writeFileSync(
@@ -876,7 +887,7 @@ export default defineConfig({
 `;
 
   test("a variable outside the list is refused, and the message names the VALUE", () => {
-    const output = withBoth(CONFIG, `export const a = <div css={@@( letter-spacing: $.size.big; )}>x</div>;\n`);
+    const output = withBoth(CONFIG, `export const a = <div className={@@( letter-spacing: $.size.big; )}>x</div>;\n`);
 
     // `Fixed<…>` because this variable was declared bare — the mark that it never changes. The
     // claim is unchanged: the message names the VALUE and the list it failed against, not the kind.
@@ -888,13 +899,13 @@ export default defineConfig({
    * met it: `z-index: $.layer.modal` refused with the project's own list in the message.
    */
   test("a variable INSIDE the list goes in, which no variable did", () => {
-    const output = withBoth(CONFIG, `export const b = <div css={@@( letter-spacing: $.size.small; )}>x</div>;\n`);
+    const output = withBoth(CONFIG, `export const b = <div className={@@( letter-spacing: $.size.small; )}>x</div>;\n`);
 
     expect(output).not.toContain("problem");
   });
 
   test("the value written out is unaffected", () => {
-    const output = withBoth(CONFIG, `export const c = <div css={@@( letter-spacing: 8px; )}>x</div>;\n`);
+    const output = withBoth(CONFIG, `export const c = <div className={@@( letter-spacing: 8px; )}>x</div>;\n`);
 
     expect(output).not.toContain("problem");
   });
@@ -904,7 +915,7 @@ export default defineConfig({
       'size: kind("length", { big: "30px", small: "8px" })',
       'c: kind("color", { a: "#fff" })',
     );
-    const output = withBoth(config, `export const d = <div css={@@( letter-spacing: $.c.a; )}>x</div>;\n`);
+    const output = withBoth(config, `export const d = <div className={@@( letter-spacing: $.c.a; )}>x</div>;\n`);
 
     expect(output).toMatch(/'"color"' is not assignable/);
   });
@@ -920,7 +931,7 @@ export default defineConfig({
   properties: { "letter-spacing": { units: ["px"] } },
 });
 `;
-    const output = withBoth(config, `export const e = <div css={@@( letter-spacing: $.size.big; )}>x</div>;\n`);
+    const output = withBoth(config, `export const e = <div className={@@( letter-spacing: $.size.big; )}>x</div>;\n`);
 
     expect(output).not.toContain("problem");
   });
@@ -959,11 +970,11 @@ export default defineConfig({
       ["an inset", "top: 0;"],
       ["beside a variable", "padding-left: $.space.gutter.normal; top: 0;"],
     ])("%s takes a bare zero", (_what, css) => {
-      expect(withBoth(CONFIG, `export const a = <div css={@@( ${css} )}>x</div>;\n`)).not.toContain("problem");
+      expect(withBoth(CONFIG, `export const a = <div className={@@( ${css} )}>x</div>;\n`)).not.toContain("problem");
     });
 
     test("and a length written out is still refused, which is the whole setting", () => {
-      const output = withBoth(CONFIG, `export const b = <div css={@@( padding-left: 8px; )}>x</div>;\n`);
+      const output = withBoth(CONFIG, `export const b = <div className={@@( padding-left: 8px; )}>x</div>;\n`);
 
       expect(output).toContain("problem");
     });
@@ -974,7 +985,7 @@ export default defineConfig({
         'kind("length", { gutter: { normal: "16px" } })',
         'kind("number", { weight: { bold: 700 } })',
       );
-      const output = withBoth(config, `export const c = <div css={@@( flex-grow: 0; )}>x</div>;\n`);
+      const output = withBoth(config, `export const c = <div className={@@( flex-grow: 0; )}>x</div>;\n`);
 
       expect(output).toContain("problem");
     });
@@ -1019,7 +1030,7 @@ export default {
       ["a dimensionless zero", "padding-left: 0;", false],
       ["the property exempted by name", "border-radius: 4px;", false],
     ])("%s", (_what, css, refused) => {
-      const output = withBoth(CONFIG, `export const a = <div css={@@( ${css} )}>x</div>;\n`);
+      const output = withBoth(CONFIG, `export const a = <div className={@@( ${css} )}>x</div>;\n`);
 
       expect(output.includes("problem")).toBe(refused);
     });
@@ -1032,7 +1043,7 @@ export default {
      * Measured before this: twelve reports for six faults, and the compiler's was the worse one.
      */
     test("a refused literal is reported once, by the rule that names the project", () => {
-      const output = withBoth(CONFIG, `export const a = <div css={@@( padding-left: 8px; )}>x</div>;\n`);
+      const output = withBoth(CONFIG, `export const a = <div className={@@( padding-left: 8px; )}>x</div>;\n`);
 
       expect(output).toMatch(/1 problem\(s\)/);
       expect(output).toContain("literal-not-allowed");
@@ -1042,7 +1053,7 @@ export default {
 
     /** And the build alone — which runs no TypeScript at all — still catches it. */
     test("the rules alone catch it, which is all the build ever runs", () => {
-      const source = `<div css={@@(\n  padding-left: 8px;\n)}>x</div>`;
+      const source = `<div className={@@(\n  padding-left: 8px;\n)}>x</div>`;
       const [site] = findBlocks(source);
       const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
       const found = checkBlock(read.block, {
@@ -1060,7 +1071,7 @@ export default {
   properties: { "<color>": { variablesOnly: true } },
 };
 `;
-      const output = withBoth(config, `export const a = <div css={@@( border: 1px solid red; )}>x</div>;\n`);
+      const output = withBoth(config, `export const a = <div className={@@( border: 1px solid red; )}>x</div>;\n`);
 
       expect(output).toContain("literal-not-allowed");
     });
@@ -1072,7 +1083,7 @@ export default {
   properties: { "<color>": { variablesOnly: true }, border: { variablesOnly: false } },
 };
 `;
-      const output = withBoth(config, `export const a = <div css={@@( border: 1px solid red; )}>x</div>;\n`);
+      const output = withBoth(config, `export const a = <div className={@@( border: 1px solid red; )}>x</div>;\n`);
 
       expect(output).not.toContain("problem");
     });
@@ -1091,9 +1102,11 @@ export default {
 `;
 
       // `*` says no and the kind says yes: the kind binds more tightly.
-      expect(withBoth(config, `export const a = <div css={@@( margin-top: 8px; )}>x</div>;\n`)).toContain("problem");
+      expect(withBoth(config, `export const a = <div className={@@( margin-top: 8px; )}>x</div>;\n`)).toContain(
+        "problem",
+      );
       // the kind says yes and the name says no: the name binds more tightly still.
-      expect(withBoth(config, `export const b = <div css={@@( padding-left: 8px; )}>x</div>;\n`)).not.toContain(
+      expect(withBoth(config, `export const b = <div className={@@( padding-left: 8px; )}>x</div>;\n`)).not.toContain(
         "problem",
       );
     });
@@ -1129,7 +1142,7 @@ export default {
         ["a variable whose value is in the list", "padding-left: $.s.ok;", false],
         ["a variable whose value is NOT", "padding-left: $.s.big;", true],
       ])("%s", (_what, css, refused) => {
-        expect(withBoth(CONFIG, `export const a = <div css={@@( ${css} )}>x</div>;\n`).includes("problem")).toBe(
+        expect(withBoth(CONFIG, `export const a = <div className={@@( ${css} )}>x</div>;\n`).includes("problem")).toBe(
           refused,
         );
       });
@@ -1142,7 +1155,7 @@ export default {
       ])("with `variablesOnly` beside the list: %s", (_what, css, refused) => {
         const config = CONFIG.replace('{ values: ["4px", "8px"] }', '{ values: ["4px", "8px"], variablesOnly: true }');
 
-        expect(withBoth(config, `export const a = <div css={@@( ${css} )}>x</div>;\n`).includes("problem")).toBe(
+        expect(withBoth(config, `export const a = <div className={@@( ${css} )}>x</div>;\n`).includes("problem")).toBe(
           refused,
         );
       });
@@ -1150,11 +1163,11 @@ export default {
       test("a closed list said on a KIND reaches every property of that kind", () => {
         const config = `export default { properties: { "<time>": { values: ["120ms", "400ms"] } } };\n`;
 
-        expect(withBoth(config, `export const a = <div css={@@( transition-duration: 300ms; )}>x</div>;\n`)).toContain(
-          "problem",
-        );
         expect(
-          withBoth(config, `export const b = <div css={@@( transition-duration: 120ms; )}>x</div>;\n`),
+          withBoth(config, `export const a = <div className={@@( transition-duration: 300ms; )}>x</div>;\n`),
+        ).toContain("problem");
+        expect(
+          withBoth(config, `export const b = <div className={@@( transition-duration: 120ms; )}>x</div>;\n`),
         ).not.toContain("problem");
       });
 
@@ -1249,7 +1262,7 @@ export default {
       /** A marked token is still a token: it goes into a block exactly as it did. */
       test("a fixed variable still goes into a block", () => {
         expect(
-          withBoth(CONFIG, `export const a = <div css={@@( padding-left: $.fixed.gutter; )}>x</div>;\n`),
+          withBoth(CONFIG, `export const a = <div className={@@( padding-left: $.fixed.gutter; )}>x</div>;\n`),
         ).not.toContain("problem");
       });
     });
@@ -1284,8 +1297,25 @@ export default {
       test("a value toggled between two variables of a kind", () => {
         const output = withBoth(
           CONFIG,
-          `${HEAD}const tone: Var<"color"> = toggle ? $.color.accent.quiet : $.color.accent.main;\n` +
-            `export const a = <div css={@@( color: {tone}; )}>x</div>;\n`,
+          `${HEAD}export const tone: Var<"color"> = toggle ? $.color.accent.quiet : $.color.accent.main;\n`,
+        );
+
+        expect(output).not.toContain("problem");
+      });
+
+      /**
+       * **And where that value now goes, which is a `match` rather than a hole.**
+       *
+       * Toggling between two variables used to mean computing one in TypeScript and putting it in a
+       * hole. A runtime value in a declaration is refused, so the choice is written in the block —
+       * where each arm is its own class and nothing is decided while the page renders. The arms are
+       * `$` paths, which is what makes this a replacement rather than a loss.
+       */
+      test("and the block writes the choice out, with a `$` variable in each arm", () => {
+        const output = withBoth(
+          CONFIG,
+          `import { $ } from "../css-system";\ndeclare const tone: "loud" | "quiet";\n` +
+            `export const a = <div className={@@( color: match({tone}) { loud => $.color.accent.main; _ => $.color.accent.quiet; }; )}>x</div>;\n`,
         );
 
         expect(output).not.toContain("problem");
@@ -1296,6 +1326,23 @@ export default {
         const output = withBoth(CONFIG, `${HEAD}const tone: Var<"color"> = $.size.radius.pill;\n`);
 
         expect(output).toMatch(/Type '"length"' is not assignable to type '"color"'/);
+      });
+
+      /**
+       * **The message is the product here, and it was unreadable.** A kind's variables are a union
+       * of branded tokens, and a union alias EXPANDS where it is printed — so refusing one colour
+       * printed six `Token<"color", Fixed<"#10b981">>` and then `… 5 more …`, and a reader could
+       * not find the property name in it.
+       *
+       * Measured against the shape the package already relies on: `Keyword<…>` prints by name
+       * because `K` stands naked in its union, while `VarByKind[K]` is an indexed access that
+       * TypeScript resolves on sight. A NAMED alias per kind prints by name through both.
+       */
+      test("a kind's variables print under one name rather than expanding", () => {
+        const output = withBoth(CONFIG, `${HEAD}const tone: Var<"color"> = "#ff0055";\n`);
+
+        expect(output).toContain("ColorVar");
+        expect(output).not.toContain('Token<"color"');
       });
 
       test("a kind this project declares nothing of is not a key", () => {
@@ -1314,9 +1361,9 @@ export default {
       test("inference alone carries the local case", () => {
         const output = withBoth(
           CONFIG,
-          `import { $ } from "../css-system";\ndeclare const toggle: boolean;\n` +
+          `import { $, type Var } from "../css-system";\ndeclare const toggle: boolean;\n` +
             `const tone = toggle ? $.color.accent.quiet : $.color.accent.main;\n` +
-            `export const a = <div css={@@( color: {tone}; )}>x</div>;\n`,
+            `export const held: Var<"color"> = tone;\n`,
         );
 
         expect(output).not.toContain("problem");

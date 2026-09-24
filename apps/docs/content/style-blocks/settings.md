@@ -2,7 +2,7 @@
 title: Project settings
 description: ramonda.css.ts, the rules your project makes stricter than CSS is, and what the class names say.
 section: Style blocks
-order: 114
+order: 116
 ---
 
 # Project settings
@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => ({
 ```
 
 **Rules your project agrees on** belong in a `ramonda.css.ts` beside your `tsconfig.json` — because
-`ramonda-css check`, `ramonda-css format`, the build and your editor all have to read the same
+`ramonda-css`, `ramonda-css format`, the build and your editor all have to read the same
 answer, and none of them reads a bundler's config:
 
 ```ts alternatives
@@ -41,15 +41,15 @@ selectors decide which setting reaches which property.
 
 ## The names a block emits
 
-A class name says what its rule does. It is `r-`, a short spelling of the property, a `-`, and the
-**value as you wrote it** — spaces written `_`, because a class name cannot hold one.
+A class name is two halves with a `-` between them: **what the declaration sets**, and **the value as
+you wrote it** — spaces written `_`, because a class name cannot hold one.
 
 ```
 padding: 12px            r-p-12px
 display: inline-flex     r-disp-inline-flex
 opacity: .5              r-o-.5
 padding: 4px 0           r-p-4px_0
-outline-offset: 4px      r-outline-offset-4px
+outline-offset: 4px      r-outline_offset-4px
 ```
 
 About sixty properties have a short spelling — `p`, `m`, `w`, `h`, `bg`, `c`, `gap`, `items`,
@@ -57,36 +57,64 @@ About sixty properties have a short spelling — `p`, `m`, `w`, `h`, `bg`, `c`, 
 short form nobody recognises is worse than the property's own name, because it is shorter *and* has
 to be learned.
 
+A property's own `-` is written `_`. That is not decoration: the **first** `-` is where the first
+half ends and the value begins, and a value holds a `-` all the time — `-4px`, `sans-serif`, `a-b`.
+
 **The value is written exactly as you wrote it, and that is not a nicety.** `opacity: .5` and
 `opacity: 5` are both valid CSS, and anything that tidied the `.` away would give them one class —
 two rules merged into one, on a page nobody edited.
 
-Where a declaration sits is written in front of it:
+Where a declaration sits joins the property with a `.`:
 
 ```
-&:hover { color: red }                    r-:hover-c-red
-&::after { width: 10px }                  r-::after-w-10px
-& .title { font-weight: 600 }             r-_.title-fw-600
-@media print { color: red }               r-@media_print-c-red
+&:hover { color: red }                    r-:hover.c-red
+&::after { width: 10px }                  r-::after.w-10px
+& .title { font-weight: 600 }             r-_.title.fw-600
+@media print { color: red }               r-@media_print.c-red
 ```
 
 The `_` before `.title` is the space in `& .title` — which is what separates a descendant from
 `&.title`, a different element and a different class.
 
-## Why some are still a hash
+### Why the first half is always there
+
+**Because it is what a merge reads.** Composing two blocks keeps, per thing set, the one written
+later — and a block handed to another component arrives as a class string and nothing else. So what
+a class sets has to be readable out of the class itself, or the merge has nothing to decide with.
+
+That is also why no class name is *only* a hash any more. Measured on this repository when the first
+half was added: 23 of 91 class names had nothing readable in them, and none do now.
+
+## When a half is a hash
+
+Each half falls back on its own, and the other one still reads.
+
+**The value**, when it cannot be written:
 
 ```
-r-QbofRLj5j
+transition: border-left-width .15s ease-in-out   r-tr-QbofRLj5j
+content: "a b"                                   r-content-5dEHlFqj2
 ```
 
-Four reasons, and each is a name that could not be written rather than a preference:
+- **over 32 characters** — in practice a `transition` or a `grid-template` with several parts;
+- **a character a class name cannot hold** — a quote, most often.
 
-- **the declaration carries a hole** — its value is a custom property, not text you wrote;
-- **the name would be too long** — over 32 characters, which in practice means a `transition` or a
-  `grid-template` with several parts;
-- **the value or the context holds a character a class name cannot** — a quote, most often;
-- **the selector is a list** — `&:hover, &:focus` is two selectors sharing a body, and there is no
-  one spelling for it.
+**The context**, marked by a leading `0`:
+
+```
+&:hover, &:focus { color: red }          r-0dG3Pq.c-red
+&[data-on] { color: red }                r-0W6pfz.c-red
+@media (min-width: 40rem) { gap: 8px }   r-03noXL.gap-8px
+```
+
+- **a selector list** — `&:hover, &:focus` is two selectors sharing a body, and there is no one
+  spelling for it;
+- **a quote**, which markup would have to escape;
+- **a `-`**, which is where the first half ends. `[data-on]` and every `@media (min-width: …)` hold
+  one, and this is what they cost.
+
+A written name never begins with `0`, because no CSS property may begin with a digit and every
+context begins with `:`, `.`, `_`, `@` or `[`. So the `0` says *hashed* and can be nothing else.
 
 ## In the stylesheet they look escaped
 

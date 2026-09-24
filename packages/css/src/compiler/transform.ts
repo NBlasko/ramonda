@@ -1,7 +1,9 @@
 import MagicString from "magic-string";
 import { segments } from "./flatten";
+import type { AtomicDeclaration } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
-import { classNameFor, nameForSite, nameFor, substitute, variableNameFor } from "./names";
+import { keyIn } from "../key";
+import { classNameFor, nameForSite, nameFor, substitute, variableNameFor, writableProperty } from "./names";
 import type { Config } from "../config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
@@ -9,7 +11,7 @@ import { type VariableRead, type Variables, variablesIn } from "./variables";
 import { type Span, readBlock, tryReadBlock } from "./read";
 import { refuse } from "./errors";
 import { ignoredIn, isIgnored } from "./ignore";
-import { checkBlock, checkNamedSite, checkSite, checkText } from "./rules";
+import { checkBlock, checkNamedSite, checkSite, checkTemplates, checkText } from "./rules";
 import { type BlockSite, afterShebang, findBlocks, mayHoldABlock } from "./scan";
 
 /**
@@ -144,6 +146,16 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   if (!mayHoldABlock(source)) return undefined;
 
   const filename = options.filename ?? "unknown.tsx";
+
+  /**
+   * A block inside a `${ … }` compiles to nothing and would reach the bundler as `@@(` — a syntax
+   * error naming neither the block nor the line. Refused here, where the position is still ours, and
+   * **before the early return**: a file whose only block is in a template finds no site at all, so
+   * asking after that return is asking where nothing is left to ask.
+   */
+  const [inATemplate] = checkTemplates(source);
+  if (inATemplate !== undefined) refuse(inATemplate.message, source, inATemplate.at, filename);
+
   const sites = findBlocks(source);
   if (sites.length === 0) return undefined;
 
@@ -176,10 +188,28 @@ export function transform(source: string, options: TransformOptions = {}): Trans
 
   const magic = new MagicString(source);
   const block = binding(source, "_merge");
+  /** What a `match` becomes at run time — see `pick` in `merge.ts`. */
+  const lookup = binding(source, "_pick");
+  /** The two registrations a module makes — see the prologue below. */
+  const clearing = binding(source, "_clears");
+  const conditions = binding(source, "_under");
+  const naming = binding(source, "_named");
+  /** Whether any block used one, so a file with no lookup imports nothing it does not call. */
+  let picked = false;
   const prefix = identifierPrefix(source);
 
   /** Class -> the atomic rule, so a declaration written a hundred times is one rule. */
   const atoms = new Map<string, EmittedBlock>();
+  /**
+   * What this FILE registers with the runtime, collected across every block in it.
+   *
+   * A block is a class string and two things do not fit in one: what a shorthand clears, and the
+   * conditions a key sits under. Each is registered once per module for what that module's own
+   * blocks need — see `shorthands` and `conditionsOf` in `merge.ts`.
+   */
+  const shorthandsUsed = new Map<string, readonly string[]>();
+  const conditionsUsed = new Map<string, string>();
+  const namesUsed = new Map<string, string>();
   /** Each ordinary site's map, split at the holes, so the author's expressions never move. */
   const written: { site: BlockSite; pieces: string[]; holes: readonly Span[]; end: number }[] = [];
   /** The named sites, which produce a rule and a name rather than a value the runtime builds. */
@@ -276,7 +306,24 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * a suggestion the build never saw, which was right while the spelling was supported.
      */
     // shape to check its body against, so anything else said about it is a guess. See `checkedSource`.
-    const siteFindings = [...checkSite(source, site), ...checkNamedSite(site)];
+    /**
+     * **A site finding goes through `rules` too**, and it did not.
+     *
+     * The refusal below prints the id in front of the sentence so a reader knows which key to write
+     * in `ramonda.css.ts` — and for these two the key did nothing. Measured: a project that switched
+     * `block-as-a-jsx-attribute` off still failed its build, while a `ramonda-css-ignore` above the
+     * line let the same file through and compiled it correctly. Two escape hatches the documentation
+     * offers as equals, one of them shut.
+     *
+     * `checkBlock` has done this since it took a config; these come from `checkSite` and
+     * `checkNamedSite`, which never saw one. The rule that must NOT be silenced — a block inside a
+     * `${ … }`, which would reach the bundler as `@@(` — is refused above this and names no key, so
+     * it is untouched by the filter and stays that way.
+     */
+    const silenced = options.config?.rules;
+    const siteFindings = [...checkSite(source, site), ...checkNamedSite(site)].filter(
+      (one) => silenced?.[one.rule] !== "off",
+    );
     const [finding] = (
       siteFindings.length > 0
         ? siteFindings
@@ -450,48 +497,171 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         continue;
       }
 
-      piece += "{";
-      for (const declaration of segment.items) {
+      /**
+       * Every arm of one `match` is its own rule and its own class, and they share a key — so a run
+       * of them is ONE call that chooses between their classes rather than a class. `register` below
+       * still runs for each, because each has a rule to emit.
+       */
+      const armsFrom = (from: number): AtomicDeclaration[] => {
+        const first = segment.items[from];
+        if (first.arm === undefined) return [];
+        const group = [first];
+        while (from + group.length < segment.items.length) {
+          const next = segment.items[from + group.length];
+          if (next.arm === undefined || next.key !== first.key) break;
+          group.push(next);
+        }
+        return group;
+      };
+
+      /** The atom a declaration becomes, registered once however many times it is written. */
+      const register = (declaration: AtomicDeclaration): string => {
         // Readable where one can be written, the hash where it cannot — see `nameFor`, which is
         // where the whole identity is hashed when it comes to that.
         const own = nameFor(declaration);
-        const variables = declaration.holes.map((_hole, index) => variableNameFor(own, index));
-
         if (!atoms.has(own)) {
           atoms.set(own, {
             className: own,
             css: substitute(declaration.canonical, own),
-            properties: variables,
+            properties: declaration.holes.map((_hole, index) => variableNameFor(own, index)),
             property: declaration.property,
             selector: declaration.selector,
             conditions: declaration.conditions,
           });
         }
+        return own;
+      };
 
-        piece += `${JSON.stringify(declaration.key)}:`;
-        if (declaration.holes.length === 0) piece += `${JSON.stringify(own)},`;
-        else {
-          piece += `[${JSON.stringify(own)},`;
-          for (let index = 0; index < declaration.holes.length; index++) {
-            expression();
-            piece = index === declaration.holes.length - 1 ? "]," : ",";
+      /**
+       * What this declaration clears, when it is a shorthand — collected for the whole FILE and
+       * registered once, rather than written into every block that uses one.
+       *
+       * Keyed by the PROPERTY as a key writes it, because the context composes itself at run time —
+       * see `shorthands` in `merge.ts`. Only the shorthands this file actually writes, which is what
+       * keeps a table of ninety-eight out of every page: 23 KB raw, 3.7 KB gzipped, against a whole
+       * runtime smaller than that.
+       */
+      const clears = (declaration: AtomicDeclaration): void => {
+        const covered = SHORTHANDS[declaration.property];
+        const written = writableProperty(declaration.property);
+        if (covered === undefined || written === undefined) return;
+
+        const longhands = covered.map(writableProperty).filter((one): one is string => one !== undefined);
+        if (longhands.length === covered.length) shorthandsUsed.set(written, longhands);
+      };
+
+      /**
+       * The CONDITIONS a key sits under, for the development-only order warning — see `slotOf`.
+       *
+       * A key carries its context as the author's own text or as a hash, and a hash cannot be read
+       * back. So the text is registered beside it, for the keys the warning can say anything about:
+       * a condition and no selector, because a selector adds specificity and settles the question
+       * on its own.
+       */
+      const conditionsUnder = (declaration: AtomicDeclaration, className: string): void => {
+        if (declaration.conditions.length === 0 || declaration.selector !== "") return;
+        conditionsUsed.set(keyIn(className), declaration.conditions.join("|"));
+      };
+
+      /**
+       * And what the author CALLED the property, because a key writes `pl` where they wrote
+       * `padding-left` — a message naming the form sends somebody looking for a string in no file.
+       *
+       * **Only for a declaration under a CONDITION**, which is the same guard the conditions have
+       * and for the same reason: nothing else can be the subject of a warning. Two keys with no
+       * context at all are the same key, and a property compared against itself at one slot is
+       * silent. Every longhand such a shorthand names goes in with it, since the warning names those
+       * without ever having seen a class for one — including one written in another module, which is
+       * how a conditional `padding` here warns about a plain `padding-left` there.
+       */
+      const namesFor = (declaration: AtomicDeclaration): void => {
+        if (declaration.conditions.length === 0 || declaration.selector !== "") return;
+
+        const written = writableProperty(declaration.property);
+        if (written !== undefined) namesUsed.set(written, declaration.property);
+        for (const one of SHORTHANDS[declaration.property] ?? []) {
+          const form = writableProperty(one);
+          if (form !== undefined) namesUsed.set(form, one);
+        }
+      };
+
+      /**
+       * A SEGMENT is ONE merge argument, whatever it holds.
+       *
+       * Its declarations are a class string; a `match` among them is a call that chooses a class at
+       * run time, so it cannot be inside that string. Written out flat they would be two arguments
+       * and the guard in front — `on && …` — would reach only the first. So a segment holding more
+       * than one part wraps them in a merge of its own, which says the same thing because merging is
+       * associative and later still wins.
+       *
+       * The parts are counted in a first pass because the wrapper has to be emitted before the
+       * first one, and that pass is where each declaration's rule is registered.
+       */
+      type Part = { kind: "classes"; written: string[] } | { kind: "match"; group: AtomicDeclaration[] };
+      const parts: Part[] = [];
+
+      for (let index = 0; index < segment.items.length; index++) {
+        const group = armsFrom(index);
+        if (group.length > 0) {
+          for (const one of group) {
+            conditionsUnder(one, register(one));
+            namesFor(one);
           }
+          clears(group[0]);
+          parts.push({ kind: "match", group });
+          index += group.length - 1;
+          continue;
         }
 
-        /**
-         * What this declaration clears, when it is a shorthand — full KEYS, so a `padding` inside a
-         * `@media` clears the `padding-left` inside that one and not the one outside it.
-         *
-         * Emitted only for the shorthands a block actually writes, which is what keeps a table of 78
-         * out of every page.
-         */
-        const clears = SHORTHANDS[declaration.property];
-        if (clears !== undefined) {
-          const context = declaration.key.slice(0, declaration.key.length - declaration.property.length);
-          piece += `${JSON.stringify(`~${declaration.key}`)}:${JSON.stringify(clears.map((one) => context + one))},`;
+        const declaration = segment.items[index];
+        if (declaration.holes.length > 0) {
+          throw new Error(
+            `[@ramonda/css] internal: a declaration in ${filename} reached emission carrying a runtime ` +
+              `value, which \`hole-not-allowed\` refuses before this. Please report it.`,
+          );
         }
+        const own = register(declaration);
+        conditionsUnder(declaration, own);
+        namesFor(declaration);
+        clears(declaration);
+
+        const last = parts[parts.length - 1];
+        if (last !== undefined && last.kind === "classes") last.written.push(own);
+        else parts.push({ kind: "classes", written: [own] });
       }
-      piece += "}";
+
+      /** An empty group sets nothing, and an empty string is what a merge skips. */
+      if (parts.length === 0) piece += '""';
+
+      /**
+       * Only under a GUARD. `on && …` reaches one argument, so a guarded segment holding two has to
+       * put them in a merge of its own. An unguarded one needs nothing: its parts are arguments of
+       * the merge the site already opens, and a merge of a merge says the same thing twice.
+       */
+      const wrapped = parts.length > 1 && segment.guards.length > 0;
+      if (wrapped) piece += `${block}(`;
+      for (let index = 0; index < parts.length; index++) {
+        if (index > 0) piece += ",";
+        const part = parts[index];
+        if (part.kind === "classes") {
+          piece += JSON.stringify(part.written.join(" "));
+          continue;
+        }
+
+        const fallback = part.group.find((one) => one.arm?.otherwise === true);
+        picked = true;
+        piece += `${lookup}(`;
+        expression();
+        piece += ",{";
+        for (const one of part.group) {
+          if (one.arm?.otherwise === true) continue;
+          piece += `${JSON.stringify(one.arm?.is ?? "")}:${JSON.stringify(nameFor(one))},`;
+        }
+        piece += "}";
+        if (fallback !== undefined) piece += `,${JSON.stringify(nameFor(fallback))}`;
+        piece += ")";
+      }
+      if (wrapped) piece += ")";
     }
     // Every nested merge still open at the end of the block.
     while (open.length > 0) {
@@ -568,7 +738,30 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         // JSX library and the bundler plugins point it at an absolute one — which on Windows is
         // `C:\Users\…`, and interpolating that emitted `from "C:\Users\x\dist\index.js"`: a
         // syntax error, since `\x` starts a hex escape. Measured. A quote ended the string early.
-        `import { merge as ${block} } from ${JSON.stringify(options.runtime ?? "@ramonda/css")};\n` +
+        `import { mergeClassNames as ${block}${picked ? `, pick as ${lookup}` : ""}` +
+        `${shorthandsUsed.size > 0 ? `, shorthands as ${clearing}` : ""}` +
+        `${conditionsUsed.size > 0 ? `, conditionsOf as ${conditions}` : ""}` +
+        `${namesUsed.size > 0 ? `, namesOf as ${naming}` : ""}` +
+        ` } from ${JSON.stringify(options.runtime ?? "@ramonda/css")};\n` +
+        /**
+         * What a class string cannot carry, registered by the module that needs it.
+         *
+         * **The shorthands run always**, because clearing is what a merge DOES: a `padding` written
+         * below a caller's `padding-left` has to remove it, the way CSS's own cascade does.
+         *
+         * **The conditions run only in development**, because the only thing that reads them is the
+         * order warning, which is development-only. A bundler that replaces `process.env.NODE_ENV`
+         * drops the call and the object with it — measured through a real Vite production build for
+         * the warning's own `said` set, which disappears the same way.
+         */
+        `${shorthandsUsed.size > 0 ? `${clearing}(${JSON.stringify(Object.fromEntries(shorthandsUsed))});\n` : ""}` +
+        `${
+          conditionsUsed.size > 0 || namesUsed.size > 0
+            ? `if (process.env.NODE_ENV !== "production") { ${
+                conditionsUsed.size > 0 ? `${conditions}(${JSON.stringify(Object.fromEntries(conditionsUsed))}); ` : ""
+              }${namesUsed.size > 0 ? `${naming}(${JSON.stringify(Object.fromEntries(namesUsed))}); ` : ""}}\n`
+            : ""
+        }` +
         `${[...hoisted].map(([map, id]) => `const ${id} = ${block}(${map});`).join("\n")}\n\n`;
 
   const top = afterDirectives(source);

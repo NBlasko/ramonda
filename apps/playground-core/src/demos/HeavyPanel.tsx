@@ -1,3 +1,4 @@
+import { mergeClassNames } from "@ramonda/css";
 import { Component, state } from "@ramonda/core";
 
 /**
@@ -20,10 +21,12 @@ export default class HeavyPanel extends Component<{ title?: string }> {
     return (
       <div>
         <div
-          className="heavy"
-          css={@@(
-            outline: 2px dashed #7c3aed;
-            outline-offset: 4px;
+          className={mergeClassNames(
+            "heavy",
+            @@(
+              outline: 2px dashed #7c3aed;
+              outline-offset: 4px;
+            ),
           )}
         >
           <p className="label">loaded module</p>

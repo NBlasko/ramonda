@@ -2,7 +2,7 @@
 title: Which declaration wins
 description: Two declarations of one property, and the rule that decides between them — the more specific case wins, whatever order you wrote it in.
 section: Style blocks
-order: 111
+order: 112
 ---
 
 # Which declaration wins
@@ -26,7 +26,7 @@ In this order:
 So this does what you meant, and the order you wrote the two breakpoints in does not matter:
 
 ```tsx
-const card = <div css={@@(
+const card = <div className={@@(
   padding: 8px;
   @media (min-width: 40rem) { padding: 16px; }
   @media (min-width: 64rem) { padding: 24px; }
@@ -118,7 +118,7 @@ rules exist in the sheet and something has to decide between them — which is t
 refine it:
 
 ```tsx
-const card = <div css={@@(
+const card = <div className={@@(
   @media (prefers-color-scheme: dark) { color: white; }
   @media (min-width: 64rem) { color: black; }
 )}>…</div>;
@@ -148,7 +148,7 @@ conditions are two different things set, so both survive the merge and the list 
 ```tsx
 const base = @@( @media (prefers-color-scheme: dark) { color: white; } );
 
-const card = <div css={@@(
+const card = <div className={@@(
   ...{base};
   @media (min-width: 40rem) { color: blue; }
 )}>…</div>;

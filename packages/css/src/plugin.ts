@@ -10,10 +10,11 @@ import {
   AT_RULE_LINKS,
 } from "./compiler/keywords.generated";
 import { type Span, readBlock } from "./compiler/read";
-import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding, checkSite } from "./compiler/rules";
+import { NAMED_BLOCKS, REPLACED_CODES, SPEAKS_OVER_TYPES, type Finding } from "./compiler/rules";
 import { variablesOnlyKinds } from "./codegen";
 import { checkedSource } from "./compiler/source";
 import { fileMayHoldABlock, findBlocks } from "./compiler/scan";
+import { typedFindingsFor } from "./compiler/typed";
 import { type VirtualFile, virtualFile } from "./compiler/virtual";
 import { type Config, configReader, environmentOf } from "./config";
 import { propertiesFor } from "./generate";
@@ -112,8 +113,6 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           version: string;
           file: VirtualFile | undefined;
           css: Finding[];
-          /** What an editor can act on and a build must not fail over. Drawn as suggestions. */
-          hints: Finding[];
           author: ts.SourceFile | undefined;
           /** Where the CSS, the holes and the values are — read once per version, asked on every paint. */
           where: Regions;
@@ -302,7 +301,6 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
           file,
           author,
           css,
-          hints: text === undefined ? [] : siteFindings(text),
           where,
           read: readHere,
         });
@@ -338,20 +336,66 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
       };
 
       /**
-       * What is true of the SITE rather than of its CSS — see `checkSite`.
+       * The two rules that read a style prop's TYPE, which the CLI check also runs.
        *
-       * **An error, at the category the rest of them use.** It was a suggestion, and that was right
-       * while the only thing `checkSite` said was "an editor will not colour this": nothing was
-       * wrong, and failing a file over a grammar nobody can see would have been the editor
-       * promising a page the build would have given anyway.
+       * **The language service has a program, so there was never a reason to make these CI-only.**
+       * A rule a person meets on a push is one they meet after they have stopped thinking about the
+       * code; a squiggle is the same rule while they are still in it.
        *
-       * The build refuses a bare attribute now, so the opposite is true — a yellow squiggle under
-       * something that does not compile is the editor promising a page the build will NOT give.
+       * Asked for ONE file — the one being looked at — rather than for the program. Sound as well
+       * as cheap: a slot's scope is the class or function declaring it, and a spread and the
+       * declaration below it are one block, so neither rule ever reaches past the file it is given.
+       *
+       * The program's copy of an overlaid file is the VIRTUAL text, which is what these read; the
+       * positions come back already mapped to the author's own.
+       *
+       * **Measured at 0.15 ms** for one call on a real 605-line file from this repository, so no
+       * pre-filter was added to guess its way out of work that is not there. A file declaring no
+       * style prop leaves after one walk.
+       *
+       * A reduced server never reaches here: `getSemanticDiagnostics` is refused outright in
+       * `PartialSemantic`, and `Syntactic` has no program — both measured, and asserted in
+       * `plugin.test.ts`, because a rule that fired wrongly in the editor's syntax server would put
+       * a squiggle on every file somebody opens.
        */
-      const hintsFor = (fileName: string): ts.Diagnostic[] => {
-        overlay(fileName, readSnapshot);
-        const cached = cache.get(fileName);
-        return cached === undefined ? [] : ours(cached.hints, cached.author);
+      const typedFor = (fileName: string): ts.Diagnostic[] => {
+        const file = overlay(fileName, readSnapshot);
+        const program = service.getProgram();
+        const source = program?.getSourceFile(fileName);
+        if (program === undefined || source === undefined) return [];
+
+        const found = typedFindingsFor(
+          program.getTypeChecker(),
+          source,
+          file === undefined ? undefined : { virtual: file },
+        );
+        return ours(found, cache.get(fileName)?.author);
+      };
+
+      /**
+       * The compiler's `TS2344` where `allow-list-is-an-interface` already said it, and better.
+       *
+       * **The one place a typed rule stands IN FOR the compiler rather than beside it.** Every other
+       * one answers a question TypeScript cannot ask, so both speaking at one character is two
+       * faults rather than one said twice. Here the compiler reports the very same mistake, as *Type
+       * 'CardStyle' is not assignable to type `{ [nested: …]: CssBlockShape[] }`* — an index
+       * signature the author never wrote, and never the word `interface`.
+       *
+       * Both of this proxy's paths need it, and the FIRST one is the one that matters: a file
+       * declaring a component's props usually holds no block at all, and that path hands the
+       * compiler's diagnostics through untouched.
+       *
+       * By start position, because the rule is reported on the same node the compiler used. `check.ts`
+       * drops the same pair for the build, from the same fact.
+       */
+      const withoutTheInterfaceRepeat = (typed: readonly ts.Diagnostic[], from: ts.Diagnostic[]): ts.Diagnostic[] => {
+        const said = new Set(
+          typed
+            .filter((one) => String(one.messageText).startsWith("[allow-list-is-an-interface]"))
+            .map((one) => one.start),
+        );
+        if (said.size === 0) return from;
+        return from.filter((one) => !(one.code === 2344 && said.has(one.start)));
       };
 
       /**
@@ -885,7 +929,18 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
 
       proxy.getSemanticDiagnostics = (fileName) => {
         const file = overlay(fileName, readSnapshot);
-        if (file === undefined) return service.getSemanticDiagnostics(fileName);
+        /**
+         * **A file with no block still gets the TYPED rules**, because a component may declare a
+         * style prop and hold no block of its own — a wrapper that only hands its prop on is the
+         * ordinary shape. Measured before this line existed: the build reported one and the editor
+         * said nothing, and an editor quieter than the build is the thing this package cannot
+         * afford. `typedFor` leaves after one walk when a file declares no style prop, which is
+         * every file in every unrelated project an editor opens.
+         */
+        if (file === undefined) {
+          const typed = typedFor(fileName);
+          return [...typed, ...withoutTheInterfaceRepeat(typed, service.getSemanticDiagnostics(fileName))];
+        }
 
         /**
          * The CSS rules beside the type errors, and this is where the hole rule earns its place: the
@@ -893,15 +948,19 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
          * under the character, while it is being typed.
          */
         const ours = cssFor(fileName);
+        const typed = typedFor(fileName);
         return [
           ...cannotCompile(fileName),
           ...brokenConfig(fileName),
           ...ours,
-          ...hintsFor(fileName),
-          ...withoutRepeats(
-            ours,
-            mapped(file, service.getSemanticDiagnostics(fileName)),
-            readSnapshot(fileName)?.getText(0, readSnapshot(fileName)?.getLength() ?? 0) ?? "",
+          ...typed,
+          ...withoutTheInterfaceRepeat(
+            typed,
+            withoutRepeats(
+              ours,
+              mapped(file, service.getSemanticDiagnostics(fileName)),
+              readSnapshot(fileName)?.getText(0, readSnapshot(fileName)?.getLength() ?? 0) ?? "",
+            ),
           ),
         ];
       };
@@ -1098,7 +1157,17 @@ export function init(modules: { typescript: typeof ts }): PluginModule {
             ...one,
             highlightSpans: one.highlightSpans.flatMap((span) => {
               const textSpan = back(its, span.textSpan);
-              return textSpan === undefined ? [] : [{ ...span, textSpan }];
+              /**
+               * **The CONTEXT span too, which this was the one place not to map.**
+               *
+               * A highlight carries the name and the statement an editor shows around it.
+               * `elsewhere` and `findReferences` bring both home; here only the first came, and
+               * measured on a file of 103 characters the context came back at 948 — inside the
+               * preamble of the virtual copy. An editor reading that range reads past the end of
+               * the file it is showing.
+               */
+              const contextSpan = span.contextSpan === undefined ? undefined : back(its, span.contextSpan);
+              return textSpan === undefined ? [] : [{ ...span, textSpan, contextSpan }];
             }),
           };
         });
@@ -1555,12 +1624,10 @@ function properties(info: PluginCreateInfo): string | undefined {
  * squiggle.
  */
 function cssFindings(text: string, fileName: string, read: Imported["read"], config: Config): Finding[] {
+  // Site rules — what is true of `className=@@( … )` rather than of the CSS in it — arrive through
+  // here too. The editor used to ask `checkSite` itself, which was a second door onto one rule set
+  // and reported a bare attribute twice once `checkedSource` grew the same call.
   return checkedSource(text, fileName, { read, config, tolerant: true }).findings;
-}
-
-/** What is true of the SITE rather than of the CSS in it — see `checkSite`. */
-function siteFindings(text: string): Finding[] {
-  return findBlocks(text).flatMap((site) => checkSite(text, site));
 }
 
 /**

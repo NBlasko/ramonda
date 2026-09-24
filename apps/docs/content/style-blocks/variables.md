@@ -1,6 +1,6 @@
 ---
 title: Names the stylesheet sees
-description: Variables declared in ramonda.css.ts and read with $, keyframes and font faces as blocks of their own, and why a theme is var() and not a hole.
+description: Variables declared in ramonda.css.ts and read with $, keyframes and font faces as blocks of their own, and why a theme lives on :root.
 section: Style blocks
 order: 110
 ---
@@ -60,20 +60,27 @@ const card = @@(
 );
 ```
 
-**Inside a hole it is ordinary TypeScript**, because that is what a hole is — a piece of your
+**Inside braces it is ordinary TypeScript**, because that is what the braces hold — a piece of your
 program written inside the template. TypeScript resolves the name there the way it resolves every
 other name, so it has to be imported:
 
 ```tsx
 import { $ } from "../css-system";
 
-const card = (dark: boolean) => @@(
-  color: {dark ? $.color.accent : $.color.surface};
+declare const dark: boolean;
+
+const tone = dark ? $.color.accent : $.color.surface;
+const card = @@(
+  ...{dark ? @@( color: $.color.accent; ) : @@( color: $.color.surface; )};
 );
 ```
 
+A `match` arm is CSS, so it takes the bare spelling — `hot => $.color.accent;` needs no import. It is
+the braces that decide, not where in the block you are.
+
 The same goes for `$` anywhere else in the file — a lookup table of values, an argument you pass
-around. The rule is one line: **inside the CSS, no import; inside a `{ }`, the import**.
+around, a `toStyle` call. The rule is one line: **inside the CSS, no import; inside a `{ }`, the
+import**.
 
 Forget it and TypeScript says `Cannot find name '$'` — and then, because a bare `$` is jQuery to
 most of the world, offers to install `@types/jquery`. The name it cannot find is this one.
@@ -210,7 +217,8 @@ property.
 `@@font-face` names nothing — the `font-family` inside it is the handle, and that is the string
 other rules match on, so its block is written for its own sake. The other two name something, and
 `@@property` names a **custom** property, so what it compiles to is `--r-…` with the dashes: that is
-the one name a hole may stand in, which is how the frames in the previous example set it.
+the one name `{ }` may stand in where a property name goes, which is how the frames in the previous
+example set it.
 
 ## A name nothing sets
 
@@ -275,22 +283,19 @@ expecting the pair to follow:
 That is also the form that works for every kind. `light-dark()` is colour only — a length written
 that way is dropped, and the variable keeps its `initial-value`.
 
-### A hole is not a theme
+### A value on the element is not a theme
 
-It is tempting, because a hole and a `var()` are the same thing underneath — a hole compiles to
-`var(--r-<hash>-0)` and the element carries the value. The difference is **who sets it**, and it
-decides the cost.
+A [registered property](/style-blocks/dynamic) set from `style` is the right answer for what varies
+per **instance** — a value this element has and the one beside it does not. A theme is the opposite
+of that, and the difference is **who sets it**.
 
-A hole's value travels in the markup, once per element: on a server-rendered list of 500 rows, one
-themed value is **41 bytes on every one of them**, and doubles the HTML. Through `var()` it costs
-nothing at all, because the value is on `:root` and each element inherits it.
+A value set per element travels in the markup, once per element: on a server-rendered list of 500
+rows, one themed value is **41 bytes on every one of them**, and doubles the HTML. On `:root` it
+costs nothing at all, because each element inherits it.
 
-And a theme switch through a hole is a **render**. A hole's value belongs to the render that
-produced it, so every element carrying it has to render again to change it. A `var()` changes when
-the attribute on `<html>` changes, which is not a render at all.
-
-A hole is for what varies per **instance** — a value this element has and the one beside it does
-not. A theme is the opposite of that.
+And a theme switch done per element is a **render**: every element carrying the value has to render
+again to change it. A `var()` reading `:root` changes when the attribute on `<html>` changes, which
+is not a render at all.
 
 ## `:root` does not work inside a block
 

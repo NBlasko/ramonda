@@ -30,6 +30,9 @@ class NavBar extends Component {
         <Link href="/showcase" className="navlink">
           Showcase
         </Link>
+        <Link href="/css" className="navlink">
+          CSS
+        </Link>
         <Link href="/table" className="navlink">
           Table
         </Link>

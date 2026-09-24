@@ -247,6 +247,69 @@ if (selftest("ignored")) {
   process.exit(1);
 }
 
+/**
+ * **`create-ramonda` BAKES IN the versions of the packages it scaffolds, and nothing links the two.**
+ *
+ * Its `tsup.config.ts` reads each first-party package's version out of the workspace at BUILD time
+ * and writes the ranges into the CLI. They only reach npm when `create-ramonda` is itself published,
+ * and `changeset publish` publishes only what has been bumped — so a release that bumps `core` and
+ * forgets the scaffolder ships `npm create ramonda` still pinning the release before it.
+ *
+ * **It has happened twice.** Once before `0.13.1`, whose changeset says so in its own words, and
+ * again in the release that made a style block a string. The package has no `@ramonda/*` dependency
+ * of its own, so `changesets` has nothing to link it by: `updateInternalDependencies` never reaches
+ * it and neither does `linked`. A rule nobody can see is a rule that gets forgotten, so it is here.
+ *
+ * The list of packages is read from `tsup.config.ts` rather than repeated, because two lists is how
+ * this would go quietly wrong the day somebody adds a package to one of them.
+ */
+function scaffoldedPackages() {
+  const config = readFileSync(join(root, "packages", "create-ramonda", "tsup.config.ts"), "utf8");
+  const list = /const ranges: Record<string, string> = \{\};\s*for \(const folder of \[([\s\S]*?)\]\)/.exec(config);
+  if (list === null) {
+    console.error(`\n[changesets] the folder list in create-ramonda/tsup.config.ts could not be read\n`);
+    process.exit(1);
+  }
+
+  const folders = [...list[1].matchAll(/"([^"]+)"/g)].map((one) => one[1]);
+  // The floor: a regex that stopped matching would leave this list empty and the check below silent.
+  if (folders.length < 5) {
+    console.error(`\n[changesets] only ${folders.length} scaffolded package(s) found — the list moved\n`);
+    process.exit(1);
+  }
+
+  return folders.map((folder) => {
+    const pkg = JSON.parse(readFileSync(join(root, "packages", folder, "package.json"), "utf8"));
+    return pkg.name;
+  });
+}
+
+const released = new Set(plan.releases.filter((release) => release.type !== "none").map((one) => one.name));
+const scaffolded = scaffoldedPackages().filter((name) => released.has(name));
+
+if (selftest("scaffold")) released.delete("create-ramonda");
+
+if (scaffolded.length > 0 && !released.has("create-ramonda")) {
+  console.error(
+    `\n[changesets] ${scaffolded.join(", ")} ${scaffolded.length === 1 ? "is" : "are"} being released and ` +
+      `\`create-ramonda\` is not.\n\n` +
+      `  The scaffolder writes their version ranges into itself when it is BUILT, so they only reach\n` +
+      `  npm when it is published — and \`changeset publish\` publishes only what was bumped. Without a\n` +
+      `  changeset for it, \`npm create ramonda\` keeps pinning the release before this one.\n\n` +
+      `  Add \`.changeset/…\`: \`"create-ramonda": patch\`, saying the pins now match what ships.\n`,
+  );
+  if (selftest("scaffold")) {
+    console.log("[changesets] SELFTEST scaffold: the missing scaffolder bump was reported, as it must be");
+    process.exit(0);
+  }
+  process.exit(1);
+}
+
+if (selftest("scaffold")) {
+  console.error("[changesets] SELFTEST scaffold: the missing scaffolder bump was NOT reported — this check is asleep");
+  process.exit(1);
+}
+
 const bumps = plan.releases.filter((release) => release.type !== "none").map((r) => `${r.name}@${r.newVersion}`);
 
 console.log(

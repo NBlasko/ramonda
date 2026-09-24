@@ -2,7 +2,7 @@
 title: Tooling, and what it does not do
 description: Why your formatter and linter cannot read a file holding a block, what to run instead, and using a block in another JSX library.
 section: Style blocks
-order: 115
+order: 117
 ---
 
 # Tooling, and what it does not do
@@ -48,33 +48,38 @@ changed.
 
 ## In another JSX library
 
-The compiled value is a value, and this framework's `css` prop is only one way to apply it. One
-exported function turns it into what any library already understands:
+The compiled value is a **string** — the classes, space separated — so it goes on `className`, here
+and anywhere else:
 
 ```tsx
-import { toStyleObject } from "@ramonda/css";
-
 const panel = @@(
   display: flex;
   gap: 8px;
 );
 
-const row = <div {...toStyleObject(panel)}>a row</div>;
+const row = <div className={panel}>a row</div>;
 ```
 
-`toStyleObject` returns `{ className, style }` — the generated class, and one entry per hole. There
-is no wrapper component to write and nothing to copy.
+There is no adapter to import, no wrapper component to write and nothing to copy. `toStyleObject`
+used to be that adapter, turning a block into `{ className, style }` for the custom properties a
+`{expr}` hole put on the element; a runtime value in a declaration is refused now, so a block sets
+nothing of its own and there is nothing left for a `style` to carry.
 
-**It does two things a spread cannot do for itself**, and both are why it exists rather than
-`{ className: value.className, style: … }` written by hand. A hole whose value is missing is left
-out, rather than written as the text `undefined`, which is a value CSS keeps. And a value holding a
-`;` is refused, because a spread ends up in a `style` attribute and a server-rendered page is parsed
-back from HTML — measured, such a value came out of that round trip as real, applied declarations.
+**A block beside a class of your own goes through `mergeClassNames`:**
 
-**What you give up by spreading**, and it is why this framework has a prop instead: `className` and
-`style` become ordinary props, so the block's class merges with whatever else writes `className` by
-whoever wrote it last, and its custom properties collide with an author's own `style`. The `css` prop
-is one writer of one attribute, which is a race nobody has to think about.
+```tsx
+import { mergeClassNames } from "@ramonda/css";
+
+const row = <div className={mergeClassNames("lead", @@( display: flex; ))}>a row</div>;
+```
+
+Not a template literal. `` `lead ${@@( … )}` `` is text to the compiler — a block in one is found by
+nothing at all — so it is **reported** rather than compiled to silence.
+
+**A value you set yourself still goes through `toStyle`**, and that is where the one rule lives: a
+value holding a `;` is refused rather than written, because a `style` attribute is parsed back out of
+HTML on a server-rendered page and, measured, such a value came out of the round trip as real,
+applied declarations.
 
 ## What it does not do
 
@@ -90,13 +95,14 @@ declare the tokens for you and check that you read them by the right name, which
 from owning them — see [names the stylesheet sees](/style-blocks/variables#theming).
 
 **It does not decide anything from the order of your classes.** Nothing can — the order of names in a
-`class` attribute has no meaning in CSS, which is exactly why composition merges maps rather than
-concatenating class names. What decides is where you wrote something, and that is the whole point.
+`class` attribute has no meaning in CSS, which is exactly why composition keeps ONE class per thing
+set rather than concatenating class names. What decides is where you wrote something, and that is the
+whole point.
 
 ## Read next
 
 - [Styling](/styling) — `className`, `style`, and where stylesheets come from.
 - [Performance](/performance) — why a value built in the markup costs more than it looks.
 - [JSX](/concepts/jsx) — the rest of the attribute surface.
-- [Diagnostics](/reference/diagnostics#rmd062-a-style-block-was-applied-with-no-values-for-its-holes)
+- [Diagnostics](/reference/diagnostics)
   — what the runtime says when a value reaches it that no transform produced.

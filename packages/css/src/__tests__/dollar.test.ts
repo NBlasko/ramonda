@@ -20,7 +20,7 @@ import { virtualFile } from "../compiler/virtual";
 
 /** The parts of the first declaration's value, for a block written as one line. */
 function parts(css: string): readonly ValuePart[] {
-  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const source = `<div className={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   const { block } = readBlock(source, site.open, "Card.tsx", { tolerant: true });
   const [first] = block.items;
@@ -67,7 +67,7 @@ describe("reading `$` in a value", () => {
   });
 
   test("the span is the author's, so a squiggle lands on the path", () => {
-    const source = `<div css={@@(\ncolor: $.color.primary.main;\n)}>x</div>`;
+    const source = `<div className={@@(\ncolor: $.color.primary.main;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const { block } = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     const [variable] = (block.items[0] as Declaration).value.filter((one) => one.kind === "variable");
@@ -79,14 +79,14 @@ describe("reading `$` in a value", () => {
 describe("what `$` compiles to", () => {
   /** Every emitted rule's body, joined — the stylesheet this block produced. */
   const css = (block: string) => {
-    const result = transform(`const a = <div css={@@( ${block} )}>x</div>;\n`, { filename: "Card.tsx" });
+    const result = transform(`const a = <div className={@@( ${block} )}>x</div>;\n`, { filename: "Card.tsx" });
     if (result === undefined) throw new Error("the transform found no block");
     return result.blocks.map((one) => one.css).join("\n");
   };
 
   /** The class names, which is what "two blocks share a class" is actually asking about. */
   const classes = (block: string) => {
-    const result = transform(`const a = <div css={@@( ${block} )}>x</div>;\n`, { filename: "Card.tsx" });
+    const result = transform(`const a = <div className={@@( ${block} )}>x</div>;\n`, { filename: "Card.tsx" });
     return (result?.blocks ?? []).map((one) => one.className);
   };
 
@@ -118,7 +118,7 @@ describe("what `$` compiles to", () => {
   });
 
   test("it is NOT a hole — nothing lands on the element", () => {
-    const result = transform(`const a = <div css={@@( color: $.color.primary.main; )}>x</div>;\n`, {
+    const result = transform(`const a = <div className={@@( color: $.color.primary.main; )}>x</div>;\n`, {
       filename: "Card.tsx",
     });
 
@@ -135,7 +135,7 @@ describe("what `$` compiles to", () => {
 
 describe("what the virtual file makes of it", () => {
   const code = (block: string) => {
-    const built = virtualFile(`const a = <div css={@@( ${block} )}>x</div>;\n`, { properties: "./properties" });
+    const built = virtualFile(`const a = <div className={@@( ${block} )}>x</div>;\n`, { properties: "./properties" });
     if (built === undefined) throw new Error("the virtual file found no block");
     return built.code;
   };

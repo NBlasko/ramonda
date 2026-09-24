@@ -12,6 +12,36 @@ export interface Variables {
   readonly set: readonly string[];
   /** Every `var(--name)` this block reads, with where the name was written. */
   readonly read: readonly VariableRead[];
+  /**
+   * Every REGISTERED name this block reads through `var()` — a reference to a `@@property` site.
+   *
+   * Kept apart from {@link Variables.read} because the question is the other one. A read in `read`
+   * asks *does this name exist*, and a registered one always does: it carries an initial value, so
+   * it always resolves. What is worth asking about it is whether anything ever SETS it — a property
+   * read everywhere and set nowhere renders its initial value on every element, silently, and that
+   * is the shape a forgotten setter has.
+   *
+   * Names only. The position a finding wants is the `@@property` site's, which is in another file
+   * as often as not, and this is the half that says the name was read at all.
+   */
+  readonly readsRegistered?: readonly string[];
+}
+
+/**
+ * One `@@property( … )` site: the name it registers, and where the author wrote it.
+ *
+ * The BINDING is kept beside the generated name because the generated name is not what anybody
+ * wrote — a message naming `--r-2bj4gSXts` would send a person looking for a string that is in no
+ * file. The binding is the word in their editor.
+ */
+export interface RegisteredSite {
+  /** The generated name, which is what a block reads and what a setter has to set. */
+  readonly name: string;
+  /** The binding the author gave it, for the message. */
+  readonly binding: string;
+  /** The author's offset of the site's `@`, so a finding lands on the declaration. */
+  readonly at: number;
+  readonly length: number;
 }
 
 export interface VariableRead {
@@ -37,6 +67,7 @@ export interface VariableRead {
 export function variablesIn(block: Block): Variables {
   const set: string[] = [];
   const read: VariableRead[] = [];
+  const readsRegistered: string[] = [];
 
   const walk = (items: readonly BlockItem[]): void => {
     for (const item of items) {
@@ -46,12 +77,41 @@ export function variablesIn(block: Block): Variables {
       }
       if (item.property.startsWith("--")) set.push(item.property);
       readsIn(item.value, read);
+      registeredReadsIn(item.value, readsRegistered);
     }
   };
   walk(block.items);
 
-  return { set, read };
+  return { set, read, readsRegistered };
 }
+
+/**
+ * Every `var()` whose name is a RESOLVED reference — `var({angle})`, once `{angle}` is the name.
+ *
+ * A resolved reference arrives as its own part holding nothing but the generated name — see
+ * `readBlock`, which builds it that way precisely so no rule has to find a name inside text. So the
+ * question is only what stands immediately before it, and `var(` is the one answer that makes this
+ * a read rather than a mention.
+ *
+ * **A bare `{angle}` in a value is NOT counted.** Writing the name where a value goes is not reading
+ * the property, it is writing its name out as text, and CSS does nothing with that. Counting it
+ * would turn one fault into evidence against another.
+ */
+function registeredReadsIn(parts: readonly ValuePart[], into: string[]): void {
+  for (let index = 1; index < parts.length; index++) {
+    const part = parts[index];
+    if (part.kind !== "text" || part.resolved !== true) continue;
+
+    const before = parts[index - 1];
+    if (before.kind !== "text" || before.resolved === true) continue;
+    if (!OPENS_VAR.test(before.text)) continue;
+
+    into.push(part.text);
+  }
+}
+
+/** `var(` at the very end of the text before the name, with CSS's own whitespace allowed inside. */
+const OPENS_VAR = /(?:^|[^\w-])var\s*\(\s*$/i;
 
 /**
  * Every `var(--name)` in one value, with the name's own position and whether it has a fallback.

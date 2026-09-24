@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
 import { BREADTH_LAYERS, LAYER_ORDER, layerPathFor } from "../compiler/flatten";
+import { forget, mergeClassNames, shorthands } from "../merge";
 
 /**
  * The layer a rule lands in, from the same function the sheet uses.
@@ -59,6 +60,87 @@ describe("dedupe", () => {
   });
 });
 
+/**
+ * THE NAME IN THE MARKUP AND THE NAME IN THE SELECTOR ARE ONE NAME.
+ *
+ * A class attribute takes anything but whitespace, so `r-c-#fff` goes into the markup as it is. A
+ * selector does not: `#` starts an id, `.` starts another class, `(` opens a function — so each
+ * takes a `\` in front of it. **Get that wrong in either direction and the rule matches nothing the
+ * page carries**, which renders unstyled with nothing to blame.
+ *
+ * It matters more since a key joins its context to its property with a `.`: every contexted class
+ * now holds one, where before the `.` only turned up in a value or a class selector. Asserted by
+ * UNESCAPING what the sheet emitted and comparing it to the name the markup would carry, so the two
+ * cannot drift apart without a test saying so.
+ */
+describe("the escaped selector and the markup's own name", () => {
+  /** A `\` before any character is CSS's own escape, so taking them out gives the name back. */
+  const unescaped = (selector: string) => selector.replace(/\\(.)/g, "$1");
+
+  test.each([
+    ["a context joined with a `.`", "&:hover { color: red; }"],
+    ["a descendant, which holds a `.` of its own", "& .title { color: red; }"],
+    ["a hash in the value", "color: #fff;"],
+    ["a call in the value", "color: var(--brand);"],
+    ["a pseudo-element", "&::after { content: none; }"],
+  ])("%s survives the round trip", (_what, css) => {
+    const source = `const a = @@(\n  ${css}\n);`;
+    const out = transform(source, { filename: "C.tsx" });
+    const [block] = out?.blocks ?? [];
+    const sheet = new Sheet();
+    sheet.add("C.tsx", out?.blocks ?? []);
+
+    const [, selector] = /\n\s*(\.[^\s{]+)/.exec(sheet.css()) ?? [];
+    expect(selector, "the sheet emitted a class selector").toBeDefined();
+    // The `.` that makes it a selector, then the name the markup carries, then whatever the context
+    // added — a pseudo-class, a descendant. Unescaped, the front of it IS the class attribute's text.
+    expect(unescaped(selector).startsWith(`.${block.className}`)).toBe(true);
+  });
+
+  /** The control: a name that needs no escape comes back identical, so the unescape is not a no-op. */
+  test("and a name needing no escape is emitted as it is", () => {
+    const out = transform("const a = @@(\n  display: flex;\n);", { filename: "C.tsx" });
+    const sheet = new Sheet();
+    sheet.add("C.tsx", out?.blocks ?? []);
+
+    expect(sheet.css()).toContain(`.${out?.blocks[0].className} `);
+  });
+});
+
+/**
+ * TWO INDEPENDENT BUILDS MUST AGREE ON A NAME, because a server build and a client build never
+ * speak: each hashes its own copy of the source and both write the result into markup that has to
+ * match. A name that depended on anything but the normalised text would be a hydration mismatch on a
+ * page that renders correctly in isolation.
+ */
+describe("a name is a function of the source and nothing else", () => {
+  const SOURCE = "const a = @@(\n  @media (min-width: 40rem) { padding: 8px; }\n  &:hover { color: red; }\n);";
+
+  test("the same source twice gives the same names", () => {
+    const once = transform(SOURCE, { filename: "C.tsx" })?.blocks.map((one) => one.className);
+    const again = transform(SOURCE, { filename: "C.tsx" })?.blocks.map((one) => one.className);
+
+    expect(again).toEqual(once);
+  });
+
+  test("and the FILENAME is not part of it, which is what a server and a client differ in", () => {
+    const here = transform(SOURCE, { filename: "src/Card.tsx" })?.blocks.map((one) => one.className);
+    const there = transform(SOURCE, { filename: "/other/place/Card.tsx" })?.blocks.map((one) => one.className);
+
+    expect(there).toEqual(here);
+  });
+
+  /** Including the hashed half of a key, which is the part this change added. */
+  test("a hashed context is a function of its own text too", () => {
+    const [wide] =
+      transform("const a = @@( @media (min-width: 40rem) { gap: 8px; } );", { filename: "A.tsx" })?.blocks ?? [];
+    const [same] =
+      transform("const b = @@( @media (min-width: 40rem) { gap: 8px; } );", { filename: "B.tsx" })?.blocks ?? [];
+
+    expect(same.className).toBe(wide.className);
+  });
+});
+
 describe("the collision assertion, which is the actual guarantee", () => {
   /**
    * A longer hash makes a collision unlikely, not impossible — probability is not a promise. This is
@@ -83,6 +165,63 @@ describe("the collision assertion, which is the actual guarantee", () => {
       expect((error as CssBlockError).message).toContain("Card.tsx");
       expect((error as CssBlockError).message).toContain("Panel.tsx");
     }
+  });
+
+  /**
+   * THE KEY, which is the collision that would not fail a build without this.
+   *
+   * A class carries what its declaration SETS — see `keyToken` — and a merge keeps one class per
+   * key. Two written keys cannot collide; the two hashed forms can, at one in 916 million. **And
+   * the failure is silent**: two rules setting different things would look to a merge like one
+   * thing set twice, and the earlier would be dropped from a page that renders correctly otherwise.
+   *
+   * Built by hand, because a real collision cannot be constructed — the same shape the class
+   * assertion above is tested in.
+   */
+  const setting = (className: string, property: string, selector = "", conditions: string[] = []): EmittedBlock => ({
+    className,
+    css: `${property}:red;`,
+    properties: [],
+    property,
+    selector,
+    conditions,
+  });
+
+  test("two declarations that set different things under one key fail the build", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [setting("r-0aaaaa.c-red", "color")]);
+
+    expect(() => sheet.add("b.tsx", [setting("r-0aaaaa.c-blue", "color", "&:hover")])).toThrow(CssBlockError);
+  });
+
+  test("and the refusal names both texts and both files", () => {
+    const sheet = new Sheet();
+    sheet.add("Card.tsx", [setting("r-0aaaaa.c-red", "color")]);
+
+    try {
+      sheet.add("Panel.tsx", [setting("r-0aaaaa.c-blue", "color", "&:hover")]);
+      expect.unreachable("the sheet should have refused");
+    } catch (error) {
+      const { message } = error as CssBlockError;
+      expect(message).toContain("Card.tsx");
+      expect(message).toContain("&:hover|color");
+      expect(message).toContain("0aaaaa.c");
+    }
+  });
+
+  test("while the SAME thing set twice under one key is what a key is for", () => {
+    const sheet = new Sheet();
+    sheet.add("a.tsx", [setting("r-c-red", "color")]);
+
+    expect(() => sheet.add("b.tsx", [setting("r-c-blue", "color")])).not.toThrow();
+  });
+
+  /** A named site sets nothing on an element, so it has no key and is never asked. */
+  test("and a named site is not asked about one", () => {
+    const sheet = new Sheet();
+    const face: EmittedBlock = { className: "r-face", css: "src:url(a);", properties: [], at: "font-face" };
+
+    expect(() => sheet.add("a.tsx", [face, face])).not.toThrow();
   });
 });
 
@@ -208,6 +347,48 @@ describe("the layers", () => {
     // Every breadth an unconditional rule can have, and one for everything conditional.
     expect(declared.match(/ramonda\.u/g)).toHaveLength(BREADTH_LAYERS.length);
     expect(declared).toContain("ramonda.c;");
+  });
+
+  /**
+   * **A longhand's layer comes after its shorthand's, which is what decides between two classes an
+   * element really carries.**
+   *
+   * The merge clears in one direction only: a `padding` written after a `padding-left` takes it
+   * away, and a `padding-left` written after a `padding` does NOT — measured, the element keeps
+   * `r-p-8px r-pl-40px`. Both selectors are one class, so specificity is a tie at (0,1,0) and the
+   * order of names in a `class` attribute decides nothing. The LAYER is the whole answer.
+   *
+   * Nothing asserted it. The layers are asserted to exist, to be declared whole, and to separate a
+   * conditional rule from an unconditional one — but no test compared two breadths, which is the
+   * property every reuse in this package rests on.
+   *
+   * Asked of the index rather than the name, so this is about the ordering rather than about the
+   * generated data — and of three families, because `border-left-color` under `border-left` under
+   * `border` is where a single comparison would not have been enough.
+   */
+  test.each([
+    ["padding", "padding-left"],
+    ["margin", "margin-inline"],
+    ["margin-inline", "margin-left"],
+    ["border", "border-left"],
+    ["border-left", "border-left-color"],
+  ])("`%s` is in an earlier layer than `%s`", (broad, narrow) => {
+    const at = (property: string) => BREADTH_LAYERS.indexOf(layerPathFor({ property })[0].slice(1));
+
+    expect(at(broad)).toBeLessThan(at(narrow));
+  });
+
+  /**
+   * And the pair really does land on one element, or the ordering above would be a claim about
+   * something that never happens.
+   */
+  test("and both classes really are on the element, so the layer has something to decide", () => {
+    forget();
+    shorthands({ p: ["pl", "pr", "pt", "pb"] });
+
+    expect(mergeClassNames("r-p-8px", "r-pl-40px").split(" ").sort()).toEqual(["r-p-8px", "r-pl-40px"]);
+    // The other direction is the merge's job, not the layer's: the shorthand clears what it covers.
+    expect(mergeClassNames("r-pl-40px", "r-p-8px")).toBe("r-p-8px");
   });
 
   /**
@@ -726,7 +907,7 @@ describe("the order one file's stylesheet comes out in", () => {
   const CONDITIONS = (first: "height" | "hover") => {
     const h = `  @media (prefers-color-scheme: dark) { color: blue; }\n`;
     const p = `  @media (prefers-color-scheme: light) { color: green; }\n`;
-    return `const a = <div css={@@(\n${first === "height" ? h + p : p + h})}>x</div>;\n`;
+    return `const a = <div className={@@(\n${first === "height" ? h + p : p + h})}>x</div>;\n`;
   };
 
   const blocksOf = (code: string, file: string) => transform(code, { filename: file })?.blocks ?? [];
@@ -783,7 +964,7 @@ describe("the order one file's stylesheet comes out in", () => {
    */
   test("a file whose own order contradicts the rank does not compile at all", () => {
     const source =
-      `const a = <div css={@@(\n` +
+      `const a = <div className={@@(\n` +
       `  @media (min-width: 40rem) { color: blue; }\n` +
       `  color: red;\n` +
       `)}>x</div>;\n`;
@@ -794,7 +975,7 @@ describe("the order one file's stylesheet comes out in", () => {
   /** And written the way it compiles, the two agree — which is the same claim from the other side. */
   test("and written the way it compiles, the emitted order is both at once", () => {
     const source =
-      `const a = <div css={@@(\n` +
+      `const a = <div className={@@(\n` +
       `  color: red;\n` +
       `  @media (min-width: 40rem) { color: blue; }\n` +
       `)}>x</div>;\n`;
@@ -824,7 +1005,7 @@ describe("the order one file's stylesheet comes out in", () => {
  */
 describe("where the class goes in a nested selector", () => {
   const ruleFor = (css: string) => {
-    const source = `const a = <div css={@@(\n${css}\n)}>x</div>;\n`;
+    const source = `const a = <div className={@@(\n${css}\n)}>x</div>;\n`;
     const sheet = new Sheet();
     const blocks = transform(source, { filename: "/a.tsx" })?.blocks ?? [];
     sheet.add("/a.tsx", blocks);

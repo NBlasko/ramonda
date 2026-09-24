@@ -83,7 +83,7 @@ export class Card extends Component {
 }
 `;
 
-const BLOCK = `css=@@( display: flex; )`;
+const BLOCK = `className={@@( display: flex; )}`;
 const FAULTS = `onclick={this.go} role="button" tabindex={5}`;
 
 /** Which rules found something, so a test names behaviour rather than counting. */
@@ -114,17 +114,17 @@ describe("a block among the attributes", () => {
     expect(found(project(card(FAULTS)))).toEqual(EXPECTED);
   });
 
-  test("a block with a hole in it is read too, expression and all", () => {
+  test("a block holding an EXPRESSION is read too, the expression and all", () => {
     const app = `import { Component } from "@ramonda/core";
 
 export class Card extends Component {
-  accent = "#10b981";
+  tone: "loud" | "quiet" = "quiet";
   go() {}
   render() {
     return (
       <div>
         <img src="a.png" />
-        <div css=@@( border-left: 4px solid {this.accent}; ) ${FAULTS}>x</div>
+        <div className={@@( color: match({this.tone}) { loud => red; _ => blue; }; )} ${FAULTS}>x</div>
       </div>
     );
   }
@@ -141,9 +141,9 @@ export class Card extends Component {
   go() {}
   render() {
     return (
-      <div css=@@( display: grid; )>
+      <div className={@@( display: grid; )}>
         <img src="a.png" />
-        <span css=@@( color: red; &:hover { color: blue; } ) ${FAULTS}>x</span>
+        <span className={@@( color: red; &:hover { color: blue; } )} ${FAULTS}>x</span>
       </div>
     );
   }
@@ -170,7 +170,7 @@ export class Card extends Component {
     return (
       <div>
         <img src="a.png" />
-        <div css=@@( disp ) ${FAULTS}>x</div>
+        <div className={@@( disp )} ${FAULTS}>x</div>
       </div>
     );
   }
@@ -178,6 +178,29 @@ export class Card extends Component {
 `;
 
     expect(found(project(app))).toEqual(["half-built-keyboard-path", "positive-tabindex", "unnamed-image"]);
+  });
+});
+
+/**
+ * A spelling the CSS COMPILER refuses, which this checker must still see past.
+ *
+ * `css=@@( … )` — a bare JSX attribute — is `block-as-a-jsx-attribute`, and a block was written that
+ * way for a long time. Two different jobs: `ramonda-css` fails the build on it, and this reports
+ * what it can see in the file regardless, because a file somebody is mid-edit is exactly when a
+ * checker is worth having.
+ *
+ * **The fixtures above used to be written this way**, which was the fault: a block in a spelling
+ * nothing compiles is not the shape any real file has, so the pair could not have told a parser that
+ * went blind on the one people write. They are `className={@@( … )}` now, and this is the one that
+ * keeps the old shape on purpose.
+ */
+describe("a spelling the CSS compiler refuses", () => {
+  test("is still seen past, because a file mid-edit is when this matters", () => {
+    expect(found(project(card(`css=@@( display: flex; ) ${FAULTS}`)))).toEqual([
+      "half-built-keyboard-path",
+      "positive-tabindex",
+      "unnamed-image",
+    ]);
   });
 });
 

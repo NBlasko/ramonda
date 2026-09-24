@@ -1,8 +1,6 @@
 import type { EnhancedHTMLNode } from "../types/vdom";
 import { IS_SVG, KEY_SYM, STYLE_SYM, REF_SYM, BOOLEAN_ATTRIBUTES, keptInAProperty } from "../helpers/constants";
 import { checkBooleanAttribute } from "../debug/booleanAttribute";
-import { applyCssBlock, classNameWithBlock, isCompiledBlock } from "./cssBlock";
-import type { CssBlockValue } from "../types/cssBlock";
 type NodeAttributes = Record<string, any>;
 
 /**
@@ -23,9 +21,6 @@ export function applyChangesOnAttributes(enhancedNode: ChildNode, rawNextAttribu
   const nextAttributes = formatAttributes(rawNextAttributes);
   removePreviousFromenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes);
   attachNextOnenhancedNode(enhancedNode as EnhancedHTMLNode, previousAttributes, nextAttributes, onServer);
-  // After the loop, and in one call whether the block is new, changed or gone: `css` is not a DOM
-  // attribute, so a block that DISAPPEARED is in neither bag. Same position as `ref` below.
-  applyCssBlock(enhancedNode as EnhancedHTMLNode, nextAttributes.css);
   releaseDroppedRef(enhancedNode as EnhancedHTMLNode, nextAttributes.ref);
 }
 
@@ -111,22 +106,6 @@ export function formatAttributes(attributes: NodeAttributes): Record<string, any
   const style = result.style;
   if (style && typeof style !== "string") {
     result = { ...result, style: objectStyleToString(style) };
-  }
-
-  /**
-   * A compiled block's class becomes part of `className` here, rather than being written by the
-   * applier alongside the custom properties.
-   *
-   * Two writers of one attribute is a race decided by object key order, and after this there is only
-   * one: the block's class is an ordinary class from here on, so it diffs, hydrates and goes through
-   * `setAttribute("class")` on an SVG element with no second rule for any of it.
-   */
-  const css = result.css as CssBlockValue | undefined | null;
-  // The same question the applier asks, and it has to be the same: a value that is not a block is
-  // ignored WHOLE, class included, which is what `RMD064` says happens. The applier is where the
-  // report is raised, because two for one element would read as two faults.
-  if (css !== undefined && css !== null && isCompiledBlock(css)) {
-    result = { ...result, className: classNameWithBlock(result.className, css) };
   }
 
   return result;
@@ -258,10 +237,6 @@ function attachNextOnenhancedNode(
  * how a vnode carries attributes.
  */
 function setNextOnenhancedNode(enhancedNode: EnhancedHTMLNode, name: string, value: any, onServer: boolean) {
-  // Applied after the whole loop instead, by `applyCssBlock` — and never written as an attribute of
-  // its own, which is what `css="[object Object]"` would be.
-  if (name === "css") return;
-
   // Here rather than at vnode creation, because this is where the value is FINAL — anything that
   // was going to normalise it already has.
   if (__DEV__) checkBooleanAttribute(enhancedNode.nodeName, name, value);

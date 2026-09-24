@@ -65,6 +65,36 @@ describe("RMD020 — values built inside render()", () => {
     expect(reported()).toContain("the source is the same");
   });
 
+  /**
+   * **A prop named `css` is a prop, and it was the one name this check could not see.**
+   *
+   * The exemption was written when the framework had a `css` prop of its own: a block was a MAP, the
+   * value was generated per element and applied and dropped, so a fresh identity for it meant
+   * nothing to anybody. None of that is true now. A block is a string — not a fresh object at all —
+   * and `css` is what [the reader page](/style-blocks/prop) calls a COMPONENT's own prop for the
+   * styles it accepts. So the one name most likely to carry a block was the one name never compared.
+   *
+   * Measured before the exemption went, with the identical value under two names: `sx` reported
+   * `RMD020` and `css` was silent.
+   */
+  test("a fresh object on a prop named `css` is reported like any other", async () => {
+    class Chip extends Component<{ css?: unknown }> {
+      render() {
+        return <span>x</span>;
+      }
+    }
+    class Panel extends Component {
+      render() {
+        return <Chip css={{ a: 1 }} />;
+      }
+    }
+
+    await getDOM<Panel>(<Panel />);
+
+    expect(reported()).toContain("RMD020");
+    expect(reported()).toContain("css");
+  });
+
   test("a bound method is not reported", async () => {
     class Panel extends Component {
       @state count = 0;

@@ -100,7 +100,7 @@ const DECIDED = {
   css: {
     keeps: false,
     expect: false,
-    why: "The entry is the COMPILED value and nothing else — `block`, `merge`, `compose`, `toStyleObject` and the types. It imports nothing at all, framework included, by the rule the package is built on, so there is nothing at module scope for a consumer to observe. Everything that runs — the parser, the bundler plugins, the language-service plugin, the CLI — is behind a subpath a browser never loads.",
+    why: "The entry is the COMPILED value and nothing else — `merge`, `pick`, the two registrations an emitted module makes, `toStyle`, `read` and the types. It imports nothing at all, framework included, by the rule the package is built on, so there is nothing at module scope for a consumer to observe. Everything that runs — the parser, the bundler plugins, the language-service plugin, the CLI — is behind a subpath a browser never loads.",
   },
   server: {
     keeps: false,

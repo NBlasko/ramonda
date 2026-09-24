@@ -26,7 +26,7 @@ const declared: Config = {
 };
 
 function check(css: string, config: Config | undefined): Finding[] {
-  const source = `<div css={@@(\n${css}\n)}>x</div>`;
+  const source = `<div className={@@(\n${css}\n)}>x</div>`;
   const [site] = findBlocks(source);
   const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
   return checkBlock(read.block, { config });
@@ -74,7 +74,7 @@ describe("a `$` path the project did not declare", () => {
   });
 
   test("the finding lands on the path, not on the declaration", () => {
-    const source = `<div css={@@(\ncolor: $.color.primary.mian;\n)}>x</div>`;
+    const source = `<div className={@@(\ncolor: $.color.primary.mian;\n)}>x</div>`;
     const [site] = findBlocks(source);
     const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
     const [found] = checkBlock(read.block, { config: declared });

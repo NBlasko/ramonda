@@ -86,7 +86,18 @@ function value(parts: readonly ValuePart[]): string {
     // A variable is identity by its PATH. Resolving it first would be the same answer — one path is
     // one custom property — and would make this need the project's declarations, which it must not.
     else if (part.kind === "variable") raw += nameFor(part.path);
-    else raw += `${HOLE}${part.index}${HOLE}`;
+    /**
+     * A match is its SUBJECT and its arms, written out so two blocks that choose the same way from
+     * the same expression hash the same — and two that write the arms in a different order do not.
+     *
+     * The order is kept rather than sorted, because it is the order the arms are tried in and a
+     * `_` written above a key answers for it. Two spellings that behave differently must not share
+     * a class.
+     */ else if (part.kind === "match") {
+      raw += `${HOLE}${part.hole}${HOLE}?{`;
+      for (const arm of part.arms) raw += `${arm.key}=>${value(arm.value)};`;
+      raw += "}";
+    } else raw += `${HOLE}${part.index}${HOLE}`;
   }
   return collapse(raw);
 }

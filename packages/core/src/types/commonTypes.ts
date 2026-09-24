@@ -1,5 +1,4 @@
 import type { RefTarget } from "../base/Ref";
-import type { CssBlockValue } from "./cssBlock";
 import type { Runtime } from "../core/runtime";
 
 export interface AnchorClickEvent extends Event {
@@ -274,13 +273,20 @@ export type RamondaArgs<T extends BaseElements> = Partial<
       [val: Lowercase<string>]: any;
       style: string | Record<string, string | undefined>;
       /**
-       * A compiled style block — see {@link CssBlockValue}.
+       * ~~A compiled style block.~~ **Gone, and the message IS the type.**
        *
-       * **Declared, not left to the index signature.** `[val: Lowercase<string>]: any` above claims
-       * every lowercase name, so `css` would be `any` and nothing about the value would be checked
-       * — a typo in a hand-written one, or a value from somewhere else entirely, would pass.
+       * A block compiles to the classes it came to, so it is a string and `className` takes one —
+       * there is nothing a second prop can do that the first cannot. It used to be an object
+       * carrying custom property names and this render's values for them, which `className` could
+       * not have held.
+       *
+       * **Declared rather than deleted, because deleting it would be SILENT.**
+       * `[val: Lowercase<string>]: any` above claims every lowercase name, so a removed `css` would
+       * be `any`: the block would compile, the attribute would be written onto the element as the
+       * literal text of a class string, and nothing would say so. The sentence is what a reader gets
+       * instead, printed by TypeScript as the expected type.
        */
-      css: CssBlockValue;
+      css: "the `css` prop is gone — a style block is a string now, so write `className={@@( … )}`";
       key: string | number;
       ref: RefTarget<T>;
     }
@@ -399,8 +405,8 @@ export type SVGArgs<T extends SVGElement> = Partial<
   SVGCamelCaseAttributes & {
     [attribute: Lowercase<string>]: unknown;
     style: string | Record<string, string | undefined>;
-    /** The same block an HTML element takes — the class is written as `class`, which SVG shares. */
-    css: CssBlockValue;
+    /** Gone, the same way and for the same reason as on an HTML element — see `RamondaArgs`. */
+    css: "the `css` prop is gone — a style block is a string now, so write `className={@@( … )}`";
     key: string | number;
     ref: RefTarget<T>;
   } & Omit<DomProperties<T>, keyof SVGCamelCaseAttributes | Lowercase<string>> &

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { flatten } from "../compiler/flatten";
 import { PROPERTIES } from "../compiler/keywords.generated";
-import { NAME_BUDGET, classNameFor, nameFor } from "../compiler/names";
+import { keyIn } from "../key";
+import { NAME_BUDGET, keyTextOf, nameFor } from "../compiler/names";
 import { readBlock } from "../compiler/read";
 import { findBlocks } from "../compiler/scan";
 import { transform } from "../compiler/transform";
@@ -30,7 +31,10 @@ const declarationsOf = (css: string) => {
 };
 
 const name = (css: string) => nameFor(declarationsOf(css)[0]);
-const hashed = (one: string) => /^r-[0-9a-zA-Z]{9}$/.test(one);
+/** The KEY a name carries — everything between `r-` and the first `-` after it. See `keyToken`. */
+const key = (one: string) => keyIn(one);
+/** Whether the VALUE fell to the hash, which is the only half that can now. */
+const hashedValue = (one: string) => /^[0-9a-zA-Z]{9}$/.test(one.slice(one.indexOf("-", 2) + 1));
 
 describe("a name a person can read", () => {
   test("an abbreviated property is short", () => {
@@ -39,8 +43,15 @@ describe("a name a person can read", () => {
     expect(name("align-items: center;")).toBe("r-items-center");
   });
 
-  test("and one with no abbreviation uses its own name, which already reads", () => {
-    expect(name("outline-offset: 4px;")).toBe("r-outline-offset-4px");
+  /**
+   * A property with no abbreviation keeps its own name with its `-` written as `_`.
+   *
+   * The KEY may hold no `-`, because the first one is where the key ends and the value begins — and
+   * a value holds `-` all the time (`-4px`, `sans-serif`). A property name in practice holds no `_`,
+   * so the swap loses nothing and the name still reads as itself.
+   */
+  test("and one with no abbreviation uses its own name, with `_` for its dashes", () => {
+    expect(name("outline-offset: 4px;")).toBe("r-outline_offset-4px");
     expect(name("isolation: isolate;")).toBe("r-isolation-isolate");
   });
 
@@ -56,40 +67,58 @@ describe("a name a person can read", () => {
     expect(name("opacity: .5;")).not.toBe(name("opacity: 5;"));
   });
 
-  test("a custom property keeps its own name and its case", () => {
-    expect(name("--Accent: red;")).toBe("r---Accent-red");
+  test("a custom property keeps its own name and its case, with `_` for its dashes", () => {
+    expect(name("--Accent: red;")).toBe("r-__Accent-red");
   });
 });
 
+/**
+ * **The hash is the FLOOR of the VALUE now, and the key never falls to it whole.**
+ *
+ * A class carries what its declaration SETS — see `keyToken` — because a merge keeps one class per
+ * thing set, and a block that travels as a string has only its classes to say it with. So the key
+ * is always there, and only the half after it can be a hash.
+ *
+ * Measured on this repository when the key was added: 23 of 91 class names (25%) were a bare hash
+ * with nothing readable in them, and none are now.
+ */
 describe("what falls back to the hash", () => {
-  test("a declaration carrying a hole, because its value is not text", () => {
-    expect(hashed(name("color: {accent};"))).toBe(true);
-  });
-
   /**
-   * A context is written now — see *context in a readable name* below. What is left here is the
-   * shape that cannot be one thing: a selector LIST names two states sharing a body.
+   * A context is written where it can be. What cannot: a selector LIST, which names two states
+   * sharing a body; anything holding a quote; and anything holding a `-`, which is where the key
+   * ends. The PROPERTY still reads in every one of them.
    */
-  test("a selector list, which is two selectors rather than one context", () => {
-    expect(hashed(nameFor(declarationsOf("&:hover, &:focus { color: red; }")[0]))).toBe(true);
+  test.each([
+    ["a selector list, which is two selectors rather than one context", "&:hover, &:focus { color: red; }"],
+    ["an attribute selector, whose name holds the `-` that ends a key", "&[data-on] { color: red; }"],
+    ["a quoted attribute value, which markup would have to escape", `&[data-on="yes"] { color: red; }`],
+  ])("%s hashes the CONTEXT and keeps the property", (_what, css) => {
+    const one = nameFor(declarationsOf(css)[0]);
+
+    expect(key(one)).toMatch(/^0[0-9a-zA-Z]{5}\.c$/);
+    expect(one).toBe(`${`r-${key(one)}`}-red`);
   });
 
   test("a value longer than the budget", () => {
     const long = "transition: border-left-width .15s ease-in-out, padding-left .15s ease-in-out;";
-    // What the readable form WOULD have been, which is the thing over budget — the name itself is
-    // the hash, and that is the point.
+    // What the readable form WOULD have been, which is the thing over budget — the value becomes
+    // the hash, and the key stays, which is the point.
     const readable = `r-tr-${long
       .slice(long.indexOf(":") + 1)
       .trim()
       .replace(/ /g, "_")}`;
 
     expect(readable.length).toBeGreaterThan(NAME_BUDGET);
-    expect(hashed(name(long))).toBe(true);
+    expect(hashedValue(name(long))).toBe(true);
+    expect(key(name(long))).toBe("tr");
   });
 
-  test("and a value holding a character a class name cannot carry", () => {
-    expect(hashed(name('content: "a b";'))).toBe(true);
-    expect(hashed(name("background: url('a b.png');"))).toBe(true);
+  test.each([
+    ["a quote", 'content: "a b";', "content"],
+    ["a space inside a call", "background: url('a b.png');", "bg"],
+  ])("and a value holding %s a class name cannot carry", (_what, css, wanted) => {
+    expect(hashedValue(name(css))).toBe(true);
+    expect(key(name(css))).toBe(wanted);
   });
 
   test("the budget keeps what the real corpus writes, and cuts the tail", () => {
@@ -100,11 +129,17 @@ describe("what falls back to the hash", () => {
 });
 
 describe("what must hold of every name", () => {
-  test("a hashed name and a readable one can never be the same string", () => {
-    // A hash is base62 and holds no `-`; a readable name always holds the one before its value.
-    expect(name("padding: 12px;")).toContain("-");
-    expect(hashed(name("color: {accent};"))).toBe(true);
-    expect(name("color: {accent};").slice(2)).not.toContain("-");
+  /**
+   * A hashed KEY and a written one can never be the same string.
+   *
+   * A written key starts with the property or with a context, and a context starts with `:`, `.`,
+   * `_`, `@` or `[` — a CSS property may not start with a digit, so nothing an author wrote starts
+   * with `0`. That is the whole marker, and it costs one character.
+   */
+  test("a hashed key and a written one can never be the same string", () => {
+    expect(key(name("padding: 12px;"))).toBe("p");
+    expect(key(name("--a_b: red;")).startsWith("0")).toBe(true);
+    expect(key(name("padding: 12px;")).startsWith("0")).toBe(false);
   });
 
   test("the same declaration is the same name, or dedupe stops working", () => {
@@ -129,10 +164,32 @@ describe("what must hold of every name", () => {
     expect(seen.size).toBe(2_000);
   });
 
-  test("the hash is still the hash where it is used", () => {
-    const [only] = declarationsOf("color: {accent};");
+  /**
+   * **The key is recoverable from the class alone**, which is the whole reason it is in the name.
+   *
+   * A block travels to another component as a string, and a merge keeps one class per thing SET —
+   * so what a class sets has to be readable out of the class itself, whatever the value did.
+   */
+  test.each([
+    ["a plain declaration", "color: red;", "c"],
+    ["one with a dashed property", "outline-offset: 4px;", "outline_offset"],
+    ["one whose value hashed", 'content: "a b";', "content"],
+    ["one in a context", "&:hover { color: red; }", ":hover"],
+  ])("%s carries its key, and `keyIn` reads it back", (_what, css, wanted) => {
+    const one = nameFor(declarationsOf(css)[0]);
 
-    expect(nameFor(only)).toBe(classNameFor(only.identity));
+    expect(keyIn(one)).toBe(wanted === ":hover" ? ":hover.c" : wanted);
+  });
+
+  test("and two declarations setting the same thing carry the same key, whatever the value", () => {
+    expect(keyIn(name("padding: 12px;"))).toBe(keyIn(name('padding: 12px 0 0 "a";')));
+    expect(keyIn(name("color: red;"))).not.toBe(keyIn(name("background: red;")));
+  });
+
+  test("the key stands for the declaration's context and property, and nothing else", () => {
+    const [only] = declarationsOf("&:hover { color: red; }");
+
+    expect(keyTextOf(only)).toBe("&:hover|color");
   });
 });
 
@@ -154,33 +211,37 @@ describe("what must hold of every name", () => {
 describe("context in a readable name", () => {
   const one = (css: string) => nameFor(declarationsOf(css)[0]);
 
+  /**
+   * The context and the property are joined by a `.`, not by a `-`.
+   *
+   * The `-` is where the KEY ends and the value begins, so nothing inside a key may be one. A
+   * property can never hold a `.`, which is what makes the join unambiguous, and the name is the
+   * same length it always was.
+   */
   test("a pseudo-class is written as it is", () => {
-    expect(one("&:hover { color: red; }")).toBe("r-:hover-c-red");
-    expect(one("&:focus-within { opacity: .5; }")).toBe("r-:focus-within-o-.5");
+    expect(one("&:hover { color: red; }")).toBe("r-:hover.c-red");
+    // `:focus-within` holds the `-` that ends a key, so the CONTEXT hashes and `o` still reads.
+    expect(one("&:focus-within { opacity: .5; }")).toMatch(/^r-0[0-9a-zA-Z]{5}\.o-\.5$/);
   });
 
   test("and so is a pseudo-element", () => {
-    expect(one("&::after { content: none; }")).toBe("r-::after-content-none");
+    expect(one("&::after { content: none; }")).toBe("r-::after.content-none");
   });
 
   test("a compound class keeps its dot, and a descendant is marked with `_`", () => {
     // `&.title` and `& .title` are different selectors and must be different names.
-    expect(one("&.title { color: red; }")).toBe("r-.title-c-red");
-    expect(one("& .title { color: red; }")).toBe("r-_.title-c-red");
+    expect(one("&.title { color: red; }")).toBe("r-.title.c-red");
+    expect(one("& .title { color: red; }")).toBe("r-_.title.c-red");
     expect(one("&.title { color: red; }")).not.toBe(one("& .title { color: red; }"));
   });
 
   test("a conditional at-rule is written literally, with its whitespace collapsed", () => {
-    expect(one("@media print { color: red; }")).toBe("r-@media_print-c-red");
-    expect(one("@supports (display:grid) { color: red; }")).toBe("r-@supports_(display:grid)-c-red");
-  });
-
-  test("an attribute selector too", () => {
-    expect(one("&[data-on] { color: red; }")).toBe("r-[data-on]-c-red");
+    expect(one("@media print { color: red; }")).toBe("r-@media_print.c-red");
+    expect(one("@supports (display:grid) { color: red; }")).toBe("r-@supports_(display:grid).c-red");
   });
 
   test("a condition and a selector compose, outermost first", () => {
-    expect(one("@media print { &:hover { color: red; } }")).toBe("r-@media_print:hover-c-red");
+    expect(one("@media print { &:hover { color: red; } }")).toBe("r-@media_print:hover.c-red");
   });
 
   test("and the same declaration in two contexts is two names", () => {
@@ -188,19 +249,27 @@ describe("context in a readable name", () => {
     expect(one("@media print { color: red; }")).not.toBe(one("&:hover { color: red; }"));
   });
 
+  /**
+   * **The CONTEXT falls back on its own**, and the property beside it still reads.
+   *
+   * A hashed context is marked by a leading `0`: a written one always starts with `:`, `.`, `_`,
+   * `@` or `[`, and a property cannot start with a digit, so nothing an author wrote can be read as
+   * one. The `-` is the third of these and is the one that costs most — `[data-on]` and
+   * `@media (min-width: …)` both hold one — and it is what keeps the key's own boundary honest.
+   */
   describe("what still falls back", () => {
-    test("a selector list, which is two selectors rather than one context", () => {
-      expect(hashed(one("&:hover, &:focus { color: red; }"))).toBe(true);
+    test.each([
+      ["a selector list, which is two selectors rather than one context", "&:hover, &:focus { color: red; }"],
+      ["a context holding a quote, which markup would have to escape", `&[data-on="yes"] { color: red; }`],
+      ["a context holding a `-`, which is where a key ends", "&[data-on] { color: red; }"],
+      ["a media query, for the same reason", "@media (min-width: 40rem) { color: red; }"],
+    ])("%s", (_what, css) => {
+      expect(keyIn(one(css))).toMatch(/^0[0-9a-zA-Z]{5}\.c$/);
+      expect(one(css)).toMatch(/-red$/);
     });
 
-    test("a context holding a quote, which markup would have to escape", () => {
-      expect(hashed(one('&[data-on="yes"] { color: red; }'))).toBe(true);
-    });
-
-    test("and a context that pushes the name over the budget", () => {
-      const long = "@media (min-width: 40rem) and (orientation: landscape) { padding: 24px; }";
-
-      expect(hashed(one(long))).toBe(true);
+    test("and two different contexts never share a hashed key", () => {
+      expect(keyIn(one("&:hover, &:focus { color: red; }"))).not.toBe(keyIn(one("&[data-on] { color: red; }")));
     });
   });
 });
@@ -221,8 +290,8 @@ describe("a descendant under a condition", () => {
     const compound = one("@media print { &.title { color: red; } }");
 
     expect(descendant).not.toBe(compound);
-    expect(descendant).toBe("r-@media_print_.title-c-red");
-    expect(compound).toBe("r-@media_print.title-c-red");
+    expect(descendant).toBe("r-@media_print_.title.c-red");
+    expect(compound).toBe("r-@media_print.title.c-red");
   });
 });
 
@@ -244,7 +313,8 @@ describe("a descendant under a condition", () => {
  * form not yet covered is always correct and merely less pretty.
  */
 describe("a property name that cannot be written", () => {
-  const isHash = (className: string) => /^r-[0-9a-zA-Z]+$/.test(className);
+  /** The KEY is what falls back here — the value beside it may still be written. */
+  const isHash = (className: string) => /^0[0-9a-zA-Z]{6}$/.test(keyIn(className));
 
   test.each([
     ["a space", `--a b: red;`],
@@ -258,15 +328,26 @@ describe("a property name that cannot be written", () => {
     expect(isHash(name(css))).toBe(true);
   });
 
-  /** And what a property name legitimately holds is still written out. */
+  /**
+   * And what a property name legitimately holds is still written out, with its `-` as `_`.
+   *
+   * **An `_` the AUTHOR wrote is the one that cannot be**, and it is the same refusal a context and
+   * a value already make. `--a-b` and `--a_b` are two different custom properties and the swap would
+   * give them one key — so the key hashes rather than merging two declarations that set different
+   * things. Measured here, because a key that is not injective is a style silently dropped.
+   */
   test.each([
     ["a plain property", `color: red;`, "r-c-red"],
-    ["a custom property", `--brand: red;`, "r---brand-red"],
-    ["a vendor prefix", `-webkit-mask: none;`, "r--webkit-mask-none"],
-    ["an underscore", `--a_b: red;`, "r---a_b-red"],
-    ["a digit", `--2x: red;`, "r---2x-red"],
+    ["a custom property", `--brand: red;`, "r-__brand-red"],
+    ["a vendor prefix", `-webkit-mask: none;`, "r-_webkit_mask-none"],
+    ["a digit", `--2x: red;`, "r-__2x-red"],
   ])("%s is still readable", (_what, css, expected) => {
     expect(name(css)).toBe(expected);
+  });
+
+  test("a property holding an `_` falls to the hash, so `--a-b` and `--a_b` stay two keys", () => {
+    expect(keyIn(name("--a_b: red;"))).toMatch(/^0[0-9a-zA-Z]{6}$/);
+    expect(keyIn(name("--a_b: red;"))).not.toBe(keyIn(name("--a-b: red;")));
   });
 });
 
@@ -325,7 +406,7 @@ describe("a readable name is injective over identities", () => {
     "font-family: My Font;",
   ];
 
-  /** Every readable name in the corpus, with the identities that claimed it. */
+  /** Every name in the corpus, with the identities that claimed it. */
   const claimed = () => {
     const byName = new Map<string, Set<string>>();
 
@@ -341,9 +422,7 @@ describe("a readable name is injective over identities", () => {
             continue;
           }
           for (const one of atoms) {
-            const name = nameFor(one);
-            if (hashed(name)) continue;
-            byName.set(name, (byName.get(name) ?? new Set()).add(one.identity));
+            byName.set(nameFor(one), (byName.get(nameFor(one)) ?? new Set()).add(one.identity));
           }
         }
       }
@@ -352,7 +431,7 @@ describe("a readable name is injective over identities", () => {
     return byName;
   };
 
-  test("no two identities claim one readable name", () => {
+  test("no two identities claim one name", () => {
     const clashes = [...claimed()]
       .filter(([, identities]) => identities.size > 1)
       .map(([name, identities]) => `${name}: ${[...identities].join("  vs  ")}`);
@@ -360,13 +439,47 @@ describe("a readable name is injective over identities", () => {
     expect(clashes).toEqual([]);
   });
 
-  /** And the corpus really does produce readable names, or the test above asserts nothing. */
-  test("and the corpus is mostly readable, so the assertion has something to check", () => {
-    const names = claimed();
+  /** And the corpus really does produce names, or the test above asserts nothing. */
+  test("and the corpus produces enough of them for the assertion to check", () => {
+    expect(claimed().size).toBeGreaterThan(60);
+  });
 
-    // 73 today. The number is a floor rather than a fact: it says the corpus is mostly readable, so
-    // the assertion above has something to check, and it moves whenever the name budget does.
-    expect(names.size).toBeGreaterThan(60);
+  /**
+   * **AND NO TWO DIFFERENT THINGS-SET CLAIM ONE KEY**, which is what step 4 added and is the
+   * stronger of the two.
+   *
+   * A name collision fails the build loudly. A KEY collision does not: two rules setting different
+   * things would look to a merge like one thing set twice, and the earlier would be dropped from a
+   * page that renders. So the same corpus is asked the same question about the key.
+   */
+  test("and no two declarations that set different things claim one key", () => {
+    const byKey = new Map<string, Set<string>>();
+
+    for (const prelude of PRELUDES) {
+      for (const condition of CONDITIONS) {
+        for (const declaration of DECLARATIONS) {
+          const inner = `${prelude} { ${declaration} }`;
+          const css = condition === "" ? inner : `${condition} { ${inner} }`;
+          let atoms: ReturnType<typeof flatten>;
+          try {
+            atoms = declarationsOf(css);
+          } catch {
+            continue;
+          }
+          for (const one of atoms) {
+            const found = keyIn(nameFor(one));
+            byKey.set(found, (byKey.get(found) ?? new Set()).add(keyTextOf(one)));
+          }
+        }
+      }
+    }
+
+    const clashes = [...byKey]
+      .filter(([, texts]) => texts.size > 1)
+      .map(([found, texts]) => `${found}: ${[...texts].join("  vs  ")}`);
+
+    expect(clashes).toEqual([]);
+    expect(byKey.size).toBeGreaterThan(20);
   });
 
   /** The three shapes that used to collide, named so a regression says which one came back. */
@@ -419,7 +532,10 @@ describe("what a project's config may not change", () => {
       const names = new Set<string>();
       for (const config of CONFIGS) {
         try {
-          const out = transform(`const a = <div css={@@( ${css}; )}>x</div>;\n`, { filename: "C.tsx", config })?.code;
+          const out = transform(`const a = <div className={@@( ${css}; )}>x</div>;\n`, {
+            filename: "C.tsx",
+            config,
+          })?.code;
           const found = /"(r-[^"]+)"/.exec(out ?? "")?.[1];
           if (found !== undefined) names.add(found);
         } catch {

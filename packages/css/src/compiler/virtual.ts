@@ -102,6 +102,20 @@ export interface VirtualFile {
   /** Valid TSX. */
   readonly code: string;
   /**
+   * The names this file gave the three helpers a consumer has to FIND again, by what each one is
+   * for rather than by where it sits in a list.
+   *
+   * `bindings` is next to this and holds the same names, but it is a list in emit order — so a
+   * consumer reading `bindings[2]` is one insertion away from silently asking about the wrong
+   * helper. The typed rules ask which call is a spread and which is a hole, and that question has
+   * names.
+   */
+  readonly helpers: {
+    readonly block: string;
+    readonly from: string;
+    readonly hole: string;
+  };
+  /**
    * The names this file declared for itself — the block helper, composition's two, the hole's type,
    * and one per kind of named site the file holds.
    *
@@ -275,13 +289,43 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
   cursor = top;
 
   const block = binding(source, "__block");
+  /** What a `match` becomes — see the declaration below for what it checks. */
+  const lookup = binding(source, "__match");
   const from = JSON.stringify(options.properties ?? "@ramonda/css/properties");
   /**
    * A `declare`, not an `import` statement: an import would turn a file that is a script into a
    * module, which changes what the author's own code means. An import TYPE in a type position does
    * not.
    */
-  write(`declare function ${block}(declarations: import(${from}).CssBlockShape[]): import(${from}).CssBlock;`);
+  /**
+   * **Generic, and `A` may be inferred only from the RETURN position.** That is what lets a prop
+   * narrow a block — `sx?: CssBlock<{ color?: Token<"color"> }>` — and it is the only one of three
+   * shapes measured that puts the fault where the author can act on it:
+   *
+   *     inferring `A` from the argument      every declaration reported, including the right ones
+   *     comparing the RESULT for its keys    one error on the call, naming a type nobody wrote
+   *     `NoInfer`, the allow-list first      the value, the property, or inside the state
+   *
+   * `NoInfer` is why the peer floor is TypeScript 5.4. The pre-5.4 spelling
+   * `[T][T extends unknown ? 0 : never]` was measured to behave identically and is what to reach
+   * for if that floor ever has to come back down.
+   *
+   * With no contextual type — which is nearly every block ever written — `A` falls back to the
+   * default and the parameter is the shape it always was. Asserted in `check.test.ts`, because a
+   * slot that narrowed ordinary blocks would be a regression in every file of every project.
+   */
+  /**
+   * **ONE helper, because every block is static now.**
+   *
+   * There were two, and the second existed to flag a block carrying a runtime value so that a prop
+   * could refuse one. A runtime value in a declaration is refused everywhere — see
+   * `hole-not-allowed` — so there is nothing left for a prop to refuse and nothing for a flag to
+   * say. `CssBlock` lost its second parameter with it.
+   */
+  write(
+    `declare function ${block}<A extends import(${from}).CssBlockShape = import(${from}).CssBlockShape>` +
+      `(declarations: NoInfer<{ [P in keyof A]?: A[P] }>[]): import(${from}).CssBlock<A>;`,
+  );
 
   /**
    * Composition's two helpers, and each is its own ARRAY ELEMENT rather than something wrapping a
@@ -360,6 +404,27 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * The property's own check survives either way, which was the thing to protect: an object in a
    * `color` is still a `TS2322` about `color`, and `display: flexx` still gets its *did you mean*.
    */
+  /**
+   * `match({subject}) { key => value; … }`, as something TypeScript can judge.
+   *
+   * Three things are checked and each is worth the parameter it costs:
+   *
+   * - **the subject** is the author's own expression, so anything wrong inside it is reported where
+   *   it is written;
+   * - **every key must be assignable to the subject's type** — `K extends readonly S[]` — so an arm
+   *   for a value the subject can never hold is a fault at the key;
+   * The ARMS are not here. They are written as declarations of their own beside this call, so each
+   * is judged by the property it sets and a fault lands on the arm rather than on this call — which
+   * is what a single call could not do: measured, inferring the arms' type from the return position
+   * gave `undefined` and every arm was reported against it.
+   *
+   * `never`, so the call sits among declarations the way `__cond` does.
+   *
+   * `_` is left out of the keys, because it stands for everything the others did not and there is
+   * no type for that.
+   */
+  write(`declare function ${lookup}<S, const K extends readonly S[]>(subject: S, keys: K): never;`);
+
   const hole = binding(source, "__val");
   write(`declare function ${hole}<T extends import(${from}).CssValue>(value: T): T;`);
 
@@ -371,7 +436,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * 1000 belong. `binding` already picks a name the source does not contain, so nothing of the
    * author's is ever removed by filtering these out.
    */
-  const bindings: string[] = [block, condition, spread, hole, variables];
+  const bindings: string[] = [block, lookup, condition, spread, hole, variables];
 
   /**
    * One more declaration per KIND of named site the file holds, and only the kinds it holds.
@@ -393,7 +458,23 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     const name = binding(source, `__${site.at.replace(/-/g, "_")}`);
     bindings.push(name);
     surfaces.set(site.at, name);
-    write(`declare function ${name}(body: import(${from}).${shape}): never;`);
+    /**
+     * `@@property( … )` is the one named site whose VALUE is worth something, so it alone returns.
+     *
+     * The others are written for their effect — a keyframe list, a face — and nothing sensible comes
+     * back from writing one, so `never` is the honest return and it also refuses `const x = @@keyframes(…)`
+     * being used as a value. A registered property is different: the name it generates is a string
+     * that reads in a block and sets on an element, and the KIND it declared is exactly what a
+     * setter needs to refuse a length where an angle was asked for.
+     *
+     * `const D` is what keeps `syntax: "<angle>"` a literal long enough for the kind to be read out
+     * of it. Measured: excess-property checking survives the generic, so a descriptor that is not
+     * one is still reported on its own key rather than swallowed by inference.
+     */
+    const returns = RETURNS[site.at as (typeof NAMED_BLOCKS)[number]];
+    if (returns === undefined) write(`declare function ${name}(body: import(${from}).${shape}): never;`);
+    else
+      write(`declare function ${name}<const D extends import(${from}).${shape}>(body: D): import(${from}).${returns};`);
   }
 
   const preamble = code.length;
@@ -529,6 +610,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     code,
     preamble,
     bindings,
+    helpers: { block, from: spread, hole },
     homeOf: (offset) => homeOf(segments, offset),
     spanOf: (start, length) => spanOf(segments, start, length),
     virtualOf: (offset) => virtualOf(bySource, offset) ?? slotFor(slots, offset),
@@ -583,6 +665,43 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
           write("),");
         }
         items(item.items, holes, keepLine, single);
+        continue;
+      }
+
+      /**
+       * A `match` is checked BESIDE the declarations too, and for the same reason composition is.
+       *
+       * The subject and its keys are one question — can this expression be these things — and each
+       * arm is another: is this a value the property takes. Written as one call the arms would be
+       * judged by the CALL's inference and a fault would land there; written as one declaration
+       * each, every arm is judged by its own property and a fault lands on the arm.
+       *
+       * **The virtual file does not mirror the runtime shape and does not have to.** What it owes
+       * is the same questions, asked where an author can act on the answers.
+       */
+      const chosen = item.kind === "declaration" ? item.value.find((part) => part.kind === "match") : undefined;
+      if (chosen !== undefined && chosen.kind === "match" && item.kind === "declaration") {
+        if (!single) {
+          write(`${lookup}(`);
+          expression(holes[chosen.hole]);
+          write(", [");
+          const keys = chosen.arms.filter((arm) => !arm.otherwise);
+          for (const [index, arm] of keys.entries()) {
+            if (index > 0) write(", ");
+            derived(JSON.stringify(arm.key), arm.at, arm.length);
+          }
+          write("]),");
+
+          for (const arm of chosen.arms) {
+            if (arm.value.length === 0) continue;
+            write("{");
+            derived(key(propertyName(item.property)), item.at, item.property.length);
+            write(":");
+            value(arm.value, arm.at, arm.at === undefined ? undefined : arm.at + (arm.length ?? 0), holes);
+            write("},");
+          }
+        }
+        keepLine(item.end);
         continue;
       }
 
@@ -650,6 +769,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     holes: readonly Span[],
   ): void {
     const length = at === undefined || end === undefined ? undefined : end - at;
+
     if (parts.length === 1 && parts[0].kind === "hole") {
       valueHole(holes[parts[0].index]);
       return;
@@ -745,6 +865,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
         write("}");
         continue;
       }
+      if (part.kind === "match") continue;
       write("${");
       valueHole(holes[part.index]);
       write("}");
@@ -905,6 +1026,10 @@ function afterLeadingTrivia(source: string): number {
  * message is worse than none. `unknown-named-block` reports the name now, and the type makes the
  * table impossible to drift from the list.
  */
+const RETURNS: Readonly<Partial<Record<(typeof NAMED_BLOCKS)[number], string>>> = {
+  property: "CssRegistered<D>",
+};
+
 const SURFACES: Readonly<Record<(typeof NAMED_BLOCKS)[number], string>> = {
   keyframes: "CssKeyframesShape",
   "font-face": "CssFontFaceDescriptors",

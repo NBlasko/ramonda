@@ -32,7 +32,7 @@
  * Usage: node scripts/check-scaffold.mjs [spa|ssr]
  */
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,7 +61,46 @@ if (selftest !== undefined && PLANTED[selftest] === undefined) {
 }
 
 /** Everything a generated project resolves to this workspace rather than to npm. */
-const FIRST_PARTY = ["core", "router", "server", "check", "build"];
+const FIRST_PARTY = ["core", "router", "server", "check", "build", "css"];
+
+/**
+ * `@ramonda/css` is not in either template, and that is right — it is a separate package a project
+ * opts into. But the install the documentation teaches had never been RUN: the scaffolder's own
+ * tests read templates as text, and this gate packed every first-party package except that one.
+ *
+ * So the `spa` run does what a reader does after scaffolding — add the dependency, put the plugin in
+ * the array that is already there, write a block — and then installs and builds exactly as before.
+ * `ssr` still covers a project with no CSS at all, so both shapes are checked without a third build.
+ *
+ * The plugin goes AFTER `ramonda()` on purpose. It declares `enforce: "pre"`, so the array's order
+ * is not supposed to matter, and the place a reader would paste it is the end.
+ */
+function addStyleBlocks(app, tarball) {
+  const manifest = join(app, "package.json");
+  const pkg = JSON.parse(readFileSync(manifest, "utf8"));
+  pkg.dependencies = { ...pkg.dependencies, "@ramonda/css": `file:${tarball}` };
+  writeFileSync(manifest, `${JSON.stringify(pkg, null, 2)}\n`);
+
+  const config = join(app, "vite.config.ts");
+  const before = readFileSync(config, "utf8");
+  const after = before
+    .replace(
+      'import { ramonda } from "@ramonda/build/vite";',
+      'import { ramonda } from "@ramonda/build/vite";\nimport { ramondaCss } from "@ramonda/css/vite";',
+    )
+    .replace("plugins: [ramonda()]", "plugins: [ramonda(), ramondaCss()]");
+  if (after === before) fail("could not wire `ramondaCss()` into the generated vite.config.ts");
+  writeFileSync(config, after);
+
+  const source = join(app, "src", "App.tsx");
+  const app_ = readFileSync(source, "utf8");
+  const styled = app_.replace(
+    '<main className="card">',
+    "<main className={@@( display: flex; gap: 8px; padding: 8px; padding-left: 40px; &:hover { gap: 12px; } )}>",
+  );
+  if (styled === app_) fail("could not put a style block in the generated App.tsx");
+  writeFileSync(source, styled);
+}
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, { encoding: "utf8", stdio: "pipe", ...options });
@@ -215,6 +254,10 @@ try {
     writeFileSync(file, broken);
   }
 
+  // A reader's next step, once they want styles: the documented install, on the project they were
+  // just given. Only in `spa`, so the other run still covers a project with no CSS in it.
+  if (mode === "spa") addStyleBlocks(app, tarballs.get("@ramonda/css"));
+
   /* ── 3. point its first-party deps at the tarballs ────────────────────────────────────────── */
   const manifest = join(app, "package.json");
   const pkg = JSON.parse(readFileSync(manifest, "utf8"));
@@ -279,6 +322,29 @@ try {
     const index = join(app, "dist/index.html");
     if (!existsSync(index)) fail("the build produced no dist/index.html");
     checks.push("an index");
+
+    /**
+     * **And the block really compiled**, which "it built" does not say.
+     *
+     * A block that produced nothing leaves a perfectly green build and an unstyled page — the exact
+     * shape of the fault the plugin's own note records, where one stylesheet for the whole app
+     * shipped empty because a bundler does not wait for a transform. So the emitted CSS is read: the
+     * declarations have to be in it, the class has to be in the markup or the script, and the `@@(`
+     * has to be gone.
+     */
+    const assets = join(app, "dist", "assets");
+    const emitted = existsSync(assets) ? readdirSync(assets) : [];
+    const css = emitted.filter((file) => file.endsWith(".css")).map((file) => readFileSync(join(assets, file), "utf8"));
+    const js = emitted.filter((file) => file.endsWith(".js")).map((file) => readFileSync(join(assets, file), "utf8"));
+    const all = [...css, ...js, readFileSync(index, "utf8")].join("\n");
+
+    if (!css.some((text) => text.includes("padding-left:40px") || text.includes("padding-left: 40px"))) {
+      fail("the style block compiled to no CSS — the project built green and unstyled", css.join("\n").slice(0, 400));
+    }
+    if (!css.some((text) => text.includes(":hover"))) fail("the block's nested rule reached no stylesheet");
+    if (!/\br-[a-zA-Z0-9_.-]+/.test(all)) fail("no compiled class name reached the built output");
+    if (all.includes("@@(")) fail("`@@(` survived into the build — the plugin did not run");
+    checks.push("a style block that compiled");
   }
 
   /* ── 6. a PRODUCTION install, and a page served from it ───────────────────────────────────── */

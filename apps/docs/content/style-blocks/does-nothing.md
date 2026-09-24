@@ -122,8 +122,8 @@ const card = @@(
 );
 ```
 
-**And a hole is unanswerable.** `display: {this.mode}` could be anything, so nothing beside it is
-judged.
+**And a `match` is unanswerable.** Which arm applies is decided at render, so a declaration beside
+one is not judged against it.
 
 ## Switching it off
 
