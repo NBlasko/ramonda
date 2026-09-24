@@ -151,6 +151,17 @@ const TYPES = {
   ident: ["aaa", "bbb"],
   percent: ["37%", "61%"],
   image: ["url(a.png)", "url(b.png)"],
+  // Keyword groups. The signature learner needs at least two groups in a family before it can say
+  // anything, and these are the families where none of the value types above ever parse.
+  direction: ["row", "column"],
+  wrapping: ["wrap", "wrap-reverse"],
+  "x-edge": ["left", "right"],
+  "y-edge": ["top", "bottom"],
+  synthesis: ["weight", "style"],
+  emphasis: ["dot", "circle"],
+  wrapping2: ["balance", "pretty"],
+  "space-keyword": ["pre", "collapse"],
+  align: ["baseline", "middle"],
 };
 
 /** In the page: set a declaration and read the longhands it expanded into. */
@@ -767,67 +778,115 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
           uncovered.push({ name, why: "absent", absent: true });
           continue;
         }
+        /**
+         * Every shape that can be learned, TRIED IN TURN, and the first one that survives its
+         * corpus is the answer.
+         *
+         * Taking the first shape that could be LEARNED is not the same thing, and `position-try` is
+         * where the difference showed: the positional learner claims it because the alignment
+         * sentinels happen to parse, and then gets it wrong — `position-try: normal start` is an
+         * order and a fallback, not two values of one thing. The signature learner has it right and
+         * never got a turn.
+         */
         const byType = learnBySignature(name);
-        const learned = learnPositional(name) ?? learnList(name, byType) ?? byType;
-        if (learned === null) {
-          uncovered.push({ name, why: "no shape learned" });
+        const candidates = [learnPositional(name), learnList(name, byType), byType].filter((one) => one !== null);
+        if (candidates.length === 0) {
+          /**
+           * A family that never expands is a different answer from one whose shape nobody guessed.
+           *
+           * `transform-origin`, `perspective-origin`, `vertical-align` and `all` are in the
+           * shorthand table because SOME engine resets longhands through them, but this one hands
+           * back nothing at all — there is no decomposition to find here, and reporting it beside
+           * `font` and `grid` reads as nine families needing a grammar when it is four fewer.
+           */
+          const expands = Object.values(TYPES)
+            .flat()
+            .concat(["initial", "none", "normal", "auto"])
+            .some((one) => Object.keys(expand(name, one)).length > 0);
+          uncovered.push({ name, why: expands ? "no shape learned" : "does not expand here", bare: !expands });
           continue;
         }
 
-        // The corpus: for a positional family, its own domain; for a typed one, every type's tokens
-        // in every order, which is what a shape that depends on ORDER has to be tried against.
-        const cases = [];
-        if (learned.shape === "positional") {
-          const { corpus } = learned.domain;
-          for (const pattern of PATTERNS) {
-            for (const one of corpus) {
-              for (const other of corpus) {
-                const values = Array.from({ length: pattern.slots }, (_, i) => (i % 2 === 0 ? one : other));
-                let at = 0;
-                cases.push(pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / "));
+        /**
+         * Each candidate against its OWN corpus, and the first one that survives is the answer.
+         *
+         * The corpus differs by shape: a positional family is tried over its own domain and every
+         * pattern; a typed one over every type's tokens in every order, which is what a shape that
+         * depends on ORDER has to face.
+         */
+        let best = null;
+        for (const learned of candidates) {
+          const cases = [];
+          if (learned.shape === "positional") {
+            const { corpus } = learned.domain;
+            for (const pattern of PATTERNS) {
+              for (const one of corpus) {
+                for (const other of corpus) {
+                  const values = Array.from({ length: pattern.slots }, (_, i) => (i % 2 === 0 ? one : other));
+                  let at = 0;
+                  cases.push(pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / "));
+                }
+              }
+            }
+          } else {
+            const all = Object.values(TYPES).flat();
+            for (const one of all) {
+              cases.push(one);
+              for (const other of all) {
+                cases.push(`${one} ${other}`);
+                cases.push(`${other} ${one}`);
+              }
+            }
+            for (const wide of WIDE) cases.push(wide);
+            cases.push("var(--x)");
+            if (learned.shape === "comma list") {
+              const some = Object.values(TYPES).flat().slice(0, 8);
+              for (const one of some) {
+                for (const other of some) {
+                  cases.push(`${one}, ${other}`);
+                  cases.push(`${one} ${other}, ${other}`);
+                  cases.push(`${one}, ${other}, ${one}`);
+                }
               }
             }
           }
-        } else {
-          const all = Object.values(TYPES).flat();
-          for (const one of all) {
-            cases.push(one);
-            for (const other of all) {
-              cases.push(`${one} ${other}`);
-              cases.push(`${other} ${one}`);
-            }
+
+          const wrong = [];
+          let tried = 0;
+          for (const text of cases) {
+            const theirs = expand(name, text);
+            if (Object.keys(theirs).length === 0) continue;
+            const mine = learned.split(text);
+            // `null` is the splitter REFUSING, which is a correct answer for invalid CSS.
+            if (mine === null) continue;
+            tried++;
+            const longhands = Object.keys(theirs);
+            const [rendered, ours] = compare(name, text, mine, longhands);
+            if (rendered === ours) continue;
+            if (wrong.length < 3) wrong.push({ text, mine, rendered, ours });
+            else wrong.push({ text });
           }
-          for (const wide of WIDE) cases.push(wide);
-          cases.push("var(--x)");
-          if (learned.shape === "comma list") {
-            const some = Object.values(TYPES).flat().slice(0, 8);
-            for (const one of some) {
-              for (const other of some) {
-                cases.push(`${one}, ${other}`);
-                cases.push(`${one} ${other}, ${other}`);
-                cases.push(`${one}, ${other}, ${one}`);
-              }
-            }
+
+          if (tried === 0) continue;
+          if (wrong.length === 0) {
+            best = { clean: true, shape: learned.shape, tried };
+            break;
+          }
+          if (best === null || wrong.length < best.wrong.length) {
+            best = { clean: false, shape: learned.shape, tried, wrong };
           }
         }
 
-        const wrong = [];
-        let tried = 0;
-        for (const text of cases) {
-          const theirs = expand(name, text);
-          if (Object.keys(theirs).length === 0) continue;
-          const mine = learned.split(text);
-          if (mine === null) continue;
-          tried++;
-          const longhands = Object.keys(theirs);
-          const [rendered, ours] = compare(name, text, mine, longhands);
-          if (rendered === ours) continue;
-          if (wrong.length < 3) wrong.push({ text, mine, rendered, ours });
-          else wrong.push({ text });
+        if (best === null) uncovered.push({ name, why: "nothing to try" });
+        else if (best.clean) covered.push({ name, shape: best.shape, tried: best.tried });
+        else {
+          uncovered.push({
+            name,
+            why: `${best.wrong.length} of ${best.tried} wrong`,
+            shape: best.shape,
+            first: best.wrong[0],
+          });
         }
-        if (tried === 0) uncovered.push({ name, why: "nothing to try" });
-        else if (wrong.length === 0) covered.push({ name, shape: learned.shape, tried });
-        else uncovered.push({ name, why: `${wrong.length} of ${tried} wrong`, shape: learned.shape, first: wrong[0] });
       }
       return { covered, uncovered };
     },
@@ -880,5 +939,7 @@ if (disagreed.length > 0) {
   }
   console.log("");
 }
-const nothing = perEngine[engines[0]].uncovered.filter((one) => !one.first);
-console.log(`   no shape learned at all (${nothing.length}): ${nothing.map((one) => one.name).join(", ")}\n`);
+const nothing = perEngine[engines[0]].uncovered.filter((one) => !one.first && !one.bare && !one.absent);
+const bare = perEngine[engines[0]].uncovered.filter((one) => one.bare);
+console.log(`   no shape learned (${nothing.length}): ${nothing.map((one) => one.name).join(", ")}`);
+console.log(`   no expansion in this engine (${bare.length}): ${bare.map((one) => one.name).join(", ")}\n`);

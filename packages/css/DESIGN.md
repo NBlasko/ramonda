@@ -4353,16 +4353,16 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Three shapes, and 75 of 94 families
+#### Three shapes, and 79 of 94 families
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 75   firefox 63   webkit 68
+chromium 79   firefox 68   webkit 72
 
-covered in every engine that HAS it   75 families, 5946 values checked
-present and covered in all three      63
+covered in every engine that HAS it   79 families, 7219 values checked
+present and covered in all three      67
 properties not every engine has       16
 
 positional (52)     padding, margin, inset, overflow, border-radius,
@@ -4370,8 +4370,9 @@ positional (52)     padding, margin, inset, overflow, border-radius,
                     grid-area/column/row, place-content, place-items, place-self,
                     overscroll-behavior, container, font-variant, the whole
                     corner-*-shape branch, scroll-*, and every logical variant
-by signature (19)   the whole border branch, border-image, mask-border, outline,
-                    column-rule, list-style, text-decoration, flex, offset
+by signature (23)   the whole border branch, border-image, mask-border, outline,
+                    column-rule, list-style, text-decoration, flex, offset,
+                    flex-flow, text-emphasis, text-wrap, white-space
 comma list (4)      animation, transition, background, mask
 ```
 
@@ -4514,15 +4515,27 @@ mapping can hold:
   constant.** Keeping them let the last group processed clobber the rest: `mask: 3px url(a.png)`
   lost the `center` the length had just put on the y axis.
 
+**Shapes are tried in turn and the first that SURVIVES its corpus wins**, which is not the same as
+the first that can be learned. `position-try` is where that shows: the positional learner claims it
+because the alignment sentinels happen to parse, and then gets it wrong — `position-try: normal
+start` is an order and a fallback, not two values of one thing. It changed no number today, because
+that family has no second candidate either; it is here so the next one does not have to be found
+the same way.
+
+**And nine more came in from the classifier's vocabulary, not from a new shape.** The signature
+learner needs two groups in a family before it can say anything, and for `flex-flow`,
+`text-emphasis`, `text-wrap` and `white-space` none of the value types ever parsed. Keyword groups
+— directions, wrapping, edges, synthesis, emphasis — were all they needed.
+
 #### What is not done
 
-One family where a shape is learned and is wrong: `position-try`, 3 of 44. It is claimed by the
-positional learner because the alignment sentinels happen to parse, and it is really a signature
-family — `position-try: normal start` is an order and a fallback, not two values of one thing.
+`position-try`, 3 of 44, above.
 
-And 18 with no shape learned at all. Some are still the sentinel domains being too narrow —
-`text-wrap`, `vertical-align`, `white-space`, `transform-origin`, `perspective-origin`,
-`flex-flow`, `text-emphasis`, `font-synthesis`, `marker` — and the timeline group
-(`scroll-timeline`, `view-timeline`, `timeline-trigger`, `text-box`). Genuinely their own grammar:
-`font`, `grid`, `grid-template`, `all`.
+**Nine with no shape learned**: `font`, `font-synthesis`, `grid`, `grid-template`, `marker`, and
+the timeline group `scroll-timeline`, `view-timeline`, `timeline-trigger`, `text-box`.
+
+**Four that never expand in the engine at all** — `all`, `perspective-origin`, `transform-origin`,
+`vertical-align`. They are in the shorthand table because SOME engine resets longhands through
+them, and this one hands back nothing: there is no decomposition to find, and reporting them beside
+`font` and `grid` read as thirteen families needing a grammar when it is nine.
 
