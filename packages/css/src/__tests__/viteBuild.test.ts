@@ -347,7 +347,7 @@ test("the layer order is declared in full by every stylesheet, and survives mini
 
   // The unconditional rule is in a `u` layer and the conditional one under `c`, which every
   // stylesheet declares last — so the conditional one wins wherever it applies.
-  expect(css).toMatch(/@layer u\d+\s*\{\s*\.r-[\w-]+\s*\{\s*color: ?red/);
+  expect(css).toMatch(/@layer u\s*\{\s*\.r-[\w-]+\s*\{\s*color: ?red/);
   expect(css).toMatch(/@layer c\s*\{/);
   expect(css.indexOf("color:red")).toBeLessThan(css.indexOf("@layer c"));
 });

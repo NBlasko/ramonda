@@ -161,12 +161,14 @@ const level = (): Level => ({ own: [], under: new Map() });
  *
  * Read off the children rather than counted from the depth: every child of one level is the same
  * kind of step, because {@link layerPathFor} builds the path that way. The top level needs none —
- * {@link LAYER_ORDER} declares those, fully qualified, at the very start of the stylesheet.
+ * {@link LAYER_ORDER} declares those, fully qualified, at the very start of the stylesheet — and it
+ * is told so rather than recognised, because the names it holds are now `a`, `s02`…`s64`, `u` and
+ * `c`, which is the same alphabet a nested breadth level holds.
  */
-function namesUnder(under: Map<string, Level>): readonly string[] {
+function namesUnder(under: Map<string, Level>, top: boolean): readonly string[] {
+  if (top || under.size === 0) return [];
   const [first] = under.keys();
-  if (first === undefined || first.startsWith("u") || first === "c") return [];
-  return first.startsWith("d") ? DIGIT_LAYERS : BREADTH_LAYERS.map((one) => `b${one}`);
+  return first !== undefined && first.startsWith("d") ? DIGIT_LAYERS : BREADTH_LAYERS;
 }
 
 /**
@@ -199,17 +201,17 @@ function wrap<T extends { block: EmittedBlock }>(rules: readonly [string, T][]):
     here.own.push(write(className, rule.block));
   }
 
-  const written = (here: Level): string => {
+  const written = (here: Level, top = false): string => {
     let out = here.own.join("");
     if (here.under.size === 0) return out;
 
-    const names = namesUnder(here.under);
+    const names = namesUnder(here.under, top);
     if (names.length > 0) out += `@layer ${names.join(",")};\n`;
     for (const [step, under] of here.under) out += `@layer ${step} {\n${written(under)}}\n`;
     return out;
   };
 
-  return `${LAYER_ORDER}\n@layer ramonda {\n${written(root)}}\n`;
+  return `${LAYER_ORDER}\n@layer ramonda {\n${written(root, true)}}\n`;
 }
 
 /**

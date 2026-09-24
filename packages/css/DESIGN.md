@@ -4715,23 +4715,82 @@ The ORDER of two slots of one type — `animation: 1s 2s` is duration then delay
 `<time>` — and the SLASH structure are both written there. Those are exactly the two shapes the
 prototype had to discover by differencing probes.
 
-##### The final state, in full
+##### The final state, in full — CORRECTED: it is not two layers
 
-**Two layers. Not eighteen, not nineteen.**
+**This said two layers, and it was wrong.** It rested on *after splitting every unconditional
+declaration is a LONGHAND*, which the measurement does not support: 33 families have no shape and
+reach the sheet whole — `background`, `font`, `grid`, `animation`, `mask` among them — and a family
+that DOES split still arrives as a shorthand whenever the split is refused, for a hole, a `var()` or
+an arm of a `match`.
+
+Measured, the difference matters. A package writing `background: red` and an application writing
+`background-color: blue`, in two stylesheets, all three engines agreeing:
+
+```
+one layer for both    app's sheet first     RED — the package's shorthand won
+                      package's first       blue
+                      the answer depends on which file the bundler put first
+two layers            either order          blue
+```
+
+That is the package-skew fault the layers exist to prevent, so a shorthand needs a layer of its own
+for as long as any family goes unsplit.
+
+**What it is instead:**
 
 ```css
-@layer ramonda.u, ramonda.c;
+@layer ramonda.a, ramonda.s64, …, ramonda.s02, ramonda.u, ramonda.c;
 ```
 
 ```
-ramonda.u    every unconditional declaration — and after splitting every one is a LONGHAND
-ramonda.c    every conditional one: @media, @supports, @container
-             with the digit layers inside it, so two breakpoints order against each other
+ramonda.a      `all` — it covers every property, so it is weaker than every shorthand there can be
+ramonda.s##    a shorthand, named by HOW MANY longhands it covers; weakest (widest) first
+ramonda.u      every longhand — one name, because every longhand is equally narrow
+ramonda.c      every conditional rule, with the digit layers inside it
 ```
 
-There is no third. Both names are fixed words: neither comes from the shorthand table, so neither
-can move between releases, and two stylesheets written a decade apart carry the identical
-statement.
+**The name is the COUNT, never a position.** That is the whole of why it cannot drift: a position in
+the table of distinct breadths moved `padding` from `u09` to `u10` when CSS added a property
+anywhere, and took every family below it along. A count moves only when that property's own count
+moves. Measured over 1068 covering pairs: if `S` covers `L` then `count(S) > count(L)` in every
+version, the six exceptions all being aliases.
+
+**Why the range stops at 64, and what `all` has to do with it.** Every count a shorthand may ever
+have must already be in the statement an earlier release emitted, so the range is a declared cost.
+`all` clears 559 properties today and gains one with every property CSS adds; giving it a count
+would mean pre-declaring 560 names. It needs none — it covers everything, so one fixed word says it
+is the weakest. That leaves `mask` at 25 as the widest real count, and 64 gives every family room to
+more than double:
+
+```
+names      gzipped, once per page
+   18      91 B      what this scheme replaces
+   32      114 B
+   64      168 B     <- this
+  560      1158 B
+ 1024      2158 B
+```
+
+**It is still seventeen shelves fewer.** Eighteen breadth names became one `ramonda.u`, because
+after splitting there is no wide unconditional declaration left to separate. What remains named is
+the shorthands, and they are named by a fact about themselves rather than by where they sit in a
+list.
+
+Verified end to end through the real `Sheet` and the real `mergeClassNames`, in Chromium, Firefox
+and WebKit, both load orders: 24 of 24.
+
+**And for a family that SPLITS, the layer decides nothing at all.** Both declarations are longhands
+with the same key, so `mergeClassNames` settles it before the browser sees a class — the element
+never carries two:
+
+```
+merge(package, app)   r-pt-8px r-pr-8px r-pb-8px r-pl-40px
+merge(app, package)   r-pt-8px r-pr-8px r-pb-8px r-pl-8px
+```
+
+The outcome follows the composition order the author wrote, and not which stylesheet loaded first.
+A probe that put both classes on the element by hand reported this as a failure, and the probe was
+wrong: the system never does that.
 
 **Why the numbers go.** Today a shelf's number says how BROAD a declaration is, so that a narrow one
 beats a wide one — `padding` at 9, `padding-left` at 17. After splitting there is no wide one left:

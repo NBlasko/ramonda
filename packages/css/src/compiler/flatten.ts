@@ -197,10 +197,64 @@ export function sheetRank(declaration: { property?: string; conditions?: readonl
  * Measured in Chromium through the real sheet: 600 load orders of random rule sets across three
  * files, each through no minifier, esbuild and lightningcss, zero wrong. See `prototype-layers.mjs`.
  */
+/**
+ * The widest count the pre-declared range holds, and why it is this number.
+ *
+ * The name of a shorthand's layer is the COUNT of properties it clears, not its position in a
+ * table — a position moves when the table grows and takes every family with it, a count does not
+ * move at all. So every count a shorthand may ever have must already be in the statement, which
+ * makes the range a declared cost rather than a free one.
+ *
+ * Measured: the widest shorthand the compiler still emits whole is `mask` at 25, and `font` at 21
+ * behind it. Splitting is what made that affordable — before it, `padding` and its 33 neighbours
+ * needed names too. 64 leaves every one of them room to more than double.
+ *
+ * ```
+ *    names   gzipped, once per page
+ *       32   114 B
+ *       64   168 B      <- this
+ *      560   1158 B
+ *     1024   2158 B
+ * ```
+ */
+const WIDEST = 64;
+
+/**
+ * A shorthand covering MORE than the range holds gets the weakest layer of all, and `all` is it.
+ *
+ * `all` clears 559 properties today and gains one with every property CSS adds, so it cannot have a
+ * count for a name without the range paying for 560 of them. It needs no count: it covers
+ * everything, so it is weaker than every other shorthand by definition, and one fixed name says
+ * that exactly.
+ */
+const EVERYTHING = "a";
+
+/**
+ * Where a declaration's rule goes, as a layer path.
+ *
+ * ```
+ * a longhand, unconditional      u                every longhand is equally narrow, so one name
+ * a shorthand, unconditional     s25 … s02        its own count, weakest first
+ * `all`                          a                weaker than every shorthand there can be
+ * anything conditional           c.d0.d5.…  + the same last step
+ * ```
+ *
+ * **Every longhand shares one layer, and that is the whole of what splitting bought.** The names
+ * used to be an INDEX into the table of distinct breadths, so a property CSS added anywhere moved
+ * `padding` from `u09` to `u10` and two stylesheets built a year apart disagreed about which layer
+ * `padding` was in. After splitting there is no wide unconditional declaration left to separate:
+ * every one is a longhand, every longhand is equally narrow, and a name that is the same for
+ * everybody separates nobody. Seventeen shelves stood empty and are gone.
+ *
+ * What is left needing an order is the shorthands no table can split — `background`, `font`, `grid`
+ * and 30 others — and they are named by what they COVER. Measured over 1068 covering pairs: if `S`
+ * covers `L` then `count(S) > count(L)` in every version, the six exceptions all being aliases.
+ */
 export function layerPathFor(declaration: { property?: string; conditions?: readonly string[] }): string[] {
-  const breadth = String(BREADTHS.indexOf(breadthOf(declaration))).padStart(2, "0");
+  const breadth = breadthOf(declaration);
+  const step = breadth === 0 ? "u" : breadth > WIDEST ? EVERYTHING : `s${String(breadth).padStart(2, "0")}`;
   const slot = widthSlot(declaration.conditions);
-  if (slot === 0) return [`u${breadth}`];
+  if (slot === 0) return [step];
 
   return [
     "c",
@@ -208,25 +262,29 @@ export function layerPathFor(declaration: { property?: string; conditions?: read
       .padStart(5, "0")
       .split("")
       .map((digit) => `d${digit}`),
-    `b${breadth}`,
+    step,
   ];
 }
 
 /** The names one level of the digit path may hold, in order. */
 export const DIGIT_LAYERS: readonly string[] = [...Array(10).keys()].map((one) => `d${one}`);
 
-/** The names a breadth level may hold, in order — widest first. */
-export const BREADTH_LAYERS: readonly string[] = BREADTHS.map((_, at) => String(at).padStart(2, "0"));
+/** Every name a breadth step may hold, weakest first: `all`, then each count, then the longhands. */
+export const BREADTH_LAYERS: readonly string[] = [
+  EVERYTHING,
+  ...[...Array(WIDEST - 1).keys()].map((one) => `s${String(WIDEST - one).padStart(2, "0")}`),
+  "u",
+];
 
 /**
- * The statement every stylesheet begins with: each unconditional breadth, then everything
- * conditional.
+ * The statement every stylesheet begins with, and it lists the WHOLE range.
  *
- * The whole list, and that is not caution. Measured: a stylesheet declaring only the layers it uses
- * put a shorthand's layer AFTER a longhand's, because a file holding just `margin-left` loaded first
- * and CSS appends an unseen name to the end of the order — `margin-left: 4px` became `0px`.
+ * Not caution. Measured: a stylesheet declaring only the layers it uses put a shorthand's layer
+ * AFTER a longhand's, because a file holding just `margin-left` loaded first and CSS appends an
+ * unseen name to the END of the order — `margin-left: 4px` became `0px`. Every name a later release
+ * might use has to be in the statement an earlier release already emitted, or the two disagree.
  */
-export const LAYER_ORDER = `@layer ${[...BREADTH_LAYERS.map((one) => `ramonda.u${one}`), "ramonda.c"].join(",")};`;
+export const LAYER_ORDER = `@layer ${[...BREADTH_LAYERS.map((one) => `ramonda.${one}`), "ramonda.c"].join(",")};`;
 
 /** Whether a shorthand sets everything another property sets, so a later one CLEARS it in the merge. */
 export function covers(shorthand: string, other: string): boolean {

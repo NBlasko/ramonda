@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
 import { BREADTH_LAYERS, LAYER_ORDER, layerPathFor } from "../compiler/flatten";
+import { SHORTHANDS } from "../compiler/keywords.generated";
 import { forget, mergeClassNames, shorthands } from "../merge";
 
 /**
@@ -344,8 +345,12 @@ describe("the layers", () => {
 
     const declared = sheet.cssFor("a.tsx").split("\n")[0];
     expect(declared).toBe(LAYER_ORDER);
-    // Every breadth an unconditional rule can have, and one for everything conditional.
-    expect(declared.match(/ramonda\.u/g)).toHaveLength(BREADTH_LAYERS.length);
+    // Every name a shorthand's count can be, then the ONE the longhands share, then the
+    // conditional one. The range is pre-declared whole so a later release cannot introduce a name
+    // an earlier one never listed.
+    expect(declared.split(",")).toHaveLength(BREADTH_LAYERS.length + 1);
+    expect(declared.match(/ramonda\.u\b/g)).toHaveLength(1);
+    expect(declared).toContain("ramonda.a,");
     expect(declared).toContain("ramonda.c;");
   });
 
@@ -367,16 +372,59 @@ describe("the layers", () => {
    * `border` is where a single comparison would not have been enough.
    */
   test.each([
-    ["padding", "padding-left"],
-    ["margin", "margin-inline"],
-    ["margin-inline", "margin-left"],
-    ["border", "border-left"],
-    ["border-left", "border-left-color"],
+    // A shorthand the compiler cannot split, against the longhand it covers.
+    ["background", "background-color"],
+    ["font", "font-size"],
+    ["grid", "grid-auto-flow"],
+    // And two shorthands, where the WIDER has to be the weaker.
+    ["mask", "mask-border"],
+    ["font", "font-variant"],
+    // `all` covers everything, so it is weaker than every shorthand there can be.
+    ["all", "background"],
+    ["all", "color"],
   ])("`%s` is in an earlier layer than `%s`", (broad, narrow) => {
-    const at = (property: string) => BREADTH_LAYERS.indexOf(layerPathFor({ property })[0].slice(1));
+    const at = (property: string) => BREADTH_LAYERS.indexOf(layerPathFor({ property })[0]);
 
     expect(at(broad)).toBeLessThan(at(narrow));
   });
+
+  /**
+   * A family the compiler SPLITS still needs its layer, for the values it REFUSES to split.
+   *
+   * `padding: ${gap}` is a hole, `padding: var(--x)` is unknown, and an arm of a `match` is one
+   * class — all three reach the sheet as `padding`, and all three have to lose to a `padding-left`
+   * beside them. So the count is asked of the property, not of whether this particular declaration
+   * was split, and a split family keeps a name it usually does not use.
+   */
+  test.each([
+    ["padding", "padding-left"],
+    ["border", "border-left"],
+    ["border-left", "border-left-color"],
+  ])("`%s` keeps its layer for the values that refuse to split, before `%s`", (broad, narrow) => {
+    const at = (property: string) => BREADTH_LAYERS.indexOf(layerPathFor({ property })[0]);
+
+    expect(at(broad)).toBeLessThan(at(narrow));
+  });
+
+  /**
+   * The name is the COUNT, and that is the whole reason it cannot drift.
+   *
+   * It used to be a POSITION in the table of distinct breadths, so a property CSS added anywhere
+   * moved every family below it and two stylesheets built a year apart disagreed about which layer
+   * `padding` was in. Tied to the count, a name moves only when that property's own count moves.
+   * Asserted against the table rather than written out, so reintroducing an index fails here.
+   */
+  test.each(["background", "font", "mask", "padding", "border"])("`%s` is named by what it covers", (property) => {
+    expect(layerPathFor({ property })[0]).toBe(`s${String(SHORTHANDS[property].length).padStart(2, "0")}`);
+  });
+
+  /** Every longhand shares ONE layer, which is the whole of what splitting bought. */
+  test.each(["padding-top", "color", "background-color", "border-left-width"])(
+    "`%s` is a longhand, so it is in the one layer they all share",
+    (property) => {
+      expect(layerPathFor({ property })).toEqual(["u"]);
+    },
+  );
 
   /**
    * And the pair really does land on one element, or the ordering above would be a claim about
@@ -414,7 +462,7 @@ describe("the layers", () => {
     const card = sheet.cssFor("Card.tsx");
     // The unconditional one is one level down; the conditional one is under `c`, which is declared
     // after every `u`, so it wins wherever it applies.
-    expect(card).toMatch(/@layer u\d+ \{\n\.r-6666/);
+    expect(card).toMatch(/@layer u \{\n\.r-6666/);
     expect(card).toContain("@layer c {");
     expect(card.indexOf("@layer c {")).toBeGreaterThan(card.indexOf(".r-6666"));
 
