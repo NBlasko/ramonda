@@ -4353,16 +4353,16 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Three shapes, and 79 of 94 families
+#### Three shapes, and 81 of 94 families
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 79   firefox 68   webkit 72
+chromium 81   firefox 69   webkit 74
 
-covered in every engine that HAS it   79 families, 7219 values checked
-present and covered in all three      67
+covered in every engine that HAS it   81 families, 7820 values checked
+present and covered in all three      68
 properties not every engine has       16
 
 positional (52)     padding, margin, inset, overflow, border-radius,
@@ -4522,6 +4522,14 @@ start` is an order and a fallback, not two values of one thing. It changed no nu
 that family has no second candidate either; it is here so the next one does not have to be found
 the same way.
 
+**A token matches a sentinel as WRITTEN or as the engine reports it — and that one rule had to be
+put in FOUR separate places**, each time after a family had already been lost to its absence. The
+combination learner (`mask: 3px url(b.png)` emitting `url("a.png")`, a different file), the
+per-arity learner, the DOMAIN test (`marker: url(a.png)` comes back `url("a.png")`, so the image
+domain was judged not to fit and `marker` had no shape at all) and the positional learner's own
+slot mapping (`marker: none` emitting the probe's own file). The fourth was hiding behind a
+parameter named `held`, shadowing the helper of that name that would have fixed it.
+
 **And nine more came in from the classifier's vocabulary, not from a new shape.** The signature
 learner needs two groups in a family before it can say anything, and for `flex-flow`,
 `text-emphasis`, `text-wrap` and `white-space` none of the value types ever parsed. Keyword groups
@@ -4531,8 +4539,10 @@ learner needs two groups in a family before it can say anything, and for `flex-f
 
 `position-try`, 3 of 44, above.
 
-**Nine with no shape learned**: `font`, `font-synthesis`, `grid`, `grid-template`, `marker`, and
-the timeline group `scroll-timeline`, `view-timeline`, `timeline-trigger`, `text-box`.
+**Seven with no shape learned**: `font`, `font-synthesis`, `grid`, `grid-template`,
+`scroll-timeline`, `view-timeline`, `text-box`. `font-synthesis` is a shape none of these is — a
+FLAG list, where naming a keyword turns its longhand on and leaving it out turns it off, so no
+token is ever "held" by the longhand it addresses.
 
 **Four that never expand in the engine at all** — `all`, `perspective-origin`, `transform-origin`,
 `vertical-align`. They are in the shorthand table because SOME engine resets longhands through

@@ -88,6 +88,11 @@ const DOMAINS = [
     corpus: ["none", "solid", "double", "var(--s)", "inherit"],
   },
   {
+    kind: "image",
+    sentinels: ["url(a.png)", "url(b.png)", "url(c.png)", "url(d.png)", "url(e.png)", "url(f.png)"],
+    corpus: ["none", "url(a.png)", "var(--i)", "inherit"],
+  },
+  {
     kind: "alignment",
     sentinels: ["start", "end", "center", "stretch", "flex-start", "flex-end", "baseline", "normal"],
     corpus: ["start", "end", "center", "stretch", "space-between", "normal", "var(--a)", "inherit"],
@@ -162,6 +167,11 @@ const TYPES = {
   wrapping2: ["balance", "pretty"],
   "space-keyword": ["pre", "collapse"],
   align: ["baseline", "middle"],
+  axis: ["block", "inline"],
+  "axis-xy": ["x", "y"],
+  "timeline-name": ["--one", "--two"],
+  "box-edge": ["cap", "ex"],
+  trim: ["trim-start", "trim-end"],
 };
 
 /** In the page: set a declaration and read the longhands it expanded into. */
@@ -269,11 +279,18 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
           let at = 0;
           return pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / ");
         };
+        /**
+         * A sentinel counts as held whether the engine reports it as WRITTEN or normalised — the
+         * third place this has cost a family. `marker: url(a.png)` comes back `url("a.png")`, so a
+         * raw comparison said the image domain did not fit and `marker` had no shape at all.
+         */
+        const holds = (longhand, value, sentinels) =>
+          sentinels.some((one) => value === one || value === held(longhand, one));
         const domain = DOMAINS.find((one) =>
           PATTERNS.some((pattern) => {
             const got = expand(name, fill(one.sentinels, pattern));
             const keys = Object.keys(got);
-            return keys.length > 0 && keys.every((k) => one.sentinels.includes(got[k]));
+            return keys.length > 0 && keys.every((k) => holds(k, got[k], one.sentinels));
           }),
         );
         if (domain === undefined) return null;
@@ -284,10 +301,14 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
           const got = expand(name, fill(domain.sentinels, pattern));
           if (Object.keys(got).length === 0) continue;
           learned[pattern.key] = Object.fromEntries(
-            Object.entries(got).map(([longhand, held]) => {
-              const parts = tokens(held);
-              const slots = parts.map((one) => values.indexOf(one));
-              return [longhand, slots.every((one) => one >= 0) ? { slots } : { literal: held }];
+            // `carries`, not `held` — the parameter was shadowing the helper of that name, which is
+            // exactly what was needed here: a token matches a sentinel as WRITTEN or as the engine
+            // reports it. Raw only, and `marker: none` emitted `url("a.png")`, the probe's own file.
+            Object.entries(got).map(([longhand, carries]) => {
+              const slots = tokens(carries).map((one) =>
+                values.findIndex((v) => one === v || one === held(longhand, v)),
+              );
+              return [longhand, slots.every((one) => one >= 0) ? { slots } : { literal: carries }];
             }),
           );
         }
