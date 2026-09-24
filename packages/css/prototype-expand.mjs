@@ -170,7 +170,9 @@ const TYPES = {
   axis: ["block", "inline"],
   "axis-xy": ["x", "y"],
   "timeline-name": ["--one", "--two"],
-  "box-edge": ["cap", "ex"],
+  // Two WORDS, because some components are: `text-box`'s edge is `cap alphabetic`, and `cap` alone
+  // is refused. A probe token is a component, not a word.
+  "box-edge": ["cap alphabetic", "ex text"],
   trim: ["trim-both", "trim-start"],
 };
 
@@ -653,8 +655,22 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
              */
             const order = [];
             const byGroup = new Map();
-            for (const one of tokens(rest)) {
-              const signature = signatureOf(one);
+            const list = tokens(rest);
+            for (let at = 0; at < list.length; at++) {
+              let one = list[at];
+              let signature = signatureOf(one);
+              // A component can be several words. `text-box: cap alphabetic` is ONE edge, and `cap`
+              // on its own is refused — so a word that classifies as nothing is offered the word
+              // after it before the whole value is given up on.
+              if (signature === null && at + 1 < list.length) {
+                const joined = `${one} ${list[at + 1]}`;
+                const together = signatureOf(joined);
+                if (together !== null) {
+                  one = joined;
+                  signature = together;
+                  at++;
+                }
+              }
               if (signature === null || !groups.has(signature)) return null;
               if (!byGroup.has(signature)) {
                 byGroup.set(signature, []);

@@ -4361,7 +4361,7 @@ declarations.
 94 shorthands, 3 engines
 chromium 84   firefox 70   webkit 77
 
-covered in every engine that HAS it   84 families, 7891 values checked
+covered in every engine that HAS it   84 families, 7789 values checked
 present and covered in all three      69
 properties not every engine has       16
 
@@ -4559,20 +4559,22 @@ learner needs two groups in a family before it can say anything, and for `flex-f
 
 `position-try`, 3 of 44, above.
 
-**Four with no shape learned**, and the report says what the learner could SEE of each, which is
-the difference between a missing shape and a missing word:
+**A probe token is a COMPONENT, not a word.** `text-box`'s edge is `cap alphabetic`, and `cap`
+alone is refused, so no single word ever classified and the family had no shape at all. Multi-word
+probe tokens, and a word that classifies as nothing being offered the word after it before the
+value is given up on, moved it from *no shape* to *a shape that is wrong in ten of twenty-five
+values* — which is a diagnosis rather than a fix, and worth having as one.
 
-```
-font             0 groups
-grid             0 groups
-grid-template    0 groups
-text-box         1 group: text-box-trim
-```
+**Three with no shape learned**: `font`, `grid`, `grid-template`. All three are genuinely a grammar
+of their own.
 
-The first three are genuinely a grammar of their own. `text-box` is not: its edge is TWO tokens
-together — `cap alphabetic` parses where `cap` alone does not — so no single token ever classifies,
-and the carrier trick only ever adds one companion. A component made of several tokens is the next
-thing the learner cannot see.
+**And one thing that has now been tried twice and cost more than it gained both times.** A constant
+for a longhand another group owns is indistinguishable from that probe's leftovers: `text-box: cap
+alphabetic` really does set the trim to `trim-both` with no trim word written, and `border: 1px
+solid red`'s colour probe really does leave a width behind. Keeping those literals and filtering
+them at SPLIT time against the groups actually present is the obvious answer, and it took the count
+from 84 to 82 the first time and from 84 to 82 again after the architecture had changed underneath
+it. Whatever separates the two, it is not that.
 
 **Four that never expand in the engine at all** — `all`, `perspective-origin`, `transform-origin`,
 `vertical-align`. They are in the shorthand table because SOME engine resets longhands through
