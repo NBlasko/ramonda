@@ -4353,23 +4353,39 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Three shapes, and 57 of 94 families
+#### Three shapes, and 73 of 94 families
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 59   firefox 57   webkit 62
-in all three: 57 families, 4743 values checked
+chromium 73   firefox 61   webkit 66
 
-positional (37)     padding, margin, inset, overflow, border-radius,
+covered in every engine that HAS it   73 families, 5820 values checked
+present and covered in all three      61
+properties not every engine has       16
+
+positional (52)     padding, margin, inset, overflow, border-radius,
                     border-width/color/style, background-position, mask-position,
-                    grid-area, grid-column, grid-row, overscroll-behavior,
-                    place-self, scroll-*, and every logical variant
-by signature (15)   the whole border branch, border-image, outline, list-style,
-                    text-decoration
-comma list (5)      animation, transition, background, mask, column-rule
+                    grid-area/column/row, place-content, place-items, place-self,
+                    overscroll-behavior, container, font-variant, the whole
+                    corner-*-shape branch, scroll-*, and every logical variant
+by signature (17)   the whole border branch, border-image, mask-border, outline,
+                    column-rule, list-style, text-decoration
+comma list (4)      animation, transition, background, mask
 ```
+
+**"Covered in all three" was the wrong bar**, and finding that out is worth more than the number it
+gave. `corner-shape` is Chromium-only today, so asking every engine to agree about it refuses a
+family two of them have never heard of — a bar nothing can clear rather than a fault found. Absence
+is not disagreement: the question is whether a family is covered in every engine that HAS it, and
+16 of the 94 are not in all three.
+
+The other half of the jump was the probe's own vocabulary. Four keyword domains — alignment
+(`start`, `end`, `stretch`…), corner shapes (`round`, `bevel`, `scoop`…), white-space and
+vertical-align — brought in `place-content`, `place-items`, `container`, `font-variant` and the
+eleven `corner-*-shape` families. They were never a grammar of their own; they were positional over
+keyword sets nothing here offered.
 
 **A group's shape is learned PER ARITY**, and the tokens are grouped before any is placed. Walking
 one at a time cannot see how many of a group there are, and the answer depends on it: `flex: 7` and
@@ -4488,13 +4504,13 @@ mapping can hold:
 
 #### What is not done
 
-`flex` is 8 of 51 values out: `flex: 7 7` puts the basis at `0%` and no probe of the number group
-teaches that, because arity two is as far as the learning goes. `offset` is 28 of 75, and its
-remaining trouble is that a length means the position in one place and the distance in another.
+Three families where a shape is learned and is wrong: `flex` (8 of 51 — `flex: 7 7` puts the basis
+at `0%`, and arity two is as far as the learning goes), `offset` (28 of 75 — a length means the
+position in one place and the distance in another), and `position-try` (3 of 44).
 
-And 33 families where no shape is learned at all — mostly the probe's sentinel domains still being
-too narrow (`place-content`, `place-items`, `transform-origin`, `text-wrap`, `vertical-align`,
-`white-space` are positional over keyword sets nothing here offers, and the `corner-*-shape` branch
-is eleven of the 33). Genuinely their own grammar: `font`, `grid`, `grid-template`, `font-variant`,
-`container`, `all`.
+And 18 with no shape learned at all. Some are still the sentinel domains being too narrow —
+`text-wrap`, `vertical-align`, `white-space`, `transform-origin`, `perspective-origin`,
+`flex-flow`, `text-emphasis`, `font-synthesis`, `marker` — and the timeline group
+(`scroll-timeline`, `view-timeline`, `timeline-trigger`, `text-box`). Genuinely their own grammar:
+`font`, `grid`, `grid-template`, `all`.
 

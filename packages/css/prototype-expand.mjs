@@ -88,6 +88,26 @@ const DOMAINS = [
     corpus: ["none", "solid", "double", "var(--s)", "inherit"],
   },
   {
+    kind: "alignment",
+    sentinels: ["start", "end", "center", "stretch", "flex-start", "flex-end", "baseline", "normal"],
+    corpus: ["start", "end", "center", "stretch", "space-between", "normal", "var(--a)", "inherit"],
+  },
+  {
+    kind: "corner-shape",
+    sentinels: ["round", "bevel", "scoop", "notch", "square", "squircle"],
+    corpus: ["round", "bevel", "scoop", "notch", "square", "var(--k)", "inherit"],
+  },
+  {
+    kind: "white-space",
+    sentinels: ["normal", "pre", "nowrap", "pre-wrap", "pre-line", "break-spaces", "collapse", "preserve"],
+    corpus: ["normal", "pre", "nowrap", "balance", "pretty", "stable", "var(--w)", "inherit"],
+  },
+  {
+    kind: "vertical-align",
+    sentinels: ["baseline", "sub", "super", "top", "text-top", "middle", "bottom", "text-bottom"],
+    corpus: ["baseline", "sub", "middle", "10px", "50%", "var(--v)", "inherit"],
+  },
+  {
     kind: "grid-line",
     sentinels: ["1", "2", "3", "4", "5", "6", "7", "8"],
     corpus: ["auto", "1", "-1", "span 2", "3", "var(--n)", "inherit"],
@@ -673,6 +693,18 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
       const uncovered = [];
 
       for (const name of names) {
+        /**
+         * A property this engine does not HAVE cannot disagree about it.
+         *
+         * `corner-shape` is Chromium-only today, so "covered in all three" refuses to split a
+         * family two engines have never heard of — a bar nothing can clear rather than a fault
+         * found. Absence is recorded separately and the real question asked of the rest: is it
+         * covered in every engine that HAS it?
+         */
+        if (!(name in document.getElementById("x").style)) {
+          uncovered.push({ name, why: "absent", absent: true });
+          continue;
+        }
         const byType = learnBySignature(name);
         const learned = learnPositional(name) ?? learnList(name, byType) ?? byType;
         if (learned === null) {
@@ -744,9 +776,17 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 }
 
 const engines = Object.keys(perEngine);
-const everywhere = perEngine[engines[0]].covered.filter((one) =>
+const has = (engine, name) => !perEngine[engine].uncovered.some((one) => one.name === name && one.absent);
+const anyCovered = new Map();
+for (const engine of engines) for (const one of perEngine[engine].covered) anyCovered.set(one.name, one);
+/** Covered in every engine that HAS the property — an engine without it cannot disagree. */
+const everywhere = [...anyCovered.values()].filter((one) =>
+  engines.every((e) => !has(e, one.name) || perEngine[e].covered.some((c) => c.name === one.name)),
+);
+const strict = [...anyCovered.values()].filter((one) =>
   engines.every((e) => perEngine[e].covered.some((c) => c.name === one.name)),
 );
+const partial = names.filter((name) => engines.some((e) => !has(e, name)) && engines.some((e) => has(e, name)));
 const tried = perEngine[engines[0]].covered.reduce((sum, one) => sum + one.tried, 0);
 const byShape = {};
 for (const one of everywhere) (byShape[one.shape] ??= []).push(one.name);
@@ -756,7 +796,11 @@ for (const engine of engines) {
   const { covered, uncovered } = perEngine[engine];
   console.log(`   ${engine.padEnd(9)} split: ${String(covered.length).padStart(3)}   not yet: ${uncovered.length}`);
 }
-console.log(`\n   in ALL THREE: ${everywhere.length} families, ${tried} values checked in the first engine\n`);
+console.log(
+  `\n   covered in every engine that HAS it: ${everywhere.length} families, ${tried} values checked in the first engine`,
+);
+console.log(`   of those, present and covered in all three: ${strict.length}`);
+console.log(`   properties not every engine has: ${partial.length} — ${partial.slice(0, 6).join(", ")}\n`);
 for (const [shape, list] of Object.entries(byShape)) {
   console.log(`   ${shape} (${list.length})`);
   console.log(`     ${list.join(", ")}\n`);
