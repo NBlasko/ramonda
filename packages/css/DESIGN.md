@@ -4569,9 +4569,33 @@ every engine that has it, verified over 8763 values. What remains is not a shape
 **Sixteen are not in all three engines**, `corner-*-shape` and `animation-range` among them, so
 "covered in all three" is 73 rather than 89. Absence is not disagreement.
 
-The work that is left is not in the prototype: writing the splitter into the compiler, where the
-classifier must come from the generated keyword tables rather than from asking an engine at split
-time, and the corpus must become a checked-in gate rather than a script.
+#### The classifier cannot come from the tables, and that is not a gap
+
+`prototype-expand.mjs` asks the engine at split time which longhand a token belongs to, and a
+compiler has no browser. `prototype-classify-from-tables.mjs` asks whether `KEYWORDS` and
+`PRIMITIVE` could answer instead, over every (family, token) pair the engine classifies:
+
+```
+the tables agree              63
+the tables say something else 45
+the tables say nothing       296
+```
+
+**63 of 404.** And the 296 are not a table that needs filling: `KEYWORDS` holds only properties
+whose grammar is CLOSED, which is exactly right for its own job of reporting a wrong word —
+`animation-name` takes a free identifier and can never have a list. The 45 are the other half of the
+same fact: `1.5s` matches `animation-duration` and `animation-delay` by primitive, and nothing in a
+type says which comes first.
+
+So the learned mapping has to become a generated table of its own, written the way
+`build-shorthand-leaves.mjs` writes its one — ask the engines ONCE, when the table is built, and
+ship the answer. That is the same method this package already uses for what a shorthand resets, and
+it is why the prototype learning from the engines rather than from a written rule was worth the
+trouble: the learning IS the generator.
+
+The rest of what is left: writing the splitter into the compiler against that table, teaching
+`mergeClassNames` the group clear, and turning the corpus into a checked-in gate rather than a
+script.
 
 #### ~~What is not done~~ — the older list
 
