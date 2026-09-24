@@ -25,13 +25,14 @@
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadTs } from "./lib-load-ts.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const selftest = process.env.SELFTEST;
 
 const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.json"))("@playwright/test");
 const { DOMAINS, PATTERNS, splitPositional } = await import("../packages/css/shorthand-shapes.mjs");
-const { SHAPES } = await import("../packages/css/src/compiler/shapes.generated.ts");
+const { SHAPES } = await loadTs(join(HERE, "..", "packages", "css", "src", "compiler", "shapes.generated.ts"));
 
 /** Every value to try, per family, built from its own domain's corpus across every pattern. */
 function casesFor(shape) {

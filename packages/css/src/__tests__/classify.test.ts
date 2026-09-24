@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { longhandsFor, resolving } from "../compiler/classify";
+import { acceptedBy, isOpen, longhandsFor, resolving } from "../compiler/classify";
 import { componentsOf, parseValueSyntax } from "../compiler/valueSyntax";
 
 /**
@@ -155,5 +155,82 @@ describe("following a property's grammar", () => {
 
   test("a property nothing knows about reads as empty", () => {
     expect(table({})("nope")).toBe("");
+  });
+});
+
+describe("what a component accepts, so a token can be recognised as it", () => {
+  /** A tiny grammar table for named types, standing in for `mdn.css.syntaxes`. */
+  const grammars = (rows: Record<string, string>) => (name: string) => rows[name] ?? "";
+
+  const accepts = (source: string, rows: Record<string, string> = {}) =>
+    acceptedBy(parseValueSyntax(source), grammars(rows));
+
+  test("a closed list of words", () => {
+    const answer = accepts("<line-style>", { "line-style": "none | dotted | dashed | solid" });
+
+    expect(answer.words).toEqual(["none", "dotted", "dashed", "solid"]);
+    expect(answer.types).toEqual([]);
+  });
+
+  test("words and a primitive together", () => {
+    const answer = accepts("<line-width>", { "line-width": "<length> | thin | medium | thick" });
+
+    expect(answer.words).toEqual(["thin", "medium", "thick"]);
+    expect(answer.types).toEqual(["length"]);
+  });
+
+  test("a type with no grammar of its own IS the answer", () => {
+    expect(accepts("<length>").types).toEqual(["length"]);
+  });
+
+  test("named types are followed to the bottom", () => {
+    const answer = accepts("<a>", { a: "<b> | one", b: "<length> | two" });
+
+    expect([...answer.words].sort()).toEqual(["one", "two"]);
+    expect(answer.types).toEqual(["length"]);
+  });
+
+  test("a function is kept as a function", () => {
+    expect(accepts("<c>", { c: "red | rgb( <number> )" })).toMatchObject({
+      words: ["red"],
+      functions: ["rgb"],
+    });
+  });
+
+  /**
+   * CSS's grammars refer to each other and `<calc-sum>` refers to itself. A resolver with no cap
+   * and no memory of where it has been does not return.
+   */
+  /**
+   * A nested alternation is still one flat set of choices.
+   *
+   * `alternativesOf` splits on `|` and hands back each branch, but a branch may be an alternation
+   * itself — `[ a | b ] | c` gives back a group and a word, not three words. Measured, because the
+   * shape of what comes back is the parser's business and not this file's to assume.
+   */
+  test("an alternation inside an alternation is flattened, not dropped", () => {
+    expect([...accepts("<a>", { a: "[ one | two ] | three" }).words].sort()).toEqual(["one", "three", "two"]);
+  });
+
+  test("a grammar that refers to itself ends", () => {
+    expect(() => accepts("<loop>", { loop: "<loop> | done" })).not.toThrow();
+    expect(accepts("<loop>", { loop: "<loop> | done" }).words).toEqual(["done"]);
+  });
+
+  test("a grammar this cannot read is a type it cannot open, which is still an answer", () => {
+    expect(accepts("<odd>", { odd: "@nope" }).types).toEqual(["odd"]);
+  });
+
+  /**
+   * `<keyframes-name>` is a `custom-ident`, which is to say any word. A component like that says
+   * yes to nearly everything, so it is asked last — which is what puts `spin` in `animation-name`
+   * without a list of animation names, a list that could not exist.
+   */
+  test("a component that takes a free identifier is known as open", () => {
+    expect(isOpen(accepts("<keyframes-name>", { "keyframes-name": "<custom-ident> | <string>" }))).toBe(true);
+  });
+
+  test("and a closed one is not", () => {
+    expect(isOpen(accepts("<line-style>", { "line-style": "none | solid" }))).toBe(false);
   });
 });

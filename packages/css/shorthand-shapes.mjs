@@ -27,6 +27,8 @@
  * then checked against, which is where the awkward values belong: `calc()`, `min()`, `env()`, a
  * percentage, a zero, a negative, a `var()` and the CSS-wide keywords.
  */
+import { loadTs } from "../../scripts/lib-load-ts.mjs";
+
 export const DOMAINS = [
   {
     kind: "length",
@@ -100,7 +102,16 @@ export const PATTERNS = [[1], [2], [3], [4], [1, 1], [2, 2], [4, 4], [2, 1], [1,
   (sides) => ({ key: sides.join("/"), sides, slots: sides.reduce((sum, one) => sum + one, 0) }),
 );
 
-export { WIDE, tokensOf, splitPositional } from "./src/compiler/split.ts";
+/**
+ * The splitter itself, loaded rather than re-exported.
+ *
+ * `split.ts` imports `./keywords.generated` without an extension, which is how every module under
+ * `src` is written and which node cannot resolve on its own. `loadTs` bundles it in memory. A plain
+ * `export … from` cannot do that, so the names are bound here — this file is build-only and never
+ * published, so the extra step costs nothing at runtime.
+ */
+const split = await loadTs(new URL("./src/compiler/split.ts", import.meta.url).pathname);
+export const { WIDE, tokensOf, splitPositional, splitTokens } = split;
 
 /**
  * Learn every positional family, inside a page. Returns data, not closures.

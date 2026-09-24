@@ -1,4 +1,6 @@
+import { KEYWORDS, UNIT_TYPE } from "./keywords.generated";
 import type { Shape } from "./shapes.generated";
+import type { TokenShape, TokenSlot } from "./tokenShapes.generated";
 
 /**
  * Splitting a POSITIONAL shorthand into its longhands, from a learned shape and nothing else.
@@ -85,4 +87,109 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
       "literal" in how ? how.literal : how.slots.map((index) => flat[index]).join(" "),
     ]),
   );
+}
+
+/**
+ * Splitting a shorthand whose value is a BAG OF TOKENS — written in any order, one token per slot.
+ *
+ * ## Why this is a second function and not a wider first one
+ *
+ * A positional family is answered by how many values were written. `border: 1px solid red` is not:
+ * the three parts may be written in any order, and which longhand each feeds is decided by what the
+ * token IS. So the shape here is not a count-to-mapping table but a RECOGNISER per slot, derived
+ * from the family's published grammar and measured against three engines by
+ * `scripts/build-token-shapes.mjs`.
+ *
+ * ## The boundary, which is a fact and not a shortfall
+ *
+ * A value is a bag of tokens only where the grammar is flat — no comma, no slash, no repetition.
+ * `background`, `animation`, `transition`, `mask`, `font` and `grid` all have one of the three, so
+ * they are not in the table and keep their shorthand. What IS in it is the whole `border` family,
+ * `outline`, `column-rule`, `text-decoration`, `flex-flow` and `list-style`.
+ *
+ * ## Why the three passes are in this order
+ *
+ * An exact WORD first, then what a slot takes by primitive or function, then the open slot as a
+ * catch-all. The first two are not interchangeable: `list-style-type` lists `none` exactly AND
+ * takes a `custom-ident`, so matching primitives first walks `list-style: none` past it into
+ * `list-style-image` — a different declaration that looks the same.
+ *
+ * The third pass takes whatever is left, which is what puts `upper-roman` in `list-style-type`
+ * without a list of counter styles that could not exist. It does NOT consult what the slot accepts,
+ * and the middle pass deliberately does not skip an open slot: measured over the whole table, no
+ * open slot can win the middle pass, because `custom-ident` and `string` are the only primitives
+ * one has and neither is ever the answer for a token. A guard there was written, was found to
+ * decide nothing, and was removed rather than kept as a comment about a case that cannot arise.
+ * A family that later brings an open slot with a real primitive would be caught by the generator,
+ * which refuses any family it cannot reproduce in all three engines.
+ */
+/** A colour is tested directly rather than expanded: `<color>` is 192 words, and every border family takes one. */
+const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== ""));
+const COLOUR_CALL = /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/i;
+const A_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+const A_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z%]+)$/i;
+
+/** Which primitives a token could be. A bare number is BOTH a number and an integer when it has no point. */
+function primitivesOf(token: string): readonly string[] {
+  if (A_NUMBER.test(token)) return token.includes(".") || token.includes("e") ? ["number"] : ["number", "integer"];
+  const dimension = A_DIMENSION.exec(token);
+  if (dimension !== null) {
+    const type = UNIT_TYPE[(dimension[3] ?? "").toLowerCase()];
+    return type === undefined ? [] : [type];
+  }
+  if (token.startsWith("#")) return ["hex-color", "color"];
+  return [];
+}
+
+/** Whether one slot takes this token, by word, by function, or by primitive. */
+function accepts(slot: TokenSlot, token: string): boolean {
+  const lower = token.toLowerCase();
+  if (slot.words.some((one) => one.toLowerCase() === lower)) return true;
+  if (slot.types.includes("color") && (COLOUR_WORDS.has(lower) || lower.startsWith("#") || COLOUR_CALL.test(lower)))
+    return true;
+  const call = /^([a-z-]+)\(/i.exec(lower);
+  // `url(…)` is spelled like a call and is a TYPE — a grammar writes `<url>`, never `url()`.
+  if (call !== null) return call[1] === "url" ? slot.types.includes("url") : slot.functions.includes(call[1] ?? "");
+  return primitivesOf(lower).some((one) => slot.types.includes(one));
+}
+
+/**
+ * Split a bag-of-tokens value into its longhands, or refuse.
+ *
+ * It refuses on a comma or a slash (the shape does not describe those), on `var()` (what is in it
+ * is unknown until the browser reads it), and on a token no slot will take. A refusal leaves the
+ * declaration a shorthand, which is visibly the author's own text; a wrong guess is invisible.
+ *
+ * A CSS-wide keyword goes on EVERY longhand the family resets — `border: inherit` inherits all
+ * twelve — and beside another value it is refused, because CSS has no such form either.
+ */
+export function splitTokens(shape: TokenShape, value: string): Record<string, string> | undefined {
+  if (/(^|[^\w-])var\(/i.test(value) || /[,/]/.test(value)) return undefined;
+  const tokens = tokensOf(value);
+  if (tokens.length === 0) return undefined;
+  if (tokens.some((one) => WIDE.includes(one.toLowerCase()))) {
+    if (tokens.length !== 1) return undefined;
+    return Object.fromEntries(shape.longhands.map((one) => [one, tokens[0] as string]));
+  }
+
+  const taken: (string | undefined)[] = shape.slots.map(() => undefined);
+  const free = (fits: (slot: TokenSlot) => boolean): number =>
+    shape.slots.findIndex((slot, index) => taken[index] === undefined && fits(slot));
+  for (const token of tokens) {
+    const lower = token.toLowerCase();
+    let at = free((slot) => slot.words.some((one) => one.toLowerCase() === lower));
+    if (at < 0) at = free((slot) => accepts(slot, token));
+    if (at < 0) at = free((slot) => slot.open);
+    if (at < 0) return undefined;
+    taken[at] = token;
+  }
+
+  // A longhand no token reached is reset, which is exactly what the shorthand does to it.
+  const out: Record<string, string> = Object.fromEntries(shape.longhands.map((one) => [one, "initial"]));
+  for (const [index, slot] of shape.slots.entries()) {
+    const token = taken[index];
+    if (token === undefined) continue;
+    for (const longhand of slot.longhands) out[longhand] = token;
+  }
+  return out;
 }

@@ -4798,6 +4798,94 @@ missing one is loud), the corpus, the gate, the splitter in `flatten.ts`, and th
 shape must be verified inside the generator rather than by a gate beside it. What goes is the
 scope: positional only.
 
+##### The recogniser, and the one family the engines cannot agree about
+
+`longhandsFor` answers _component → longhand_. Splitting a written value needs the other direction —
+_token → component_ — and that cannot be a lookup, because the tokens are not enumerable. It is a
+PREDICATE, derived from the same published grammar: `acceptedBy` resolves a component down to the
+words, primitive types and functions it takes, following named types through each other and stopping
+on a primitive. `<line-style>` comes back as ten words and no type; `<line-width>` as three words
+plus `length`; `<keyframes-name>` as no words at all, only `custom-ident` — which is why `isOpen`
+exists and why such a component is asked LAST, after every closed grammar has said no.
+
+Measured over all 80 families mdn-data gives a grammar for, none of which the reader failed to
+parse, the components of a family divide like this:
+
+```
+59  every component distinguishable by word alone
+16  two components take the same WORD
+ 3  two components take the same primitive TYPE
+ 2  a component is open — anything is a candidate
+```
+
+##### The longhand list is the ENGINE's, because mdn-data's is wrong
+
+The clash list sent the first version of this to the engines, and what came back was not about the
+clashes at all. `border-block-end` split into `border-top-width`, `border-top-style` and
+`border-top-color` — physical properties, for a logical shorthand. That came straight from
+`mdn.css.properties["border-block-end"].computed`, which records exactly those three.
+`border-block-start` is worse: `["border-width", "border-style", "border-block-start-color"]`, two
+shorthands and one logical longhand in one list.
+
+The engines answer it directly. A shorthand set to `inherit` — legal for every property — expands in
+`element.style`, and iterating the declaration lists precisely the longhands it wrote. Asked that
+way, all three agree, and they disagree with mdn-data for **18 of 77 families**. `background` comes
+back with `background-position-x` and `-y` rather than `background-position`, and `border-block`
+flattens to all six. So: the grammar is read from mdn-data, the longhand list is measured. This is
+the third time in this branch that mdn-data has been the wrong oracle for something the browser
+knows — see `mdn-data-is-not-the-oracle`.
+
+##### What the mechanism covers, and the boundary that is not arbitrary
+
+A value is a BAG OF TOKENS only when the grammar is flat — no comma, no slash, no repetition. Each
+token goes to the first slot still empty that accepts it, in three passes: an exact WORD, then a
+closed slot by primitive, then an open one. The order of those three is load-bearing.
+`list-style-type` is open (it takes a `custom-ident`), so without the word pass first, `list-style:
+none` walks past it and lands in `list-style-image`. Longhands no token reached are written
+`initial`, which is what a shorthand does to them and needs no table of initial values.
+
+Measured over the flat families, corpus built from each slot's own vocabulary, compared as computed
+values against the shorthand on a second element in all three engines:
+
+```
+19 families   186 values   186 agree   0 disagree
+```
+
+Fifteen families are excluded and each exclusion is a fact, not a gap: `animation`, `background`,
+`mask`, `transition`, `grid-area`, `offset`, `scroll-timeline`, `view-timeline`, `border-image`,
+`mask-border`, `font`, `grid`, `grid-template`, `timeline-trigger` have a comma, a slash or a
+repetition in their grammar, and `columns` is held out by a guard that refuses a family whose slots
+claim the same longhand twice — which is how the three-slot reading of a two-component grammar was
+caught instead of shipped. Those families keep the conditional layer. They are the next piece of
+work, not a hole in this one.
+
+##### Two things the build found that reading the grammar would not have
+
+**The longhand list has an ORDER, and the engines disagree about it.** The merge compares printed
+shapes, so `border`, `border-block`, `border-inline`, `outline` and `text-decoration` were all
+dropped as disagreements although every engine named the same longhands: Chromium lists `border`
+starting at colour, Firefox at width. The order carries nothing — the list only says which longhands
+get `initial` when no token reached them — so it is sorted before the comparison, and all nineteen
+agree. A comparison by printed form will find differences that are not differences, and the fix is
+to make the form canonical rather than to loosen the comparison.
+
+**A guard that decided nothing was deleted, not documented.** The middle pass originally skipped an
+open slot, so a closed one could claim a token first. Broken on purpose, every test still passed —
+and measured across the whole table, no open slot can win that pass at all: `custom-ident` and
+`string` are the only primitives one has, and neither is ever what a token resolves to. The guard
+was removed. A family that later brings an open slot with a real primitive is caught by the
+generator, which refuses any family it cannot reproduce in all three engines.
+
+##### The one thing that looked like a divergence and was not
+
+Set `list-style: none`, and Chromium writes `list-style-type` alone while Firefox and WebKit write
+`list-style-type` AND `list-style-image`. That was recorded here as a genuine three-engine
+disagreement needing a refusal. It is not one. `none` is `list-style-image`'s initial value, so the
+computed result is identical in all three, and the corpus above — which contains `none` three times
+— passes everywhere. The specified value a browser chooses to record is not the thing being
+matched; the computed value is. A divergence has to be shown in what the page RENDERS before it is
+allowed to shrink the design.
+
 #### ~~DECIDED: the splitter is adopted, in a pull request of its own~~ — superseded by the above
 
 Taken 2026-09-24. What it costs is recorded beside it and neither half was measured, because

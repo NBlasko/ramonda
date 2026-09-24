@@ -1,4 +1,4 @@
-import type { Term } from "./valueSyntax";
+import { type Term, alternativesOf, componentsOf, parseValueSyntax } from "./valueSyntax";
 
 /**
  * Which longhand a component of a shorthand's grammar feeds.
@@ -96,4 +96,102 @@ export function longhandsFor(term: Term, longhands: readonly string[], syntax: S
   }
 
   return [];
+}
+
+/**
+ * What a component ACCEPTS, so a token can be recognised as it.
+ *
+ * `longhandsFor` above answers the question the grammar asks — which longhand is this component
+ * for. Splitting needs the other direction: a token is written, and which component is it? That
+ * cannot be a lookup of tokens, because a token may be anything an author types. It is a
+ * PREDICATE, and the grammar is where the predicate comes from.
+ *
+ *     <line-style>     words only: none hidden dotted dashed solid double groove ridge inset outset
+ *     <line-width>     words thin medium thick, or anything whose primitive is a length
+ *     <keyframes-name> no words at all: a custom-ident or a string, which is to say almost anything
+ *
+ * The third is why a component that accepts a free identifier has to be known as such rather than
+ * tried last: it answers YES to nearly every token, so it can only be asked once everything with a
+ * closed grammar has said no.
+ */
+export interface Accepts {
+  /** Keywords it takes, exactly. */
+  readonly words: readonly string[];
+  /** Primitive types it takes — `length`, `color`, `custom-ident`. */
+  readonly types: readonly string[];
+  /** Functions it takes, by name. */
+  readonly functions: readonly string[];
+}
+
+/** Reads a NAMED grammar — a type like `line-style`, or a property. Injected, like `SyntaxOf`. */
+export type GrammarOf = (name: string) => string;
+
+/**
+ * Resolve a component into what it accepts, following named types to the bottom.
+ *
+ * The depth cap and the `seen` set are both load-bearing: CSS's grammars refer to each other and
+ * `<calc-sum>` refers to itself, so a resolver with neither does not return.
+ */
+export function acceptedBy(term: Term, grammar: GrammarOf, depth = 0, seen = new Set<string>()): Accepts {
+  const words = new Set<string>();
+  const types = new Set<string>();
+  const functions = new Set<string>();
+
+  const take = (one: Term): void => {
+    if (one.kind === "keyword" && one.name !== undefined) {
+      words.add(one.name);
+      return;
+    }
+    if (one.kind === "function" && one.name !== undefined) {
+      functions.add(one.name);
+      return;
+    }
+    if (one.name === undefined) return;
+
+    // A type with a grammar of its own is followed; one without is a PRIMITIVE and is the answer.
+    const inner = depth > 4 || seen.has(one.name) ? "" : grammar(one.name);
+    if (inner === "") {
+      types.add(one.name);
+      return;
+    }
+    let tree;
+    try {
+      tree = parseValueSyntax(inner);
+    } catch {
+      // A grammar this cannot read is a type we cannot open, which is still an answer.
+      types.add(one.name);
+      return;
+    }
+    const below = acceptedBy(tree, grammar, depth + 1, new Set([...seen, one.name]));
+    for (const word of below.words) words.add(word);
+    for (const type of below.types) types.add(type);
+    for (const call of below.functions) functions.add(call);
+  };
+
+  for (const branch of alternativesOf(term)) {
+    if (branch.kind === "alt") {
+      const below = acceptedBy(branch, grammar, depth, seen);
+      for (const word of below.words) words.add(word);
+      for (const type of below.types) types.add(type);
+      for (const call of below.functions) functions.add(call);
+      continue;
+    }
+    const parts =
+      branch.kind === "seq" || branch.kind === "or" || branch.kind === "and" ? componentsOf(branch) : [branch];
+    for (const one of parts) take(one);
+  }
+
+  return { words: [...words], types: [...types], functions: [...functions] };
+}
+
+/**
+ * Whether a component can only be told by having nothing else claim the token.
+ *
+ * `<keyframes-name>` is a `custom-ident`, which is to say any word at all. A component like that
+ * answers yes to nearly everything, so it is asked LAST and only where every closed grammar has
+ * said no — the rule that puts `spin` in `animation-name` without a list of animation names, which
+ * could not exist.
+ */
+export function isOpen(accepts: Accepts): boolean {
+  return accepts.types.includes("custom-ident") || accepts.types.includes("string");
 }

@@ -117,6 +117,7 @@ jobs:
           node scripts/build-package-readmes.mjs --check
           node scripts/build-css-properties.mjs --check
           node scripts/build-shorthand-shapes.mjs --check
+          node scripts/build-token-shapes.mjs --check
           SELFTEST=slot node scripts/check-shorthand-split.mjs
           node scripts/check-shorthand-split.mjs
 
