@@ -81,6 +81,15 @@ export function longhandsFor(term: Term, longhands: readonly string[], syntax: S
     return longhands.filter((one) => one.endsWith(`-${term.name}`));
   }
 
+  /**
+   * A FUNCTION is claimed by the longhand whose grammar calls it — `font-variant-alternates` is
+   * the one that takes `stylistic()`. Written apart from the type case because a function is
+   * spelled with its parenthesis and a type is not.
+   */
+  if (term.kind === "function" && term.name !== undefined) {
+    return longhands.filter((one) => syntax(one).includes(`${term.name}(`));
+  }
+
   if (term.kind === "data" && term.name !== undefined) {
     const wanted = `<${term.name}>`;
     return longhands.filter((one) => syntax(one).includes(wanted));

@@ -71,6 +71,30 @@ describe("what a term can be", () => {
     expect(parse("<time [0s,∞]>")).toMatchObject({ kind: "data", name: "time" });
   });
 
+  /**
+   * A function's ARGUMENTS are a grammar of their own. Read as two keywords before the parser knew
+   * about them — `rgb(` and `)`, with the arguments loose between — so `<color>` resolved into a
+   * word list holding `rgb(` and `)`, which is not a colour anybody writes.
+   */
+  test("a function is one term, and its arguments are inside it", () => {
+    const term = parse("rgb( <number> )");
+
+    expect(term).toMatchObject({ kind: "function", name: "rgb" });
+    expect(componentsOf(term.terms?.[0] as never).map((one) => one.name)).toEqual(["number"]);
+  });
+
+  test("a function with no arguments", () => {
+    expect(parse("light-dark( )")).toMatchObject({ kind: "function", name: "light-dark", terms: [] });
+  });
+
+  test("a function beside other terms stays one term", () => {
+    expect(componentsOf(parse("<length> || rgb( <number> )")).map((one) => one.name)).toEqual(["length", "rgb"]);
+  });
+
+  test("an unclosed function is refused", () => {
+    expect(() => parse("rgb( <number>")).toThrow(SyntaxNotationError);
+  });
+
   test("a slash and a comma are themselves, and are not components", () => {
     expect(names("<length> / <length>")).toEqual(["length", "length"]);
   });

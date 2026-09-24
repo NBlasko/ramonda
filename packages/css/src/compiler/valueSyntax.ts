@@ -15,11 +15,12 @@
  * engines. So the classification is a reading problem rather than a measuring one — and this is the
  * reader.
  *
- * Measured against every grammar `mdn-data` publishes: **1021 of 1029 read**. The eight it refuses
+ * Measured against every grammar `mdn-data` publishes: **1020 of 1029 read**. The nine it refuses
  * are not value grammars at all — `<keyframe-block>` is a block, `<feature-type>` is a list of
  * at-rule names, `<mf-plain>` and `<pseudo-page>` are media-query and selector syntax with `:` and
- * `;` in them, and `<an+b>` carries a footnote dagger. Refusing those is the right answer rather
- * than a gap: nothing classifies a shorthand from a selector.
+ * `;` in them, `<an+b>` carries a footnote dagger, and `<general-enclosed>` opens with `[` and
+ * closes with `)`. Refusing those is the right answer rather than a gap: nothing classifies a
+ * shorthand from a selector.
  *
  * **What it is NOT is a validator.** It parses the notation, not values written in it. Whether a
  * grammar is TRUE of an engine is a separate question, answered where it always is here: against
@@ -41,12 +42,13 @@
  * | `a?` `a*` `a+` `a{1,4}` `a#` | how many, `#` being a comma-separated list |
  * | `<length>` | a data type |
  * | `<'padding-top'>` | whatever that property takes |
+ * | `rgb( <number> )` | a function, its arguments a grammar of their own |
  * | `/` `,` | themselves, literally |
  */
 
 /** One node of a parsed grammar. `terms` is set on the combinators and on nothing else. */
 export interface Term {
-  readonly kind: "alt" | "or" | "and" | "seq" | "keyword" | "data" | "property" | "literal";
+  readonly kind: "alt" | "or" | "and" | "seq" | "keyword" | "data" | "property" | "literal" | "function";
   /** The word for a keyword, the name inside the angle brackets for a type or a property. */
   readonly name?: string;
   readonly terms?: readonly Term[];
@@ -126,7 +128,7 @@ export function parseValueSyntax(source: string): Term {
     for (;;) {
       skip();
       if (at >= source.length) break;
-      if (source.startsWith("]", at) || peek("|") || peek("||") || peek("&&")) break;
+      if (source.startsWith("]", at) || source.startsWith(")", at) || peek("|") || peek("||") || peek("&&")) break;
       terms.push(repeated());
     }
     if (terms.length === 0) throw new SyntaxNotationError("nothing where a term was expected", at);
@@ -171,6 +173,19 @@ export function parseValueSyntax(source: string): Term {
       return inner;
     }
 
+    /**
+     * A BARE `(` groups, the way `[` does — `<calc-value>` is written `… | ( <calc-sum> )`.
+     *
+     * Parentheses mean two things in this notation and the difference is what precedes them: after
+     * a word they open a function's arguments, on their own they are a group. Reading only the
+     * first cost nine grammars, every one of them a `calc()` form.
+     */
+    if (take("(")) {
+      const inner = alternatives();
+      if (!take(")")) throw new SyntaxNotationError("a `(` with no `)`", at);
+      return inner;
+    }
+
     if (source[at] === "<") {
       const close = source.indexOf(">", at);
       if (close === -1) throw new SyntaxNotationError("a `<` with no `>`", at);
@@ -203,9 +218,31 @@ export function parseValueSyntax(source: string): Term {
       return { kind: "literal", name: text };
     }
 
-    const word = /^[-\w%()]+/.exec(source.slice(at));
+    const word = /^[-\w%]+/.exec(source.slice(at));
     if (word === null) throw new SyntaxNotationError(`\`${source[at]}\` is not notation this reads`, at);
     at += word[0].length;
+
+    /**
+     * A FUNCTION, whose arguments are a grammar of their own — `rgb( <number>#{3} )`.
+     *
+     * Read as two keywords before this existed: `rgb(` and `)`, with the arguments loose between
+     * them. `<color>` then resolved into a word list holding `rgb(` and `)`, which is not a colour
+     * anybody writes and would have matched no token at all.
+     */
+    if (source[at] === "(") {
+      at++;
+      skip();
+      if (source[at] === ")") {
+        at++;
+        return { kind: "function", name: word[0], terms: [] };
+      }
+      const args = alternatives();
+      skip();
+      if (source[at] !== ")") throw new SyntaxNotationError(`\`${word[0]}(\` with no \`)\``, at);
+      at++;
+      return { kind: "function", name: word[0], terms: [args] };
+    }
+
     return { kind: "keyword", name: word[0] };
   };
 

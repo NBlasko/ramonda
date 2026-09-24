@@ -104,6 +104,27 @@ describe("a component that is a keyword", () => {
   });
 });
 
+describe("a component that is a function", () => {
+  /** `font-variant-alternates` is the longhand whose grammar calls `stylistic()`. */
+  test("the longhand whose grammar calls it", () => {
+    const grammars = table({
+      "font-variant-alternates": "normal | stylistic( <custom-ident> )",
+      "font-variant-caps": "normal | small-caps",
+    });
+    const [term] = componentsIn("stylistic( <custom-ident> )");
+
+    expect(longhandsFor(term, ["font-variant-alternates", "font-variant-caps"], grammars)).toEqual([
+      "font-variant-alternates",
+    ]);
+  });
+
+  test("a function nobody calls", () => {
+    const [term] = componentsIn("nope( <length> )");
+
+    expect(longhandsFor(term, ["a-width"], table({ "a-width": "<length>" }))).toEqual([]);
+  });
+});
+
 describe("what claims nothing", () => {
   test("a literal is not a component and feeds nobody", () => {
     const term = parseValueSyntax("/");
