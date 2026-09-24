@@ -96,7 +96,7 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
                 let at = 0;
                 const text = pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / ");
                 const mine = splitPositional(shape, text);
-                if (mine === null) continue;
+                if (mine === undefined) continue;
                 a.style.cssText = "";
                 b.style.cssText = "";
                 a.style.setProperty(name, text);

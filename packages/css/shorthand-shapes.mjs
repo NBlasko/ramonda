@@ -100,30 +100,7 @@ export const PATTERNS = [[1], [2], [3], [4], [1, 1], [2, 2], [4, 4], [2, 1], [1,
   (sides) => ({ key: sides.join("/"), sides, slots: sides.reduce((sum, one) => sum + one, 0) }),
 );
 
-/** The keywords that are not component values: they go on EVERY longhand, or nowhere. */
-export const WIDE = ["inherit", "initial", "unset", "revert", "revert-layer"];
-
-/**
- * Top-level separators only. `rgb(1, 1, 1)` is ONE value, and splitting on every space tore it into
- * three — the first thing the engines caught, before a line of the real splitter existed.
- */
-export function tokensOf(value, separator = /\s/) {
-  const out = [];
-  let depth = 0;
-  let at = "";
-  for (const ch of value) {
-    if (ch === "(") depth++;
-    else if (ch === ")") depth--;
-    if (depth === 0 && separator.test(ch)) {
-      if (at !== "") out.push(at);
-      at = "";
-      continue;
-    }
-    at += ch;
-  }
-  if (at !== "") out.push(at);
-  return out;
-}
+export { WIDE, tokensOf, splitPositional } from "./src/compiler/split.ts";
 
 /**
  * Learn every positional family, inside a page. Returns data, not closures.
@@ -221,32 +198,4 @@ export function learnPositionalIn(names, DOMAINS, PATTERNS) {
     out[name] = { kind: domain.kind, patterns };
   }
   return out;
-}
-
-/**
- * Split a value with a learned shape. No browser, no tables, nothing but the shape and the value.
- *
- * `null` means REFUSED, which is a correct answer rather than a gap — for a pattern the family was
- * never taught, for a CSS-wide keyword beside a real value (invalid CSS), and for a `var()`, whose
- * content is unknown until computed-value time and may carry several values. Measured:
- * `border-color: var(--c)` with `--c: red blue` renders red/blue/red/blue, while `var(--c)` on each
- * longhand is four invalid declarations and a black border.
- */
-export function splitPositional(shape, value) {
-  const bare = value.trim();
-  const longhands = Object.keys(shape.patterns[Object.keys(shape.patterns)[0]]);
-  if (WIDE.includes(bare)) return Object.fromEntries(longhands.map((one) => [one, bare]));
-  if (tokensOf(value).some((one) => WIDE.includes(one))) return null;
-  if (/\bvar\(/.test(value)) return null;
-
-  const sides = tokensOf(value, /\//).map((one) => tokensOf(one));
-  const mapping = shape.patterns[sides.map((one) => one.length).join("/")];
-  if (mapping === undefined) return null;
-  const flat = sides.flat();
-  return Object.fromEntries(
-    Object.entries(mapping).map(([longhand, how]) => [
-      longhand,
-      how.literal === undefined ? how.slots.map((index) => flat[index]).join(" ") : how.literal,
-    ]),
-  );
 }

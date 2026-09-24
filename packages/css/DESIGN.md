@@ -4666,22 +4666,168 @@ ship the answer. That is the same method this package already uses for what a sh
 it is why the prototype learning from the engines rather than from a written rule was worth the
 trouble: the learning IS the generator.
 
-#### DECIDED: the splitter is adopted, in a pull request of its own
+#### REPLACED: split every family, from the published grammar
+
+The plan below — split the positional families and leave the rest — was built, measured and then
+rejected by the user on a reading that is correct and worth keeping: *"nesto razbijamo, nesto ne. ko
+ce to da pokapira kada otvori devtools. Samo smo ukomplikovali a nismo resili inicijalni problem
+layera."* Half is worse than either end. The output stops being a rule and becomes a list of
+exceptions, and the problem the whole exercise started from — the breadth layers and what they cost
+across a package boundary — shrinks from 94 families to 43 instead of going away.
+
+**What makes all of it reachable is a question asked late and worth asking first:** *"kako to CSS
+radi i on mora da zna kako da cita shorthand, zar ne?"* It does, and the answer is published. Every
+shorthand has a grammar, and `mdn-data` carries it:
+
+```
+border:      <line-width> || <line-style> || <color>
+animation:   <single-animation>#
+flex:        none | [ <'flex-grow'> <'flex-shrink'>? || <'flex-basis'> ]
+```
+
+`||` is "in any order", which IS the type dispatch the prototype spent a day learning from the
+engines. And the longhands carry their own grammars, so a component resolves to a longhand by
+matching them:
+
+```
+border-top-width:  <line-width>      ← what `<line-width>` in `border` means
+border-top-style:  <line-style>
+border-top-color:  <color>
+```
+
+Measured over the 43 families the positional table does not reach:
+
+```
+27   the grammar names its longhands directly, as <'border-top-width'>
+16   it uses a named type — <single-animation>#, <bg-layer>#?
+      and every one of those types IS defined, resolving to the same shape
+ 0   no grammar at all
+```
+
+The named types carry the two things that looked hardest:
+
+```
+single-animation:  <'animation-duration'> || <easing-function> || <'animation-delay'> || …
+bg-layer:          <bg-image> || <bg-position> [ / <bg-size> ]? || <repeat-style> || …
+```
+
+The ORDER of two slots of one type — `animation: 1s 2s` is duration then delay, and both are
+`<time>` — and the SLASH structure are both written there. Those are exactly the two shapes the
+prototype had to discover by differencing probes.
+
+##### The final state, in full
+
+**Two layers. Not eighteen, not nineteen.**
+
+```css
+@layer ramonda.u, ramonda.c;
+```
+
+```
+ramonda.u    every unconditional declaration — and after splitting every one is a LONGHAND
+ramonda.c    every conditional one: @media, @supports, @container
+             with the digit layers inside it, so two breakpoints order against each other
+```
+
+There is no third. Both names are fixed words: neither comes from the shorthand table, so neither
+can move between releases, and two stylesheets written a decade apart carry the identical
+statement.
+
+**Why the numbers go.** Today a shelf's number says how BROAD a declaration is, so that a narrow one
+beats a wide one — `padding` at 9, `padding-left` at 17. After splitting there is no wide one left:
+every declaration is a longhand, every longhand is equally narrow, so every declaration would take
+the same number. A number that is the same for everybody separates nobody, and seventeen of the
+eighteen shelves stand empty forever. They are deleted and the one that is left needs no number.
+
+It is three states, not two, and eliding the middle one is what made this hard to read the first
+time it was written down:
+
+```
+1. today              eighteen shelves, declarations spread across them
+2. after splitting    still eighteen, but everything lands in the last one; seventeen are empty
+3. after the cleanup  the empty ones are gone and the survivor is `ramonda.u`
+```
+
+##### What the cascade is still asked, and what it is not
+
+```
+same property, unconditional      the MERGE, by key — the later one written wins
+different properties              nothing to decide; they do not touch
+conditional against unconditional `c` comes after `u` in the statement
+two breakpoints                   the digits inside `c`
+```
+
+The cascade decides only the last two rows. Everything above them is settled in JavaScript, before
+the browser sees a class.
+
+**A `match` needs no layer either.** Every arm compiles to its own class and the render picks one,
+so an element carries at most one of them — and a `match` on `padding-left` beside a plain
+`padding-left` is two declarations with ONE key, which the merge resolves like any other pair. The
+same holds for anything written beside them: a different property does not collide, and the same
+property is the merge's to answer.
+
+##### What to build
+
+1. **a resolver for the notation** — `<'name'>`, `<type>`, `||`, `[ ]`, `?`, `#`, `/`, and one level
+   of indirection through `mdn.css.syntaxes`;
+2. **a classification from it** — component to longhand, the order where two slots share a type, and
+   which side of a slash a component sits on;
+3. **verification against the engines**, over the corpus that already exists. This is not a
+   formality: `mdn-data` is the file this repository has already measured lying, and
+   `build-shorthand-leaves.mjs` exists because its `initial` field was missing 37 longhands after
+   two hand-patches. Take the grammar, then check it;
+4. **one generated table**, replacing `shapes.generated.ts` rather than sitting beside it;
+5. **the compiler splits every family that verified**, and no others.
+
+##### What it gives
+
+```
+every declaration is a longhand         so no two classes set the same property
+one unconditional layer, not eighteen   nothing to name, nothing to drift
+no marker, no remap, no shift           they answered a question that is gone
+`ramonda.c` and the digits stay         for `@media`, and neither comes from the table
+```
+
+And the package-skew problem disappears for every family rather than for 51 of them: two builds a
+decade apart agree, because there is nothing left in the unconditional path to disagree about.
+
+##### What survives from the branch that built the half
+
+The generator's shape, the merge rule (intersection, because a wrong mapping is silent where a
+missing one is loud), the corpus, the gate, the splitter in `flatten.ts`, and the finding that a
+shape must be verified inside the generator rather than by a gate beside it. What goes is the
+scope: positional only.
+
+#### ~~DECIDED: the splitter is adopted, in a pull request of its own~~ — superseded by the above
 
 Taken 2026-09-24. What it costs is recorded beside it and neither half was measured, because
 neither is a measurement: the class attribute grows — `padding: 10px` becomes four classes, and
 every element carrying it pays that in every SSR page — and the docs, the checker's messages and
 the reader pages all describe a block as compiling to one class per declaration.
 
-**It does NOT remove the layers, and the sections above are not dead.** Splitting makes every
-declaration a longhand, so no two classes on an element set the same property and the cascade is
-never asked — for UNCONDITIONAL rules. A `@media` rule and a plain one set the same property and
-both must survive the merge, so the layer scheme stays for conditionals, and its own structure
-(`ramonda.c` and the digit layers) does not move between versions because it is not derived from
-the shorthand table. What shrinks is the BREADTH half: the eighteen `u` layers and everything above
-about naming them, the marker, the remap and the shift are answering a question the splitter
-removes. They stay written down because the conditional half still needs a layer scheme that two
-builds agree on, and because the measurements say what each answer cost.
+**It does NOT remove the layers, and this note first said something too comfortable about why.**
+The claim was that the conditional structure does not move between versions because it is not
+derived from the shorthand table. Read out of `layerPathFor`, it is:
+
+```js
+const breadth = BREADTHS.indexOf(breadthOf(declaration));
+if (slot === 0) return [`u${breadth}`];
+return ["c", ...digits, `b${breadth}`];   // the conditional path carries it too
+```
+
+The breadth index is in BOTH paths, so both drift with the table.
+
+What is true is narrower and still worth having. After splitting, every declaration of a split
+family is a LONGHAND, so its breadth is always zero, the index is always the same, and it does no
+ordering work: unconditional rules never collide because no two set the same property; a `@media`
+rule beats a plain one because `ramonda.c` is last in the statement whatever `b` says; and two
+breakpoints are separated by the DIGITS, which are not derived from the table.
+
+So the splitter closes the version-skew question exactly for the families it splits — 51 today, and
+the ones authors write most. For `border`, `background`, `font` and `animation` the breadth still
+decides and the skew still can bite, which is what the marker and the remap above are for. Closing
+it entirely means splitting those too, and that needs the classifier the measurements say has to
+become a generated table of its own.
 
 The order:
 

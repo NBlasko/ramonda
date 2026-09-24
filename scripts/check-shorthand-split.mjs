@@ -78,7 +78,7 @@ let tried = 0;
 for (const [name, shape] of Object.entries(shapes)) {
   for (const value of casesFor(shape)) {
     const mine = splitPositional(shape, value);
-    if (mine === null) continue;
+    if (mine === undefined) continue;
     const answer = await tab.evaluate(
       ([name, value, mine]) => {
         const a = document.getElementById("a");
