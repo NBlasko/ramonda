@@ -3998,6 +3998,51 @@ mistake that harness note records making once already: *the first repair was a l
 what one reaches for when the cause is a guess. It made the window smaller and left the race.* If it
 returns, the thing to measure first is whether shiki's registry is safe to share across tests at all.
 
+### 12. `match` takes a STRING subject, and says so as a `TS2322` — NOT for this PR
+
+Asked while the splitter work was running: *"da li nasa match funkcija prima samo string? nekada je
+potrebno da imamo true / false slucaj"*. It does, and it is not only booleans.
+
+Measured through the real checker, a block on a plain `const` so no JSX types are in the way:
+
+```
+string literal union    "hot" | "cold"      quiet
+plain string            string              quiet
+number literal union    1 | 2               TS2322: Type 'string' is not assignable to type '2 | 1'
+number                  number              TS2322
+boolean                 boolean             TS2322: Type 'string' is not assignable to type 'boolean'
+```
+
+The transform is happy with all of them — `match({this.loud}) { true => red; false => blue; }`
+compiles and emits `r-c-red` and `r-c-blue`. It is the TYPE that refuses, and the cause is one line
+in `virtual.ts`:
+
+```js
+derived(JSON.stringify(arm.key), arm.at, arm.length);
+```
+
+An arm's key is always written into the virtual file as a STRING literal, so against a `boolean` or
+a `number` subject it can never match.
+
+**The message is the worse half.** A reader gets a raw `TS2322` about `string` and `boolean`, which
+says nothing about `match` having a constraint — it reads as a fault in their own type.
+
+**The obvious repair has a trap.** Writing the key unquoted when it is `true`, `false` or numeric
+makes those subjects work — and breaks an arm key of `1` on a string subject (`"1" | "2"`), because
+the virtual file does not know the subject's type and cannot decide from the key alone. The way out
+is for the constraint in `properties.ts` to accept a literal OR its string spelling, which is a
+change to `lookup` and wants its own measurement.
+
+**What authors do today**, undocumented: put the ternary in the SUBJECT, where a hole is an ordinary
+expression.
+
+```tsx
+match({this.loud ? "on" : "off"}) { on => red; off => blue; }
+```
+
+So the ternary is available after all, just not in the arm. That is a workaround rather than a
+design, and it is written nowhere a reader would find it.
+
 ## A published package meets an application — the cascade across a version boundary
 
 **Measured 2026-09-23, in Chromium, against real stylesheets from the real `Sheet`. NOT built.**
@@ -4593,9 +4638,32 @@ ship the answer. That is the same method this package already uses for what a sh
 it is why the prototype learning from the engines rather than from a written rule was worth the
 trouble: the learning IS the generator.
 
-The rest of what is left: writing the splitter into the compiler against that table, teaching
-`mergeClassNames` the group clear, and turning the corpus into a checked-in gate rather than a
-script.
+#### What is decided, and the one thing that is not
+
+Everything above is measured. What is NOT settled is whether to adopt the splitter at all, and that
+is not a detail to be inferred from how well it measures — it replaces a scheme that is SHIPPED and
+working, changes what every user's page carries, and supersedes most of the layer arithmetic in the
+sections above. It needs a yes, not a green number.
+
+Against it, and neither was measured because neither is a measurement: the class attribute grows
+(`padding: 10px` becomes four classes, and every element carrying it pays that in every SSR page),
+and the docs, the checker's messages and the reader pages all describe a block as compiling to one
+class per declaration.
+
+If the answer is yes, the order is:
+
+1. **the shapes as a generated table** — `build-shorthand-shapes.mjs`, three engines, the same
+   merge and `--check` as `build-shorthand-leaves.mjs`. The learner moves out of the prototype and
+   into a module both it and the generator use, because two copies of it is the fault this
+   repository keeps finding;
+2. **the group clear in `mergeClassNames`** — the emitted classes say which shorthand they came
+   from, so a later one still clears the family. Without it the split loses the reset;
+3. **the corpus as a gate**, over the real splitter rather than a modelled one;
+4. **then** the splitter in the compiler, behind the gate.
+
+If the answer is no, what is written down still pays for itself: the layer work in the sections
+above stands on its own, and the measurements here say exactly what it would have cost to replace
+it.
 
 #### ~~What is not done~~ — the older list
 
