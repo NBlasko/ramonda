@@ -4103,18 +4103,90 @@ drifted: all correct.
 package stays frozen. Today's scheme breaks on the first change to the set of distinct counts, and
 takes every family with it; this one takes only the family that moved.
 
-**Scaling the name by 1000** (`padding` → `u010000`) does not widen that margin — the failure
-condition is unchanged — but it buys what closes it: a UNIFORM SHIFT, and no table of exceptions.
+**The shift is a NESTED LAYER, not a smaller number** — and the first draft of this said otherwise.
+Scaling the name by 1000 so a shift has somewhere to go is unaffordable, because the room has to be
+DECLARED: every integer a shift can land on must already be in every statement. Measured, gzipped,
+one statement:
+
+```
+scale    names        gzip
+    1     1024       2156 B
+    4     4096       9283 B
+    8     8192      19334 B
+   16    16384      38716 B
+ 1000  1024000      ~14 MB raw — not possible
+```
+
+A nested layer needs no room at all. Measured: a sublayer sits after the layer declared before its
+parent and before its parent's own rules, in either load order. So the shift moves the new
+assignment INSIDE the next-stronger declared name, the top-level statement never changes, and the
+range stays the dense 1024 names at 2156 B:
+
+```
+no shift            u0002           the count's own layer
+one step stronger   u0001 > s       inside the next-stronger name
+one step weaker     u0002 > s       inside its own — the direction control
+```
+
+**A second shift cannot nest deeper**, and that is the edge case the first write-up only gestured
+at. Measured: `u0001 > s > s` is WEAKER than `u0001 > s`, because a sublayer loses to its parent's
+own rules — so depth buys nothing. Each shift consumes a STRONGER NAME instead, and a property at
+count 2 has exactly two of them, `u0001` and `u0000`:
+
+```
+1st shift   u0001 > s   beats u0002       ok
+2nd shift   u0000 > s   beats u0001 > s   ok
+deeper      u0001 > s > s                 WEAKER — no
+2nd shift still loses to the leaves in u0000   ok
+```
+
+So each layer declares a fixed set of SUBLAYER names inside itself, from day one — the same trick
+one level down, and about twenty bytes in the layers that carry rules:
+
+```css
+@layer u0001 { @layer s0,s1,s2,s3; @layer s0 { … } }
+```
+
+The budget becomes stronger-names × sublayers: eight for the tightest property with four, twenty
+with ten. Measured, all of it in both load orders — siblings order among themselves, a sublayer
+beats an old package's rule in the next-weaker name, and it still loses to its own parent's rules.
+
+**An old package that never heard of the inner statement is unaffected**, which is the row that
+matters: its rule sits directly in the layer, and a layer's own rules outrank every sublayer of it.
+
 When the breadth table changes, the whole new assignment moves one place toward the STRONGER end.
 
-Measured, `background-position` (2) over `background-position-x` (0) with the leaf grown to 2:
+`prototype-package-skew.mjs` holds all of it, in Chromium, on stylesheets from the real `Sheet`
+with only the layer NAMES rewritten — the scheme is not built, so the probe models the naming and
+the controls carry the weight:
 
 ```
-no shift, package first     4px    ok
-no shift, app first         10px   wrong     ← one layer, source order decides
-shift toward stronger       4px    ok, both load orders
-shift toward weaker         10px   wrong, both
+control · today, table unchanged        4px / 4px     ok
+control · proposed, table unchanged     4px / 4px     ok
+event A · today                         10px / 4px    breaks
+event A · proposed                      4px / 4px     ok
+event C · proposed, newcomer must LOSE  4px / 4px     ok
+event B · proposed, no shift            4px / 10px    breaks
+event B · proposed, shift stronger      4px / 4px     ok
+event B · proposed, shift weaker        10px / 10px   breaks
 ```
+
+**Event A and event B are not the same event and do not break on the same pair.** A is the set of
+distinct breadths changing, which changes the statement's LENGTH — the appended name lands past
+`ramonda.c`, so the pair has to straddle `c`: a conditional rule against an unconditional one.
+Measured, a shorthand/longhand pair under event A is correct by luck. B is a leaf growing to its own
+shorthand's old count, which needs the shorthand/longhand pair.
+
+**Event C is what makes the pre-declared range load-bearing**, and it was missing from the first
+draft: cutting the range from 1024 names to four left every other row passing. Appending an unseen
+name puts it at the STRONGEST position, so it only does damage where the newcomer was meant to be
+WEAK — every other pair here wants the newer half to win and is rescued by the very thing that is
+supposed to be the fault. C swaps the sides: the package holds the longhand, the application a
+shorthand whose count the old table did not have.
+
+Two modelling errors the probe caught, both of which would have read as the scheme working: handing
+one naming to both sides passes the application's shift to the frozen package; and a subset
+statement is invisible while both sides emit the same one.
 
 The old package holds `background-position` at 2000; the new world puts `background-position-x` at
 1999, which outranks it, and the old package's own leaf at 0 still outranks the new
@@ -4172,12 +4244,225 @@ today's table.
 So the rule is: **the table may change freely; the gate says when the assignment must shift, and by
 how much.**
 
-### Where this stands
+### Who owns the assignment, and whether a shift ever goes away
 
-Nothing is built. The order to build it in:
+`@ramonda/css` owns it, in its own source: a file mapping a property to its layer path, alongside
+the generated breadth table. Nobody outside the package writes a layer name — not an application,
+not the author of a published package, not someone loading a stylesheet with a `<link>`. Each of
+them gets whatever assignment the release they compiled against carried.
 
-1. the self-describing marker and the remap in the vite plugin — smallest, and the only piece that
-   helps a package that is already published;
-2. count-based names over a pre-declared range, for stylesheets no build can reach;
-3. the history of counts and the gate over it — before the first release that changes the table,
-   because the history has to begin with today's.
+**A shift is permanent.** It is a property of the assignment rather than of any one package, so
+rebuilding a package emits the same path it did before, and the assignment accumulates nesting over
+time. That is a real cost, and a small one: a level is a few bytes, and a shift only happens when
+the gate says it must.
+
+The remap does NOT collapse it, and saying otherwise would be the easy mistake. An application
+cannot know whether some stylesheet on the page arrived outside its build, so it has to assume one
+did: it emits the current assignment, shifts and all, and rewrites foreign sheets into that. What
+the remap buys is that the shifts are never CONSULTED across a version boundary in a bundle — not
+that they are gone.
+
+### The way out: split every shorthand, and the cascade is never asked
+
+All of the above is arithmetic on layer names, and every variant of it has a residual because a
+name or an assignment can drift. There is one move that removes the question instead of answering
+it: **if every declaration a block emits is a LONGHAND, no two classes on an element ever set the
+same property.** `mergeClassNames` then settles every conflict by key, at runtime, and the cascade
+is never consulted — so nothing has to agree across a version boundary.
+
+Measured against hand-written CSS, all six in one layer with no ordering at all:
+
+```
+font-weight then font            ISTO   2 classes, 20 B
+font then font-weight            ISTO   3 classes, 30 B
+background-size then background  ISTO   1 class,    9 B
+background then background-size  ISTO   2 classes, 21 B
+padding-left then padding        ISTO   4 classes, 39 B
+padding then padding-left        ISTO   4 classes, 38 B
+```
+
+**A shorthand does not have to expand into everything it resets**, which is where the cost was
+first mis-estimated at twenty classes and 199 B for a `font`. The resetting is already
+`mergeClassNames`'s job — `shorthands()` knows the family — so only what the author WROTE needs a
+class, provided the merge is told the classes arrived as a group. That is a small addition to the
+emitted code, not a new mechanism. Faithfully the engine gives 19 longhands for
+`font: italic bold 12px/1.5 Arial`; fourteen of them are `normal`/`none`/`auto`, and drop out.
+
+Measured through the engines' own expansion (`element.style`, which gives SPECIFIED values, so no
+resolution creeps in):
+
+```
+                        faithful   with group clearing
+padding: 10px 20px          4             4
+grid: "a b" 1fr … / …       6             3
+background: … , red         9             6
+font: italic bold …        19             5
+```
+
+Multi-layer `background` splits cleanly — the commas become lists in each longhand and the second
+layer takes `initial`. `grid`'s area templates carry across as a value.
+
+#### The splitter, taught and checked by the engines
+
+`prototype-expand-positional.mjs` builds one for the positional families and verifies it against
+Chromium, Firefox and WebKit. Nothing about the rule is written in it: each family is fed distinct
+sentinels **per arity**, and whichever longhand comes back holding sentinel *i* is position *i*; one
+holding something that is no sentinel has a constant there. Learning per arity is what made the
+awkward shapes need no special case — `border-radius`'s `/` pairs the two sides, and
+`background-position: 1px` is `x: 1px, y: center` rather than a repeat.
+
+```
+94 shorthands, 3 engines
+chromium 27   firefox 25   webkit 28
+in all three: 25 families, 3545 values checked
+```
+
+The corpus is the point, and it found three rules that are about CSS rather than about a family,
+plus one bug in the probe itself:
+
+- splitting on every space tore `rgb(1, 1, 1)` into three values. Top-level whitespace only. The
+  oracle caught it before a line of the real thing existed;
+- a CSS-WIDE KEYWORD alone (`inherit`, `initial`, `unset`, `revert`) is not positional — it goes on
+  every longhand. `background-position: inherit` inherits BOTH axes;
+- one of those keywords beside another value is invalid CSS, so there is nothing to split;
+- **a `var()` in a shorthand cannot be split at all.**
+
+#### `var()`, and the one thing that makes it splittable anyway
+
+The variable's content is unknown until computed-value time and may carry several values. Measured:
+`border-color: var(--c)` with `--c: red blue` gives the engine red/blue/red/blue, while putting
+`var(--c)` on each longhand gives four invalid declarations and a black border.
+
+But a REGISTERED custom property is a different thing, and this is a guarantee from the browser
+rather than a convention. Measured, identical in all three engines:
+
+```
+registered <length>, one value     shorthand and split AGREE
+registered <length>, TWO values    AGREE — the registration refuses it, both fall back
+syntax: "*", two values            DISAGREE
+unregistered var(), two values     DISAGREE
+```
+
+So: **a shorthand holding a `var()` is splittable exactly when every variable in it is registered
+with a single-value `syntax`.** Codegen already emits an `@property` per declared variable, with the
+`syntax` taken from its kind — and thirteen of the fifteen kinds are single-valued. Only `any`
+(`*`) and `transform-list` are not, and the compiler knows which is which from its own config.
+
+What stays unsplittable: a raw `var()` into a name this compiler did not declare, and the two
+list-valued kinds. Those declarations keep their shorthand, and the cascade decides for them alone —
+so the layers do not disappear, but what depends on them shrinks from every family to a few
+declarations.
+
+#### Three shapes, and 50 of 94 families
+
+`prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
+
+```
+94 shorthands, 3 engines
+chromium 52   firefox 51   webkit 54
+in all three: 50 families, 4367 values checked
+
+positional (31)     padding, margin, inset, overflow, border-radius,
+                    border-width/color/style, background-position, mask-position,
+                    scroll-*, and every logical variant
+by signature (15)   the whole border branch, outline, columns, list-style, text-decoration
+comma list (4)      animation, transition, background, mask, column-rule
+```
+
+**BY SIGNATURE** is `border: 1px solid red` — which longhand a token goes to depends on WHAT it is
+rather than where it sits, and where a type has several slots (`flex: 1 1 0`) their order finishes
+the job. **COMMA LIST** is one shape applied per layer and zipped back:
+split on top-level commas, run the per-layer splitter on each, join each longhand's answers with a
+comma — except the one longhand that is shared rather than per-layer, which the engine identifies
+by holding a single part where the others hold two.
+
+Neither needs a component grammar written here, and that is the point: the classifier is the ENGINE.
+A token fed to the family alone lands on exactly the longhands its type owns, so splitting is
+per-token solo expansion, merged. The real compiler would classify from its own keyword tables; this
+measures whether the DECOMPOSITION is sound, which is the question worth answering first.
+
+#### Every family needs an exhaustive test, and that is not optional
+
+A splitter that is wrong changes a style silently, in a project that never touched the code. There
+is no symptom to notice and no gate that would see it — so the corpus IS the feature, and a family
+is not done when its splitter is written but when its corpus is.
+
+What makes that affordable rather than punishing: **the oracle is free and exact.** `element.style`
+expands a shorthand in the engine itself, and comparing the COMPUTED result of the shorthand against
+the computed result of our longhands, on two elements, answers for any value worth trying — in three
+engines, before anything ships. The cost is writing the values down, not deciding what is right.
+
+Six bugs it has already caught, every one of which would have read as the splitter working:
+
+- splitting on every space tore `rgb(1, 1, 1)` into three values;
+- comparing SPECIFIED text called every normalisation a failure — `0` against `0px`, `#abc` against
+  `rgb(170, 187, 204)` — and buried the one real finding under a hundred false ones;
+- classifying a token against a baseline that already held a value put `border: 3px rgb(1, 2, 3)`'s
+  colour into the width slot;
+- taking the reset from a probe's leftovers left `animation: 7` with a `dashed` in `animation-name`;
+- a slot cannot be seen from ONE token: `animation: 1.5s` sets the duration and leaves the delay at
+  zero, so `1.5s 1.5s` lost its delay until the shape was learned from `1.5s 2.5s` instead;
+- `initial, initial` is not valid CSS, so a keyword reset collapses inside a comma list — but the
+  computed initial is not the reset either (`border-top-width` is `medium`, not the `0px` it
+  computes to with no style), and writing that one put every border width at zero and took the
+  whole border branch from 13 families to 2. The keyword stays, and is resolved only where a list
+  is joined.
+
+So the standard for a family: every arity it accepts, every type its grammar admits in every order,
+the CSS-wide keywords, a `var()`, and the values that are valid CSS and unusual — `calc()`, `min()`,
+`env()`, percentages, zero, negatives. Checked in Chromium, Firefox and WebKit, because they
+disagree: 49, 48 and 51 families pass today, and only 47 pass in all three.
+
+#### The vocabulary of types was the bottleneck, and it is gone
+
+`background` and `mask` need two things the other shapes do not: a SLASH inside a layer (position in
+front, size behind), and PER-ARITY CONSTANTS for a type's unfilled slots — `background: 3px` leaves
+`background-position-y` at `center`, not at its initial value.
+
+Adding the constants fixed `mask` and took `animation` and `transition` out. Restricting them to
+families whose types were disjoint put those back and dropped `mask` again. The two excluded each
+other, and that is what a wrong abstraction looks like from the inside:
+
+> **The probe's vocabulary of TYPES conflated things that are not the same.** `dashed` is a line
+> style to `border` and a NAME to `animation`. A constant learned through one is a constant for
+> neither, and no special case repairs a vocabulary that is wrong per family.
+
+So nothing is named any more. **Two tokens are the same type when they address the same SET of
+longhands**, and that set is its own name. Signatures partition by construction, so the overlap that
+forced the choice cannot arise, and the classifier used at split time is the same function that did
+the learning — there is no table in between to be wrong.
+
+```
+                    families in all three   background
+named types                    49           84 of 141 wrong
+signatures                     50            passes, and so do animation,
+                                             transition, mask and column-rule
+```
+
+Three bugs stood between the rewrite and that, and each is a rule about CSS that no per-group
+mapping can hold:
+
+- **a slot that is another group's SIGNATURE is not this group's to take.** The pair probe writes
+  two tokens of one group side by side, and the family may read the second as something else
+  entirely: `animation: ease-in ease-out` is valid, and the engine makes the second one a NAME. The
+  easing group claimed `animation-name` with a constant of `none`, so the first easing in any value
+  wiped a name already placed — `animation: dashed ease-in` came out nameless;
+- **a token takes the FIRST free slot that accepts it**, in the order the family declares its
+  longhands. `animation: ease-in ease-in` is an easing and then a NAME — the same word twice,
+  meaning two different things — and no mapping can say that, because the token's type depends on
+  what is still unfilled;
+- **a SHARED longhand is invisible in a probe that does not touch it.** `background-color` comes
+  from the last layer only, but `background: 3px, 9px` leaves it at `initial`, which reads exactly
+  like an untouched per-layer longhand — so `3px, rgb(1, 2, 3)` joined the colour into
+  `rgba(0, 0, 0, 0), rgb(1, 2, 3)`, which is not a colour. Every type pair that parses has to be
+  probed, not the first one that does.
+
+#### What is not done
+
+`grid-column`, `grid-row` and `grid-area`, whose `/` separates two independent line names rather
+than two halves of one value. `border-image`. And 35 families where no shape is learned at all,
+which is mostly the probe's sentinel domains being too narrow — `place-content`, `place-items`,
+`overscroll-behavior`, `transform-origin` and `text-wrap` are positional over keyword sets nothing
+here offers. The ones that are genuinely a grammar of their own: `font`, `grid`, `grid-template`,
+`font-variant`, `container`, and `all`.
+
