@@ -4,6 +4,7 @@ import { HOLE, canonicalValue, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, PROPERTIES, SHORTHANDS } from "./keywords.generated";
 import { widthSlot } from "../conditions";
 import { CONDITION, SPREAD, holeIn } from "./read";
+import { splitOf } from "./split";
 
 /**
  * One declaration, taken out of the block it was written in.
@@ -340,10 +341,18 @@ export function flatten(block: Block): AtomicDeclaration[] {
  * `flatten` answers *what does this set*; this answers *how is it composed*. Two functions because
  * most of the package only needs the first — the rules, the sheet and the checker all ask what a
  * block sets and never how it was assembled.
+ *
+ * ## `split`, and why only the sheet asks for it
+ *
+ * A shorthand reaches the STYLESHEET as its longhands, so that no two classes on an element ever set
+ * the same property. It must not reach the CHECKER that way. The checker reports at the author's own
+ * line and names the property in its message, and after a split the property is one the author never
+ * wrote: `display: block; gap: 12px` would be reported as two findings about `row-gap` and
+ * `column-gap`, on a line that says `gap`. So the split is the emit path's, and off by default.
  */
-export function segments(block: Block): AtomicSegment[] {
+export function segments(block: Block, options?: { readonly split?: boolean }): AtomicSegment[] {
   const out: AtomicSegment[] = [];
-  walk(block.items, "", [], [], out);
+  walk(block.items, "", [], [], out, options?.split === true);
   return out;
 }
 
@@ -353,6 +362,7 @@ function walk(
   conditions: readonly string[],
   guards: readonly number[],
   out: AtomicSegment[],
+  split: boolean,
 ): void {
   /** The run being built, so declarations under one guard are one map rather than one each. */
   const run = (): AtomicDeclaration[] => {
@@ -368,7 +378,7 @@ function walk(
       const condition = holeIn(item.prelude, CONDITION);
       if (condition !== undefined) {
         const before = out.length;
-        walk(item.items, selector, conditions, [...guards, condition], out);
+        walk(item.items, selector, conditions, [...guards, condition], out, split);
         /**
          * A group that produced NOTHING still emits its guard, as an empty run.
          *
@@ -389,10 +399,10 @@ function walk(
         continue;
       }
       if (item.prelude.trimStart().startsWith("@")) {
-        walk(item.items, selector, [...conditions, collapse(item.prelude)], guards, out);
+        walk(item.items, selector, [...conditions, collapse(item.prelude)], guards, out, split);
         continue;
       }
-      walk(item.items, nested(selector, selectorOf(item.prelude)), conditions, guards, out);
+      walk(item.items, nested(selector, selectorOf(item.prelude)), conditions, guards, out, split);
       continue;
     }
 
@@ -402,7 +412,7 @@ function walk(
       continue;
     }
 
-    run().push(...declarationsOf(item, selector, conditions));
+    run().push(...declarationsOf(item, selector, conditions, split));
   }
 }
 
@@ -417,14 +427,71 @@ function declarationsOf(
   item: Extract<BlockItem, { kind: "declaration" }>,
   selector: string,
   conditions: readonly string[],
+  split: boolean,
 ): AtomicDeclaration[] {
   const found = item.value.find((part) => part.kind === "match");
   if (found !== undefined && found.kind === "match") {
-    return found.arms.map((one) =>
-      built(item, one.value, selector, conditions, { hole: found.hole, is: one.key, otherwise: one.otherwise }),
+    return found.arms.flatMap((one) =>
+      maybeSplit(
+        item,
+        one.value,
+        selector,
+        conditions,
+        { hole: found.hole, is: one.key, otherwise: one.otherwise },
+        split,
+      ),
     );
   }
-  return [built(item, item.value, selector, conditions, undefined)];
+  return maybeSplit(item, item.value, selector, conditions, undefined, split);
+}
+
+/**
+ * One declaration, or the longhands it really sets.
+ *
+ * A shorthand reaches the sheet as its longhands wherever a measured table can say what they are,
+ * because then no two classes on an element ever set the same property and the cascade is never
+ * asked to choose. `splitOf` refuses whatever it cannot answer, and a refusal is one declaration,
+ * unchanged.
+ *
+ * **A HOLE is the refusal this file has to make itself.** `padding: ${gap}` is a value that does not
+ * exist yet — a custom property filled on the element at run time — and at this point it is a marker
+ * in the text rather than a `var()`, so the splitter's own guard does not see it. Split anyway and
+ * `padding: ${gap}` becomes four longhands each holding the whole marker, which is four wrong
+ * declarations built out of a value nobody has read.
+ */
+function maybeSplit(
+  item: Extract<BlockItem, { kind: "declaration" }>,
+  value$: readonly ValuePart[],
+  selector: string,
+  conditions: readonly string[],
+  arm: AtomicDeclaration["arm"],
+  split: boolean,
+): AtomicDeclaration[] {
+  const whole = built(item, value$, selector, conditions, arm);
+  if (!split || whole.holes.length > 0) return [whole];
+  /**
+   * A `match` ARM is one class, chosen at run time, and splitting it makes several.
+   *
+   * The emit builds `pick(hole, { loud: <class>, quiet: <class> })` and assembles the surrounding
+   * text as pieces around holes. Three longhands per arm makes three classes where one is expected,
+   * and the compiler's own piece-count invariant fires — `a block produced 7 piece(s) for 1 hole(s)`.
+   * So a match keeps its shorthand and the cascade decides for it, which is the answer that cannot
+   * be wrong. Splitting one would mean an arm picking SEVERAL classes, which the runtime `pick` does
+   * not do; it is worth doing and it is not this change.
+   */
+  if (arm !== undefined) return [whole];
+
+  const longhands = splitOf(whole.property, valueOf(whole.canonical));
+  if (longhands === undefined) return [whole];
+
+  return Object.entries(longhands).map(([property, value]) =>
+    built(item, [{ kind: "text", text: value }], selector, conditions, arm, property),
+  );
+}
+
+/** The value out of a `property:value;` — the canonical text, which is what was split. */
+function valueOf(canonical: string): string {
+  return canonical.slice(canonical.indexOf(":") + 1, -1);
 }
 
 function built(
@@ -433,8 +500,10 @@ function built(
   selector: string,
   conditions: readonly string[],
   arm: AtomicDeclaration["arm"],
+  /** Set only by a split: the longhand this piece sets, in place of the shorthand that was written. */
+  instead?: string,
 ): AtomicDeclaration {
-  const property = propertyName(item.property);
+  const property = instead ?? propertyName(item.property);
   /** Local to this declaration, so the same declaration anywhere is the same text. See above. */
   const holes: number[] = [];
   let value = "";

@@ -121,16 +121,21 @@ describe("the blocks it found", () => {
    */
   test("a class per declaration, its body, and the properties it declares", () => {
     const result = emit(`const a = <div className={@@( display: flex; border-left: 4px solid red; )}>x</div>;\n`);
-    const [flex, border] = result?.blocks ?? [];
+    const [flex, ...border] = result?.blocks ?? [];
 
-    expect(result?.blocks).toHaveLength(2);
+    // Four, because a shorthand reaches the sheet as the longhands it sets — see `splitOf`.
+    expect(result?.blocks).toHaveLength(4);
     expect(flex.className).toMatch(/^r-[0-9a-zA-Z][^"\s)]*$/);
     expect(flex.css).toBe("display:flex;");
     // Nothing declares a custom property of its own any more: a block carries no runtime value, so
     // the only names on an element are the ones a `@@property` site registered.
     expect(flex.properties).toEqual([]);
-    expect(border.css).toBe("border-left:4px solid red;");
-    expect(border.properties).toEqual([]);
+    expect(border.map((one) => one.css)).toEqual([
+      "border-left-color:red;",
+      "border-left-style:solid;",
+      "border-left-width:4px;",
+    ]);
+    expect(border.every((one) => one.properties.length === 0)).toBe(true);
   });
 
   test("a nested rule becomes a selector on its own rule, not a rule inside one", () => {
@@ -558,7 +563,14 @@ describe("what the block's own text may contain", () => {
   test("a comment between a property and its value is a separator, not nothing", () => {
     const result = emit(`const a = <div className={@@( margin: 1px /* gap */ 2px; )}>x</div>;\n`);
 
-    expect(result?.blocks[0].css).toBe("margin:1px 2px;");
+    // Two values, not one: the split puts the first on the block axis and the second on the inline
+    // one, which is the separation this is about, made visible.
+    expect(result?.blocks.map((one) => one.css)).toEqual([
+      "margin-top:1px;",
+      "margin-right:2px;",
+      "margin-bottom:1px;",
+      "margin-left:2px;",
+    ]);
   });
 
   test("a comment inside a selector is dropped from the prelude", () => {
@@ -856,14 +868,16 @@ describe("the same declaration in two contexts", () => {
   });
 
   test("a condition does too", () => {
-    const out = emit(`const c = @@( padding: 8px; @media (min-width: 40rem) { padding: 8px; } );\n`);
+    const out = emit(`const c = @@( padding-top: 8px; @media (min-width: 40rem) { padding-top: 8px; } );\n`);
 
     expect(out?.blocks).toHaveLength(2);
     expect(out?.blocks[0].className).not.toBe(out?.blocks[1].className);
   });
 
   test("and two different conditions are two rules again", () => {
-    const out = emit(`const c = @@( @media print { padding: 8px; } @media (min-width: 40rem) { padding: 8px; } );\n`);
+    const out = emit(
+      `const c = @@( @media print { padding-top: 8px; } @media (min-width: 40rem) { padding-top: 8px; } );\n`,
+    );
 
     expect(out?.blocks).toHaveLength(2);
   });

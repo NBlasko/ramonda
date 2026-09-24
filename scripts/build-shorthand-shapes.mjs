@@ -46,94 +46,167 @@ const { DOMAINS, PATTERNS, WIDE, learnPositionalIn, splitPositional, tokensOf } 
 const { SHORTHANDS } = await import("../packages/css/src/compiler/keywords.generated.ts");
 
 const names = Object.keys(SHORTHANDS).filter((one) => !one.startsWith("-"));
-const perEngine = {};
-const counts = [];
+const file = join(HERE, "..", "packages", "css", "src", "compiler", "shapes.generated.ts");
+/**
+ * Read BEFORE the engines run, because every engine verifies the committed rows too.
+ *
+ * A row this machine does not learn used to be neither kept nor rejected — just absent — and the
+ * accumulate rule then carried it forward untouched. `perspective-origin` lived there: only WebKit
+ * has `perspective-origin-x`, so only WebKit ever checked it, while Chromium and Firefox DROP that
+ * declaration and leave the origin unset. Silence read as agreement.
+ */
+const committed = previousFrom(file, /SHAPES: Readonly<Record<string, Shape>> = (\{[\s\S]*?\n\})\s*;/, {});
 
-for (const engine of ["chromium", "firefox", "webkit"]) {
-  let browser;
-  try {
-    browser = await pw[engine].launch();
-    const tab = await browser.newPage();
-    // A DOCTYPE, because quirks mode is a different CSS and no real page is in it.
-    // Two elements, because the shape is verified here: the shorthand on one, our longhands on the
-    // other. The custom properties hold SEVERAL values on purpose — `padding: var(--x)` with
-    // `--x: 1px 2px` is two values to the shorthand and nonsense to a longhand.
-    await tab.setContent(
-      "<!doctype html><html><body><style>#x,#y{--x:1px 2px;--c:red blue;--s:solid dashed;--o:auto hidden;" +
-        "--i:url(a.png);--a:start end;--k:round bevel;--w:pre nowrap;--v:sub super;--n:1 2}</style>" +
-        "<div id=x></div><div id=y></div></body></html>",
-    );
-    perEngine[engine] = await tab.evaluate(
-      ([names, DOMAINS, PATTERNS, learn, split, tokens, wide]) => {
-        const learned = new Function(`return ${learn}`)()(names, DOMAINS, PATTERNS);
-        // The splitter's own two dependencies, put in its scope: it is written to run in a build,
-        // not in a page, so injecting it means bringing what it closes over.
-        const splitPositional = new Function(
-          `const WIDE = ${JSON.stringify(wide)};\nconst tokensOf = ${tokens};\nreturn ${split}`,
-        )();
-        /**
-         * A shape is only written if it SURVIVES its own corpus, here, in the engine that taught it.
-         *
-         * Learning a shape and writing it down are not the same thing: `position-try` takes the
-         * alignment sentinels and so reads as positional, and then splits `normal start` into an
-         * order and a fallback of `normal start` where the engine gives `normal` and `start`. The
-         * check that found that was a separate gate; a generator that can be wrong and a gate that
-         * says so is two places for one fact, so the verification moved in here.
-         */
-        const a = document.getElementById("x");
-        const b = document.getElementById("y");
-        const kept = {};
-        const rejected = [];
-        for (const [name, shape] of Object.entries(learned)) {
-          const domain = DOMAINS.find((one) => one.kind === shape.kind);
-          if (domain === undefined) continue;
-          let sound = true;
-          for (const pattern of PATTERNS) {
-            if (shape.patterns[pattern.key] === undefined || !sound) continue;
-            for (const one of domain.corpus) {
-              for (const other of domain.corpus) {
-                const values = Array.from({ length: pattern.slots }, (_, at) => (at % 2 === 0 ? one : other));
-                let at = 0;
-                const text = pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / ");
-                const mine = splitPositional(shape, text);
-                if (mine === undefined) continue;
-                a.style.cssText = "";
-                b.style.cssText = "";
-                a.style.setProperty(name, text);
-                const longhands = [];
-                for (let index = 0; index < a.style.length; index++) {
-                  const held = a.style[index];
-                  if (held !== name) longhands.push(held);
+/**
+ * Every engine, learning and then verifying `against` — which is why this runs TWICE.
+ *
+ * A family only ONE engine expands is learned only there, so the others never had it to check and
+ * their silence was read as agreement. `perspective-origin` came back that way after being removed:
+ * WebKit has `perspective-origin-x`, Chromium and Firefox have the shorthand and not the longhands,
+ * and they dropped our declaration without ever being asked about it. So the first pass pools what
+ * any engine learned, and the second makes every engine answer for all of it.
+ */
+async function measure(against) {
+  const perEngine = {};
+  const counts = [];
+
+  for (const engine of ["chromium", "firefox", "webkit"]) {
+    let browser;
+    try {
+      browser = await pw[engine].launch();
+      const tab = await browser.newPage();
+      // A DOCTYPE, because quirks mode is a different CSS and no real page is in it.
+      // Two elements, because the shape is verified here: the shorthand on one, our longhands on the
+      // other. The custom properties hold SEVERAL values on purpose — `padding: var(--x)` with
+      // `--x: 1px 2px` is two values to the shorthand and nonsense to a longhand.
+      await tab.setContent(
+        "<!doctype html><html><body><style>#x,#y{--x:1px 2px;--c:red blue;--s:solid dashed;--o:auto hidden;" +
+          "--i:url(a.png);--a:start end;--k:round bevel;--w:pre nowrap;--v:sub super;--n:1 2}</style>" +
+          "<div id=x></div><div id=y></div></body></html>",
+      );
+      perEngine[engine] = await tab.evaluate(
+        ([names, DOMAINS, PATTERNS, learn, split, tokens, wide, against]) => {
+          const learned = new Function(`return ${learn}`)()(names, DOMAINS, PATTERNS);
+          // The splitter's own two dependencies, put in its scope: it is written to run in a build,
+          // not in a page, so injecting it means bringing what it closes over.
+          const splitPositional = new Function(
+            `const WIDE = ${JSON.stringify(wide)};\nconst tokensOf = ${tokens};\nreturn ${split}`,
+          )();
+          /**
+           * A shape is only written if it SURVIVES its own corpus, here, in the engine that taught it.
+           *
+           * Learning a shape and writing it down are not the same thing: `position-try` takes the
+           * alignment sentinels and so reads as positional, and then splits `normal start` into an
+           * order and a fallback of `normal start` where the engine gives `normal` and `start`. The
+           * check that found that was a separate gate; a generator that can be wrong and a gate that
+           * says so is two places for one fact, so the verification moved in here.
+           */
+          const a = document.getElementById("x");
+          const b = document.getElementById("y");
+          const kept = {};
+          const rejected = [];
+
+          /**
+           * Whether the family takes a NEGATIVE length, asked of the engine.
+           *
+           * CSS drops a whole declaration when any part of it is invalid, and a split drops only the
+           * part: `padding: 10px -5px` leaves no padding at all, while four longhands leave 10px top
+           * and bottom. So a family that refuses negatives must refuse to SPLIT a value holding one,
+           * or an author's mistake stops doing nothing and starts doing half of something.
+           *
+           * Asked rather than listed: all three engines agree exactly which families refuse them —
+           * `padding`, `gap`, `border-radius`, `scroll-padding` do, and `margin`, `inset`,
+           * `scroll-margin` do not — and a list of that is a fourth copy of something the engine knows.
+           */
+          const takesNegative = (name) => {
+            a.style.cssText = "";
+            a.style.cssText = `${name}: -5px`;
+            return a.style.cssText !== "";
+          };
+          for (const [name, shape] of Object.entries({ ...against, ...learned })) {
+            const domain = DOMAINS.find((one) => one.kind === shape.kind);
+            if (domain === undefined) continue;
+            let sound = true;
+            for (const pattern of PATTERNS) {
+              if (shape.patterns[pattern.key] === undefined || !sound) continue;
+              for (const one of domain.corpus) {
+                for (const other of domain.corpus) {
+                  const values = Array.from({ length: pattern.slots }, (_, at) => (at % 2 === 0 ? one : other));
+                  let at = 0;
+                  const text = pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / ");
+                  const mine = splitPositional(shape, text);
+                  if (mine === undefined) continue;
+                  a.style.cssText = "";
+                  b.style.cssText = "";
+                  a.style.setProperty(name, text);
+                  for (const [longhand, held] of Object.entries(mine)) b.style.setProperty(longhand, held);
+                  /**
+                   * The WHOLE computed style, not the longhands this engine happens to name.
+                   *
+                   * Reading `a.style` for the longhand list asked the engine what IT expands the
+                   * shorthand into, and skipped the value when the answer was empty — so a family
+                   * this engine does not expand was never checked here and was kept as sound.
+                   * `transform-origin` and `perspective-origin` got into the table that way: only
+                   * WebKit has `transform-origin-x`, so only WebKit verified them, while Chromium and
+                   * Firefox DROP that declaration and never set the origin at all. Same for
+                   * `border-spacing`, whose `-webkit-` longhands Firefox refuses.
+                   *
+                   * Comparing everything also answers a question the longhand list cannot: a
+                   * shorthand may touch a property outside its own mapping — `padding` and
+                   * `padding-inline-start` name the same used value — and a split that misses it
+                   * renders differently while every mapped longhand agrees.
+                   */
+                  const seen = getComputedStyle(a);
+                  const ours = getComputedStyle(b);
+                  let same = seen.length === ours.length;
+                  for (let index = 0; same && index < seen.length; index++) {
+                    const held = seen[index];
+                    same = seen.getPropertyValue(held) === ours.getPropertyValue(held);
+                  }
+                  if (!same) {
+                    sound = false;
+                    break;
+                  }
                 }
-                if (longhands.length === 0) continue;
-                for (const [longhand, held] of Object.entries(mine)) b.style.setProperty(longhand, held);
-                const read = (element) =>
-                  longhands.map((held) => getComputedStyle(element).getPropertyValue(held)).join(" | ");
-                if (read(a) !== read(b)) {
-                  sound = false;
-                  break;
-                }
+                if (!sound) break;
               }
-              if (!sound) break;
             }
+            if (!sound) rejected.push(name);
+            else if (learned[name] !== undefined) kept[name] = { ...shape, negative: takesNegative(name) };
           }
-          if (sound) kept[name] = shape;
-          else rejected.push(name);
-        }
-        return { kept, rejected };
-      },
-      [names, DOMAINS, PATTERNS, learnPositionalIn.toString(), splitPositional.toString(), tokensOf.toString(), WIDE],
-    );
-    counts.push([engine, Object.keys(perEngine[engine].kept).length, perEngine[engine].rejected.length]);
-  } catch (error) {
-    // A browser that will not launch is a SHORTER list, silently — the one thing this must not write.
-    console.error(`[shapes] ${engine} would not launch, so the list would be short: ${String(error).slice(0, 90)}`);
-    console.error(`[shapes] run \`npx playwright install ${engine}\` in apps/playground-core, then this again.`);
-    process.exit(1);
-  } finally {
-    await browser?.close();
+          return { kept, rejected, learned };
+        },
+        [
+          names,
+          DOMAINS,
+          PATTERNS,
+          learnPositionalIn.toString(),
+          splitPositional.toString(),
+          tokensOf.toString(),
+          WIDE,
+          against,
+        ],
+      );
+      counts.push([engine, Object.keys(perEngine[engine].kept).length, perEngine[engine].rejected.length]);
+      if (process.env.WHY) console.error(`[why] ${engine} rejected: ${perEngine[engine].rejected.join(" ")}`);
+    } catch (error) {
+      // A browser that will not launch is a SHORTER list, silently — the one thing this must not write.
+      console.error(`[shapes] ${engine} would not launch, so the list would be short: ${String(error).slice(0, 90)}`);
+      console.error(`[shapes] run \`npx playwright install ${engine}\` in apps/playground-core, then this again.`);
+      process.exit(1);
+    } finally {
+      await browser?.close();
+    }
   }
+  return { perEngine, counts };
 }
+
+/** Learn everywhere first, so the second pass can make every engine answer for all of it. */
+const pooled = { ...committed };
+for (const one of Object.values((await measure(committed)).perEngine))
+  for (const [name, shape] of Object.entries(one.learned)) pooled[name] ??= shape;
+
+const { perEngine, counts } = await measure(pooled);
 
 const engines = Object.keys(perEngine);
 const agreed = {};
@@ -144,6 +217,10 @@ for (const name of names) {
   if (saw.length === 0) continue;
 
   const first = perEngine[saw[0]].kept[name];
+  if (saw.some((one) => perEngine[one].kept[name].negative !== first.negative)) {
+    refused.push(`${name} (the engines disagree about whether it takes a negative length)`);
+    continue;
+  }
   if (saw.some((one) => perEngine[one].kept[name].kind !== first.kind)) {
     refused.push(`${name} (the engines disagree about which sentinels it takes)`);
     continue;
@@ -156,17 +233,15 @@ for (const name of names) {
     if (saw.every((one) => JSON.stringify(perEngine[one].kept[name].patterns[key]) === text)) patterns[key] = mapping;
     else refused.push(`${name} pattern ${key}`);
   }
-  if (Object.keys(patterns).length > 0) agreed[name] = { kind: first.kind, patterns };
+  if (Object.keys(patterns).length > 0) agreed[name] = { kind: first.kind, negative: first.negative, patterns };
 }
-
-const file = join(HERE, "..", "packages", "css", "src", "compiler", "shapes.generated.ts");
 
 /**
  * What is committed, kept — see `engine-facts.mjs`. A family a platform does not HAVE is learned
  * nowhere on that machine, and dropping its row would stop the splitter working where it exists.
  * A row this run DID learn replaces the committed one, because that is the measurement.
  */
-const previous = previousFrom(file, /SHAPES: Readonly<Record<string, Shape>> = (\{[\s\S]*?\n\})\s*;/, {});
+const previous = committed;
 
 /**
  * A committed row is kept only where this machine learned NOTHING about the family — that is the
@@ -176,7 +251,19 @@ const previous = previousFrom(file, /SHAPES: Readonly<Record<string, Shape>> = (
  */
 const rejected = new Set(engines.flatMap((one) => perEngine[one].rejected));
 const merged = { ...previous, ...agreed };
-for (const name of rejected) if (agreed[name] === undefined) delete merged[name];
+/**
+ * ONE engine reproducing a family wrongly ends the claim for everyone — `agreed` is no defence.
+ *
+ * `agreed` is built from the engines that KEPT a family, so an engine that rejected it was not
+ * counted as disagreeing, and a row one engine vouched for outvoted two that had just proved it
+ * wrong. `perspective-origin` survived exactly that way: WebKit has `perspective-origin-x` and kept
+ * it, Chromium and Firefox both rejected it, and the row stayed.
+ *
+ * A family a platform genuinely LACKS is not rejected here — neither element takes the declaration,
+ * so the two computed styles agree and the check passes. Rejection means something stronger: this
+ * engine has the shorthand, took our longhands, and rendered a different page.
+ */
+for (const name of rejected) delete merged[name];
 const sorted = Object.keys(merged).sort();
 
 const wrote = writeOrCheck(
@@ -199,6 +286,8 @@ const wrote = writeOrCheck(
     `/** One family: the sentinel kind it was learned with, and a mapping per value pattern. */\n` +
     `export interface Shape {\n` +
     `  readonly kind: string;\n` +
+    `  /** Whether it takes a NEGATIVE length. Where it does not, a value holding one is not split. */\n` +
+    `  readonly negative: boolean;\n` +
     `  /** Keyed the way the value is written — \`2\`, \`2/2\`, \`1/1/1/1\`. */\n` +
     `  readonly patterns: Readonly<Record<string, Readonly<Record<string, Slot>>>>;\n` +
     `}\n` +

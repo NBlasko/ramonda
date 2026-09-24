@@ -4886,6 +4886,87 @@ computed result is identical in all three, and the corpus above — which contai
 matched; the computed value is. A divergence has to be shown in what the page RENDERS before it is
 allowed to shrink the design.
 
+#### The splitter is WIRED IN, and widening one comparison found nine bad rows
+
+The two tables were built and verified and nothing read them: `splitPositional` was called only by
+its tests and its gate. Wiring it in is what the whole design is for, and it moved the ground twice.
+
+##### The checker must see what the AUTHOR wrote
+
+The split went into `flatten` first, and `flatten` has exactly one caller: the checker. The emit path
+goes through `segments`. So every diagnostic started naming a property nobody had written — `display:
+block; gap: 12px` reported twice, about `row-gap` and `column-gap`, on a line that says `gap`.
+
+Splitting is now an option of `segments`, off by default:
+
+```
+flatten(block)                     what the author wrote   → the checker
+segments(block, { split: true })   the longhands           → the stylesheet
+```
+
+The measurement that says the boundary is in the right place: after the move, all 925 of
+`rules.test.ts` pass with **no change to any rule**. Had the checker genuinely needed to learn about
+splitting, some of them would still be failing.
+
+##### What the compiler refuses to split, and why each refusal is its own
+
+```
+a HOLE              `padding: ${gap}` is a value that does not exist yet, and at this point it is a
+                    marker in the text rather than a `var()` — the splitter's own guard cannot see
+                    it, so `flatten.ts` makes this refusal itself
+a `match` ARM       one class, picked at run time. Three longhands per arm made three, and the
+                    compiler's own invariant fired: `a block produced 7 piece(s) for 1 hole(s)`.
+                    An arm picking SEVERAL classes is worth doing and is not this change
+a `var()`           what is inside it is unknown until the browser reads it
+a comma or a slash  the token shape does not describe either
+a NEGATIVE length   where the family refuses one — see below
+```
+
+##### Comparing the WHOLE computed style dropped nine families
+
+Both generators and the gate compared only the longhands the mapping names, which asks whether the
+values went where we meant them to — not whether the page is the same. Widened to the whole computed
+style, the positional table fell from 51 families to 42, and every row that left was one that had
+never been checked at all. Four separate places read silence as agreement:
+
+```
+`if (longhands.length === 0) continue`   an engine that does not expand the shorthand skipped the
+                                         value, and `sound` stayed true
+`saw` = the engines that KEPT a row      an engine that REJECTED it was not counted as disagreeing
+verification over `learned` only         a row only ONE engine learns, the others never check
+the accumulate rule                      a row nobody rejects survives for ever
+```
+
+`transform-origin-x` and `perspective-origin-x` exist **only in WebKit**; `-webkit-border-*-spacing`
+is missing from Firefox. Splitting there writes declarations the engine drops, so the origin is never
+set at all — and the one engine that has them was the only one checking. The generator now runs in
+TWO passes: every engine learns, then every engine answers for everything any of them learned.
+
+##### CSS drops the whole declaration; a split drops only the part
+
+`padding: 10px -5px` leaves no padding at all, because a negative padding is invalid and CSS refuses
+the declaration entire. Four longhands would leave 10px on top and bottom — an author's mistake that
+stops doing nothing and starts doing half of something.
+
+Where it is cheaply measurable it is refused: the generator asks each family whether it takes a
+negative length (all three engines agree exactly — `margin`, `inset` and `scroll-margin` do;
+`padding`, `gap`, `border-radius`, `scroll-padding` do not) and `splitPositional` refuses a value
+holding one. The check is per TOKEN and not over the text, because over the text it refused
+`calc(4px - 9px)`, whose `- 9` is a subtraction inside a call — found by the test written to describe
+the boundary rather than to catch anything.
+
+Where it is not cheaply measurable, the family leaves the table: `scroll-margin: 10px 10%`,
+`place-items: start space-between` and `contain-intrinsic-size: 0 10%` are all the same fault with a
+different invalid value, and answering them needs a per-property value validator that does not exist
+here. A family that cannot be split is not a hole in the design; it keeps its shorthand.
+
+##### What it gives, measured rather than argued
+
+`padding: 8px` emits no `shorthands()` registration at all any more — the runtime clear machinery was
+not made cleverer, it was made unnecessary, and what keeps it alive is the families no table can
+answer. Across modules, a base's `padding-left` is overridden by a modifier's `padding` because the
+merge settles it by KEY; nothing consults a registration.
+
 #### ~~DECIDED: the splitter is adopted, in a pull request of its own~~ — superseded by the above
 
 Taken 2026-09-24. What it costs is recorded beside it and neither half was measured, because

@@ -122,7 +122,38 @@ describe("what it refuses, and why refusing is an answer", () => {
     expect(splitPositional(shapeOf("overflow"), "auto hidden clip scroll")).toBeUndefined();
   });
 
+  /**
+   * CSS drops a whole declaration when any part of it is invalid; a split drops only the part.
+   *
+   * `padding: 10px -5px` leaves NO padding at all, and four longhands would leave 10px on top and
+   * bottom — the author's mistake stops doing nothing and starts doing half of something. Which
+   * families refuse a negative is measured, not listed: `margin` takes one and `padding` does not.
+   */
+  test("a negative length, where the family refuses one", () => {
+    expect(splitPositional(shapeOf("padding"), "10px -5px")).toBeUndefined();
+    expect(splitPositional(shapeOf("padding"), "-5px")).toBeUndefined();
+  });
+
+  test("but not where the family takes one", () => {
+    expect(splitPositional(shapeOf("margin"), "10px -5px")).toEqual({
+      "margin-top": "10px",
+      "margin-right": "-5px",
+      "margin-bottom": "10px",
+      "margin-left": "-5px",
+    });
+  });
+
+  /** It reads the written text, so what a function works out to is past it — and says so. */
+  test("a negative inside a call is not seen, which is the boundary", () => {
+    expect(splitPositional(shapeOf("padding"), "calc(4px - 9px)")).toEqual({
+      "padding-top": "calc(4px - 9px)",
+      "padding-right": "calc(4px - 9px)",
+      "padding-bottom": "calc(4px - 9px)",
+      "padding-left": "calc(4px - 9px)",
+    });
+  });
+
   test("a shape with no patterns at all", () => {
-    expect(splitPositional({ kind: "length", patterns: {} }, "10px")).toBeUndefined();
+    expect(splitPositional({ kind: "length", negative: false, patterns: {} }, "10px")).toBeUndefined();
   });
 });

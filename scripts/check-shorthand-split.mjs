@@ -87,23 +87,34 @@ for (const [name, shape] of Object.entries(shapes)) {
         a.style.cssText = "";
         b.style.cssText = "";
         a.style.setProperty(name, value);
-        const longhands = [];
-        for (let index = 0; index < a.style.length; index++) {
-          const one = a.style[index];
-          if (one !== name) longhands.push(one);
-        }
-        if (longhands.length === 0) return null;
+        if (a.style.length === 0) return null;
         for (const [longhand, held] of Object.entries(mine)) b.style.setProperty(longhand, held);
-        const read = (element) => longhands.map((one) => getComputedStyle(element).getPropertyValue(one)).join(" | ");
-        return [read(a), read(b)];
+        /**
+         * The WHOLE computed style, not the longhands this engine names.
+         *
+         * Reading `a.style` for the list asked the engine what IT expands the shorthand into, and
+         * returned `null` — not checked — when the answer was empty. A family this engine does not
+         * expand was therefore never checked, which is how `transform-origin` and `border-spacing`
+         * sat in the table: their longhands exist in one engine only, and everywhere else the split
+         * writes declarations that are dropped and sets nothing at all.
+         */
+        const seen = getComputedStyle(a);
+        const ours = getComputedStyle(b);
+        const differ = [];
+        for (let index = 0; index < seen.length; index++) {
+          const one = seen[index];
+          if (seen.getPropertyValue(one) !== ours.getPropertyValue(one))
+            differ.push(`${one}: ${seen.getPropertyValue(one)} vs ${ours.getPropertyValue(one)}`);
+        }
+        return differ.slice(0, 4);
       },
       [name, value, mine],
     );
     if (answer === null) continue;
     tried++;
-    const [rendered, ours] = answer;
-    if (rendered !== ours && wrong.length < 6) wrong.push({ name, value, rendered, ours, mine });
-    else if (rendered !== ours) wrong.push({ name, value });
+    if (answer.length === 0) continue;
+    if (wrong.length < 6) wrong.push({ name, value, differ: answer, mine });
+    else wrong.push({ name, value });
   }
 }
 await browser.close();
@@ -114,9 +125,8 @@ if (wrong.length > 0) {
   console.error(`[split] ${wrong.length} of ${tried} values split into a different page:`);
   for (const one of wrong.slice(0, 6)) {
     console.error(`[split]   ${one.name}: \`${one.value}\``);
-    if (one.rendered !== undefined) {
-      console.error(`[split]     the shorthand renders  ${one.rendered}`);
-      console.error(`[split]     our longhands render   ${one.ours}`);
+    if (one.differ !== undefined) {
+      for (const line of one.differ) console.error(`[split]     ${line}   (shorthand vs our longhands)`);
       console.error(`[split]     we split into          ${JSON.stringify(one.mine)}`);
     }
   }

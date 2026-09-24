@@ -38,7 +38,9 @@ afterEach(async () => {
 });
 
 /** The classes the emitted JavaScript names, and the classes the stylesheet defines. */
-const named = (code: string) => [...code.matchAll(/"(r-[\w-]+)"/g)].map((each) => each[1]);
+/** One quoted string may hold SEVERAL classes — a split shorthand is `_merge("r-pt-… r-pr-… …")`. */
+const named = (code: string) =>
+  [...code.matchAll(/"((?:r-[\w-]+ ?)+)"/g)].flatMap((each) => (each[1] ?? "").trim().split(" "));
 const defined = (code: string) => [...code.matchAll(/\.(r-[\w-]+)/g)].map((each) => each[1]);
 
 async function serve(source: string, config?: string, alongside?: string) {
@@ -236,7 +238,7 @@ test("and every file already compiled is checked against the new config", async 
 
   const { saveConfig, firstLoad, server } = await serve(block, units("rem"));
   // It compiles under the config it was written for, which is the control.
-  expect((await firstLoad()).js).toEqual(["r-p-2rem"]);
+  expect((await firstLoad()).js).toEqual(["r-pt-2rem", "r-pr-2rem", "r-pb-2rem", "r-pl-2rem"]);
 
   await saveConfig(units("px"));
 
@@ -322,7 +324,9 @@ test("fifty saves leave a file serving its own two rules and no more", async () 
   }
 
   const { css } = await fetchBoth();
-  expect(css).toEqual(["r-p-50px", "r-c-red"]);
+  // `padding` reaches the sheet as its four longhands, and the point stands: only the LAST save's
+  // rules are served, however many rules one declaration makes.
+  expect(css).toEqual(["r-pt-50px", "r-pr-50px", "r-pb-50px", "r-pl-50px", "r-c-red"]);
 });
 
 test("a file that gains its first block is picked up", async () => {

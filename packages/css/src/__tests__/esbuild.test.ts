@@ -408,7 +408,8 @@ describe("which config a file is measured against", () => {
 
     const { css } = outputs(await build(repo, { entryPoints: [join(repo, "packages", "admin", "index.tsx")] }));
 
-    expect(css).toContain("padding: 1em");
+    // The shorthand reaches the sheet as its longhands, so the unit shows up on each of them.
+    expect(css).toContain("padding-top: 1em");
   });
 });
 

@@ -75,7 +75,9 @@ describe("a spread", () => {
  */
 describe("what a module registers", () => {
   test("the registration is emitted above the merge that needs it", () => {
-    const out = emit("const a = @@( padding-left: 4px; padding: 8px; );\n");
+    // `background`, because a family the compiler SPLITS registers nothing at all — there is no
+    // shorthand left in the sheet for anything to clear.
+    const out = emit("const a = @@( background-color: red; background: blue; );\n");
     const clears = out.indexOf("_clears(");
     const merged = out.indexOf('_merge("r-');
 
@@ -110,9 +112,20 @@ describe("what a module registers", () => {
     const theBase = run(base, {}) as string;
     const theCard = run(card, { base: theBase }) as string;
 
-    // `padding` cleared the base's `padding-left`, and left the cursor it does not set.
+    /**
+     * The base's `padding-left` is gone and the cursor it does not set is kept — but by a different
+     * route than this test was written for. `padding: 8px` is four longhand classes, one of them
+     * `padding-left`, so the merge settles it by KEY and no registration is consulted. The machinery
+     * did not get better at the question; the question stopped being asked.
+     */
     expect(theCard.split(" ").sort()).toEqual(
-      [...theBase.split(" ").filter((one) => !one.startsWith("r-pl-")), "r-p-8px"].sort(),
+      [
+        ...theBase.split(" ").filter((one) => !one.startsWith("r-pl-")),
+        "r-pt-8px",
+        "r-pr-8px",
+        "r-pb-8px",
+        "r-pl-8px",
+      ].sort(),
     );
   });
 
@@ -185,7 +198,17 @@ describe("a reuse inside a reuse", () => {
 
     const named = value.split(" ");
     const rules = new Map((out?.blocks ?? []).map((one) => [one.className, one.css]));
-    expect(named.map((one) => rules.get(one)).sort()).toEqual(["color:red;", "gap:2px;", "padding:3px;"]);
+    // `gap` and `padding` reach the sheet as their longhands, so the claim — each level overrides
+    // the one below and nothing else — is now made one property at a time.
+    expect(named.map((one) => rules.get(one)).sort()).toEqual([
+      "color:red;",
+      "column-gap:2px;",
+      "padding-bottom:3px;",
+      "padding-left:3px;",
+      "padding-right:3px;",
+      "padding-top:3px;",
+      "row-gap:2px;",
+    ]);
   });
 
   test("and the innermost one is still a constant, so the chain costs one allocation per level", () => {
@@ -401,7 +424,7 @@ describe("a condition head with something extra in it", () => {
 describe("the nesting shapes nothing reached", () => {
   test("two nested merges live at once", () => {
     const out = emit(
-      `const card = @@(\n  color: red;\n  if ({a}) {\n    opacity: 0.5;\n    if ({b}) {\n      gap: 8px;\n      if ({c}) { padding: 4px; }\n    }\n  }\n);\n`,
+      `const card = @@(\n  color: red;\n  if ({a}) {\n    opacity: 0.5;\n    if ({b}) {\n      row-gap: 8px;\n      if ({c}) { padding-top: 4px; }\n    }\n  }\n);\n`,
     );
 
     // Counted in GUARD POSITION, because a bare `\bc\b` also matches the `c` in the class name
@@ -411,7 +434,7 @@ describe("the nesting shapes nothing reached", () => {
     }
     expect(out).toMatch(/a\s*&&\s*_merge\(/);
     expect(out).toMatch(/b\s*&&\s*_merge\(/);
-    expect(out).toMatch(/c\s*&&\s*"r-p-/);
+    expect(out).toMatch(/c\s*&&\s*"r-pt-/);
   });
 
   test("and two of them close on one segment", () => {
@@ -422,10 +445,10 @@ describe("the nesting shapes nothing reached", () => {
 
   test("a run resumed after a nested group, still inside a guard", () => {
     const out = emit(
-      `const card = @@(\n  if ({a}) {\n    color: red;\n    if ({b}) { gap: 8px; }\n    opacity: 0.5;\n  }\n);\n`,
+      `const card = @@(\n  if ({a}) {\n    color: red;\n    if ({b}) { row-gap: 8px; }\n    opacity: 0.5;\n  }\n);\n`,
     );
 
-    expect(out).toMatch(/b\s*&&\s*"r-gap-[^"]*"\s*,\s*"r-o-/);
+    expect(out).toMatch(/b\s*&&\s*"r-row_gap-[^"]*"\s*,\s*"r-o-/);
     expect(out.match(/\ba\b/g)).toHaveLength(1);
     expect(out.match(/\bb\b/g)).toHaveLength(1);
   });
@@ -455,12 +478,26 @@ describe("the nesting shapes nothing reached", () => {
    * answers for every context the shorthand is written in, which is what keeps the registration to
    * the shorthands a file writes rather than one per context it writes them in.
    */
-  test("a shorthand registers its longhands once, by property, whatever context it sits in", () => {
+  /**
+   * The registration is for the shorthands that CANNOT be split, and there is nothing else left.
+   *
+   * A shorthand the compiler splits never reaches the sheet, so no class sets `padding` and nothing
+   * has to be told that `padding` clears `padding-left` — which is the point of splitting, seen from
+   * the runtime: the machinery is not made cleverer, it is made unnecessary. What keeps it alive is
+   * the families no table can answer, `background` among them.
+   */
+  test("a shorthand that is split registers nothing, because no class sets it", () => {
     const out = emit(`const card = @@(\n  &:hover { padding: 8px; }\n);\n`);
 
-    expect(out).toContain('_clears({"p":[');
-    expect(out).toContain('"pl"');
-    expect(out).toContain('"r-:hover.p-8px"');
+    expect(out).not.toContain("_clears");
+    expect(out).toContain('"r-:hover.pt-8px r-:hover.pr-8px r-:hover.pb-8px r-:hover.pl-8px"');
+  });
+
+  test("and one that is not still registers its longhands, by property", () => {
+    const out = emit(`const card = @@(\n  &:hover { background: red url(a.png); }\n);\n`);
+
+    expect(out).toContain('_clears({"bg":[');
+    expect(out).toContain('"bgi"');
   });
 });
 

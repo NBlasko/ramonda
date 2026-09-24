@@ -424,7 +424,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * is only correct because merging is associative and later still wins — the property `compose`
      * is built around.
      */
-    const all = [...segments(read.block)];
+    const all = [...segments(read.block, { split: true })];
 
     /**
      * Whether a guard needs a merge of its own, or may simply join the conjunction.

@@ -203,9 +203,23 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
           y.style.cssText = Object.entries(split)
             .map(([property, one]) => `${property}: ${one}`)
             .join("; ");
+          /**
+           * The WHOLE computed style, not the longhands the split names.
+           *
+           * Comparing only the mapping asks whether we put the values where we meant to, which is
+           * not the question. A shorthand may touch a property outside its own list — `padding` and
+           * `padding-inline-start` name the same used value — and, the other way round, CSS drops a
+           * whole declaration when any part of it is invalid while a split drops only the part. Both
+           * show as a page that differs and neither shows in the mapped longhands.
+           */
           const wrote = getComputedStyle(x);
           const ours = getComputedStyle(y);
-          return Object.keys(split).every((property) => wrote[property] === ours[property]);
+          if (wrote.length !== ours.length) return false;
+          for (let index = 0; index < wrote.length; index++) {
+            const held = wrote[index];
+            if (wrote.getPropertyValue(held) !== ours.getPropertyValue(held)) return false;
+          }
+          return true;
         }),
       cases,
     );

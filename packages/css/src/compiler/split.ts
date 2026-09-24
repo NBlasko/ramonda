@@ -1,6 +1,6 @@
 import { KEYWORDS, UNIT_TYPE } from "./keywords.generated";
-import type { Shape } from "./shapes.generated";
-import type { TokenShape, TokenSlot } from "./tokenShapes.generated";
+import { type Shape, SHAPES } from "./shapes.generated";
+import { TOKEN_SHAPES, type TokenShape, type TokenSlot } from "./tokenShapes.generated";
 
 /**
  * Splitting a POSITIONAL shorthand into its longhands, from a learned shape and nothing else.
@@ -76,6 +76,20 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
   if (WIDE.includes(bare)) return Object.fromEntries(longhands.map((one) => [one, bare]));
   if (tokensOf(value).some((one) => WIDE.includes(one))) return undefined;
   if (/\bvar\(/.test(value)) return undefined;
+  /**
+   * A NEGATIVE where the family refuses one, because CSS and a split disagree about invalid input.
+   *
+   * CSS drops a whole declaration when any part of it is invalid; a split drops only the part.
+   * `padding: 10px -5px` leaves no padding at all, and four longhands would leave 10px on top and
+   * bottom — the author's mistake stops doing nothing and starts doing half of something. Which
+   * families refuse a negative is measured, not listed: all three engines agree, and `margin`,
+   * `inset` and `scroll-margin` take one.
+   *
+   * It asks of each TOKEN, not of the text: reading the text refused `calc(4px - 9px)`, whose `- 9`
+   * is a subtraction inside a call and not a negative value at all. What that call works out to is
+   * still past this — the boundary, and the reason the refusal path exists.
+   */
+  if (!shape.negative && tokensOf(value, /[\s/]/).some((one) => /^-\.?\d/.test(one))) return undefined;
 
   const sides = tokensOf(value, /\//).map((one) => tokensOf(one));
   const mapping = shape.patterns[sides.map((one) => one.length).join("/")];
@@ -126,6 +140,8 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
 /** A colour is tested directly rather than expanded: `<color>` is 192 words, and every border family takes one. */
 const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== ""));
 const COLOUR_CALL = /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/i;
+/** The spelling `rules.ts` and `flatten.ts` already use: optional space after the bang, any case. */
+const IMPORTANT = /!\s*important\s*$/i;
 const A_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 const A_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z%]+)$/i;
 
@@ -192,4 +208,34 @@ export function splitTokens(shape: TokenShape, value: string): Record<string, st
     for (const longhand of slot.longhands) out[longhand] = token;
   }
   return out;
+}
+
+/**
+ * The one door from a written declaration to the longhands it sets, or a refusal.
+ *
+ * Two tables, asked in turn: a positional family is answered by how many values were written, a
+ * bag-of-tokens family by what each token is, and a family in neither keeps its shorthand. The
+ * caller does not choose between them, because which shape a family has is not a fact the compiler
+ * should hold in a second place — see `one-rule-many-consumers`.
+ *
+ * `!important` is taken off before the split and put back on every longhand. It has to be: it is
+ * part of the value's text here, so a splitter would see it as a token nothing accepts and refuse
+ * the whole declaration. Splitting it out is also what CSS means by it — `border: 1px solid red
+ * !important` makes all three important, not the first.
+ */
+export function splitOf(property: string, value: string): Record<string, string> | undefined {
+  const bang = IMPORTANT.exec(value);
+  const bare = bang === null ? value : value.slice(0, bang.index);
+
+  const positional = SHAPES[property];
+  const tokens = TOKEN_SHAPES[property];
+  const split =
+    positional !== undefined
+      ? splitPositional(positional, bare)
+      : tokens !== undefined
+        ? splitTokens(tokens, bare)
+        : undefined;
+  if (split === undefined || bang === null) return split;
+
+  return Object.fromEntries(Object.entries(split).map(([one, each]) => [one, `${each} ${bang[0].trim()}`]));
 }
