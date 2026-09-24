@@ -4353,16 +4353,16 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Three shapes, and 73 of 94 families
+#### Three shapes, and 75 of 94 families
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 73   firefox 61   webkit 66
+chromium 75   firefox 63   webkit 68
 
-covered in every engine that HAS it   73 families, 5820 values checked
-present and covered in all three      61
+covered in every engine that HAS it   75 families, 5946 values checked
+present and covered in all three      63
 properties not every engine has       16
 
 positional (52)     padding, margin, inset, overflow, border-radius,
@@ -4370,10 +4370,22 @@ positional (52)     padding, margin, inset, overflow, border-radius,
                     grid-area/column/row, place-content, place-items, place-self,
                     overscroll-behavior, container, font-variant, the whole
                     corner-*-shape branch, scroll-*, and every logical variant
-by signature (17)   the whole border branch, border-image, mask-border, outline,
-                    column-rule, list-style, text-decoration
+by signature (19)   the whole border branch, border-image, mask-border, outline,
+                    column-rule, list-style, text-decoration, flex, offset
 comma list (4)      animation, transition, background, mask
 ```
+
+**A pair of groups is the unit, not a group.** A group learned on its own cannot answer for a value
+holding another group too, and the last two stragglers failed on exactly that: `flex: 3px 7` is
+grow 7 and basis 3px, while `flex: 7 7` is grow 7, shrink 7 and basis `0%` — the same number group,
+a different answer, because of what sits beside it. `offset: url(a.png) 3px` puts the length on the
+DISTANCE where `offset: 3px` puts it on the position. Groups are two to five per family, so every
+ordered pair is a handful of probes and each is the engine's own answer for that combination.
+
+And a longhand's value is recorded TOKEN BY TOKEN, because it can hold a slot and a constant side by
+side: `offset: 3px url(a.png)` gives `offset-position: 3px center`, the written length and a keyword
+the family supplies. All-or-nothing made it a literal, so `9px url(a.png)` emitted the probe's own
+`3px center`.
 
 **"Covered in all three" was the wrong bar**, and finding that out is worth more than the number it
 gave. `corner-shape` is Chromium-only today, so asking every engine to agree about it refuses a
@@ -4504,9 +4516,9 @@ mapping can hold:
 
 #### What is not done
 
-Three families where a shape is learned and is wrong: `flex` (8 of 51 — `flex: 7 7` puts the basis
-at `0%`, and arity two is as far as the learning goes), `offset` (28 of 75 — a length means the
-position in one place and the distance in another), and `position-try` (3 of 44).
+One family where a shape is learned and is wrong: `position-try`, 3 of 44. It is claimed by the
+positional learner because the alignment sentinels happen to parse, and it is really a signature
+family — `position-try: normal start` is an order and a fallback, not two values of one thing.
 
 And 18 with no shape learned at all. Some are still the sentinel domains being too narrow —
 `text-wrap`, `vertical-align`, `white-space`, `transform-origin`, `perspective-origin`,

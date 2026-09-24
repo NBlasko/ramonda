@@ -472,6 +472,51 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
         }
 
         /**
+         * Two tokens together, keyed by WHICH groups they came from and in what order.
+         *
+         * A group learned on its own cannot answer for a value that holds another group too, and
+         * both remaining families fail on exactly that: `flex: 3px 7` is grow 7 and basis 3px,
+         * while `flex: 7 7` is grow 7, shrink 7 and basis `0%` — the same number group, a different
+         * answer, because of what sits beside it. `offset: url(a.png) 3px` puts the length on the
+         * DISTANCE, where `offset: 3px` puts it on the position.
+         *
+         * So the pair is the unit. Groups are few — two to five per family — so every ordered pair
+         * is a handful of probes, and each one is the engine's own answer for that combination.
+         */
+        const combos = new Map();
+        const signatures = [...groups.keys()];
+        for (const left of signatures) {
+          for (const right of signatures) {
+            const a = groups.get(left).tokens[0];
+            const b = left === right ? groups.get(right).tokens[1] : groups.get(right).tokens[0];
+            if (b === undefined) continue;
+            const got = expand(name, `${a} ${b}`);
+            if (Object.keys(got).length === 0) continue;
+            combos.set(`${left}\u0000${right}`, {
+              tokens: [a, b],
+              /**
+               * Token by token, because a longhand can hold a SLOT and a CONSTANT side by side.
+               *
+               * `offset: 3px url(a.png)` gives `offset-position: 3px center` — the written length
+               * and a keyword the family supplies. Recording that as all-or-nothing made it a
+               * literal, so `9px url(a.png)` emitted the probe's own `3px center`.
+               */
+              mapping: Object.fromEntries(
+                Object.entries(got).map(([longhand, value]) => [
+                  longhand,
+                  {
+                    parts: tokens(value).map((one) => {
+                      const slot = [a, b].findIndex((v) => one === v || one === held(longhand, v));
+                      return slot >= 0 ? { slot } : { text: one };
+                    }),
+                  },
+                ]),
+              ),
+            });
+          }
+        }
+
+        /**
          * A SLASH inside one layer, which `background` and `mask` have: what is in front is the
          * position, what is behind is the size — and the size side is ONE longhand holding several
          * tokens joined, not several slots. Learned from four lengths across a slash.
@@ -557,6 +602,23 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
                 order.push(signature);
               }
               byGroup.get(signature).push(one);
+            }
+
+            // Two tokens from known groups: the pair probe answered this exact combination.
+            if (order.length <= 2) {
+              const written = order.flatMap((one) => byGroup.get(one));
+              if (written.length === 2) {
+                const key = `${signatureOf(written[0])}\u0000${signatureOf(written[1])}`;
+                const combo = combos.get(key);
+                if (combo !== undefined) {
+                  return Object.fromEntries(
+                    Object.entries(combo.mapping).map(([longhand, how]) => [
+                      longhand,
+                      how.parts.map((one) => (one.text !== undefined ? one.text : written[one.slot])).join(" "),
+                    ]),
+                  );
+                }
+              }
             }
 
             for (const signature of order) {
