@@ -4353,16 +4353,16 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Three shapes, and 83 of 94 families
+#### Five shapes, and 84 of 94 families
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 83   firefox 69   webkit 76
+chromium 84   firefox 70   webkit 77
 
-covered in every engine that HAS it   83 families, 7882 values checked
-present and covered in all three      68
+covered in every engine that HAS it   84 families, 7891 values checked
+present and covered in all three      69
 properties not every engine has       16
 
 positional (52)     padding, margin, inset, overflow, border-radius,
@@ -4373,8 +4373,20 @@ positional (52)     padding, margin, inset, overflow, border-radius,
 by signature (23)   the whole border branch, border-image, mask-border, outline,
                     column-rule, list-style, text-decoration, flex, offset,
                     flex-flow, text-emphasis, text-wrap, white-space
-comma list (4)      animation, transition, background, mask
+comma list (7)      animation, transition, background, mask, column-rule,
+                    scroll-timeline, view-timeline
+flags (1)           font-synthesis
 ```
+
+**FLAGS is the fifth shape, and every other learner was blind to it by construction.**
+`font-synthesis: weight style` turns two longhands on and leaves the third off. The keyword is not a
+value the longhand can hold — `font-synthesis-weight` takes `auto` and `none` — and all four shapes
+above ask exactly one question, *which longhand HOLDS this token*, so all four drew a blank.
+
+What identifies the pair is naming both at once: whatever a longhand is when every keyword is
+written is its ON value, and a token owns the longhand that reaches it with this token and not with
+the others. A longhand that matches under every token is owned by none of them —
+`font-synthesis-small-caps` has no probe word here — and stays off.
 
 **A pair of groups is the unit, not a group.** A group learned on its own cannot answer for a value
 holding another group too, and the last two stragglers failed on exactly that: `flex: 3px 7` is
@@ -4547,20 +4559,20 @@ learner needs two groups in a family before it can say anything, and for `flex-f
 
 `position-try`, 3 of 44, above.
 
-**Five with no shape learned**, and the report now says what the learner could SEE of each, which
-is the difference between a missing shape and a missing word:
+**Four with no shape learned**, and the report says what the learner could SEE of each, which is
+the difference between a missing shape and a missing word:
 
 ```
 font             0 groups
-font-synthesis   0 groups
 grid             0 groups
 grid-template    0 groups
 text-box         1 group: text-box-trim
 ```
 
-Four of them are genuinely a grammar of their own. `font-synthesis` is a shape none of these is — a
-FLAG list, where naming a keyword turns its longhand on and leaving it out turns it off, so no token
-is ever HELD by the longhand it addresses, and every learner here asks exactly that question.
+The first three are genuinely a grammar of their own. `text-box` is not: its edge is TWO tokens
+together — `cap alphabetic` parses where `cap` alone does not — so no single token ever classifies,
+and the carrier trick only ever adds one companion. A component made of several tokens is the next
+thing the learner cannot see.
 
 **Four that never expand in the engine at all** — `all`, `perspective-origin`, `transform-origin`,
 `vertical-align`. They are in the shorthand table because SOME engine resets longhands through

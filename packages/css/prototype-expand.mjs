@@ -395,12 +395,13 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
        * overlap that forced the choice cannot arise, and the classifier at split time is the same
        * function as the one that learned — there is no table in between to be wrong.
        */
+      /** Every probe token, flat — shared by the learners rather than owned by one of them. */
+      const PROBE = Object.values(TYPES).flat();
+
       /** For the report only: what the signature learner could see, per family. */
       const sawGroups = new Map();
 
       const learnBySignature = (name) => {
-        const PROBE = Object.values(TYPES).flat();
-
         /**
          * Where a token lands — alone if the family takes it alone, and beside a CARRIER if not.
          *
@@ -721,6 +722,67 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
       };
 
       /**
+       * ── Shape 5: a list of FLAGS ──────────────────────────────────────────────────────────────
+       *
+       * `font-synthesis: weight style` turns two longhands on and leaves the third off. Naming a
+       * keyword is the whole of it — the keyword is not a VALUE the longhand can hold, so every
+       * learner above draws a blank: they all ask which longhand HOLDS this token, and here none
+       * ever does.
+       *
+       * What identifies the pair is naming both at once. Whatever a longhand is when all the
+       * keywords are written is its ON value; a token owns the longhand that reaches that value
+       * with this token and not with the others. A longhand that matches under every token is owned
+       * by none of them — `font-synthesis-small-caps` has no probe word here — and stays off.
+       */
+      const learnFlags = (name) => {
+        const accepted = PROBE.filter((one) => Object.keys(expand(name, one)).length > 0);
+        if (accepted.length < 2) return null;
+        // If any longhand HOLDS a token, this is one of the shapes above, not a flag list.
+        for (const token of accepted) {
+          const got = expand(name, token);
+          if (Object.keys(got).some((one) => got[one] === held(one, token))) return null;
+        }
+        const all = expand(name, accepted.join(" "));
+        if (Object.keys(all).length === 0) return null;
+
+        const solos = new Map(accepted.map((one) => [one, expand(name, one)]));
+        const owner = {};
+        for (const longhand of Object.keys(all)) {
+          const reach = accepted.filter((one) => solos.get(one)[longhand] === all[longhand]);
+          if (reach.length === 1) owner[longhand] = reach[0];
+        }
+        if (Object.keys(owner).length < 2) return null;
+
+        /** What a longhand is when nobody names it: its value under a token that does not own it. */
+        const off = Object.fromEntries(
+          Object.keys(all).map((longhand) => {
+            const other = accepted.find((one) => one !== owner[longhand]);
+            return [longhand, solos.get(other)[longhand]];
+          }),
+        );
+
+        return {
+          shape: "flags",
+          longhands: Object.keys(all),
+          split(value) {
+            const early = beforeSplitting(value, Object.keys(all));
+            if (early.refuse) return null;
+            if (early.done) return early.done;
+            const named = new Set(tokens(value));
+            const out = { ...off };
+            for (const [longhand, token] of Object.entries(owner)) {
+              if (named.has(token)) out[longhand] = all[longhand];
+            }
+            // A word this probe never learned: it would silently mean "everything off".
+            for (const one of named) {
+              if (!accepted.includes(one)) return null;
+            }
+            return out;
+          },
+        };
+      };
+
+      /**
        * ── Shape 4: a COMMA LIST of layers ───────────────────────────────────────────────────────
        *
        * `animation: spin 1s, fade 2s` and a multi-layer `background` are one shape applied N times
@@ -836,7 +898,9 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
          * never got a turn.
          */
         const byType = learnBySignature(name);
-        const candidates = [learnPositional(name), learnList(name, byType), byType].filter((one) => one !== null);
+        const candidates = [learnPositional(name), learnList(name, byType), byType, learnFlags(name)].filter(
+          (one) => one !== null,
+        );
         if (candidates.length === 0) {
           /**
            * A family that never expands is a different answer from one whose shape nobody guessed.
@@ -880,6 +944,13 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
                 }
               }
             }
+          } else if (learned.shape === "flags") {
+            const words = Object.values(TYPES).flat();
+            for (const one of words) {
+              cases.push(one);
+              for (const other of words) cases.push(`${one} ${other}`);
+            }
+            for (const wide of WIDE) cases.push(wide);
           } else {
             const all = Object.values(TYPES).flat();
             for (const one of all) {
