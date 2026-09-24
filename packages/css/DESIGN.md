@@ -4353,21 +4353,33 @@ list-valued kinds. Those declarations keep their shorthand, and the cascade deci
 so the layers do not disappear, but what depends on them shrinks from every family to a few
 declarations.
 
-#### Three shapes, and 50 of 94 families
+#### Three shapes, and 55 of 94 families
 
 `prototype-expand.mjs` learns four, tried in order, and verifies all of them the same way:
 
 ```
 94 shorthands, 3 engines
-chromium 52   firefox 51   webkit 54
-in all three: 50 families, 4367 values checked
+chromium 57   firefox 56   webkit 60
+in all three: 55 families, 4527 values checked
 
-positional (31)     padding, margin, inset, overflow, border-radius,
+positional (37)     padding, margin, inset, overflow, border-radius,
                     border-width/color/style, background-position, mask-position,
-                    scroll-*, and every logical variant
-by signature (15)   the whole border branch, outline, columns, list-style, text-decoration
+                    grid-area, grid-column, grid-row, overscroll-behavior,
+                    place-self, scroll-*, and every logical variant
+by signature (14)   the whole border branch, outline, list-style, text-decoration
 comma list (4)      animation, transition, background, mask, column-rule
 ```
+
+**A slash is not always one value split in half.** `border-radius: 1px / 2px` is a horizontal and a
+vertical radius; `grid-area: 1 / 2 / 3 / 4` is four independent slots. So a pattern is the length of
+every slash-separated SIDE rather than a flag, and its key is written the way the value is — `2/2`,
+`1/1/1/1`.
+
+And the patterns decide which DOMAIN a family takes, not only how it is taught. Asking whether a
+family accepts two values side by side read `grid-column` as having no positional shape at all: it
+takes `1 / 3` and refuses `1 3`, so the single probe that chose the domain was the one probe it
+could never pass. Trying every pattern brought `grid-area`, `grid-column` and `grid-row` in, and
+`overscroll-behavior` and `place-self` came with them.
 
 **BY SIGNATURE** is `border: 1px solid red` — which longhand a token goes to depends on WHAT it is
 rather than where it sits, and where a type has several slots (`flex: 1 1 0`) their order finishes
@@ -4459,10 +4471,10 @@ mapping can hold:
 
 #### What is not done
 
-`grid-column`, `grid-row` and `grid-area`, whose `/` separates two independent line names rather
-than two halves of one value. `border-image`. And 35 families where no shape is learned at all,
-which is mostly the probe's sentinel domains being too narrow — `place-content`, `place-items`,
-`overscroll-behavior`, `transform-origin` and `text-wrap` are positional over keyword sets nothing
-here offers. The ones that are genuinely a grammar of their own: `font`, `grid`, `grid-template`,
-`font-variant`, `container`, and `all`.
+`flex`, whose one-value form gives `flex-grow: 1` where every learned shape says the slot is
+untouched, and `offset`, `border-image`. And 33 families where no shape is learned at all — mostly
+the probe's sentinel domains still being too narrow (`place-content`, `place-items`,
+`transform-origin`, `text-wrap`, `vertical-align`, `white-space` are positional over keyword sets
+nothing here offers, and the `corner-*-shape` branch is eleven of the 33). Genuinely their own
+grammar: `font`, `grid`, `grid-template`, `font-variant`, `container`, `all`.
 

@@ -88,22 +88,31 @@ const DOMAINS = [
     corpus: ["none", "solid", "double", "var(--s)", "inherit"],
   },
   {
+    kind: "grid-line",
+    sentinels: ["1", "2", "3", "4", "5", "6", "7", "8"],
+    corpus: ["auto", "1", "-1", "span 2", "3", "var(--n)", "inherit"],
+  },
+  {
     kind: "overflow",
     sentinels: ["auto", "hidden", "clip", "scroll", "visible", "auto", "hidden", "clip"],
     corpus: ["visible", "auto", "clip", "var(--o)", "inherit"],
   },
 ];
 
-/** The value patterns the positional shape is taught: N plain values, and N/N across a slash. */
-const PATTERNS = [
-  { key: "1", slots: 1 },
-  { key: "2", slots: 2 },
-  { key: "3", slots: 3 },
-  { key: "4", slots: 4 },
-  { key: "1/1", slots: 2, slash: 1 },
-  { key: "2/2", slots: 4, slash: 2 },
-  { key: "4/4", slots: 8, slash: 4 },
-];
+/**
+ * The value patterns the positional shape is taught, each as the length of every SLASH-SEPARATED
+ * side.
+ *
+ * Two sides was enough for `border-radius`, where the slash splits one value into a horizontal and
+ * a vertical half. `grid-area: 1 / 2 / 3 / 4` is four, and they are four independent slots rather
+ * than halves of anything — so the pattern is a list rather than a flag, and the key is written the
+ * way the value is.
+ */
+const PATTERNS = [[1], [2], [3], [4], [1, 1], [2, 2], [4, 4], [2, 1], [1, 2], [1, 1, 1], [1, 1, 1, 1]].map((sides) => ({
+  key: sides.join("/"),
+  sides,
+  slots: sides.reduce((sum, one) => sum + one, 0),
+}));
 
 /**
  * Corpora for the TYPE shapes, one token list per component type.
@@ -217,20 +226,31 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 
       // ── Shape 1: POSITIONAL, learned per arity ────────────────────────────────────────────────
       const learnPositional = (name) => {
-        const domain = DOMAINS.find((one) => {
-          const got = expand(name, one.sentinels.slice(0, 2).join(" "));
-          const keys = Object.keys(got);
-          return keys.length > 0 && keys.every((k) => one.sentinels.includes(got[k]));
-        });
+        /**
+         * The value patterns are how a domain is chosen, not just how it is taught.
+         *
+         * Asking only whether a family takes two values SIDE BY SIDE reads `grid-column` as having
+         * no positional shape at all: it accepts `1 / 3` and refuses `1 3`, so the one probe that
+         * decided the domain was the one probe it was always going to fail.
+         */
+        const fill = (sentinels, pattern) => {
+          const values = sentinels.slice(0, pattern.slots);
+          let at = 0;
+          return pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / ");
+        };
+        const domain = DOMAINS.find((one) =>
+          PATTERNS.some((pattern) => {
+            const got = expand(name, fill(one.sentinels, pattern));
+            const keys = Object.keys(got);
+            return keys.length > 0 && keys.every((k) => one.sentinels.includes(got[k]));
+          }),
+        );
         if (domain === undefined) return null;
 
         const learned = {};
         for (const pattern of PATTERNS) {
           const values = domain.sentinels.slice(0, pattern.slots);
-          const text = pattern.slash
-            ? `${values.slice(0, pattern.slash).join(" ")} / ${values.slice(pattern.slash).join(" ")}`
-            : values.join(" ");
-          const got = expand(name, text);
+          const got = expand(name, fill(domain.sentinels, pattern));
           if (Object.keys(got).length === 0) continue;
           learned[pattern.key] = Object.fromEntries(
             Object.entries(got).map(([longhand, held]) => {
@@ -251,12 +271,10 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
             const early = beforeSplitting(value, longhands);
             if (early.refuse) return null;
             if (early.done) return early.done;
-            const sides = tokens(value, /\//);
-            const key =
-              sides.length > 1 ? `${tokens(sides[0]).length}/${tokens(sides[1]).length}` : String(tokens(value).length);
-            const mapping = learned[key];
+            const sides = tokens(value, /\//).map((one) => tokens(one));
+            const mapping = learned[sides.map((one) => one.length).join("/")];
             if (mapping === undefined) return null;
-            const flat = sides.map((one) => tokens(one)).flat();
+            const flat = sides.flat();
             return Object.fromEntries(
               Object.entries(mapping).map(([longhand, how]) => [
                 longhand,
@@ -577,11 +595,8 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
             for (const one of corpus) {
               for (const other of corpus) {
                 const values = Array.from({ length: pattern.slots }, (_, i) => (i % 2 === 0 ? one : other));
-                cases.push(
-                  pattern.slash
-                    ? `${values.slice(0, pattern.slash).join(" ")} / ${values.slice(pattern.slash).join(" ")}`
-                    : values.join(" "),
-                );
+                let at = 0;
+                cases.push(pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / "));
               }
             }
           }
