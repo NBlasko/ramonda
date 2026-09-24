@@ -191,18 +191,37 @@ than emitted and quietly wrong.
 
 ## If you read the output
 
-You will see numbered layers inside `ramonda`:
+Two things will look unfamiliar. Both are deliberate and neither is anything you write against.
+
+**A shorthand becomes the longhands it sets.** `padding: 8px` is four rules, not one:
 
 ```css
-@layer ramonda.u00, …, ramonda.u17, ramonda.c;
+@layer ramonda.a, ramonda.s64, …, ramonda.s02, ramonda.u, ramonda.c;
 @layer ramonda {
-  @layer u09 { .r-p-8px { padding: 8px; } }
+  @layer u {
+    .r-pt-8px { padding-top:8px; }
+    .r-pr-8px { padding-right:8px; }
+    .r-pb-8px { padding-bottom:8px; }
+    .r-pl-8px { padding-left:8px; }
+  }
   @layer c { … @media (min-width: 40rem) { … } … }
 }
 ```
 
-That is the list above, made into cascade layers — a layer's place is decided by that statement
-rather than by where its rules sit, which is what keeps the order the same however the files load.
+That is what lets two blocks settle their own conflicts: no two classes on an element set the same
+property, so the one you wrote later simply wins and the stylesheet is never asked. A `padding` and
+a `padding-left` used to be a question for the cascade; now they are the same key, answered where
+you wrote them.
+
+Some shorthands cannot be split — `background`, `font` and `grid` among them, because a comma or a
+slash in the value means no table can say which part goes where. Those keep their shorthand, and the
+layers are what order them against the longhands they cover.
+
+**The layer names are counts.** `ramonda.s10` holds shorthands that set ten longhands, `ramonda.u`
+holds every longhand, `ramonda.a` holds `all`, and `ramonda.c` holds everything conditional. The
+name is a fact about the property rather than its position in a list, so a stylesheet built today
+and one built two years ago agree about it — which is what makes a published package safe to drop
+into an application.
 
 You never write against these names. **`ramonda` is the name to put in your own `@layer` statement**,
 and it orders everything inside it — see [composing](/style-blocks/composing#the-one-place-this-is-not-plain-css).

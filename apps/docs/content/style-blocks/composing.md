@@ -233,6 +233,19 @@ The `@layer a, b;` statement is what ranks them, and **a layer named later in it
 Without that statement the order is whichever layer the browser meets first, which is the same
 "your bundler decides" problem in a smaller box. Write the statement.
 
+**And the statement has to be seen FIRST.** A layer's place is fixed the first time the browser meets
+its name, so a statement that arrives after `ramonda` is already established cannot move it — it can
+only say where `app` goes, and `app` ends up last. Measured in Chromium, Firefox and WebKit, the same
+`@layer app, ramonda;` either way round:
+
+```
+your stylesheet first    12px    the block wins, which is what the statement asked for
+the block's first         0px    the statement arrived too late; `app` went last
+```
+
+In practice that means putting the statement where nothing can load before it — the top of the
+stylesheet your entry imports first, not beside the rules it applies to.
+
 ## What a block cannot hold is `@layer` itself
 
 ```tsx expect-report:layer-in-a-block

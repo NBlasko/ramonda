@@ -4125,7 +4125,17 @@ emit that — the reset is already `mergeClassNames`'s job — so with the group
 classes and `background: red` is one. See the section below, which supersedes this paragraph;
 `lightningcss` not expanding shorthands is the only part of it that held.
 
-### The decision: a self-describing marker, and the application remaps
+### ~~The decision: a self-describing marker, and the application remaps~~ — SUPERSEDED
+
+**Nothing remaps anything, because nothing drifts.** A layer is named by how many longhands a
+shorthand covers, which is a fact about that property and not a position in a table, so two releases
+write the same name for it without being told. The marker existed to let an application rewrite a
+foreign stylesheet's numbering; with no numbering to disagree about, there is nothing to rewrite.
+Verified in three engines, both load orders, by `scripts/check-layer-skew.mjs`.
+
+Kept as the record of what the question looked like before splitting answered most of it.
+
+#### What the marker was
 
 The package's CSS passes through the application's bundler when the application imports it, and the
 plugin already has a `transform` hook. So the emitted CSS carries what its layer names MEAN:

@@ -45,12 +45,22 @@ A class name is two halves with a `-` between them: **what the declaration sets*
 you wrote it** — spaces written `_`, because a class name cannot hold one.
 
 ```
-padding: 12px            r-p-12px
 display: inline-flex     r-disp-inline-flex
 opacity: .5              r-o-.5
-padding: 4px 0           r-p-4px_0
 outline-offset: 4px      r-outline_offset-4px
 ```
+
+**A shorthand is several classes, because it reaches the stylesheet as the longhands it sets:**
+
+```
+padding: 12px            r-pt-12px r-pr-12px r-pb-12px r-pl-12px
+padding: 4px 0           r-pt-4px r-pr-0 r-pb-4px r-pl-0
+```
+
+That is what lets two blocks settle their own conflicts without the stylesheet: no two classes on an
+element set the same property, so a `padding-left` written after a `padding` simply replaces it —
+see [order](/style-blocks/order#if-you-read-the-output). A shorthand no table can split, like
+`background: red url(a.png)`, keeps its own class — `r-bg-red_url(a.png)`.
 
 About sixty properties have a short spelling — `p`, `m`, `w`, `h`, `bg`, `c`, `gap`, `items`,
 `rounded` — and the rest use their own name, which already reads. It is a small list on purpose: a
