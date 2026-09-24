@@ -116,6 +116,9 @@ jobs:
           node scripts/check-test-probes.mjs
           node scripts/build-package-readmes.mjs --check
           node scripts/build-css-properties.mjs --check
+          node scripts/build-shorthand-shapes.mjs --check
+          SELFTEST=slot node scripts/check-shorthand-split.mjs
+          node scripts/check-shorthand-split.mjs
 
       # These two need `@ramonda/css` BUILT, which the step above already did for `pnpm lint`:
       # `check-css-blocks` imports the compiler, and `check-css-system` runs `bin.mjs codegen
