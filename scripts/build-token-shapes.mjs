@@ -129,6 +129,18 @@ function slotsOf(term, longhands, depth = 0) {
   return out;
 }
 
+const file = join(COMPILER, "tokenShapes.generated.ts");
+/**
+ * Read BEFORE the engines run, because a committed row is VERIFIED and not merely carried.
+ *
+ * Candidates come from what mdn calls a flat family today, so a row whose family has since gained a
+ * comma — or been dropped, or moved to the positional table — was never built again and never
+ * checked again. Planted to prove it: a row naming a property that does not exist survived a full
+ * run untouched. That is the fault `perspective-origin` had in the positional table, where a row
+ * nobody re-measured outlived the measurement that put it there.
+ */
+const committed = previousFrom(file, /TOKEN_SHAPES: Readonly<Record<string, TokenShape>> = (\{[\s\S]*?\n\})\s*;/, {});
+
 const positional = new Set(Object.keys(SHAPES));
 const candidates = Object.entries(mdn.css.properties)
   .filter(([name, value]) => Array.isArray(value.computed) && value.syntax && !name.startsWith("-"))
@@ -151,16 +163,21 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
     // `border` at colour, Firefox at width — and the intersection below compares printed shapes. The
     // order carries nothing: the list only says which longhands get `initial` when no token reached
     // them. Unsorted, five families including `border` itself were dropped as a disagreement.
-    const lists = await tab.evaluate((names) => {
-      const x = document.getElementById("x");
-      const out = {};
-      for (const name of names) {
-        x.style.cssText = "";
-        x.style.cssText = `${name}: inherit`;
-        out[name] = [...x.style].sort();
-      }
-      return out;
-    }, candidates);
+    const lists = await tab.evaluate(
+      (names) => {
+        const x = document.getElementById("x");
+        const out = {};
+        for (const name of names) {
+          x.style.cssText = "";
+          x.style.cssText = `${name}: inherit`;
+          out[name] = [...x.style].sort();
+        }
+        return out;
+        // The committed rows too, or a carried one's family is never asked about and the list check
+        // below reads an empty answer as "this engine does not have it".
+      },
+      [...new Set([...candidates, ...Object.keys(committed)])],
+    );
 
     const shapes = {};
     const rejected = [];
@@ -182,6 +199,40 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
         continue;
       }
       shapes[name] = { longhands, slots };
+    }
+
+    /**
+     * Every committed row this run did not rebuild is put through the SAME corpus below.
+     *
+     * Marked, because a row this engine cannot rebuild must not be written as though it had been
+     * measured here — it is only being re-checked, and `agreed` still decides what is written.
+     */
+    const carried = new Set();
+    for (const [name, shape] of Object.entries(committed)) {
+      if (shapes[name] !== undefined) continue;
+      /**
+       * The row's own longhand list, against what this engine says the shorthand expands to.
+       *
+       * The corpus cannot answer this. It compares two FRESH elements, so a row that leaves a
+       * longhand out looks identical — the one it failed to write is at its initial value on both.
+       * Planted to prove it: a row mapping `background` to `background-color` alone survived a full
+       * run with the corpus passing, and would have stopped resetting `background-image` on a page
+       * where another class had set one.
+       *
+       * An engine that does not HAVE the family says nothing here, which is the accumulate rule.
+       *
+       * The positional generator needs no such check and gets the same answer for free: its corpus
+       * holds `inherit`, and `background: inherit` against `background-color: inherit` differs on a
+       * fresh element where two real values would not. This corpus is built from each slot's own
+       * vocabulary and has no CSS-wide value in it, which is exactly where the blind spot was.
+       */
+      const said = lists[name] ?? [];
+      if (said.length > 1 && JSON.stringify([...shape.longhands].sort()) !== JSON.stringify([...said].sort())) {
+        rejected.push(name);
+        continue;
+      }
+      shapes[name] = shape;
+      carried.add(name);
     }
 
     const cases = [];
@@ -233,6 +284,7 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
       }
     }
 
+    for (const name of carried) delete shapes[name];
     perEngine[engine] = { shapes, rejected };
     counts.push([engine, Object.keys(shapes).length, new Set(rejected).size]);
   } catch (error) {
@@ -263,11 +315,17 @@ for (const name of Object.keys(perEngine[engines[0]].shapes)) {
   if (engines.every((one) => JSON.stringify(perEngine[one].shapes[name]) === printed)) agreed[name] = mine;
 }
 
-const file = join(COMPILER, "tokenShapes.generated.ts");
-const previous = previousFrom(file, /TOKEN_SHAPES: Readonly<Record<string, TokenShape>> = (\{[\s\S]*?\n\})\s*;/, {});
+const previous = committed;
 const rejected = new Set(engines.flatMap((one) => perEngine[one].rejected));
 const merged = { ...previous, ...agreed };
-for (const name of rejected) if (agreed[name] === undefined) delete merged[name];
+/**
+ * ONE engine reproducing a row wrongly ends the claim for everyone, `agreed` or not.
+ *
+ * A family a platform genuinely LACKS is not rejected: neither element takes the declaration, the
+ * two computed styles agree and the check passes. Rejection means something stronger — this engine
+ * has the shorthand, took our longhands, and rendered a different page.
+ */
+for (const name of rejected) delete merged[name];
 const sorted = Object.keys(merged).sort();
 
 const wrote = writeOrCheck(
