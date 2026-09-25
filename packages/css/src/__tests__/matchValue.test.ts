@@ -145,3 +145,32 @@ describe("a group of alternatives takes at least one", () => {
     expect(taken("[ none || <time> ]? <length>", "3px")).toEqual(["length=3px"]);
   });
 });
+
+/**
+ * A multiplier without an upper bound, which is how every comma family is written.
+ *
+ * `<time>#` parses as `repeat: { min: 1, max: Infinity }`, and the count was counted DOWN from the
+ * maximum — `Infinity - 1` is `Infinity`, so the loop never reached the minimum and never returned.
+ * It hid because a probe printed the term through `JSON.stringify`, which writes `Infinity` as
+ * `null`, and `null` read as "no maximum given, so one".
+ *
+ * These carry a timeout because the fault they cover is a hang, and a hanging test tells nobody
+ * anything.
+ */
+describe("a multiplier with no upper bound", () => {
+  test("one item is a list of one", { timeout: 2000 }, () => {
+    expect(taken("<time>#", "1s")).toEqual(["time=1s"]);
+  });
+
+  test("and the comma separates the rest", { timeout: 2000 }, () => {
+    expect(taken("<time>#", "1s , 2s , 3s")).toEqual(["time=1s 2s 3s"]);
+  });
+
+  test("a repetition without commas takes each in turn", { timeout: 2000 }, () => {
+    expect(taken("<length>+", "1px 2px")).toEqual(["length=1px 2px"]);
+  });
+
+  test("more tokens than the grammar can take is still no answer", { timeout: 2000 }, () => {
+    expect(taken("<time>#", "1s 2s")).toBeUndefined();
+  });
+});

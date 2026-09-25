@@ -49,7 +49,13 @@ const LEAF = new Set(["keyword", "data", "property", "function", "literal"]);
  */
 function* readings(term: Term, tokens: readonly string[], at: number, accepts: Accepts): Generator<Reading> {
   const min = term.repeat?.min ?? (term.optional === true ? 0 : 1);
-  const max = term.repeat?.max ?? (term.optional === true ? 1 : 1);
+  /**
+   * `#`, `*` and `+` have NO upper bound, and the tokens are what bound them: a repetition cannot
+   * take more items than there are tokens left to take. Counting down from `Infinity` never reaches
+   * the minimum, because `Infinity - 1` is `Infinity` — so every comma family hung here.
+   */
+  const wanted = term.repeat?.max ?? 1;
+  const max = Math.min(wanted, Math.max(tokens.length - at, min));
 
   /** The term ONCE, with its multiplier already accounted for by the caller below. */
   function* once(from: number): Generator<Reading> {
