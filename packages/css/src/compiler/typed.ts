@@ -700,6 +700,26 @@ function joinedNotMerged(
     return seen.size > 1;
   };
 
+  /**
+   * A part NAMED `className`, which carries classes by convention and may carry a block.
+   *
+   * The type cannot tell: a block arriving as a `string` looks exactly like a foreign class name,
+   * and reporting those is a false report on the shape the documentation teaches. The NAME can —
+   * `className` is what classes travel under, and a component joining its caller's into a string
+   * is the one place the merge never runs. Measured, that is also where the shorthand SPLIT changed
+   * an answer: the caller's `padding` arrives as four longhand classes, the component's own
+   * `padding-left` is a fifth, and which wins follows whichever stylesheet the bundler put first.
+   */
+  const carriesClasses = (node: ts.Expression): boolean => {
+    if (ts.isPropertyAccessExpression(node)) return node.name.text === "className";
+    if (ts.isIdentifier(node)) return node.text === "className";
+    return false;
+  };
+
+  /** Two different blocks, or one block beside something classes travel under. */
+  const joined = (blocks: readonly ts.Expression[], parts: readonly ts.Expression[]): boolean =>
+    blocks.length > 0 && (distinct(blocks) || parts.some(carriesClasses));
+
   /** Every operand of a `+` chain, flattened — `a + " " + b` is three, not two. */
   const addends = (node: ts.Expression, into: ts.Expression[]): void => {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
@@ -723,8 +743,8 @@ function joinedNotMerged(
 
   const visit = (node: ts.Node): void => {
     if (ts.isTemplateExpression(node)) {
-      const blocks = node.templateSpans.map((span) => span.expression).filter(isBlock);
-      if (blocks.length > 1 && distinct(blocks)) said(node);
+      const parts = node.templateSpans.map((span) => span.expression);
+      if (joined(parts.filter(isBlock), parts)) said(node);
     } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
       /**
        * Only the OUTERMOST `+` of a chain, or `a + " " + b` would be reported twice — once for the
@@ -734,8 +754,7 @@ function joinedNotMerged(
       if (outer) {
         const parts: ts.Expression[] = [];
         addends(node, parts);
-        const blocks = parts.filter(isBlock);
-        if (blocks.length > 1 && distinct(blocks)) said(node);
+        if (joined(parts.filter(isBlock), parts)) said(node);
       }
     } else if (
       ts.isCallExpression(node) &&
@@ -744,8 +763,8 @@ function joinedNotMerged(
       ts.isArrayLiteralExpression(node.expression.expression)
     ) {
       // `[a, b].join(" ")`, which is the third way to write the same mistake.
-      const blocks = node.expression.expression.elements.filter(isBlock);
-      if (blocks.length > 1 && distinct(blocks)) said(node);
+      const parts = node.expression.expression.elements;
+      if (joined(parts.filter(isBlock), parts)) said(node);
     }
 
     ts.forEachChild(node, visit);

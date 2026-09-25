@@ -2173,6 +2173,33 @@ describe("two blocks joined into one string", () => {
   });
 
   /** And once, not once per operator — a `+` chain is one join however many `+` it holds. */
+  /**
+   * A `className` PROP joined with a block, which is the shape a splitting compiler made sharper.
+   *
+   * The rule counts BLOCKS, told apart by their brand, and a prop declared `string` carries none —
+   * so a component that takes `className: string` and joins it was quiet. That is the ordinary way
+   * a component is written when it does not use the block type, and it is where the merge never
+   * runs: the caller's classes and the component's own both land, and the stylesheet decides alone.
+   *
+   * Told by the NAME, because the type cannot help: a block arriving as a `string` looks exactly
+   * like a foreign class name, and reporting those is refused right below.
+   */
+  test.each([
+    ["a template", "`${props.className} ${own}`"],
+    ["a `+`", 'props.className + " " + own'],
+    ["a bare className variable", "`${className} ${own}`"],
+  ])("a `className` prop joined with a block, with %s, is reported", (_what, body) => {
+    const report = check({
+      "Card.tsx":
+        `const own = @@( padding-left: 40px; );\n` +
+        `declare const className: string;\n` +
+        `declare const props: { className: string };\n` +
+        `export const a = <div className={${body}}>x</div>;\n`,
+    });
+
+    expect(report.findings.map((one) => one.code)).toContain("blocks-joined-not-merged");
+  });
+
   test("a chain is one finding, not one per `+`", () => {
     expect(card('base + " " + card').findings).toHaveLength(1);
   });
