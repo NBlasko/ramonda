@@ -128,6 +128,22 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
  * takes a `custom-ident`, so matching primitives first walks `list-style: none` past it into
  * `list-style-image` — a different declaration that looks the same.
  *
+ * ## One token per slot, and the two families that want more
+ *
+ * A slot takes at most ONE token. Where a longhand's own grammar is `a || b || c`, several keywords
+ * may stand together and the second finds no free slot, so the whole value is refused and the
+ * shorthand stays. Measured over every pair of words in the table, the engines accept ten that this
+ * turns down, and they are all in two families:
+ *
+ * ```
+ * text-decoration: underline overline      text-decoration-line takes several at once
+ * position-try: flip-block flip-inline     position-try-fallbacks likewise
+ * ```
+ *
+ * A refusal is safe — it is what the compiler did for these before there was a splitter at all —
+ * and lifting it means a slot knowing its own multiplicity, which the grammar can say and this
+ * shape cannot. Recorded rather than fixed, because the fix is a different model and not a patch.
+ *
  * The third pass takes whatever is left, which is what puts `upper-roman` in `list-style-type`
  * without a list of counter styles that could not exist. It does NOT consult what the slot accepts,
  * and the middle pass deliberately does not skip an open slot: measured over the whole table, no
@@ -221,7 +237,25 @@ export function splitTokens(shape: TokenShape, value: string): Record<string, st
  * `!important` is taken off before the split and put back on every longhand. It has to be: it is
  * part of the value's text here, so a splitter would see it as a token nothing accepts and refuse
  * the whole declaration. Splitting it out is also what CSS means by it — `border: 1px solid red
- * !important` makes all three important, not the first.
+ * !important` makes all three important, not the first. Every spelling a browser honours is put
+ * back verbatim, measured: `!IMPORTANT` and `! important` are important in all three engines.
+ *
+ * ## A PREFIXED name is looked up as itself, and must stay that way
+ *
+ * `breadthOf` asks `standardFormOf` so that `-webkit-border-radius` borrows `border-radius`'s layer,
+ * and the obvious next thought is to give the splitter the same fallback. It is wrong, measured:
+ *
+ * ```
+ * border-radius: 4px 8px            4px | 8px | 4px | 8px      two corners, the standard rule
+ * -webkit-border-radius: 4px 8px    4px 8px | 4px 8px | …      Chromium and WebKit: ONE elliptical
+ *                                   4px | 8px | 4px | 8px      Firefox: like the standard
+ * ```
+ *
+ * The prefixed name is not an alias. It keeps the old WebKit reading where two values are the
+ * horizontal and vertical radii of every corner, and the engines disagree with each other about it.
+ * Splitting it through the standard shape would write a different page in two of the three. So a
+ * prefixed shorthand is in neither table, stays whole, and the layer — where the question is only
+ * *do these two fight*, and they do — keeps its fallback.
  */
 export function splitOf(property: string, value: string): Record<string, string> | undefined {
   const bang = IMPORTANT.exec(value);

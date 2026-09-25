@@ -101,6 +101,18 @@ describe("what it refuses, so the shorthand stays whole", () => {
     expect(splitTokens(shapeOf("border-top"), "   ")).toBeUndefined();
   });
 
+  /**
+   * A slot takes ONE token, and two families want more.
+   *
+   * `text-decoration-line` is `none | [underline || overline || line-through || blink]`, so two of
+   * those stand together legally and the second finds no free slot. Measured over every pair of
+   * words in the table, the engines accept ten values this turns down, all in `text-decoration` and
+   * `position-try`. Refusing is what the compiler did for them before a splitter existed.
+   */
+  test("two keywords a single slot takes together", () => {
+    expect(splitTokens(shapeOf("text-decoration"), "underline overline")).toBeUndefined();
+  });
+
   test("a token no slot will take", () => {
     expect(splitTokens(shapeOf("border-top"), "1px solid red 9px 8px")).toBeUndefined();
   });

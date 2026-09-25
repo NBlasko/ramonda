@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
-import { BREADTH_LAYERS, LAYER_ORDER, layerPathFor } from "../compiler/flatten";
+import { BREADTH_LAYERS, LAYER_ORDER, WIDEST, layerPathFor } from "../compiler/flatten";
 import { SHORTHANDS } from "../compiler/keywords.generated";
 import { forget, mergeClassNames, shorthands } from "../merge";
 
@@ -416,6 +416,21 @@ describe("the layers", () => {
    */
   test.each(["background", "font", "mask", "padding", "border"])("`%s` is named by what it covers", (property) => {
     expect(layerPathFor({ property })[0]).toBe(`s${String(SHORTHANDS[property].length).padStart(2, "0")}`);
+  });
+
+  /**
+   * Every count a shorthand CAN have has a name, which is a claim about the scheme and not about
+   * today's table.
+   *
+   * An undeclared name is the one failure this scheme may not have: CSS appends a name it has not
+   * seen to the END of the order, which is the STRONGEST position, so a shorthand naming one would
+   * beat every longhand it covers. The range was written `s64`…`s02` and a shorthand covering
+   * exactly one property would have said `s01` — none does today, and the engines report every
+   * prefixed alias expanding to exactly one property, so the shape is real and only the table's
+   * filter keeps it out.
+   */
+  test.each([...Array(WIDEST).keys()].map((one) => one + 1))("a shorthand covering %i has a declared name", (count) => {
+    expect(BREADTH_LAYERS).toContain(`s${String(count).padStart(2, "0")}`);
   });
 
   /** Every longhand shares ONE layer, which is the whole of what splitting bought. */

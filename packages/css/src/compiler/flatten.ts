@@ -269,10 +269,19 @@ export function layerPathFor(declaration: { property?: string; conditions?: read
 /** The names one level of the digit path may hold, in order. */
 export const DIGIT_LAYERS: readonly string[] = [...Array(10).keys()].map((one) => `d${one}`);
 
-/** Every name a breadth step may hold, weakest first: `all`, then each count, then the longhands. */
+/**
+ * Every name a breadth step may hold, weakest first: `all`, then each count, then the longhands.
+ *
+ * The counts run down to ONE, not to two. A shorthand covering a single property is not in the
+ * table today — the engines report every prefixed alias expanding to exactly one, and the
+ * generator filters those out — but the range is what a later release has already promised, and a
+ * name it does not hold is the one failure this scheme may not have: CSS appends a name it has not
+ * seen to the END of the order, which is the STRONGEST position, so that shorthand would beat every
+ * longhand it covers. One extra name is two bytes.
+ */
 export const BREADTH_LAYERS: readonly string[] = [
   EVERYTHING,
-  ...[...Array(WIDEST - 1).keys()].map((one) => `s${String(WIDEST - one).padStart(2, "0")}`),
+  ...[...Array(WIDEST).keys()].map((one) => `s${String(WIDEST - one).padStart(2, "0")}`),
   "u",
 ];
 
