@@ -128,6 +128,26 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
  * takes a `custom-ident`, so matching primitives first walks `list-style: none` past it into
  * `list-style-image` — a different declaration that looks the same.
  *
+ * ## What the three passes cannot do, measured
+ *
+ * They fill slots; they do not PARSE. Where two slots both take a token, the passes hand it to the
+ * closed one and CSS hands it to whichever component comes FIRST in the grammar. All three engines
+ * agree and we differ:
+ *
+ * ```
+ * animation: --zz   engines: animation-name      here: animation-timeline
+ * mask: 7px         engines: mask-position-x     here: mask-size
+ * ```
+ *
+ * `--zz` is a `dashed-ident` to `animation-timeline` and a `custom-ident` to `animation-name`, and
+ * the grammar names the second first. Asking slots in order instead would fix those two and break
+ * `list-style: url(a.png)`, whose open `list-style-type` stands before the slot that means it. The
+ * answer is a parse with backtracking, which is a different machine from this one — so `animation`
+ * and `mask` are rejected by their own corpus and keep their shorthand.
+ *
+ * A third shape is out for its own reason: `place-items: stretch` and `place-self: normal` fill
+ * BOTH slots, and one token filling several is not something a slot can say here.
+ *
  * ## One token per slot, and the two families that want more
  *
  * A slot takes at most ONE token. Where a longhand's own grammar is `a || b || c`, several keywords
