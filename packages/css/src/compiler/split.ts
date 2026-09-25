@@ -196,7 +196,15 @@ function accepts(slot: TokenSlot, token: string): boolean {
  * twelve — and beside another value it is refused, because CSS has no such form either.
  */
 export function splitTokens(shape: TokenShape, value: string): Record<string, string> | undefined {
-  if (/(^|[^\w-])var\(/i.test(value) || /[,/]/.test(value)) return undefined;
+  if (/(^|[^\w-])var\(/i.test(value)) return undefined;
+  /**
+   * A comma or a slash at the TOP LEVEL, which is not the same as one anywhere in the text.
+   *
+   * Read as text, this turned away `rgb(1, 2, 3)` while splitting `rgb(1 2 3)` — and the comma
+   * spelling is what almost every codebase writes for a colour. It stayed invisible because the
+   * generator samples a colour as `rgb(1 2 3)`, so no corpus value ever carried one.
+   */
+  if (tokensOf(value, /[,/]/).length > 1) return undefined;
   const tokens = tokensOf(value);
   if (tokens.length === 0) return undefined;
   if (tokens.some((one) => WIDE.includes(one.toLowerCase()))) {
@@ -272,4 +280,39 @@ export function splitOf(property: string, value: string): Record<string, string>
   if (split === undefined || bang === null) return split;
 
   return Object.fromEntries(Object.entries(split).map(([one, each]) => [one, `${each} ${bang[0].trim()}`]));
+}
+
+/**
+ * Splitting a COMMA-SEPARATED family — the same shape repeated, and each longhand a list of its own.
+ *
+ * `transition: color 1s, opacity 2s` is two items of one shape, and every longhand the family sets
+ * takes a list the same length: `transition-property: color, opacity` beside
+ * `transition-duration: 1s, 2s`. So this is `splitTokens` applied per item and joined back per
+ * longhand, which is why it is a few lines rather than a third splitter.
+ *
+ * The shape describes ONE item, read from the grammar inside the `#` rather than from the whole
+ * value — `<single-transition>` and not `<single-transition>#`.
+ *
+ * **An item that cannot be answered refuses the WHOLE value**, and an empty item refuses it too.
+ * Dropping a bad item would shorten one longhand's list and leave the others long, and the lists
+ * are matched by POSITION: a shorter one repeats from its start, so every item after the gap would
+ * silently take another item's value.
+ */
+export function splitList(shape: TokenShape, value: string): Record<string, string> | undefined {
+  if (/(^|[^\w-])var\(/i.test(value)) return undefined;
+
+  const items = tokensOf(value, /,/).map((one) => one.trim());
+  if (items.length === 0 || items.some((one) => one === "")) return undefined;
+
+  // A CSS-wide keyword is the whole value, never one item of a list.
+  const first = items[0] as string;
+  if (items.length === 1 && WIDE.includes(first.toLowerCase()))
+    return Object.fromEntries(shape.longhands.map((one) => [one, first]));
+
+  const per = items.map((one) => splitTokens(shape, one));
+  if (per.some((one) => one === undefined)) return undefined;
+
+  return Object.fromEntries(
+    shape.longhands.map((one) => [one, per.map((each) => (each as Record<string, string>)[one]).join(", ")]),
+  );
 }

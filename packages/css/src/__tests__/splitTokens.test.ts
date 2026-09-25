@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { splitTokens } from "../compiler/split";
+import { splitList, splitTokens } from "../compiler/split";
 import { SHORTHANDS } from "../compiler/keywords.generated";
 import { SHAPES } from "../compiler/shapes.generated";
 import { TOKEN_SHAPES } from "../compiler/tokenShapes.generated";
@@ -115,6 +115,20 @@ describe("what it refuses, so the shorthand stays whole", () => {
     expect(splitTokens(shapeOf("text-decoration"), "underline overline")).toBeUndefined();
   });
 
+  /**
+   * A comma INSIDE a call is not a separator, and refusing it turned away most real colours.
+   *
+   * The guard read the whole text, so `rgb(1 2 3)` split and `rgb(1, 2, 3)` did not — and the
+   * legacy comma spelling is what almost every codebase writes. It was invisible because the
+   * generator's corpus samples a colour as `rgb(1 2 3)`.
+   */
+  test.each(["1px solid rgb(1, 2, 3)", "1px solid rgba(1, 2, 3, .5)", "1px solid color-mix(in srgb, red, blue)"])(
+    "%s splits, because the commas are inside a call",
+    (value) => {
+      expect(splitTokens(shapeOf("border-top"), value)?.["border-top-width"]).toBe("1px");
+    },
+  );
+
   test("a token no slot will take", () => {
     expect(splitTokens(shapeOf("border-top"), "1px solid red 9px 8px")).toBeUndefined();
   });
@@ -188,5 +202,62 @@ describe("the families this cannot answer are absent, not wrong", () => {
   test("while the whole border family does", () => {
     for (const name of ["border", "border-top", "border-block", "border-inline-end"])
       expect(TOKEN_SHAPES[name]).toBeDefined();
+  });
+});
+
+/**
+ * A comma-separated family: the same shape repeated, and each longhand a list of its own.
+ *
+ * `transition: color 1s, opacity 2s` is two items of one shape, and every longhand the family sets
+ * takes a list the same length — `transition-property: color, opacity`. So the split is the bag of
+ * tokens applied per item and then joined back per longhand, which is why `splitList` is a few
+ * lines on top of `splitTokens` rather than a second splitter.
+ */
+describe("a comma-separated family", () => {
+  /** Hand-made, because what is asserted here is the composition and not the table. */
+  const LIST = {
+    longhands: ["a-name", "a-time"],
+    slots: [
+      { longhands: ["a-name"], words: ["one", "two"], types: [], functions: [], open: false },
+      { longhands: ["a-time"], words: [], types: ["time"], functions: [], open: false },
+    ],
+  } as const;
+
+  test("each item is split, and each longhand is a list", () => {
+    expect(splitList(LIST, "one 1s, two 2s")).toEqual({ "a-name": "one, two", "a-time": "1s, 2s" });
+  });
+
+  test("a single item is a list of one", () => {
+    expect(splitList(LIST, "one 1s")).toEqual({ "a-name": "one", "a-time": "1s" });
+  });
+
+  /** A shorthand resets what an item does not mention, in that item's POSITION. */
+  test("a longhand no token reached is reset in the item that missed it", () => {
+    expect(splitList(LIST, "one, two 2s")).toEqual({ "a-name": "one, two", "a-time": "initial, 2s" });
+  });
+
+  test("a call keeps its own commas", () => {
+    const shape = {
+      longhands: ["a-ease"],
+      slots: [{ longhands: ["a-ease"], words: [], types: [], functions: ["steps"], open: false }],
+    } as const;
+
+    expect(splitList(shape, "steps(1, end), steps(2, end)")).toEqual({ "a-ease": "steps(1, end), steps(2, end)" });
+  });
+
+  test("an item no shape can answer refuses the whole value", () => {
+    expect(splitList(LIST, "one 1s, nonsense")).toBeUndefined();
+  });
+
+  test("an empty item is refused rather than treated as a gap", () => {
+    expect(splitList(LIST, "one 1s, , two 2s")).toBeUndefined();
+  });
+
+  test("a CSS-wide keyword is the whole value, not an item of it", () => {
+    expect(splitList(LIST, "inherit")).toEqual({ "a-name": "inherit", "a-time": "inherit" });
+  });
+
+  test("and a `var()` is refused, as everywhere else", () => {
+    expect(splitList(LIST, "one 1s, var(--x)")).toBeUndefined();
   });
 });

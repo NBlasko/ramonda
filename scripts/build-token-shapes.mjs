@@ -67,7 +67,10 @@ const isFlat = (grammar) => !/[,/#]/.test(grammar) && !/\{\s*\d/.test(grammar);
 
 /** One sample per primitive, all DISTINCT so a slot can be read back out of a split value. */
 const SAMPLES = {
-  color: ["rebeccapurple", "#abcdef", "rgb(1 2 3)"],
+  // The comma spelling is in here because its absence hid a refusal: the splitter read separators
+  // as text, so `rgb(1, 2, 3)` was turned away while `rgb(1 2 3)` went through, and no corpus value
+  // ever carried a comma to show it.
+  color: ["rebeccapurple", "#abcdef", "rgb(1 2 3)", "rgba(1, 2, 3, 0.5)"],
   length: ["7px", "calc(1px + 2%)"],
   percentage: ["30%"],
   number: ["3"],
@@ -235,11 +238,25 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
       carried.add(name);
     }
 
+    /**
+     * **A REFUSAL is invisible here, and that is this generator's one structural blind spot.**
+     *
+     * Only a value that splits becomes a case, so a wrong split is caught and a MISSED one never
+     * is. Found the hard way: the splitter read separators as text, so every `rgb(1, 2, 3)` was
+     * turned away while `rgb(1 2 3)` went through, and no run ever said so. Widening the corpus
+     * did not help either — the new value was simply refused too.
+     *
+     * So the count is printed. A family that starts refusing more of its own corpus is a line that
+     * changes in the output, which is the most this shape can offer without turning a refusal —
+     * always the safe answer — into a failure.
+     */
     const cases = [];
+    let refused = 0;
     for (const [name, shape] of Object.entries(shapes))
       for (const value of corpusFor(shape.slots)) {
         const split = splitTokens(shape, value);
-        if (split !== undefined) cases.push({ name, value, split });
+        if (split === undefined) refused++;
+        else cases.push({ name, value, split });
       }
 
     const verdicts = await tab.evaluate(
@@ -286,7 +303,7 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 
     for (const name of carried) delete shapes[name];
     perEngine[engine] = { shapes, rejected };
-    counts.push([engine, Object.keys(shapes).length, new Set(rejected).size]);
+    counts.push([engine, Object.keys(shapes).length, new Set(rejected).size, cases.length, refused]);
   } catch (error) {
     // A browser that will not launch is a SHORTER list, silently — the one thing this must not write.
     console.error(`[tokens] ${engine} would not launch, so the list would be short: ${String(error).slice(0, 90)}`);
@@ -365,8 +382,11 @@ const wrote = writeOrCheck(
   check,
 );
 
-for (const [engine, total, dropped] of counts)
-  console.log(`[tokens] ${engine.padEnd(10)} ${String(total).padStart(3)} families, ${dropped} rejected`);
+for (const [engine, total, dropped, tried, refused] of counts)
+  console.log(
+    `[tokens] ${engine.padEnd(10)} ${String(total).padStart(3)} families, ${dropped} rejected, ` +
+      `${tried} values split and ${refused} refused`,
+  );
 console.log(
   `[tokens] ${wrote ? "wrote" : "up to date —"} ${sorted.length} families, ` +
     `${Object.keys(agreed).length} agreed this run`,
