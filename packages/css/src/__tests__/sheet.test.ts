@@ -348,7 +348,9 @@ describe("the layers", () => {
     // Every name a shorthand's count can be, then the ONE the longhands share, then the
     // conditional one. The range is pre-declared whole so a later release cannot introduce a name
     // an earlier one never listed.
-    expect(declared.split(",")).toHaveLength(BREADTH_LAYERS.length + 1);
+    // Every breadth name, plus `c` for the conditional ones and `i` for the important ones.
+    expect(declared.split(",")).toHaveLength(BREADTH_LAYERS.length + 2);
+    expect(declared).toContain("ramonda.i,");
     expect(declared.match(/ramonda\.u\b/g)).toHaveLength(1);
     expect(declared).toContain("ramonda.a,");
     expect(declared).toContain("ramonda.c;");
@@ -495,6 +497,29 @@ describe("the layers", () => {
     // And the statement that governs them declares both, rather than the ten digits.
     expect(governing).toContain("u");
     expect(governing).toContain("d1");
+  });
+
+  /**
+   * An `!important` declaration goes under a MIRROR, because CSS reads layer order backwards for it.
+   *
+   * Among important declarations the layer declared FIRST wins, so a rule left in its ordinary
+   * layer comes out reversed. Measured in all three engines on the ordinary path — one block, no
+   * packages, nothing joined — `background: red !important; background-color: blue !important` gave
+   * red where the same two lines in one hand-written rule give blue. Every boundary was affected:
+   * a shorthand against its longhand, `all` against a shorthand, a `@media` against an
+   * unconditional rule, and two breakpoints against each other.
+   */
+  test("an important declaration is mirrored, and an ordinary one is not", () => {
+    expect(layerPathFor({ property: "background" })).toEqual(["s10"]);
+    expect(layerPathFor({ property: "background", important: true })).toEqual(["i", "s10"]);
+  });
+
+  test("and the mirror wraps the conditional path whole", () => {
+    const media = { conditions: ["@media (min-width: 1px)"], property: "color" };
+
+    expect(layerPathFor(media)[0]).toBe("c");
+    expect(layerPathFor({ ...media, important: true })[0]).toBe("i");
+    expect(layerPathFor({ ...media, important: true })[1]).toBe("c");
   });
 
   /** Every longhand shares ONE layer, which is the whole of what splitting bought. */

@@ -59,6 +59,15 @@ export interface AtomicDeclaration {
    * entry that chooses between the classes. See `MatchPart`.
    */
   readonly arm?: { readonly hole: number; readonly is: string; readonly otherwise: boolean };
+  /**
+   * Whether the value ends in `!important`, which MIRRORS the layer it goes in.
+   *
+   * CSS reverses layer order for important declarations: among them the layer declared FIRST wins.
+   * So an important rule kept in its ordinary layer comes out backwards — measured in all three
+   * engines, `background: red !important; background-color: blue !important` gave red where the
+   * same two lines in one hand-written rule give blue. See {@link layerPathFor}.
+   */
+  readonly important?: boolean;
   /** Where it was written, so a finding lands on it. */
   readonly at?: number;
   /**
@@ -281,6 +290,7 @@ export function layerPathFor(declaration: {
   property?: string;
   conditions?: readonly string[];
   from?: string;
+  important?: boolean;
 }): string[] {
   const breadth = breadthOf(declaration);
   const step =
@@ -292,17 +302,42 @@ export function layerPathFor(declaration: {
           ? EVERYTHING
           : `s${String(breadth).padStart(2, "0")}`;
   const slot = widthSlot(declaration.conditions);
-  if (slot === 0) return [step];
+  const path =
+    slot === 0
+      ? [step]
+      : [
+          "c",
+          ...String(slot)
+            .padStart(5, "0")
+            .split("")
+            .map((digit) => `d${digit}`),
+          step,
+        ];
 
-  return [
-    "c",
-    ...String(slot)
-      .padStart(5, "0")
-      .split("")
-      .map((digit) => `d${digit}`),
-    step,
-  ];
+  /**
+   * An IMPORTANT declaration goes under {@link IMPORTANT_LAYER}, whose every level is declared in
+   * the REVERSE order.
+   *
+   * CSS reverses layer order for important declarations — among them the layer declared FIRST wins
+   * — so a rule left in its ordinary layer comes out backwards. Measured in all three engines, on
+   * the ordinary path with no package and no joining: `background: red !important;
+   * background-color: blue !important` gave red, where the same two lines in one hand-written rule
+   * give blue. Every boundary was affected, a shorthand against its longhand, `all` against a
+   * shorthand, a `@media` against an unconditional rule, and two breakpoints against each other.
+   *
+   * Mirroring costs one more name at the top and the reversed lists below it — about 35 gzipped
+   * bytes on a real stylesheet, because the repetition compresses.
+   */
+  return declaration.important === true ? [IMPORTANT_LAYER, ...path] : path;
 }
+
+/**
+ * The one layer every important declaration sits under, and its levels read backwards.
+ *
+ * Where it sits among the others does not matter: importance beats non-importance whatever the
+ * layer, so nothing normal is ever compared with anything under here.
+ */
+export const IMPORTANT_LAYER = "i";
 
 /** The names one level of the digit path may hold, in order. */
 export const DIGIT_LAYERS: readonly string[] = [...Array(10).keys()].map((one) => `d${one}`);
@@ -332,7 +367,11 @@ export const BREADTH_LAYERS: readonly string[] = [
  * unseen name to the END of the order — `margin-left: 4px` became `0px`. Every name a later release
  * might use has to be in the statement an earlier release already emitted, or the two disagree.
  */
-export const LAYER_ORDER = `@layer ${[...BREADTH_LAYERS.map((one) => `ramonda.${one}`), "ramonda.c"].join(",")};`;
+export const LAYER_ORDER = `@layer ${[
+  `ramonda.${IMPORTANT_LAYER}`,
+  ...BREADTH_LAYERS.map((one) => `ramonda.${one}`),
+  "ramonda.c",
+].join(",")};`;
 
 /** Whether a shorthand sets everything another property sets, so a later one CLEARS it in the merge. */
 export function covers(shorthand: string, other: string): boolean {
@@ -689,6 +728,7 @@ function built(
     conditions: sorted,
     holes,
     arm,
+    important,
     at: item.at,
   };
 }

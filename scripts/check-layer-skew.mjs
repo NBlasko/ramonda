@@ -70,10 +70,41 @@ const CASES = [
  * — so `u` sat in a level its own statement had never declared. Every case here was unconditional,
  * so the gate had nothing to say about it.
  */
+/**
+ * `!important` reverses layer order in CSS — among important declarations the layer declared FIRST
+ * wins — so every boundary has to be checked again with it. Measured before the mirror existed, all
+ * three of these gave the opposite of what the same two lines give in one hand-written rule.
+ */
+const IMPORTANT_CASES = [
+  [
+    "a shorthand against its longhand, both !important",
+    "background: red !important;",
+    "background-color: blue !important;",
+    "backgroundColor",
+    "rgb(0, 0, 255)",
+  ],
+  [
+    "`all` against a shorthand, both !important",
+    "all: unset !important;",
+    "background: red !important;",
+    "backgroundColor",
+    "rgb(255, 0, 0)",
+  ],
+  [
+    "a split against a written longhand, both !important",
+    "padding: 8px !important;",
+    "padding-left: 40px !important;",
+    "paddingLeft",
+    "40px",
+  ],
+];
+
 const CONDITIONAL = "@media (min-width: 1px)";
 const inMedia = (css) => `${CONDITIONAL} { ${css} }`;
 const ALL_CASES = [
   ...CASES,
+  ...IMPORTANT_CASES,
+  ...IMPORTANT_CASES.map(([what, a, b, read, wanted]) => [`${what}, joined not merged`, a, b, read, wanted, true]),
   // Joined instead of merged: the shape `blocks-joined-not-merged` reports, and the only one where
   // a layer decides between two classes that set the same property.
   ...CASES.map(([what, fromPackage, fromApp, read, wanted]) => [
@@ -84,7 +115,7 @@ const ALL_CASES = [
     wanted,
     true,
   ]),
-  ...CASES.map(([what, fromPackage, fromApp, read, wanted]) => [
+  ...[...CASES, ...IMPORTANT_CASES].map(([what, fromPackage, fromApp, read, wanted]) => [
     `${what}, inside ${CONDITIONAL}`,
     inMedia(fromPackage),
     inMedia(fromApp),

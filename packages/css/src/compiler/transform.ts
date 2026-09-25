@@ -92,6 +92,8 @@ export interface EmittedBlock {
   readonly property?: string;
   /** The shorthand a split produced this from, which puts it in a weaker layer. See `layerPathFor`. */
   readonly from?: string;
+  /** Whether it is `!important`, which MIRRORS its layer — CSS reads layer order backwards for those. */
+  readonly important?: boolean;
   /**
    * What is appended to the class in the selector — `:hover`, ` .title`, `::before`.
    *
@@ -528,6 +530,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
             properties: declaration.holes.map((_hole, index) => variableNameFor(own, index)),
             property: declaration.property,
             from: declaration.from,
+            important: declaration.important,
             selector: declaration.selector,
             conditions: declaration.conditions,
           });
