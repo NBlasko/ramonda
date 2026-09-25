@@ -708,9 +708,23 @@ function built(
    * reached the stylesheet.
    *
    * With its own key both classes land and **CSS decides**, which is this package's whole premise.
-   * That includes the layer REVERSAL `!important` causes, which was measured in the real layer
-   * scheme rather than reasoned about: four cases, all agreeing with plain CSS, one across a media
-   * query.
+   *
+   * **This used to claim the layer REVERSAL was measured and agreed with plain CSS in four cases,
+   * and it did not.** Those four cannot have included two important declarations that sit on
+   * opposite sides of a layer boundary, because every such pair disagreed. Measured again in all
+   * three engines, on the ordinary path, against the same two lines written by hand:
+   *
+   *     @@( background: red !important; background-color: blue !important; )
+   *     ours red, hand-written CSS blue
+   *
+   * A shorthand against its longhand, `all` against a shorthand, a `@media` against the
+   * unconditional rule it was written to override, two breakpoints against each other — all
+   * reversed. What made it invisible is that a split against a written longhand AGREES, because
+   * splitting gives them one key and the merge settles them before a layer is asked.
+   *
+   * The reversal is real and now answered: an important declaration goes under a MIRROR whose
+   * levels are declared backwards, so the reversal lands on the order that was meant. See
+   * {@link layerPathFor}.
    *
    * The spelling is the one `rules.ts` already uses for the same question on a custom property —
    * optional whitespace after the bang, and case-insensitive, because both are valid CSS and a

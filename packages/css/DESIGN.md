@@ -4774,7 +4774,7 @@ for as long as any family goes unsplit.
 **What it is instead:**
 
 ```css
-@layer ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
+@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
 ```
 
 ```
@@ -4784,6 +4784,38 @@ ramonda.d#     a longhand a SPLIT produced, by how many splits it came through
 ramonda.u      a longhand somebody TYPED — one name, because every longhand is equally narrow
 ramonda.c      every conditional rule, with the digit layers inside it
 ```
+
+##### `!important` reads the order backwards, and that was wrong for as long as there were layers
+
+Not about splitting, not about packages, not about joining. The ordinary path, one block, one file,
+measured in all three engines against the same two lines written by hand:
+
+```
+@@( background: red !important; background-color: blue !important; )
+ours red, hand-written CSS blue
+```
+
+CSS reverses layer order for important declarations — among them the layer declared FIRST wins — so
+every important rule left in its ordinary layer came out backwards. A shorthand against its own
+longhand, `all` against a shorthand, a `@media` against the unconditional rule it was written to
+override, two breakpoints against each other: every boundary, every time.
+
+**What kept it hidden** is that a split against a written longhand AGREES. Splitting gives those two
+one key, so `mergeClassNames` settles them before a layer is asked — the same reason they agree
+everywhere else. The pairs that disagree are exactly the ones the merge cannot resolve, which is a
+smaller set than it sounds and was not in the four cases `flatten.ts` said had been measured.
+
+**The answer is a MIRROR.** An important declaration goes under `ramonda.i`, whose every level is
+declared in the reverse order, so the reversal lands on the order that was meant. Where `i` sits
+among the others does not matter: importance beats non-importance whatever the layer, so nothing
+ordinary is ever compared with anything under it. The subtree is emitted only where an important
+declaration exists.
+
+Two things the fix got wrong first, both found by measuring: the level below `i` was given the value
+meaning *the top level, already declared*, so nothing inside `i` declared its own names; and `c` was
+left out of the mirrored list, so a conditional rule sat in a name its level never declared, was
+appended — and under the reversal an appended name is the WEAKEST, which made a `@media` lose to the
+rule it came to override.
 
 ##### Why a split needs a shelf of its own, and why the room beside it ships now
 

@@ -13,7 +13,7 @@ background: red        r-bg-red                                  (unchanged — 
 ```
 
 ```css
-@layer ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
+@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
 /* was: @layer ramonda.u00, …, ramonda.u17, ramonda.c; */
 ```
 
@@ -46,6 +46,13 @@ built a year apart disagreed about which layer `padding` was in; a count is a fa
 property and does not move. That is what makes a published package safe to drop into an application,
 and `scripts/check-layer-skew.mjs` holds it: the real compiler, the real sheet and the real merge, in
 all three engines and both load orders.
+
+**`!important` behaves like CSS now, and did not before.** Two important declarations on opposite
+sides of a layer boundary came out reversed — `background: red !important; background-color: blue
+!important` gave red where the same two lines in one hand-written rule give blue, in all three
+engines. CSS reads layer order backwards for important declarations, so they go under a mirrored
+set of layers and land on the order you meant. It cost nothing you can see: the mirrored subtree is
+only emitted where an important declaration exists.
 
 **If you wrote CSS against these class names, it will need updating** — a rule targeting `.r-p-12px`
 has four classes to match now. Nothing else changes: the same declarations reach the page, and

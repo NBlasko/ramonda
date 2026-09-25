@@ -196,7 +196,7 @@ Two things will look unfamiliar. Both are deliberate and neither is anything you
 **A shorthand becomes the longhands it sets.** `padding: 8px` is four rules, not one:
 
 ```css
-@layer ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
+@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
 @layer ramonda {
   @layer u {
     .r-pt-8px { padding-top:8px; }
