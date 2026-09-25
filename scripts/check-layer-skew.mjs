@@ -60,6 +60,39 @@ const CASES = [
   ["`all` against a shorthand", "all: unset;", "background: red;", "backgroundColor", "rgb(255, 0, 0)"],
 ];
 
+/**
+ * Every case again, inside a `@media` both sheets agree about — and the reason is a bug this gate
+ * did not see.
+ *
+ * A conditional rule's layer path is `c`, five digit levels, then the breadth step, and the digit
+ * levels are named `d0`…`d9`. When a derived step became `d1`, the code choosing which names to
+ * declare above a level read the first child's initial and handed the conditional level the DIGITS
+ * — so `u` sat in a level its own statement had never declared. Every case here was unconditional,
+ * so the gate had nothing to say about it.
+ */
+const CONDITIONAL = "@media (min-width: 1px)";
+const inMedia = (css) => `${CONDITIONAL} { ${css} }`;
+const ALL_CASES = [
+  ...CASES,
+  // Joined instead of merged: the shape `blocks-joined-not-merged` reports, and the only one where
+  // a layer decides between two classes that set the same property.
+  ...CASES.map(([what, fromPackage, fromApp, read, wanted]) => [
+    `${what}, joined not merged`,
+    fromPackage,
+    fromApp,
+    read,
+    wanted,
+    true,
+  ]),
+  ...CASES.map(([what, fromPackage, fromApp, read, wanted]) => [
+    `${what}, inside ${CONDITIONAL}`,
+    inMedia(fromPackage),
+    inMedia(fromApp),
+    read,
+    wanted,
+  ]),
+];
+
 const wrong = [];
 let tried = 0;
 
@@ -69,10 +102,21 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
     browser = await pw[engine].launch();
     const tab = await browser.newPage();
 
-    for (const [what, packageCss, appCss, read, wanted] of CASES) {
+    for (const [what, packageCss, appCss, read, wanted, joinedInstead] of ALL_CASES) {
       const fromPackage = sheetFor("package", packageCss);
       const fromApp = sheetFor("app", appCss);
-      const merged = String(mergeClassNames(fromPackage.classes.join(" "), fromApp.classes.join(" ")));
+      /**
+       * Merged where the framework merges, and JOINED where it cannot — which is the path the
+       * derived layer exists for and the one this gate could not see.
+       *
+       * `mergeClassNames` settles two classes with one key before the browser is shown either, so
+       * routing everything through it asks the cascade nothing about them. A component that joins
+       * its caller's `className` into a string never calls it, both class sets land, and the
+       * stylesheet decides alone. That is where a split `padding-left` has to lose to a written one.
+       */
+      const merged = joinedInstead
+        ? `${fromPackage.classes.join(" ")} ${fromApp.classes.join(" ")}`
+        : String(mergeClassNames(fromPackage.classes.join(" "), fromApp.classes.join(" ")));
 
       for (const appFirst of [true, false]) {
         const sheets = appFirst ? [fromApp.css, fromPackage.css] : [fromPackage.css, fromApp.css];
