@@ -137,6 +137,12 @@ export function acceptedBy(term: Term, grammar: GrammarOf, depth = 0, seen = new
   const types = new Set<string>();
   const functions = new Set<string>();
 
+  const absorb = (below: Accepts): void => {
+    for (const word of below.words) words.add(word);
+    for (const type of below.types) types.add(type);
+    for (const call of below.functions) functions.add(call);
+  };
+
   const take = (one: Term): void => {
     if (one.kind === "keyword" && one.name !== undefined) {
       words.add(one.name);
@@ -146,7 +152,21 @@ export function acceptedBy(term: Term, grammar: GrammarOf, depth = 0, seen = new
       functions.add(one.name);
       return;
     }
-    if (one.name === undefined) return;
+    if (one.name === undefined) {
+      /**
+       * A GROUP standing where a component stands, and dropping it dropped what was inside.
+       *
+       * `<baseline-position>` is `[ first | last ]? && baseline`: the group is one component of the
+       * `&&` and has no name, so it fell past every branch above and only `baseline` came back.
+       * Found by building a second table with this function and diffing it against the one the
+       * checker already had — `align-content` knew `first` and `last` and this did not. Measured,
+       * it cost two slots in the token table their own vocabulary, `text-emphasis-style` and
+       * `position-try-fallbacks`, which then refused values they could have split.
+       */
+      if (one.kind === "alt" || one.kind === "seq" || one.kind === "or" || one.kind === "and")
+        absorb(acceptedBy(one, grammar, depth, seen));
+      return;
+    }
 
     // A type with a grammar of its own is followed; one without is a PRIMITIVE and is the answer.
     const inner = depth > 4 || seen.has(one.name) ? "" : grammar(one.name);
@@ -162,18 +182,12 @@ export function acceptedBy(term: Term, grammar: GrammarOf, depth = 0, seen = new
       types.add(one.name);
       return;
     }
-    const below = acceptedBy(tree, grammar, depth + 1, new Set([...seen, one.name]));
-    for (const word of below.words) words.add(word);
-    for (const type of below.types) types.add(type);
-    for (const call of below.functions) functions.add(call);
+    absorb(acceptedBy(tree, grammar, depth + 1, new Set([...seen, one.name])));
   };
 
   for (const branch of alternativesOf(term)) {
     if (branch.kind === "alt") {
-      const below = acceptedBy(branch, grammar, depth, seen);
-      for (const word of below.words) words.add(word);
-      for (const type of below.types) types.add(type);
-      for (const call of below.functions) functions.add(call);
+      absorb(acceptedBy(branch, grammar, depth, seen));
       continue;
     }
     const parts =

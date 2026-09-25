@@ -163,6 +163,23 @@ describe("real grammars, as published", () => {
     expect(componentsOf(branches[1]).map((one) => one.name)).toEqual(["flex-grow", "flex-shrink", "flex-basis"]);
   });
 
+  /**
+   * A nested alternation is ONE component, and returning nothing for it lost a real part.
+   *
+   * The rule that `|` is kept apart is about the TOP level, where the question is what shapes the
+   * whole family has. `<baseline-position>` is `[ first | last ]? && baseline` — not a family with
+   * two shapes, but one shape whose first component takes either word. It came back as `baseline`
+   * alone, and the loss reached the token table: `text-emphasis-style` and `position-try-fallbacks`
+   * lost their own vocabulary and refused values they could have split.
+   */
+  test("a group of alternatives inside a sequence is one component, not none", () => {
+    expect(componentsOf(parse("[ first | last ]? && baseline")).map((one) => one.kind)).toEqual(["alt", "keyword"]);
+  });
+
+  test("and at the TOP level an alternation is still kept apart", () => {
+    expect(componentsOf(parse("none | [ <'flex-grow'> ]"))).toEqual([]);
+  });
+
   test("a bg-layer's slash form", () => {
     expect(names("<bg-image> || <bg-position> [ / <bg-size> ]? || <repeat-style>")).toEqual([
       "bg-image",

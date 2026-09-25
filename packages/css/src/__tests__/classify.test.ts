@@ -212,6 +212,26 @@ describe("what a component accepts, so a token can be recognised as it", () => {
     expect([...accepts("<a>", { a: "[ one | two ] | three" }).words].sort()).toEqual(["one", "three", "two"]);
   });
 
+  /**
+   * A GROUP standing as one component of a sequence is still its parts.
+   *
+   * `[ first | last ]? && baseline` is how `<baseline-position>` is written, and the group came back
+   * as a component with no name — so it was dropped and only `baseline` survived. Found by building
+   * a second table with this and diffing it against the one the checker already had: `align-content`
+   * knew `first` and `last` and this did not.
+   */
+  test("an alternation written as a GROUP inside a sequence is not dropped", () => {
+    expect([...accepts("<a>", { a: "[ first | last ]? && baseline" }).words].sort()).toEqual([
+      "baseline",
+      "first",
+      "last",
+    ]);
+  });
+
+  test("and a group inside a juxtaposition likewise", () => {
+    expect([...accepts("<a>", { a: "[ one | two ]? three" }).words].sort()).toEqual(["one", "three", "two"]);
+  });
+
   test("a grammar that refers to itself ends", () => {
     expect(() => accepts("<loop>", { loop: "<loop> | done" })).not.toThrow();
     expect(accepts("<loop>", { loop: "<loop> | done" }).words).toEqual(["done"]);

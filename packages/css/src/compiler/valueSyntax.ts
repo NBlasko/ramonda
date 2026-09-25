@@ -259,11 +259,20 @@ export function parseValueSyntax(source: string): Term {
  * the combinators is not part of that question — `||` and `&&` and juxtaposition all mean "these
  * appear". `|` is different and is kept apart: those are ALTERNATIVES, and a family that reads one
  * way or a wholly different way has two shapes rather than one.
+ *
+ * **That rule is about the TOP level, and applying it further down lost real components.** A group
+ * of alternatives standing inside a sequence is not a second shape of the family — it is ONE
+ * component that takes either word. `<baseline-position>` is `[ first | last ]? && baseline`, and
+ * flattening it the same way as the top level returned `baseline` alone. Found by building a
+ * keyword table with `acceptedBy` and diffing it against the one the checker already had:
+ * `align-content` knew `first` and `last` and this did not. Measured, the loss reached the token
+ * table — `text-emphasis-style` and `position-try-fallbacks` lost their own vocabulary and refused
+ * values they could have split.
  */
 export function componentsOf(term: Term): readonly Term[] {
   if (term.kind === "alt") return [];
   if (term.kind === "or" || term.kind === "and" || term.kind === "seq") {
-    return (term.terms ?? []).flatMap((one) => componentsOf(one));
+    return (term.terms ?? []).flatMap((one) => (one.kind === "alt" ? [one] : componentsOf(one)));
   }
   return term.kind === "literal" ? [] : [term];
 }
