@@ -125,6 +125,27 @@ describe("a component that is a function", () => {
   });
 });
 
+/**
+ * A GROUP is one component, so it has to answer like one.
+ *
+ * `<single-transition>` is `[ none | <single-transition-property> ] || <time> || …`, and the group
+ * is one of its components — it names no type, so nothing claimed it and the whole family came back
+ * with no slots at all. Every comma-separated family is written this way.
+ */
+describe("a component that is a group of alternatives", () => {
+  test("it feeds whatever its alternatives feed", () => {
+    const [term] = componentsIn("[ none | <colour-thing> ] || <length>");
+
+    expect(longhandsFor(term, ["a-colour"], table({ "a-colour": "<colour-thing>" }))).toEqual(["a-colour"]);
+  });
+
+  test("and a group whose alternatives feed nobody still feeds nobody", () => {
+    const [term] = componentsIn("[ none | <mystery> ] || <length>");
+
+    expect(longhandsFor(term, ["a-width"], table({ "a-width": "<length>" }))).toEqual([]);
+  });
+});
+
 describe("what claims nothing", () => {
   test("a literal is not a component and feeds nobody", () => {
     const term = parseValueSyntax("/");

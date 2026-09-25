@@ -58,6 +58,17 @@ function mentions(syntax: string, word: string): boolean {
  * ambiguous where two components claim the same longhand, which the caller checks.
  */
 export function longhandsFor(term: Term, longhands: readonly string[], syntax: SyntaxOf): readonly string[] {
+  /**
+   * A GROUP is one component, so it answers with whatever its alternatives answer.
+   *
+   * `<single-transition>` is `[ none | <single-transition-property> ] || <time> || …` — the group
+   * is one of its components, it names no type, and nothing here claimed it. Every family written
+   * as a comma-separated list has this shape, and without it none of them produced a single slot.
+   */
+  if (term.kind === "alt") {
+    return [...new Set((term.terms ?? []).flatMap((one) => longhandsFor(one, longhands, syntax)))];
+  }
+
   if (term.kind === "property" && term.name !== undefined) {
     if (longhands.includes(term.name)) return [term.name];
 
