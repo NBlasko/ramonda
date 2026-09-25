@@ -123,3 +123,25 @@ describe("what the passes got wrong", () => {
     expect(taken("[ <custom-ident> | <time> ] <time>", "1s 2s")).toEqual(["time=1s", "time=2s"]);
   });
 });
+
+/**
+ * `||` means AT LEAST ONE, and the difference only shows inside a sequence.
+ *
+ * At the top a value has to consume every token, so a group that took nothing gets caught by the
+ * token left over. Standing before another component it is not caught: the group is skipped, the
+ * rest of the sequence lines up, and the parse is accepted. Every comma family's item grammar is a
+ * `||` group, so this is the shape they are all written in.
+ */
+describe("a group of alternatives takes at least one", () => {
+  test("a required `||` group cannot be skipped", () => {
+    expect(taken("[ none || <time> ] <length>", "3px")).toBeUndefined();
+  });
+
+  test("but one of them is enough", () => {
+    expect(taken("[ none || <time> ] <length>", "none 3px")).toEqual(["length=3px", "none=none"]);
+  });
+
+  test("and an OPTIONAL one may still be skipped", () => {
+    expect(taken("[ none || <time> ]? <length>", "3px")).toEqual(["length=3px"]);
+  });
+});

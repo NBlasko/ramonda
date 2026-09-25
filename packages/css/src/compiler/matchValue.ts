@@ -67,7 +67,7 @@ function* readings(term: Term, tokens: readonly string[], at: number, accepts: A
       return;
     }
     // `&&` wants all of them and `||` at least one, both in ANY order.
-    yield* inAnyOrder(term.terms ?? [], from, term.kind === "and");
+    yield* inAnyOrder(term.terms ?? [], from, term.kind === "and", false);
   }
 
   /** Each term after the one before it, which is what juxtaposition means. */
@@ -81,24 +81,29 @@ function* readings(term: Term, tokens: readonly string[], at: number, accepts: A
       for (const more of inOrder(rest, one.at)) yield { at: more.at, taken: [...one.taken, ...more.taken] };
   }
 
-  /** Any of them, each at most once, in any order — `all` when every one is required. */
-  function* inAnyOrder(parts: readonly Term[], from: number, all: boolean): Generator<Reading> {
+  /**
+   * Any of them, each at most once, in any order — `all` when every one is required.
+   *
+   * `taken` is whether a component has already been read AT THIS LEVEL, and it is the whole
+   * difference between `||` and optional. `||` means at least one: stopping is a reading once
+   * something has been read and not before. Without that flag a required group could be skipped,
+   * and the skip only showed inside a sequence — at the top the leftover token catches it.
+   */
+  function* inAnyOrder(parts: readonly Term[], from: number, all: boolean, taken: boolean): Generator<Reading> {
     if (parts.length === 0) {
       yield { at: from, taken: [] };
       return;
     }
-    let any = false;
     for (const [index, head] of parts.entries()) {
       const rest = [...parts.slice(0, index), ...parts.slice(index + 1)];
       for (const one of readings(head, tokens, from, accepts)) {
         if (one.at === from) continue; // Took nothing, so the order would never end.
-        any = true;
-        for (const more of inAnyOrder(rest, one.at, all)) yield { at: more.at, taken: [...one.taken, ...more.taken] };
+        for (const more of inAnyOrder(rest, one.at, all, true))
+          yield { at: more.at, taken: [...one.taken, ...more.taken] };
       }
     }
     // `||` is satisfied by one of them, so stopping here is a reading too. `&&` is not.
-    if (!all && any) yield { at: from, taken: [] };
-    if (!all && !any) yield { at: from, taken: [] };
+    if (!all && taken) yield { at: from, taken: [] };
   }
 
   /** The term `count` times over, with a comma between them where the grammar says `#`. */
