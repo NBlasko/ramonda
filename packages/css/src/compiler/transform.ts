@@ -90,6 +90,8 @@ export interface EmittedBlock {
    * the author put first loses to it. See {@link Sheet}.
    */
   readonly property?: string;
+  /** The shorthand a split produced this from, which puts it in a weaker layer. See `layerPathFor`. */
+  readonly from?: string;
   /**
    * What is appended to the class in the selector — `:hover`, ` .title`, `::before`.
    *
@@ -525,6 +527,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
             css: substitute(declaration.canonical, own),
             properties: declaration.holes.map((_hole, index) => variableNameFor(own, index)),
             property: declaration.property,
+            from: declaration.from,
             selector: declaration.selector,
             conditions: declaration.conditions,
           });

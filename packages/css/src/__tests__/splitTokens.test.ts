@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { splitTokens } from "../compiler/split";
+import { SHORTHANDS } from "../compiler/keywords.generated";
+import { SHAPES } from "../compiler/shapes.generated";
 import { TOKEN_SHAPES } from "../compiler/tokenShapes.generated";
 
 /**
@@ -153,6 +155,31 @@ describe("a CSS-wide keyword is not a component value", () => {
  * These families have a comma, a slash or a repetition in their grammar, so a value of theirs is
  * not a bag of tokens and no row was written. They keep their shorthand.
  */
+/**
+ * A split produces LEAVES, and nothing in between — which is what makes one derived layer enough.
+ *
+ * `border` → `border-width` → `border-top-width` is three levels, so the question is fair: if a
+ * split could produce something that is ITSELF a shorthand, one layer for everything derived would
+ * put two levels in the same shelf and the narrower one would stop winning.
+ *
+ * It cannot, and not by luck. The longhand list is what the ENGINE says the shorthand expands to,
+ * and an engine always expands to leaves — measured, `border: inherit` lists `border-top-color`
+ * directly and never `border-width`, and `grid` lists `grid-template-rows` and never
+ * `grid-template`. This asserts the consequence rather than the reason, so a CSS that one day
+ * behaves otherwise is heard here instead of in a page.
+ */
+describe("a split reaches leaves, never another shorthand", () => {
+  test.each([...Object.keys(SHAPES), ...Object.keys(TOKEN_SHAPES)])("%s splits into leaves", (family) => {
+    const shape = TOKEN_SHAPES[family];
+    const longhands =
+      shape !== undefined
+        ? shape.longhands
+        : Object.keys(SHAPES[family].patterns[Object.keys(SHAPES[family].patterns)[0] as string] ?? {});
+
+    expect(longhands.filter((one) => (SHORTHANDS[one] ?? []).length > 0)).toEqual([]);
+  });
+});
+
 describe("the families this cannot answer are absent, not wrong", () => {
   test.each(["background", "animation", "transition", "mask", "font", "grid"])("%s has no shape", (name) => {
     expect(TOKEN_SHAPES[name]).toBeUndefined();

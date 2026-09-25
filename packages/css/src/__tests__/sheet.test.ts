@@ -433,6 +433,35 @@ describe("the layers", () => {
     expect(BREADTH_LAYERS).toContain(`s${String(count).padStart(2, "0")}`);
   });
 
+  /**
+   * A longhand a SPLIT produced is weaker than one an author typed, and stronger than its shorthand.
+   *
+   * It is the one case a merge cannot answer. Two groups of classes joined into a string never meet
+   * in `mergeClassNames`, so nothing knows which the author wrote later and the stylesheet decides
+   * alone. Measured, with a package's `padding: 8px` against an application's `padding-left: 40px`:
+   * both are `padding-left` classes after splitting, and before this they shared a layer, so which
+   * won depended on whichever sheet the bundler put first — 40px one way and 8px the other.
+   */
+  test("a longhand from a split sits between the shorthand and a written longhand", () => {
+    const at = (one: { property?: string; from?: string }) => BREADTH_LAYERS.indexOf(layerPathFor(one)[0]);
+
+    expect(at({ property: "padding" })).toBeLessThan(at({ property: "padding-left", from: "padding" }));
+    expect(at({ property: "padding-left", from: "padding" })).toBeLessThan(at({ property: "padding-left" }));
+  });
+
+  /**
+   * The derived levels are declared beyond the one in use, and that is the whole of why.
+   *
+   * **A layer name cannot be added later.** A stylesheet built before the name existed does not
+   * list it, and CSS appends an unseen name to the END of the order — the strongest position.
+   * Measured with two sheets one release apart, the newer one's derived rules BEAT the older one's
+   * written longhands, the exact reverse of what the name means. So the room has to be shipped with
+   * the first release that has any of it.
+   */
+  test("every derived level is declared, not only the one anything uses", () => {
+    for (const level of [1, 2, 3, 4, 5, 6, 7, 8]) expect(BREADTH_LAYERS).toContain(`d${level}`);
+  });
+
   /** Every longhand shares ONE layer, which is the whole of what splitting bought. */
   test.each(["padding-top", "color", "background-color", "border-left-width"])(
     "`%s` is a longhand, so it is in the one layer they all share",

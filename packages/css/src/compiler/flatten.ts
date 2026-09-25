@@ -61,6 +61,14 @@ export interface AtomicDeclaration {
   readonly arm?: { readonly hole: number; readonly is: string; readonly otherwise: boolean };
   /** Where it was written, so a finding lands on it. */
   readonly at?: number;
+  /**
+   * The shorthand a SPLIT produced this from, when one did.
+   *
+   * It decides the layer and nothing else: a `padding-left` the compiler derived from `padding` is
+   * weaker than one an author typed, so a written longhand wins even where the two never meet in a
+   * merge — which is the one place the merge cannot answer. See {@link layerPathFor}.
+   */
+  readonly from?: string;
 }
 
 /**
@@ -230,6 +238,25 @@ export const WIDEST = 64;
 const EVERYTHING = "a";
 
 /**
+ * How many derived levels the statement declares, and why there is more than the one in use.
+ *
+ * A declaration a SPLIT produced sits between the shorthands and the longhands somebody wrote:
+ * weaker than a `padding-left` an author typed, stronger than the `padding` it came from. `d1` is
+ * "came through one split", and it is the only one anything produces — measured, and asserted, a
+ * split always reaches LEAVES, never another shorthand.
+ *
+ * The rest are room, and the reason is the sharpest measurement in this whole scheme: **a layer
+ * name cannot be added later.** A stylesheet built before the name existed does not list it, and
+ * CSS appends a name it has not seen to the END of the order — the strongest position. Measured
+ * with two sheets, one release apart: the newer one's derived rules BEAT the older one's written
+ * longhands, which is the exact reverse of what the name means. So every name this scheme may ever
+ * want has to be in the statement the first release ships, and eight of them cost 22 bytes gzipped
+ * over none.
+ */
+const DERIVED_LEVELS = 8;
+const DERIVED = "d1";
+
+/**
  * Where a declaration's rule goes, as a layer path.
  *
  * ```
@@ -250,9 +277,20 @@ const EVERYTHING = "a";
  * and 30 others — and they are named by what they COVER. Measured over 1068 covering pairs: if `S`
  * covers `L` then `count(S) > count(L)` in every version, the six exceptions all being aliases.
  */
-export function layerPathFor(declaration: { property?: string; conditions?: readonly string[] }): string[] {
+export function layerPathFor(declaration: {
+  property?: string;
+  conditions?: readonly string[];
+  from?: string;
+}): string[] {
   const breadth = breadthOf(declaration);
-  const step = breadth === 0 ? "u" : breadth > WIDEST ? EVERYTHING : `s${String(breadth).padStart(2, "0")}`;
+  const step =
+    declaration.from !== undefined
+      ? DERIVED
+      : breadth === 0
+        ? "u"
+        : breadth > WIDEST
+          ? EVERYTHING
+          : `s${String(breadth).padStart(2, "0")}`;
   const slot = widthSlot(declaration.conditions);
   if (slot === 0) return [step];
 
@@ -282,6 +320,7 @@ export const DIGIT_LAYERS: readonly string[] = [...Array(10).keys()].map((one) =
 export const BREADTH_LAYERS: readonly string[] = [
   EVERYTHING,
   ...[...Array(WIDEST).keys()].map((one) => `s${String(WIDEST - one).padStart(2, "0")}`),
+  ...[...Array(DERIVED_LEVELS).keys()].map((one) => `d${DERIVED_LEVELS - one}`),
   "u",
 ];
 
@@ -551,9 +590,10 @@ function maybeSplit(
   const longhands = splitOf(whole.property, valueOf(whole.canonical));
   if (longhands === undefined) return [whole];
 
-  return Object.entries(longhands).map(([property, value]) =>
-    built(item, [{ kind: "text", text: value }], selector, conditions, arm, property),
-  );
+  return Object.entries(longhands).map(([property, value]) => ({
+    ...built(item, [{ kind: "text", text: value }], selector, conditions, arm, property),
+    from: whole.property,
+  }));
 }
 
 /** The value out of a `property:value;` — the canonical text, which is what was split. */
