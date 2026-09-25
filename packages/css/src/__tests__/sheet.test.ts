@@ -462,6 +462,41 @@ describe("the layers", () => {
     for (const level of [1, 2, 3, 4, 5, 6, 7, 8]) expect(BREADTH_LAYERS).toContain(`d${level}`);
   });
 
+  /**
+   * The statement above a level must declare the names that level HOLDS.
+   *
+   * The two lists share an alphabet now: the digit levels under `c` are `d0`…`d9`, and a derived
+   * breadth step is `d1`. Reading the first child's name to tell them apart was right while the
+   * conditional breadth step was `b…`, and it stopped being right the moment a breadth step could
+   * begin with `d` — the level holding `d1` and `u` was declared with the DIGITS, so `u` was a name
+   * its own statement had never seen. That is the fault `LAYER_ORDER` exists to prevent, one level
+   * down.
+   */
+  test("a conditional level declares the breadth names it holds, not the digits", () => {
+    const sheet = new Sheet();
+    const media = (property: string, value: string, from?: string) => ({
+      ...FLEX,
+      className: `r-${property}-${value}`,
+      css: `${property}:${value};`,
+      property,
+      from,
+      conditions: ["@media (min-width: 40rem)"],
+    });
+    sheet.add("a.tsx", [media("padding-left", "8px", "padding"), media("padding-left", "40px")]);
+
+    const css = sheet.cssFor("a.tsx");
+    const governing = (css.split("\n").findLast((line) => line.startsWith("@layer ") && line.endsWith(";")) ?? "")
+      .replace(/^@layer |;$/g, "")
+      .split(",");
+
+    // The level really does hold both, or the statement above it would be a claim about nothing.
+    expect(css).toContain("@layer d1 {");
+    expect(css).toContain("@layer u {");
+    // And the statement that governs them declares both, rather than the ten digits.
+    expect(governing).toContain("u");
+    expect(governing).toContain("d1");
+  });
+
   /** Every longhand shares ONE layer, which is the whole of what splitting bought. */
   test.each(["padding-top", "color", "background-color", "border-left-width"])(
     "`%s` is a longhand, so it is in the one layer they all share",

@@ -4774,15 +4774,51 @@ for as long as any family goes unsplit.
 **What it is instead:**
 
 ```css
-@layer ramonda.a, ramonda.s64, …, ramonda.s02, ramonda.u, ramonda.c;
+@layer ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
 ```
 
 ```
 ramonda.a      `all` — it covers every property, so it is weaker than every shorthand there can be
 ramonda.s##    a shorthand, named by HOW MANY longhands it covers; weakest (widest) first
-ramonda.u      every longhand — one name, because every longhand is equally narrow
+ramonda.d#     a longhand a SPLIT produced, by how many splits it came through
+ramonda.u      a longhand somebody TYPED — one name, because every longhand is equally narrow
 ramonda.c      every conditional rule, with the digit layers inside it
 ```
+
+##### Why a split needs a shelf of its own, and why the room beside it ships now
+
+Asked what happens to *a longhand beats its shorthand* once `padding` is four longhand classes. Through
+the merge, nothing: measured in both orders, before and after, the answer is the same and follows
+what the author wrote — which is what CSS does, `.k { padding-left: 8px; padding: 10px }` giving
+10px in a browser.
+
+One place changed. Two groups of classes joined into a STRING never meet in `mergeClassNames`, so
+nothing knows which was written later and the stylesheet decides alone. Before splitting the layer
+settled it whatever the load order; after, both were `padding-left` in one shelf and the answer
+followed whichever file the bundler put first — 40px one way and 8px the other.
+
+**A layer name cannot be added later, and that is the measurement that shapes the rest.** A
+stylesheet built before the name existed does not list it, and CSS appends an unseen name to the END
+of the order, which is the strongest position. Two sheets one release apart: the newer one's derived
+rules BEAT the older one's written longhands, the exact reverse of what the name means. So every
+name this scheme may want ships with the first release that has any of it — eight derived levels
+cost 22 gzipped bytes over none.
+
+`d1` is all anything produces. A split always reaches LEAVES: `border` is three levels, and the
+engine expands it straight to `border-top-color` and never to `border-width`, because the longhand
+list is the engine's. A test asserts the consequence rather than the reason.
+
+**Two alternatives measured and rejected.** Naming the derived shelf by the shorthand's COUNT brings
+back exactly the drift this scheme removes — a package built when `padding` covered 10 beat an
+application built when it covered 11, in both load orders. Giving derived rules zero specificity
+with `:where()` closes the hole and makes them lose to any class the author writes, which a written
+`padding` should not.
+
+**And the priority cannot live in the CLASS NAME**, which is worth writing down because it is the
+first thing anyone proposes. `padding-left: 8px; padding: 10px` and the reverse need OPPOSITE
+answers from the same two classes. What decides is where a declaration was written, and that is not
+a fact about the class — it is a fact about the position, which only the merge holds and only where
+the merge runs.
 
 **The name is the COUNT, never a position.** That is the whole of why it cannot drift: a position in
 the table of distinct breadths moved `padding` from `u09` to `u10` when CSS added a property

@@ -159,16 +159,20 @@ const level = (): Level => ({ own: [], under: new Map() });
 /**
  * The names a level's children MAY hold, in order — which is what two files have to agree on.
  *
- * Read off the children rather than counted from the depth: every child of one level is the same
- * kind of step, because {@link layerPathFor} builds the path that way. The top level needs none —
- * {@link LAYER_ORDER} declares those, fully qualified, at the very start of the stylesheet — and it
- * is told so rather than recognised, because the names it holds are now `a`, `s02`…`s64`, `u` and
- * `c`, which is the same alphabet a nested breadth level holds.
+ * Counted from the DEPTH, never read off the children's names. Both lists share an alphabet: the
+ * digit levels under `c` are `d0`…`d9`, and a derived breadth step is `d1`. Telling them apart by
+ * the first child's initial was right while the conditional breadth step was `b…`, and it stopped
+ * being right the moment a breadth step could begin with `d` — the level holding `d1` and `u` was
+ * then declared with the DIGITS, so `u` was a name its own statement had never seen. That is the
+ * fault {@link LAYER_ORDER} exists to prevent, one level down.
+ *
+ * `digits` is how many digit levels are still to come: 5 on entering `c`, counted down, and `0` at
+ * the level that holds the breadth step. The top level needs no statement at all, because
+ * {@link LAYER_ORDER} declares those fully qualified at the very start of the stylesheet.
  */
-function namesUnder(under: Map<string, Level>, top: boolean): readonly string[] {
-  if (top || under.size === 0) return [];
-  const [first] = under.keys();
-  return first !== undefined && first.startsWith("d") ? DIGIT_LAYERS : BREADTH_LAYERS;
+function namesUnder(under: Map<string, Level>, digits: number): readonly string[] {
+  if (digits < 0 || under.size === 0) return [];
+  return digits > 0 ? DIGIT_LAYERS : BREADTH_LAYERS;
 }
 
 /**
@@ -201,17 +205,21 @@ function wrap<T extends { block: EmittedBlock }>(rules: readonly [string, T][]):
     here.own.push(write(className, rule.block));
   }
 
-  const written = (here: Level, top = false): string => {
+  /** How many digit levels sit under a step: five under `c`, none under anything else. */
+  const DIGITS_UNDER_C = 5;
+
+  const written = (here: Level, digits: number): string => {
     let out = here.own.join("");
     if (here.under.size === 0) return out;
 
-    const names = namesUnder(here.under, top);
+    const names = namesUnder(here.under, digits);
     if (names.length > 0) out += `@layer ${names.join(",")};\n`;
-    for (const [step, under] of here.under) out += `@layer ${step} {\n${written(under)}}\n`;
+    for (const [step, under] of here.under)
+      out += `@layer ${step} {\n${written(under, digits < 0 && step === "c" ? DIGITS_UNDER_C : Math.max(digits - 1, 0))}}\n`;
     return out;
   };
 
-  return `${LAYER_ORDER}\n@layer ramonda {\n${written(root, true)}}\n`;
+  return `${LAYER_ORDER}\n@layer ramonda {\n${written(root, -1)}}\n`;
 }
 
 /**

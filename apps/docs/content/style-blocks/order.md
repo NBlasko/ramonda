@@ -196,7 +196,7 @@ Two things will look unfamiliar. Both are deliberate and neither is anything you
 **A shorthand becomes the longhands it sets.** `padding: 8px` is four rules, not one:
 
 ```css
-@layer ramonda.a, ramonda.s64, …, ramonda.s02, ramonda.u, ramonda.c;
+@layer ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
 @layer ramonda {
   @layer u {
     .r-pt-8px { padding-top:8px; }
@@ -217,8 +217,10 @@ Some shorthands cannot be split — `background`, `font` and `grid` among them, 
 slash in the value means no table can say which part goes where. Those keep their shorthand, and the
 layers are what order them against the longhands they cover.
 
-**The layer names are counts.** `ramonda.s10` holds shorthands that set ten longhands, `ramonda.u`
-holds every longhand, `ramonda.a` holds `all`, and `ramonda.c` holds everything conditional. The
+**The layer names are counts.** `ramonda.s10` holds shorthands that set ten longhands, `ramonda.d1`
+holds a longhand this split out of one, `ramonda.u` holds every longhand you typed yourself,
+`ramonda.a` holds `all`, and `ramonda.c` holds everything conditional. The order reads as *the more
+precisely you said it, the stronger it is*. The
 name is a fact about the property rather than its position in a list, so a stylesheet built today
 and one built two years ago agree about it — which is what makes a published package safe to drop
 into an application.

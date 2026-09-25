@@ -13,7 +13,8 @@ background: red        r-bg-red                                  (unchanged — 
 ```
 
 ```css
-@layer ramonda.a, ramonda.s64, …, ramonda.s02, ramonda.u, ramonda.c;   /* was u00 … u17, c */
+@layer ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
+/* was: @layer ramonda.u00, …, ramonda.u17, ramonda.c; */
 ```
 
 **Why.** Two classes on one element could set the same property — a `padding` and a `padding-left` —
@@ -36,7 +37,11 @@ refuses one — because CSS drops a whole declaration when any part of it is inv
 would drop only the part.
 
 **The layer names are counts now, not positions.** `ramonda.s10` holds shorthands that set ten
-longhands. A position moved every family below it whenever CSS gained a property, so two stylesheets
+longhands, and `ramonda.d1` holds a longhand the compiler DERIVED by splitting one — weaker than a
+`padding-left` you typed, stronger than the `padding` it came from. That last shelf matters where
+two blocks are joined into a string instead of merged: nothing there knows which you wrote later,
+so the stylesheet decides alone, and without it a caller's `padding` could beat your own
+`padding-left` depending on which file the bundler put first. A position moved every family below it whenever CSS gained a property, so two stylesheets
 built a year apart disagreed about which layer `padding` was in; a count is a fact about the
 property and does not move. That is what makes a published package safe to drop into an application,
 and `scripts/check-layer-skew.mjs` holds it: the real compiler, the real sheet and the real merge, in
