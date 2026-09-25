@@ -81,7 +81,7 @@ for (const a of Object.keys(now)) {
  * same one — the within-version invariant — because widening a narrow family's count breaks that
  * too. A selftest that passes for the wrong reason says nothing about the check it names.
  */
-const EXPECTED = { collide: "covers", drift: "across", crowd: "range" };
+const EXPECTED = { collide: "covers", drift: "across", crowd: "range", moved: "moved" };
 
 if (selftest === "collide") now[pairs[0][1]] = now[pairs[0][0]];
 if (selftest === "drift") {
@@ -92,6 +92,11 @@ if (selftest === "drift") {
    */
   const [wide, narrow] = pairs.find(([a, b]) => before[a] !== undefined && before[b] !== undefined) ?? [];
   if (wide !== undefined) before[wide] = now[narrow];
+}
+if (selftest === "moved") {
+  // A family whose own count grew, which is what CSS adding one longhand to it looks like.
+  const [one] = Object.keys(now);
+  now[one] = now[one] + 1;
 }
 if (selftest === "crowd") {
   // Two families neither of which covers the other, both past the end of the range.
@@ -127,6 +132,26 @@ for (const [wide, narrow] of pairs) {
       kind: "across",
       said: `an older ${narrow}(${before[narrow]}) no longer outranks ${wide}(${now[wide]})`,
     });
+}
+
+/**
+ * A family's OWN count is its name, so a count that moved is a name that moved.
+ *
+ * Found by being asked the obvious question: `animation` covers 12 and sits in `s12`, and one more
+ * animation longhand in CSS makes it `s13`. Measured with two sheets a release apart and their
+ * classes joined rather than merged, the OLDER one wins in both load orders — an application's own
+ * `animation` loses to a package's because CSS gained a property in between. That is the fault the
+ * whole scheme exists to remove, still alive wherever a shorthand is not split.
+ *
+ * The covering-pair checks below cannot see it: a family is never a pair with itself. This is the
+ * moment `DESIGN.md` calls a SHIFT — the name has to move deliberately, and `--update` records it.
+ */
+for (const [name, count] of Object.entries(now)) {
+  if (before[name] === undefined || before[name] === count) continue;
+  found.push({
+    kind: "moved",
+    said: `${name} covered ${before[name]} and covers ${count}, so its layer moved from s${before[name]} to s${count}`,
+  });
 }
 
 /**

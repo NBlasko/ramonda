@@ -121,6 +121,7 @@ jobs:
           SELFTEST=collide node scripts/check-layer-names.mjs
           SELFTEST=drift node scripts/check-layer-names.mjs
           SELFTEST=crowd node scripts/check-layer-names.mjs
+          SELFTEST=moved node scripts/check-layer-names.mjs
           node scripts/check-layer-names.mjs
           SELFTEST=order node scripts/check-layer-skew.mjs
           node scripts/check-layer-skew.mjs
