@@ -170,6 +170,14 @@ function primitivesOf(token: string): readonly string[] {
     return type === undefined ? [] : [type];
   }
   if (token.startsWith("#")) return ["hex-color", "color"];
+  /**
+   * A `--name` is a DASHED-IDENT, which is how a timeline, an anchor and a position area are named.
+   *
+   * Nothing produced this type, so `scroll-timeline: --carousel block` matched no slot and the whole
+   * value was refused — and the generator could not see it, because it only checks what splits.
+   */
+  if (token.startsWith("--")) return ["dashed-ident"];
+  if (token.startsWith('"') || token.startsWith("'")) return ["string"];
   return [];
 }
 
@@ -274,9 +282,11 @@ export function splitOf(property: string, value: string): Record<string, string>
   const split =
     positional !== undefined
       ? splitPositional(positional, bare)
-      : tokens !== undefined
-        ? splitTokens(tokens, bare)
-        : undefined;
+      : tokens === undefined
+        ? undefined
+        : tokens.list === true
+          ? splitList(tokens, bare)
+          : splitTokens(tokens, bare);
   if (split === undefined || bang === null) return split;
 
   return Object.fromEntries(Object.entries(split).map(([one, each]) => [one, `${each} ${bang[0].trim()}`]));

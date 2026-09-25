@@ -129,6 +129,21 @@ describe("what it refuses, so the shorthand stays whole", () => {
     },
   );
 
+  /**
+   * A `--name` is a DASHED-IDENT, and nothing recognised one.
+   *
+   * `scroll-timeline: --carousel block` names a timeline, which is the ordinary way to write the
+   * family — and the token matched no slot, so the whole value was refused. The generator wrote the
+   * shape anyway, because it only ever checks values that SPLIT and this one was among the refused.
+   * The refusal count is what made it visible.
+   */
+  test("a dashed identifier is recognised as one", () => {
+    expect(splitList(shapeOf("scroll-timeline"), "--carousel block")).toEqual({
+      "scroll-timeline-name": "--carousel",
+      "scroll-timeline-axis": "block",
+    });
+  });
+
   test("a token no slot will take", () => {
     expect(splitTokens(shapeOf("border-top"), "1px solid red 9px 8px")).toBeUndefined();
   });

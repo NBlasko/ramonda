@@ -49,7 +49,7 @@ const mdn = createRequire(join(HERE, "build-css-properties.mjs"))("mdn-data");
 const COMPILER = join(HERE, "..", "packages", "css", "src", "compiler");
 const { parseValueSyntax, componentsOf } = await loadTs(join(COMPILER, "valueSyntax.ts"));
 const { acceptedBy, isOpen, longhandsFor, resolving } = await loadTs(join(COMPILER, "classify.ts"));
-const { splitTokens } = await loadTs(join(COMPILER, "split.ts"));
+const { splitList, splitTokens } = await loadTs(join(COMPILER, "split.ts"));
 const { SHAPES } = await loadTs(join(COMPILER, "shapes.generated.ts"));
 
 /**
@@ -64,6 +64,22 @@ const syntaxOf = resolving((property) => mdn.css.properties[property]?.syntax ??
 
 /** Flat: no comma, no slash, no repetition. Anything else is not a bag of tokens. */
 const isFlat = (grammar) => !/[,/#]/.test(grammar) && !/\{\s*\d/.test(grammar);
+
+/**
+ * One ITEM of a comma-separated family, or nothing if it is not one.
+ *
+ * `<single-transition>#` is a list whose every item is the same shape, and `[ … ]#` is the same
+ * written out. The item's own grammar has to be FLAT: a list of things that are themselves
+ * comma-separated or slash-shaped is a different question again, and `background` — whose last
+ * layer alone carries the colour — is a third.
+ */
+function itemOf(grammar) {
+  const found = /^(.*)#\??$/s.exec(grammar.trim());
+  if (found === null) return undefined;
+  const inside = (found[1] ?? "").trim();
+  const bare = /^\[.*\]$/s.test(inside) ? inside.slice(1, -1).trim() : inside;
+  return isFlat(bare) ? bare : undefined;
+}
 
 /** One sample per primitive, all DISTINCT so a slot can be read back out of a split value. */
 const SAMPLES = {
@@ -145,55 +161,105 @@ const file = join(COMPILER, "tokenShapes.generated.ts");
 const committed = previousFrom(file, /TOKEN_SHAPES: Readonly<Record<string, TokenShape>> = (\{[\s\S]*?\n\})\s*;/, {});
 
 const positional = new Set(Object.keys(SHAPES));
-const candidates = Object.entries(mdn.css.properties)
+const named = Object.entries(mdn.css.properties)
   .filter(([name, value]) => Array.isArray(value.computed) && value.syntax && !name.startsWith("-"))
   .map(([name]) => name)
-  .filter((name) => !positional.has(name) && isFlat(mdn.css.properties[name].syntax));
+  .filter((name) => !positional.has(name));
 
+/** A family reaches a shape two ways: its whole value is a bag of tokens, or each ITEM of it is. */
+const candidates = named.filter((name) => isFlat(mdn.css.properties[name].syntax));
+const lists = named.filter((name) => itemOf(mdn.css.properties[name].syntax) !== undefined);
+const asked = [...new Set([...candidates, ...lists])];
+
+const ENGINES = ["chromium", "firefox", "webkit"];
 const perEngine = {};
 const counts = [];
 
-for (const engine of ["chromium", "firefox", "webkit"]) {
+/**
+ * What a shorthand expands to, asked of the engine.
+ *
+ * Sorted, because the engines write the SAME longhands in different orders — Chromium starts
+ * `border` at colour, Firefox at width — and the merge below compares printed shapes. The order
+ * carries nothing: the list only says which longhands get `initial` when no token reached them.
+ * Unsorted, five families including `border` itself were dropped as a disagreement.
+ */
+async function expansionsIn(engine, names) {
+  const browser = await pw[engine].launch();
+  try {
+    const tab = await browser.newPage();
+    // A DOCTYPE, because quirks mode is a different CSS and no real page is in it.
+    await tab.setContent("<!doctype html><html><body><div id=x></div></body></html>");
+    return await tab.evaluate((names) => {
+      const x = document.getElementById("x");
+      const out = {};
+      for (const name of names) {
+        x.style.cssText = "";
+        x.style.cssText = `${name}: inherit`;
+        out[name] = [...x.style].sort();
+      }
+      return out;
+      // The committed rows too, or a carried one's family is never asked about and the list check
+      // below reads an empty answer as "this engine does not have it".
+    }, names);
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
+ * The UNION across engines, and it has to be the union rather than what they agree about.
+ *
+ * Firefox has no `animation-timeline` and no `animation-range-*`; WebKit has no
+ * `mask-position-x`. Taking only what all three name would leave those longhands unreset where they
+ * exist, which is the silent fault `build-shorthand-leaves.mjs` was written for — an engine that
+ * does not know a property simply drops that declaration, so naming one costs nothing anywhere.
+ *
+ * It also has to be settled BEFORE any shape is built, or each engine builds a different one and
+ * the merge throws all of them away as a disagreement. That is why the engines are asked twice.
+ */
+const wanted = [...new Set([...asked, ...Object.keys(committed)])];
+const expansions = {};
+for (const engine of ENGINES) {
+  const said = await expansionsIn(engine, wanted).catch((error) => {
+    console.error(`[tokens] ${engine} would not launch: ${String(error).slice(0, 90)}`);
+    process.exit(1);
+  });
+  for (const [name, longhands] of Object.entries(said))
+    expansions[name] = [...new Set([...(expansions[name] ?? []), ...longhands])].sort();
+}
+
+for (const engine of ENGINES) {
   let browser;
   try {
     browser = await pw[engine].launch();
     const tab = await browser.newPage();
-    // A DOCTYPE, because quirks mode is a different CSS and no real page is in it.
     await tab.setContent("<!doctype html><html><body><div id=x></div><div id=y></div></body></html>");
-
-    // First the longhand lists, because the shapes are built ON them.
-    // Sorted, because the engines write the SAME longhands in different orders — Chromium starts
-    // `border` at colour, Firefox at width — and the intersection below compares printed shapes. The
-    // order carries nothing: the list only says which longhands get `initial` when no token reached
-    // them. Unsorted, five families including `border` itself were dropped as a disagreement.
-    const lists = await tab.evaluate(
-      (names) => {
-        const x = document.getElementById("x");
-        const out = {};
-        for (const name of names) {
-          x.style.cssText = "";
-          x.style.cssText = `${name}: inherit`;
-          out[name] = [...x.style].sort();
-        }
-        return out;
-        // The committed rows too, or a carried one's family is never asked about and the list check
-        // below reads an empty answer as "this engine does not have it".
-      },
-      [...new Set([...candidates, ...Object.keys(committed)])],
-    );
+    const expands = expansions;
 
     const shapes = {};
     const rejected = [];
-    for (const name of candidates) {
-      const longhands = lists[name] ?? [];
-      if (longhands.length < 2) continue;
-      let slots;
-      try {
-        slots = slotsOf(parseValueSyntax(mdn.css.properties[name].syntax), longhands);
-      } catch {
+    if (process.env.WHY)
+      console.error(`[why] asked=${asked.length} lists=${lists.length} ima animation=${asked.includes("animation")}`);
+    for (const name of asked) {
+      const item = itemOf(mdn.css.properties[name].syntax);
+      const list = item !== undefined;
+      const longhands = expands[name] ?? [];
+      if (longhands.length < 2) {
+        if (process.env.WHY && list) console.error(`[why] ${name}: motor daje ${longhands.length} longhanda`);
         continue;
       }
-      if (slots === undefined || slots.length === 0) continue;
+      let slots;
+      try {
+        slots = slotsOf(parseValueSyntax(item ?? mdn.css.properties[name].syntax), longhands);
+      } catch (e) {
+        if (process.env.WHY && list) console.error(`[why] ${name}: parse puklo ${String(e).slice(0, 50)}`);
+        continue;
+      }
+      if (slots === undefined || slots.length === 0) {
+        if (process.env.WHY && list)
+          console.error(`[why] ${name}: ${slots === undefined ? "nema proreze" : "nula proreza"}`);
+        continue;
+      }
       // Two slots claiming one longhand means the mapping is not one-to-one, and a split would have
       // to guess. It is how a three-slot reading of a two-component grammar was caught, not shipped.
       const claimed = slots.flatMap((one) => one.longhands);
@@ -201,7 +267,9 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
         rejected.push(name);
         continue;
       }
-      shapes[name] = { longhands, slots };
+      shapes[name] = list ? { longhands, slots, list } : { longhands, slots };
+      if (process.env.WHY && list)
+        console.error(`[why] lista ${name}: ${slots.length} proreza, ${longhands.length} longhanda`);
     }
 
     /**
@@ -229,7 +297,7 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
        * fresh element where two real values would not. This corpus is built from each slot's own
        * vocabulary and has no CSS-wide value in it, which is exactly where the blind spot was.
        */
-      const said = lists[name] ?? [];
+      const said = expands[name] ?? [];
       if (said.length > 1 && JSON.stringify([...shape.longhands].sort()) !== JSON.stringify([...said].sort())) {
         rejected.push(name);
         continue;
@@ -252,12 +320,21 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
      */
     const cases = [];
     let refused = 0;
-    for (const [name, shape] of Object.entries(shapes))
-      for (const value of corpusFor(shape.slots)) {
-        const split = splitTokens(shape, value);
+    for (const [name, shape] of Object.entries(shapes)) {
+      const corpus = corpusFor(shape.slots);
+      /**
+       * A list family is asked its items AND a value of two of them, because one item on its own
+       * exercises nothing a flat family does not: what a list adds is the JOIN, and a single item
+       * joins nothing. Two of them is where a longhand's own list has to line up by position.
+       */
+      const values =
+        shape.list === true && corpus.length > 1 ? [...corpus, `${corpus[0]}, ${corpus[corpus.length - 1]}`] : corpus;
+      for (const value of values) {
+        const split = shape.list === true ? splitList(shape, value) : splitTokens(shape, value);
         if (split === undefined) refused++;
         else cases.push({ name, value, split });
       }
+    }
 
     const verdicts = await tab.evaluate(
       (cases) =>
@@ -372,7 +449,10 @@ const wrote = writeOrCheck(
     `/** One family: every longhand the shorthand resets, and a slot per component. */\n` +
     `export interface TokenShape {\n` +
     `  readonly longhands: readonly string[];\n` +
+    `  /** The slots of ONE value, or of one ITEM where {@link TokenShape.list} is set. */\n` +
     `  readonly slots: readonly TokenSlot[];\n` +
+    `  /** A COMMA-separated family: every item takes these slots, and each longhand is a list. */\n` +
+    `  readonly list?: boolean;\n` +
     `}\n` +
     `\n` +
     `export const TOKEN_SHAPES: Readonly<Record<string, TokenShape>> = {\n` +
