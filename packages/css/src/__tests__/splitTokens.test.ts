@@ -246,9 +246,36 @@ describe("a comma-separated family", () => {
     expect(splitList(LIST, "one 1s")).toEqual({ "a-name": "one", "a-time": "1s" });
   });
 
-  /** A shorthand resets what an item does not mention, in that item's POSITION. */
+  /**
+   * A shorthand resets what an item does not mention, in that item's POSITION — and the reset has
+   * to be written as a VALUE, not as `initial`.
+   *
+   * `initial` is a CSS-wide keyword and cannot stand as one item of a comma-separated value.
+   * Measured, all three engines reject `scroll-timeline-axis: initial, initial` outright, so the
+   * longhand the shorthand meant to reset keeps whatever another class left on it and nothing says
+   * so. This test asserted that broken output as though it were the rule, which is how it shipped.
+   */
   test("a longhand no token reached is reset in the item that missed it", () => {
-    expect(splitList(LIST, "one, two 2s")).toEqual({ "a-name": "one, two", "a-time": "initial, 2s" });
+    expect(splitList(shapeOf("scroll-timeline"), "--a, --b inline")).toEqual({
+      "scroll-timeline-name": "--a, --b",
+      "scroll-timeline-axis": "block, inline",
+    });
+  });
+
+  test("and where every item misses it, all of them carry the value", () => {
+    expect(splitList(shapeOf("scroll-timeline"), "--a, --b")).toEqual({
+      "scroll-timeline-name": "--a, --b",
+      "scroll-timeline-axis": "block, block",
+    });
+  });
+
+  /**
+   * A longhand whose initial value the engines DISAGREE about has none to write, and the family is
+   * refused rather than given one engine's answer. `a-time` is not a property at all, which is the
+   * same situation from the table's point of view.
+   */
+  test("a longhand with no measured initial value refuses the whole list", () => {
+    expect(splitList(LIST, "one, two 2s")).toBeUndefined();
   });
 
   test("a call keeps its own commas", () => {
@@ -270,6 +297,16 @@ describe("a comma-separated family", () => {
 
   test("a CSS-wide keyword is the whole value, not an item of it", () => {
     expect(splitList(LIST, "inherit")).toEqual({ "a-name": "inherit", "a-time": "inherit" });
+  });
+
+  /**
+   * And as an item it is refused, which is what CSS does with it. Measured in all three engines:
+   * `scroll-timeline: inherit, --b`, `--a, inherit` and `initial, --b` are each rejected outright.
+   * Splitting one would write declarations for a value the browser never accepted.
+   */
+  test("and beside another item it is refused, as CSS refuses it", () => {
+    expect(splitList(shapeOf("scroll-timeline"), "inherit, --b")).toBeUndefined();
+    expect(splitList(shapeOf("scroll-timeline"), "--a, inherit")).toBeUndefined();
   });
 
   test("and a `var()` is refused, as everywhere else", () => {

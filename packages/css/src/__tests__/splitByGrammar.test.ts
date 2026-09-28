@@ -126,6 +126,15 @@ describe("a comma-separated family", () => {
   });
 
   /**
+   * An item that missed a longhand needs the RESET written as a value: `initial` is a CSS-wide
+   * keyword and cannot stand as one item of a list. `a-time` is no property, so no measured value
+   * exists for it and the whole value is refused rather than guessed at.
+   */
+  test("an item that missed a longhand refuses where no initial value is known", () => {
+    expect(splitByGrammar(LIST, "spin 1s, slide")).toBeUndefined();
+  });
+
+  /**
    * One unreadable item refuses the WHOLE value. Dropping it would shorten one longhand's list
    * while the others stayed long, and the lists are matched by POSITION — so every item after the
    * gap would silently take another item's value.

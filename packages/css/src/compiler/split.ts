@@ -1,3 +1,4 @@
+import { INITIAL_VALUES } from "./initials.generated";
 import { KEYWORDS, UNIT_TYPE } from "./keywords.generated";
 import { type Shape, SHAPES } from "./shapes.generated";
 import { matchValue } from "./matchValue";
@@ -341,12 +342,42 @@ export function splitList(shape: TokenShape, value: string): Record<string, stri
   if (items.length === 1 && WIDE.includes(first.toLowerCase()))
     return Object.fromEntries(shape.longhands.map((one) => [one, first]));
 
+  // A CSS-wide keyword is not an ITEM of a list in CSS either, so an item that is one is refused
+  // rather than split — the whole-value spelling is handled above.
+  if (items.some((one) => WIDE.includes(one.toLowerCase()))) return undefined;
+
   const per = items.map((one) => splitTokens(shape, one));
   if (per.some((one) => one === undefined)) return undefined;
 
-  return Object.fromEntries(
-    shape.longhands.map((one) => [one, per.map((each) => (each as Record<string, string>)[one]).join(", ")]),
-  );
+  const out: Record<string, string> = {};
+  for (const longhand of shape.longhands) {
+    const parts = per.map((each) => (each as Record<string, string>)[longhand] as string);
+    const written = reset(longhand, parts);
+    if (written === undefined) return undefined;
+    out[longhand] = written;
+  }
+  return out;
+}
+
+/**
+ * The items of one longhand, with every RESET written as a value rather than as `initial`.
+ *
+ * `splitTokens` marks a longhand no token reached with `initial`, which says exactly the right
+ * thing and is valid on its own. It is not valid as one item of a comma-separated value: `initial`
+ * is a CSS-wide keyword, and all three engines reject `scroll-timeline-axis: initial, initial`
+ * outright. A rejected declaration sets nothing, so the longhand the shorthand was supposed to
+ * reset keeps whatever another class left on it — the silent direction, and how this shipped.
+ *
+ * The value comes from `initials.generated.ts`, measured on an element nothing has styled and
+ * written back in the same run to prove it is a value that may be specified. A longhand the engines
+ * DISAGREE about has none, and then the whole value is refused: a family left a shorthand is
+ * visibly the author's own text, where one engine's answer written everywhere is not.
+ */
+function reset(longhand: string, parts: readonly string[]): string | undefined {
+  if (!parts.includes("initial")) return parts.join(", ");
+  const value = INITIAL_VALUES[longhand];
+  if (value === undefined) return undefined;
+  return parts.map((one) => (one === "initial" ? value : one)).join(", ");
 }
 
 /**
@@ -464,10 +495,20 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
   if (items.length === 1 && WIDE.includes(first.toLowerCase()))
     return Object.fromEntries(shape.longhands.map((one) => [one, first]));
 
+  if (items.some((one) => WIDE.includes(one.toLowerCase()))) return undefined;
+
   const per = items.map((one) => byGrammar(shape, one));
   if (per.some((one) => one === undefined)) return undefined;
 
-  return Object.fromEntries(
-    shape.longhands.map((one) => [one, per.map((each) => (each as Record<string, string>)[one]).join(", ")]),
-  );
+  const out: Record<string, string> = {};
+  for (const longhand of shape.longhands) {
+    // The same reset rule as the slot list: `initial` cannot be one item of a list.
+    const written = reset(
+      longhand,
+      per.map((each) => (each as Record<string, string>)[longhand] as string),
+    );
+    if (written === undefined) return undefined;
+    out[longhand] = written;
+  }
+  return out;
 }
