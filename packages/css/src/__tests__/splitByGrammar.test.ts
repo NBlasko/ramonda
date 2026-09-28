@@ -323,6 +323,85 @@ describe("a contested value", () => {
   });
 });
 
+/**
+ * A leaf that feeds SEVERAL longhands may take only one token.
+ *
+ * `scroll-margin` is one leaf, `<length>{1,4}`, feeding all four sides. `scroll-margin: 1px` puts
+ * `1px` on each, which is right. `scroll-margin: 1px 2px` put `"1px 2px"` on each, which no side
+ * accepts, so the browser dropped all four while the shorthand sets 1px and 2px — found by review,
+ * in all three engines. Several values across several longhands is a POSITIONAL question, and this
+ * splitter does not answer it.
+ */
+describe("a leaf feeding several longhands", () => {
+  const SIDES = shape("<length>{1,4}", ["a-top", "a-right"], [{ longhands: ["a-top", "a-right"], types: ["length"] }]);
+
+  test("hands one token to all of them", () => {
+    expect(splitByGrammar(SIDES, "1px")).toEqual({ "a-top": "1px", "a-right": "1px" });
+  });
+
+  test("and refuses more than one, which it cannot place", () => {
+    expect(splitByGrammar(SIDES, "1px 2px")).toBeUndefined();
+  });
+});
+
+/**
+ * A longhand the family resets ONCE cannot be SET by the shorthand, so a token that lands on it
+ * makes the value invalid.
+ *
+ * `animation-timeline` is reset by `animation`, never set by it. `animation: 1s spin scroll()` is
+ * rejected by all three engines — and this wrote `initial` for the timeline and applied the
+ * duration and the name, which is half of a declaration CSS drops. Found by review.
+ */
+describe("a token that lands on a longhand reset once", () => {
+  const ONCE = {
+    ...shape(
+      "<custom-ident> || <time> || <dashed-ident>",
+      ["animation-name", "animation-duration", "a-line"],
+      [
+        { longhands: ["animation-name"], types: ["custom-ident"], open: true },
+        { longhands: ["animation-duration"], types: ["time"] },
+        { longhands: ["a-line"], types: ["dashed-ident"] },
+      ],
+      true,
+    ),
+    resetOnce: ["a-line"],
+  };
+
+  test("refuses the value", () => {
+    expect(splitByGrammar(ONCE, "spin 1s --tl")).toBeUndefined();
+  });
+
+  test("while a value that leaves it alone still splits", () => {
+    expect(splitByGrammar(ONCE, "spin 1s")).toMatchObject({ "animation-name": "spin", "a-line": "initial" });
+  });
+});
+
+/**
+ * Several leaves feeding ONE longhand add up; they do not overwrite each other.
+ *
+ * `font-variant-numeric` is fed by five leaves of `font-variant`, and each took its token and wrote
+ * the whole longhand — so `all-small-caps tabular-nums slashed-zero` kept only `slashed-zero` and
+ * lost `tabular-nums`. Found in all three engines the day `font-variant` entered the table.
+ */
+describe("several leaves feeding one longhand", () => {
+  const NUMERIC = shape(
+    "<fig> || <zero>",
+    ["a-num"],
+    [
+      { longhands: ["a-num"], words: ["tabular-nums"] },
+      { longhands: ["a-num"], words: ["slashed-zero"] },
+    ],
+  );
+
+  test("write every token they took, together", () => {
+    expect(splitByGrammar(NUMERIC, "tabular-nums slashed-zero")?.["a-num"]).toBe("tabular-nums slashed-zero");
+  });
+
+  test("and one of them alone is just itself", () => {
+    expect(splitByGrammar(NUMERIC, "slashed-zero")?.["a-num"]).toBe("slashed-zero");
+  });
+});
+
 describe("what it refuses", () => {
   test("a `var()`, whose content is unknown until the browser reads it", () => {
     expect(splitByGrammar(BORDER, "var(--x)")).toBeUndefined();

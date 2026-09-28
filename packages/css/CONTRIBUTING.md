@@ -139,50 +139,50 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` asks two tables, and between them they answer **72 families**.
+`split.ts` asks two tables, and between them they answer **74 families**.
 
 `SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
-feeds, and no grammar is needed at all. **42 families.**
+feeds, and no grammar is needed at all. **44 families.**
 
 Everything else is read against the family's own grammar, opened by `openGrammar.ts` until every
 leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 families**, including
-`animation` and `transition`, neither of which a flat list of slots can hold. A family in neither
-table keeps its shorthand.
+`animation`, `transition` and `font-variant`, none of which a flat list of slots can hold. A family in
+neither table keeps its shorthand.
 
-Of the families that reach the grammar table's generator, 21 do not make it, and they fail at two
+Of the families that reach the grammar table's generator, 19 do not make it, and they fail at two
 different places.
 
-**Nine have a grammar this cannot open**, because some part of them belongs to no longhand and has
-no grammar of its own to be opened into: `border-spacing`, `flex`, `font`, `mask`, `mask-border`,
-`perspective-origin`, `text-box`, `transform-origin`, `white-space`. `mask` is not a depth
-problem, though it looks like one: raising the cap does not open it. Its `content-box` is a word
-that `mask-origin` reaches only through `<coord-box>` → `<paint-box>` → `<visual-box>`, and
-`longhandsFor` matches a word against a longhand's grammar TEXT without following those types.
+**Eleven have a grammar this cannot open**, because some part of them belongs to no longhand and
+has no grammar of its own to be opened into: `border-spacing`, `flex`, `font`, `grid`,
+`grid-template`, `mask`, `mask-border`, `perspective-origin`, `text-box`, `transform-origin`,
+`white-space`. `mask` is not a depth problem, though it looks like one: raising the cap does not
+open it. Its `content-box` is a word that `mask-origin` reaches only through `<coord-box>` →
+`<paint-box>` → `<visual-box>`, and `longhandsFor` matches a word against a longhand's grammar TEXT
+without following those types.
 
-**Ten open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
-`font-synthesis`, `font-variant`, `grid`, `grid-area`, `grid-template`, `marker`, `mask-position`,
-`vertical-align`.
+**Eight open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
+`font-synthesis`, `grid-area`, `marker`, `mask-position`, `timeline-trigger`, `vertical-align`.
 
-`background-position` and `place-content` are out of BOTH tables, and their reason is worth knowing
-because no list can fix it: the SHORTHAND takes a narrower set than its own longhands.
-`background-position-x` has `x-end` and `background-position: x-end` is a value no engine accepts.
-A vocabulary read off the longhands cannot see that, and a split answers where CSS does nothing. Most fail the step that settles which longhand an
-ambiguous leaf feeds. `place-items` and `place-self` fail for a nameable reason: one written value
-fills BOTH longhands — `place-items: center` sets `justify-items` too — and the grammar says
-`<align-items> <justify-items>?` without saying that the second copies the first.
+**A value is refused where CSS would drop it, and the family is kept.** CSS drops a whole
+declaration when any part of it is invalid and a split drops only the part — so a split must never
+write half of a value the browser ignores. Four ways that happens, each refused on its own:
 
-**A value one longhand has no word for is refused, and the family is kept.** CSS drops a whole
-declaration when any part of it is invalid and a split drops only the part, so
-`place-items: start space-between` — which no engine accepts, `justify-items` having no
-`space-between` — would have set the align and left the justify. Each family carries what its
-longhands take as words, and a piece with a word its longhand does not have refuses the value.
-`place-items` and `place-self` split because of it, and `padding: 10px -5px` is the same rule one
-step along, measured separately because a range is not a word.
+- a word the longhand has no place for: `place-items: start space-between`, `justify-items` having
+  no `space-between`. The checker reports this one too, as `word-out-of-its-longhand`.
+- a word that is only ever PART of a value: `first baseline` and `safe center` are one value of two
+  words, and `align-items: first` alone is invalid. Each positional family carries `alone`, the
+  words every engine takes as a longhand's whole value, and a slot holding anything else refuses.
+  The checker does NOT read that list, because `place-items: first baseline` is valid CSS.
+- a leaf feeding several longhands that took more than one token: `scroll-margin: 1px 2px`.
+- a token landing on a longhand the shorthand resets but cannot set: `animation: 1s spin scroll()`.
 
-**One VALUE can be refused without losing the family.** `animation: auto` is `animation-name: auto`
-in Firefox and touches nothing in Chromium or WebKit, so no single split writes the same page in
-all three. It is listed as `contested` on the shape and refused on its own; every other value of
-`animation` splits.
+**And one VALUE the engines disagree about.** `animation: auto` is `animation-name: auto` in
+Firefox and touches nothing in Chromium or WebKit, so no single split writes the same page in all
+three. It is listed as `contested` on the shape and refused on its own.
+
+**Known and not fixed**: `container: card / inline-size` is refused. The positional learner never
+learned the slash form for `container` — its patterns are `1` to `4` — so every value with the `/`
+keeps its shorthand. Safe, and a gap.
 
 A refusal is safe wherever it happens. The declaration stays a shorthand, which is visibly the
 author's own text — where a wrong split is invisible. And a shorthand that reaches the stylesheet

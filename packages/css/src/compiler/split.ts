@@ -102,7 +102,25 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
 
   const out: Record<string, string> = {};
   for (const [longhand, how] of Object.entries(mapping)) {
-    out[longhand] = "literal" in how ? how.literal : how.slots.map((index) => flat[index]).join(" ");
+    const piece = "literal" in how ? how.literal : how.slots.map((index) => flat[index]).join(" ");
+    /**
+     * A word that is only ever PART of a value cannot be a slot on its own.
+     *
+     * `first baseline` and `safe center` are one value of two words, and a positional split read
+     * them as two: `align-items: first`, which no engine accepts, so the align was dropped and the
+     * justify kept. `alone` is the list the engines take as a longhand's WHOLE value, measured and
+     * intersected across all three; `words` stays the grammar's list because the checker reads it,
+     * and `place-items: first baseline` is valid CSS it must not report.
+     *
+     * Written inline because this function is injected into a page as text — see
+     * `build-shorthand-shapes.mjs`.
+     */
+    const alone = shape.takes?.[longhand]?.alone;
+    if (alone !== undefined && !("literal" in how) && /^-{0,2}[a-z_][\w-]*$/i.test(piece)) {
+      const lower = piece.toLowerCase();
+      if (!WIDE.includes(lower) && !alone.some((word) => word.toLowerCase() === lower)) return undefined;
+    }
+    out[longhand] = piece;
   }
   return out;
 }
@@ -371,10 +389,28 @@ function byGrammar(shape: GrammarShape, value: string): Record<string, string> |
   if (taken === undefined) return undefined;
 
   const out: Record<string, string> = Object.fromEntries(shape.longhands.map((one) => [one, "initial"]));
+  const written = new Set<string>();
   for (const [term, got] of taken) {
     const leaf = described.get(term);
     if (leaf === undefined) continue; // A separator: read by the parse, owned by no longhand.
-    for (const longhand of leaf.longhands) out[longhand] = got.join(" ");
+    /**
+     * A leaf feeding SEVERAL longhands hands each of them the same token — `border`'s
+     * `<line-width>` puts `1px` on every side. More than one token is a different question:
+     * `scroll-margin: 1px 2px` is one leaf, `<length>{1,4}`, and it put `"1px 2px"` on every side,
+     * which no side accepts, so the browser dropped all four. Which value goes to which side is
+     * POSITIONAL, and this splitter does not answer it.
+     */
+    if (leaf.longhands.length > 1 && got.length > 1) return undefined;
+    /**
+     * Several leaves may feed ONE longhand, and then their tokens add up rather than overwrite.
+     * `font-variant-numeric` is fed by five leaves of `font-variant`; each used to write the whole
+     * longhand, so `tabular-nums slashed-zero` kept only the last.
+     */
+    for (const longhand of leaf.longhands) {
+      const token = got.join(" ");
+      out[longhand] = written.has(longhand) ? `${out[longhand]} ${token}` : token;
+      written.add(longhand);
+    }
   }
   return out;
 }
@@ -433,6 +469,12 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
   const out: Record<string, string> = {};
   for (const longhand of shape.longhands) {
     if (once.has(longhand)) {
+      /**
+       * A longhand the shorthand resets once is one it cannot SET, so a token the parse gave it
+       * makes the value invalid. `animation: 1s spin scroll()` is rejected by all three engines;
+       * writing `initial` here and applying the rest was half of a declaration CSS drops.
+       */
+      if (per.some((each) => (each as Record<string, string>)[longhand] !== "initial")) return undefined;
       out[longhand] = "initial";
       continue;
     }

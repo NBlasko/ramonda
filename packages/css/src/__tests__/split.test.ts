@@ -144,6 +144,51 @@ describe("a word the longhand has no place for", () => {
   });
 });
 
+/**
+ * A word that is valid only as PART of a value, never on its own.
+ *
+ * `first baseline` and `safe center` are one value of two words: `place-items: first baseline`
+ * sets both longhands to it. The positional split read two words as two values and wrote
+ * `align-items: first`, which no engine accepts — so the align was dropped and the justify kept.
+ * Found by review, in all three engines.
+ *
+ * `first` IS one of `align-items`'s words, so the word check lets it through, and it must: the
+ * checker reads the same list, and `place-items: first baseline` is valid CSS it must not report.
+ * What the SPLITTER needs is a second list — the words each engine takes as a longhand's WHOLE value.
+ */
+describe("a word that cannot stand alone in its slot", () => {
+  const SHAPE = {
+    kind: "test",
+    negative: true,
+    patterns: {
+      "1": { "a-x": { slots: [0] }, "a-y": { slots: [0] } },
+      "2": { "a-x": { slots: [0] }, "a-y": { slots: [1] } },
+    },
+    takes: {
+      "a-x": { words: ["first", "baseline", "center"], free: false, alone: ["baseline", "center"] },
+      "a-y": { words: ["first", "baseline", "center"], free: false, alone: ["baseline", "center"] },
+    },
+  } as const;
+
+  test("refuses the value, so the shorthand stays whole", () => {
+    expect(splitPositional(SHAPE, "first baseline")).toBeUndefined();
+  });
+
+  test("while words that stand alone still split", () => {
+    expect(splitPositional(SHAPE, "baseline center")).toEqual({ "a-x": "baseline", "a-y": "center" });
+  });
+
+  test("a shape with no measured list is not held to one", () => {
+    const { takes, ...rest } = SHAPE;
+    const without = {
+      ...rest,
+      takes: { "a-x": { words: takes["a-x"].words, free: false }, "a-y": { words: takes["a-y"].words, free: false } },
+    };
+
+    expect(splitPositional(without, "first baseline")).toBeDefined();
+  });
+});
+
 describe("what it refuses, and why refusing is an answer", () => {
   /**
    * A `var()` may carry SEVERAL values, and which is not known until computed-value time. Measured

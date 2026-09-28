@@ -214,7 +214,29 @@ async function measure(against) {
             if (domain === undefined) continue;
             // The splitter reads `takes` to refuse a value a longhand has no word for, so the
             // corpus has to see the same shape the table will carry.
-            shape = { ...shape, takes: TAKES[name] ?? {} };
+            //
+            // `alone` is the words THIS engine takes as a longhand's whole value. `first` and `safe`
+            // are only ever part of one — `first baseline`, `safe center` — so a positional slot
+            // holding one by itself is a declaration CSS drops. Measured here, intersected below.
+            shape = {
+              ...shape,
+              takes: Object.fromEntries(
+                Object.entries(TAKES[name] ?? {}).map(([longhand, takes]) => {
+                  if (takes.free) return [longhand, takes];
+                  // An engine without the longhand says nothing about it, rather than refusing every
+                  // word: Firefox has no `-webkit-border-before-style`, and measuring it there emptied
+                  // the list for every engine.
+                  a.style.cssText = "";
+                  if (getComputedStyle(a).getPropertyValue(longhand) === "") return [longhand, takes];
+                  const alone = takes.words.filter((word) => {
+                    a.style.cssText = "";
+                    a.style.setProperty(longhand, word);
+                    return a.style.length > 0;
+                  });
+                  return [longhand, { ...takes, alone }];
+                }),
+              ),
+            };
             let sound = true;
             for (const pattern of PATTERNS) {
               if (shape.patterns[pattern.key] === undefined || !sound) continue;
@@ -263,8 +285,7 @@ async function measure(against) {
               }
             }
             if (!sound) rejected.push(name);
-            else if (learned[name] !== undefined)
-              kept[name] = { ...shape, negative: takesNegative(name), takes: TAKES[name] ?? {} };
+            else if (learned[name] !== undefined) kept[name] = { ...shape, negative: takesNegative(name) };
           }
           return { kept, rejected, learned };
         },
@@ -347,8 +368,26 @@ for (const name of names) {
    * refused THERE, and at run time nothing refused them. Measured — `place-items: start
    * space-between` split, and no browser accepts it.
    */
-  if (Object.keys(patterns).length > 0)
-    agreed[name] = { kind: first.kind, negative: first.negative, takes: first.takes ?? {}, patterns };
+  /**
+   * `alone` is the INTERSECTION: a word counts as standing alone only where every engine that has
+   * the family takes it as the whole value. Fewer words is more refusals, which is the safe way —
+   * `anchor-center` is not taken by Chromium and `scroll-state` not by the other two, and a slot
+   * holding either by itself is half of a declaration in the engine that refuses it. Written only
+   * where it differs from `words`, which is almost nowhere.
+   */
+  const takes = Object.fromEntries(
+    Object.entries(first.takes ?? {}).map(([longhand, one]) => {
+      const bare = { words: one.words, free: one.free };
+      // Only the engines that MEASURED this longhand vote; one without it abstained above.
+      const lists = saw
+        .map((engine) => perEngine[engine].kept[name].takes?.[longhand]?.alone)
+        .filter((list) => list !== undefined);
+      if (one.free || lists.length === 0) return [longhand, bare];
+      const alone = one.words.filter((word) => lists.every((list) => list.includes(word)));
+      return [longhand, alone.length === one.words.length ? bare : { ...bare, alone }];
+    }),
+  );
+  if (Object.keys(patterns).length > 0) agreed[name] = { kind: first.kind, negative: first.negative, takes, patterns };
 }
 
 /**
@@ -409,7 +448,7 @@ const wrote = writeOrCheck(
     `   * \`free\` means the longhand takes something no list can hold — a colour name, a\n` +
     `   * \`custom-ident\` — and is not checked.\n` +
     `   */\n` +
-    `  readonly takes?: Readonly<Record<string, { readonly words: readonly string[]; readonly free: boolean }>>;\n` +
+    `  readonly takes?: Readonly<Record<string, { readonly words: readonly string[]; readonly free: boolean; readonly alone?: readonly string[] }>>;\n` +
     `  /** Whether it takes a NEGATIVE length. Where it does not, a value holding one is not split. */\n` +
     `  readonly negative: boolean;\n` +
     `  /** Keyed the way the value is written — \`2\`, \`2/2\`, \`1/1/1/1\`. */\n` +

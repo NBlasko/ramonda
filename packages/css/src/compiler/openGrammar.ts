@@ -83,7 +83,16 @@ export function openedFor(
     // A separator belongs to no longhand and is read by the parse, so it is kept and claims nothing.
     if (one.kind === "literal") return { tree: one, leaves: [] };
 
-    const mine = claimed ?? longhandsFor(one, longhands, syntax);
+    /**
+     * Its OWN claim first; the one carried down from a group only where it has none.
+     *
+     * A group of alternatives claims the union of its branches, and letting that replace a branch's
+     * own claim made every branch feed every longhand the group reaches — `timeline-trigger` came
+     * out with all five leaves on `timeline-trigger-name`. The carried claim is for the branch that
+     * claims nothing by itself, like `<custom-ident>` beside `none`; it is a fallback, not an override.
+     */
+    const own = longhandsFor(one, longhands, syntax);
+    const mine = own.length > 0 ? own : (claimed ?? own);
 
     if (COMPOSITE.has(one.kind)) {
       /**
@@ -93,7 +102,15 @@ export function openedFor(
        * the longhand as a whole, and neither `none` nor `<custom-ident>` has a grammar of its own
        * to be opened into. Carrying the claim is what stops it being opened into nothing.
        */
-      const carry = mine.length > 0 ? mine : undefined;
+      /**
+       * Only a group of ALTERNATIVES carries its claim down, and only to its own branches.
+       *
+       * `[ none | <custom-ident> ]` is two ways of writing one component. A sequence is different
+       * components, and carrying a claim THROUGH one gave `timeline-trigger`'s range leaves the
+       * name. So a sequence, `||` or `&&` hands nothing down — each of its components answers for
+       * itself — and an alternative's claim stops at the alternative.
+       */
+      const carry = one.kind === "alt" && mine.length > 0 ? mine : undefined;
       const parts: Term[] = [];
       const found: OpenedLeaf[] = [];
       for (const child of one.terms ?? []) {

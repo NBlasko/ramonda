@@ -121,6 +121,52 @@ describe("a group that claims a longhand", () => {
   });
 });
 
+/**
+ * A leaf's OWN claim comes before one carried down from its group.
+ *
+ * A group of alternatives claims the union of what its branches claim, and carrying that down to
+ * every leaf made each branch feed every longhand the group could reach. Found by review: in
+ * `timeline-trigger` all five leaves came out claiming `timeline-trigger-name`, so the name, the
+ * source and the ranges overwrote each other and `--t auto normal` set the name to `normal`.
+ * Measured in Chromium, the only engine that has the property, and the author's `--t` was lost.
+ *
+ * The carried claim exists for a branch that claims NOTHING on its own; it must not replace a
+ * claim the branch does have.
+ */
+describe("a branch that claims its own longhand", () => {
+  test("keeps it, rather than taking the whole group's", () => {
+    const rows = { "a-width": "<length>", "a-style": "<line-style>" };
+
+    expect(leaves("[ <length> | <line-style> ]", ["a-width", "a-style"], rows)).toEqual([
+      "length=a-width",
+      "line-style=a-style",
+    ]);
+  });
+});
+
+/**
+ * A claim is carried down only to the ALTERNATIVES of a group, never through a sequence.
+ *
+ * `[ none | <custom-ident> ]` is two ways of writing one component, so a branch that claims
+ * nothing may take the group's longhand. A SEQUENCE inside a group is different components written
+ * one after another, and carrying the claim through it gave `timeline-trigger`'s two range leaves
+ * the NAME — so `--t auto normal` set the name to `normal`. Found by review, measured in Chromium.
+ */
+describe("a sequence inside a group of alternatives", () => {
+  test("does not hand its components the group's longhand", () => {
+    const rows = { "a-name": "none | <dashed-ident>" };
+
+    expect(leaves("[ none | <dashed-ident> <mystery> ]", ["a-name"], rows)).toBeUndefined();
+  });
+
+  test("while a direct alternative still takes it", () => {
+    expect(leaves("[ none | <custom-ident> ]", ["a-name"], { "a-name": "none" })).toEqual([
+      "none=a-name",
+      "custom-ident=a-name",
+    ]);
+  });
+});
+
 describe("what it refuses", () => {
   test("a grammar that would open for ever", () => {
     expect(leaves("<loop>", ["a-width"], { loop: "<loop>", "a-width": "<length>" })).toBeUndefined();
