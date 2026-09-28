@@ -1033,9 +1033,9 @@ function wordOutOfItsLonghand(block: Block, findings: Finding[]): void {
         at,
         length: misplaced.word.length,
         message:
-          `\`${misplaced.word}\` is not a value \`${misplaced.longhand}\` takes, and this is the part of ` +
-          `the value that reaches it. CSS drops the whole declaration when any part of it is invalid, ` +
-          `so this line sets nothing at all — measured in Chromium, Firefox and WebKit.`,
+          `\`${misplaced.longhand}\` has no \`${misplaced.word}\`, and that is the part of the value ` +
+          `reaching it. A browser drops the whole declaration, so this line sets nothing — set each ` +
+          `longhand on its own.`,
       });
     }
   };

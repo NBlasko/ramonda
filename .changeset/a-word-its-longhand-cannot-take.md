@@ -18,8 +18,7 @@ Two things changed together, because the answer is one measurement:
 - the checker names it. `word-out-of-its-longhand` says which word, which longhand, and that the
   browser drops the whole line. It stays quiet where `unknown-value` already names the word, which
   is most of them; what is left is the word the property DOES take and the longhand it lands on does
-  not. Measured over every family in the table: five values, `place-items: left anchor-center` among
-  them, ignored by Chromium, Firefox and WebKit and named by nothing until now.
+  not — five values across the table, `place-items: left anchor-center` among them.
 
 **And a bug it uncovered.** `too-many-values` counted `!important` as a value, so
 `padding: 4px 0 0 0 !important` — four values and a flag — was reported as five, and every finding
