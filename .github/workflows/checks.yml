@@ -116,17 +116,11 @@ jobs:
           node scripts/check-test-probes.mjs
           node scripts/build-package-readmes.mjs --check
           node scripts/build-css-properties.mjs --check
-          node scripts/build-shorthand-shapes.mjs --check
-          node scripts/build-token-shapes.mjs --check
           SELFTEST=collide node scripts/check-layer-names.mjs
           SELFTEST=drift node scripts/check-layer-names.mjs
           SELFTEST=crowd node scripts/check-layer-names.mjs
           SELFTEST=moved node scripts/check-layer-names.mjs
           node scripts/check-layer-names.mjs
-          SELFTEST=order node scripts/check-layer-skew.mjs
-          node scripts/check-layer-skew.mjs
-          SELFTEST=slot node scripts/check-shorthand-split.mjs
-          node scripts/check-shorthand-split.mjs
 
       # These two need `@ramonda/css` BUILT, which the step above already did for `pnpm lint`:
       # `check-css-blocks` imports the compiler, and `check-css-system` runs `bin.mjs codegen
@@ -212,6 +206,20 @@ jobs:
           node scripts/build-shorthand-leaves.mjs --check
           node scripts/build-engine-keywords.mjs --check
           node scripts/build-numberless-properties.mjs --check
+
+      # The splitter's tables and the gates over it. Each one launches Chromium, Firefox and WebKit,
+      # so they cannot run in `lint`, which has none — they sat there on this branch and CI had never
+      # run them, and one named a script the branch had already deleted. Sources only, so they need
+      # no build and run before the one below.
+      - name: What the splitter is checked against
+        run: |
+          node scripts/build-shorthand-shapes.mjs --check
+          node scripts/build-initial-values.mjs --check
+          node scripts/build-grammar-shapes.mjs --check
+          SELFTEST=order node scripts/check-layer-skew.mjs
+          node scripts/check-layer-skew.mjs
+          SELFTEST=slot node scripts/check-shorthand-split.mjs
+          node scripts/check-shorthand-split.mjs
 
       - name: Build the playground
         run: pnpm exec turbo run build --filter=playground-core
