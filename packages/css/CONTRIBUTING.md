@@ -139,10 +139,10 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` asks two tables, and between them they answer **70 families**.
+`split.ts` asks two tables, and between them they answer **72 families**.
 
 `SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
-feeds, and no grammar is needed at all. **40 families.**
+feeds, and no grammar is needed at all. **42 families.**
 
 Everything else is read against the family's own grammar, opened by `openGrammar.ts` until every
 leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 families**, including
@@ -157,13 +157,25 @@ no grammar of its own to be opened into: `border-spacing`, `flex`, `font`, `mask
 `perspective-origin`, `text-box`, `transform-origin`, `white-space`. `mask` is the near miss —
 `<visual-box>` sits one level past the depth cap.
 
-**Twelve open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
+**Ten open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
 `font-synthesis`, `font-variant`, `grid`, `grid-area`, `grid-template`, `marker`, `mask-position`,
-`place-items`, `place-self`, `vertical-align`. `background-position` and `place-content` are out of
-BOTH tables for the same reason, having left the positional one when its corpus grew. Most fail the step that settles which longhand an
+`vertical-align`.
+
+`background-position` and `place-content` are out of BOTH tables, and their reason is worth knowing
+because no list can fix it: the SHORTHAND takes a narrower set than its own longhands.
+`background-position-x` has `x-end` and `background-position: x-end` is a value no engine accepts.
+A vocabulary read off the longhands cannot see that, and a split answers where CSS does nothing. Most fail the step that settles which longhand an
 ambiguous leaf feeds. `place-items` and `place-self` fail for a nameable reason: one written value
 fills BOTH longhands — `place-items: center` sets `justify-items` too — and the grammar says
 `<align-items> <justify-items>?` without saying that the second copies the first.
+
+**A value one longhand has no word for is refused, and the family is kept.** CSS drops a whole
+declaration when any part of it is invalid and a split drops only the part, so
+`place-items: start space-between` — which no engine accepts, `justify-items` having no
+`space-between` — would have set the align and left the justify. Each family carries what its
+longhands take as words, and a piece with a word its longhand does not have refuses the value.
+`place-items` and `place-self` split because of it, and `padding: 10px -5px` is the same rule one
+step along, measured separately because a range is not a word.
 
 **One VALUE can be refused without losing the family.** `animation: auto` is `animation-name: auto`
 in Firefox and touches nothing in Chromium or WebKit, so no single split writes the same page in

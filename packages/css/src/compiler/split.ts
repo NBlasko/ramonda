@@ -94,17 +94,48 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
    */
   if (!shape.negative && tokensOf(value, /[\s/]/).some((one) => /^-\.?\d/.test(one))) return undefined;
 
+  /**
+   * Whether every WORD in a longhand's piece is one the longhand has.
+   *
+   * CSS drops a whole declaration when any part of it is invalid; a split drops only the part. So
+   * `background-position: center x-start` — which no engine accepts, `background-position-y`
+   * having no `x-start` — set nothing in a browser and set the x here, and the author's mistake
+   * stopped doing nothing and started doing half of something. Measured in all three engines, and
+   * it is the same rule the negative check above states for `padding: 10px -5px`.
+   *
+   * **Only words.** A length, a percentage, a `calc()` or a `var()` is the same to every longhand
+   * that takes lengths at all, and whether a NEGATIVE one is allowed is a range the grammar reader
+   * drops — that stays measured on its own as `negative`.
+   *
+   * A longhand whose `free` is set takes something no list can hold: a colour name, a
+   * `custom-ident`, a string. It is not checked, because a list would refuse `red`.
+   *
+   * Written INSIDE this function on purpose. `build-shorthand-shapes.mjs` injects the splitter into
+   * a page as text, so anything it closes over has to be injected beside it — see the note there.
+   */
+  const wordsFit = (longhand: string, written: string): boolean => {
+    const takes = shape.takes?.[longhand];
+    if (takes === undefined || takes.free) return true;
+    return tokensOf(written).every((one) => {
+      if (!/^-{0,2}[a-z_][\w-]*$/i.test(one)) return true;
+      const lower = one.toLowerCase();
+      return WIDE.includes(lower) || takes.words.some((word: string) => word.toLowerCase() === lower);
+    });
+  };
+
   const sides = tokensOf(value, /\//).map((one) => tokensOf(one));
   const mapping = shape.patterns[sides.map((one) => one.length).join("/")];
   if (mapping === undefined) return undefined;
   const flat = sides.flat();
-  return Object.fromEntries(
-    Object.entries(mapping).map(([longhand, how]) => [
-      longhand,
-      "literal" in how ? how.literal : how.slots.map((index) => flat[index]).join(" "),
-    ]),
-  );
+  const out: Record<string, string> = {};
+  for (const [longhand, how] of Object.entries(mapping)) {
+    const written = "literal" in how ? how.literal : how.slots.map((index) => flat[index]).join(" ");
+    if (!wordsFit(longhand, written)) return undefined;
+    out[longhand] = written;
+  }
+  return out;
 }
+
 
 /** A colour is tested directly rather than expanded: `<color>` is 192 words, and every border family takes one. */
 const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== ""));

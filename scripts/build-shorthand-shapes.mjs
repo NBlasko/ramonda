@@ -86,6 +86,43 @@ function disagreedWithin(longhands) {
 
 
 const names = Object.keys(SHORTHANDS).filter((one) => !one.startsWith("-"));
+/**
+ * What each longhand of a family will take as a WORD, so a split can refuse a value CSS refuses.
+ *
+ * Only words. A length, a `calc()` or a `var()` is the same to every longhand that takes lengths at
+ * all, and the one range question — whether a negative is allowed — is measured separately as
+ * `negative`, because the grammar's `[0,∞]` is dropped by the reader.
+ *
+ * `free` means the longhand takes something no list can hold: a colour name, a `custom-ident`, a
+ * string. Those are skipped rather than guessed at — `border-top-color` would otherwise refuse
+ * `red`.
+ */
+function takesWithin(longhands) {
+  const out = {};
+  for (const one of longhands) {
+    const syntax = mdn.css.properties[one]?.syntax ?? "";
+    if (syntax === "") {
+      out[one] = { words: [], free: true };
+      continue;
+    }
+    try {
+      const takes = acceptedBy(parseValueSyntax(syntax), grammarOf);
+      const free = ["color", "custom-ident", "string", "dashed-ident", "counter-style"].some((kind) =>
+        takes.types.includes(kind),
+      );
+      out[one] = { words: free ? [] : takes.words.sort(), free };
+    } catch {
+      out[one] = { words: [], free: true };
+    }
+  }
+  return out;
+}
+
+/** Per family, what each of its longhands takes as a word. Computed once, shipped into the page. */
+const TAKES = Object.fromEntries(
+  names.map((name) => [name, takesWithin(SHORTHANDS[name] ?? [])]).filter(([, one]) => Object.keys(one).length > 0),
+);
+
 /** Per family, the words worth adding to its corpus. Computed once, shipped into the page. */
 const EXTRA = Object.fromEntries(
   names.map((name) => [name, disagreedWithin(SHORTHANDS[name] ?? [])]).filter(([, words]) => words.length > 0),
@@ -129,7 +166,7 @@ async function measure(against) {
           "<div id=x></div><div id=y></div></body></html>",
       );
       perEngine[engine] = await tab.evaluate(
-        ([names, DOMAINS, PATTERNS, learn, split, tokens, wide, against, EXTRA]) => {
+        ([names, DOMAINS, PATTERNS, learn, split, tokens, wide, against, EXTRA, TAKES]) => {
           const learned = new Function(`return ${learn}`)()(names, DOMAINS, PATTERNS);
           // The splitter's own two dependencies, put in its scope: it is written to run in a build,
           // not in a page, so injecting it means bringing what it closes over.
@@ -167,9 +204,12 @@ async function measure(against) {
             a.style.cssText = `${name}: -5px`;
             return a.style.cssText !== "";
           };
-          for (const [name, shape] of Object.entries({ ...against, ...learned })) {
+          for (let [name, shape] of Object.entries({ ...against, ...learned })) {
             const domain = DOMAINS.find((one) => one.kind === shape.kind);
             if (domain === undefined) continue;
+            // The splitter reads `takes` to refuse a value a longhand has no word for, so the
+            // corpus has to see the same shape the table will carry.
+            shape = { ...shape, takes: TAKES[name] ?? {} };
             let sound = true;
             for (const pattern of PATTERNS) {
               if (shape.patterns[pattern.key] === undefined || !sound) continue;
@@ -218,7 +258,8 @@ async function measure(against) {
               }
             }
             if (!sound) rejected.push(name);
-            else if (learned[name] !== undefined) kept[name] = { ...shape, negative: takesNegative(name) };
+            else if (learned[name] !== undefined)
+              kept[name] = { ...shape, negative: takesNegative(name), takes: TAKES[name] ?? {} };
           }
           return { kept, rejected, learned };
         },
@@ -232,6 +273,7 @@ async function measure(against) {
           WIDE,
           against,
           EXTRA,
+          TAKES,
         ],
       );
       counts.push([engine, Object.keys(perEngine[engine].kept).length, perEngine[engine].rejected.length]);
@@ -280,7 +322,16 @@ for (const name of names) {
     if (saw.every((one) => JSON.stringify(perEngine[one].kept[name].patterns[key]) === text)) patterns[key] = mapping;
     else refused.push(`${name} pattern ${key}`);
   }
-  if (Object.keys(patterns).length > 0) agreed[name] = { kind: first.kind, negative: first.negative, patterns };
+  /**
+   * `takes` travels with the shape, and leaving it behind was worse than not having it.
+   *
+   * The soundness loop above splits with it, so a family is judged under a check the table then did
+   * not carry: `place-items` was written as sound because the corpus values it would refuse were
+   * refused THERE, and at run time nothing refused them. Measured — `place-items: start
+   * space-between` split, and no browser accepts it.
+   */
+  if (Object.keys(patterns).length > 0)
+    agreed[name] = { kind: first.kind, negative: first.negative, takes: first.takes ?? {}, patterns };
 }
 
 /**
@@ -333,6 +384,15 @@ const wrote = writeOrCheck(
     `/** One family: the sentinel kind it was learned with, and a mapping per value pattern. */\n` +
     `export interface Shape {\n` +
     `  readonly kind: string;\n` +
+    `  /**\n` +
+    `   * What each longhand takes as a WORD, so a split can refuse a value CSS refuses.\n` +
+    `   *\n` +
+    `   * CSS drops a whole declaration when any part of it is invalid and a split drops only the\n` +
+    `   * part, so \`background-position: center x-start\` set nothing in a browser and the x here.\n` +
+    `   * \`free\` means the longhand takes something no list can hold — a colour name, a\n` +
+    `   * \`custom-ident\` — and is not checked.\n` +
+    `   */\n` +
+    `  readonly takes?: Readonly<Record<string, { readonly words: readonly string[]; readonly free: boolean }>>;\n` +
     `  /** Whether it takes a NEGATIVE length. Where it does not, a value holding one is not split. */\n` +
     `  readonly negative: boolean;\n` +
     `  /** Keyed the way the value is written — \`2\`, \`2/2\`, \`1/1/1/1\`. */\n` +

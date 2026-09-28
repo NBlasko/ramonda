@@ -50,21 +50,45 @@ describe("what the map claims about the tables", () => {
  * already works.
  */
 describe("the families the map says are refused", () => {
-  const named = (heading: string): readonly string[] => {
-    const found = new RegExp(`\\*\\*${heading}[^*]*\\*\\*[^:]*:?([^.]*)\\.`, "s").exec(map);
-    if (found === null) throw new Error(`CONTRIBUTING.md no longer lists the families under "${heading}"`);
-    return [...(found[1] ?? "").matchAll(/`([a-z-]+)`/g)].map((one) => one[1] as string);
+  /** The English numerals the page writes its counts in, so the count is read rather than repeated. */
+  const COUNTS: Readonly<Record<string, number>> = {
+    Two: 2,
+    Three: 3,
+    Four: 4,
+    Five: 5,
+    Six: 6,
+    Seven: 7,
+    Eight: 8,
+    Nine: 9,
+    Ten: 10,
+    Eleven: 11,
+    Twelve: 12,
+    Thirteen: 13,
   };
 
-  test("none of them is in a table", () => {
-    const listed = [...named("Nine have a grammar"), ...named("Twelve open and the measurement")];
+  /** A list the page states, as the count it claims and the family names it then gives. */
+  const listed = (tail: string): { readonly claimed: number; readonly names: readonly string[] } => {
+    const found = new RegExp(`\\*\\*(\\w+) ${tail}[^*]*\\*\\*([^.]*)\\.`, "s").exec(map);
+    if (found === null) throw new Error(`CONTRIBUTING.md no longer states a list ending "${tail}"`);
+    const claimed = COUNTS[found[1] as string];
+    if (claimed === undefined) throw new Error(`"${found[1]}" is not a numeral this knows`);
+    return { claimed, names: [...(found[2] ?? "").matchAll(/`([a-z-]+)`/g)].map((one) => one[1] as string) };
+  };
 
-    expect(listed.filter((one) => GRAMMAR_SHAPES[one] !== undefined || SHAPES[one] !== undefined)).toEqual([]);
+  const OPENS = "have a grammar this cannot open";
+  const MEASURED = "open and the measurement turns them down";
+
+  test("none of them is in a table", () => {
+    const names = [...listed(OPENS).names, ...listed(MEASURED).names];
+
+    expect(names.filter((one) => GRAMMAR_SHAPES[one] !== undefined || SHAPES[one] !== undefined)).toEqual([]);
   });
 
   test("and the page names as many as it counts", () => {
-    expect(named("Nine have a grammar")).toHaveLength(9);
-    expect(named("Twelve open and the measurement")).toHaveLength(12);
+    for (const tail of [OPENS, MEASURED]) {
+      const { claimed, names } = listed(tail);
+      expect(names).toHaveLength(claimed);
+    }
   });
 });
 

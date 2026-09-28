@@ -101,6 +101,49 @@ describe("what a value splits into", () => {
   });
 });
 
+/**
+ * A word a longhand has no place for, which makes the WHOLE declaration invalid in CSS.
+ *
+ * `background-position-y` has no `x-start`, so `background-position: center x-start` sets nothing
+ * in any browser. A split sets the x and leaves the y — the author's mistake stops doing nothing
+ * and starts doing half of something, which is the rule this file already states for a negative.
+ *
+ * Only WORDS are checked. A length is the same to every longhand that takes lengths, and the one
+ * range question — whether a negative is allowed — is `negative`, measured apart.
+ */
+describe("a word the longhand has no place for", () => {
+  const SHAPE = {
+    kind: "test",
+    negative: true,
+    patterns: {
+      "2": { "a-x": { slots: [0] }, "a-y": { slots: [1] } },
+    },
+    takes: {
+      "a-x": { words: ["left", "right", "center"], free: false },
+      "a-y": { words: ["top", "bottom", "center"], free: false },
+    },
+  } as const;
+
+  test("refuses the value, so the shorthand stays whole", () => {
+    expect(splitPositional(SHAPE, "center left")).toBeUndefined();
+  });
+
+  test("while a word each longhand does have splits", () => {
+    expect(splitPositional(SHAPE, "left top")).toEqual({ "a-x": "left", "a-y": "top" });
+  });
+
+  test("a length is not a word and is not checked", () => {
+    expect(splitPositional(SHAPE, "1px 2px")).toEqual({ "a-x": "1px", "a-y": "2px" });
+  });
+
+  /** A longhand that takes a colour or a free identifier has no list, so it is not checked. */
+  test("and a longhand with no list to check against is left alone", () => {
+    const free = { ...SHAPE, takes: { ...SHAPE.takes, "a-y": { words: [], free: true } } } as const;
+
+    expect(splitPositional(free, "center rebeccapurple")).toEqual({ "a-x": "center", "a-y": "rebeccapurple" });
+  });
+});
+
 describe("what it refuses, and why refusing is an answer", () => {
   /**
    * A `var()` may carry SEVERAL values, and which is not known until computed-value time. Measured
