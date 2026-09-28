@@ -1,5 +1,7 @@
 import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
+import { SHAPES } from "./shapes.generated";
+import { misplacedWord } from "./split";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { runtimeValuesIn } from "./ast";
@@ -114,6 +116,7 @@ export const RULE_IDS = [
   "unit-not-allowed",
   "value-not-allowed",
   "shorthand-not-allowed",
+  "word-out-of-its-longhand",
   "string-not-allowed",
   "property-not-a-name",
   "non-canonical-spelling",
@@ -384,6 +387,9 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
   doesNothing(block, findings);
+  // After every rule that reads a VALUE, because it stays quiet where one has already named the
+  // same word — see its own note.
+  wordOutOfItsLonghand(block, findings);
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
   unclosedCall(block, findings);
   missingSemicolon(block, findings);
@@ -550,7 +556,25 @@ function tooManyValues(block: Block, rules: PropertyRules | undefined, findings:
        */
       if (item.value.some((part) => part.kind === "text" && bareColon(part.text) !== -1)) continue;
 
-      const values = topLevelValues(item.value).length;
+      /**
+       * `!important` is a FLAG, not a value, and counting it as one refused correct CSS.
+       *
+       * `padding: 4px 0 0 0 !important` is four values; this counted five and said CSS gives four,
+       * and every finding these rules produce refuses the build — so a page every browser renders
+       * did not compile. It stayed hidden because the families whose maximum is four had room for
+       * the flag underneath it; `place-items`, which takes two, showed it the day it entered the
+       * positional table.
+       *
+       * The spelling is the one `split.ts` already uses, where `!important` is taken off before a
+       * value is read at all: optional space after the bang, any case.
+       */
+      const written = topLevelValues(item.value);
+      const last = (written.at(-1)?.text ?? "").trim();
+      const before = (written.at(-2)?.text ?? "").trim();
+      // `! important` is two values to a splitter and one flag to CSS — measured honoured in all
+      // three engines, which is why `split.ts` puts every spelling of it back verbatim.
+      const flag = /^!\s*important$/i.test(last) ? 1 : last.toLowerCase() === "important" && before === "!" ? 2 : 0;
+      const values = written.length - flag;
       if (values <= limit.most) continue;
 
       const takes = limit.most === 1 ? "one value" : `at most ${limit.most} values`;
@@ -951,6 +975,68 @@ function unitNotAllowedPerProperty(block: Block, rules: PropertyRules | undefine
           });
         }
       }
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A word one longhand of a shorthand has no place for, which makes the WHOLE declaration invalid.
+ *
+ * CSS drops a whole declaration when any part of it is invalid. `place-items: start space-between`
+ * sets nothing in any browser — `justify-items` has no `space-between` — so the line the author
+ * wrote does nothing, and nothing says so. Measured in Chromium, Firefox and WebKit.
+ *
+ * This is the reading half of a question the SPLITTER already asks: `misplacedWord` refuses the
+ * value there and names it here, so the two cannot drift apart. The words each longhand takes are
+ * measured into `shapes.generated.ts` beside the family's shape.
+ *
+ * It says nothing about a value it cannot READ. A hole is not the text the author wrote — the
+ * reason written above `non-canonical-spelling` — and what a `var()` holds is unknown until the
+ * browser reads it, which is the same reason the splitter refuses to split one.
+ *
+ * `!important` is taken off first. It is part of the value's text here, and a rule that read it as
+ * a word would report `important` as a value `place-items` has no place for.
+ */
+function wordOutOfItsLonghand(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const shape = SHAPES[propertyName(item.property)];
+      if (shape === undefined) continue;
+
+      const [part] = item.value;
+      if (item.value.length !== 1 || part === undefined || part.kind !== "text" || part.at === undefined) continue;
+      if (/(^|[^\w-])var\(/i.test(part.text)) continue;
+
+      const bare = part.text.replace(/!\s*important\s*$/i, "");
+      const misplaced = misplacedWord(shape, bare.trim());
+      if (misplaced === undefined) continue;
+
+      // Where the WORD is, not where the value starts: the reader is looking for the one token.
+      const offset = bare.indexOf(misplaced.word);
+      const at = part.at + (offset < 0 ? 0 : offset);
+      /**
+       * Said once. `unknown-value` asks whether the PROPERTY takes the word at all and gets there
+       * first for most of them — `place-items: start space-between` is not a `place-items` value
+       * either way, and two reports on one character is one too many. What is left for this rule is
+       * the word the property DOES take and the longhand it lands on does not: measured over every
+       * family in the table, five values, and `place-items: left anchor-center` is one — ignored by
+       * all three engines and named by nothing else.
+       */
+      if (findings.some((one) => one.at === at)) continue;
+      findings.push({
+        rule: "word-out-of-its-longhand",
+        at,
+        length: misplaced.word.length,
+        message:
+          `\`${misplaced.word}\` is not a value \`${misplaced.longhand}\` takes, and this is the part of ` +
+          `the value that reaches it. CSS drops the whole declaration when any part of it is invalid, ` +
+          `so this line sets nothing at all — measured in Chromium, Firefox and WebKit.`,
+      });
     }
   };
   walkItems(block.items);
