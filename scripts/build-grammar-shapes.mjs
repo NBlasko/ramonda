@@ -255,7 +255,10 @@ async function resetOnceFor(tab, name, shape) {
   if (shape.list !== true) return [];
   const samples = shape.leaves.map((leaf) => samplesFor(leaf)[0]).filter((one) => one !== undefined);
   const item = await together(tab, name, shape, samples);
-  if (item === "") { if (process.env.WHY_FAMILY === name) console.error(`[why] ${name}: nema spojene stavke`); return []; }
+  if (item === "") {
+    if (process.env.WHY_FAMILY === name) console.error(`[why] ${name}: nema spojene stavke`);
+    return [];
+  }
   const held = await tab.evaluate(
     ([property, value, longhands]) => {
       const element = document.getElementById("x");
@@ -267,7 +270,10 @@ async function resetOnceFor(tab, name, shape) {
     },
     [name, `${item}, ${item}`, shape.longhands],
   );
-  if (held === null) { if (process.env.WHY_FAMILY === name) console.error(`[why] ${name}: motor odbija "${item}, ${item}"`); return []; }
+  if (held === null) {
+    if (process.env.WHY_FAMILY === name) console.error(`[why] ${name}: motor odbija "${item}, ${item}"`);
+    return [];
+  }
   if (process.env.WHY_FAMILY === name) console.error(`[why] ${name}: stavka "${item}" -> ${JSON.stringify(held)}`);
   // A top-level comma means the longhand lined up with the items; none means it was reset once.
   return shape.longhands.filter((one) => held[one] !== "" && tokensOf(held[one], /,/).length < 2).sort();
@@ -360,7 +366,11 @@ for (const engine of ENGINES) {
       const differed = [];
       for (const value of await corpusFor(tab, name, asking, reorders(name))) {
         const split = splitByGrammar(asking, value);
-        if (split === undefined) { if (process.env.WHY_FAMILY === name) console.error(`[why] ${engine} ${JSON.stringify(value)} -> nas splitter odbija`); continue; }
+        if (split === undefined) {
+          if (process.env.WHY_FAMILY === name)
+            console.error(`[why] ${engine} ${JSON.stringify(value)} -> nas splitter odbija`);
+          continue;
+        }
         const differ = await tab.evaluate(
           ([property, one, mapped]) => {
             const x = document.getElementById("x");
@@ -380,7 +390,10 @@ for (const engine of ENGINES) {
           },
           [name, value, split],
         );
-        if (process.env.WHY_FAMILY === name) console.error(`[why] ${engine} ${JSON.stringify(value)} -> ${differ === null ? "motor odbija" : differ === "" ? "isto" : differ}`);
+        if (process.env.WHY_FAMILY === name)
+          console.error(
+            `[why] ${engine} ${JSON.stringify(value)} -> ${differ === null ? "motor odbija" : differ === "" ? "isto" : differ}`,
+          );
         if (differ === null) continue; // The engine will not take the value; nothing to compare.
         compared++;
         if (differ !== "") differed.push(value);
@@ -455,7 +468,8 @@ const resetOnce = {};
 for (const name of [...new Set(engines.flatMap((one) => Object.keys(perEngine[one].shapes)))]) {
   const holders = engines.filter((one) => perEngine[one].shapes[name] !== undefined);
   const seen = new Map();
-  for (const engine of holders) for (const value of disputed[engine][name] ?? []) seen.set(value, (seen.get(value) ?? 0) + 1);
+  for (const engine of holders)
+    for (const value of disputed[engine][name] ?? []) seen.set(value, (seen.get(value) ?? 0) + 1);
 
   /**
    * A value the engines read differently FROM EACH OTHER is contested; one they all read

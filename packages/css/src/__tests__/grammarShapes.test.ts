@@ -261,8 +261,8 @@ describe("the families this cannot answer are absent, not wrong", () => {
  *
  * `transition: color 1s, opacity 2s` is two items of one shape, and every longhand the family sets
  * takes a list the same length — `transition-property: color, opacity`. So the split is the bag of
- * tokens applied per item and then joined back per longhand, which is why `splitList` is a few
- * lines on top of `splitTokens` rather than a second splitter.
+ * one item's reading applied per item and joined back per longhand, which is why the list case is a
+ * few lines inside `splitByGrammar` rather than a second splitter.
  */
 describe("a comma-separated family", () => {
   test("a longhand no token reached is reset in the item that missed it", () => {

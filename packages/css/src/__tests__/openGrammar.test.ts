@@ -36,13 +36,19 @@ describe("a part that already belongs to a longhand", () => {
   test("stays as it is", () => {
     const rows = { "a-width": "<length>", "a-style": "<line-style>" };
 
-    expect(leaves("<length> <line-style>", ["a-width", "a-style"], rows)).toEqual(["length=a-width", "line-style=a-style"]);
+    expect(leaves("<length> <line-style>", ["a-width", "a-style"], rows)).toEqual([
+      "length=a-width",
+      "line-style=a-style",
+    ]);
   });
 
   test("and the order is the grammar's, because a parse depends on it", () => {
     const rows = { "a-style": "<line-style>", "a-width": "<length>" };
 
-    expect(leaves("<line-style> <length>", ["a-width", "a-style"], rows)).toEqual(["line-style=a-style", "length=a-width"]);
+    expect(leaves("<line-style> <length>", ["a-width", "a-style"], rows)).toEqual([
+      "line-style=a-style",
+      "length=a-width",
+    ]);
   });
 });
 

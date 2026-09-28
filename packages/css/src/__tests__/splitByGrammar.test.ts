@@ -73,7 +73,10 @@ describe("a separator inside the grammar", () => {
   const SLASHED = shape(
     "<length> [ / <length> ]?",
     ["a-pos", "a-size"],
-    [{ longhands: ["a-pos"], types: ["length"] }, { longhands: ["a-size"], types: ["length"] }],
+    [
+      { longhands: ["a-pos"], types: ["length"] },
+      { longhands: ["a-size"], types: ["length"] },
+    ],
   );
 
   test("tells the part after it from the part before", () => {
@@ -115,7 +118,10 @@ describe("a comma-separated family", () => {
   const LIST = shape(
     "<custom-ident> <time>",
     ["a-name", "a-time"],
-    [{ longhands: ["a-name"], types: ["custom-ident"], open: true }, { longhands: ["a-time"], types: ["time"] }],
+    [
+      { longhands: ["a-name"], types: ["custom-ident"], open: true },
+      { longhands: ["a-time"], types: ["time"] },
+    ],
     true,
   );
 
@@ -156,7 +162,10 @@ describe("a comma-separated family", () => {
     const ONCE = shape(
       "<custom-ident> <time>",
       ["a-name", "a-time", "a-line"],
-      [{ longhands: ["a-name"], types: ["custom-ident"], open: true }, { longhands: ["a-time"], types: ["time"] }],
+      [
+        { longhands: ["a-name"], types: ["custom-ident"], open: true },
+        { longhands: ["a-time"], types: ["time"] },
+      ],
       true,
     );
 

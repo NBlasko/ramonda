@@ -128,7 +128,10 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
  * `scripts/build-shorthand-shapes.mjs` injects it into a page beside `tokensOf`, for the reason
  * written there.
  */
-export function misplacedWord(shape: Shape, value: string): { readonly word: string; readonly longhand: string } | undefined {
+export function misplacedWord(
+  shape: Shape,
+  value: string,
+): { readonly word: string; readonly longhand: string } | undefined {
   const sides = tokensOf(value, /\//).map((one) => tokensOf(one));
   const mapping = shape.patterns[sides.map((one) => one.length).join("/")];
   if (mapping === undefined) return undefined;
@@ -147,7 +150,6 @@ export function misplacedWord(shape: Shape, value: string): { readonly word: str
   }
   return undefined;
 }
-
 
 /** A colour is tested directly rather than expanded: `<color>` is 192 words, and every border family takes one. */
 const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== ""));
