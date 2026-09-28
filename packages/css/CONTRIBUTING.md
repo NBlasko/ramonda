@@ -22,6 +22,8 @@ Everything below is in `src/compiler/`.
 | what does the finished stylesheet look like? | `sheet.ts` |
 | what longhands does this shorthand write? | `split.ts` |
 | which longhand does this piece of the grammar feed? | `classify.ts` |
+| how does a family's grammar become leaves that belong to longhands? | `openGrammar.ts` |
+| how is a written value read against a grammar? | `matchValue.ts` |
 | how is a CSS grammar parsed at all? | `valueSyntax.ts` |
 | what does `{expr}` become? | `tooling.ts`, `dollar.ts`, `variables.ts`, `references.ts` |
 | why did the checker complain? | `rules.ts`, or `typed.ts` when the rule needs a `ts.Program` |
@@ -73,6 +75,19 @@ node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
 | `check-shorthand-split.mjs` | the positional splitter disagreeing with what an engine renders |
 | `check-css-splitting.mjs` | the CSS not following its JavaScript chunk, on a real build |
 
+**The grammar table has no gate beside it, because the gate is inside the generator.** Every family
+is reproduced in three engines before a row is written — the shorthand on one element, our
+longhands on another, whole computed style compared — and a family that fails one value, or that an
+engine HAS and compared nothing for, is not written. So `build-grammar-shapes.mjs --check` is the
+gate: it re-measures and fails when the committed table is not what the engines here report.
+
+Two switches make a run readable, and the second is worth knowing before you go hunting:
+
+```
+WHY=1 node scripts/build-grammar-shapes.mjs                    # what each engine turned down
+WHY_FAMILY=animation node scripts/build-grammar-shapes.mjs     # every value of one family
+```
+
 Three of them carry their own selftests, run through the `SELFTEST` environment variable —
 `collide`, `drift`, `crowd`, `moved` for layer names, `order` for skew, `slot` for the split. Each
 one plants a specific fault and asserts the gate catches it. They run in `pnpm check` as separate
@@ -81,13 +96,24 @@ steps, right before the gate itself.
 ## Four rules the code cannot state about itself
 
 **Ask the engines, not mdn-data.** Its `computed` field disagrees with every shipping engine for
-18 of 77 families, so a longhand list taken from it is silently wrong. The one field it is good
-for is the grammar — that is why `grammarShapes.generated.ts` reads the grammar from mdn-data and
-measures everything else.
+18 of 77 families, so a longhand list taken from it is silently wrong — the measurement is written
+out in `DESIGN.md` and summarised in `THIRD-PARTY.md`. The one field it is good for is the grammar,
+which is why `grammarShapes.generated.ts` reads the grammar from mdn-data and measures every
+placement in it.
 
-**Take the union across engines, never the intersection.** If one engine resets a longhand and
-another does not, the longhand belongs in the list. A missing reset is the fault nobody sees: the
-old value stays on the element and nothing fails.
+**Which way engines are merged depends on what the list is READ FOR**, and there is no blanket
+rule — `scripts/engine-facts.mjs` says this at length, and the one time that note claimed a blanket
+rule is how a list stayed wrong.
+
+A list that WIDENS a check takes the union: `leaves.generated.ts` holds every longhand ANY engine
+resets, because a missing reset is the fault nobody sees — the old value stays on the element and
+nothing fails. A list that decides the OUTPUT takes the intersection: `grammarShapes.generated.ts`
+writes a family only where every engine that HAS it agreed, and `initials.generated.ts` only where
+all three compute the same value, because a wrong answer here writes the author's value into the
+wrong longhand, silently.
+
+An engine that does not HAVE a family says nothing either way. Counting its silence as a
+disagreement dropped three families the others agreed about completely.
 
 **A layer name cannot be added later.** An older stylesheet does not list it, so CSS appends the
 unseen name at the end — the strongest position. Every name the scheme will ever use is declared
@@ -100,8 +126,8 @@ modes are the durable form of the same rule.
 
 ## Where to start
 
-Add the failing test first. Everything lives flat in `src/__tests__/`. Sixteen of the compiler's
-files have a test of the same name — that is the convention when a change is confined to one file;
+Add the failing test first. Everything lives flat in `src/__tests__/`. Seventeen of the compiler's
+thirty-three files have a test of the same name — that is the convention when a change is confined to one file;
 the rest are named for a subject that crosses several. A test here is expected to say what it is
 about in prose, not just assert, and each case names the measurement that found it missing. Read
 `classify.test.ts` for the register. Then:
@@ -113,27 +139,39 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` asks two tables. `SHAPES` answers a POSITIONAL family — how many values were written
-decides which longhand each one feeds, and no grammar is needed. Everything else is read against
-the family's own grammar, opened by `openGrammar.ts` until every leaf belongs to a longhand and
-carried in `grammarShapes.generated.ts`. **29 families**, and a family in neither keeps its
-shorthand.
+`split.ts` asks two tables, and between them they answer **72 families**.
 
-Three things are still open, and each is measured rather than assumed.
+`SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
+feeds, and no grammar is needed at all. **42 families.**
 
-**`animation` is out because the engines disagree.** Firefox computes `animation: auto` to
-`animation-name: auto`; Chromium and WebKit make it `animation-duration: auto`, Firefox having no
-`auto` duration yet. No single split writes the same page in all three. Refusing per VALUE rather
-than per family — marking the contested word on its leaf — would let the rest of the family split,
-and is not built.
+Everything else is read against the family's own grammar, opened by `openGrammar.ts` until every
+leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 families**, including
+`animation` and `transition`, neither of which a flat list of slots can hold. A family in neither
+table keeps its shorthand.
 
-**One value filling BOTH longhands.** `place-items: center` sets `justify-items` too, and so does
-`place-self`. The grammar says `<align-items> <justify-items>?` and does not say that the second
-copies the first, so nothing here can know it.
+Of the 51 families that reach the grammar table's generator, 21 do not make it, and they fail at
+two different places.
 
-**Twelve families the measurement turns down**, led by `background`, `font` and `grid`. Most fail
-the step that settles which longhand an ambiguous leaf feeds; `mask` fails its own corpus, because
-`mask: 7px` is a position to all three engines and its grammar's `<bg-position>` is not reached.
+**Nine have a grammar this cannot open**, because some part of them belongs to no longhand and has
+no grammar of its own to be opened into: `border-spacing`, `flex`, `font`, `mask`, `mask-border`,
+`perspective-origin`, `text-box`, `transform-origin`, `white-space`. `mask` is the near miss —
+`<visual-box>` sits one level past the depth cap.
 
-A refusal is safe in every one of these. The declaration stays a shorthand, which is visibly the
-author's own text — where a wrong split is invisible.
+**Twelve open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
+`font-synthesis`, `font-variant`, `grid`, `grid-area`, `grid-template`, `marker`, `mask-position`,
+`place-items`, `place-self`, `vertical-align`. Most fail the step that settles which longhand an
+ambiguous leaf feeds. `place-items` and `place-self` fail for a nameable reason: one written value
+fills BOTH longhands — `place-items: center` sets `justify-items` too — and the grammar says
+`<align-items> <justify-items>?` without saying that the second copies the first.
+
+**One VALUE can be refused without losing the family.** `animation: auto` is `animation-name: auto`
+in Firefox and touches nothing in Chromium or WebKit, so no single split writes the same page in
+all three. It is listed as `contested` on the shape and refused on its own; every other value of
+`animation` splits.
+
+A refusal is safe wherever it happens. The declaration stays a shorthand, which is visibly the
+author's own text — where a wrong split is invisible. And a shorthand that reaches the stylesheet
+is not left to chance: the compiler emits the family's longhands beside it as `shorthands({…})`,
+so `mergeClassNames` clears what a later shorthand covers, and the layer order settles the rest.
+Measured end to end against Chromium over both orders of eight shorthand-and-longhand pairs: no
+difference from what plain CSS does.
