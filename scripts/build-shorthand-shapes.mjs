@@ -35,6 +35,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { previousFrom, writeOrCheck } from "./engine-facts.mjs";
+import { loadTs } from "./lib-load-ts.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const check = process.argv.includes("--check");
@@ -45,7 +46,50 @@ const { DOMAINS, PATTERNS, WIDE, learnPositionalIn, splitPositional, tokensOf } 
 );
 const { SHORTHANDS } = await import("../packages/css/src/compiler/keywords.generated.ts");
 
+const mdn = createRequire(join(HERE, "build-css-properties.mjs"))("mdn-data");
+const COMPILER = join(HERE, "..", "packages", "css", "src", "compiler");
+const { parseValueSyntax } = await loadTs(join(COMPILER, "valueSyntax.ts"));
+const { acceptedBy } = await loadTs(join(COMPILER, "classify.ts"));
+const grammarOf = (one) =>
+  one === "color" ? "" : (mdn.css.syntaxes[one]?.syntax ?? mdn.css.properties[one]?.syntax ?? "");
+
+/**
+ * Words one longhand of a family takes and another does NOT, per family.
+ *
+ * A domain's corpus is generic — `length` is all lengths and a `var()` — so it never writes a word
+ * the family itself accepts. `background-position` is learned in the length domain and takes
+ * `center`, `left`, `x-start`; none of those is ever tried.
+ *
+ * That matters because of the rule this file already states for negatives: **CSS drops a whole
+ * declaration when any part of it is invalid and a split drops only the part.**
+ * `background-position: center x-start` is invalid — `background-position-y` has no `x-start` — so
+ * the engine sets nothing and a split sets the x. Measured in all three engines before this was
+ * written: the page differs, and the corpus had nothing to say about it.
+ *
+ * So each family's corpus gains the words its own longhands disagree about. A word they all take
+ * cannot make a value invalid and is not worth the run.
+ */
+function disagreedWithin(longhands) {
+  const words = longhands.map((one) => {
+    const syntax = mdn.css.properties[one]?.syntax ?? "";
+    if (syntax === "") return undefined;
+    try {
+      return new Set(acceptedBy(parseValueSyntax(syntax), grammarOf).words);
+    } catch {
+      return undefined;
+    }
+  });
+  if (words.some((one) => one === undefined) || words.length < 2) return [];
+  const every = new Set(words.flatMap((one) => [...one]));
+  return [...every].filter((word) => words.some((one) => !one.has(word))).sort().slice(0, 8);
+}
+
+
 const names = Object.keys(SHORTHANDS).filter((one) => !one.startsWith("-"));
+/** Per family, the words worth adding to its corpus. Computed once, shipped into the page. */
+const EXTRA = Object.fromEntries(
+  names.map((name) => [name, disagreedWithin(SHORTHANDS[name] ?? [])]).filter(([, words]) => words.length > 0),
+);
 const file = join(HERE, "..", "packages", "css", "src", "compiler", "shapes.generated.ts");
 /**
  * Read BEFORE the engines run, because every engine verifies the committed rows too.
@@ -85,7 +129,7 @@ async function measure(against) {
           "<div id=x></div><div id=y></div></body></html>",
       );
       perEngine[engine] = await tab.evaluate(
-        ([names, DOMAINS, PATTERNS, learn, split, tokens, wide, against]) => {
+        ([names, DOMAINS, PATTERNS, learn, split, tokens, wide, against, EXTRA]) => {
           const learned = new Function(`return ${learn}`)()(names, DOMAINS, PATTERNS);
           // The splitter's own two dependencies, put in its scope: it is written to run in a build,
           // not in a page, so injecting it means bringing what it closes over.
@@ -129,8 +173,10 @@ async function measure(against) {
             let sound = true;
             for (const pattern of PATTERNS) {
               if (shape.patterns[pattern.key] === undefined || !sound) continue;
-              for (const one of domain.corpus) {
-                for (const other of domain.corpus) {
+              // The domain's own corpus, plus the words this family's longhands disagree about.
+              const corpus = [...domain.corpus, ...(EXTRA[name] ?? [])];
+              for (const one of corpus) {
+                for (const other of corpus) {
                   const values = Array.from({ length: pattern.slots }, (_, at) => (at % 2 === 0 ? one : other));
                   let at = 0;
                   const text = pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / ");
@@ -185,6 +231,7 @@ async function measure(against) {
           tokensOf.toString(),
           WIDE,
           against,
+          EXTRA,
         ],
       );
       counts.push([engine, Object.keys(perEngine[engine].kept).length, perEngine[engine].rejected.length]);

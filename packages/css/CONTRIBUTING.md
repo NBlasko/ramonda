@@ -139,18 +139,18 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` asks two tables, and between them they answer **72 families**.
+`split.ts` asks two tables, and between them they answer **70 families**.
 
 `SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
-feeds, and no grammar is needed at all. **42 families.**
+feeds, and no grammar is needed at all. **40 families.**
 
 Everything else is read against the family's own grammar, opened by `openGrammar.ts` until every
 leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 families**, including
 `animation` and `transition`, neither of which a flat list of slots can hold. A family in neither
 table keeps its shorthand.
 
-Of the 51 families that reach the grammar table's generator, 21 do not make it, and they fail at
-two different places.
+Of the families that reach the grammar table's generator, 21 do not make it, and they fail at two
+different places.
 
 **Nine have a grammar this cannot open**, because some part of them belongs to no longhand and has
 no grammar of its own to be opened into: `border-spacing`, `flex`, `font`, `mask`, `mask-border`,
@@ -159,7 +159,8 @@ no grammar of its own to be opened into: `border-spacing`, `flex`, `font`, `mask
 
 **Twelve open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
 `font-synthesis`, `font-variant`, `grid`, `grid-area`, `grid-template`, `marker`, `mask-position`,
-`place-items`, `place-self`, `vertical-align`. Most fail the step that settles which longhand an
+`place-items`, `place-self`, `vertical-align`. `background-position` and `place-content` are out of
+BOTH tables for the same reason, having left the positional one when its corpus grew. Most fail the step that settles which longhand an
 ambiguous leaf feeds. `place-items` and `place-self` fail for a nameable reason: one written value
 fills BOTH longhands — `place-items: center` sets `justify-items` too — and the grammar says
 `<align-items> <justify-items>?` without saying that the second copies the first.

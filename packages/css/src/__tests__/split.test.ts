@@ -84,11 +84,20 @@ describe("what a value splits into", () => {
     });
   });
 
+  /**
+   * A longhand a family always sets to the same thing, whatever was written. `container: card`
+   * names the container and leaves `container-type` at `normal` — the value is a constant of the
+   * shape, not a slot of the written text.
+   *
+   * This asked the same of `background-position` until that family left the table: its corpus
+   * gained the words its own longhands disagree about, and `center x-start` turned out to be a
+   * value CSS ignores and a split answered.
+   */
   test("a value the shape has a constant for keeps it", () => {
-    const split = splitPositional(shapeOf("background-position"), "3px");
+    const split = splitPositional(shapeOf("container"), "card");
 
-    expect(split?.["background-position-x"]).toBe("3px");
-    expect(split?.["background-position-y"]).not.toBe("3px");
+    expect(split?.["container-name"]).toBe("card");
+    expect(split?.["container-type"]).toBe("normal");
   });
 });
 
