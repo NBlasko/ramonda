@@ -111,7 +111,7 @@ export const PATTERNS = [[1], [2], [3], [4], [1, 1], [2, 2], [4, 4], [2, 1], [1,
  * published, so the extra step costs nothing at runtime.
  */
 const split = await loadTs(new URL("./src/compiler/split.ts", import.meta.url).pathname);
-export const { WIDE, tokensOf, splitPositional } = split;
+export const { WIDE, tokensOf, splitPositional, misplacedWord } = split;
 
 /**
  * Learn every positional family, inside a page. Returns data, not closures.

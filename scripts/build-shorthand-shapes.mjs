@@ -41,7 +41,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const check = process.argv.includes("--check");
 
 const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.json"))("@playwright/test");
-const { DOMAINS, PATTERNS, WIDE, learnPositionalIn, splitPositional, tokensOf } = await import(
+const { DOMAINS, PATTERNS, WIDE, learnPositionalIn, misplacedWord, splitPositional, tokensOf } = await import(
   "../packages/css/shorthand-shapes.mjs"
 );
 const { SHORTHANDS } = await import("../packages/css/src/compiler/keywords.generated.ts");
@@ -81,9 +81,11 @@ function disagreedWithin(longhands) {
   });
   if (words.some((one) => one === undefined) || words.length < 2) return [];
   const every = new Set(words.flatMap((one) => [...one]));
-  return [...every].filter((word) => words.some((one) => !one.has(word))).sort().slice(0, 8);
+  return [...every]
+    .filter((word) => words.some((one) => !one.has(word)))
+    .sort()
+    .slice(0, 8);
 }
-
 
 const names = Object.keys(SHORTHANDS).filter((one) => !one.startsWith("-"));
 /**
@@ -166,12 +168,15 @@ async function measure(against) {
           "<div id=x></div><div id=y></div></body></html>",
       );
       perEngine[engine] = await tab.evaluate(
-        ([names, DOMAINS, PATTERNS, learn, split, tokens, wide, against, EXTRA, TAKES]) => {
+        ([names, DOMAINS, PATTERNS, learn, split, tokens, misplaced, wide, against, EXTRA, TAKES]) => {
           const learned = new Function(`return ${learn}`)()(names, DOMAINS, PATTERNS);
-          // The splitter's own two dependencies, put in its scope: it is written to run in a build,
-          // not in a page, so injecting it means bringing what it closes over.
+          // The splitter's own dependencies, put in its scope: it is written to run in a build, not
+          // in a page, so injecting it means bringing what it closes over. `misplacedWord` joined them
+          // when the word check became a function the checker reads too — and was left out at first,
+          // which only the full gate saw: the generator was not run again after that change.
           const splitPositional = new Function(
-            `const WIDE = ${JSON.stringify(wide)};\nconst tokensOf = ${tokens};\nreturn ${split}`,
+            `const WIDE = ${JSON.stringify(wide)};\nconst tokensOf = ${tokens};\n` +
+              `const misplacedWord = ${misplaced};\nreturn ${split}`,
           )();
           /**
            * A shape is only written if it SURVIVES its own corpus, here, in the engine that taught it.
@@ -270,6 +275,7 @@ async function measure(against) {
           learnPositionalIn.toString(),
           splitPositional.toString(),
           tokensOf.toString(),
+          misplacedWord.toString(),
           WIDE,
           against,
           EXTRA,
@@ -279,9 +285,20 @@ async function measure(against) {
       counts.push([engine, Object.keys(perEngine[engine].kept).length, perEngine[engine].rejected.length]);
       if (process.env.WHY) console.error(`[why] ${engine} rejected: ${perEngine[engine].rejected.join(" ")}`);
     } catch (error) {
-      // A browser that will not launch is a SHORTER list, silently — the one thing this must not write.
-      console.error(`[shapes] ${engine} would not launch, so the list would be short: ${String(error).slice(0, 90)}`);
-      console.error(`[shapes] run \`npx playwright install ${engine}\` in apps/playground-core, then this again.`);
+      /**
+       * A run that stops early is a SHORTER list, silently — the one thing this must not write. But
+       * say which kind of stop it was. Every failure used to read *"would not launch"* and advise
+       * installing the browser, including a `ReferenceError` in the code handed to a browser that had
+       * launched perfectly well; the advice sent the reader the wrong way.
+       */
+      const launched = browser !== undefined;
+      console.error(
+        launched
+          ? `[shapes] ${engine} launched, and the code run in it failed: ${String(error).slice(0, 160)}`
+          : `[shapes] ${engine} would not launch, so the list would be short: ${String(error).slice(0, 90)}`,
+      );
+      if (!launched)
+        console.error(`[shapes] run \`npx playwright install ${engine}\` in apps/playground-core, then this again.`);
       process.exit(1);
     } finally {
       await browser?.close();
