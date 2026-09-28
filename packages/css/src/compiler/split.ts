@@ -1,6 +1,8 @@
 import { KEYWORDS, UNIT_TYPE } from "./keywords.generated";
 import { type Shape, SHAPES } from "./shapes.generated";
+import { matchValue } from "./matchValue";
 import { TOKEN_SHAPES, type TokenShape, type TokenSlot } from "./tokenShapes.generated";
+import type { Term } from "./valueSyntax";
 
 /**
  * Splitting a POSITIONAL shorthand into its longhands, from a learned shape and nothing else.
@@ -340,6 +342,129 @@ export function splitList(shape: TokenShape, value: string): Record<string, stri
     return Object.fromEntries(shape.longhands.map((one) => [one, first]));
 
   const per = items.map((one) => splitTokens(shape, one));
+  if (per.some((one) => one === undefined)) return undefined;
+
+  return Object.fromEntries(
+    shape.longhands.map((one) => [one, per.map((each) => (each as Record<string, string>)[one]).join(", ")]),
+  );
+}
+
+/**
+ * A family described by its own GRAMMAR rather than by a list of slots.
+ *
+ * The slots fill; they do not parse. Where two of them take a token the passes hand it to the
+ * closed one and CSS hands it to whichever component the grammar reaches first, and all three
+ * engines side with the grammar — `animation: --zz` is a name, `mask: 7px` is a position. Reading
+ * the value against the grammar answers both, and it answers a shape a slot list cannot hold at
+ * all: `<bg-position> [ / <bg-size> ]?`, two longhands told apart by a separator.
+ *
+ * The tree is the family's grammar OPENED — see `openGrammar.ts` — so every leaf of it belongs to
+ * a longhand. `leaves` describes those leaves in the order the grammar names them, and it is the
+ * same description a slot carried: what the leaf takes, and where a token it takes goes.
+ */
+export interface GrammarShape {
+  readonly longhands: readonly string[];
+  /** The opened grammar of ONE value, or of one ITEM where {@link GrammarShape.list} is set. */
+  readonly tree: Term;
+  /** One per leaf of `tree`, in the order a pre-order walk reaches them. */
+  readonly leaves: readonly TokenSlot[];
+  /** A COMMA-separated family: every item takes this shape, and each longhand is a list. */
+  readonly list?: boolean;
+}
+
+const LEAF_KINDS = new Set(["keyword", "data", "property", "function"]);
+
+/**
+ * A plain identifier, which is what `<custom-ident>` means.
+ *
+ * An OPEN leaf takes a free identifier, so in the slot passes it is asked LAST and only where every
+ * closed slot has said no. A parse says the same thing differently: the grammar's own order decides
+ * who is asked first and backtracking gives up a choice that leaves the rest unreadable. What the
+ * open leaf still must not do is take a token that is not an identifier at all — `list-style` has
+ * an open `list-style-type` standing before `list-style-image`, and `url(a.png)` belongs to the
+ * second. A dimension and a call are both refused here for that reason.
+ */
+const AN_IDENT = /^-{0,2}[a-z_][\w-]*$/i;
+
+/** Whether one leaf takes this token: what a slot takes, plus a free identifier where it is open. */
+function takes(leaf: TokenSlot, token: string): boolean {
+  return accepts(leaf, token) || (leaf.open && AN_IDENT.test(token));
+}
+
+/**
+ * The leaves of a tree, in the order `openGrammar` collected them.
+ *
+ * A separator is not one: it belongs to no longhand, and the walk here has to skip it exactly where
+ * the opener did or every leaf after it takes the wrong description.
+ */
+function leavesOf(term: Term, out: Term[] = []): Term[] {
+  if (term.kind === "literal") return out;
+  if (LEAF_KINDS.has(term.kind)) {
+    out.push(term);
+    return out;
+  }
+  for (const one of term.terms ?? []) leavesOf(one, out);
+  return out;
+}
+
+/**
+ * Read one value against the family's grammar and say what each longhand gets.
+ *
+ * A longhand no leaf reached is `initial`, which is what the shorthand does to it. A value the
+ * grammar cannot read at all is refused, and a refusal leaves the declaration the author's own
+ * text — where a wrong split is invisible.
+ */
+function byGrammar(shape: GrammarShape, value: string): Record<string, string> | undefined {
+  const tokens = tokensOf(value);
+  if (tokens.length === 0) return undefined;
+  if (tokens.some((one) => WIDE.includes(one.toLowerCase()))) {
+    if (tokens.length !== 1) return undefined;
+    return Object.fromEntries(shape.longhands.map((one) => [one, tokens[0] as string]));
+  }
+
+  const leaves = leavesOf(shape.tree);
+  // The table and the tree are written together, so a mismatch is a corrupt table rather than a
+  // value this cannot read — refusing says so without guessing which leaf lost its description.
+  if (leaves.length !== shape.leaves.length) return undefined;
+  const described = new Map<Term, TokenSlot>(leaves.map((one, index) => [one, shape.leaves[index] as TokenSlot]));
+
+  const taken = matchValue(shape.tree, tokens, (term, token) =>
+    term.kind === "literal" ? term.name === token : takes(described.get(term) as TokenSlot, token),
+  );
+  if (taken === undefined) return undefined;
+
+  const out: Record<string, string> = Object.fromEntries(shape.longhands.map((one) => [one, "initial"]));
+  for (const [term, got] of taken) {
+    const leaf = described.get(term);
+    if (leaf === undefined) continue; // A separator: read by the parse, owned by no longhand.
+    for (const longhand of leaf.longhands) out[longhand] = got.join(" ");
+  }
+  return out;
+}
+
+/**
+ * Split by the grammar, one value or a comma-separated list of them.
+ *
+ * The list case is `byGrammar` per item joined back per longhand, for the reason `splitList` gives:
+ * every longhand of a comma family takes a list the same length, and the lists are matched by
+ * POSITION — so one bad item refuses the whole value rather than shortening one list.
+ */
+export function splitByGrammar(shape: GrammarShape, value: string): Record<string, string> | undefined {
+  if (/(^|[^\w-])var\(/i.test(value)) return undefined;
+
+  if (shape.list !== true) {
+    if (tokensOf(value, /,/).length > 1) return undefined;
+    return byGrammar(shape, value);
+  }
+
+  const items = tokensOf(value, /,/).map((one) => one.trim());
+  if (items.length === 0 || items.some((one) => one === "")) return undefined;
+
+  const first = items[0] as string;
+  if (items.length === 1 && WIDE.includes(first.toLowerCase()))
+    return Object.fromEntries(shape.longhands.map((one) => [one, first]));
+
+  const per = items.map((one) => byGrammar(shape, one));
   if (per.some((one) => one === undefined)) return undefined;
 
   return Object.fromEntries(
