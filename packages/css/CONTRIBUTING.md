@@ -154,8 +154,10 @@ different places.
 
 **Nine have a grammar this cannot open**, because some part of them belongs to no longhand and has
 no grammar of its own to be opened into: `border-spacing`, `flex`, `font`, `mask`, `mask-border`,
-`perspective-origin`, `text-box`, `transform-origin`, `white-space`. `mask` is the near miss —
-`<visual-box>` sits one level past the depth cap.
+`perspective-origin`, `text-box`, `transform-origin`, `white-space`. `mask` is not a depth
+problem, though it looks like one: raising the cap does not open it. Its `content-box` is a word
+that `mask-origin` reaches only through `<coord-box>` → `<paint-box>` → `<visual-box>`, and
+`longhandsFor` matches a word against a longhand's grammar TEXT without following those types.
 
 **Ten open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
 `font-synthesis`, `font-variant`, `grid`, `grid-area`, `grid-template`, `marker`, `mask-position`,
