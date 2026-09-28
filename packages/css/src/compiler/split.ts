@@ -418,9 +418,45 @@ const LEAF_KINDS = new Set(["keyword", "data", "property", "function"]);
  */
 const AN_IDENT = /^-{0,2}[a-z_][\w-]*$/i;
 
-/** Whether one leaf takes this token: what a slot takes, plus a free identifier where it is open. */
-function takes(leaf: TokenSlot, token: string): boolean {
-  return accepts(leaf, token) || (leaf.open && AN_IDENT.test(token));
+/**
+ * A match against a FINITE list: a word the leaf spells, a named colour, a function it calls.
+ *
+ * This is the line an open leaf stands down for. It is not "anything another leaf accepts": a
+ * `<dashed-ident>` or a `<length>` admits endlessly many tokens and names none of them, which is
+ * exactly why the slot passes put `animation: --zz` in the timeline.
+ */
+function namesIt(leaf: TokenSlot, token: string): boolean {
+  const lower = token.toLowerCase();
+  if (leaf.words.some((one) => one.toLowerCase() === lower)) return true;
+  if (leaf.types.includes("color") && COLOUR_WORDS.has(lower)) return true;
+  const call = /^([a-z-]+)\(/i.exec(lower);
+  return call !== null && leaf.functions.includes(call[1] ?? "");
+}
+
+/**
+ * Whether one leaf takes this token: what a slot takes, plus a free identifier where it is open.
+ *
+ * **An open leaf stands down for a leaf that NAMES the token, and beats one that merely admits
+ * it.** Three measured cases, and no two of them agree on a simpler rule:
+ *
+ * ```
+ * animation: --zz            name over timeline    <dashed-ident> names nothing, so open wins
+ * transition: linear         easing over property  `linear` is a word, so open stands down
+ * text-emphasis: rebeccapurple  colour over style  a named colour is a word too
+ * ```
+ *
+ * The first is what the slot passes get wrong and the parse exists for; the second and third are
+ * what the parse got wrong until the line was drawn here rather than at "any other leaf accepts
+ * it". A leaf that spells the token beats an open one; a leaf that would take any `--x` or any
+ * length does not.
+ *
+ * A leaf that names the token ITSELF never reaches this — `accepts` answers first, which is what
+ * keeps `list-style: none` on the type where `list-style-image` also spells `none`.
+ */
+function takes(leaf: TokenSlot, token: string, leaves: readonly TokenSlot[]): boolean {
+  if (accepts(leaf, token)) return true;
+  if (!leaf.open || !AN_IDENT.test(token)) return false;
+  return !leaves.some((one) => one !== leaf && namesIt(one, token));
 }
 
 /**
@@ -461,7 +497,7 @@ function byGrammar(shape: GrammarShape, value: string): Record<string, string> |
   const described = new Map<Term, TokenSlot>(leaves.map((one, index) => [one, shape.leaves[index] as TokenSlot]));
 
   const taken = matchValue(shape.tree, tokens, (term, token) =>
-    term.kind === "literal" ? term.name === token : takes(described.get(term) as TokenSlot, token),
+    term.kind === "literal" ? term.name === token : takes(described.get(term) as TokenSlot, token, shape.leaves),
   );
   if (taken === undefined) return undefined;
 

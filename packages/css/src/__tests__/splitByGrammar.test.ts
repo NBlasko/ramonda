@@ -180,6 +180,61 @@ describe("an open leaf does not eat what it cannot be", () => {
   });
 });
 
+/**
+ * An open leaf standing down for the leaf that NAMES the word.
+ *
+ * `transition`'s `<single-transition-property>` takes a free identifier and is named first, so it
+ * ate every easing keyword written alone — measured, `transition: linear` set the property to
+ * `linear` where all three engines set the timing function. An open leaf loses to an exact word
+ * anywhere in the grammar and still wins over a type, which is the pair `animation: --zz` and
+ * `transition: linear` together demand.
+ */
+describe("an open leaf loses to a word and beats a type", () => {
+  const TRANSITION = shape(
+    "[ none | <custom-ident> ] || <time> || <easing> || <dashed-ident>",
+    ["a-prop", "a-time", "a-ease", "a-line"],
+    [
+      { longhands: ["a-prop"], words: ["none"] },
+      { longhands: ["a-prop"], types: ["custom-ident"], open: true },
+      { longhands: ["a-time"], types: ["time"] },
+      { longhands: ["a-ease"], words: ["linear", "ease"] },
+      { longhands: ["a-line"], types: ["dashed-ident"] },
+    ],
+  );
+
+  test("a word another leaf names goes to that leaf", () => {
+    expect(splitByGrammar(TRANSITION, "linear")?.["a-ease"]).toBe("linear");
+  });
+
+  test("and the open leaf still takes a word nobody names", () => {
+    expect(splitByGrammar(TRANSITION, "colour")?.["a-prop"]).toBe("colour");
+  });
+
+  test("while a type does not take it off the open leaf", () => {
+    expect(splitByGrammar(TRANSITION, "--zz")?.["a-prop"]).toBe("--zz");
+  });
+
+  /**
+   * A named COLOUR is a word too, and this is where drawing the line at "any other leaf accepts
+   * it" would have been wrong in the other direction. `text-emphasis` is
+   * `<'text-emphasis-style'> || <'text-emphasis-color'>` with an open style leaf named first, and
+   * `rebeccapurple` went to the style until the colour names were counted as names.
+   */
+  test("a named colour takes the token off an open leaf", () => {
+    const EMPHASIS = shape(
+      "[ none | <string> ] || <color>",
+      ["a-style", "a-colour"],
+      [
+        { longhands: ["a-style"], words: ["none"] },
+        { longhands: ["a-style"], types: ["string", "custom-ident"], open: true },
+        { longhands: ["a-colour"], types: ["color"] },
+      ],
+    );
+
+    expect(splitByGrammar(EMPHASIS, "rebeccapurple")?.["a-colour"]).toBe("rebeccapurple");
+  });
+});
+
 describe("what it refuses", () => {
   test("a `var()`, whose content is unknown until the browser reads it", () => {
     expect(splitByGrammar(BORDER, "var(--x)")).toBeUndefined();
