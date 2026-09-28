@@ -5,7 +5,8 @@ import type { Term } from "./valueSyntax";
  *
  * ## Why a parse and not a set of slots
  *
- * `splitTokens` hands each token to the first slot that takes it. CSS hands it to whichever
+ * A list of SLOTS hands each token to the first one that takes it — which is how this package
+ * split a shorthand before there was a parse. CSS hands it to whichever
  * component the GRAMMAR reaches first, and the two differ wherever two components accept the same
  * token. Measured in all three engines, and they agree with each other and not with the slots:
  *

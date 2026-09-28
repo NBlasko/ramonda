@@ -1,27 +1,30 @@
 import { describe, expect, test } from "vitest";
-import { splitList, splitTokens } from "../compiler/split";
+import { splitByGrammar } from "../compiler/split";
 import { SHORTHANDS } from "../compiler/keywords.generated";
 import { SHAPES } from "../compiler/shapes.generated";
-import { TOKEN_SHAPES } from "../compiler/tokenShapes.generated";
+import { GRAMMAR_SHAPES } from "../compiler/grammarShapes.generated";
 
 /**
- * Splitting a bag-of-tokens shorthand, from the table the engines agreed on.
+ * Splitting through the GENERATED table — the grammar the engines agreed on, read by the splitter.
  *
  * Whether a split produces the same page is answered where it can be: inside
- * `scripts/build-token-shapes.mjs`, which reproduces every family's own corpus in Chromium, Firefox
- * and WebKit before writing a row. These are the questions no browser answers — what the function
- * does with a value it must REFUSE, and that it reads the shape rather than guessing.
+ * `scripts/build-grammar-shapes.mjs`, which reproduces every family's own corpus in Chromium,
+ * Firefox and WebKit before writing a row. These are the questions no browser answers — what the
+ * function does with a value it must REFUSE, and that it reads the table rather than guessing.
+ *
+ * `splitByGrammar.test.ts` asks the same function about shapes written out by hand, where what is
+ * asserted is the machine. Here the shape comes from the table, so what is asserted is the door.
  */
 
 const shapeOf = (name: string) => {
-  const shape = TOKEN_SHAPES[name];
+  const shape = GRAMMAR_SHAPES[name];
   if (shape === undefined) throw new Error(`no shape for ${name} — regenerate the table`);
   return shape;
 };
 
 describe("a value written in any order", () => {
   test("each token finds its own longhand", () => {
-    expect(splitTokens(shapeOf("border-top"), "1px solid red")).toEqual({
+    expect(splitByGrammar(shapeOf("border-top"), "1px solid red")).toEqual({
       "border-top-width": "1px",
       "border-top-style": "solid",
       "border-top-color": "red",
@@ -29,14 +32,14 @@ describe("a value written in any order", () => {
   });
 
   test("and the order it was written in does not matter", () => {
-    expect(splitTokens(shapeOf("border-top"), "red 1px solid")).toEqual(
-      splitTokens(shapeOf("border-top"), "1px solid red"),
+    expect(splitByGrammar(shapeOf("border-top"), "red 1px solid")).toEqual(
+      splitByGrammar(shapeOf("border-top"), "1px solid red"),
     );
   });
 
   /** Every longhand the shorthand resets is written, which is what makes the split equivalent. */
   test("a longhand no token reached is reset, not left out", () => {
-    expect(splitTokens(shapeOf("border-top"), "solid")).toEqual({
+    expect(splitByGrammar(shapeOf("border-top"), "solid")).toEqual({
       "border-top-width": "initial",
       "border-top-style": "solid",
       "border-top-color": "initial",
@@ -45,28 +48,26 @@ describe("a value written in any order", () => {
 
   test("a colour is recognised as a call, a hex and a name alike", () => {
     for (const colour of ["rgb(1 2 3)", "#abcdef", "rebeccapurple"])
-      expect(splitTokens(shapeOf("border-top"), colour)?.["border-top-color"]).toBe(colour);
+      expect(splitByGrammar(shapeOf("border-top"), colour)?.["border-top-color"]).toBe(colour);
   });
 
   test("a length is recognised by its unit, not by a list of values", () => {
-    expect(splitTokens(shapeOf("border-top"), "2.5rem")?.["border-top-width"]).toBe("2.5rem");
+    expect(splitByGrammar(shapeOf("border-top"), "2.5rem")?.["border-top-width"]).toBe("2.5rem");
   });
 });
 
 /**
- * The pass order, which is the one thing in here that a reordering would break silently.
- *
- * `list-style-type` takes a `custom-ident`, so it accepts nearly any word and has to be asked last.
- * It also lists `none` exactly. Match the primitives before the words and `none` walks past it into
- * `list-style-image`, which is a different declaration and the same-looking output.
+ * `list-style-type` takes a `custom-ident`, so it says yes to nearly any word — and it also lists
+ * `none` exactly, and it is named BEFORE `list-style-image`. Three ways to get it wrong, and the
+ * table carries all three in one family.
  */
-describe("an open slot", () => {
-  test("takes a word it lists exactly, before any other slot sees it", () => {
-    expect(splitTokens(shapeOf("list-style"), "none")?.["list-style-type"]).toBe("none");
+describe("an open leaf", () => {
+  test("takes a word it lists exactly, before any other leaf sees it", () => {
+    expect(splitByGrammar(shapeOf("list-style"), "none")?.["list-style-type"]).toBe("none");
   });
 
-  test("but takes a free identifier only once every closed slot has declined", () => {
-    expect(splitTokens(shapeOf("list-style"), "url(a.png) inside")).toEqual({
+  test("and leaves a call alone, because a call is no identifier", () => {
+    expect(splitByGrammar(shapeOf("list-style"), "url(a.png) inside")).toEqual({
       "list-style-type": "initial",
       "list-style-position": "inside",
       "list-style-image": "url(a.png)",
@@ -74,13 +75,13 @@ describe("an open slot", () => {
   });
 
   test("and a word nothing else claims lands in it", () => {
-    expect(splitTokens(shapeOf("list-style"), "upper-roman")?.["list-style-type"]).toBe("upper-roman");
+    expect(splitByGrammar(shapeOf("list-style"), "upper-roman")?.["list-style-type"]).toBe("upper-roman");
   });
 });
 
 describe("what it refuses, so the shorthand stays whole", () => {
   test("a `var()`, whose contents no table can know", () => {
-    expect(splitTokens(shapeOf("border-top"), "var(--edge)")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("border-top"), "var(--edge)")).toBeUndefined();
   });
 
   /**
@@ -92,15 +93,15 @@ describe("what it refuses, so the shorthand stays whole", () => {
    * invalid declaration. That is the case the guard exists for.
    */
   test("a comma, which the shape does not describe", () => {
-    expect(splitTokens(shapeOf("list-style"), "square, inside")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("list-style"), "square, inside")).toBeUndefined();
   });
 
   test("a slash, likewise", () => {
-    expect(splitTokens(shapeOf("list-style"), "square/inside")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("list-style"), "square/inside")).toBeUndefined();
   });
 
   test("an empty value", () => {
-    expect(splitTokens(shapeOf("border-top"), "   ")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("border-top"), "   ")).toBeUndefined();
   });
 
   /**
@@ -112,7 +113,7 @@ describe("what it refuses, so the shorthand stays whole", () => {
    * `position-try`. Refusing is what the compiler did for them before a splitter existed.
    */
   test("two keywords a single slot takes together", () => {
-    expect(splitTokens(shapeOf("text-decoration"), "underline overline")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("text-decoration"), "underline overline")).toBeUndefined();
   });
 
   /**
@@ -125,7 +126,7 @@ describe("what it refuses, so the shorthand stays whole", () => {
   test.each(["1px solid rgb(1, 2, 3)", "1px solid rgba(1, 2, 3, .5)", "1px solid color-mix(in srgb, red, blue)"])(
     "%s splits, because the commas are inside a call",
     (value) => {
-      expect(splitTokens(shapeOf("border-top"), value)?.["border-top-width"]).toBe("1px");
+      expect(splitByGrammar(shapeOf("border-top"), value)?.["border-top-width"]).toBe("1px");
     },
   );
 
@@ -138,34 +139,34 @@ describe("what it refuses, so the shorthand stays whole", () => {
    * The refusal count is what made it visible.
    */
   test("a dashed identifier is recognised as one", () => {
-    expect(splitList(shapeOf("scroll-timeline"), "--carousel block")).toEqual({
+    expect(splitByGrammar(shapeOf("scroll-timeline"), "--carousel block")).toEqual({
       "scroll-timeline-name": "--carousel",
       "scroll-timeline-axis": "block",
     });
   });
 
   test("a token no slot will take", () => {
-    expect(splitTokens(shapeOf("border-top"), "1px solid red 9px 8px")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("border-top"), "1px solid red 9px 8px")).toBeUndefined();
   });
 
   /** A unit CSS does not have makes the token nothing, and nothing is not a width. */
   test("a number carrying a unit no primitive claims", () => {
-    expect(splitTokens(shapeOf("border-top"), "5zz")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("border-top"), "5zz")).toBeUndefined();
   });
 
   test("a bare number, which is not a length either", () => {
-    expect(splitTokens(shapeOf("border-top"), "5")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("border-top"), "5")).toBeUndefined();
   });
 
   /** A call this family does not take is refused rather than dropped into whatever is free. */
   test("a function no slot lists", () => {
-    expect(splitTokens(shapeOf("border-top"), "steps(4)")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("border-top"), "steps(4)")).toBeUndefined();
   });
 });
 
 describe("a CSS-wide keyword is not a component value", () => {
   test("it goes on every longhand the family resets", () => {
-    expect(splitTokens(shapeOf("border-top"), "inherit")).toEqual({
+    expect(splitByGrammar(shapeOf("border-top"), "inherit")).toEqual({
       "border-top-width": "inherit",
       "border-top-style": "inherit",
       "border-top-color": "inherit",
@@ -174,7 +175,7 @@ describe("a CSS-wide keyword is not a component value", () => {
 
   /** CSS has no such form either, so refusing it is mirroring the language rather than giving up. */
   test("and beside another value it is refused", () => {
-    expect(splitTokens(shapeOf("border-top"), "1px inherit")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("border-top"), "1px inherit")).toBeUndefined();
   });
 });
 
@@ -198,8 +199,8 @@ describe("a CSS-wide keyword is not a component value", () => {
  * behaves otherwise is heard here instead of in a page.
  */
 describe("a split reaches leaves, never another shorthand", () => {
-  test.each([...Object.keys(SHAPES), ...Object.keys(TOKEN_SHAPES)])("%s splits into leaves", (family) => {
-    const shape = TOKEN_SHAPES[family];
+  test.each([...Object.keys(SHAPES), ...Object.keys(GRAMMAR_SHAPES)])("%s splits into leaves", (family) => {
+    const shape = GRAMMAR_SHAPES[family];
     const longhands =
       shape !== undefined
         ? shape.longhands
@@ -210,23 +211,33 @@ describe("a split reaches leaves, never another shorthand", () => {
 });
 
 describe("the families this cannot answer are absent, not wrong", () => {
-  test.each(["background", "animation", "transition", "mask", "font", "grid"])("%s has no shape", (name) => {
-    expect(TOKEN_SHAPES[name]).toBeUndefined();
+  test.each(["background", "animation", "mask", "font", "grid"])("%s has no shape", (name) => {
+    expect(GRAMMAR_SHAPES[name]).toBeUndefined();
   });
 
   test("while the whole border family does", () => {
     for (const name of ["border", "border-top", "border-block", "border-inline-end"])
-      expect(TOKEN_SHAPES[name]).toBeDefined();
+      expect(GRAMMAR_SHAPES[name]).toBeDefined();
   });
 
   /**
-   * `mask` is absent for a reason worth keeping straight: its ITEM is flat, so it reaches the
-   * corpus, and the corpus turns it down. The grammar has a `<bg-position>` its slots cannot hold
-   * — `mask: 7px` is a position to all three engines and a size here — and no list of slots can
-   * fix that. {@link splitByGrammar} is what answers it.
+   * `animation` is absent for a reason the engines disagree about rather than one we could fix.
+   * Measured: Firefox computes `animation: auto` to `animation-name: auto`, Chromium and WebKit to
+   * `animation-duration: auto` — Firefox has no `auto` duration yet. No single split writes the
+   * same page in all three, so the family keeps its shorthand.
    */
-  test("and `mask` reaches the corpus and is turned down by it", () => {
-    expect(TOKEN_SHAPES.mask).toBeUndefined();
+  test("and `animation` is out because the engines disagree, not because the grammar cannot say", () => {
+    expect(GRAMMAR_SHAPES.animation).toBeUndefined();
+  });
+
+  /** `transition` is IN, which no list of slots could manage: its two `<time>`s are one component
+   * written twice, and which is the duration was measured rather than read. */
+  test("while `transition` is in, with its two times told apart", () => {
+    expect(GRAMMAR_SHAPES.transition).toBeDefined();
+    expect(splitByGrammar(shapeOf("transition"), "1s")).toMatchObject({
+      "transition-duration": "1s",
+      "transition-delay": "0s",
+    });
   });
 });
 
@@ -239,74 +250,43 @@ describe("the families this cannot answer are absent, not wrong", () => {
  * lines on top of `splitTokens` rather than a second splitter.
  */
 describe("a comma-separated family", () => {
-  /** Hand-made, because what is asserted here is the composition and not the table. */
-  const LIST = {
-    longhands: ["a-name", "a-time"],
-    slots: [
-      { longhands: ["a-name"], words: ["one", "two"], types: [], functions: [], open: false },
-      { longhands: ["a-time"], words: [], types: ["time"], functions: [], open: false },
-    ],
-  } as const;
-
-  test("each item is split, and each longhand is a list", () => {
-    expect(splitList(LIST, "one 1s, two 2s")).toEqual({ "a-name": "one, two", "a-time": "1s, 2s" });
-  });
-
-  test("a single item is a list of one", () => {
-    expect(splitList(LIST, "one 1s")).toEqual({ "a-name": "one", "a-time": "1s" });
-  });
-
-  /**
-   * A shorthand resets what an item does not mention, in that item's POSITION — and the reset has
-   * to be written as a VALUE, not as `initial`.
-   *
-   * `initial` is a CSS-wide keyword and cannot stand as one item of a comma-separated value.
-   * Measured, all three engines reject `scroll-timeline-axis: initial, initial` outright, so the
-   * longhand the shorthand meant to reset keeps whatever another class left on it and nothing says
-   * so. This test asserted that broken output as though it were the rule, which is how it shipped.
-   */
   test("a longhand no token reached is reset in the item that missed it", () => {
-    expect(splitList(shapeOf("scroll-timeline"), "--a, --b inline")).toEqual({
+    expect(splitByGrammar(shapeOf("scroll-timeline"), "--a, --b inline")).toEqual({
       "scroll-timeline-name": "--a, --b",
       "scroll-timeline-axis": "block, inline",
     });
   });
 
   test("and where every item misses it, all of them carry the value", () => {
-    expect(splitList(shapeOf("scroll-timeline"), "--a, --b")).toEqual({
+    expect(splitByGrammar(shapeOf("scroll-timeline"), "--a, --b")).toEqual({
       "scroll-timeline-name": "--a, --b",
       "scroll-timeline-axis": "block, block",
     });
   });
 
   /**
-   * A longhand whose initial value the engines DISAGREE about has none to write, and the family is
-   * refused rather than given one engine's answer. `a-time` is not a property at all, which is the
-   * same situation from the table's point of view.
+   * A longhand whose initial value the engines disagree about has none to write, and the family is
+   * refused rather than given one engine's answer. No family in the table needs that today — every
+   * name in `UNSTABLE` belongs to a family with no comma in it — so the case is asserted where a
+   * shape can be written by hand, in `splitByGrammar.test.ts`.
    */
-  test("a longhand with no measured initial value refuses the whole list", () => {
-    expect(splitList(LIST, "one, two 2s")).toBeUndefined();
-  });
 
   test("a call keeps its own commas", () => {
-    const shape = {
-      longhands: ["a-ease"],
-      slots: [{ longhands: ["a-ease"], words: [], types: [], functions: ["steps"], open: false }],
-    } as const;
-
-    expect(splitList(shape, "steps(1, end), steps(2, end)")).toEqual({ "a-ease": "steps(1, end), steps(2, end)" });
+    expect(splitByGrammar(shapeOf("transition"), "steps(1, end), steps(2, end)")).toMatchObject({
+      "transition-timing-function": "steps(1, end), steps(2, end)",
+    });
   });
 
   test("an item no shape can answer refuses the whole value", () => {
-    expect(splitList(LIST, "one 1s, nonsense")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("transition"), "1s, ??? ???")).toBeUndefined();
   });
 
   test("an empty item is refused rather than treated as a gap", () => {
-    expect(splitList(LIST, "one 1s, , two 2s")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("transition"), "1s, , 2s")).toBeUndefined();
   });
 
   test("a CSS-wide keyword is the whole value, not an item of it", () => {
-    expect(splitList(LIST, "inherit")).toEqual({ "a-name": "inherit", "a-time": "inherit" });
+    expect(splitByGrammar(shapeOf("transition"), "inherit")?.["transition-duration"]).toBe("inherit");
   });
 
   /**
@@ -315,11 +295,11 @@ describe("a comma-separated family", () => {
    * Splitting one would write declarations for a value the browser never accepted.
    */
   test("and beside another item it is refused, as CSS refuses it", () => {
-    expect(splitList(shapeOf("scroll-timeline"), "inherit, --b")).toBeUndefined();
-    expect(splitList(shapeOf("scroll-timeline"), "--a, inherit")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("scroll-timeline"), "inherit, --b")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("scroll-timeline"), "--a, inherit")).toBeUndefined();
   });
 
   test("and a `var()` is refused, as everywhere else", () => {
-    expect(splitList(LIST, "one 1s, var(--x)")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("transition"), "1s, var(--x)")).toBeUndefined();
   });
 });

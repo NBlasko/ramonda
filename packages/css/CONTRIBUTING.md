@@ -44,7 +44,8 @@ by the next build and caught by `pnpm check`.
 | `prefixed.generated.ts` | `build-prefixed-properties.mjs` | mdn-data + the engines |
 | `leaves.generated.ts` | `build-shorthand-leaves.mjs` | mdn-data + the engines |
 | `shapes.generated.ts` | `build-shorthand-shapes.mjs` | the three engines, measured |
-| `tokenShapes.generated.ts` | `build-token-shapes.mjs` | grammar from mdn-data, longhands measured |
+| `initials.generated.ts` | `build-initial-values.mjs` | the three engines, measured |
+| `grammarShapes.generated.ts` | `build-grammar-shapes.mjs` | grammar from mdn-data, every placement measured |
 
 All of them live in `scripts/` at the repo root and all of them take `--check`, which fails
 instead of writing.
@@ -69,7 +70,7 @@ node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
 | `build-*.mjs --check` | a generated table that is stale |
 | `check-layer-names.mjs` | a layer name that stopped meaning what an older sheet meant by it |
 | `check-layer-skew.mjs` | two releases on one page, and the wrong declaration winning |
-| `check-shorthand-split.mjs` | the splitter disagreeing with what an engine renders |
+| `check-shorthand-split.mjs` | the positional splitter disagreeing with what an engine renders |
 | `check-css-splitting.mjs` | the CSS not following its JavaScript chunk, on a real build |
 
 Three of them carry their own selftests, run through the `SELFTEST` environment variable —
@@ -81,7 +82,7 @@ steps, right before the gate itself.
 
 **Ask the engines, not mdn-data.** Its `computed` field disagrees with every shipping engine for
 18 of 77 families, so a longhand list taken from it is silently wrong. The one field it is good
-for is the grammar — that is why `tokenShapes.generated.ts` reads the grammar from mdn-data and
+for is the grammar — that is why `grammarShapes.generated.ts` reads the grammar from mdn-data and
 measures everything else.
 
 **Take the union across engines, never the intersection.** If one engine resets a longhand and
@@ -112,26 +113,27 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` fills slots. It does not parse. For a positional family that is enough — how many
-values were written decides which longhand each one feeds. For a comma-separated family it is
-not. Thirteen of those exist; `tokenShapes.generated.ts` carries **two**, `scroll-timeline` and
-`view-timeline`, and they are the two whose items are a plain sequence of closed slots.
+`split.ts` asks two tables. `SHAPES` answers a POSITIONAL family — how many values were written
+decides which longhand each one feeds, and no grammar is needed. Everything else is read against
+the family's own grammar, opened by `openGrammar.ts` until every leaf belongs to a longhand and
+carried in `grammarShapes.generated.ts`. **29 families**, and a family in neither keeps its
+shorthand.
 
-`matchValue.ts` is the parser meant to finish the job: it reads a value *against* its grammar and
-says which term took which token. It is written, tested, and **not wired into anything yet**. It
-is correct where it was measured, and fast — `animation: 1s 2s spin ease` resolves to duration,
-delay, name and easing in under a millisecond and eleven calls to the recogniser. It also gets
-the two cases the slots got wrong, which is why it exists: `animation: --zz` is a name, and
-`mask: 7px` is a position. Run over every property `mdn-data` defines — 551 grammars against
-eight values each — all 4408 parses finish in 56ms together, the worst single one in 1ms, and
-nothing throws.
+Three things are still open, and each is measured rather than assumed.
 
-**A `data` term is a LEAF.** `animation`'s own grammar is `<single-animation>#`, and to this the
-named type is one leaf that must match one token. Whoever wires it in resolves the named type
-into its own grammar first. Until that happens the parser answers about a family's ITEM, and the
-comma stays `split.ts`'s.
+**`animation` is out because the engines disagree.** Firefox computes `animation: auto` to
+`animation-name: auto`; Chromium and WebKit make it `animation-duration: auto`, Firefox having no
+`auto` duration yet. No single split writes the same page in all three. Refusing per VALUE rather
+than per family — marking the contested word on its leaf — would let the rest of the family split,
+and is not built.
 
-That resolution is the whole of the remaining work, and it is why the measured table above uses
-item grammars. Writing it means deciding how deep to resolve: `<color>` should stay a leaf and
-`<single-animation>` should not, and `classify.ts` already draws that line for a different
-purpose.
+**One value filling BOTH longhands.** `place-items: center` sets `justify-items` too, and so does
+`place-self`. The grammar says `<align-items> <justify-items>?` and does not say that the second
+copies the first, so nothing here can know it.
+
+**Twelve families the measurement turns down**, led by `background`, `font` and `grid`. Most fail
+the step that settles which longhand an ambiguous leaf feeds; `mask` fails its own corpus, because
+`mask: 7px` is a position to all three engines and its grammar's `<bg-position>` is not reached.
+
+A refusal is safe in every one of these. The declaration stays a shorthand, which is visibly the
+author's own text — where a wrong split is invisible.

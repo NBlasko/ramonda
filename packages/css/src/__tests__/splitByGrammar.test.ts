@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { type GrammarShape, splitByGrammar } from "../compiler/split";
+import { splitByGrammar } from "../compiler/split";
+import type { GrammarShape } from "../compiler/grammarShapes.generated";
 import { parseValueSyntax } from "../compiler/valueSyntax";
 
 /**

@@ -6,7 +6,7 @@
  *
  * ## Why this replaces the slot table
  *
- * `build-token-shapes.mjs` writes a flat list of slots and `splitTokens` fills them. That answers
+ * The table this replaced wrote a flat list of slots, and filling them answers
  * every family whose value is a bag of tokens and cannot answer three things, each measured:
  *
  * - **where two slots take a token.** The passes hand it to the closed one; CSS hands it to

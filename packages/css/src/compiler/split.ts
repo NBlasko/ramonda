@@ -1,8 +1,8 @@
+import { GRAMMAR_SHAPES, type GrammarLeaf, type GrammarShape } from "./grammarShapes.generated";
 import { INITIAL_VALUES } from "./initials.generated";
 import { KEYWORDS, UNIT_TYPE } from "./keywords.generated";
-import { type Shape, SHAPES } from "./shapes.generated";
 import { matchValue } from "./matchValue";
-import { TOKEN_SHAPES, type TokenShape, type TokenSlot } from "./tokenShapes.generated";
+import { type Shape, SHAPES } from "./shapes.generated";
 import type { Term } from "./valueSyntax";
 
 /**
@@ -106,77 +106,6 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
   );
 }
 
-/**
- * Splitting a shorthand whose value is a BAG OF TOKENS — written in any order, one token per slot.
- *
- * ## Why this is a second function and not a wider first one
- *
- * A positional family is answered by how many values were written. `border: 1px solid red` is not:
- * the three parts may be written in any order, and which longhand each feeds is decided by what the
- * token IS. So the shape here is not a count-to-mapping table but a RECOGNISER per slot, derived
- * from the family's published grammar and measured against three engines by
- * `scripts/build-token-shapes.mjs`.
- *
- * ## The boundary, which is a fact and not a shortfall
- *
- * A value is a bag of tokens only where the grammar is flat — no comma, no slash, no repetition.
- * `background`, `animation`, `transition`, `mask`, `font` and `grid` all have one of the three, so
- * they are not in the table and keep their shorthand. What IS in it is the whole `border` family,
- * `outline`, `column-rule`, `text-decoration`, `flex-flow` and `list-style`.
- *
- * ## Why the three passes are in this order
- *
- * An exact WORD first, then what a slot takes by primitive or function, then the open slot as a
- * catch-all. The first two are not interchangeable: `list-style-type` lists `none` exactly AND
- * takes a `custom-ident`, so matching primitives first walks `list-style: none` past it into
- * `list-style-image` — a different declaration that looks the same.
- *
- * ## What the three passes cannot do, measured
- *
- * They fill slots; they do not PARSE. Where two slots both take a token, the passes hand it to the
- * closed one and CSS hands it to whichever component comes FIRST in the grammar. All three engines
- * agree and we differ:
- *
- * ```
- * animation: --zz   engines: animation-name      here: animation-timeline
- * mask: 7px         engines: mask-position-x     here: mask-size
- * ```
- *
- * `--zz` is a `dashed-ident` to `animation-timeline` and a `custom-ident` to `animation-name`, and
- * the grammar names the second first. Asking slots in order instead would fix those two and break
- * `list-style: url(a.png)`, whose open `list-style-type` stands before the slot that means it. The
- * answer is a parse with backtracking, which is a different machine from this one — see
- * {@link splitByGrammar}, which is that machine and is not wired in yet. So `animation` and `mask`
- * are rejected by their own corpus and keep their shorthand.
- *
- * A third shape is out for its own reason: `place-items: stretch` and `place-self: normal` fill
- * BOTH slots, and one token filling several is not something a slot can say here.
- *
- * ## One token per slot, and the two families that want more
- *
- * A slot takes at most ONE token. Where a longhand's own grammar is `a || b || c`, several keywords
- * may stand together and the second finds no free slot, so the whole value is refused and the
- * shorthand stays. Measured over every pair of words in the table, the engines accept ten that this
- * turns down, and they are all in two families:
- *
- * ```
- * text-decoration: underline overline      text-decoration-line takes several at once
- * position-try: flip-block flip-inline     position-try-fallbacks likewise
- * ```
- *
- * A refusal is safe — it is what the compiler did for these before there was a splitter at all —
- * and lifting it means a slot knowing its own multiplicity, which the grammar can say and this
- * shape cannot. Recorded rather than fixed, because the fix is a different model and not a patch.
- *
- * The third pass takes whatever is left, which is what puts `upper-roman` in `list-style-type`
- * without a list of counter styles that could not exist. It does NOT consult what the slot accepts,
- * and the middle pass deliberately does not skip an open slot: measured over the whole table, no
- * open slot can win the middle pass, because `custom-ident` and `string` are the only primitives
- * one has and neither is ever the answer for a token. A guard there was written, was found to
- * decide nothing, and was removed rather than kept as a comment about a case that cannot arise.
- * A family that later brings an open slot with a real primitive would be caught by the generator,
- * which refuses any family it cannot reproduce in all three engines.
- */
 /** A colour is tested directly rather than expanded: `<color>` is 192 words, and every border family takes one. */
 const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== ""));
 const COLOUR_CALL = /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/i;
@@ -206,7 +135,7 @@ function primitivesOf(token: string): readonly string[] {
 }
 
 /** Whether one slot takes this token, by word, by function, or by primitive. */
-function accepts(slot: TokenSlot, token: string): boolean {
+function accepts(slot: GrammarLeaf, token: string): boolean {
   const lower = token.toLowerCase();
   if (slot.words.some((one) => one.toLowerCase() === lower)) return true;
   if (slot.types.includes("color") && (COLOUR_WORDS.has(lower) || lower.startsWith("#") || COLOUR_CALL.test(lower)))
@@ -218,61 +147,12 @@ function accepts(slot: TokenSlot, token: string): boolean {
 }
 
 /**
- * Split a bag-of-tokens value into its longhands, or refuse.
- *
- * It refuses on a comma or a slash (the shape does not describe those), on `var()` (what is in it
- * is unknown until the browser reads it), and on a token no slot will take. A refusal leaves the
- * declaration a shorthand, which is visibly the author's own text; a wrong guess is invisible.
- *
- * A CSS-wide keyword goes on EVERY longhand the family resets — `border: inherit` inherits all
- * twelve — and beside another value it is refused, because CSS has no such form either.
- */
-export function splitTokens(shape: TokenShape, value: string): Record<string, string> | undefined {
-  if (/(^|[^\w-])var\(/i.test(value)) return undefined;
-  /**
-   * A comma or a slash at the TOP LEVEL, which is not the same as one anywhere in the text.
-   *
-   * Read as text, this turned away `rgb(1, 2, 3)` while splitting `rgb(1 2 3)` — and the comma
-   * spelling is what almost every codebase writes for a colour. It stayed invisible because the
-   * generator samples a colour as `rgb(1 2 3)`, so no corpus value ever carried one.
-   */
-  if (tokensOf(value, /[,/]/).length > 1) return undefined;
-  const tokens = tokensOf(value);
-  if (tokens.length === 0) return undefined;
-  if (tokens.some((one) => WIDE.includes(one.toLowerCase()))) {
-    if (tokens.length !== 1) return undefined;
-    return Object.fromEntries(shape.longhands.map((one) => [one, tokens[0] as string]));
-  }
-
-  const taken: (string | undefined)[] = shape.slots.map(() => undefined);
-  const free = (fits: (slot: TokenSlot) => boolean): number =>
-    shape.slots.findIndex((slot, index) => taken[index] === undefined && fits(slot));
-  for (const token of tokens) {
-    const lower = token.toLowerCase();
-    let at = free((slot) => slot.words.some((one) => one.toLowerCase() === lower));
-    if (at < 0) at = free((slot) => accepts(slot, token));
-    if (at < 0) at = free((slot) => slot.open);
-    if (at < 0) return undefined;
-    taken[at] = token;
-  }
-
-  // A longhand no token reached is reset, which is exactly what the shorthand does to it.
-  const out: Record<string, string> = Object.fromEntries(shape.longhands.map((one) => [one, "initial"]));
-  for (const [index, slot] of shape.slots.entries()) {
-    const token = taken[index];
-    if (token === undefined) continue;
-    for (const longhand of slot.longhands) out[longhand] = token;
-  }
-  return out;
-}
-
-/**
  * The one door from a written declaration to the longhands it sets, or a refusal.
  *
- * Two tables, asked in turn: a positional family is answered by how many values were written, a
- * bag-of-tokens family by what each token is, and a family in neither keeps its shorthand. The
- * caller does not choose between them, because which shape a family has is not a fact the compiler
- * should hold in a second place — see `one-rule-many-consumers`.
+ * Two tables, asked in turn: a positional family is answered by how many values were written, and
+ * every other by reading the value against the family's own GRAMMAR. A family in neither keeps its
+ * shorthand. The caller does not choose between them, because which shape a family has is not a
+ * fact the compiler should hold in a second place — see `one-rule-many-consumers`.
  *
  * `!important` is taken off before the split and put back on every longhand. It has to be: it is
  * part of the value's text here, so a splitter would see it as a token nothing accepts and refuse
@@ -302,68 +182,22 @@ export function splitOf(property: string, value: string): Record<string, string>
   const bare = bang === null ? value : value.slice(0, bang.index);
 
   const positional = SHAPES[property];
-  const tokens = TOKEN_SHAPES[property];
+  const grammar = GRAMMAR_SHAPES[property];
   const split =
     positional !== undefined
       ? splitPositional(positional, bare)
-      : tokens === undefined
+      : grammar === undefined
         ? undefined
-        : tokens.list === true
-          ? splitList(tokens, bare)
-          : splitTokens(tokens, bare);
+        : splitByGrammar(grammar, bare);
   if (split === undefined || bang === null) return split;
 
   return Object.fromEntries(Object.entries(split).map(([one, each]) => [one, `${each} ${bang[0].trim()}`]));
 }
 
 /**
- * Splitting a COMMA-SEPARATED family — the same shape repeated, and each longhand a list of its own.
- *
- * `transition: color 1s, opacity 2s` is two items of one shape, and every longhand the family sets
- * takes a list the same length: `transition-property: color, opacity` beside
- * `transition-duration: 1s, 2s`. So this is `splitTokens` applied per item and joined back per
- * longhand, which is why it is a few lines rather than a third splitter.
- *
- * The shape describes ONE item, read from the grammar inside the `#` rather than from the whole
- * value — `<single-transition>` and not `<single-transition>#`.
- *
- * **An item that cannot be answered refuses the WHOLE value**, and an empty item refuses it too.
- * Dropping a bad item would shorten one longhand's list and leave the others long, and the lists
- * are matched by POSITION: a shorter one repeats from its start, so every item after the gap would
- * silently take another item's value.
- */
-export function splitList(shape: TokenShape, value: string): Record<string, string> | undefined {
-  if (/(^|[^\w-])var\(/i.test(value)) return undefined;
-
-  const items = tokensOf(value, /,/).map((one) => one.trim());
-  if (items.length === 0 || items.some((one) => one === "")) return undefined;
-
-  // A CSS-wide keyword is the whole value, never one item of a list.
-  const first = items[0] as string;
-  if (items.length === 1 && WIDE.includes(first.toLowerCase()))
-    return Object.fromEntries(shape.longhands.map((one) => [one, first]));
-
-  // A CSS-wide keyword is not an ITEM of a list in CSS either, so an item that is one is refused
-  // rather than split — the whole-value spelling is handled above.
-  if (items.some((one) => WIDE.includes(one.toLowerCase()))) return undefined;
-
-  const per = items.map((one) => splitTokens(shape, one));
-  if (per.some((one) => one === undefined)) return undefined;
-
-  const out: Record<string, string> = {};
-  for (const longhand of shape.longhands) {
-    const parts = per.map((each) => (each as Record<string, string>)[longhand] as string);
-    const written = reset(longhand, parts);
-    if (written === undefined) return undefined;
-    out[longhand] = written;
-  }
-  return out;
-}
-
-/**
  * The items of one longhand, with every RESET written as a value rather than as `initial`.
  *
- * `splitTokens` marks a longhand no token reached with `initial`, which says exactly the right
+ * A longhand no part of the grammar reached is marked `initial`, which says exactly the right
  * thing and is valid on its own. It is not valid as one item of a comma-separated value: `initial`
  * is a CSS-wide keyword, and all three engines reject `scroll-timeline-axis: initial, initial`
  * outright. A rejected declaration sets nothing, so the longhand the shorthand was supposed to
@@ -391,19 +225,9 @@ function reset(longhand: string, parts: readonly string[]): string | undefined {
  * all: `<bg-position> [ / <bg-size> ]?`, two longhands told apart by a separator.
  *
  * The tree is the family's grammar OPENED — see `openGrammar.ts` — so every leaf of it belongs to
- * a longhand. `leaves` describes those leaves in the order the grammar names them, and it is the
- * same description a slot carried: what the leaf takes, and where a token it takes goes.
+ * a longhand. {@link GrammarShape} is declared beside the table that carries it, the way every
+ * other generated shape in here is.
  */
-export interface GrammarShape {
-  readonly longhands: readonly string[];
-  /** The opened grammar of ONE value, or of one ITEM where {@link GrammarShape.list} is set. */
-  readonly tree: Term;
-  /** One per leaf of `tree`, in the order a pre-order walk reaches them. */
-  readonly leaves: readonly TokenSlot[];
-  /** A COMMA-separated family: every item takes this shape, and each longhand is a list. */
-  readonly list?: boolean;
-}
-
 const LEAF_KINDS = new Set(["keyword", "data", "property", "function"]);
 
 /**
@@ -425,7 +249,7 @@ const AN_IDENT = /^-{0,2}[a-z_][\w-]*$/i;
  * `<dashed-ident>` or a `<length>` admits endlessly many tokens and names none of them, which is
  * exactly why the slot passes put `animation: --zz` in the timeline.
  */
-function namesIt(leaf: TokenSlot, token: string): boolean {
+function namesIt(leaf: GrammarLeaf, token: string): boolean {
   const lower = token.toLowerCase();
   if (leaf.words.some((one) => one.toLowerCase() === lower)) return true;
   if (leaf.types.includes("color") && COLOUR_WORDS.has(lower)) return true;
@@ -453,7 +277,7 @@ function namesIt(leaf: TokenSlot, token: string): boolean {
  * A leaf that names the token ITSELF never reaches this — `accepts` answers first, which is what
  * keeps `list-style: none` on the type where `list-style-image` also spells `none`.
  */
-function takes(leaf: TokenSlot, token: string, leaves: readonly TokenSlot[]): boolean {
+function takes(leaf: GrammarLeaf, token: string, leaves: readonly GrammarLeaf[]): boolean {
   if (accepts(leaf, token)) return true;
   if (!leaf.open || !AN_IDENT.test(token)) return false;
   return !leaves.some((one) => one !== leaf && namesIt(one, token));
@@ -494,10 +318,10 @@ function byGrammar(shape: GrammarShape, value: string): Record<string, string> |
   // The table and the tree are written together, so a mismatch is a corrupt table rather than a
   // value this cannot read — refusing says so without guessing which leaf lost its description.
   if (leaves.length !== shape.leaves.length) return undefined;
-  const described = new Map<Term, TokenSlot>(leaves.map((one, index) => [one, shape.leaves[index] as TokenSlot]));
+  const described = new Map<Term, GrammarLeaf>(leaves.map((one, index) => [one, shape.leaves[index] as GrammarLeaf]));
 
   const taken = matchValue(shape.tree, tokens, (term, token) =>
-    term.kind === "literal" ? term.name === token : takes(described.get(term) as TokenSlot, token, shape.leaves),
+    term.kind === "literal" ? term.name === token : takes(described.get(term) as GrammarLeaf, token, shape.leaves),
   );
   if (taken === undefined) return undefined;
 
@@ -513,7 +337,8 @@ function byGrammar(shape: GrammarShape, value: string): Record<string, string> |
 /**
  * Split by the grammar, one value or a comma-separated list of them.
  *
- * The list case is `byGrammar` per item joined back per longhand, for the reason `splitList` gives:
+ * The list case is `byGrammar` per item joined back per longhand, and the reason it is a few lines
+ * rather than a second splitter is this:
  * every longhand of a comma family takes a list the same length, and the lists are matched by
  * POSITION — so one bad item refuses the whole value rather than shortening one list.
  */

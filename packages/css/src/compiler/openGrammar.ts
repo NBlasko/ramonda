@@ -14,10 +14,10 @@ import { type Term, SyntaxNotationError, parseValueSyntax } from "./valueSyntax"
  *
  * ## Why it is here and not in the generator
  *
- * The rule is the generator's already: `slotsOf` in `scripts/build-token-shapes.mjs` opens a
- * component that claims no longhand, which is how a flat slot list reaches the parts of
- * `<single-animation>`. Writing a second copy of that rule for the parser is the fault
- * `one-rule-many-consumers` names, so the rule lives here once and the generator reads its LEAVES.
+ * The rule came from the slot generator, which opened a component that claimed no longhand so a
+ * flat list could reach the parts of `<single-animation>`. Keeping a second copy of it for the
+ * parser is the fault `one-rule-many-consumers` names, so it lives here once and
+ * `scripts/build-grammar-shapes.mjs` reads its LEAVES.
  *
  * ## The one thing it does that a flat reading cannot
  *

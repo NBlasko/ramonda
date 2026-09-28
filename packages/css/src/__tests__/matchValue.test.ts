@@ -5,7 +5,7 @@ import { parseValueSyntax } from "../compiler/valueSyntax";
 /**
  * Reading a value AGAINST its grammar, which is what filling slots could not do.
  *
- * The three passes in `splitTokens` hand a token to the first slot that takes it, and CSS hands it
+ * Filling a list of SLOTS hands a token to the first one that takes it, and CSS hands it
  * to whichever component the grammar reaches first — measured, `animation: --zz` is a name to all
  * three engines and a timeline to the passes. The difference only closes with a real parse, because
  * the answer needs BACKTRACKING: `animation: spin` puts `spin` in the name because nothing else
