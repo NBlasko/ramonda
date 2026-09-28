@@ -218,6 +218,16 @@ describe("the families this cannot answer are absent, not wrong", () => {
     for (const name of ["border", "border-top", "border-block", "border-inline-end"])
       expect(TOKEN_SHAPES[name]).toBeDefined();
   });
+
+  /**
+   * `mask` is absent for a reason worth keeping straight: its ITEM is flat, so it reaches the
+   * corpus, and the corpus turns it down. The grammar has a `<bg-position>` its slots cannot hold
+   * — `mask: 7px` is a position to all three engines and a size here — and no list of slots can
+   * fix that. {@link splitByGrammar} is what answers it.
+   */
+  test("and `mask` reaches the corpus and is turned down by it", () => {
+    expect(TOKEN_SHAPES.mask).toBeUndefined();
+  });
 });
 
 /**

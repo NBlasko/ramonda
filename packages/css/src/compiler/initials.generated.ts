@@ -2,7 +2,7 @@
 // rather than read: each browser is launched and asked what it computes the property to on an
 // element nothing has styled. No engine source is used. See THIRD-PARTY.md. Do not edit.
 //
-// 405 longhands, and 8 the engines disagree about.
+// 464 longhands, and 11 the engines disagree about.
 
 /**
  * What a longhand is worth when nothing sets it, as text a declaration may carry.
@@ -15,6 +15,65 @@
  * same thing, so it is a value that may be SPECIFIED and not only observed.
  */
 export const INITIAL_VALUES: Readonly<Record<string, string>> = {
+  "-apple-pay-button-style": "black",
+  "-apple-pay-button-type": "plain",
+  "-moz-box-align": "stretch",
+  "-moz-box-direction": "normal",
+  "-moz-box-flex": "0",
+  "-moz-box-ordinal-group": "1",
+  "-moz-box-orient": "horizontal",
+  "-moz-box-pack": "start",
+  "-moz-float-edge": "content-box",
+  "-moz-force-broken-image-icon": "0",
+  "-moz-orient": "inline",
+  "-moz-osx-font-smoothing": "auto",
+  "-moz-text-size-adjust": "auto",
+  "-webkit-backdrop-filter": "none",
+  "-webkit-background-clip": "border-box",
+  "-webkit-background-origin": "padding-box",
+  "-webkit-border-horizontal-spacing": "0px",
+  "-webkit-border-vertical-spacing": "0px",
+  "-webkit-box-align": "stretch",
+  "-webkit-box-decoration-break": "slice",
+  "-webkit-box-direction": "normal",
+  "-webkit-box-flex": "0",
+  "-webkit-box-flex-group": "1",
+  "-webkit-box-lines": "single",
+  "-webkit-box-ordinal-group": "1",
+  "-webkit-box-orient": "horizontal",
+  "-webkit-box-pack": "start",
+  "-webkit-box-reflect": "none",
+  "-webkit-box-shadow": "none",
+  "-webkit-column-axis": "auto",
+  "-webkit-column-progression": "normal",
+  "-webkit-cursor-visibility": "auto",
+  "-webkit-font-smoothing": "auto",
+  "-webkit-hyphenate-limit-after": "auto",
+  "-webkit-hyphenate-limit-before": "auto",
+  "-webkit-hyphenate-limit-lines": "no-limit",
+  "-webkit-initial-letter": "normal",
+  "-webkit-line-align": "none",
+  "-webkit-line-box-contain": "block inline replaced",
+  "-webkit-line-clamp": "none",
+  "-webkit-line-grid": "none",
+  "-webkit-line-snap": "none",
+  "-webkit-locale": "auto",
+  "-webkit-mask-clip": "border-box",
+  "-webkit-mask-position-x": "0%",
+  "-webkit-mask-position-y": "0%",
+  "-webkit-mask-source-type": "alpha",
+  "-webkit-nbsp-mode": "normal",
+  "-webkit-rtl-ordering": "logical",
+  "-webkit-ruby-position": "before",
+  "-webkit-text-combine": "none",
+  "-webkit-text-decorations-in-effect": "none",
+  "-webkit-text-fill-color": "rgb(0, 0, 0)",
+  "-webkit-text-security": "none",
+  "-webkit-text-stroke-color": "rgb(0, 0, 0)",
+  "-webkit-text-stroke-width": "0px",
+  "-webkit-text-zoom": "normal",
+  "-webkit-user-drag": "auto",
+  "-webkit-user-modify": "read-only",
   "accent-color": "auto",
   "align-content": "normal",
   "align-items": "normal",
@@ -433,6 +492,9 @@ export const INITIAL_VALUES: Readonly<Record<string, string>> = {
  * is what stops two machines adding and removing it for ever.
  */
 export const UNSTABLE: readonly string[] = [
+  "-webkit-mask-composite",
+  "-webkit-tap-highlight-color",
+  "-webkit-user-select",
   "alignment-baseline",
   "baseline-shift",
   "font-family",

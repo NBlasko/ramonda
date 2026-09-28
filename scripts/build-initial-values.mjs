@@ -68,8 +68,15 @@ const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.js
 const COMPILER = join(HERE, "..", "packages", "css", "src", "compiler");
 const { LEAVES } = await loadTs(join(COMPILER, "leaves.generated.ts"));
 
-/** Every longhand some shorthand resets. A property nothing resets never needs a reset written. */
-const WANTED = [...new Set(Object.values(LEAVES).flat())].filter((one) => !one.startsWith("-")).sort();
+/**
+ * Every longhand some shorthand resets. A property nothing resets never needs a reset written.
+ *
+ * A PREFIXED name is included, which the first version filtered out. `mask` resets
+ * `-webkit-mask-position-x`, so without it the family has a longhand it cannot reset and the split
+ * refuses every value — the row was written and did nothing. An engine that does not have the
+ * prefixed name simply says nothing about it, which is the same rule as everywhere here.
+ */
+const WANTED = [...new Set(Object.values(LEAVES).flat())].sort();
 
 const file = join(COMPILER, "initials.generated.ts");
 const heldValues = previousFrom(file, /INITIAL_VALUES: Readonly<Record<string, string>> = (\{[\s\S]*?\n\})\s*;/, {});

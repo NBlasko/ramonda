@@ -145,8 +145,9 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
  * `--zz` is a `dashed-ident` to `animation-timeline` and a `custom-ident` to `animation-name`, and
  * the grammar names the second first. Asking slots in order instead would fix those two and break
  * `list-style: url(a.png)`, whose open `list-style-type` stands before the slot that means it. The
- * answer is a parse with backtracking, which is a different machine from this one — so `animation`
- * and `mask` are rejected by their own corpus and keep their shorthand.
+ * answer is a parse with backtracking, which is a different machine from this one — see
+ * {@link splitByGrammar}, which is that machine and is not wired in yet. So `animation` and `mask`
+ * are rejected by their own corpus and keep their shorthand.
  *
  * A third shape is out for its own reason: `place-items: stretch` and `place-self: normal` fill
  * BOTH slots, and one token filling several is not something a slot can say here.

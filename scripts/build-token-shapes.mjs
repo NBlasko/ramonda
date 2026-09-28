@@ -113,15 +113,48 @@ function samplesFor(slot) {
   return out;
 }
 
-/** Each slot alone, then every slot at once — in the written order and two shuffles of it. */
-function corpusFor(slots) {
+/**
+ * Whether the ITEM may be written in any order.
+ *
+ * `||` and `&&` say so; a juxtaposition does not. `scroll-timeline` is
+ * `<'scroll-timeline-name'> <'scroll-timeline-axis'>?` — name first — so a value with the axis in
+ * front is not a value at all.
+ */
+function reorders(name) {
+  const syntax = mdn.css.properties[name]?.syntax ?? "";
+  if (syntax === "") return false;
+  try {
+    // The item may BE a named type — `mask` is `<mask-layer>#` — so it is followed to the shape it
+    // stands for. Reading the name alone said "a sequence, do not shuffle" for every one of them.
+    let term = parseValueSyntax(itemOf(syntax) ?? syntax);
+    for (let depth = 0; term.kind === "data" && term.name !== undefined && depth < 3; depth++) {
+      const inner = grammarOf(term.name);
+      if (inner === "") break;
+      term = parseValueSyntax(inner);
+    }
+    return term.kind === "or" || term.kind === "and";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Each slot alone, then every slot at once — and, where the grammar allows it, two shuffles.
+ *
+ * **The shuffles used to be unconditional, and that made the corpus blind.** A family whose item is
+ * a SEQUENCE has an order, so every shuffled value is invalid CSS; the engine refuses it, and a
+ * value the engine refuses is SKIPPED. Measured: the one two-item value built for `scroll-timeline`
+ * was `none, block none`, rejected by all three engines, so both list families' list path was
+ * verified by nothing at all — which is how `splitList` shipped writing `initial` into a list.
+ */
+function corpusFor(slots, shuffle) {
   const per = slots.map(samplesFor);
   if (per.some((one) => one.length === 0)) return [];
   const out = per.flatMap((ones) => ones);
   const first = per.map((one) => one[0]);
   out.push(first.join(" "));
-  if (first.length > 1) out.push([...first].reverse().join(" "));
-  if (first.length > 2) out.push([first[1], first[0], ...first.slice(2)].join(" "));
+  if (shuffle && first.length > 1) out.push([...first].reverse().join(" "));
+  if (shuffle && first.length > 2) out.push([first[1], first[0], ...first.slice(2)].join(" "));
   return out;
 }
 
@@ -321,7 +354,7 @@ for (const engine of ENGINES) {
     const cases = [];
     let refused = 0;
     for (const [name, shape] of Object.entries(shapes)) {
-      const corpus = corpusFor(shape.slots);
+      const corpus = corpusFor(shape.slots, reorders(name));
       /**
        * A list family is asked its items AND a value of two of them, because one item on its own
        * exercises nothing a flat family does not: what a list adds is the JOIN, and a single item
@@ -344,7 +377,15 @@ for (const engine of ENGINES) {
           x.style.cssText = "";
           y.style.cssText = "";
           x.style.cssText = `${name}: ${value}`;
-          if (x.style.cssText === "") return true; // This engine does not take the value at all.
+          /**
+           * This engine does not take the value at all, so there is nothing to compare.
+           *
+           * It used to answer `true` here, which is the same answer as *the split was right* — and
+           * a family whose every case ends up here was written with nothing checking it. Measured:
+           * that is exactly what happened to both list families. It says `skip` now, and the caller
+           * counts those apart.
+           */
+          if (x.style.cssText === "") return "skip";
           y.style.cssText = Object.entries(split)
             .map(([property, one]) => `${property}: ${one}`)
             .join("; ");
@@ -369,14 +410,69 @@ for (const engine of ENGINES) {
       cases,
     );
 
-    for (const [index, ok] of verdicts.entries()) {
-      if (ok) continue;
+    /** Per family: how many of its cases this engine actually compared, and how many it skipped. */
+    const tried = {};
+    for (const [index, verdict] of verdicts.entries()) {
       const name = cases[index].name;
+      tried[name] ??= { compared: 0, skipped: 0 };
+      if (verdict === "skip") {
+        tried[name].skipped++;
+        continue;
+      }
+      tried[name].compared++;
+      if (verdict === true) continue;
       if (shapes[name] !== undefined) {
         delete shapes[name];
         rejected.push(name);
       }
     }
+
+    /**
+     * Which families this engine HAS, asked of the longhands rather than of the shorthand.
+     *
+     * A property an engine does not implement computes to the empty string, and that is the whole
+     * test. It matters because the next check cannot be made without it: Firefox has neither
+     * `scroll-timeline` nor `view-timeline`, so it refuses every value of theirs — which looks
+     * exactly like a corpus that is never valid, and the first version of this rejected both.
+     */
+    const has = await tab.evaluate(
+      (families) => {
+        const x = document.getElementById("x");
+        x.style.cssText = "";
+        const held = getComputedStyle(x);
+        return Object.fromEntries(
+          families.map(([name, longhands]) => [name, longhands.some((one) => held.getPropertyValue(one) !== "")]),
+        );
+      },
+      Object.entries(shapes).map(([name, shape]) => [name, shape.longhands]),
+    );
+
+    /**
+     * A family this engine HAS, whose every case it refused, is a row nothing checked.
+     *
+     * Writing it anyway is the fault this generator exists to prevent, one step further out: not a
+     * row that stopped being rebuilt, but a row that was rebuilt and never compared. It is rejected
+     * like a disagreement, so the family keeps its shorthand — the answer that cannot be wrong.
+     *
+     * An engine that does not have the family is not this: it says nothing, the intersection below
+     * decides, and the family is written where the engines that DO have it agreed.
+     *
+     * **A family with NO cases at all counts here too**, and the first version of this let it past.
+     * A value the splitter itself refuses never becomes a case, so a row whose every corpus value
+     * is refused reaches this loop with nothing recorded — which read as "not measured, leave it
+     * alone" rather than as what it is. Measured: `mask` was written that way and refused every
+     * value of its own, so the row did nothing and looked verified while doing it.
+     */
+    const blind = [];
+    for (const name of Object.keys(shapes)) {
+      if (!has[name]) continue;
+      const count = tried[name] ?? { compared: 0, skipped: 0 };
+      if (count.compared > 0) continue;
+      blind.push(`${name} (${count.skipped} refused by the engine, ${count.skipped === 0 ? "all" : "the rest"} by the splitter)`);
+      delete shapes[name];
+      rejected.push(name);
+    }
+    if (blind.length > 0) console.error(`[tokens] ${engine} compared NOTHING for: ${blind.join(", ")}`);
 
     for (const name of carried) delete shapes[name];
     perEngine[engine] = { shapes, rejected };
