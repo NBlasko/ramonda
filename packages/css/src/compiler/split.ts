@@ -344,6 +344,18 @@ function byGrammar(shape: GrammarShape, value: string): Record<string, string> |
  */
 export function splitByGrammar(shape: GrammarShape, value: string): Record<string, string> | undefined {
   if (/(^|[^\w-])var\(/i.test(value)) return undefined;
+  /**
+   * A value the ENGINES read differently from each other, which no one split can satisfy.
+   *
+   * Measured, `animation: auto` is `animation-name: auto` in Firefox and touches nothing in
+   * Chromium or WebKit — so either answer is wrong in some browser. The value keeps its shorthand
+   * and every other value of the family still splits, which is what refusing the whole family for
+   * one value used to cost.
+   */
+  if (shape.contested !== undefined) {
+    const written = tokensOf(value, /[\s,]/).map((one) => one.toLowerCase());
+    if (written.some((one) => shape.contested?.includes(one))) return undefined;
+  }
 
   if (shape.list !== true) {
     if (tokensOf(value, /,/).length > 1) return undefined;
@@ -362,9 +374,24 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
   const per = items.map((one) => byGrammar(shape, one));
   if (per.some((one) => one === undefined)) return undefined;
 
+  /**
+   * A longhand the family resets ONCE rather than once per item.
+   *
+   * `animation: 4s, 9s` gives `animation-duration: 4s, 9s` and `animation-timeline: auto` — one
+   * value for two items. Which longhands do that is measured and carried in the shape, because the
+   * grammar cannot say: `animation-timeline` has a part in the item and `animation-range-start`
+   * has none, and both behave this way. A rule written from the grammar — "a longhand no part
+   * mentions is reset once" — got `animation-timeline` wrong, and the corpus caught it.
+   */
+  const once = new Set(shape.resetOnce ?? []);
+
   const out: Record<string, string> = {};
   for (const longhand of shape.longhands) {
-    // The same reset rule as the slot list: `initial` cannot be one item of a list.
+    if (once.has(longhand)) {
+      out[longhand] = "initial";
+      continue;
+    }
+    // `initial` cannot be one item of a list, so the reset is written as a value.
     const written = reset(
       longhand,
       per.map((each) => (each as Record<string, string>)[longhand] as string),

@@ -144,6 +144,44 @@ describe("a comma-separated family", () => {
     expect(splitByGrammar(LIST, "spin 1s, ??? ???")).toBeUndefined();
   });
 
+  /**
+   * A longhand the family resets ONCE rather than once per item.
+   *
+   * `animation: 4s, 9s` gives `animation-duration: 4s, 9s` and `animation-timeline: auto` — one
+   * value for two items. Which longhands do that is MEASURED and carried in the shape, because the
+   * grammar does not say: `animation-timeline` has a part in the item and `animation-range-start`
+   * has none, and both behave this way. A rule written from the grammar got the first one wrong.
+   */
+  test("a longhand the family resets once does not line up with the items", () => {
+    const ONCE = shape(
+      "<custom-ident> <time>",
+      ["a-name", "a-time", "a-line"],
+      [{ longhands: ["a-name"], types: ["custom-ident"], open: true }, { longhands: ["a-time"], types: ["time"] }],
+      true,
+    );
+
+    expect(splitByGrammar({ ...ONCE, resetOnce: ["a-line"] }, "spin 1s, slide 2s")).toEqual({
+      "a-name": "spin, slide",
+      "a-time": "1s, 2s",
+      "a-line": "initial",
+    });
+  });
+
+  /** Real longhand names, because a reset that lines up needs a measured initial value to write. */
+  test("and one that is not named keeps lining up, even where no item wrote it", () => {
+    const BOTH = shape(
+      "<custom-ident> <time>?",
+      ["animation-name", "animation-duration"],
+      [
+        { longhands: ["animation-name"], types: ["custom-ident"], open: true },
+        { longhands: ["animation-duration"], types: ["time"] },
+      ],
+      true,
+    );
+
+    expect(splitByGrammar({ ...BOTH, resetOnce: [] }, "spin, slide 2s")?.["animation-duration"]).toBe("0s, 2s");
+  });
+
   test("a family that is not a list refuses a comma outright", () => {
     expect(splitByGrammar(BORDER, "1px solid red, 2px")).toBeUndefined();
   });
@@ -233,6 +271,46 @@ describe("an open leaf loses to a word and beats a type", () => {
     );
 
     expect(splitByGrammar(EMPHASIS, "rebeccapurple")?.["a-colour"]).toBe("rebeccapurple");
+  });
+});
+
+/**
+ * A value the ENGINES read differently from each other, which no one split can satisfy.
+ *
+ * `animation: auto` is the measured case. Firefox puts `auto` in `animation-name`; Chromium and
+ * WebKit put it nowhere, leaving both longhands at their initial. Writing either answer is wrong in
+ * some browser, so the value keeps its shorthand — and `animation: spin 1s`, which nothing disputes,
+ * splits as usual. Refusing the whole FAMILY for one value is what this replaced.
+ */
+describe("a contested value", () => {
+  const DISPUTED = shape(
+    "<time> || <custom-ident>",
+    ["a-time", "a-name"],
+    [
+      { longhands: ["a-time"], words: ["auto"], types: ["time"] },
+      { longhands: ["a-name"], types: ["custom-ident"], open: true },
+    ],
+  );
+  const WITH = { ...DISPUTED, contested: ["auto"] };
+
+  test("is refused, where the same shape without the dispute would split it", () => {
+    expect(splitByGrammar(DISPUTED, "auto")).toBeDefined();
+    expect(splitByGrammar(WITH, "auto")).toBeUndefined();
+  });
+
+  /** Written SECOND, because a check that reads only the first token passes the other way round. */
+  test("and it is refused wherever it stands in the value", () => {
+    expect(splitByGrammar(DISPUTED, "spin auto")).toBeDefined();
+    expect(splitByGrammar(WITH, "spin auto")).toBeUndefined();
+    expect(splitByGrammar(WITH, "auto spin")).toBeUndefined();
+  });
+
+  test("while every other value of the family still splits", () => {
+    expect(splitByGrammar(WITH, "1s spin")).toEqual({ "a-time": "1s", "a-name": "spin" });
+  });
+
+  test("the spelling is the token's, whatever case it was written in", () => {
+    expect(splitByGrammar(WITH, "AUTO")).toBeUndefined();
   });
 });
 

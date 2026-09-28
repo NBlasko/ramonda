@@ -211,7 +211,7 @@ describe("a split reaches leaves, never another shorthand", () => {
 });
 
 describe("the families this cannot answer are absent, not wrong", () => {
-  test.each(["background", "animation", "mask", "font", "grid"])("%s has no shape", (name) => {
+  test.each(["background", "mask", "font", "grid"])("%s has no shape", (name) => {
     expect(GRAMMAR_SHAPES[name]).toBeUndefined();
   });
 
@@ -221,13 +221,28 @@ describe("the families this cannot answer are absent, not wrong", () => {
   });
 
   /**
-   * `animation` is absent for a reason the engines disagree about rather than one we could fix.
-   * Measured: Firefox computes `animation: auto` to `animation-name: auto`, Chromium and WebKit to
-   * `animation-duration: auto` — Firefox has no `auto` duration yet. No single split writes the
-   * same page in all three, so the family keeps its shorthand.
+   * `animation` is IN, and one VALUE of it is out.
+   *
+   * Measured: `animation: auto` is `animation-name: auto` in Firefox and touches nothing in
+   * Chromium or WebKit. No single split writes the same page in all three, so that value keeps its
+   * shorthand — and every other value of the family splits, which refusing the whole family for it
+   * used to cost.
    */
-  test("and `animation` is out because the engines disagree, not because the grammar cannot say", () => {
-    expect(GRAMMAR_SHAPES.animation).toBeUndefined();
+  test("and `animation` is in, with the one value the engines disagree about refused", () => {
+    expect(GRAMMAR_SHAPES.animation?.contested).toEqual(["auto"]);
+    expect(splitByGrammar(shapeOf("animation"), "auto")).toBeUndefined();
+    expect(splitByGrammar(shapeOf("animation"), "spin 1s")).toMatchObject({
+      "animation-name": "spin",
+      "animation-duration": "1s",
+    });
+  });
+
+  /** `animation-range-*` is outside `<single-animation>` entirely, so the list does not repeat it. */
+  test("and a longhand the grammar never mentions is reset once", () => {
+    expect(splitByGrammar(shapeOf("animation"), "spin 1s, slide 2s")).toMatchObject({
+      "animation-name": "spin, slide",
+      "animation-range-end": "initial",
+    });
   });
 
   /** `transition` is IN, which no list of slots could manage: its two `<time>`s are one component

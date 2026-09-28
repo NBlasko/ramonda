@@ -730,14 +730,22 @@ describe("a keyframes site", () => {
  * at all. It is that name, written in.
  */
 describe("a reference to a named site", () => {
+  /**
+   * `animation` is a SPLIT family, so the block is the longhands it sets and the name is one of
+   * them. What this asks is unchanged and is the point: the keyframes' own class name reaches the
+   * CSS as a literal, with no custom property standing between them.
+   */
   test("is written in, and costs no custom property", () => {
     const out = emit(
       `const slide = @@keyframes( from { opacity: 0; } );\nconst card = @@( animation: {slide} 3s; );\n`,
     );
 
-    const [frames, card] = out?.blocks ?? [];
-    expect(card.css).toBe(`animation:${frames.className} 3s;`);
-    expect(card.properties).toEqual([]);
+    const [frames] = out?.blocks ?? [];
+    const named = out?.blocks.find((one) => one.css.startsWith("animation-name:"));
+
+    expect(named?.css).toBe(`animation-name:${frames.className};`);
+    expect(out?.blocks.some((one) => one.css === "animation-duration:3s;")).toBe(true);
+    expect(out?.blocks.every((one) => one.properties.length === 0)).toBe(true);
     expect(out?.code).not.toContain("var(--");
   });
 
@@ -769,14 +777,13 @@ describe("a reference to a named site", () => {
     expect(card.css).toBe(`${property.className}:45deg;`);
   });
 
+  /** Two blocks with the same value are the same classes, so the second adds no rule at all. */
   test("two blocks referring to the same name are still one rule each", () => {
-    const out = emit(
-      `const slide = @@keyframes( from { opacity: 0; } );\n` +
-        `const a = @@( animation: {slide} 3s; );\n` +
-        `const b = @@( animation: {slide} 3s; );\n`,
-    );
+    const frames = `const slide = @@keyframes( from { opacity: 0; } );\n`;
+    const one = emit(`${frames}const a = @@( animation: {slide} 3s; );\n`);
+    const two = emit(`${frames}const a = @@( animation: {slide} 3s; );\nconst b = @@( animation: {slide} 3s; );\n`);
 
-    expect(out?.blocks).toHaveLength(2);
+    expect(two?.blocks).toHaveLength(one?.blocks.length ?? 0);
   });
 
   test("but blocks referring to DIFFERENT names are different rules", () => {

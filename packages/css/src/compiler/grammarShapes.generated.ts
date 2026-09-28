@@ -3,7 +3,7 @@
 // shorthand and our longhands are written to two elements, and the whole computed style is
 // compared. No engine source is used. See THIRD-PARTY.md. Do not edit.
 //
-// 29 families, written only where every engine that has one agreed.
+// 30 families, written only where every engine that has one agreed.
 
 import type { Term } from "./valueSyntax";
 
@@ -29,9 +29,26 @@ export interface GrammarShape {
   readonly leaves: readonly GrammarLeaf[];
   /** A COMMA-separated family: every item takes this shape, and each longhand is a list. */
   readonly list?: boolean;
+  /**
+   * Values the engines read differently FROM EACH OTHER, which no one split can satisfy.
+   *
+   * A value carrying one of these is refused and keeps its shorthand; every other value of the
+   * family still splits. `animation: auto` is the measured case — Firefox puts `auto` in the
+   * name and the other two put it nowhere — and it costs `animation` nothing else.
+   */
+  readonly contested?: readonly string[];
+  /**
+   * Longhands a LIST family resets ONCE rather than once per item, measured.
+   *
+   * `animation: 4s, 9s` gives `animation-duration: 4s, 9s` and `animation-timeline: auto` —
+   * one value for two items. It cannot be read off the grammar: `animation-timeline` has a part
+   * in the item and `animation-range-start` has none, and both behave this way.
+   */
+  readonly resetOnce?: readonly string[];
 }
 
 export const GRAMMAR_SHAPES: Readonly<Record<string, GrammarShape>> = {
+  "animation": {"longhands":["animation-delay","animation-direction","animation-duration","animation-fill-mode","animation-iteration-count","animation-name","animation-play-state","animation-range-end","animation-range-start","animation-timeline","animation-timing-function"],"tree":{"kind":"or","terms":[{"kind":"property","name":"animation-duration"},{"kind":"data","name":"easing-function"},{"kind":"property","name":"animation-delay"},{"kind":"data","name":"single-animation-iteration-count"},{"kind":"data","name":"single-animation-direction"},{"kind":"data","name":"single-animation-fill-mode"},{"kind":"data","name":"single-animation-play-state"},{"kind":"alt","terms":[{"kind":"keyword","name":"none"},{"kind":"data","name":"keyframes-name"}]},{"kind":"data","name":"single-animation-timeline"}]},"leaves":[{"longhands":["animation-duration"],"words":["auto"],"types":["time"],"functions":[],"open":false},{"longhands":["animation-timing-function"],"words":["linear","ease","ease-in","ease-out","ease-in-out","step-start","step-end"],"types":[],"functions":["linear","cubic-bezier","steps"],"open":false},{"longhands":["animation-delay"],"words":[],"types":["time"],"functions":[],"open":false},{"longhands":["animation-iteration-count"],"words":["infinite"],"types":["number"],"functions":[],"open":false},{"longhands":["animation-direction"],"words":["normal","reverse","alternate","alternate-reverse"],"types":[],"functions":[],"open":false},{"longhands":["animation-fill-mode"],"words":["none","forwards","backwards","both"],"types":[],"functions":[],"open":false},{"longhands":["animation-play-state"],"words":["running","paused"],"types":[],"functions":[],"open":false},{"longhands":["animation-name"],"words":["none"],"types":[],"functions":[],"open":false},{"longhands":["animation-name"],"words":[],"types":["custom-ident","string"],"functions":[],"open":true},{"longhands":["animation-timeline"],"words":["auto","none"],"types":["dashed-ident"],"functions":["scroll","view"],"open":false}],"list":true,"contested":["auto"],"resetOnce":["animation-range-end","animation-range-start","animation-timeline"]},
   "border": {"longhands":["border-bottom-color","border-bottom-style","border-bottom-width","border-image-outset","border-image-repeat","border-image-slice","border-image-source","border-image-width","border-left-color","border-left-style","border-left-width","border-right-color","border-right-style","border-right-width","border-top-color","border-top-style","border-top-width"],"tree":{"kind":"or","terms":[{"kind":"data","name":"line-width"},{"kind":"data","name":"line-style"},{"kind":"data","name":"color"}]},"leaves":[{"longhands":["border-bottom-width","border-left-width","border-right-width","border-top-width"],"words":["thin","medium","thick"],"types":["length"],"functions":[],"open":false},{"longhands":["border-bottom-style","border-left-style","border-right-style","border-top-style"],"words":["none","hidden","dotted","dashed","solid","double","groove","ridge","inset","outset"],"types":[],"functions":[],"open":false},{"longhands":["border-bottom-color","border-left-color","border-right-color","border-top-color"],"words":[],"types":["color"],"functions":[],"open":false}]},
   "border-block": {"longhands":["border-block-end-color","border-block-end-style","border-block-end-width","border-block-start-color","border-block-start-style","border-block-start-width"],"tree":{"kind":"or","terms":[{"kind":"property","name":"border-top-width"},{"kind":"property","name":"border-top-style"},{"kind":"data","name":"color"}]},"leaves":[{"longhands":["border-block-end-width","border-block-start-width"],"words":["thin","medium","thick"],"types":["length"],"functions":[],"open":false},{"longhands":["border-block-end-style","border-block-start-style"],"words":["none","hidden","dotted","dashed","solid","double","groove","ridge","inset","outset"],"types":[],"functions":[],"open":false},{"longhands":["border-block-end-color","border-block-start-color"],"words":[],"types":["color"],"functions":[],"open":false}]},
   "border-block-end": {"longhands":["border-block-end-color","border-block-end-style","border-block-end-width"],"tree":{"kind":"or","terms":[{"kind":"property","name":"border-top-width"},{"kind":"property","name":"border-top-style"},{"kind":"data","name":"color"}]},"leaves":[{"longhands":["border-block-end-width"],"words":["thin","medium","thick"],"types":["length"],"functions":[],"open":false},{"longhands":["border-block-end-style"],"words":["none","hidden","dotted","dashed","solid","double","groove","ridge","inset","outset"],"types":[],"functions":[],"open":false},{"longhands":["border-block-end-color"],"words":[],"types":["color"],"functions":[],"open":false}]},
