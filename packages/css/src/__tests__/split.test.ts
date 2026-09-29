@@ -685,7 +685,7 @@ describe("timeline-trigger, split by hand", () => {
     expect(trigger("--a / 10%")?.["timeline-trigger-active-range-end"]).toBe("auto");
   });
 
-  test.each(["view() --a", "a", "--a --b", "--a view() /", "--a view() cover / contain / exit", "--a, "])(
+  test.each(["view() --a", "a", "--a --b --c", "--a view() /", "--a view() cover / contain / exit", "--a, "])(
     "refuses %s",
     (value) => {
       expect(trigger(value)).toBeUndefined();
@@ -772,6 +772,109 @@ describe("grid-template, grid and mask-border, split by hand", () => {
     ["mask-border", "url(a.png) 30 fill 40"],
     ["mask-border", "url(a.png) 1 2 3 4 5"],
     ["mask-border", "bogus"],
+  ])("%s refuses %s", (family, value) => {
+    expect(splitOf(family, value)).toBeUndefined();
+  });
+});
+
+describe("the families the must-split list found, split by hand", () => {
+  test.each([
+    ["grid-column", "2", { "grid-column-start": "2", "grid-column-end": "auto" }],
+    ["grid-column", "a", { "grid-column-start": "a", "grid-column-end": "a" }],
+    ["grid-column", "1 / -1", { "grid-column-start": "1", "grid-column-end": "-1" }],
+    ["grid-row", "span 2", { "grid-row-start": "span 2", "grid-row-end": "auto" }],
+    [
+      "border-radius",
+      "1px 2px 3px 4px / 5px",
+      {
+        "border-top-left-radius": "1px 5px",
+        "border-top-right-radius": "2px 5px",
+        "border-bottom-right-radius": "3px 5px",
+        "border-bottom-left-radius": "4px 5px",
+      },
+    ],
+    [
+      "border-radius",
+      "1px 2px 3px",
+      {
+        "border-top-left-radius": "1px",
+        "border-top-right-radius": "2px",
+        "border-bottom-right-radius": "3px",
+        "border-bottom-left-radius": "2px",
+      },
+    ],
+    ["overscroll-behavior", "auto none", { "overscroll-behavior-x": "auto", "overscroll-behavior-y": "none" }],
+    ["place-items", "first baseline", { "align-items": "first baseline", "justify-items": "first baseline" }],
+    ["place-items", "center legacy right", { "align-items": "center", "justify-items": "legacy right" }],
+    ["place-self", "safe start", { "align-self": "safe start", "justify-self": "safe start" }],
+    ["place-content", "center space-between", { "align-content": "center", "justify-content": "space-between" }],
+    ["columns", "2", { "column-width": "auto", "column-count": "2", "column-height": "auto", "column-wrap": "auto" }],
+    [
+      "columns",
+      "200px 3",
+      { "column-width": "200px", "column-count": "3", "column-height": "auto", "column-wrap": "auto" },
+    ],
+    ["container", "a b / size", { "container-name": "a b", "container-type": "size" }],
+    ["container", "none", { "container-name": "none", "container-type": "normal" }],
+    [
+      "text-decoration",
+      "underline overline dotted 2px red",
+      {
+        "text-decoration-line": "underline overline",
+        "text-decoration-style": "dotted",
+        "text-decoration-thickness": "2px",
+        "text-decoration-color": "red",
+      },
+    ],
+    ["text-emphasis", "filled circle red", { "text-emphasis-style": "filled circle", "text-emphasis-color": "red" }],
+    ["text-emphasis", "red", { "text-emphasis-style": "none", "text-emphasis-color": "red" }],
+    ["interest-delay", "1s", { "interest-delay-start": "1s", "interest-delay-end": "1s" }],
+  ])("%s: %s", (family, value, expected) => {
+    expect(splitOf(family, value)).toEqual(expected);
+  });
+
+  test("offset: none by hand, and the rest by its grammar", () => {
+    expect(splitOf("offset", "none")?.["offset-path"]).toBe("none");
+    expect(splitOf("offset", "path('M0 0 L10 10')")).toBeDefined();
+  });
+
+  test.each([
+    ["grid-row", "0"],
+    ["grid-row", "span 0"],
+    ["grid-column", "span -1"],
+    ["grid-column", "1 / 2 / 3"],
+    ["grid-area", "0 / 1"],
+    ["border-radius", "-1px"],
+    ["border-radius", "1px 2px 3px 4px 5px"],
+    ["border-radius", "1px / 2px / 3px"],
+    ["border-radius", "1px /"],
+    ["overscroll-behavior", "scroll"],
+    ["overscroll-behavior", "auto auto auto"],
+    ["place-items", "legacy left"],
+    ["place-items", "anchor-center"],
+    ["place-items", "space-between"],
+    ["place-items", "a b c"],
+    ["place-self", "legacy"],
+    ["place-content", "first baseline"],
+    ["place-content", "left"],
+    ["columns", "2 3"],
+    ["columns", "200px 300px"],
+    ["columns", "1.5"],
+    ["columns", "10%"],
+    ["columns", "a b c"],
+    ["container", "card / bogus"],
+    ["container", "card / size / x"],
+    ["container", "and"],
+    ["container", ""],
+    ["text-decoration", "none underline"],
+    ["text-decoration", "underline underline"],
+    ["text-decoration", "spelling-error underline"],
+    ["text-decoration", "bogus"],
+    ["text-emphasis", "circle circle"],
+    ["text-emphasis", "'x' dot"],
+    ["text-emphasis", "bogus"],
+    ["interest-delay", "1s 2s 3s"],
+    ["interest-delay", "red"],
   ])("%s refuses %s", (family, value) => {
     expect(splitOf(family, value)).toBeUndefined();
   });

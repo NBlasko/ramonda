@@ -216,6 +216,8 @@ jobs:
           node scripts/check-layer-skew.mjs
           SELFTEST=slot node scripts/check-shorthand-split.mjs
           node scripts/check-shorthand-split.mjs
+          SELFTEST=refuse node scripts/check-must-split.mjs
+          node scripts/check-must-split.mjs
           SELFTEST=flex node scripts/check-hand-splits.mjs
           SELFTEST=forget node scripts/check-hand-splits.mjs
           node scripts/check-hand-splits.mjs

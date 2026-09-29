@@ -73,6 +73,7 @@ node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
 | `check-layer-skew.mjs` | two releases on one page, and the wrong declaration winning |
 | `check-shorthand-split.mjs` | the positional splitter disagreeing with what an engine renders |
 | `check-hand-splits.mjs` | a family split by hand disagreeing with any engine, or splitting a value one refuses |
+| `check-must-split.mjs` | a value people write that silently stopped splitting, or splits wrong |
 | `check-css-splitting.mjs` | the CSS not following its JavaScript chunk, on a real build |
 
 **The grammar table has no gate beside it, because the gate is inside the generator.** Every family
@@ -157,12 +158,14 @@ standing for several longhands (`white-space: pre`, `flex: none`), a word that s
 of `<position>` for `background-position`, `mask-position` and `-webkit-mask-position`, and
 `background` and `mask` layer by layer on top of it, `font`, the ranges of `animation-range` and
 `timeline-trigger`, `grid` and `grid-template` with their area strings, and `mask-border`.
-**20 by hand.**
-`background-position` and `animation-range` are in `SHAPES` too, and the hand rules win for them:
-the first table learned one and two values and split two values every engine refuses, and the
-second was learned from lengths and read the range NAMES wrong — `animation-range: cover` runs to
-`cover`, not to `normal`. `check-shorthand-split.mjs` now puts every family's own words in its corpus,
-which is what would have caught it.
+**33 by hand.**
+Fifteen of them are in a table too, and the hand rules win: a table is learned from sentinels, and
+a value no sentinel was ever like it read wrong or not at all. `grid-column: 2` set the end to `2`
+where every engine says `auto`; `animation-range: cover` ran to `normal`, not to `cover`; and
+`grid-column: 1 / -1`, `columns: 2`, `place-items: first baseline` did not split. The first two
+are why `check-shorthand-split.mjs` asks every family's own words; the rest are why
+`check-must-split.mjs` exists — a list of values people write, each of which must split, and
+split right. No other gate notices a value that silently does not.
 The specification is not the oracle there either — `check-hand-splits.mjs` puts every value of a
 corpus into all three engines, as the shorthand and as the split, and a value ONE engine refuses is
 refused here too: Chromium drops `text-box: cap`, and a split would have applied it. A family in

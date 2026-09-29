@@ -1,5 +1,6 @@
 import { KEYWORDS } from "./keywords.generated";
-import { tokensOf } from "./split";
+import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
+import { splitByGrammar, tokensOf } from "./split";
 
 /**
  * The families neither table can answer, split by rules written out by hand.
@@ -361,6 +362,171 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
     };
   },
 
+  /**
+   * One line or two across a `/`. A line left out is the first one's NAME when it is a name, and
+   * `auto` otherwise — `grid-column: a` spans the area `a`, `grid-column: 2` starts at 2 and ends
+   * where it may. The positional table had copied the number too: measured, every engine says `auto`.
+   */
+  "grid-row": (value) => gridLines(value, "grid-row-start", "grid-row-end"),
+  "grid-column": (value) => gridLines(value, "grid-column-start", "grid-column-end"),
+
+  /**
+   * Up to four horizontal radii and, after a `/`, up to four vertical ones, each list filled out to
+   * four corners the way CSS fills a box — and a corner whose two radii agree written once.
+   */
+  "border-radius": (value) => {
+    const [across, down, extra] = value.split("/").map((one) => tokensOf(one));
+    if (extra !== undefined || across.length === 0 || (down !== undefined && down.length === 0)) return undefined;
+    const radius = (one: string) => one === "0" || (isOffset(one) && !one.startsWith("-"));
+    if (![...across, ...(down ?? [])].every(radius) || across.length > 4 || (down?.length ?? 0) > 4) return undefined;
+    const corners = (list: readonly string[]) => [
+      list[0],
+      list[1] ?? list[0],
+      list[2] ?? list[0],
+      list[3] ?? list[1] ?? list[0],
+    ];
+    const h = corners(across);
+    const v = corners(down ?? across);
+    const corner = (at: number) => (h[at] === v[at] ? h[at] : `${h[at]} ${v[at]}`);
+    return {
+      "border-top-left-radius": corner(0),
+      "border-top-right-radius": corner(1),
+      "border-bottom-right-radius": corner(2),
+      "border-bottom-left-radius": corner(3),
+    };
+  },
+
+  "overscroll-behavior": (value) => {
+    const t = tokensOf(value);
+    if (t.length === 0 || t.length > 2 || !t.every((one) => ["auto", "contain", "none"].includes(one)))
+      return undefined;
+    return { "overscroll-behavior-x": t[0], "overscroll-behavior-y": t[1] ?? t[0] };
+  },
+
+  /**
+   * An alignment value may be two words — `first baseline`, `safe center`, `legacy left` — and the
+   * positional table could only give a slot one. So the words are grouped first, and each group is
+   * checked against what its longhand takes.
+   */
+  "place-items": (value) => place(value, "align-items", "justify-items", ALIGN_ITEMS, JUSTIFY_ITEMS),
+  "place-self": (value) => place(value, "align-self", "justify-self", ALIGN_SELF, JUSTIFY_SELF),
+  /**
+   * With one value, a baseline puts `justify-content` at `start` — but WebKit refuses a baseline
+   * here at all, so one is refused rather than split.
+   */
+  "place-content": (value) => {
+    if (/\bbaseline\b/.test(value)) return undefined;
+    return place(value, "align-content", "justify-content", ALIGN_CONTENT, JUSTIFY_CONTENT);
+  },
+
+  /**
+   * A count, a width, or both in either order; `auto` is whichever is left. Chromium's `columns`
+   * resets `column-height` and `column-wrap` too, which the others do not have.
+   */
+  columns: (value) => {
+    const t = tokensOf(value);
+    if (t.length === 0 || t.length > 2) return undefined;
+    let count: string | undefined;
+    let width: string | undefined;
+    let autos = 0;
+    for (const one of t) {
+      if (one === "auto") autos++;
+      else if (/^[1-9]\d*$/.test(one) && count === undefined) count = one;
+      else if (isOffset(one) && !/^-|%$/.test(one) && width === undefined) width = one;
+      else return undefined;
+    }
+    if (autos + (count ? 1 : 0) + (width ? 1 : 0) !== t.length) return undefined;
+    return {
+      "column-width": width ?? "auto",
+      "column-count": count ?? "auto",
+      "column-height": "auto",
+      "column-wrap": "auto",
+    };
+  },
+
+  /** Names, then an optional `/` and a type. */
+  container: (value) => {
+    const [names, type, extra] = value.split("/").map((one) => one.trim());
+    const words = tokensOf(names);
+    if (extra !== undefined || words.length === 0) return undefined;
+    const none = words.length === 1 && words[0] === "none";
+    if (!none && !words.every((one) => isIdent(one) && !["none", "and", "or", "not", "normal"].includes(one)))
+      return undefined;
+    if (type !== undefined && !["normal", "size", "inline-size"].includes(type)) return undefined;
+    return { "container-name": words.join(" "), "container-type": type ?? "normal" };
+  },
+
+  "text-decoration": (value) => {
+    const t = tokensOf(value);
+    const line: string[] = [];
+    let style: string | undefined;
+    let thickness: string | undefined;
+    let color: string | undefined;
+    for (const one of t) {
+      if (
+        DECORATION_LINE.includes(one) &&
+        !line.includes(one) &&
+        !line.includes("none") &&
+        !ERROR_LINE.some((error) => line.includes(error))
+      )
+        line.push(one);
+      else if ((one === "none" || ERROR_LINE.includes(one)) && line.length === 0) line.push(one);
+      else if (DECORATION_STYLE.includes(one) && style === undefined) style = one;
+      else if ((one === "auto" || one === "from-font" || isOffset(one)) && thickness === undefined) thickness = one;
+      else if (isColour(one) && color === undefined) color = one;
+      else return undefined;
+    }
+    if (t.length === 0) return undefined;
+    return {
+      "text-decoration-line": line.length === 0 ? "none" : line.join(" "),
+      "text-decoration-style": style ?? "solid",
+      "text-decoration-thickness": thickness ?? "auto",
+      "text-decoration-color": color ?? "currentcolor",
+    };
+  },
+
+  "text-emphasis": (value) => {
+    const t = tokensOf(value);
+    let fill: string | undefined;
+    let shape: string | undefined;
+    let text: string | undefined;
+    let color: string | undefined;
+    for (const one of t) {
+      if (["filled", "open"].includes(one) && fill === undefined && text === undefined) fill = one;
+      else if (EMPHASIS_SHAPE.includes(one) && shape === undefined && text === undefined) shape = one;
+      else if (/^(".*"|'.*')$/.test(one) && text === undefined && fill === undefined && shape === undefined) text = one;
+      else if (one === "none" && t.length <= 2 && fill === undefined && shape === undefined && text === undefined)
+        text = one;
+      else if (isColour(one) && color === undefined) color = one;
+      else return undefined;
+    }
+    // A colour alone leaves the style at `none`, which is what the shorthand resets it to.
+    const style = text ?? ([fill, shape].filter((one) => one !== undefined).join(" ") || "none");
+    if (t.length === 0) return undefined;
+    return { "text-emphasis-style": style, "text-emphasis-color": color ?? "currentcolor" };
+  },
+
+  /** `none` by hand — the grammar reads it as nothing — and everything else by the grammar. */
+  offset: (value) => {
+    if (value === "none")
+      return {
+        "offset-position": "normal",
+        "offset-path": "none",
+        "offset-distance": "0px",
+        "offset-rotate": "auto",
+        "offset-anchor": "auto",
+      };
+    const grammar = GRAMMAR_SHAPES.offset;
+    return grammar === undefined ? undefined : splitByGrammar(grammar, value);
+  },
+
+  "interest-delay": (value) => {
+    const t = tokensOf(value);
+    const delay = (one: string) => one === "normal" || /^[\d.]+m?s$/.test(one);
+    if (t.length === 0 || t.length > 2 || !t.every(delay)) return undefined;
+    return { "interest-delay-start": t[0], "interest-delay-end": t[1] ?? t[0] };
+  },
+
   "background-position": (value) => positions(value, "background-position-x", "background-position-y", true),
   /**
    * Into the PREFIXED longhands, the only names all three engines have: Chromium and WebKit expand
@@ -431,15 +597,26 @@ const edgeWords = (words: readonly string[]) =>
 /** A `<custom-ident>` standing alone, which is what `grid-area` copies into the lines left out. */
 const isIdent = (part: string) => /^-?[a-z_][\w-]*$/i.test(part) && !["auto", "span"].includes(part.toLowerCase());
 
-/** `auto`, a name, `2`, `2 name`, `span 2`, `span name`, `span 2 name` — in any order CSS allows. */
+/**
+ * `auto`, a name, `2`, `2 name`, `span 2`, `span name`, `span 2 name` — in any order CSS allows. A
+ * line is never `0`, and a span is never below 1: every engine drops `grid-row: 0` and `span -1`.
+ */
 const GRID_LINE = (part: string): boolean => {
   const words = tokensOf(part);
-  if (words.length === 1) return words[0] === "auto" || isIdent(words[0]) || /^-?\d+$/.test(words[0]);
+  const line = (one: string) => /^-?\d+$/.test(one) && Number(one) !== 0;
+  if (words.length === 1) return words[0] === "auto" || isIdent(words[0]) || line(words[0]);
   if (words.length > 3) return false;
   const span = words.filter((one) => one === "span").length;
-  const numbers = words.filter((one) => /^-?\d+$/.test(one)).length;
+  const numbers = words.filter(line);
   const names = words.filter((one) => isIdent(one)).length;
-  return span <= 1 && numbers <= 1 && names <= 1 && span + numbers + names === words.length && numbers + names >= 1;
+  if (span === 1 && numbers.some((one) => Number(one) < 1)) return false;
+  return (
+    span <= 1 &&
+    numbers.length <= 1 &&
+    names <= 1 &&
+    span + numbers.length + names === words.length &&
+    numbers.length + names >= 1
+  );
 };
 
 /**
@@ -775,7 +952,8 @@ function ranges(value: string, start: string, end: string): Record<string, strin
   return { [start]: pairs.map((one) => one[0]).join(", "), [end]: pairs.map((one) => one[1]).join(", ") };
 }
 
-const TRIGGER_SOURCE = /^(auto|none|view\(.*\)|scroll\(.*\))$/i;
+/** A source: `auto`, `none`, `view()`, `scroll()`, or a named timeline — `--b` in `--a --b`. */
+const TRIGGER_SOURCE = /^(auto|none|view\(.*\)|scroll\(.*\)|--[\w-]+)$/i;
 
 /** One `timeline-trigger` item as its six parts, in the longhands' order. */
 function triggerOf(item: string): string[] | undefined {
@@ -938,4 +1116,92 @@ function rectangular(areas: readonly string[]): boolean {
     if (height * width !== at.length) return false;
   }
   return true;
+}
+
+function gridLines(value: string, start: string, end: string): Record<string, string> | undefined {
+  const parts = value.split("/").map((one) => one.trim());
+  if (parts.length > 2 || parts.some((one) => !GRID_LINE(one))) return undefined;
+  return { [start]: parts[0], [end]: parts[1] ?? (isIdent(parts[0]) ? parts[0] : "auto") };
+}
+
+const DECORATION_LINE = ["underline", "overline", "line-through", "blink"];
+const DECORATION_STYLE = ["solid", "double", "dotted", "dashed", "wavy"];
+/** A line value that stands alone — none of the others beside it. */
+const ERROR_LINE = ["spelling-error", "grammar-error"];
+const EMPHASIS_SHAPE = ["dot", "circle", "double-circle", "triangle", "sesame"];
+
+const POSITIONAL = ["center", "start", "end", "flex-start", "flex-end", "self-start", "self-end"];
+// `anchor-center` is a SELF value only here: Chromium refuses it in `place-items`, measured.
+const ALIGN_ITEMS = {
+  words: ["normal", "stretch"],
+  positional: POSITIONAL,
+  baseline: true,
+  legacy: false,
+  distribution: false,
+};
+const JUSTIFY_ITEMS = { ...ALIGN_ITEMS, positional: [...POSITIONAL, "left", "right"], legacy: true };
+const ALIGN_SELF = { ...ALIGN_ITEMS, words: ["auto", "normal", "stretch", "anchor-center"] };
+const JUSTIFY_SELF = { ...ALIGN_SELF, positional: [...POSITIONAL, "left", "right"] };
+const CONTENT_POSITION = ["center", "start", "end", "flex-start", "flex-end"];
+const ALIGN_CONTENT = {
+  words: ["normal"],
+  positional: CONTENT_POSITION,
+  baseline: true,
+  legacy: false,
+  distribution: true,
+};
+const JUSTIFY_CONTENT = { ...ALIGN_CONTENT, positional: [...CONTENT_POSITION, "left", "right"], baseline: false };
+
+type Takes = typeof ALIGN_ITEMS;
+
+/** Words that belong together as ONE alignment value — `first baseline`, `safe center`, `legacy left`. */
+function alignGroups(t: readonly string[]): string[][] {
+  const out: string[][] = [];
+  for (let at = 0; at < t.length; ) {
+    const one = t[at];
+    const next = t[at + 1];
+    const pair =
+      (["first", "last"].includes(one) && next === "baseline") ||
+      (["safe", "unsafe"].includes(one) && next !== undefined) ||
+      (one === "legacy" && ["left", "right", "center"].includes(next ?? "")) ||
+      // `center legacy right` is `center`, then `legacy right` — a direction before `legacy` only
+      // belongs to it when nothing after `legacy` does.
+      (["left", "right", "center"].includes(one) &&
+        next === "legacy" &&
+        !["left", "right", "center"].includes(t[at + 2] ?? ""));
+    out.push(pair ? [one, next as string] : [one]);
+    at += pair ? 2 : 1;
+  }
+  return out;
+}
+
+/** Whether one grouped value is one this longhand takes. */
+function takes(group: readonly string[], kind: Takes): boolean {
+  const [a, b] = group;
+  if (group.length === 1)
+    return (
+      kind.words.includes(a) ||
+      kind.positional.includes(a) ||
+      (kind.baseline && a === "baseline") ||
+      (kind.legacy && a === "legacy") ||
+      (kind.distribution && ["space-between", "space-around", "space-evenly", "stretch"].includes(a))
+    );
+  if (b === "baseline") return kind.baseline;
+  if (a === "safe" || a === "unsafe") return kind.positional.includes(b);
+  return kind.legacy;
+}
+
+function place(
+  value: string,
+  first: string,
+  second: string,
+  one: Takes,
+  two: Takes,
+): Record<string, string> | undefined {
+  const groups = alignGroups(tokensOf(value));
+  if (groups.length === 0 || groups.length > 2) return undefined;
+  const [a, b] = groups;
+  const other = b ?? a;
+  if (!takes(a, one) || !takes(other, two)) return undefined;
+  return { [first]: a.join(" "), [second]: other.join(" ") };
 }

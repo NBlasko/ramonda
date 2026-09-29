@@ -236,6 +236,19 @@ describe("a split reaches leaves, never another shorthand", () => {
     "background-position": "left 10px top 5px",
     "mask-position": "left 10px top 5px",
     "-webkit-mask-position": "left 10px top 5px",
+    "grid-row": "1 / span 2",
+    "grid-column": "a",
+    "border-radius": "1px 2px 3px 4px / 5px",
+    "overscroll-behavior": "auto none",
+    "place-items": "first baseline center",
+    "place-self": "safe start end",
+    "place-content": "center space-between",
+    columns: "2 200px",
+    container: "a b / size",
+    "text-decoration": "underline overline dotted 2px red",
+    "text-emphasis": "filled circle red",
+    offset: "none",
+    "interest-delay": "1s 2s",
   };
 
   test("every family split by hand has a sample here", () => {
