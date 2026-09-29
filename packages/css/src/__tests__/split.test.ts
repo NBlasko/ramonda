@@ -692,3 +692,87 @@ describe("timeline-trigger, split by hand", () => {
     },
   );
 });
+
+describe("grid-template, grid and mask-border, split by hand", () => {
+  test("the areas form: names that meet between two rows are one set, and a row with no size is auto", () => {
+    expect(splitOf("grid-template", '[x] "a b" 10px [y] [z] "c d" / [p] 1fr [q] 2fr')).toEqual({
+      "grid-template-rows": "[x] 10px [y z] auto",
+      "grid-template-columns": "[p] 1fr [q] 2fr",
+      "grid-template-areas": '"a b" "c d"',
+    });
+    expect(splitOf("grid-template", '"a" [e]')).toEqual({
+      "grid-template-rows": "auto [e]",
+      "grid-template-columns": "none",
+      "grid-template-areas": '"a"',
+    });
+  });
+
+  test("rows and columns across a slash, either side none", () => {
+    expect(splitOf("grid-template", "none / 10px")).toEqual({
+      "grid-template-rows": "none",
+      "grid-template-columns": "10px",
+      "grid-template-areas": "none",
+    });
+    expect(splitOf("grid-template", "none")).toEqual({
+      "grid-template-rows": "none",
+      "grid-template-columns": "none",
+      "grid-template-areas": "none",
+    });
+  });
+
+  test("grid: auto-flow on either side, and the template form with the implicit grid reset", () => {
+    expect(splitOf("grid", "10px / dense auto-flow 20px")).toEqual({
+      "grid-template-rows": "10px",
+      "grid-template-columns": "none",
+      "grid-template-areas": "none",
+      "grid-auto-flow": "column dense",
+      "grid-auto-rows": "auto",
+      "grid-auto-columns": "20px",
+    });
+    expect(splitOf("grid", "auto-flow / 1fr")?.["grid-auto-flow"]).toBe("row");
+    expect(splitOf("grid", '"a" 10px / 1fr')).toMatchObject({ "grid-template-areas": '"a"', "grid-auto-flow": "row" });
+  });
+
+  test("mask-border: a slice with its width and outset, and the defaults", () => {
+    expect(splitOf("mask-border", "url(a.png) fill 30 / 10px / 2px round space")).toEqual({
+      "mask-border-source": "url(a.png)",
+      "mask-border-slice": "fill 30",
+      "mask-border-width": "10px",
+      "mask-border-outset": "2px",
+      "mask-border-repeat": "round space",
+    });
+    expect(splitOf("mask-border", "url(a.png) 30 / / 2px")?.["mask-border-outset"]).toBe("2px");
+    expect(splitOf("mask-border", "none")?.["mask-border-slice"]).toBe("0");
+  });
+
+  test.each([
+    ["grid-template", '"a b" "c"'],
+    ["grid-template", '"a a" "b a"'],
+    ["grid-template", '"a$"'],
+    ["grid-template", '""'],
+    ["grid-template", "10px"],
+    ["grid-template", "10px / 20px / 30px"],
+    ["grid-template", "[a] [b] 10px / 1fr"],
+    ["grid-template", '[x] [y] "a"'],
+    ["grid-template", '"a" 10px 20px'],
+    ["grid-template", '"a" / repeat(auto-fill, 10px)'],
+    ["grid-template", '"a" repeat(2, 1fr)'],
+    ["grid-template", '"a" "b'],
+    ["grid-template", "(10px / 1fr"],
+    ["grid-template", "10px) / 1fr"],
+    ["grid", "auto-flow"],
+    ["grid", "auto-flow / auto-flow"],
+    ["grid", "10px / auto-flow dense dense"],
+    ["grid", "10px / 20px auto-flow"],
+    ["grid", "10px / 20px / auto-flow"],
+    ["grid", "10px"],
+    ["mask-border", "url(a.png) 30 /"],
+    ["mask-border", "url(a.png) 30 / 10px /"],
+    ["mask-border", "url(a.png) 30 fill fill"],
+    ["mask-border", "url(a.png) 30 fill 40"],
+    ["mask-border", "url(a.png) 1 2 3 4 5"],
+    ["mask-border", "bogus"],
+  ])("%s refuses %s", (family, value) => {
+    expect(splitOf(family, value)).toBeUndefined();
+  });
+});

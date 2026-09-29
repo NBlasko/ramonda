@@ -268,6 +268,99 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
     };
   },
 
+  /**
+   * Rows and columns across a `/`, or the AREAS form: each row a string, with its size and its line
+   * names around it. Line names that meet between two rows are one set — `[y] [z]` is `[y z]` — and
+   * a row with no size is `auto`. Read off Chromium and WebKit, which agree.
+   */
+  "grid-template": (value) => gridTemplate(value),
+
+  /**
+   * `grid-template`, with the implicit grid reset; or `auto-flow` on one side of the `/`, which
+   * makes that side the implicit tracks and the other the explicit ones.
+   */
+  grid: (value): Record<string, string> | undefined => {
+    const t = gridTokens(value);
+    if (t === undefined) return undefined;
+    const slash = t.indexOf("/");
+    const flowAt = t.indexOf("auto-flow");
+    if (flowAt === -1) {
+      const template = gridTemplate(value);
+      return template === undefined
+        ? undefined
+        : { ...template, "grid-auto-flow": "row", "grid-auto-rows": "auto", "grid-auto-columns": "auto" };
+    }
+    if (slash === -1 || t.lastIndexOf("/") !== slash) return undefined;
+    const left = t.slice(0, slash);
+    const right = t.slice(slash + 1);
+    const flowSide = flowAt < slash ? left : right;
+    const other = flowAt < slash ? right : left;
+    const dense = flowSide.filter((one) => one === "dense").length;
+    const auto = flowSide.filter((one) => one !== "auto-flow" && one !== "dense");
+    // `auto-flow` and `dense` together, first, in either order — then the implicit tracks.
+    if (dense > 1 || flowSide.slice(0, 1 + dense).some((one) => one !== "auto-flow" && one !== "dense"))
+      return undefined;
+    if (other.length === 0 || !tracks(other) || (auto.length > 0 && !tracks(auto))) return undefined;
+    const direction = flowAt < slash ? "row" : "column";
+    return {
+      "grid-template-rows": flowAt < slash ? "none" : other.join(" "),
+      "grid-template-columns": flowAt < slash ? other.join(" ") : "none",
+      "grid-template-areas": "none",
+      "grid-auto-flow": dense > 0 ? `${direction} dense` : direction,
+      "grid-auto-rows": flowAt < slash && auto.length > 0 ? auto.join(" ") : "auto",
+      "grid-auto-columns": flowAt > slash && auto.length > 0 ? auto.join(" ") : "auto",
+    };
+  },
+
+  /** Like `border-image`: a source, a slice with an optional width and outset after it, a repeat. */
+  "mask-border": (value) => {
+    const t = slashed(value);
+    let source: string | undefined;
+    let repeat: string | undefined;
+    let slice: string | undefined;
+    let width: string | undefined;
+    let outset: string | undefined;
+    for (let at = 0; at < t.length; ) {
+      const one = t[at];
+      if (IMAGE.test(one) && source === undefined) {
+        source = one;
+        at++;
+      } else if (BORDER_REPEAT.includes(one) && repeat === undefined) {
+        const two = BORDER_REPEAT.includes(t[at + 1] ?? "");
+        repeat = two ? `${one} ${t[at + 1]}` : one;
+        at += two ? 2 : 1;
+      } else if ((SLICE_PART.test(one) || one === "fill") && slice === undefined) {
+        let end = at;
+        while (end < t.length && (SLICE_PART.test(t[end]) || t[end] === "fill")) end++;
+        const part = t.slice(at, end);
+        const fills = part.filter((word) => word === "fill").length;
+        if (fills > 1 || part.length - fills < 1 || part.length - fills > 4) return undefined;
+        if (fills === 1 && part[0] !== "fill" && part[part.length - 1] !== "fill") return undefined;
+        slice = part.join(" ");
+        at = end;
+        const sides = (from: number, test: RegExp): [string | undefined, number] => {
+          let stop = from;
+          while (stop < t.length && stop - from < 4 && test.test(t[stop])) stop++;
+          return stop === from ? [undefined, from] : [t.slice(from, stop).join(" "), stop];
+        };
+        if (t[at] === "/") {
+          [width, at] = sides(at + 1, WIDTH_PART);
+          if (t[at] === "/") {
+            [outset, at] = sides(at + 1, OUTSET_PART);
+            if (outset === undefined) return undefined;
+          } else if (width === undefined) return undefined;
+        }
+      } else return undefined;
+    }
+    return {
+      "mask-border-source": source ?? "none",
+      "mask-border-slice": slice ?? "0",
+      "mask-border-width": width ?? "auto",
+      "mask-border-outset": outset ?? "0",
+      "mask-border-repeat": repeat ?? "stretch",
+    };
+  },
+
   "background-position": (value) => positions(value, "background-position-x", "background-position-y", true),
   /**
    * Into the PREFIXED longhands, the only names all three engines have: Chromium and WebKit expand
@@ -699,4 +792,150 @@ function triggerOf(item: string): string[] | undefined {
   const active = second.length === 0 ? ["auto", "auto"] : rangeOf(second, "auto");
   if (activation === undefined || active === undefined) return undefined;
   return [name, source, ...activation, ...active];
+}
+
+const BORDER_REPEAT = ["stretch", "repeat", "round", "space"];
+const SLICE_PART = /^([\d.]+%?)$/;
+const WIDTH_PART = /^(auto|[\d.]+([a-z]+|%)?|calc\(.*\))$/i;
+const OUTSET_PART = /^([\d.]+([a-z]+)?|calc\(.*\))$/i;
+
+/**
+ * A grid value's tokens, with a string, a set of line names and a function each ONE token, and a
+ * top-level `/` a token of its own. `undefined` for an unbalanced one.
+ */
+function gridTokens(value: string): string[] | undefined {
+  const out: string[] = [];
+  let at = "";
+  let depth = 0;
+  let quote = "";
+  const flush = () => {
+    if (at !== "") out.push(at);
+    at = "";
+  };
+  for (const ch of value) {
+    if (quote !== "") {
+      at += ch;
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") depth--;
+    if (depth < 0) return undefined;
+    if (depth === 0 && quote === "" && /\s/.test(ch)) {
+      flush();
+      continue;
+    }
+    if (depth === 0 && quote === "" && ch === "/") {
+      flush();
+      out.push("/");
+      continue;
+    }
+    at += ch;
+  }
+  if (depth !== 0 || quote !== "") return undefined;
+  flush();
+  return out;
+}
+
+const isString = (one: string) => /^(".*"|'.*')$/.test(one);
+const isNames = (one: string) => /^\[[\s\w-]*\]$/.test(one);
+const TRACK =
+  /^(auto|min-content|max-content|subgrid|masonry|[\d.]+(fr|[a-z]+|%)|0|(minmax|fit-content|repeat|calc)\(.*\))$/i;
+
+/** A track list's tokens: track sizes and line names, never two sets of names side by side. */
+const tracks = (list: readonly string[]) =>
+  list.length > 0 &&
+  list.every((one) => TRACK.test(one) || isNames(one)) &&
+  list.some((one) => !isNames(one)) &&
+  !list.some((one, index) => isNames(one) && isNames(list[index + 1] ?? ""));
+
+function gridTemplate(value: string): Record<string, string> | undefined {
+  const t = gridTokens(value);
+  if (t === undefined) return undefined;
+  if (t.length === 1 && t[0] === "none")
+    return { "grid-template-rows": "none", "grid-template-columns": "none", "grid-template-areas": "none" };
+
+  const slash = t.indexOf("/");
+  if (slash !== -1 && t.lastIndexOf("/") !== slash) return undefined;
+  const before = slash === -1 ? t : t.slice(0, slash);
+  const after = slash === -1 ? undefined : t.slice(slash + 1);
+
+  if (!before.some(isString)) {
+    const side = (list: readonly string[]) => (list.length === 1 && list[0] === "none") || tracks(list);
+    if (after === undefined || !side(before) || !side(after)) return undefined;
+    return {
+      "grid-template-rows": before.join(" "),
+      "grid-template-columns": after.join(" "),
+      "grid-template-areas": "none",
+    };
+  }
+
+  // The areas form: [names]? "row" size? [names]?, one after another.
+  const rows: string[] = [];
+  const areas: string[] = [];
+  let pending: string[] = [];
+  for (let at = 0; at < before.length; ) {
+    // Names here lead the FIRST row; any later ones were taken as the previous row's trailing names
+    // below. Two sets before the first row is not a grid.
+    if (isNames(before[at])) {
+      if (pending.length > 0) return undefined;
+      pending.push(before[at].slice(1, -1).trim());
+      at++;
+      continue;
+    }
+    if (!isString(before[at])) return undefined;
+    areas.push(before[at]);
+    at++;
+    const names = pending.filter((one) => one !== "").join(" ");
+    const size =
+      before[at] !== undefined && TRACK.test(before[at]) && !/^(subgrid|masonry)$/.test(before[at])
+        ? before[at++]
+        : "auto";
+    if (/^repeat\(/i.test(size)) return undefined;
+    rows.push(names === "" ? size : `[${names}] ${size}`);
+    pending = [];
+    // A row's own trailing names, which join the next row's leading ones.
+    while (isNames(before[at] ?? "")) {
+      pending.push(before[at].slice(1, -1).trim());
+      at++;
+    }
+    if (pending.length > 2) return undefined;
+  }
+  if (!rectangular(areas)) return undefined;
+  const trailing = pending.filter((one) => one !== "").join(" ");
+  if (trailing !== "") rows.push(`[${trailing}]`);
+  if (after !== undefined && (!tracks(after) || after.some((one) => /^repeat\(\s*auto-/i.test(one)))) return undefined;
+  return {
+    "grid-template-rows": rows.join(" "),
+    "grid-template-columns": after === undefined ? "none" : after.join(" "),
+    "grid-template-areas": areas.join(" "),
+  };
+}
+
+/**
+ * Whether the area strings make a grid CSS takes: every row the same number of cells, and every
+ * name covering a rectangle. `"a b" "c"` is refused by all three engines, which drop the whole
+ * declaration — and a split would still set the rows.
+ */
+function rectangular(areas: readonly string[]): boolean {
+  const cells: string[][] = [];
+  for (const one of areas) {
+    const row = one.slice(1, -1).match(/[\w-]+|\.+|\S/g) ?? [];
+    if (row.length === 0 || row.some((cell) => !/^([\w-]+|\.+)$/.test(cell))) return false;
+    cells.push(row);
+  }
+  if (cells.some((row) => row.length !== cells[0].length)) return false;
+  const names = new Set(cells.flat().filter((cell) => !cell.startsWith(".")));
+  for (const name of names) {
+    const at = cells
+      .flatMap((row, r) => row.map((cell, c) => (cell === name ? [r, c] : null)))
+      .filter((one) => one !== null);
+    const rows = at.map((one) => one[0]);
+    const columns = at.map((one) => one[1]);
+    const height = Math.max(...rows) - Math.min(...rows) + 1;
+    const width = Math.max(...columns) - Math.min(...columns) + 1;
+    if (height * width !== at.length) return false;
+  }
+  return true;
 }

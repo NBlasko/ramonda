@@ -67,15 +67,14 @@ const CASES = [
     "borderTopColor",
     "rgb(0, 0, 255)",
   ],
-  // `grid`, because it does not split yet and so still reaches a counted layer; `background` and
-  // `font` did until they split, and then their pieces were stronger than `v` — which is right, and
-  // not this case. When nothing reaches a counted layer, this case goes with them.
+  // Every family splits now, so what still reaches a counted layer is a VALUE the split refuses —
+  // a system font, whose parts are the platform's. When that goes, this case goes with it.
   [
     "a narrower var() shorthand against a wider counted one",
-    "grid: none;",
-    "grid-template: var(--t);",
-    "gridTemplateRows",
-    "10px",
+    "font: caption;",
+    "font-variant: var(--v);",
+    "fontVariantCaps",
+    "small-caps",
   ],
 ];
 

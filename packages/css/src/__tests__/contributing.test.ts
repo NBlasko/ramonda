@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import { GRAMMAR_SHAPES } from "../compiler/grammarShapes.generated";
 import { SHAPES } from "../compiler/shapes.generated";
 import { BY_HAND } from "../compiler/splitByHand";
+import { SHORTHANDS } from "../compiler/keywords.generated";
 
 /**
  * The map's numbers, against the tables they describe.
@@ -49,56 +50,16 @@ describe("what the map claims about the tables", () => {
 });
 
 /**
- * The families the page names as refused, against the tables.
- *
- * Named rather than counted, because a reader meeting a refusal looks for the family by name. A
- * family that starts splitting and stays on this list sends them to work around something that
- * already works.
+ * The page says every shorthand splits but `all` and `-webkit-mask`, and that is checked against
+ * the tables rather than trusted: a family that stops splitting has to come back onto the page.
  */
-describe("the families the map says are refused", () => {
-  /** The English numerals the page writes its counts in, so the count is read rather than repeated. */
-  const COUNTS: Readonly<Record<string, number>> = {
-    One: 1,
-    Two: 2,
-    Three: 3,
-    Four: 4,
-    Five: 5,
-    Six: 6,
-    Seven: 7,
-    Eight: 8,
-    Nine: 9,
-    Ten: 10,
-    Eleven: 11,
-    Twelve: 12,
-    Thirteen: 13,
-  };
-
-  /** A list the page states, as the count it claims and the family names it then gives. */
-  const listed = (tail: string): { readonly claimed: number; readonly names: readonly string[] } => {
-    const found = new RegExp(`\\*\\*(\\w+) ${tail}[^*]*\\*\\*([^.]*)\\.`, "s").exec(map);
-    if (found === null) throw new Error(`CONTRIBUTING.md no longer states a list ending "${tail}"`);
-    const claimed = COUNTS[found[1] as string];
-    if (claimed === undefined) throw new Error(`"${found[1]}" is not a numeral this knows`);
-    return { claimed, names: [...(found[2] ?? "").matchAll(/`([a-z-]+)`/g)].map((one) => one[1] as string) };
-  };
-
-  const OPENS = "have a grammar this cannot open";
-
-  test("none of them is in a table", () => {
-    const names = listed(OPENS).names;
-
-    expect(
-      names.filter(
-        (one) => GRAMMAR_SHAPES[one] !== undefined || SHAPES[one] !== undefined || BY_HAND[one] !== undefined,
-      ),
-    ).toEqual([]);
-  });
-
-  test("and the page names as many as it counts", () => {
-    for (const tail of [OPENS]) {
-      const { claimed, names } = listed(tail);
-      expect(names).toHaveLength(claimed);
-    }
+describe("what the map says is left", () => {
+  test("every shorthand splits, but the two the page names", () => {
+    const left = Object.keys(SHORTHANDS).filter(
+      (one) => SHAPES[one] === undefined && GRAMMAR_SHAPES[one] === undefined && BY_HAND[one] === undefined,
+    );
+    expect(left.sort()).toEqual(["-webkit-mask", "all"]);
+    expect(map).toContain("every shorthand there is, but `all` and\n`-webkit-mask`");
   });
 });
 

@@ -139,7 +139,8 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` asks two tables and one hand-written file, and between them they answer **89 families**.
+`split.ts` asks two tables and one hand-written file, and between them they answer **92 families** — every shorthand there is, but `all` and
+`-webkit-mask`, below.
 
 `SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
 feeds, and no grammar is needed at all. **44 families.**
@@ -152,8 +153,9 @@ leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 fam
 standing for several longhands (`white-space: pre`, `flex: none`), a word that switches a longhand on
 (`font-synthesis: weight`), a part copied into the parts left out (`grid-area: a`), and every form
 of `<position>` for `background-position`, `mask-position` and `-webkit-mask-position`, and
-`background` and `mask` layer by layer on top of it, `font`, and the ranges of `animation-range`
-and `timeline-trigger`. **17 by hand.**
+`background` and `mask` layer by layer on top of it, `font`, the ranges of `animation-range` and
+`timeline-trigger`, `grid` and `grid-template` with their area strings, and `mask-border`.
+**20 by hand.**
 `background-position` and `animation-range` are in `SHAPES` too, and the hand rules win for them:
 the first table learned one and two values and split two values every engine refuses, and the
 second was learned from lengths and read the range NAMES wrong — `animation-range: cover` runs to
@@ -176,15 +178,14 @@ out, so they sit in `u` with every other longhand.
 two ways before any split is asked. The leaves generator records it as `RESETS_DIFFER`, and
 `resets-differ-across-engines` refuses it and names `mask`, which every engine has.
 
-Of the families that reach the grammar table's generator and are not split by hand, 3 do not make
-it. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for
-one family, and writes nothing.
+`all` covers every property and has a layer of its own, `ramonda.a`, a word.
 
-**Three have a grammar this cannot open**, because some part of them belongs to no longhand and
-has no grammar of its own to be opened into: `grid`, `grid-template`, `mask-border`.
-`mask` did not open either — its `content-box` reaches `mask-origin` only through `<coord-box>` →
-`<paint-box>` → `<visual-box>`, and `longhandsFor` matches a word against a longhand's grammar TEXT
-without following those types. It is split by hand now; that gap in the opener is still there.
+**Every family the grammar generator could not take is split by hand now.** Some never opened —
+`mask`'s `content-box` reaches `mask-origin` only through `<coord-box>` → `<paint-box>` →
+`<visual-box>`, and `longhandsFor` matches a word against a longhand's grammar TEXT without
+following those types; that gap in the opener is still there. Others opened and the measurement
+turned them down. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for one
+family, and writes nothing.
 
 **A value is refused where CSS would drop it, and the family is kept.** CSS drops a whole
 declaration when any part of it is invalid and a split drops only the part — so a split must never
