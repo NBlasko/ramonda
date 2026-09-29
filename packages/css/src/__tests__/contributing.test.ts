@@ -83,10 +83,9 @@ describe("the families the map says are refused", () => {
   };
 
   const OPENS = "have a grammar this cannot open";
-  const MEASURED = "opens? and the measurement turns (?:them|it) down";
 
   test("none of them is in a table", () => {
-    const names = [...listed(OPENS).names, ...listed(MEASURED).names];
+    const names = listed(OPENS).names;
 
     expect(
       names.filter(
@@ -96,7 +95,7 @@ describe("the families the map says are refused", () => {
   });
 
   test("and the page names as many as it counts", () => {
-    for (const tail of [OPENS, MEASURED]) {
+    for (const tail of [OPENS]) {
       const { claimed, names } = listed(tail);
       expect(names).toHaveLength(claimed);
     }

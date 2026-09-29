@@ -624,3 +624,71 @@ describe("font, split by hand", () => {
     expect(font(value)).toBeUndefined();
   });
 });
+
+/**
+ * A range — `animation-range`, and both ranges of `timeline-trigger`.
+ *
+ * The positional table read `animation-range: cover` as a start alone, with the end at `normal`,
+ * and `cover 10%` as a start and an end. Measured in Chromium and WebKit, the two with it: an end
+ * left out is the start's RANGE NAME, and a length after a name is that name's offset —
+ * `cover 10%` is `cover 10%` to `cover`.
+ */
+describe("a range, split by hand", () => {
+  test.each([
+    ["cover", "cover", "cover"],
+    ["cover 10%", "cover 10%", "cover"],
+    ["20%", "20%", "normal"],
+    ["cover contain", "cover", "contain"],
+    ["cover 10% contain 90%", "cover 10%", "contain 90%"],
+    ["10% 90%", "10%", "90%"],
+    ["normal", "normal", "normal"],
+    ["entry 10% exit", "entry 10%", "exit"],
+  ])("animation-range: %s", (value, start, end) => {
+    expect(splitOf("animation-range", value)).toEqual({ "animation-range-start": start, "animation-range-end": end });
+  });
+
+  test("a list, item by item", () => {
+    expect(splitOf("animation-range", "cover, 10% 90%")).toEqual({
+      "animation-range-start": "cover, 10%",
+      "animation-range-end": "cover, 90%",
+    });
+  });
+
+  test.each(["bogus", "10% 20% 30%", "cover contain entry", "cover, "])("refuses %s", (value) => {
+    expect(splitOf("animation-range", value)).toBeUndefined();
+  });
+});
+
+describe("timeline-trigger, split by hand", () => {
+  const trigger = (value: string) => splitOf("timeline-trigger", value);
+
+  test("every part, and the active range after the slash", () => {
+    expect(trigger("--a view() entry 10% exit / contain")).toEqual({
+      "timeline-trigger-name": "--a",
+      "timeline-trigger-source": "view()",
+      "timeline-trigger-activation-range-start": "entry 10%",
+      "timeline-trigger-activation-range-end": "exit",
+      "timeline-trigger-active-range-start": "contain",
+      "timeline-trigger-active-range-end": "contain",
+    });
+  });
+
+  test("a name alone, and a list", () => {
+    expect(trigger("--a, none")).toEqual({
+      "timeline-trigger-name": "--a, none",
+      "timeline-trigger-source": "auto, auto",
+      "timeline-trigger-activation-range-start": "normal, normal",
+      "timeline-trigger-activation-range-end": "normal, normal",
+      "timeline-trigger-active-range-start": "auto, auto",
+      "timeline-trigger-active-range-end": "auto, auto",
+    });
+    expect(trigger("--a / 10%")?.["timeline-trigger-active-range-end"]).toBe("auto");
+  });
+
+  test.each(["view() --a", "a", "--a --b", "--a view() /", "--a view() cover / contain / exit", "--a, "])(
+    "refuses %s",
+    (value) => {
+      expect(trigger(value)).toBeUndefined();
+    },
+  );
+});

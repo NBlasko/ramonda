@@ -33,16 +33,28 @@ const selftest = process.env.SELFTEST;
 const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.json"))("@playwright/test");
 const { DOMAINS, PATTERNS, splitPositional } = await import("../packages/css/shorthand-shapes.mjs");
 const { SHAPES } = await loadTs(join(HERE, "..", "packages", "css", "src", "compiler", "shapes.generated.ts"));
+/** Families split by hand FIRST are not split by this table at all — see `splitOf`. */
+const { BY_HAND } = await loadTs(join(HERE, "..", "packages", "css", "src", "compiler", "splitByHand.ts"));
 
-/** Every value to try, per family, built from its own domain's corpus across every pattern. */
+/**
+ * Every value to try, per family, built from its own domain's corpus across every pattern — and
+ * from the WORDS the family's longhands take.
+ *
+ * The domain's corpus alone is the sentinels a shape was LEARNED from, so a word that behaves
+ * differently was never asked. `animation-range` was learned from lengths, and its words do not
+ * follow the lengths: `cover` alone runs to `cover`, not to `normal`. The table split it wrong in
+ * every engine that has it, and this passed.
+ */
 function casesFor(shape) {
   const domain = DOMAINS.find((one) => one.kind === shape.kind);
   if (domain === undefined) return [];
+  const words = [...new Set(Object.values(shape.takes ?? {}).flatMap((one) => one.words ?? []))];
+  const corpus = [...domain.corpus, ...words];
   const out = [];
   for (const pattern of PATTERNS) {
     if (shape.patterns[pattern.key] === undefined) continue;
-    for (const one of domain.corpus) {
-      for (const other of domain.corpus) {
+    for (const one of corpus) {
+      for (const other of corpus) {
         const values = Array.from({ length: pattern.slots }, (_, index) => (index % 2 === 0 ? one : other));
         let at = 0;
         out.push(pattern.sides.map((n) => values.slice(at, (at += n)).join(" ")).join(" / "));
@@ -77,6 +89,7 @@ const wrong = [];
 let tried = 0;
 
 for (const [name, shape] of Object.entries(shapes)) {
+  if (BY_HAND[name] !== undefined) continue;
   for (const value of casesFor(shape)) {
     const mine = splitPositional(shape, value);
     if (mine === undefined) continue;
@@ -123,6 +136,9 @@ console.log(`[split] ${Object.keys(shapes).length} families, ${tried} values`);
 
 if (wrong.length > 0) {
   console.error(`[split] ${wrong.length} of ${tried} values split into a different page:`);
+  const per = new Map();
+  for (const one of wrong) per.set(one.name, (per.get(one.name) ?? 0) + 1);
+  console.error(`[split]   by family: ${[...per].map(([name, count]) => `${name} ${count}`).join(", ")}`);
   for (const one of wrong.slice(0, 6)) {
     console.error(`[split]   ${one.name}: \`${one.value}\``);
     if (one.differ !== undefined) {

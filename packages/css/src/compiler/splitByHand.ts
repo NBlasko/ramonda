@@ -240,6 +240,34 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
     };
   },
 
+  /**
+   * A list of ranges, each a start and an optional end. An end left out is the start's RANGE NAME,
+   * and a length after a name is that name's offset — `cover 10%` runs from `cover 10%` to `cover`.
+   * The positional table had it the other way, and Chromium and WebKit do not: measured.
+   */
+  "animation-range": (value) => ranges(value, "animation-range-start", "animation-range-end"),
+
+  /**
+   * Per item: a name, an optional source, the activation range, and after a `/` the active range.
+   * Chromium is the only engine with it, and what it does is what this writes — measured.
+   */
+  "timeline-trigger": (value) => {
+    const items = itemsOf(value);
+    if (items === undefined) return undefined;
+    const read = items.map(triggerOf);
+    if (read.some((one) => one === undefined)) return undefined;
+    const all = read as string[][];
+    const list = (at: number) => all.map((one) => one[at]).join(", ");
+    return {
+      "timeline-trigger-name": list(0),
+      "timeline-trigger-source": list(1),
+      "timeline-trigger-activation-range-start": list(2),
+      "timeline-trigger-activation-range-end": list(3),
+      "timeline-trigger-active-range-start": list(4),
+      "timeline-trigger-active-range-end": list(5),
+    };
+  },
+
   "background-position": (value) => positions(value, "background-position-x", "background-position-y", true),
   /**
    * Into the PREFIXED longhands, the only names all three engines have: Chromium and WebKit expand
@@ -621,4 +649,54 @@ function familyList(text: string): boolean {
         ),
     )
   );
+}
+
+const RANGE_NAME = ["cover", "contain", "entry", "exit", "entry-crossing", "exit-crossing", "scroll"];
+
+/** One range as its start and end, or nothing. `blank` is what an end left out on a length is. */
+function rangeOf(t: readonly string[], blank: string): [string, string] | undefined {
+  const part = (at: number): [string, number] | undefined => {
+    const one = t[at];
+    if (one === undefined) return undefined;
+    if (one === "normal" || isOffset(one)) return [one, 1];
+    if (!RANGE_NAME.includes(one)) return undefined;
+    return isOffset(t[at + 1]) ? [`${one} ${t[at + 1]}`, 2] : [one, 1];
+  };
+  const start = part(0);
+  if (start === undefined) return undefined;
+  if (start[1] === t.length) {
+    const name = start[0].split(" ")[0];
+    return [start[0], RANGE_NAME.includes(name) ? name : blank];
+  }
+  const end = part(start[1]);
+  if (end === undefined || start[1] + end[1] !== t.length) return undefined;
+  return [start[0], end[0]];
+}
+
+function ranges(value: string, start: string, end: string): Record<string, string> | undefined {
+  const items = itemsOf(value);
+  if (items === undefined) return undefined;
+  const read = items.map((one) => rangeOf(tokensOf(one), "normal"));
+  if (read.some((one) => one === undefined)) return undefined;
+  const pairs = read as [string, string][];
+  return { [start]: pairs.map((one) => one[0]).join(", "), [end]: pairs.map((one) => one[1]).join(", ") };
+}
+
+const TRIGGER_SOURCE = /^(auto|none|view\(.*\)|scroll\(.*\))$/i;
+
+/** One `timeline-trigger` item as its six parts, in the longhands' order. */
+function triggerOf(item: string): string[] | undefined {
+  const t = slashed(item);
+  const name = t[0];
+  if (name === undefined || !(name === "none" || /^--[\w-]+$/.test(name))) return undefined;
+  let at = 1;
+  const source = TRIGGER_SOURCE.test(t[at] ?? "") ? t[at++] : "auto";
+  const slash = t.indexOf("/", at);
+  const first = t.slice(at, slash === -1 ? undefined : slash);
+  const second = slash === -1 ? [] : t.slice(slash + 1);
+  if (slash !== -1 && second.length === 0) return undefined;
+  const activation = first.length === 0 ? ["normal", "normal"] : rangeOf(first, "normal");
+  const active = second.length === 0 ? ["auto", "auto"] : rangeOf(second, "auto");
+  if (activation === undefined || active === undefined) return undefined;
+  return [name, source, ...activation, ...active];
 }
