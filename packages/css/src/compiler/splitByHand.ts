@@ -129,6 +129,15 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
     return { "text-box-trim": trims[0] ?? "trim-both", "text-box-edge": edges.join(" ") || "auto" };
   },
 
+  "background-position": (value) => positions(value, "background-position-x", "background-position-y", true),
+  /**
+   * Into the PREFIXED longhands, the only names all three engines have: Chromium and WebKit expand
+   * `mask-position` into `-webkit-mask-position-x` and `-y` and have no `mask-position-x`, and
+   * Firefox takes the prefixed names as its own longhands' other names.
+   */
+  "mask-position": (value) => positions(value, "-webkit-mask-position-x", "-webkit-mask-position-y", false),
+  "-webkit-mask-position": (value) => positions(value, "-webkit-mask-position-x", "-webkit-mask-position-y", false),
+
   /**
    * An alias of `border-block-start`, split into its OWN prefixed longhands. Splitting it into the
    * standard ones would make it work in Firefox, which does not have it and drops the declaration.
@@ -200,3 +209,94 @@ const GRID_LINE = (part: string): boolean => {
   const names = words.filter((one) => isIdent(one)).length;
   return span <= 1 && numbers <= 1 && names <= 1 && span + numbers + names === words.length && numbers + names >= 1;
 };
+
+/**
+ * A comma list of `<position>`s, as its two lists of axes — `left 10px top 5px, center` is
+ * `x: left 10px, center` and `y: top 5px, center`.
+ */
+function positions(value: string, x: string, y: string, threeValues: boolean): Record<string, string> | undefined {
+  const items = itemsOf(value);
+  if (items === undefined) return undefined;
+  // Three values are `background-position`'s own legacy form; `mask-position` takes a plain
+  // `<position>`, which has none, and all three engines refuse `mask-position: left 10px top`.
+  if (!threeValues && items.some((one) => tokensOf(one).length === 3)) return undefined;
+  const axes = items.map(positionOf);
+  if (axes.some((one) => one === undefined)) return undefined;
+  const pairs = axes as [string, string][];
+  return { [x]: pairs.map((one) => one[0]).join(", "), [y]: pairs.map((one) => one[1]).join(", ") };
+}
+
+/** The items of a comma list, or nothing when one of them is empty — which CSS refuses. */
+function itemsOf(value: string): string[] | undefined {
+  const items: string[] = [];
+  let depth = 0;
+  let at = "";
+  for (const ch of value) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    if (depth === 0 && ch === ",") {
+      items.push(at.trim());
+      at = "";
+      continue;
+    }
+    at += ch;
+  }
+  items.push(at.trim());
+  return items.some((one) => one === "") ? undefined : items;
+}
+
+const X_EDGE = ["left", "right"];
+const Y_EDGE = ["top", "bottom"];
+const OFFSET = /^([+-]?(\d+\.?\d*|\.\d+)([a-z]+|%)?|calc\(.*\))$/i;
+/** A length, a percentage or a `calc()` — and `0`, the one number CSS takes as a length. */
+const isOffset = (one: string | undefined) =>
+  one !== undefined && (one === "0" || (OFFSET.test(one) && !/^[+-]?(\d+\.?\d*|\.\d+)$/.test(one)));
+
+/**
+ * One `<position>` as its horizontal and vertical parts, as CSS reads it.
+ *
+ * One value names one axis and centres the other; two are horizontal then vertical, except that two
+ * KEYWORDS may come either way round (`top left`); three or four pair an edge with an offset
+ * (`left 10px top`, `right 3px bottom 10%`), the two sides in either order.
+ */
+function positionOf(item: string): [string, string] | undefined {
+  const t = tokensOf(item);
+  const x = (one: string) => X_EDGE.includes(one) || one === "center";
+  const y = (one: string) => Y_EDGE.includes(one) || one === "center";
+
+  if (t.length === 1) {
+    const [one] = t;
+    if (Y_EDGE.includes(one)) return ["center", one];
+    if (x(one) || isOffset(one)) return [one, "center"];
+    return undefined;
+  }
+  if (t.length === 2) {
+    const [a, b] = t;
+    if ((x(a) || isOffset(a)) && (y(b) || isOffset(b))) return [a, b];
+    if (y(a) && x(b) && !isOffset(a) && !isOffset(b)) return [b, a];
+    return undefined;
+  }
+  if (t.length === 3 || t.length === 4) {
+    // Two sides, each `center`, an edge, or an edge and its offset.
+    const sides: string[][] = [];
+    for (let at = 0; at < t.length; ) {
+      const edge = t[at];
+      if (edge === "center") {
+        sides.push([edge]);
+        at++;
+      } else if ([...X_EDGE, ...Y_EDGE].includes(edge)) {
+        const offset = isOffset(t[at + 1]) ? t[at + 1] : undefined;
+        sides.push(offset === undefined ? [edge] : [edge, offset]);
+        at += offset === undefined ? 1 : 2;
+      } else return undefined;
+    }
+    if (sides.length !== 2 || sides.every((one) => one.length === 1)) return undefined;
+    const [first, second] = sides;
+    const horizontal = (side: string[]) => X_EDGE.includes(side[0]) || (side[0] === "center" && side.length === 1);
+    const vertical = (side: string[]) => Y_EDGE.includes(side[0]) || (side[0] === "center" && side.length === 1);
+    if (horizontal(first) && vertical(second)) return [first.join(" "), second.join(" ")];
+    if (vertical(first) && horizontal(second)) return [second.join(" "), first.join(" ")];
+    return undefined;
+  }
+  return undefined;
+}

@@ -251,16 +251,24 @@ export function splitOf(property: string, value: string): Record<string, string>
   const positional = SHAPES[property];
   const grammar = GRAMMAR_SHAPES[property];
   const byHand = BY_HAND[property];
+  /**
+   * By hand FIRST where a family has it. Only `background-position` has both, and its table was
+   * the weaker answer: it learned one and two values, refused the lists and the three- and
+   * four-value forms, and split two values every engine refuses — `1px,` and `5 5`. The hand rules
+   * are checked against all three engines, value by value, by `check-hand-splits.mjs`.
+   */
   const split =
-    positional !== undefined
-      ? splitPositional(positional, bare)
-      : grammar !== undefined
-        ? splitByGrammar(grammar, bare)
-        : byHand !== undefined && !holdsVar(bare) && !tokensOf(bare).some((one) => WIDE.includes(one))
-          ? // A CSS-wide keyword is refused here rather than spread: `grid-area: inherit` would
-            // otherwise read as a line NAME, and be copied into the three lines left out.
-            byHand(bare.trim())
-          : undefined;
+    byHand !== undefined
+      ? !holdsVar(bare) && !tokensOf(bare).some((one) => WIDE.includes(one))
+        ? // A CSS-wide keyword is refused here rather than spread: `grid-area: inherit` would
+          // otherwise read as a line NAME, and be copied into the three lines left out.
+          byHand(bare.trim())
+        : undefined
+      : positional !== undefined
+        ? splitPositional(positional, bare)
+        : grammar === undefined
+          ? undefined
+          : splitByGrammar(grammar, bare);
   if (split === undefined || bang === null) return split;
 
   return Object.fromEntries(Object.entries(split).map(([one, each]) => [one, `${each} ${bang[0].trim()}`]));

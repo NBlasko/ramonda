@@ -419,3 +419,58 @@ describe("every hand-split family, each way it can go", () => {
     expect(splitOf(family, value)).toBeUndefined();
   });
 });
+
+describe("a position, split by hand", () => {
+  const bg = (value: string) => splitOf("background-position", value);
+  test.each([
+    ["center", "center", "center"],
+    ["top", "center", "top"],
+    ["left", "left", "center"],
+    ["10px", "10px", "center"],
+    ["bottom right", "right", "bottom"],
+    ["10px top", "10px", "top"],
+    ["left 10px top 5px", "left 10px", "top 5px"],
+    ["top 5px left 10px", "left 10px", "top 5px"],
+    ["left 10px top", "left 10px", "top"],
+    ["center top 5px", "center", "top 5px"],
+    ["0 0, left top", "0, left", "0, top"],
+  ])("background-position: %s", (value, x, y) => {
+    expect(bg(value)).toEqual({ "background-position-x": x, "background-position-y": y });
+  });
+
+  test.each([
+    "left right",
+    "top bottom",
+    "10px left",
+    "5 5",
+    "1px,",
+    "a, , b",
+    "left 10px 20px",
+    "center 10px top",
+    "red",
+    "1 2 3 4 5",
+    "left top 5px bottom",
+  ])("background-position refuses %s", (value) => {
+    expect(bg(value)).toBeUndefined();
+  });
+
+  test("a calc() holds its own commas, and two edges on one axis are no position", () => {
+    expect(bg("calc(1px + 2%) 0, 3px 4px")).toEqual({
+      "background-position-x": "calc(1px + 2%), 3px",
+      "background-position-y": "0, 4px",
+    });
+    expect(bg("left 10px right 5px")).toBeUndefined();
+    expect(splitOf("-webkit-mask-position", "10px 20px")).toEqual({
+      "-webkit-mask-position-x": "10px",
+      "-webkit-mask-position-y": "20px",
+    });
+  });
+
+  test("a mask takes no three-value form, and is written with the prefixed names every engine has", () => {
+    expect(splitOf("mask-position", "left 10px top")).toBeUndefined();
+    expect(splitOf("mask-position", "right 3px bottom 1px")).toEqual({
+      "-webkit-mask-position-x": "right 3px",
+      "-webkit-mask-position-y": "bottom 1px",
+    });
+  });
+});

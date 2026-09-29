@@ -60,7 +60,54 @@ const PROBE = {
   "grid-area": "auto",
   "text-box": "normal",
   "-webkit-border-before": "1px solid red",
+  "background-position": "1px 2px",
+  "mask-position": "1px 2px",
+  "-webkit-mask-position": "1px 2px",
 };
+
+/** Every form a `<position>` takes, and the ones it does not — shared by the three position families. */
+const POSITIONS = [
+  "1px 2px",
+  "center",
+  "left",
+  "top",
+  "right bottom",
+  "bottom right",
+  "top left",
+  "left top",
+  "10% 20%",
+  "left 10px",
+  "10px top",
+  "top 10px",
+  "center center",
+  "left center",
+  "center top",
+  "left 10px top 5px",
+  "top 5px left 10px",
+  "right 3px bottom 10%",
+  "left 10px top",
+  "left top 5px",
+  "center top 5px",
+  "left 10px center",
+  "right 10px center",
+  "bottom 10px right",
+  "center left 5px",
+  "0 0",
+  "-5px 3em",
+  "calc(10px + 5%) 0",
+  "0 0, 10px 10px",
+  "left top, center",
+  "right 3px bottom 1px, 50% 50%",
+  "left right",
+  "top bottom",
+  "10px 20px 30px",
+  "left 10px 20px",
+  "1px, ",
+  "5 5",
+  "center 10px top",
+  "left 10px top 5px bottom",
+  "10px left",
+];
 
 const CORPUS = {
   marker: ["none", "url(#a)", "url(a.svg#m)", "none none", "url(#a) none", "red"],
@@ -205,6 +252,9 @@ const CORPUS = {
     "ideographic",
     "cap ideographic",
   ],
+  "background-position": POSITIONS,
+  "mask-position": POSITIONS,
+  "-webkit-mask-position": POSITIONS,
   "-webkit-border-before": [
     "1px solid red",
     "solid",
@@ -322,7 +372,7 @@ if (process.env.WHY) for (const one of refused) console.log(`[hand]   refused, k
 
 if (wrong.length > 0) {
   console.error(`[hand] ${wrong.length} split(s) differ from what the shorthand does:`);
-  for (const one of wrong.slice(0, 20)) console.error(`[hand]   ${one}`);
+  for (const one of process.env.WHY ? wrong : wrong.slice(0, 20)) console.error(`[hand]   ${one}`);
   process.exit(selftest ? 0 : 1);
 }
 if (selftest) {

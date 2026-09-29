@@ -40,9 +40,10 @@ describe("what the map claims about the tables", () => {
     expect(claimed(/\*\*(\d+) by hand\.\*\*/)).toBe(Object.keys(BY_HAND).length);
   });
 
-  test("and the three added up, which is what a reader takes away", () => {
+  test("and the three together, which is what a reader takes away", () => {
+    // Distinct families: `background-position` is in `SHAPES` and split by hand both.
     expect(claimed(/they answer \*\*(\d+) families\*\*/)).toBe(
-      Object.keys(SHAPES).length + Object.keys(GRAMMAR_SHAPES).length + Object.keys(BY_HAND).length,
+      new Set([...Object.keys(SHAPES), ...Object.keys(GRAMMAR_SHAPES), ...Object.keys(BY_HAND)]).size,
     );
   });
 });
