@@ -149,19 +149,26 @@ leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 fam
 `animation`, `transition` and `font-variant`, none of which a flat list of slots can hold. A family in
 neither table keeps its shorthand.
 
-Of the families that reach the grammar table's generator, 19 do not make it, and they fail at two
-different places.
+**Four are not shorthands here at all**: `transform-origin`, `perspective-origin`, `vertical-align`
+and `border-spacing`. Some engine holds each of them as a longhand — measured, the first two in
+Chromium and Firefox, `vertical-align` in Chromium and WebKit, `border-spacing` in Firefox — and the
+engines disagree about what they reset, so no split could write one page for all three.
+`build-shorthand-leaves.mjs` records them as `LONGHAND_IN_SOME_ENGINE` and `SHORTHANDS` leaves them
+out, so they sit in `u` with every other longhand.
 
-**Eleven have a grammar this cannot open**, because some part of them belongs to no longhand and
-has no grammar of its own to be opened into: `border-spacing`, `flex`, `font`, `grid`,
-`grid-template`, `mask`, `mask-border`, `perspective-origin`, `text-box`, `transform-origin`,
-`white-space`. `mask` is not a depth problem, though it looks like one: raising the cap does not
+Of the families that reach the grammar table's generator, 15 do not make it, and they fail at two
+different places. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for
+one family, and writes nothing.
+
+**Eight have a grammar this cannot open**, because some part of them belongs to no longhand and
+has no grammar of its own to be opened into: `flex`, `font`, `grid`, `grid-template`, `mask`,
+`mask-border`, `text-box`, `white-space`. `mask` is not a depth problem, though it looks like one: raising the cap does not
 open it. Its `content-box` is a word that `mask-origin` reaches only through `<coord-box>` →
 `<paint-box>` → `<visual-box>`, and `longhandsFor` matches a word against a longhand's grammar TEXT
 without following those types.
 
-**Eight open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
-`font-synthesis`, `grid-area`, `marker`, `mask-position`, `timeline-trigger`, `vertical-align`.
+**Seven open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
+`font-synthesis`, `grid-area`, `marker`, `mask-position`, `timeline-trigger`.
 
 **A value is refused where CSS would drop it, and the family is kept.** CSS drops a whole
 declaration when any part of it is invalid and a split drops only the part — so a split must never

@@ -452,6 +452,23 @@ describe("the layers", () => {
   });
 
   /**
+   * A property some engine treats as a LONGHAND is one here, whatever the others say.
+   *
+   * Measured in all three: `transform-origin` and `perspective-origin` are longhands in Chromium and
+   * Firefox, `vertical-align` in Chromium and WebKit, `border-spacing` in Firefox. What they "cover"
+   * elsewhere is internal or prefixed — `transform-origin-x` is nothing anybody writes — and the
+   * engines disagree about what they reset, so no split could write one page for all three. As a
+   * longhand it sits in `u`, a word, and leaves the counted layers for good.
+   */
+  test.each(["transform-origin", "perspective-origin", "vertical-align", "border-spacing"])(
+    "%s is a longhand",
+    (property) => {
+      expect(layerPathFor({ property })).toEqual(["u"]);
+      expect(SHORTHANDS[property]).toBeUndefined();
+    },
+  );
+
+  /**
    * A shorthand holding a `var()` can never split, and it goes in ONE word layer, `v`.
    *
    * A count moves when CSS adds a longhand to the family, and a package built before that names the

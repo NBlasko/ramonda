@@ -113,6 +113,15 @@ const LEAVES = required(
   /LEAVES: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\})\s*;/,
 );
 
+/** What some engine holds as a longhand, which is then a longhand here — see the leaves generator. */
+const LONGHAND_IN_SOME_ENGINE = new Set(
+  previousFrom(
+    join(root, "packages/css/src/compiler/leaves.generated.ts"),
+    /LONGHAND_IN_SOME_ENGINE: readonly string\[\] = (\[[\s\S]*?\])\s*;/,
+    [],
+  ),
+);
+
 /**
  * Values an engine accepts that `mdn-data` left out of a property's grammar — see
  * `build-engine-keywords.mjs`. Empty until that has been run once, which is the honest default: it
@@ -1241,7 +1250,7 @@ for (const name of named) {
  */
 const leavesOf = new Map();
 for (const name of named) {
-  const leaves = LEAVES[name] ?? [];
+  const leaves = LONGHAND_IN_SOME_ENGINE.has(name) ? [] : (LEAVES[name] ?? []);
   leavesOf.set(name, new Set(leaves.length === 0 ? [name] : leaves));
 }
 

@@ -45,6 +45,7 @@
  *
  *     WHY=1 node scripts/build-grammar-shapes.mjs              # what each engine turned down
  *     WHY_FAMILY=animation node scripts/build-grammar-shapes.mjs   # every value of one family
+ *     ONLY=flex,grid WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs   # just these; writes nothing
  */
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -178,7 +179,10 @@ async function settle(tab, name, shape) {
       if (one !== undefined) used.add(one);
       return one;
     });
-    if (chosen.some((one) => one === undefined)) return undefined;
+    if (chosen.some((one) => one === undefined)) {
+      why(name, `no distinct sample for every leaf feeding ${key}`);
+      return undefined;
+    }
 
     const held = await tab.evaluate(
       ([property, value, wanted]) => {
@@ -191,14 +195,26 @@ async function settle(tab, name, shape) {
       },
       [name, chosen.join(" "), longhands],
     );
-    if (held === null) return undefined;
+    if (held === null) {
+      why(name, `the engine refuses "${chosen.join(" ")}"`);
+      return undefined;
+    }
 
     for (const [at, index] of where.entries()) {
       const found = longhands.filter((one) => held[one] === chosen[at]);
-      if (found.length !== 1) return undefined;
+      if (found.length !== 1) {
+        why(
+          name,
+          `"${chosen[at]}" in "${chosen.join(" ")}" lands on ${found.length} of ${key}: ${JSON.stringify(held)}`,
+        );
+        return undefined;
+      }
       settled[index] = found[0];
     }
-    if (new Set(Object.values(settled)).size !== Object.values(settled).length) return undefined;
+    if (new Set(Object.values(settled)).size !== Object.values(settled).length) {
+      why(name, `two leaves settle on one longhand: ${JSON.stringify(settled)}`);
+      return undefined;
+    }
   }
   return settled;
 }
@@ -307,9 +323,15 @@ async function corpusFor(tab, name, shape, shuffle) {
 }
 
 const ENGINES = ["chromium", "firefox", "webkit"];
+/** A few families only, to ask why — a partial run is never written. */
+const ONLY = process.env.ONLY?.split(",");
+const why = (name, text) => {
+  if (process.env.WHY_FAMILY === name) console.error(`[why] ${name}: ${text}`);
+};
 const candidates = Object.keys(LEAVES)
   .filter((one) => !one.startsWith("-") && one !== "all")
   .filter((one) => (LEAVES[one]?.length ?? 0) > 1 && SHAPES[one] === undefined)
+  .filter((one) => ONLY === undefined || ONLY.includes(one))
   .sort();
 
 const perEngine = {};
@@ -331,7 +353,10 @@ for (const engine of ENGINES) {
     once[engine] = {};
     for (const name of candidates) {
       const shape = openedShape(name);
-      if (shape === undefined) continue;
+      if (shape === undefined) {
+        why(name, "the grammar does not open");
+        continue;
+      }
 
       const has = await tab.evaluate((longhands) => {
         const element = document.getElementById("x");
@@ -586,5 +611,9 @@ const contents =
   `\n` +
   `export const GRAMMAR_SHAPES: Readonly<Record<string, GrammarShape>> = {\n${rows}\n};\n`;
 
+if (ONLY !== undefined) {
+  console.log(`[grammar] ONLY=${ONLY.join(",")}: kept ${Object.keys(agreed).join(", ") || "none"} — nothing written`);
+  process.exit(0);
+}
 const wrote = writeOrCheck(file, contents, "build-grammar-shapes", check);
 if (!check) console.log(`[grammar] ${wrote ? "wrote" : "up to date —"} ${Object.keys(agreed).length} families`);

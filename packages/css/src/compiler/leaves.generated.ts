@@ -138,3 +138,10 @@ export const LEAVES: Readonly<Record<string, readonly string[]>> = {
   "white-space": ["text-wrap-mode","white-space-collapse"],
   "word-wrap": ["overflow-wrap"],
 };
+
+/**
+ * Of those, the ones SOME engine holds as a longhand. `SHORTHANDS` leaves them out: the engines
+ * disagree about what they reset, and one calling it a longhand is enough. `all` is never here —
+ * it covers everything by definition and has a layer of its own.
+ */
+export const LONGHAND_IN_SOME_ENGINE: readonly string[] = ["border-spacing","perspective-origin","transform-origin","vertical-align"];
