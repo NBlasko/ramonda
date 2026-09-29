@@ -633,16 +633,20 @@ describe("a shorthand is split into what it sets", () => {
   });
 
   /**
-   * An arm of a `match` is ONE class, picked at run time.
+   * An arm of a `match` splits like any declaration, each piece carrying its arm.
    *
-   * Splitting one would mean an arm picking several classes, which `pick` does not do — and the
-   * compiler says so itself: three longhands per arm fired its own piece-count invariant,
-   * `a block produced 7 piece(s) for 1 hole(s)`. So a match keeps its shorthand.
+   * It used to keep its shorthand, because one arm is one choice at run time and three longhands
+   * looked like three. The emit groups an arm's pieces back into ONE string of classes, which `pick`
+   * hands back and the merge splits on its spaces — see `match.test.ts`.
    */
-  test("an arm of a match is not split", () => {
+  test("an arm of a match is split, and every piece keeps its arm", () => {
     expect(splitKeys("border-left: match({t}) { loud => 4px solid red; quiet => 1px dashed grey; };")).toEqual([
-      "border-left",
-      "border-left",
+      "border-left-color",
+      "border-left-style",
+      "border-left-width",
+      "border-left-color",
+      "border-left-style",
+      "border-left-width",
     ]);
   });
 

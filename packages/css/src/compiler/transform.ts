@@ -68,6 +68,9 @@ export interface TransformOptions {
 
 /** One rule the stylesheet now owes. Assembly (dedupe, `@layer`, the collision assertion) is track E. */
 
+/** The otherwise arm's place among the arms — a key no arm can be written as, since an arm is text. */
+const OTHERWISE = "\u0000otherwise";
+
 export interface EmittedBlock {
   /** `r-` plus 16 hex — see CONTRACT.md. */
   readonly className: string;
@@ -505,9 +508,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       }
 
       /**
-       * Every arm of one `match` is its own rule and its own class, and they share a key — so a run
-       * of them is ONE call that chooses between their classes rather than a class. `register` below
-       * still runs for each, because each has a rule to emit.
+       * Every arm of one `match` is its own rule — or, split, its own several — so a run of them is
+       * ONE call that chooses between their classes rather than a class. Grouped by the SUBJECT'S
+       * hole, which is one per `match`: a split arm's pieces have different keys, and grouping by the
+       * key cut one match into several. `register` below still runs for each, because each has a
+       * rule to emit.
        */
       const armsFrom = (from: number): AtomicDeclaration[] => {
         const first = segment.items[from];
@@ -515,10 +520,26 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         const group = [first];
         while (from + group.length < segment.items.length) {
           const next = segment.items[from + group.length];
-          if (next.arm === undefined || next.key !== first.key) break;
+          if (next.arm === undefined || next.arm.hole !== first.arm.hole) break;
           group.push(next);
         }
         return group;
+      };
+
+      /**
+       * Each arm's classes, as the ONE string `pick` hands back: a split arm is the family's marker
+       * and then its pieces — the marker first, because the merge reads left to right.
+       */
+      const armClasses = (group: readonly AtomicDeclaration[]): Map<string, string[]> => {
+        const out = new Map<string, string[]>();
+        for (const one of group) {
+          const arm = one.arm?.otherwise === true ? OTHERWISE : (one.arm?.is ?? "");
+          const list = out.get(arm) ?? [];
+          if (one.from !== undefined && list.length === 0) list.push(markerFor(one.from, one.selector, one.conditions));
+          list.push(nameFor(one));
+          out.set(arm, list);
+        }
+        return out;
       };
 
       /** The atom a declaration becomes, registered once however many times it is written. */
@@ -618,8 +639,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
           for (const one of group) {
             conditionsUnder(one, register(one));
             namesFor(one);
+            clears(one);
           }
-          clears(group[0]);
           parts.push({ kind: "match", group });
           index += group.length - 1;
           continue;
@@ -669,17 +690,18 @@ export function transform(source: string, options: TransformOptions = {}): Trans
           continue;
         }
 
-        const fallback = part.group.find((one) => one.arm?.otherwise === true);
+        const arms = armClasses(part.group);
+        const fallback = arms.get(OTHERWISE);
         picked = true;
         piece += `${lookup}(`;
         expression();
         piece += ",{";
-        for (const one of part.group) {
-          if (one.arm?.otherwise === true) continue;
-          piece += `${JSON.stringify(one.arm?.is ?? "")}:${JSON.stringify(nameFor(one))},`;
+        for (const [is, classes] of arms) {
+          if (is === OTHERWISE) continue;
+          piece += `${JSON.stringify(is)}:${JSON.stringify(classes.join(" "))},`;
         }
         piece += "}";
-        if (fallback !== undefined) piece += `,${JSON.stringify(nameFor(fallback))}`;
+        if (fallback !== undefined) piece += `,${JSON.stringify(fallback.join(" "))}`;
         piece += ")";
       }
       if (wrapped) piece += ")";

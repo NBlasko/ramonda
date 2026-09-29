@@ -633,17 +633,11 @@ function maybeSplit(
   const whole = built(item, value$, selector, conditions, arm);
   if (!split || whole.holes.length > 0) return [whole];
   /**
-   * A `match` ARM is one class, chosen at run time, and splitting it makes several.
-   *
-   * The emit builds `pick(hole, { loud: <class>, quiet: <class> })` and assembles the surrounding
-   * text as pieces around holes. Three longhands per arm makes three classes where one is expected,
-   * and the compiler's own piece-count invariant fires — `a block produced 7 piece(s) for 1 hole(s)`.
-   * So a match keeps its shorthand and the cascade decides for it, which is the answer that cannot
-   * be wrong. Splitting one would mean an arm picking SEVERAL classes, which the runtime `pick` does
-   * not do; it is worth doing and it is not this change.
+   * A `match` ARM splits like anything else, and every piece carries the arm it came from — the
+   * emit groups them back into ONE string of classes per arm, which `pick` returns and the merge
+   * splits on its spaces. It used to keep its shorthand, which put `padding: match(…)` in a layer
+   * named by `padding`'s count.
    */
-  if (arm !== undefined) return [whole];
-
   const longhands = splitOf(whole.property, valueOf(whole.canonical));
   if (longhands === undefined) return [whole];
 

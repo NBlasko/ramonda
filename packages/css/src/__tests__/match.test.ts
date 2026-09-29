@@ -122,11 +122,14 @@ describe("what a match compiles to", () => {
     expect(compiled(`color: red;`).code).not.toContain("pick as");
   });
 
-  test("an arm may hold a whole value, and it is one class", () => {
+  test("an arm may hold a whole value, and it splits into the longhands it sets", () => {
     const { css } = compiled(`border-left: match({t}) { loud => 4px solid red; quiet => 1px dashed grey; };`);
 
-    expect(css).toContain("border-left:4px solid red;");
-    expect(css).toContain("border-left:1px dashed grey;");
+    expect(css).toContain("border-left-width:4px;");
+    expect(css).toContain("border-left-style:solid;");
+    expect(css).toContain("border-left-color:red;");
+    expect(css).toContain("border-left-style:dashed;");
+    expect(css).not.toContain("border-left:");
   });
 });
 
@@ -227,5 +230,40 @@ const box = @@( padding-left: var({pad}); padding-right: var({pad}); );`;
     expect(() =>
       transform(`const a = @@( padding-left: {v}; padding-right: {v}; );`, { filename: "Card.tsx" }),
     ).toThrow(/@@property/);
+  });
+});
+
+/**
+ * An arm of a `match` on a SHORTHAND splits like any declaration, and its class is the pieces.
+ *
+ * It did not: every arm kept its shorthand, so `padding: match(…)` reached the sheet whole, in a
+ * layer named by `padding`'s count — the naming that moves when CSS adds a longhand. An arm is
+ * chosen at run time, so it cannot be several arguments of the merge; it is ONE string of classes,
+ * the family's marker first, and the merge splits it on its spaces like any other.
+ */
+describe("a match on a shorthand", () => {
+  const code = (block: string) =>
+    transform(`declare const t: "a" | "b";\nconst x = @@( ${block} );\n`, { filename: "Card.tsx" })?.code ?? "";
+
+  test("each arm is the family's marker and its pieces", () => {
+    expect(code("padding: match({t}) { a => 1px; b => 2px 3px; };")).toContain(
+      '_pick(t,{"a":"r-p- r-pt-1px r-pr-1px r-pb-1px r-pl-1px","b":"r-p- r-pt-2px r-pr-3px r-pb-2px r-pl-3px",})',
+    );
+  });
+
+  test("and the otherwise arm too", () => {
+    expect(code("padding: match({t}) { a => 1px; _ => 0; };")).toContain(',"r-p- r-pt-0 r-pr-0 r-pb-0 r-pl-0")');
+  });
+
+  test("an arm that cannot split keeps its shorthand, and the others still split", () => {
+    expect(code("padding: match({t}) { a => var(--p); b => 1px; };")).toContain(
+      '_pick(t,{"a":"r-p-var(--p)","b":"r-p- r-pt-1px r-pr-1px r-pb-1px r-pl-1px",})',
+    );
+  });
+
+  test("and the merge takes an arm's classes like any others", () => {
+    const merged = String(mergeClassNames("r-pl-40px", pick("a", { a: "r-p- r-pt-1px r-pr-1px r-pb-1px r-pl-1px" })));
+    expect(merged.split(" ")).not.toContain("r-pl-40px");
+    expect(merged.split(" ")).toContain("r-pl-1px");
   });
 });
