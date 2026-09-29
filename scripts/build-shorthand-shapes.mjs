@@ -41,7 +41,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const check = process.argv.includes("--check");
 
 const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.json"))("@playwright/test");
-const { DOMAINS, PATTERNS, WIDE, learnPositionalIn, misplacedWord, splitPositional, tokensOf } = await import(
+const { DOMAINS, PATTERNS, WIDE, holdsVar, learnPositionalIn, misplacedWord, splitPositional, tokensOf } = await import(
   "../packages/css/shorthand-shapes.mjs"
 );
 const { SHORTHANDS } = await import("../packages/css/src/compiler/keywords.generated.ts");
@@ -168,15 +168,16 @@ async function measure(against) {
           "<div id=x></div><div id=y></div></body></html>",
       );
       perEngine[engine] = await tab.evaluate(
-        ([names, DOMAINS, PATTERNS, learn, split, tokens, misplaced, wide, against, EXTRA, TAKES]) => {
+        ([names, DOMAINS, PATTERNS, learn, split, tokens, misplaced, varTest, wide, against, EXTRA, TAKES]) => {
           const learned = new Function(`return ${learn}`)()(names, DOMAINS, PATTERNS);
           // The splitter's own dependencies, put in its scope: it is written to run in a build, not
           // in a page, so injecting it means bringing what it closes over. `misplacedWord` joined them
           // when the word check became a function the checker reads too — and was left out at first,
-          // which only the full gate saw: the generator was not run again after that change.
+          // which only the full gate saw: the generator was not run again after that change. And
+          // `holdsVar`, when the two `var()` tests became one.
           const splitPositional = new Function(
             `const WIDE = ${JSON.stringify(wide)};\nconst tokensOf = ${tokens};\n` +
-              `const misplacedWord = ${misplaced};\nreturn ${split}`,
+              `const misplacedWord = ${misplaced};\nconst holdsVar = ${varTest};\nreturn ${split}`,
           )();
           /**
            * A shape is only written if it SURVIVES its own corpus, here, in the engine that taught it.
@@ -297,6 +298,7 @@ async function measure(against) {
           splitPositional.toString(),
           tokensOf.toString(),
           misplacedWord.toString(),
+          holdsVar.toString(),
           WIDE,
           against,
           EXTRA,

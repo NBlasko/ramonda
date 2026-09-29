@@ -55,6 +55,18 @@ export function tokensOf(value: string, separator = /\s/): string[] {
 }
 
 /**
+ * Whether a value holds a `var()`, which no split may touch — see `splitPositional`.
+ *
+ * ONE test for every place that asks. There were two, and they disagreed: the positional splitter
+ * matched the lower-case spelling only, and CSS function names are case-insensitive, so
+ * `padding: VAR(--p)` was split and every longhand came out invalid. The `-` before the name is
+ * excluded because `--my-var(` is a custom function, not a `var()`.
+ */
+export function holdsVar(value: string): boolean {
+  return /(^|[^\w-])var\(/i.test(value);
+}
+
+/**
  * The longhands this value sets, or `undefined` where it must not be split.
  *
  * **Refusing is a correct answer rather than a gap**, and there are three of them:
@@ -78,7 +90,7 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
   const bare = value.trim();
   if (WIDE.includes(bare)) return Object.fromEntries(longhands.map((one) => [one, bare]));
   if (tokensOf(value).some((one) => WIDE.includes(one))) return undefined;
-  if (/\bvar\(/.test(value)) return undefined;
+  if (holdsVar(value)) return undefined;
   /**
    * A NEGATIVE where the family refuses one, because CSS and a split disagree about invalid input.
    *
@@ -424,7 +436,7 @@ function byGrammar(shape: GrammarShape, value: string): Record<string, string> |
  * POSITION — so one bad item refuses the whole value rather than shortening one list.
  */
 export function splitByGrammar(shape: GrammarShape, value: string): Record<string, string> | undefined {
-  if (/(^|[^\w-])var\(/i.test(value)) return undefined;
+  if (holdsVar(value)) return undefined;
   /**
    * A value the ENGINES read differently from each other, which no one split can satisfy.
    *

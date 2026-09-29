@@ -1,7 +1,7 @@
 import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
 import { SHAPES } from "./shapes.generated";
-import { misplacedWord } from "./split";
+import { holdsVar, misplacedWord } from "./split";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { runtimeValuesIn } from "./ast";
@@ -1010,7 +1010,7 @@ function wordOutOfItsLonghand(block: Block, findings: Finding[]): void {
 
       const [part] = item.value;
       if (item.value.length !== 1 || part === undefined || part.kind !== "text" || part.at === undefined) continue;
-      if (/(^|[^\w-])var\(/i.test(part.text)) continue;
+      if (holdsVar(part.text)) continue;
 
       const bare = part.text.replace(/!\s*important\s*$/i, "");
       const misplaced = misplacedWord(shape, bare.trim());
@@ -1672,7 +1672,7 @@ function againstRegisteredSyntax(block: Block, syntaxes: ReadonlyMap<string, str
        * `var(` escape was matched with no `i` while `variableReads` beside it explains at length why
        * it matches `var` case-insensitively. One question, two answers, in one file.
        */
-      if (written === "" || GLOBAL.has(written.toLowerCase()) || /(^|[^\w-])var\(/i.test(written)) continue;
+      if (written === "" || GLOBAL.has(written.toLowerCase()) || holdsVar(written)) continue;
 
       const components = syntax.split("|").map((one) => one.trim());
       if (components.some((one) => /[+#]$/.test(one) || (one.startsWith("<") && ACCEPTS[one] === undefined))) continue;

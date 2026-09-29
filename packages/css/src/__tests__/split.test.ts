@@ -254,3 +254,19 @@ describe("what it refuses, and why refusing is an answer", () => {
     expect(splitPositional({ kind: "length", negative: false, patterns: {} }, "10px")).toBeUndefined();
   });
 });
+
+describe("a var() in any spelling", () => {
+  /**
+   * A function name is case-insensitive in CSS, so `VAR(--p)` is a `var()`. The positional splitter
+   * tested for the lower-case spelling only and split it. Measured in all three engines, `--p: 4px
+   * 8px`: `padding: VAR(--p)` is 4px 8px, and the same `VAR(--p)` on each longhand is 0px — every
+   * one of them invalid at computed time.
+   */
+  test("is refused whatever its case", () => {
+    const padding = SHAPES.padding;
+    expect(padding).toBeDefined();
+    if (padding === undefined) return;
+    for (const value of ["var(--p)", "VAR(--p)", "Var(--p) 1px"])
+      expect(splitPositional(padding, value)).toBeUndefined();
+  });
+});
