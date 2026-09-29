@@ -575,3 +575,52 @@ describe("mask, split by hand", () => {
     expect(mask(value)).toBeUndefined();
   });
 });
+
+describe("font, split by hand", () => {
+  const font = (value: string) => splitOf("font", value);
+
+  test("every part, and every longhand it only resets", () => {
+    expect(font("italic small-caps bold condensed 16px/2 'Helvetica Neue', Arial, sans-serif")).toMatchObject({
+      "font-style": "italic",
+      "font-variant-caps": "small-caps",
+      "font-weight": "bold",
+      "font-stretch": "condensed",
+      "font-size": "16px",
+      "line-height": "2",
+      "font-family": "'Helvetica Neue', Arial, sans-serif",
+      "font-kerning": "auto",
+      "font-size-adjust": "none",
+      "font-variant-numeric": "normal",
+    });
+  });
+
+  test("the smallest, with the rest at what font resets them to", () => {
+    expect(font("12px serif")).toMatchObject({
+      "font-style": "normal",
+      "font-weight": "normal",
+      "font-size": "12px",
+      "line-height": "normal",
+      "font-family": "serif",
+    });
+    expect(font("oblique 10deg 12px serif")?.["font-style"]).toBe("oblique 10deg");
+    expect(font("600 12px serif")?.["font-weight"]).toBe("600");
+  });
+
+  test.each([
+    "caption",
+    "menu",
+    "12px",
+    "serif",
+    "bold serif",
+    "12px/ serif",
+    "12px, serif",
+    "12px serif,",
+    "italic italic 12px serif",
+    "normal normal normal normal normal 12px serif",
+    "12px 1.5 serif",
+    "12px/red serif",
+    "12px inherit",
+  ])("refuses %s", (value) => {
+    expect(font(value)).toBeUndefined();
+  });
+});

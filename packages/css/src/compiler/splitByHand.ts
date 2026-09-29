@@ -186,6 +186,60 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
     };
   },
 
+  /**
+   * `font`, which resets every font longhand and sets up to seven of them.
+   *
+   * Up to four of style, the CSS2 variant, weight and width in any order — `normal` belonging to
+   * any of them — then the size, an optional `/ line-height`, and the family list, which is the
+   * rest of the value. A system font (`caption`, `menu`) is refused: what it sets is the platform's
+   * and unknown here. Every other longhand is written out at the value `font` resets it to, and it
+   * has to be: most are INHERITED, so a longhand left out takes the parent's value where the
+   * shorthand gives the initial one.
+   */
+  font: (value) => {
+    const t = slashed(value);
+    const set: Record<string, string> = {};
+    let at = 0;
+    let normals = 0;
+    for (; at < t.length && at < 4; at++) {
+      const one = t[at];
+      if (one === "normal") normals++;
+      else if (FONT_STYLE.includes(one) && set["font-style"] === undefined) {
+        const angle = one === "oblique" && /^[+-]?[\d.]+(deg|rad|grad|turn)$/.test(t[at + 1] ?? "");
+        set["font-style"] = angle ? `oblique ${t[++at]}` : one;
+      } else if (one === "small-caps" && set["font-variant-caps"] === undefined) set["font-variant-caps"] = one;
+      else if ((FONT_WEIGHT.includes(one) || /^\d+(\.\d+)?$/.test(one)) && set["font-weight"] === undefined)
+        set["font-weight"] = one;
+      else if (FONT_WIDTH.includes(one) && set["font-stretch"] === undefined) set["font-stretch"] = one;
+      else break;
+    }
+    if (Object.keys(set).length + normals > 4) return undefined;
+
+    const size = t[at];
+    if (size === undefined || !(FONT_SIZE.includes(size) || isOffset(size))) return undefined;
+    at++;
+    let lineHeight = "normal";
+    if (t[at] === "/") {
+      const given = t[at + 1];
+      if (given === undefined || !(given === "normal" || isOffset(given) || /^[\d.]+$/.test(given))) return undefined;
+      lineHeight = given;
+      at += 2;
+    }
+    const family = t.slice(at).join(" ");
+    if (family === "" || !familyList(family)) return undefined;
+
+    return {
+      ...FONT_RESETS,
+      "font-style": set["font-style"] ?? "normal",
+      "font-variant-caps": set["font-variant-caps"] ?? "normal",
+      "font-weight": set["font-weight"] ?? "normal",
+      "font-stretch": set["font-stretch"] ?? "normal",
+      "font-size": size,
+      "line-height": lineHeight,
+      "font-family": family,
+    };
+  },
+
   "background-position": (value) => positions(value, "background-position-x", "background-position-y", true),
   /**
    * Into the PREFIXED longhands, the only names all three engines have: Chromium and WebKit expand
@@ -506,4 +560,65 @@ function layerOf(item: string, last: boolean, spec: LayerSpec): Layer | undefine
     composite: layer.composite ?? "add",
     mode: layer.mode ?? "match-source",
   };
+}
+
+const FONT_STYLE = ["italic", "oblique"];
+const FONT_WEIGHT = ["bold", "bolder", "lighter"];
+const FONT_WIDTH = [
+  "ultra-condensed",
+  "extra-condensed",
+  "condensed",
+  "semi-condensed",
+  "semi-expanded",
+  "expanded",
+  "extra-expanded",
+  "ultra-expanded",
+];
+const FONT_SIZE = [
+  "xx-small",
+  "x-small",
+  "small",
+  "medium",
+  "large",
+  "x-large",
+  "xx-large",
+  "xxx-large",
+  "larger",
+  "smaller",
+  "math",
+];
+const GENERIC =
+  /^(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-serif|ui-sans-serif|ui-monospace|ui-rounded|math|emoji|fangsong)$/i;
+
+/** What `font` resets and never sets, at the value it resets each to — read off all three engines. */
+const FONT_RESETS: Readonly<Record<string, string>> = {
+  "font-variant-ligatures": "normal",
+  "font-variant-numeric": "normal",
+  "font-variant-east-asian": "normal",
+  "font-variant-alternates": "normal",
+  "font-variant-position": "normal",
+  "font-variant-emoji": "normal",
+  "font-size-adjust": "none",
+  "font-language-override": "normal",
+  "font-kerning": "auto",
+  "font-optical-sizing": "auto",
+  "font-feature-settings": "normal",
+  "font-variation-settings": "normal",
+};
+
+/** A family list: quoted names, runs of identifiers, generic families — never an empty item. */
+function familyList(text: string): boolean {
+  const items = itemsOf(text);
+  return (
+    items !== undefined &&
+    items.every(
+      (one) =>
+        /^"[^"]*"$|^'[^']*'$/.test(one) ||
+        GENERIC.test(one) ||
+        tokensOf(one).every(
+          (word) =>
+            /^-?[a-z_][\w-]*$/i.test(word) && !["inherit", "initial", "unset", "default"].includes(word.toLowerCase()),
+        ),
+    )
+  );
 }

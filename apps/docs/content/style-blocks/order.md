@@ -214,7 +214,7 @@ a `padding-left` used to be a question for the cascade; now they are the same ke
 you wrote them.
 
 Some shorthands are not split — a value holding a `var()` never is, because its parts are unknown
-until the page computes them, and a few families (`font` and `grid` among them) are not split yet.
+until the page computes them, and a few families (`grid` among them) are not split yet.
 Those keep their shorthand, and the layers are what order them against the longhands they cover.
 
 **What each layer holds.** `ramonda.s10` holds shorthands that set ten longhands and do not split
