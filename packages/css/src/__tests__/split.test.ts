@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { SHAPES } from "../compiler/shapes.generated";
-import { splitPositional, tokensOf } from "../compiler/split";
+import { splitOf, splitPositional, tokensOf } from "../compiler/split";
 
 /**
  * Splitting a positional shorthand, from the table the engines wrote.
@@ -268,5 +268,154 @@ describe("a var() in any spelling", () => {
     if (padding === undefined) return;
     for (const value of ["var(--p)", "VAR(--p)", "Var(--p) 1px"])
       expect(splitPositional(padding, value)).toBeUndefined();
+  });
+});
+
+/**
+ * The families split by hand — `splitByHand.ts`. What a value becomes is held against all three
+ * engines by `check-hand-splits.mjs`; these hold the rules themselves, so a change to one is seen
+ * without a browser.
+ */
+describe("a family split by hand", () => {
+  test.each([
+    ["flex", "none", { "flex-grow": "0", "flex-shrink": "0", "flex-basis": "auto" }],
+    ["flex", "2", { "flex-grow": "2", "flex-shrink": "1", "flex-basis": "0%" }],
+    ["flex", "10px", { "flex-grow": "1", "flex-shrink": "1", "flex-basis": "10px" }],
+    ["white-space", "pre", { "white-space-collapse": "preserve", "text-wrap-mode": "nowrap" }],
+    ["white-space", "nowrap", { "white-space-collapse": "collapse", "text-wrap-mode": "nowrap" }],
+    [
+      "grid-area",
+      "a",
+      { "grid-row-start": "a", "grid-column-start": "a", "grid-row-end": "a", "grid-column-end": "a" },
+    ],
+    [
+      "grid-area",
+      "1 / b",
+      { "grid-row-start": "1", "grid-column-start": "b", "grid-row-end": "auto", "grid-column-end": "b" },
+    ],
+    ["marker", "url(#m)", { "marker-start": "url(#m)", "marker-mid": "url(#m)", "marker-end": "url(#m)" }],
+    [
+      "contain-intrinsic-size",
+      "auto 10px",
+      { "contain-intrinsic-width": "auto 10px", "contain-intrinsic-height": "auto 10px" },
+    ],
+  ])("%s: %s", (family, value, expected) => {
+    expect(splitOf(family, value)).toEqual(expected);
+  });
+
+  test.each([
+    ["a var()", "flex", "var(--f)"],
+    ["a CSS-wide keyword, which grid-area would read as a line name", "grid-area", "inherit"],
+    ["one beside a value", "grid-area", "a / inherit"],
+    ["a word one engine refuses", "font-synthesis", "weight position"],
+    ["an edge Chromium refuses", "text-box", "cap"],
+    ["a basis between the two factors", "flex", "2 10px 3"],
+  ])("refuses %s", (_what, family, value) => {
+    expect(splitOf(family, value)).toBeUndefined();
+  });
+});
+
+describe("every hand-split family, each way it can go", () => {
+  test.each([
+    ["marker", "none", { "marker-start": "none", "marker-mid": "none", "marker-end": "none" }],
+    ["white-space", "normal", { "white-space-collapse": "collapse", "text-wrap-mode": "wrap" }],
+    ["white-space", "preserve nowrap", { "white-space-collapse": "preserve", "text-wrap-mode": "nowrap" }],
+    ["white-space", "break-spaces", { "white-space-collapse": "break-spaces", "text-wrap-mode": "wrap" }],
+    [
+      "font-synthesis",
+      "weight style",
+      {
+        "font-synthesis-weight": "auto",
+        "font-synthesis-style": "auto",
+        "font-synthesis-small-caps": "none",
+        "font-synthesis-position": "none",
+      },
+    ],
+    [
+      "font-synthesis",
+      "none",
+      {
+        "font-synthesis-weight": "none",
+        "font-synthesis-style": "none",
+        "font-synthesis-small-caps": "none",
+        "font-synthesis-position": "none",
+      },
+    ],
+    ["-webkit-text-stroke", "1px red", { "-webkit-text-stroke-width": "1px", "-webkit-text-stroke-color": "red" }],
+    ["-webkit-text-stroke", "blue", { "-webkit-text-stroke-width": "0", "-webkit-text-stroke-color": "blue" }],
+    [
+      "-webkit-text-stroke",
+      "thin",
+      { "-webkit-text-stroke-width": "thin", "-webkit-text-stroke-color": "currentcolor" },
+    ],
+    ["contain-intrinsic-size", "10px 20px", { "contain-intrinsic-width": "10px", "contain-intrinsic-height": "20px" }],
+    ["contain-intrinsic-size", "none", { "contain-intrinsic-width": "none", "contain-intrinsic-height": "none" }],
+    ["flex", "auto", { "flex-grow": "1", "flex-shrink": "1", "flex-basis": "auto" }],
+    ["flex", "2 3", { "flex-grow": "2", "flex-shrink": "3", "flex-basis": "0%" }],
+    ["flex", "2 3 10px", { "flex-grow": "2", "flex-shrink": "3", "flex-basis": "10px" }],
+    ["flex", "10px 2 3", { "flex-grow": "2", "flex-shrink": "3", "flex-basis": "10px" }],
+    [
+      "grid-area",
+      "1 / 2 / 3 / 4",
+      { "grid-row-start": "1", "grid-column-start": "2", "grid-row-end": "3", "grid-column-end": "4" },
+    ],
+    [
+      "grid-area",
+      "span 2 / a",
+      { "grid-row-start": "span 2", "grid-column-start": "a", "grid-row-end": "auto", "grid-column-end": "a" },
+    ],
+    ["text-box", "normal", { "text-box-trim": "none", "text-box-edge": "auto" }],
+    ["text-box", "trim-start", { "text-box-trim": "trim-start", "text-box-edge": "auto" }],
+    ["text-box", "cap alphabetic", { "text-box-trim": "trim-both", "text-box-edge": "cap alphabetic" }],
+    ["text-box", "trim-end text", { "text-box-trim": "trim-end", "text-box-edge": "text" }],
+    [
+      "-webkit-border-before",
+      "1px solid red",
+      {
+        "-webkit-border-before-width": "1px",
+        "-webkit-border-before-style": "solid",
+        "-webkit-border-before-color": "red",
+      },
+    ],
+    [
+      "-webkit-border-before",
+      "dashed",
+      {
+        "-webkit-border-before-width": "medium",
+        "-webkit-border-before-style": "dashed",
+        "-webkit-border-before-color": "currentcolor",
+      },
+    ],
+  ])("%s: %s", (family, value, expected) => {
+    expect(splitOf(family, value)).toEqual(expected);
+  });
+
+  test.each([
+    ["marker", "none none"],
+    ["marker", "red"],
+    ["white-space", "wrap wrap"],
+    ["white-space", "pre nowrap"],
+    ["font-synthesis", "weight weight"],
+    ["font-synthesis", "bold"],
+    ["-webkit-text-stroke", "1px 2px"],
+    ["-webkit-text-stroke", "red blue"],
+    ["-webkit-text-stroke", "1px red blue"],
+    ["contain-intrinsic-size", "auto"],
+    ["contain-intrinsic-size", "10px 20px 30px"],
+    ["contain-intrinsic-size", "red"],
+    ["flex", "1 2 3"],
+    ["flex", "10px 20px"],
+    ["flex", "bogus"],
+    ["grid-area", "a / b / c / d / e"],
+    ["grid-area", "span"],
+    ["grid-area", "span 2 3"],
+    ["text-box", "trim-start trim-end"],
+    ["text-box", "cap trim-both alphabetic"],
+    ["text-box", "text text text"],
+    ["-webkit-border-before", "1px 2px"],
+    ["-webkit-border-before", "solid dashed"],
+    ["-webkit-border-before", "1px solid red blue"],
+  ])("%s refuses %s", (family, value) => {
+    expect(splitOf(family, value)).toBeUndefined();
   });
 });

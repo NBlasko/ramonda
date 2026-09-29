@@ -1,4 +1,5 @@
 import { holdsVar } from "../holdsVar";
+import { BY_HAND } from "./splitByHand";
 import { GRAMMAR_SHAPES, type GrammarLeaf, type GrammarShape } from "./grammarShapes.generated";
 import { INITIAL_VALUES } from "./initials.generated";
 import { KEYWORDS, UNIT_TYPE } from "./keywords.generated";
@@ -249,12 +250,17 @@ export function splitOf(property: string, value: string): Record<string, string>
 
   const positional = SHAPES[property];
   const grammar = GRAMMAR_SHAPES[property];
+  const byHand = BY_HAND[property];
   const split =
     positional !== undefined
       ? splitPositional(positional, bare)
-      : grammar === undefined
-        ? undefined
-        : splitByGrammar(grammar, bare);
+      : grammar !== undefined
+        ? splitByGrammar(grammar, bare)
+        : byHand !== undefined && !holdsVar(bare) && !tokensOf(bare).some((one) => WIDE.includes(one))
+          ? // A CSS-wide keyword is refused here rather than spread: `grid-area: inherit` would
+            // otherwise read as a line NAME, and be copied into the three lines left out.
+            byHand(bare.trim())
+          : undefined;
   if (split === undefined || bang === null) return split;
 
   return Object.fromEntries(Object.entries(split).map(([one, each]) => [one, `${each} ${bang[0].trim()}`]));

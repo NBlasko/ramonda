@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { GRAMMAR_SHAPES } from "../compiler/grammarShapes.generated";
 import { SHAPES } from "../compiler/shapes.generated";
+import { BY_HAND } from "../compiler/splitByHand";
 
 /**
  * The map's numbers, against the tables they describe.
@@ -35,9 +36,13 @@ describe("what the map claims about the tables", () => {
     expect(claimed(/\*\*(\d+) families\*\*, including/)).toBe(Object.keys(GRAMMAR_SHAPES).length);
   });
 
-  test("and the two added up, which is what a reader takes away", () => {
+  test("the count split by hand", () => {
+    expect(claimed(/\*\*(\d+) by hand\.\*\*/)).toBe(Object.keys(BY_HAND).length);
+  });
+
+  test("and the three added up, which is what a reader takes away", () => {
     expect(claimed(/they answer \*\*(\d+) families\*\*/)).toBe(
-      Object.keys(SHAPES).length + Object.keys(GRAMMAR_SHAPES).length,
+      Object.keys(SHAPES).length + Object.keys(GRAMMAR_SHAPES).length + Object.keys(BY_HAND).length,
     );
   });
 });
@@ -81,7 +86,11 @@ describe("the families the map says are refused", () => {
   test("none of them is in a table", () => {
     const names = [...listed(OPENS).names, ...listed(MEASURED).names];
 
-    expect(names.filter((one) => GRAMMAR_SHAPES[one] !== undefined || SHAPES[one] !== undefined)).toEqual([]);
+    expect(
+      names.filter(
+        (one) => GRAMMAR_SHAPES[one] !== undefined || SHAPES[one] !== undefined || BY_HAND[one] !== undefined,
+      ),
+    ).toEqual([]);
   });
 
   test("and the page names as many as it counts", () => {

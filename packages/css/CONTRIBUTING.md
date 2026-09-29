@@ -139,15 +139,22 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` asks two tables, and between them they answer **74 families**.
+`split.ts` asks two tables and one hand-written file, and between them they answer **83 families**.
 
 `SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
 feeds, and no grammar is needed at all. **44 families.**
 
 Everything else is read against the family's own grammar, opened by `openGrammar.ts` until every
 leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 families**, including
-`animation`, `transition` and `font-variant`, none of which a flat list of slots can hold. A family in
-neither table keeps its shorthand.
+`animation`, `transition` and `font-variant`, none of which a flat list of slots can hold.
+
+`splitByHand.ts` answers the families that fit neither, with CSS's own rules written out: a keyword
+standing for several longhands (`white-space: pre`, `flex: none`), a word that switches a longhand on
+(`font-synthesis: weight`), a part copied into the parts left out (`grid-area: a`). **9 by hand.**
+The specification is not the oracle there either — `check-hand-splits.mjs` puts every value of a
+corpus into all three engines, as the shorthand and as the split, and a value ONE engine refuses is
+refused here too: Chromium drops `text-box: cap`, and a split would have applied it. A family in
+none of the three keeps its shorthand.
 
 **Four are not shorthands here at all**: `transform-origin`, `perspective-origin`, `vertical-align`
 and `border-spacing`. Some engine holds each of them as a longhand — measured, the first two in
@@ -156,19 +163,18 @@ engines disagree about what they reset, so no split could write one page for all
 `build-shorthand-leaves.mjs` records them as `LONGHAND_IN_SOME_ENGINE` and `SHORTHANDS` leaves them
 out, so they sit in `u` with every other longhand.
 
-Of the families that reach the grammar table's generator, 15 do not make it, and they fail at two
-different places. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for
+Of the families that reach the grammar table's generator and are not split by hand, 8 do not make
+it, and they fail at two different places. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for
 one family, and writes nothing.
 
-**Eight have a grammar this cannot open**, because some part of them belongs to no longhand and
-has no grammar of its own to be opened into: `flex`, `font`, `grid`, `grid-template`, `mask`,
-`mask-border`, `text-box`, `white-space`. `mask` is not a depth problem, though it looks like one: raising the cap does not
+**Five have a grammar this cannot open**, because some part of them belongs to no longhand and
+has no grammar of its own to be opened into: `font`, `grid`, `grid-template`, `mask`, `mask-border`. `mask` is not a depth problem, though it looks like one: raising the cap does not
 open it. Its `content-box` is a word that `mask-origin` reaches only through `<coord-box>` →
 `<paint-box>` → `<visual-box>`, and `longhandsFor` matches a word against a longhand's grammar TEXT
 without following those types.
 
-**Seven open and the measurement turns them down**: `background`, `contain-intrinsic-size`,
-`font-synthesis`, `grid-area`, `marker`, `mask-position`, `timeline-trigger`.
+**Three open and the measurement turns them down**: `background`, `mask-position`,
+`timeline-trigger`.
 
 **A value is refused where CSS would drop it, and the family is kept.** CSS drops a whole
 declaration when any part of it is invalid and a split drops only the part — so a split must never
