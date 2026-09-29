@@ -120,7 +120,7 @@ export const RULE_IDS = [
   "value-not-allowed",
   "shorthand-not-allowed",
   "word-out-of-its-longhand",
-  "narrower-after-a-var-shorthand",
+  "narrower-after-a-whole-shorthand",
   "resets-differ-across-engines",
   "string-not-allowed",
   "property-not-a-name",
@@ -361,7 +361,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   const findings: Finding[] = [];
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
-  narrowerAfterAVarShorthand(block, findings);
+  narrowerAfterAWholeShorthand(block, findings);
   resetsDifferAcrossEngines(block, findings);
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
@@ -2215,45 +2215,39 @@ function holeAsAVariableName(block: Block, findings: Finding[]): void {
  * on its own — measured, and it is why the rule would otherwise report correct CSS.
  */
 /**
- * A narrower shorthand written after a wider one that holds a `var()`, in the same context.
+ * A narrower shorthand written after a wider one, in the same context, when both reach the sheet
+ * WHOLE — `border: var(--x)` then `border-top: var(--y)`, or `font: caption` then `font-variant:
+ * var(--v)`.
  *
- * The wider one can never split, so it reaches the sheet whole, in the word layer `v`. The narrower
- * one reaches it whole too — in `v` if it holds a `var()` as well, in a counted layer below `v` if
- * its family does not split — and nothing puts it ABOVE the wider one. Through the merge both
- * classes stay, since a narrower shorthand does not clear a wider one, and the stylesheet decides
- * by which file the build read first. Measured in all three engines, `border: var(--x)` then
- * `border-top: var(--y)`: right in one load order and wrong in the other.
+ * Both are in the word layer `v`, and nothing puts the narrower one above: through the merge both
+ * classes stay, since a narrower shorthand does not clear a wider one, and the stylesheet decides by
+ * which file the build read first. Measured in all three engines: right in one load order and wrong
+ * in the other. A count once ordered them, and a count is exactly what cannot be used — it moves when
+ * CSS adds a longhand, and two releases then disagree. So the shape is refused, the way
+ * `override-out-of-order` refuses two conditions no single position can serve.
  *
- * A count would order them, and a count is exactly what cannot be used: it moves when CSS adds a
- * longhand, and two releases then disagree. So the shape is refused, the way `override-out-of-order`
- * refuses two conditions no single position can serve.
- *
- * Asked through `layerPathFor` itself, so the rule and the sheet cannot disagree about where the two
- * went. A split or a longhand after it is stronger and is not reported; nor is the other order,
- * which the merge settles by clearing.
+ * Asked through `layerPathFor` itself, of the declarations as the sheet receives them — SPLIT — so
+ * the rule and the sheet cannot disagree: a narrower shorthand that splits is pieces in `p`, stronger
+ * than `v`, and is not the fault. Nor is the other order, which the merge settles by clearing.
  */
-function narrowerAfterAVarShorthand(block: Block, findings: Finding[]): void {
-  // SPLIT, as the sheet receives it: a narrower shorthand that splits is pieces in `p`, stronger
-  // than `v`, and is not the fault. `flatten` gives what the author wrote, which would report it.
+function narrowerAfterAWholeShorthand(block: Block, findings: Finding[]): void {
   const flat = segments(block, { split: true }).flatMap((one) => (one.kind === "declarations" ? one.items : []));
-  const stepOf = (one: (typeof flat)[number]) =>
-    layerPathFor({ ...one, holdsVar: holdsVar(one.canonical) }).at(-1) ?? "";
+  const whole = (one: (typeof flat)[number]) => layerPathFor(one).at(-1) === "v";
 
   for (const [index, later] of flat.entries()) {
-    const laterStep = stepOf(later);
-    if (laterStep !== "v" && !/^s\d+$/.test(laterStep)) continue;
+    if (!whole(later)) continue;
 
     for (const earlier of flat.slice(0, index)) {
-      if (stepOf(earlier) !== "v") continue;
+      if (!whole(earlier)) continue;
       if (earlier.selector !== later.selector || earlier.conditions.join("|") !== later.conditions.join("|")) continue;
       if (!covers(earlier.property, later.property)) continue;
 
       findings.push({
-        rule: "narrower-after-a-var-shorthand",
+        rule: "narrower-after-a-whole-shorthand",
         at: later.at ?? 0,
         length: later.property.length,
         message:
-          `\`${later.property}\` comes after \`${earlier.property}\`, which holds a \`var()\`, and no stylesheet ` +
+          `\`${later.property}\` comes after \`${earlier.property}\`, and both reach the stylesheet whole, so no ` +
           `order keeps \`${later.property}\` winning on every page. Set its longhands instead.`,
       });
       break;

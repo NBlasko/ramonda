@@ -4786,7 +4786,18 @@ ramonda.u      a longhand somebody TYPED — one name, because every longhand is
 ramonda.c      every conditional rule, with the digit layers inside it
 ```
 
-##### The plan: every layer a word, and `s##` deleted — AGREED 2026-09-28, NOT built
+##### The plan: every layer a word, and `s##` deleted — AGREED 2026-09-28, DONE 2026-09-29
+
+**Done, and what changed on the way.** Every shorthand splits but `all` (its own word, `a`) and
+`-webkit-mask`, which is refused: WebKit keeps `mask-clip`, `mask-composite` and `mask-mode` where
+Chromium and Firefox reset them, so the line renders two ways before anything here touches it.
+`v` holds every shorthand that reaches the sheet WHOLE — a `var()`, or a value a split refuses, like
+`font: caption` — and the rule is `narrower-after-a-whole-shorthand`. The pieces' layer is `p`,
+alone: `d1`…`d8` held seven empty names in reserve, and the guarantee is a test (every split reaches
+leaves), not room. `layer-counts.json` and `check-layer-names.mjs` are gone with the counts. The
+statement is `i, a, v, p, u, c`, plus the breakpoint digits under `c`.
+
+The text below is the plan as agreed, kept for its reasoning.
 
 The goal was agreed on 2026-09-24: split every shorthand, with no compromise. A word layer means the
 same thing in every version, including through a `<link>` from a CDN. A count moves whenever CSS

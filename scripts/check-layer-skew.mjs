@@ -67,15 +67,6 @@ const CASES = [
     "borderTopColor",
     "rgb(0, 0, 255)",
   ],
-  // Every family splits now, so what still reaches a counted layer is a VALUE the split refuses —
-  // a system font, whose parts are the platform's. When that goes, this case goes with it.
-  [
-    "a narrower var() shorthand against a wider counted one",
-    "font: caption;",
-    "font-variant: var(--v);",
-    "fontVariantCaps",
-    "small-caps",
-  ],
 ];
 
 /**

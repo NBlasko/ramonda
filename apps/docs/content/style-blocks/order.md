@@ -196,7 +196,7 @@ Two things will look unfamiliar. Both are deliberate and neither is anything you
 **A shorthand becomes the longhands it sets.** `padding: 8px` is four rules, not one:
 
 ```css
-@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.v, ramonda.p, ramonda.u, ramonda.c;
+@layer ramonda.i, ramonda.a, ramonda.v, ramonda.p, ramonda.u, ramonda.c;
 @layer ramonda {
   @layer p {
     .r-pt-8px { padding-top:8px; }
@@ -218,21 +218,20 @@ computes them; nor is a value one browser would drop whole, like `text-box: cap`
 like `font: caption`. Those keep their shorthand, and the layers are what order them against the
 longhands they cover.
 
-**What each layer holds.** `ramonda.s10` holds shorthands that set ten longhands and do not split
-yet, `ramonda.v` holds a shorthand whose value has a `var()`, `ramonda.p` holds a longhand this
-split out of one, `ramonda.u` holds every longhand you typed yourself, `ramonda.a` holds `all`, and
-`ramonda.c` holds everything conditional. The order reads as *the more precisely you said it, the
-stronger it is*.
+**What each layer holds.** `ramonda.a` holds `all`, `ramonda.v` a shorthand that reached the
+stylesheet whole, `ramonda.p` a longhand this split out of a shorthand, `ramonda.u` every longhand
+you typed yourself, and `ramonda.c` everything conditional. The order reads as *the more precisely
+you said it, the stronger it is* — so a longhand you write after a whole shorthand wins, as it does
+in plain CSS.
 
-Every name but the counts is a word, and a word means the same in every release — which is what
-makes a published package safe to drop into an application. A count can move when CSS adds a
-longhand to a family, so the counts are on their way out: each family that learns to split leaves
-them. A `var()` can never split, which is why it has a word of its own.
+Every name is a word, and a word means the same in every release — which is what makes a published
+package safe to drop into an application. None is a count of what a shorthand covers: a count moves
+when CSS adds a longhand, and two releases would disagree.
 
-One thing follows from that, and the build refuses it: a narrower shorthand after a wider one that
-holds a `var()` — `border: var(--x)` and then `border-top: var(--y)`. Both reach the stylesheet
-whole, and no order keeps the second one winning on every page. Set the longhands of the second
-one instead.
+One thing follows from that, and the build refuses it: a narrower shorthand after a wider one when
+both reach the stylesheet whole — `border: var(--x)` and then `border-top: var(--y)`. Both are in
+`ramonda.v`, and no order keeps the second one winning on every page. Set the longhands of the
+second one instead.
 
 You never write against these names. **`ramonda` is the name to put in your own `@layer` statement**,
 and it orders everything inside it — see [composing](/style-blocks/composing#the-one-place-this-is-not-plain-css).

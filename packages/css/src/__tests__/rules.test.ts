@@ -4774,19 +4774,23 @@ describe("a narrower shorthand after a var() shorthand", () => {
     ["two var() shorthands", "border: var(--x); border-top: var(--y);"],
     ["a family and its own member", "background: var(--b); background-position: var(--q);"],
     ["the same inside a condition", "@media (min-width: 40rem) { border: var(--x); border-top: var(--y); }"],
+    ["a wider one a split refuses, with no var() in it", "font: caption; font-variant: var(--v);"],
   ])("%s is reported", (_what, css) => {
-    expect(found(css)).toContain("narrower-after-a-var-shorthand");
+    expect(found(css)).toContain("narrower-after-a-whole-shorthand");
   });
 
   test.each([
     ["the other order, which the merge settles", "border-top: var(--y); border: var(--x);"],
     ["a longhand after it, which is stronger", "border: var(--x); border-top-color: red;"],
     ["a split after it, which is stronger", "border: var(--x); border-top: 1px solid red;"],
-    ["a wider one WITHOUT a var(), which sits below `v`", "background: red url(a.png); background-position: var(--p);"],
+    [
+      "a wider one that splits, whose pieces are stronger",
+      "background: red url(a.png); background-position: var(--p);",
+    ],
     ["under different conditions", "border: var(--x); @media (min-width: 40rem) { border-top: var(--y); }"],
     ["two families that do not cover each other", "border: var(--x); padding: var(--p);"],
   ])("%s is not", (_what, css) => {
-    expect(found(css)).not.toContain("narrower-after-a-var-shorthand");
+    expect(found(css)).not.toContain("narrower-after-a-whole-shorthand");
   });
 });
 

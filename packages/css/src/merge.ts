@@ -1,5 +1,4 @@
 import { CLEARS_TABLE } from "./clears.generated";
-import { holdsVar } from "./holdsVar";
 import { widthSlot } from "./conditions";
 import { keyIn, partsOf } from "./key";
 import type { StyleValue } from "./types";
@@ -242,27 +241,28 @@ function slotOf(key: string): number | undefined {
  * Said once per pair, because a render loop would otherwise say it a thousand times.
  */
 /**
- * A narrower shorthand composed after a wider one holding a `var()` — `narrower-after-a-var-shorthand`,
- * which the compiler refuses inside one block, for the blocks it cannot see together.
+ * A narrower shorthand composed after a wider one when both are WHOLE —
+ * `narrower-after-a-whole-shorthand`, which the compiler refuses inside one block, for the blocks it
+ * cannot see together.
  *
- * Both classes stay, because a narrower shorthand does not clear a wider one, and both reach the sheet
- * whole with nothing putting the later one above: the answer follows which file the build read first.
- * Read off the class name, where the value is written as the author wrote it; a value long enough to
- * be hashed hides its `var()`, and then this says nothing rather than guessing.
+ * Both classes stay, because a narrower shorthand does not clear a wider one, and both sit in the
+ * one word layer `v`: the answer follows which file the build read first. A class is whole when its
+ * key is a shorthand's and it is not a split's marker (which ends in `-`) — read off the key, so a
+ * value long enough to be hashed is found as well as a readable one.
  */
-function warnAboutVarShorthands(chosen: ReadonlyMap<string, string>): void {
+function warnAboutWholeShorthands(chosen: ReadonlyMap<string, string>): void {
+  const whole = (key: string, className: string) =>
+    className.startsWith(OURS) && !className.endsWith("-") && clearedBy(key).length > 0;
   const entries = [...chosen];
   for (const [index, [key, className]] of entries.entries()) {
-    const value = className.indexOf("-", OURS.length);
-    if (value === -1 || !holdsVar(className.slice(value + 1))) continue;
+    if (!whole(key, className)) continue;
 
     const covered = new Set(clearedBy(key));
     for (const [laterKey, later] of entries.slice(index + 1)) {
-      // A longhand or a split's piece clears nothing and is stronger; a marker ends in `-`.
-      if (!covered.has(laterKey) || later.endsWith("-") || clearedBy(laterKey).length === 0) continue;
+      if (!covered.has(laterKey) || !whole(laterKey, later)) continue;
       const message =
-        `[@ramonda/css] \`${later}\` is composed after \`${className}\`, which holds a \`var()\`, and no ` +
-        `stylesheet order keeps it winning on every page. Set its longhands instead.`;
+        `[@ramonda/css] \`${later}\` is composed after \`${className}\`, and both reach the stylesheet ` +
+        `whole, so no order keeps the later one winning on every page. Set its longhands instead.`;
       if (said.has(message)) continue;
       said.add(message);
       console.warn(message);
@@ -435,7 +435,7 @@ export function mergeClassNames(...parts: readonly (string | false | null | unde
    */
   if (given > 1 && inDevelopment()) {
     warnAboutOrder(chosen);
-    warnAboutVarShorthands(chosen);
+    warnAboutWholeShorthands(chosen);
   }
 
   let className = "";

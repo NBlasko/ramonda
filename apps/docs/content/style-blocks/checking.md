@@ -171,7 +171,7 @@ Every one of them fails the build. 55 of them, and each is a key you can switch 
 | `value-not-allowed` | a value outside the closed list your `ramonda.css.ts` gave this property |
 | `shorthand-not-allowed` | a shorthand your `ramonda.css.ts` switched off — write its longhands |
 | `word-out-of-its-longhand` | a word one longhand of a shorthand has no place for — CSS drops the whole declaration |
-| `narrower-after-a-var-shorthand` | a narrower shorthand after a wider one holding a `var()` — no stylesheet order keeps it winning |
+| `narrower-after-a-whole-shorthand` | a narrower shorthand after a wider one, both reaching the stylesheet whole — no order keeps it winning |
 | `resets-differ-across-engines` | a shorthand browsers reset differently, like `-webkit-mask` — the line renders two ways; write `mask` |
 | `string-not-allowed` | a quoted value where the property takes a keyword |
 | `property-not-a-name` | a value that must name a property and does not |

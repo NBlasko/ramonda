@@ -214,35 +214,12 @@ export function sheetRank(declaration: { property?: string; conditions?: readonl
  * Measured in Chromium through the real sheet: 600 load orders of random rule sets across three
  * files, each through no minifier, esbuild and lightningcss, zero wrong. See `prototype-layers.mjs`.
  */
-/**
- * The widest count the pre-declared range holds, and why it is this number.
- *
- * The name of a shorthand's layer is the COUNT of properties it clears, not its position in a
- * table — a position moves when the table grows and takes every family with it, a count does not
- * move at all. So every count a shorthand may ever have must already be in the statement, which
- * makes the range a declared cost rather than a free one.
- *
- * Measured: the widest shorthand the compiler still emits whole is `mask` at 25, and `font` at 21
- * behind it. Splitting is what made that affordable — before it, `padding` and its 33 neighbours
- * needed names too. 64 leaves every one of them room to more than double.
- *
- * ```
- *    names   gzipped, once per page
- *       32   114 B
- *       64   168 B      <- this
- *      560   1158 B
- *     1024   2158 B
- * ```
- */
-export const WIDEST = 64;
 
 /**
- * A shorthand covering MORE than the range holds gets the weakest layer of all, and `all` is it.
+ * `all`, the weakest layer of all.
  *
- * `all` clears 559 properties today and gains one with every property CSS adds, so it cannot have a
- * count for a name without the range paying for 560 of them. It needs no count: it covers
- * everything, so it is weaker than every other shorthand by definition, and one fixed name says
- * that exactly.
+ * It covers every property, so it is weaker than every other shorthand by definition, and one
+ * fixed name says that exactly.
  */
 const EVERYTHING = "a";
 
@@ -263,28 +240,29 @@ const EVERYTHING = "a";
 const PIECES = "p";
 
 /**
- * A shorthand holding a `var()`, which can NEVER split — its value is unknown until the page
- * computes it, and may be several values.
+ * A shorthand that reaches the sheet WHOLE — one that does not split: a `var()`, whose parts are
+ * unknown until the page computes them, or a value a split refuses, like `font: caption`.
  *
- * One WORD, not its count, and that is the point: a count moves when CSS adds a longhand to the
- * family, a package built before that names the old count, and two releases then disagree about
- * which rule is stronger. A word means the same in every release. It sits above every counted
- * shorthand, so a narrower one written with a `var()` beats a wider one without, and below the
- * split pieces and the written longhands, which beat it. Measured in all three engines, through the
- * merge, against the same lines written by hand.
+ * One WORD, where these were once named by the COUNT of longhands they cover. A count moves when CSS
+ * adds a longhand to the family, a package built before that names the old count, and two releases
+ * then disagree about which rule is stronger. A word means the same in every release. It sits below
+ * the split pieces and the written longhands, which beat it — as a longhand written after its
+ * shorthand does in CSS — and above `all`. Measured in all three engines, through the merge,
+ * against the same lines written by hand.
  *
  * What a word cannot do is order two of these against each other — `border: var(--x)` and then
- * `border-top: var(--y)`. That one is refused: see `narrower-after-a-var-shorthand` in `rules.ts`.
+ * `border-top: var(--y)`. That is what a count did, and it is refused instead: see
+ * `narrower-after-a-whole-shorthand` in `rules.ts`.
  */
-const WHOLE_WITH_VAR = "v";
+const WHOLE = "v";
 
 /**
  * Where a declaration's rule goes, as a layer path.
  *
  * ```
  * a longhand, unconditional      u                every longhand is equally narrow, so one name
- * a shorthand, unconditional     s25 … s02        its own count, weakest first
- * one holding a `var()`          v                a word: it never splits, and a count would move
+ * a split's piece                p                weaker than a longhand an author wrote
+ * a shorthand that stays whole   v                weaker than every longhand
  * `all`                          a                weaker than every shorthand there can be
  * anything conditional           c.d0.d5.…  + the same last step
  * ```
@@ -296,28 +274,23 @@ const WHOLE_WITH_VAR = "v";
  * every one is a longhand, every longhand is equally narrow, and a name that is the same for
  * everybody separates nobody. Seventeen shelves stood empty and are gone.
  *
- * What is left needing an order is the shorthands no table can split — `background`, `font`, `grid`
- * and 30 others — and they are named by what they COVER. Measured over 1068 covering pairs: if `S`
- * covers `L` then `count(S) > count(L)` in every version, the six exceptions all being aliases.
+ * And every shorthand splits now, so a shorthand reaches the sheet whole only for a value that
+ * cannot split. Every name is a word; none is a count.
  */
 export function layerPathFor(declaration: {
   property?: string;
   conditions?: readonly string[];
   from?: string;
   important?: boolean;
-  holdsVar?: boolean;
 }): string[] {
-  const breadth = breadthOf(declaration);
   const step =
     declaration.from !== undefined
       ? PIECES
-      : breadth === 0
+      : breadthOf(declaration) === 0
         ? "u"
-        : breadth > WIDEST
+        : declaration.property === "all"
           ? EVERYTHING
-          : declaration.holdsVar === true
-            ? WHOLE_WITH_VAR
-            : `s${String(breadth).padStart(2, "0")}`;
+          : WHOLE;
   const slot = widthSlot(declaration.conditions);
   const path =
     slot === 0
@@ -360,22 +333,11 @@ export const IMPORTANT_LAYER = "i";
 export const DIGIT_LAYERS: readonly string[] = [...Array(10).keys()].map((one) => `d${one}`);
 
 /**
- * Every name a breadth step may hold, weakest first: `all`, then each count, then the longhands.
- *
- * The counts run down to ONE, not to two. A shorthand covering a single property is not in the
- * table today — the engines report every prefixed alias expanding to exactly one, and the
- * generator filters those out — but the range is what a later release has already promised, and a
- * name it does not hold is the one failure this scheme may not have: CSS appends a name it has not
- * seen to the END of the order, which is the STRONGEST position, so that shorthand would beat every
- * longhand it covers. One extra name is two bytes.
+ * Every name a step may hold, weakest first — four WORDS, and the whole of them. A name cannot be
+ * added later (CSS appends an unseen one to the END, the strongest position), so this list is a
+ * promise; that is why every name on it is one that does not depend on the shorthand table.
  */
-export const BREADTH_LAYERS: readonly string[] = [
-  EVERYTHING,
-  ...[...Array(WIDEST).keys()].map((one) => `s${String(WIDEST - one).padStart(2, "0")}`),
-  WHOLE_WITH_VAR,
-  PIECES,
-  "u",
-];
+export const BREADTH_LAYERS: readonly string[] = [EVERYTHING, WHOLE, PIECES, "u"];
 
 /**
  * The statement every stylesheet begins with, and it lists the WHOLE range.

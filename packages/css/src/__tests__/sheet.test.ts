@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
-import { BREADTH_LAYERS, LAYER_ORDER, WIDEST, layerPathFor } from "../compiler/flatten";
+import { BREADTH_LAYERS, LAYER_ORDER, layerPathFor } from "../compiler/flatten";
 import { SHORTHANDS } from "../compiler/keywords.generated";
 import { forget, mergeClassNames, shorthands } from "../merge";
 
@@ -357,82 +357,44 @@ describe("the layers", () => {
   });
 
   /**
-   * **A longhand's layer comes after its shorthand's, which is what decides between two classes an
-   * element really carries.**
+   * **A longhand's layer comes after a whole shorthand's, which is what decides between two classes
+   * an element really carries.**
    *
    * The merge clears in one direction only: a `padding` written after a `padding-left` takes it
-   * away, and a `padding-left` written after a `padding` does NOT — measured, the element keeps
-   * `r-p-8px r-pl-40px`. Both selectors are one class, so specificity is a tie at (0,1,0) and the
-   * order of names in a `class` attribute decides nothing. The LAYER is the whole answer.
+   * away, and a `padding-left` written after a `padding` does NOT — the element keeps both. Both
+   * selectors are one class, so specificity ties and the order of names in a `class` attribute
+   * decides nothing. The LAYER is the whole answer, and CSS's answer is the longhand.
    *
-   * Nothing asserted it. The layers are asserted to exist, to be declared whole, and to separate a
-   * conditional rule from an unconditional one — but no test compared two breadths, which is the
-   * property every reuse in this package rests on.
-   *
-   * Asked of the index rather than the name, so this is about the ordering rather than about the
-   * generated data — and of three families, because `border-left-color` under `border-left` under
-   * `border` is where a single comparison would not have been enough.
+   * A shorthand reaches the sheet WHOLE only when it does not split — a `var()`, a value a split
+   * refuses, like `font: caption`. Every such one is in `v`: one WORD, weaker than every longhand,
+   * written or split, and stronger than `all`.
    */
   test.each([
-    // A shorthand the compiler cannot split, against the longhand it covers.
-    ["background", "background-color"],
     ["font", "font-size"],
-    ["grid", "grid-auto-flow"],
-    // And two shorthands, where the WIDER has to be the weaker.
-    ["mask", "mask-border"],
-    ["font", "font-variant"],
-    // `all` covers everything, so it is weaker than every shorthand there can be.
-    ["all", "background"],
-    ["all", "color"],
-  ])("`%s` is in an earlier layer than `%s`", (broad, narrow) => {
-    const at = (property: string) => BREADTH_LAYERS.indexOf(layerPathFor({ property })[0]);
-
-    expect(at(broad)).toBeLessThan(at(narrow));
-  });
-
-  /**
-   * A family the compiler SPLITS still needs its layer, for the values it REFUSES to split.
-   *
-   * `padding: ${gap}` is a hole, `padding: var(--x)` is unknown, and an arm of a `match` is one
-   * class — all three reach the sheet as `padding`, and all three have to lose to a `padding-left`
-   * beside them. So the count is asked of the property, not of whether this particular declaration
-   * was split, and a split family keeps a name it usually does not use.
-   */
-  test.each([
+    ["background", "background-color"],
     ["padding", "padding-left"],
-    ["border", "border-left"],
     ["border-left", "border-left-color"],
-  ])("`%s` keeps its layer for the values that refuse to split, before `%s`", (broad, narrow) => {
-    const at = (property: string) => BREADTH_LAYERS.indexOf(layerPathFor({ property })[0]);
+  ])("a whole `%s` is in `v`, before `%s`", (broad, narrow) => {
+    const at = (one: { property: string; from?: string }) => BREADTH_LAYERS.indexOf(layerPathFor(one)[0]);
 
-    expect(at(broad)).toBeLessThan(at(narrow));
+    expect(layerPathFor({ property: broad })).toEqual(["v"]);
+    expect(at({ property: broad })).toBeLessThan(at({ property: narrow, from: broad }));
+    expect(at({ property: broad })).toBeLessThan(at({ property: narrow }));
+    expect(at({ property: "all" })).toBeLessThan(at({ property: broad }));
   });
 
   /**
-   * The name is the COUNT, and that is the whole reason it cannot drift.
+   * **No layer is named by a count.** They were — `s64`…`s01`, a shorthand's name the number of
+   * longhands it covers — and a count moves when CSS adds a longhand to the family, so a package
+   * built before that named a different layer than the application built after. Every name left is
+   * a word, and a word means the same in every release.
    *
-   * It used to be a POSITION in the table of distinct breadths, so a property CSS added anywhere
-   * moved every family below it and two stylesheets built a year apart disagreed about which layer
-   * `padding` was in. Tied to the count, a name moves only when that property's own count moves.
-   * Asserted against the table rather than written out, so reintroducing an index fails here.
+   * What a count did that a word cannot: order two WHOLE shorthands, a wider and a narrower. Both
+   * are in `v` now, so that pair is refused — see `narrower-after-a-whole-shorthand`.
    */
-  test.each(["background", "font", "mask", "padding", "border"])("`%s` is named by what it covers", (property) => {
-    expect(layerPathFor({ property })[0]).toBe(`s${String(SHORTHANDS[property].length).padStart(2, "0")}`);
-  });
-
-  /**
-   * Every count a shorthand CAN have has a name, which is a claim about the scheme and not about
-   * today's table.
-   *
-   * An undeclared name is the one failure this scheme may not have: CSS appends a name it has not
-   * seen to the END of the order, which is the STRONGEST position, so a shorthand naming one would
-   * beat every longhand it covers. The range was written `s64`…`s02` and a shorthand covering
-   * exactly one property would have said `s01` — none does today, and the engines report every
-   * prefixed alias expanding to exactly one property, so the shape is real and only the table's
-   * filter keeps it out.
-   */
-  test.each([...Array(WIDEST).keys()].map((one) => one + 1))("a shorthand covering %i has a declared name", (count) => {
-    expect(BREADTH_LAYERS).toContain(`s${String(count).padStart(2, "0")}`);
+  test("every layer is a word, and none is a count", () => {
+    expect(BREADTH_LAYERS).toEqual(["a", "v", "p", "u"]);
+    expect(layerPathFor({ property: "mask" })).toEqual(layerPathFor({ property: "mask-border" }));
   });
 
   /**
@@ -467,27 +429,6 @@ describe("the layers", () => {
       expect(SHORTHANDS[property]).toBeUndefined();
     },
   );
-
-  /**
-   * A shorthand holding a `var()` can never split, and it goes in ONE word layer, `v`.
-   *
-   * A count moves when CSS adds a longhand to the family, and a package built before that names the
-   * old count — so a count cannot order two releases. A word can. `v` sits above every counted
-   * shorthand and below the split pieces and the written longhands: measured in all three engines,
-   * through the merge, a longhand written after `border: var(--x)` wins, and so does a split one.
-   */
-  test("a shorthand holding a var() goes in `v`, between the counted shorthands and the splits", () => {
-    const at = (one: { property?: string; from?: string; holdsVar?: boolean }) =>
-      BREADTH_LAYERS.indexOf(layerPathFor(one)[0]);
-
-    expect(layerPathFor({ property: "border", holdsVar: true })).toEqual(["v"]);
-    expect(layerPathFor({ property: "padding-left", holdsVar: true })).toEqual(["u"]);
-    expect(at({ property: "border" })).toBeLessThan(at({ property: "border-top", holdsVar: true }));
-    expect(at({ property: "border", holdsVar: true })).toBeLessThan(
-      at({ property: "border-top-color", from: "border" }),
-    );
-    expect(BREADTH_LAYERS.indexOf("v")).toBe(BREADTH_LAYERS.indexOf("s01") + 1);
-  });
 
   /**
    * A split's pieces have ONE layer, and nothing is held in reserve beside it.
@@ -545,8 +486,8 @@ describe("the layers", () => {
    * unconditional rule, and two breakpoints against each other.
    */
   test("an important declaration is mirrored, and an ordinary one is not", () => {
-    expect(layerPathFor({ property: "background" })).toEqual(["s10"]);
-    expect(layerPathFor({ property: "background", important: true })).toEqual(["i", "s10"]);
+    expect(layerPathFor({ property: "background" })).toEqual(["v"]);
+    expect(layerPathFor({ property: "background", important: true })).toEqual(["i", "v"]);
   });
 
   test("and the mirror wraps the conditional path whole", () => {

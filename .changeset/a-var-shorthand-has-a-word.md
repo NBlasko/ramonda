@@ -8,7 +8,7 @@ CSS adds a longhand to the family — so a package built before that would have 
 layer. A word does not move.
 
 `v` sits above the counted shorthands and below the split pieces and the longhands you write. One
-order it cannot keep, and the build now refuses it as `narrower-after-a-var-shorthand`: a narrower
+order it cannot keep, and the build now refuses it as `narrower-after-a-whole-shorthand`: a narrower
 shorthand written after a wider one holding a `var()`, like `border: var(--x)` then
 `border-top: var(--y)`. Across two blocks, where the compiler cannot see both, the merge says so in
 development.

@@ -717,13 +717,12 @@ describe("the table the merge carries", () => {
 });
 
 /**
- * `narrower-after-a-var-shorthand`, for what the compiler cannot see: two blocks, composed.
+ * `narrower-after-a-whole-shorthand`, for what the compiler cannot see: two blocks, composed.
  *
  * Inside one block the compiler refuses it. Across blocks only the merge holds both, so it says so in
- * development. It reads the `var()` in the class name, which is written as the author wrote it; a
- * value long enough to be hashed hides it, and then it says nothing rather than guessing.
+ * development. A class is whole when its key is a shorthand's and it is not a split's marker.
  */
-describe("a narrower shorthand composed after a var() one", () => {
+describe("a narrower shorthand composed after a whole one", () => {
   const said: string[] = [];
   const real = console.warn;
   beforeEach(() => {
@@ -756,8 +755,13 @@ describe("a narrower shorthand composed after a var() one", () => {
     expect(said).toEqual([]);
   });
 
-  test("nor for a wider one without a var()", () => {
-    mergeClassNames(classOf("background", "red_url(a.png)"), classOf("background-position", "var(--p)"));
-    expect(said).toEqual([]);
+  test("and for a wider one without a var(), since it reached the sheet whole too", () => {
+    mergeClassNames(classOf("font", "caption"), classOf("font-variant", "var(--v)"));
+    expect(said).toHaveLength(1);
+  });
+
+  test("and whatever the value is spelt as — a hashed one has no var( in it to read", () => {
+    mergeClassNames(classOf("border", "Qb0fRLj5j"), classOf("border-top", "Zk3pWq8mN"));
+    expect(said).toHaveLength(1);
   });
 });

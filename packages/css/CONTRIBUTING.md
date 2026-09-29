@@ -70,9 +70,9 @@ node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
 | `check-css-blocks.mjs` | a file with a block in it that no wrapper handles |
 | `check-css-system.mjs` | a committed `css-system/` that no longer matches its config |
 | `build-*.mjs --check` | a generated table that is stale |
-| `check-layer-names.mjs` | a layer name that stopped meaning what an older sheet meant by it |
 | `check-layer-skew.mjs` | two releases on one page, and the wrong declaration winning |
 | `check-shorthand-split.mjs` | the positional splitter disagreeing with what an engine renders |
+| `check-hand-splits.mjs` | a family split by hand disagreeing with any engine, or splitting a value one refuses |
 | `check-css-splitting.mjs` | the CSS not following its JavaScript chunk, on a real build |
 
 **The grammar table has no gate beside it, because the gate is inside the generator.** Every family
@@ -116,8 +116,10 @@ An engine that does not HAVE a family says nothing either way. Counting its sile
 disagreement dropped three families the others agreed about completely.
 
 **A layer name cannot be added later.** An older stylesheet does not list it, so CSS appends the
-unseen name at the end — the strongest position. Every name the scheme will ever use is declared
-now, with room left over. `check-layer-names.mjs` is what holds that.
+unseen name at the end — the strongest position. So every name is a WORD that means the same in
+every release — `a`, `v`, `p`, `u`, `c` and the ten breakpoint digits — and none is a count of
+longhands, which moves when CSS adds one. There is no reserve beside them: what would need a new
+name is caught by a test instead — `grammarShapes.test.ts` asserts every split reaches leaves.
 
 **Break every new check once, on purpose.** A check that has never been seen to fail is not
 evidence. This is not a suggestion: five checks in one day passed while measuring the wrong thing,

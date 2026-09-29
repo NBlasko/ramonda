@@ -117,11 +117,6 @@ jobs:
           node scripts/build-package-readmes.mjs --check
           node scripts/build-css-properties.mjs --check
           node scripts/build-clears-table.mjs --check
-          SELFTEST=collide node scripts/check-layer-names.mjs
-          SELFTEST=drift node scripts/check-layer-names.mjs
-          SELFTEST=crowd node scripts/check-layer-names.mjs
-          SELFTEST=moved node scripts/check-layer-names.mjs
-          node scripts/check-layer-names.mjs
 
       # These two need `@ramonda/css` BUILT, which the step above already did for `pnpm lint`:
       # `check-css-blocks` imports the compiler, and `check-css-system` runs `bin.mjs codegen
