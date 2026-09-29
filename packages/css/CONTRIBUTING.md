@@ -139,7 +139,7 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` asks two tables and one hand-written file, and between them they answer **86 families**.
+`split.ts` asks two tables and one hand-written file, and between them they answer **87 families**.
 
 `SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
 feeds, and no grammar is needed at all. **44 families.**
@@ -152,7 +152,7 @@ leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 fam
 standing for several longhands (`white-space: pre`, `flex: none`), a word that switches a longhand on
 (`font-synthesis: weight`), a part copied into the parts left out (`grid-area: a`), and every form
 of `<position>` for `background-position`, `mask-position` and `-webkit-mask-position`, and
-`background` layer by layer on top of it. **13 by hand.**
+`background` and `mask` layer by layer on top of it. **14 by hand.**
 `background-position` is in `SHAPES` too, and the hand rules win for it: the table learned one and
 two values and split two values every engine refuses.
 The specification is not the oracle there either — `check-hand-splits.mjs` puts every value of a
@@ -172,15 +172,15 @@ out, so they sit in `u` with every other longhand.
 two ways before any split is asked. The leaves generator records it as `RESETS_DIFFER`, and
 `resets-differ-across-engines` refuses it and names `mask`, which every engine has.
 
-Of the families that reach the grammar table's generator and are not split by hand, 6 do not make
+Of the families that reach the grammar table's generator and are not split by hand, 5 do not make
 it, and they fail at two different places. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for
 one family, and writes nothing.
 
-**Five have a grammar this cannot open**, because some part of them belongs to no longhand and
-has no grammar of its own to be opened into: `font`, `grid`, `grid-template`, `mask`, `mask-border`. `mask` is not a depth problem, though it looks like one: raising the cap does not
-open it. Its `content-box` is a word that `mask-origin` reaches only through `<coord-box>` →
+**Four have a grammar this cannot open**, because some part of them belongs to no longhand and
+has no grammar of its own to be opened into: `font`, `grid`, `grid-template`, `mask-border`.
+`mask` did not open either — its `content-box` reaches `mask-origin` only through `<coord-box>` →
 `<paint-box>` → `<visual-box>`, and `longhandsFor` matches a word against a longhand's grammar TEXT
-without following those types.
+without following those types. It is split by hand now; that gap in the opener is still there.
 
 **One opens and the measurement turns it down**: `timeline-trigger`.
 

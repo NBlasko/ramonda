@@ -521,3 +521,57 @@ describe("background, split by hand", () => {
     expect(bg(value)).toBeUndefined();
   });
 });
+
+describe("mask, split by hand", () => {
+  const mask = (value: string) => splitOf("mask", value);
+  const resets = {
+    "mask-border-source": "initial",
+    "mask-border-slice": "initial",
+    "mask-border-width": "initial",
+    "mask-border-outset": "initial",
+    "mask-border-repeat": "initial",
+  };
+
+  test("one layer, every part, and the mask-border longhands WebKit's mask resets", () => {
+    expect(mask("url(a.png) right 3px bottom 1px / contain no-repeat content-box no-clip subtract luminance")).toEqual({
+      "mask-image": "url(a.png)",
+      "-webkit-mask-position-x": "right 3px",
+      "-webkit-mask-position-y": "bottom 1px",
+      "mask-size": "contain",
+      "mask-repeat": "no-repeat",
+      "mask-origin": "content-box",
+      "mask-clip": "no-clip",
+      "mask-composite": "subtract",
+      "mask-mode": "luminance",
+      ...resets,
+    });
+  });
+
+  test("two layers, and no-clip alone leaves the origin where it was", () => {
+    expect(mask("none, url(b.png) no-clip")).toEqual({
+      "mask-image": "none, url(b.png)",
+      "-webkit-mask-position-x": "0%, 0%",
+      "-webkit-mask-position-y": "0%, 0%",
+      "mask-size": "auto, auto",
+      "mask-repeat": "repeat, repeat",
+      "mask-origin": "border-box, border-box",
+      "mask-clip": "border-box, no-clip",
+      "mask-composite": "add, add",
+      "mask-mode": "match-source, match-source",
+      ...resets,
+    });
+  });
+
+  test.each([
+    "url(a.png) red",
+    "url(a.png) left 10px top",
+    "url(a.png) margin-box",
+    "url(a.png) fill-box",
+    "url(a.png) no-clip no-clip",
+    "url(a.png) content-box padding-box no-clip",
+    "url(a.png) add add",
+    "url(a.png) fixed",
+  ])("refuses %s", (value) => {
+    expect(mask(value)).toBeUndefined();
+  });
+});

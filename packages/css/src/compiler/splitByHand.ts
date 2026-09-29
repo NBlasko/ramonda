@@ -138,7 +138,7 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
   background: (value) => {
     const items = itemsOf(value);
     if (items === undefined) return undefined;
-    const layers = items.map((item, index) => layerOf(item, index === items.length - 1));
+    const layers = items.map((item, index) => layerOf(item, index === items.length - 1, BACKGROUND));
     if (layers.some((one) => one === undefined)) return undefined;
     const read = layers as Layer[];
     const list = (pick: (layer: Layer) => string) => read.map(pick).join(", ");
@@ -152,6 +152,37 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
       "background-origin": list((one) => one.origin),
       "background-clip": list((one) => one.clip),
       "background-color": read[read.length - 1].color,
+    };
+  },
+
+  /**
+   * Layer by layer like `background`, with no colour and two parts of its own — a compositing
+   * operator and a mode. Into `-webkit-mask-position-x` and `-y`, the only position names all three
+   * engines have (see `mask-position`), and with every `mask-border` longhand reset: WebKit's `mask`
+   * resets them, and the other two do not have them, so writing `initial` there changes nothing.
+   */
+  mask: (value) => {
+    const items = itemsOf(value);
+    if (items === undefined) return undefined;
+    const layers = items.map((item) => layerOf(item, false, MASK));
+    if (layers.some((one) => one === undefined)) return undefined;
+    const read = layers as Layer[];
+    const list = (pick: (layer: Layer) => string) => read.map(pick).join(", ");
+    return {
+      "mask-image": list((one) => one.image),
+      "-webkit-mask-position-x": list((one) => one.x),
+      "-webkit-mask-position-y": list((one) => one.y),
+      "mask-size": list((one) => one.size),
+      "mask-repeat": list((one) => one.repeat),
+      "mask-origin": list((one) => one.origin),
+      "mask-clip": list((one) => one.clip),
+      "mask-composite": list((one) => one.composite),
+      "mask-mode": list((one) => one.mode),
+      "mask-border-source": "initial",
+      "mask-border-slice": "initial",
+      "mask-border-width": "initial",
+      "mask-border-outset": "initial",
+      "mask-border-repeat": "initial",
     };
   },
 
@@ -337,12 +368,49 @@ interface Layer {
   origin: string;
   clip: string;
   color: string;
+  composite: string;
+  mode: string;
 }
+
+/** What one family's layer holds, and what each part is when the layer leaves it out. */
+interface LayerSpec {
+  readonly boxes: readonly string[];
+  /** A word that can only be the SECOND box — `mask`'s `no-clip`. */
+  readonly clipOnly: readonly string[];
+  readonly attachments: readonly string[];
+  readonly composites: readonly string[];
+  readonly modes: readonly string[];
+  readonly threeValues: boolean;
+  readonly origin: string;
+  readonly clip: string;
+}
+
+const BACKGROUND: LayerSpec = {
+  boxes: ["border-box", "padding-box", "content-box"],
+  clipOnly: [],
+  attachments: ["scroll", "fixed", "local"],
+  composites: [],
+  modes: [],
+  threeValues: true,
+  origin: "padding-box",
+  clip: "border-box",
+};
+
+const MASK: LayerSpec = {
+  // Narrower than the grammar, as measured: no engine takes `margin-box` here, and WebKit refuses
+  // `fill-box`, `stroke-box` and `view-box` — a value one engine drops keeps its shorthand.
+  boxes: ["border-box", "padding-box", "content-box"],
+  clipOnly: ["no-clip"],
+  attachments: [],
+  composites: ["add", "subtract", "intersect", "exclude"],
+  modes: ["alpha", "luminance", "match-source"],
+  threeValues: false,
+  origin: "border-box",
+  clip: "border-box",
+};
 
 const IMAGE =
   /^(none|url\(|(-webkit-)?(repeating-)?(linear|radial|conic)-gradient\(|(-webkit-)?image-set\(|image\(|(-webkit-)?cross-fade\(|(-moz-)?element\(|paint\()/i;
-const ATTACHMENT = ["scroll", "fixed", "local"];
-const BOX = ["border-box", "padding-box", "content-box"];
 const REPEAT_ONE = ["repeat-x", "repeat-y"];
 const REPEAT = ["repeat", "space", "round", "no-repeat"];
 const POSITION_WORD = ["left", "right", "top", "bottom", "center"];
@@ -370,19 +438,29 @@ function slashed(value: string): string[] {
  * together, with its size straight after a `/`. `undefined` for anything else, which keeps the
  * shorthand.
  */
-function layerOf(item: string, last: boolean): Layer | undefined {
+function layerOf(item: string, last: boolean, spec: LayerSpec): Layer | undefined {
   const t = slashed(item);
-  const layer: Partial<Layer> & { boxes?: string[] } = {};
+  const layer: Partial<Layer> & { boxes?: string[]; clipOnly?: string } = {};
   for (let at = 0; at < t.length; ) {
     const one = t[at];
     if (IMAGE.test(one) && layer.image === undefined) {
       layer.image = one;
       at++;
-    } else if (ATTACHMENT.includes(one) && layer.attachment === undefined) {
+    } else if (spec.attachments.includes(one) && layer.attachment === undefined) {
       layer.attachment = one;
       at++;
-    } else if (BOX.includes(one) && (layer.boxes?.length ?? 0) < 2) {
+    } else if (spec.composites.includes(one) && layer.composite === undefined) {
+      layer.composite = one;
+      at++;
+    } else if (spec.modes.includes(one) && layer.mode === undefined) {
+      layer.mode = one;
+      at++;
+    } else if (spec.boxes.includes(one) && (layer.boxes?.length ?? 0) < 2) {
       layer.boxes = [...(layer.boxes ?? []), one];
+      at++;
+    } else if (spec.clipOnly.includes(one) && layer.clipOnly === undefined) {
+      // `no-clip` is only ever the clip, wherever it is written; a box beside it is the origin.
+      layer.clipOnly = one;
       at++;
     } else if (REPEAT_ONE.includes(one) && layer.repeat === undefined) {
       layer.repeat = one;
@@ -394,6 +472,7 @@ function layerOf(item: string, last: boolean): Layer | undefined {
     } else if ((POSITION_WORD.includes(one) || isOffset(one)) && layer.x === undefined) {
       let end = at;
       while (end < t.length && (POSITION_WORD.includes(t[end]) || isOffset(t[end]))) end++;
+      if (!spec.threeValues && end - at === 3) return undefined;
       const axes = positionOf(t.slice(at, end).join(" "));
       if (axes === undefined) return undefined;
       [layer.x, layer.y] = axes;
@@ -411,7 +490,9 @@ function layerOf(item: string, last: boolean): Layer | undefined {
       at++;
     } else return undefined;
   }
-  const [origin, clip] = layer.boxes ?? [];
+  if (layer.clipOnly !== undefined && (layer.boxes?.length ?? 0) > 1) return undefined;
+  const [origin, second] = layer.boxes ?? [];
+  const clip = layer.clipOnly ?? second;
   return {
     image: layer.image ?? "none",
     x: layer.x ?? "0%",
@@ -419,8 +500,10 @@ function layerOf(item: string, last: boolean): Layer | undefined {
     size: layer.size ?? "auto",
     repeat: layer.repeat ?? "repeat",
     attachment: layer.attachment ?? "scroll",
-    origin: origin ?? "padding-box",
-    clip: clip ?? origin ?? "border-box",
+    origin: origin ?? spec.origin,
+    clip: clip ?? origin ?? spec.clip,
     color: layer.color ?? "transparent",
+    composite: layer.composite ?? "add",
+    mode: layer.mode ?? "match-source",
   };
 }
