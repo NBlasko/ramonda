@@ -657,3 +657,61 @@ describe("a shorthand composed under a condition", () => {
     }
   });
 });
+
+describe("a package built by an older release", () => {
+  /**
+   * A published package is frozen: what its module registers is the table of the release that built
+   * it. When CSS adds a longhand to a family, that list does not have it, and the page's merge must
+   * still clear it — so the merge carries the table of the release the APPLICATION runs.
+   *
+   * Measured in all three engines before this existed: `border-top-color: red` written first, an old
+   * package's `border: var(--x)` written later, and the page showed red where CSS shows the border.
+   */
+  test("a shorthand clears a longhand its own module never registered", () => {
+    const longhand = classOf("border-top-color", "red");
+    const whole = classOf("border", "var(--x)");
+    const old = (SHORTHANDS.border ?? []).map(writableProperty).filter((one) => one !== "border_top_color");
+    shorthands({ [writableProperty("border") ?? ""]: old as string[] });
+
+    expect(mergeClassNames(longhand, whole)).toBe(whole);
+  });
+
+  test("and with nothing registered at all", () => {
+    const longhand = classOf("padding-left", "4px");
+    const whole = classOf("padding", "var(--p)");
+
+    expect(mergeClassNames(longhand, whole)).toBe(whole);
+  });
+});
+
+describe("the table the merge carries", () => {
+  /**
+   * Written by `build-clears-table.mjs` with each family's DIRECT members and braces, so what the
+   * merge reads back is not the generated shorthand table — and a mistake in either half, the
+   * writing or the reading, would only show here. Every family, and every property any family
+   * names: a family clears exactly its own members, and every other class survives.
+   */
+  test("every shorthand clears exactly what CSS says it covers", () => {
+    const universe = [...new Set([...Object.keys(SHORTHANDS), ...Object.values(SHORTHANDS).flat()])].filter(
+      (one) => writableProperty(one) !== undefined,
+    );
+    const wrong: string[] = [];
+    for (const [family, members] of Object.entries(SHORTHANDS)) {
+      if (writableProperty(family) === undefined || members.some((one) => writableProperty(one) === undefined))
+        continue;
+      // Merged once on their own first, because shorthands among them clear each other.
+      const before = String(
+        mergeClassNames(
+          universe
+            .filter((one) => one !== family)
+            .map((one) => classOf(one, "x"))
+            .join(" "),
+        ),
+      );
+      const cleared = new Set(members.map((one) => classOf(one, "x")));
+      const expected = [...before.split(" ").filter((one) => !cleared.has(one)), classOf(family, "x")];
+      if (mergeClassNames(before, classOf(family, "x")) !== expected.join(" ")) wrong.push(family);
+    }
+    expect(wrong).toEqual([]);
+  });
+});

@@ -116,6 +116,7 @@ jobs:
           node scripts/check-test-probes.mjs
           node scripts/build-package-readmes.mjs --check
           node scripts/build-css-properties.mjs --check
+          node scripts/build-clears-table.mjs --check
           SELFTEST=collide node scripts/check-layer-names.mjs
           SELFTEST=drift node scripts/check-layer-names.mjs
           SELFTEST=crowd node scripts/check-layer-names.mjs

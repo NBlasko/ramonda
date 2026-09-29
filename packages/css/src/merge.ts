@@ -1,3 +1,4 @@
+import { CLEARS_TABLE } from "./clears.generated";
 import { widthSlot } from "./conditions";
 import { keyIn, partsOf } from "./key";
 import type { StyleValue } from "./types";
@@ -39,6 +40,57 @@ import type { StyleValue } from "./types";
  */
 const CLEARS = new Map<string, readonly string[]>();
 
+/** The generated table, read on first use: each shorthand's DIRECT members, braces expanded. */
+let direct: Map<string, readonly string[]> | undefined;
+
+/** What each shorthand clears in full, once asked — the table followed down every chain. */
+const closures = new Map<string, readonly string[]>();
+
+/** `a_{b,c}_d` is `a_b_d a_c_d`, the one shorthand the generator writes. */
+const BRACES = /^(.*)\{(.*)\}(.*)$/;
+
+function readTable(): Map<string, readonly string[]> {
+  const table = new Map<string, readonly string[]>();
+  for (const line of CLEARS_TABLE.split("\n")) {
+    const at = line.indexOf(": ");
+    if (at === -1) continue;
+    const members = line.slice(at + 2).split(" ");
+    table.set(
+      line.slice(0, at),
+      members.flatMap((one) => {
+        const [, head, middle, tail] = BRACES.exec(one) ?? [];
+        return middle === undefined ? [one] : middle.split(",").map((part) => head + part + tail);
+      }),
+    );
+  }
+  return table;
+}
+
+/**
+ * What this release knows a shorthand clears — every member, and every member of a member.
+ *
+ * The walk keeps a SEEN set, and it has to: `gap` and `grid-gap` are one property under two names
+ * and each lists the other.
+ */
+function builtIn(property: string): readonly string[] {
+  const known = closures.get(property);
+  if (known !== undefined) return known;
+  direct ??= readTable();
+  const table = direct;
+  const seen = new Set<string>();
+  const walk = (from: string): void => {
+    for (const one of table.get(from) ?? NONE)
+      if (one !== property && !seen.has(one)) {
+        seen.add(one);
+        walk(one);
+      }
+  };
+  walk(property);
+  const found = seen.size === 0 ? NONE : [...seen];
+  closures.set(property, found);
+  return found;
+}
+
 /**
  * Register the shorthands a module writes. Called by emitted code; never written by hand.
  *
@@ -64,8 +116,8 @@ const CLEARS = new Map<string, readonly string[]>();
  */
 export function shorthands(table: Readonly<Record<string, readonly string[]>>): void {
   for (const property in table) {
-    const already = CLEARS.get(property);
-    CLEARS.set(property, already === undefined ? table[property] : [...new Set([...already, ...table[property]])]);
+    const already = CLEARS.get(property) ?? builtIn(property);
+    CLEARS.set(property, [...new Set([...already, ...table[property]])]);
   }
 }
 
@@ -114,8 +166,13 @@ const OURS = "r-";
 /** The keys one key clears, in full — its own context put back in front of each longhand. */
 function clearedBy(key: string): readonly string[] {
   const { context, property } = partsOf(key);
-  const covered = CLEARS.get(property);
-  return covered === undefined ? NONE : covered.map((one) => context + one);
+  let covered = CLEARS.get(property);
+  if (covered === undefined) {
+    // Kept where the next call finds it first: this runs for every class in every merge.
+    covered = builtIn(property);
+    CLEARS.set(property, covered);
+  }
+  return covered.length === 0 ? NONE : covered.map((one) => context + one);
 }
 
 /**
