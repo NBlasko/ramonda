@@ -58,6 +58,7 @@ describe("what the map claims about the tables", () => {
 describe("the families the map says are refused", () => {
   /** The English numerals the page writes its counts in, so the count is read rather than repeated. */
   const COUNTS: Readonly<Record<string, number>> = {
+    One: 1,
     Two: 2,
     Three: 3,
     Four: 4,
@@ -82,7 +83,7 @@ describe("the families the map says are refused", () => {
   };
 
   const OPENS = "have a grammar this cannot open";
-  const MEASURED = "open and the measurement turns them down";
+  const MEASURED = "opens? and the measurement turns (?:them|it) down";
 
   test("none of them is in a table", () => {
     const names = [...listed(OPENS).names, ...listed(MEASURED).names];

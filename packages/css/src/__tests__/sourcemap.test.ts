@@ -140,9 +140,9 @@ describe("a file whose registrations push everything down", () => {
   const WITH_A_PROLOGUE =
     `const first = 1;\n` +
     `declare const t: "a" | "b";\n` +
-    // `background`, not `padding`: a shorthand the compiler SPLITS registers nothing, so it no
-    // longer contributes a prologue line and the shift this test is about would be zero.
-    `const card = @@(\n  background: red url(a.png);\n  cursor: match({t}) { a => pointer; b => default; };\n` +
+    // A `var()`: a shorthand the compiler SPLITS registers nothing, so it no longer contributes a
+    // prologue line and the shift this test is about would be zero.
+    `const card = @@(\n  background: var(--b);\n  cursor: match({t}) { a => pointer; b => default; };\n` +
     `  @media (min-width: 40rem) { color: red; }\n);\n` +
     `const marker = 2;\n` +
     `const a = <div className={card}>x</div>;\n`;

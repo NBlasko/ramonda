@@ -67,12 +67,14 @@ const CASES = [
     "borderTopColor",
     "rgb(0, 0, 255)",
   ],
+  // `font`, because it does not split yet and so still reaches a counted layer; `background` did
+  // until it split, and then its pieces were stronger than `v` — which is right, and not this case.
   [
     "a narrower var() shorthand against a wider counted one",
-    "background: red url(a.png);",
-    "background-position: var(--p);",
-    "backgroundPositionX",
-    "7px",
+    "font: 12px serif;",
+    "font-variant: var(--v);",
+    "fontVariantCaps",
+    "small-caps",
   ],
 ];
 
@@ -178,7 +180,7 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
             // A DOCTYPE, because quirks mode is a different CSS and no real page is in it.
             document.documentElement.innerHTML =
               `<head>${written.map((one) => `<style>${one}</style>`).join("")}</head>` +
-              `<body><div id=x style="--w:1px;--b:3px solid red;--p:7px 9px" class="${merged}"></div></body>`;
+              `<body><div id=x style="--w:1px;--b:3px solid red;--p:7px 9px;--v:small-caps" class="${merged}"></div></body>`;
             const found = document.getElementById("x");
             return found === null ? "" : getComputedStyle(found)[read];
           },

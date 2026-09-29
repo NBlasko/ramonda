@@ -75,9 +75,9 @@ describe("a spread", () => {
  */
 describe("what a module registers", () => {
   test("the registration is emitted above the merge that needs it", () => {
-    // `background`, because a family the compiler SPLITS registers nothing at all — there is no
+    // A `var()`, because a shorthand the compiler SPLITS registers nothing at all — there is no
     // shorthand left in the sheet for anything to clear.
-    const out = emit("const a = @@( background-color: red; background: blue; );\n");
+    const out = emit("const a = @@( background-color: red; background: var(--b); );\n");
     const clears = out.indexOf("_clears(");
     const merged = out.indexOf('_merge("r-');
 
@@ -272,11 +272,11 @@ describe("a conditional group", () => {
   });
 
   test("declarations around a group keep their place", () => {
-    const out = emit(`const card = @@(\n  color: red;\n  if ({c}) { color: blue; }\n  background: white;\n);\n`);
+    const out = emit(`const card = @@(\n  color: red;\n  if ({c}) { color: blue; }\n  cursor: pointer;\n);\n`);
     const args = out.slice(out.indexOf("_merge("));
 
     expect(args.indexOf('"r-c-red"')).toBeLessThan(args.indexOf("c &&"));
-    expect(args.indexOf("c &&")).toBeLessThan(args.indexOf('"r-bg-white"'));
+    expect(args.indexOf("c &&")).toBeLessThan(args.indexOf('"r-cur-pointer"'));
   });
 
   test("a selector inside a group is still a selector on its own rule", () => {
@@ -503,7 +503,8 @@ describe("the nesting shapes nothing reached", () => {
   });
 
   test("and one that is not still registers its longhands, by property", () => {
-    const out = emit(`const card = @@(\n  &:hover { background: red url(a.png); }\n);\n`);
+    // A `var()`, because that is what can never split — every `background` without one does now.
+    const out = emit(`const card = @@(\n  &:hover { background: var(--b); }\n);\n`);
 
     expect(out).toContain('_clears({"bg":[');
     expect(out).toContain('"bgi"');

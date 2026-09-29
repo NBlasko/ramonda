@@ -139,7 +139,7 @@ pnpm check                           # the whole gate, from the repo root
 
 ## What is unfinished
 
-`split.ts` asks two tables and one hand-written file, and between them they answer **85 families**.
+`split.ts` asks two tables and one hand-written file, and between them they answer **86 families**.
 
 `SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
 feeds, and no grammar is needed at all. **44 families.**
@@ -151,7 +151,8 @@ leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 fam
 `splitByHand.ts` answers the families that fit neither, with CSS's own rules written out: a keyword
 standing for several longhands (`white-space: pre`, `flex: none`), a word that switches a longhand on
 (`font-synthesis: weight`), a part copied into the parts left out (`grid-area: a`), and every form
-of `<position>` for `background-position`, `mask-position` and `-webkit-mask-position`. **12 by hand.**
+of `<position>` for `background-position`, `mask-position` and `-webkit-mask-position`, and
+`background` layer by layer on top of it. **13 by hand.**
 `background-position` is in `SHAPES` too, and the hand rules win for it: the table learned one and
 two values and split two values every engine refuses.
 The specification is not the oracle there either — `check-hand-splits.mjs` puts every value of a
@@ -166,7 +167,7 @@ engines disagree about what they reset, so no split could write one page for all
 `build-shorthand-leaves.mjs` records them as `LONGHAND_IN_SOME_ENGINE` and `SHORTHANDS` leaves them
 out, so they sit in `u` with every other longhand.
 
-Of the families that reach the grammar table's generator and are not split by hand, 7 do not make
+Of the families that reach the grammar table's generator and are not split by hand, 6 do not make
 it, and they fail at two different places. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for
 one family, and writes nothing.
 
@@ -176,7 +177,7 @@ open it. Its `content-box` is a word that `mask-origin` reaches only through `<c
 `<paint-box>` → `<visual-box>`, and `longhandsFor` matches a word against a longhand's grammar TEXT
 without following those types.
 
-**Two open and the measurement turns them down**: `background`, `timeline-trigger`.
+**One opens and the measurement turns it down**: `timeline-trigger`.
 
 **A value is refused where CSS would drop it, and the family is kept.** CSS drops a whole
 declaration when any part of it is invalid and a split drops only the part — so a split must never

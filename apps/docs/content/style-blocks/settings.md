@@ -64,8 +64,8 @@ an older release, whose classes may not match the ones this release writes.
 
 That is what lets two blocks settle their own conflicts without the stylesheet: no two classes on an
 element set the same property, so a `padding-left` written after a `padding` simply replaces it —
-see [order](/style-blocks/order#if-you-read-the-output). A shorthand no table can split, like
-`background: red url(a.png)`, keeps its own class — `r-bg-red_url(a.png)`.
+see [order](/style-blocks/order#if-you-read-the-output). A shorthand that is not split, like
+`background: var(--b)`, keeps its own class — `r-bg-var(--b)`.
 
 About sixty properties have a short spelling — `p`, `m`, `w`, `h`, `bg`, `c`, `gap`, `items`,
 `rounded` — and the rest use their own name, which already reads. It is a small list on purpose: a

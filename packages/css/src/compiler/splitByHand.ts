@@ -1,3 +1,4 @@
+import { KEYWORDS } from "./keywords.generated";
 import { tokensOf } from "./split";
 
 /**
@@ -127,6 +128,31 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
     if (edges.length > 2) return undefined;
     if (!(edges.length === 0 || (edges.length === 1 && edges[0] === "auto") || edgeWords(edges))) return undefined;
     return { "text-box-trim": trims[0] ?? "trim-both", "text-box-edge": edges.join(" ") || "auto" };
+  },
+
+  /**
+   * Comma-separated LAYERS, each read on its own and the lists joined back — `background-image` gets
+   * one item per layer, and so does every other longhand but the colour, which only the last layer
+   * may give.
+   */
+  background: (value) => {
+    const items = itemsOf(value);
+    if (items === undefined) return undefined;
+    const layers = items.map((item, index) => layerOf(item, index === items.length - 1));
+    if (layers.some((one) => one === undefined)) return undefined;
+    const read = layers as Layer[];
+    const list = (pick: (layer: Layer) => string) => read.map(pick).join(", ");
+    return {
+      "background-image": list((one) => one.image),
+      "background-position-x": list((one) => one.x),
+      "background-position-y": list((one) => one.y),
+      "background-size": list((one) => one.size),
+      "background-repeat": list((one) => one.repeat),
+      "background-attachment": list((one) => one.attachment),
+      "background-origin": list((one) => one.origin),
+      "background-clip": list((one) => one.clip),
+      "background-color": read[read.length - 1].color,
+    };
   },
 
   "background-position": (value) => positions(value, "background-position-x", "background-position-y", true),
@@ -299,4 +325,102 @@ function positionOf(item: string): [string, string] | undefined {
     return undefined;
   }
   return undefined;
+}
+
+interface Layer {
+  image: string;
+  x: string;
+  y: string;
+  size: string;
+  repeat: string;
+  attachment: string;
+  origin: string;
+  clip: string;
+  color: string;
+}
+
+const IMAGE =
+  /^(none|url\(|(-webkit-)?(repeating-)?(linear|radial|conic)-gradient\(|(-webkit-)?image-set\(|image\(|(-webkit-)?cross-fade\(|(-moz-)?element\(|paint\()/i;
+const ATTACHMENT = ["scroll", "fixed", "local"];
+const BOX = ["border-box", "padding-box", "content-box"];
+const REPEAT_ONE = ["repeat-x", "repeat-y"];
+const REPEAT = ["repeat", "space", "round", "no-repeat"];
+const POSITION_WORD = ["left", "right", "top", "bottom", "center"];
+const COLOUR_WORDS = new Set((KEYWORDS["background-color"] ?? "").split(" "));
+const COLOUR_FUNCTION = /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark|device-cmyk)\(/i;
+const isColour = (one: string) =>
+  COLOUR_WORDS.has(one.toLowerCase()) ||
+  /^#([\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(one) ||
+  COLOUR_FUNCTION.test(one);
+
+/** A value's tokens with a top-level `/` as a token of its own — `center/cover` is three. */
+function slashed(value: string): string[] {
+  let spaced = "";
+  let depth = 0;
+  for (const ch of value) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    spaced += depth === 0 && ch === "/" ? " / " : ch;
+  }
+  return tokensOf(spaced);
+}
+
+/**
+ * One layer of `background`, each part at most once, in any order — and the position's words
+ * together, with its size straight after a `/`. `undefined` for anything else, which keeps the
+ * shorthand.
+ */
+function layerOf(item: string, last: boolean): Layer | undefined {
+  const t = slashed(item);
+  const layer: Partial<Layer> & { boxes?: string[] } = {};
+  for (let at = 0; at < t.length; ) {
+    const one = t[at];
+    if (IMAGE.test(one) && layer.image === undefined) {
+      layer.image = one;
+      at++;
+    } else if (ATTACHMENT.includes(one) && layer.attachment === undefined) {
+      layer.attachment = one;
+      at++;
+    } else if (BOX.includes(one) && (layer.boxes?.length ?? 0) < 2) {
+      layer.boxes = [...(layer.boxes ?? []), one];
+      at++;
+    } else if (REPEAT_ONE.includes(one) && layer.repeat === undefined) {
+      layer.repeat = one;
+      at++;
+    } else if (REPEAT.includes(one) && layer.repeat === undefined) {
+      const two = REPEAT.includes(t[at + 1] ?? "");
+      layer.repeat = two ? `${one} ${t[at + 1]}` : one;
+      at += two ? 2 : 1;
+    } else if ((POSITION_WORD.includes(one) || isOffset(one)) && layer.x === undefined) {
+      let end = at;
+      while (end < t.length && (POSITION_WORD.includes(t[end]) || isOffset(t[end]))) end++;
+      const axes = positionOf(t.slice(at, end).join(" "));
+      if (axes === undefined) return undefined;
+      [layer.x, layer.y] = axes;
+      at = end;
+      if (t[at] === "/") {
+        let stop = at + 1;
+        while (stop < t.length && stop < at + 3 && (t[stop] === "auto" || isOffset(t[stop]))) stop++;
+        const size = t[at + 1] === "cover" || t[at + 1] === "contain" ? [t[at + 1]] : t.slice(at + 1, stop);
+        if (size.length === 0) return undefined;
+        layer.size = size.join(" ");
+        at += 1 + size.length;
+      }
+    } else if (last && isColour(one) && layer.color === undefined) {
+      layer.color = one;
+      at++;
+    } else return undefined;
+  }
+  const [origin, clip] = layer.boxes ?? [];
+  return {
+    image: layer.image ?? "none",
+    x: layer.x ?? "0%",
+    y: layer.y ?? "0%",
+    size: layer.size ?? "auto",
+    repeat: layer.repeat ?? "repeat",
+    attachment: layer.attachment ?? "scroll",
+    origin: origin ?? "padding-box",
+    clip: clip ?? origin ?? "border-box",
+    color: layer.color ?? "transparent",
+  };
 }

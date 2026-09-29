@@ -474,3 +474,50 @@ describe("a position, split by hand", () => {
     });
   });
 });
+
+describe("background, split by hand", () => {
+  const bg = (value: string) => splitOf("background", value);
+
+  test("one layer, every part", () => {
+    expect(bg("url(a.png) left 10px top 5px / 10px 20px no-repeat fixed content-box padding-box red")).toEqual({
+      "background-image": "url(a.png)",
+      "background-position-x": "left 10px",
+      "background-position-y": "top 5px",
+      "background-size": "10px 20px",
+      "background-repeat": "no-repeat",
+      "background-attachment": "fixed",
+      "background-origin": "content-box",
+      "background-clip": "padding-box",
+      "background-color": "red",
+    });
+  });
+
+  test("two layers, the colour from the last, and one box sets both origin and clip", () => {
+    expect(bg("linear-gradient(red, blue) center/cover, url(b.png) repeat-x border-box #abc")).toEqual({
+      "background-image": "linear-gradient(red, blue), url(b.png)",
+      "background-position-x": "center, 0%",
+      "background-position-y": "center, 0%",
+      "background-size": "cover, auto",
+      "background-repeat": "repeat, repeat-x",
+      "background-attachment": "scroll, scroll",
+      "background-origin": "padding-box, border-box",
+      "background-clip": "border-box, border-box",
+      "background-color": "#abc",
+    });
+  });
+
+  test.each([
+    "red, blue",
+    "url(a.png) url(b.png)",
+    "bogus",
+    "center / 10px 20px 30px",
+    "url(a.png) / cover",
+    "left right",
+    "center /",
+    "border-box border-box border-box",
+    "fixed local",
+    "a, , b",
+  ])("refuses %s", (value) => {
+    expect(bg(value)).toBeUndefined();
+  });
+});

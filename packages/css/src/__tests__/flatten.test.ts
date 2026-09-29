@@ -613,8 +613,8 @@ describe("a shorthand is split into what it sets", () => {
   });
 
   /** A family with no shape keeps its shorthand, and that is the answer that cannot be wrong. */
-  test("a family neither table has is left alone", () => {
-    expect(splitKeys("background: red;")).toEqual(["background"]);
+  test("a value no table and no rule can read is left alone", () => {
+    expect(splitKeys("background: bogus;")).toEqual(["background"]);
   });
 
   /**

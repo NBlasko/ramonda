@@ -518,9 +518,9 @@ describe("what the block's own text may contain", () => {
   });
 
   test("a url() keeps its parens", () => {
-    const result = emit(`const a = <div className={@@( background: url(a.png) no-repeat; )}>x</div>;\n`);
+    const result = emit(`const a = <div className={@@( background-image: url(a.png); )}>x</div>;\n`);
 
-    expect(result?.blocks[0].css).toBe("background:url(a.png) no-repeat;");
+    expect(result?.blocks[0].css).toBe("background-image:url(a.png);");
   });
 
   /**
