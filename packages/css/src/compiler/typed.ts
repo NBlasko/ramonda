@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { conflict, covers } from "./flatten";
-import { AT_RULE_LINKS, NOT_IN_A_RULE, PROPERTIES } from "./keywords.generated";
+import { AT_RULE_LINKS, NOT_IN_A_RULE, PROPERTIES, SHORTHANDS } from "./keywords.generated";
+import { splitOf } from "./split";
 import type { RegisteredSite } from "./variables";
 import type { VirtualFile } from "./virtual";
 
@@ -45,6 +46,7 @@ export const TYPED_RULES = [
   "blocks-joined-not-merged",
   "state-is-a-tuple",
   "allow-list-is-an-interface",
+  "narrower-after-a-whole-shorthand",
 ] as const;
 
 /** A finding about a file, at an offset in the AUTHOR's own text. */
@@ -489,6 +491,9 @@ export function typedFindingsFor(
   // The one rule here that REPLACES the compiler rather than answering past it — see its docstring,
   // and `inOrder` in `check.ts` for where the `TS2344` it stands in for is dropped.
   allowListIsAnInterface(checker, file, report);
+  // The compiler asks this inside ONE block; across blocks the spread is a value, and only a
+  // program can follow it to the block it names.
+  wholeAcrossBlocks(checker, file, helpers, report);
 
   return findings;
 }
@@ -972,4 +977,123 @@ function allowListIsAnInterface(
   };
 
   ts.forEachChild(file, visit);
+}
+
+/**
+ * `narrower-after-a-whole-shorthand` across blocks — a spread, or `mergeClassNames(a, b)`.
+ *
+ * The compiler refuses a narrower whole shorthand after a wider one inside one block. A spread is a
+ * VALUE to it, so a wider one arriving through `...{base}` was never seen, and the merge could only
+ * warn in development. A program can follow the name to the block it was written as, and read what
+ * that block sets the way the compiler reads its own — as the author wrote it, one declaration each.
+ *
+ * WHOLE is what the sheet does with it: a shorthand that does not split (`splitOf` refuses it). A
+ * narrower one that splits is pieces in `p`, stronger than `v`, and is not the fault. Only the top
+ * level of each block is compared: a nested rule is its own context, as in the compiler's rule, and
+ * a spread may only stand at the top. A name the program cannot follow to a block — a prop, a
+ * parameter — says nothing, rather than guessing.
+ */
+function wholeAcrossBlocks(
+  checker: ts.TypeChecker,
+  file: ts.SourceFile,
+  helpers: Helpers | undefined,
+  report: (node: ts.Node, finding: Omit<TypedFinding, "file" | "at" | "length">) => void,
+): void {
+  /** The block a name was written as — its array of declarations — or nothing. */
+  const blockOf = (expression: ts.Expression): ts.ArrayLiteralExpression | undefined => {
+    let node: ts.Expression = expression;
+    while (ts.isParenthesizedExpression(node)) node = node.expression;
+    if (!ts.isIdentifier(node)) return undefined;
+    let symbol = checker.getSymbolAtLocation(node);
+    if (symbol !== undefined && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+    const declaration = symbol?.valueDeclaration;
+    if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return undefined;
+    const initial = declaration.initializer;
+    if (initial === undefined || !ts.isCallExpression(initial) || !isBlock(checker, checker.getTypeAtLocation(initial)))
+      return undefined;
+    const [array] = initial.arguments;
+    return array !== undefined && ts.isArrayLiteralExpression(array) ? array : undefined;
+  };
+
+  const whole = (property: string, value: string) =>
+    property !== "all" && SHORTHANDS[property] !== undefined && splitOf(property, value) === undefined;
+
+  /** The whole shorthands a block's top level sets, its own spreads followed — once each. */
+  const wholesOf = (array: ts.ArrayLiteralExpression | undefined, seen = new Set<ts.Node>()): string[] => {
+    if (array === undefined || seen.has(array)) return [];
+    seen.add(array);
+    const out: string[] = [];
+    for (const element of array.elements) {
+      if (ts.isCallExpression(element) && element.arguments.length === 1 && !ts.isObjectLiteralExpression(element)) {
+        out.push(...wholesOf(blockOf(element.arguments[0]), seen));
+        continue;
+      }
+      for (const [property, value] of declared(element)) if (whole(property, value)) out.push(property);
+    }
+    return out;
+  };
+
+  /** A group's declarations, as written: property and literal value, nested rules left out. */
+  const declared = (element: ts.Expression): [string, string, ts.Node][] => {
+    if (!ts.isObjectLiteralExpression(element)) return [];
+    const out: [string, string, ts.Node][] = [];
+    for (const property of element.properties) {
+      if (!ts.isPropertyAssignment(property)) continue;
+      // The name's OWN file: a spread's block is usually declared in another one.
+      const written = ts.isStringLiteral(property.name) ? property.name.text : property.name.getText();
+      if (written.startsWith("&") || written.startsWith("@")) continue;
+      const value = property.initializer;
+      if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value))
+        out.push([written, value.text, property.name]);
+    }
+    return out;
+  };
+
+  const said = (node: ts.Node, narrower: string, wider: string): void =>
+    report(node, {
+      rule: "narrower-after-a-whole-shorthand",
+      message:
+        `\`${narrower}\` comes after \`${wider}\`, and both reach the stylesheet whole, so no order keeps ` +
+        `\`${narrower}\` winning on every page. Set its longhands instead.`,
+    });
+
+  const visit = (node: ts.Node): void => {
+    // A block of THIS file: its spreads, then what it writes below them.
+    if (helpers !== undefined && calls(node, helpers.block)) {
+      const [array] = node.arguments;
+      if (array !== undefined && ts.isArrayLiteralExpression(array)) {
+        const wider: string[] = [];
+        for (const element of array.elements) {
+          if (calls(element, helpers.from)) {
+            wider.push(...wholesOf(blockOf(element.arguments[0])));
+            continue;
+          }
+          for (const [property, value, where] of declared(element)) {
+            const covering = wider.find((one) => covers(one, property));
+            if (covering !== undefined && whole(property, value)) said(where, property, covering);
+          }
+        }
+      }
+    }
+    // And a merge at a call site, argument by argument.
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      let symbol = checker.getSymbolAtLocation(node.expression);
+      if (symbol !== undefined && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+      // The package's own `mergeClassNames`, by where it is DECLARED — an app's function of that
+      // name is not asked about.
+      const origin = symbol?.declarations?.[0]?.getSourceFile().fileName ?? "";
+      if (symbol?.name === "mergeClassNames" && /[\\/](@ramonda[\\/]css|packages[\\/]css)[\\/]/.test(origin)) {
+        const wider: string[] = [];
+        for (const argument of node.arguments) {
+          const block = blockOf(argument);
+          const here = wholesOf(block);
+          const narrower = here.find((one) => wider.some((w) => covers(w, one)));
+          if (narrower !== undefined) said(argument, narrower, wider.find((w) => covers(w, narrower)) as string);
+          wider.push(...here);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
 }

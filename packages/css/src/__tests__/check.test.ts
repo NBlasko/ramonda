@@ -2479,3 +2479,70 @@ describe("a match, type-checked", () => {
     expect(card(`color: match({this.variant}) { primary => red; _ => inherit; };`).findings).toEqual([]);
   });
 });
+
+/**
+ * `narrower-after-a-whole-shorthand` across blocks — what the compiler cannot see, since a spread is
+ * a value. The checker follows the spread to the block it names and reads what it sets, the way the
+ * compiler reads its own block. Two whole shorthands, the narrower later, are both in `v` and no
+ * order serves both; the merge warns about it in development, and this says it at the line.
+ */
+describe("a narrower whole shorthand after a wider one from another block", () => {
+  const codes = (files: Record<string, string>) => check(files).findings.map((one) => one.code);
+
+  test("through a spread in the same file", () => {
+    expect(
+      codes({
+        "Card.tsx": `const base = @@( border: var(--x); );\nexport const card = @@( ...{base}; border-top: var(--y); );\n`,
+      }),
+    ).toContain("narrower-after-a-whole-shorthand");
+  });
+
+  test("through a spread of a block from another file", () => {
+    expect(
+      codes({
+        "base.ts": `export const base = @@( font: caption; );\n`,
+        "Card.tsx": `import { base } from "./base";\nexport const card = @@( ...{base}; font-variant: var(--v); );\n`,
+      }),
+    ).toContain("narrower-after-a-whole-shorthand");
+  });
+
+  const PACKAGE_MERGE = {
+    "node_modules/@ramonda/css/index.d.ts": `export declare function mergeClassNames(...parts: unknown[]): string;\n`,
+    "node_modules/@ramonda/css/package.json": `{ "name": "@ramonda/css", "types": "index.d.ts" }\n`,
+  };
+
+  test("but not through an app's own function that happens to share the name", () => {
+    expect(
+      codes({
+        "Card.tsx":
+          `const mergeClassNames = (...parts: unknown[]) => parts.join(" ");\n` +
+          `const base = @@( border: var(--x); );\nconst top = @@( border-top: var(--y); );\n` +
+          `export const a = <div className={mergeClassNames(base, top)}>x</div>;\n`,
+      }),
+    ).not.toContain("narrower-after-a-whole-shorthand");
+  });
+
+  test("through mergeClassNames", () => {
+    expect(
+      codes({
+        ...PACKAGE_MERGE,
+        "Card.tsx":
+          `import { mergeClassNames } from "@ramonda/css";\n` +
+          `const base = @@( border: var(--x); );\nconst top = @@( border-top: var(--y); );\n` +
+          `export const a = <div className={mergeClassNames(base, top)}>x</div>;\n`,
+      }),
+    ).toContain("narrower-after-a-whole-shorthand");
+  });
+
+  test.each([
+    ["the other order, which the merge settles", "border-top: var(--y);", "border: var(--x);"],
+    ["a narrower one that splits, whose pieces are stronger", "border: var(--x);", "border-top: 1px solid red;"],
+    ["a longhand after it", "border: var(--x);", "border-top-color: red;"],
+    ["a wider one that split", "border: 1px solid red;", "border-top: var(--y);"],
+    ["two families that do not cover each other", "border: var(--x);", "padding: var(--p);"],
+  ])("not for %s", (_what, first, second) => {
+    expect(
+      codes({ "Card.tsx": `const base = @@( ${first} );\nexport const card = @@( ...{base}; ${second} );\n` }),
+    ).not.toContain("narrower-after-a-whole-shorthand");
+  });
+});
