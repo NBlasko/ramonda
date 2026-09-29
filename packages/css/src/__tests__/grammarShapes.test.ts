@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { splitByGrammar } from "../compiler/split";
+import { splitByGrammar, splitOf } from "../compiler/split";
+import { BY_HAND } from "../compiler/splitByHand";
 import { SHORTHANDS } from "../compiler/keywords.generated";
 import { SHAPES } from "../compiler/shapes.generated";
 import { GRAMMAR_SHAPES } from "../compiler/grammarShapes.generated";
@@ -206,6 +207,44 @@ describe("a split reaches leaves, never another shorthand", () => {
         ? shape.longhands
         : Object.keys(SHAPES[family].patterns[Object.keys(SHAPES[family].patterns)[0] as string] ?? {});
 
+    expect(longhands.filter((one) => (SHORTHANDS[one] ?? []).length > 0)).toEqual([]);
+  });
+
+  /**
+   * And the families split BY HAND, whose longhands are written in code rather than read off an
+   * engine — so this is the only thing standing between them and a shorthand among their pieces.
+   * One value each that exercises every part.
+   */
+  const SAMPLES: Readonly<Record<string, string>> = {
+    marker: "none",
+    "white-space": "pre",
+    "font-synthesis": "weight",
+    "-webkit-text-stroke": "1px red",
+    "contain-intrinsic-size": "auto 10px 20px",
+    flex: "1 1 10px",
+    "grid-area": "a / b / c / d",
+    "text-box": "trim-both cap alphabetic",
+    "-webkit-border-before": "1px solid red",
+    background: "url(a.png) center / cover no-repeat fixed content-box padding-box red",
+    mask: "url(a.png) center / cover no-repeat content-box no-clip subtract luminance",
+    font: "italic small-caps bold condensed 12px/2 serif",
+    "animation-range": "cover 10% contain 90%",
+    "timeline-trigger": "--a view() cover / contain",
+    "grid-template": '[x] "a" 10px / 1fr',
+    grid: "10px / auto-flow 20px",
+    "mask-border": "url(a.png) 30 / 10px / 2px round",
+    "background-position": "left 10px top 5px",
+    "mask-position": "left 10px top 5px",
+    "-webkit-mask-position": "left 10px top 5px",
+  };
+
+  test("every family split by hand has a sample here", () => {
+    expect(Object.keys(BY_HAND).sort()).toEqual(Object.keys(SAMPLES).sort());
+  });
+
+  test.each(Object.entries(SAMPLES))("%s, split by hand, splits into leaves", (family, value) => {
+    const longhands = Object.keys(splitOf(family, value) ?? { none: "" });
+    expect(longhands).not.toEqual(["none"]);
     expect(longhands.filter((one) => (SHORTHANDS[one] ?? []).length > 0)).toEqual([]);
   });
 });

@@ -196,9 +196,9 @@ Two things will look unfamiliar. Both are deliberate and neither is anything you
 **A shorthand becomes the longhands it sets.** `padding: 8px` is four rules, not one:
 
 ```css
-@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.v, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
+@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.v, ramonda.p, ramonda.u, ramonda.c;
 @layer ramonda {
-  @layer u {
+  @layer p {
     .r-pt-8px { padding-top:8px; }
     .r-pr-8px { padding-right:8px; }
     .r-pb-8px { padding-bottom:8px; }
@@ -219,7 +219,7 @@ like `font: caption`. Those keep their shorthand, and the layers are what order 
 longhands they cover.
 
 **What each layer holds.** `ramonda.s10` holds shorthands that set ten longhands and do not split
-yet, `ramonda.v` holds a shorthand whose value has a `var()`, `ramonda.d1` holds a longhand this
+yet, `ramonda.v` holds a shorthand whose value has a `var()`, `ramonda.p` holds a longhand this
 split out of one, `ramonda.u` holds every longhand you typed yourself, `ramonda.a` holds `all`, and
 `ramonda.c` holds everything conditional. The order reads as *the more precisely you said it, the
 stronger it is*.

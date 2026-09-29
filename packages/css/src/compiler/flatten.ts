@@ -247,23 +247,20 @@ export const WIDEST = 64;
 const EVERYTHING = "a";
 
 /**
- * How many derived levels the statement declares, and why there is more than the one in use.
+ * The PIECES of a split: weaker than a `padding-left` an author typed, stronger than a shorthand
+ * that reaches the sheet whole.
  *
- * A declaration a SPLIT produced sits between the shorthands and the longhands somebody wrote:
- * weaker than a `padding-left` an author typed, stronger than the `padding` it came from. `d1` is
- * "came through one split", and it is the only one anything produces — measured, and asserted, a
- * split always reaches LEAVES, never another shorthand.
+ * ONE name, and no room beside it. A layer name cannot be added later — a stylesheet built before
+ * it does not list it, and CSS appends an unseen name to the END, the strongest position — and that
+ * once bought seven empty levels, `d2`…`d8`, for a split that might one day produce pieces of
+ * pieces. It cannot: a split always reaches LEAVES, and `grammarShapes.test.ts` asserts it for every
+ * family, the hand-split ones included. That test failing is the answer to such a CSS, not a
+ * reserve: the fix is to split further, down to the leaves.
  *
- * The rest are room, and the reason is the sharpest measurement in this whole scheme: **a layer
- * name cannot be added later.** A stylesheet built before the name existed does not list it, and
- * CSS appends a name it has not seen to the END of the order — the strongest position. Measured
- * with two sheets, one release apart: the newer one's derived rules BEAT the older one's written
- * longhands, which is the exact reverse of what the name means. So every name this scheme may ever
- * want has to be in the statement the first release ships, and eight of them cost 22 bytes gzipped
- * over none.
+ * Not `d`: the digit levels under `c` are `d0`…`d9`, and one letter for two things made a reader of
+ * the output unable to tell them apart.
  */
-const DERIVED_LEVELS = 8;
-const DERIVED = "d1";
+const PIECES = "p";
 
 /**
  * A shorthand holding a `var()`, which can NEVER split — its value is unknown until the page
@@ -313,7 +310,7 @@ export function layerPathFor(declaration: {
   const breadth = breadthOf(declaration);
   const step =
     declaration.from !== undefined
-      ? DERIVED
+      ? PIECES
       : breadth === 0
         ? "u"
         : breadth > WIDEST
@@ -376,7 +373,7 @@ export const BREADTH_LAYERS: readonly string[] = [
   EVERYTHING,
   ...[...Array(WIDEST).keys()].map((one) => `s${String(WIDEST - one).padStart(2, "0")}`),
   WHOLE_WITH_VAR,
-  ...[...Array(DERIVED_LEVELS).keys()].map((one) => `d${DERIVED_LEVELS - one}`),
+  PIECES,
   "u",
 ];
 

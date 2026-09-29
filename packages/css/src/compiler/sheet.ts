@@ -167,12 +167,10 @@ const level = (): Level => ({ own: [], under: new Map() });
 /**
  * The names a level's children MAY hold, in order — which is what two files have to agree on.
  *
- * Counted from the DEPTH, never read off the children's names. Both lists share an alphabet: the
- * digit levels under `c` are `d0`…`d9`, and a derived breadth step is `d1`. Telling them apart by
- * the first child's initial was right while the conditional breadth step was `b…`, and it stopped
- * being right the moment a breadth step could begin with `d` — the level holding `d1` and `u` was
- * then declared with the DIGITS, so `u` was a name its own statement had never seen. That is the
- * fault {@link LAYER_ORDER} exists to prevent, one level down.
+ * Counted from the DEPTH, never read off the children's names. The pieces' step was once `d1`, which
+ * shares an initial with the digit levels under `c` (`d0`…`d9`), and telling them apart by the first
+ * child's initial declared the level holding `d1` and `u` with the DIGITS — so `u` was a name its own
+ * statement had never seen. That is the fault {@link LAYER_ORDER} exists to prevent, one level down.
  *
  * `digits` is how many digit levels are still to come: 5 on entering `c`, counted down, and `0` at
  * the level that holds the breadth step. The top level needs no statement at all, because

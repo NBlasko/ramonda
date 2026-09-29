@@ -113,6 +113,22 @@ const LEAVES = required(
   /LEAVES: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\})\s*;/,
 );
 
+/**
+ * Shorthands the engines RESET differently — `-webkit-mask` — which `resets-differ-across-engines`
+ * refuses. Left out of the TYPES too, so an editor never offers one and TypeScript does not take it:
+ * a property this package cannot make work is not an option at all. The checker still knows the
+ * NAME, which is what lets its refusal say what to write instead.
+ */
+const REFUSED = new Set(
+  Object.keys(
+    previousFrom(
+      join(root, "packages/css/src/compiler/leaves.generated.ts"),
+      /RESETS_DIFFER: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\})\s*;/,
+      {},
+    ),
+  ),
+);
+
 /** What some engine holds as a longhand, which is then a longhand here — see the leaves generator. */
 const LONGHAND_IN_SOME_ENGINE = new Set(
   previousFrom(
@@ -1111,6 +1127,7 @@ let unions = 0;
 let checkable = 0;
 
 for (const name of named) {
+  if (REFUSED.has(name)) continue;
   /**
    * A name an ENGINE has and `mdn-data` does not — 163 of the 262, `-webkit-font-smoothing` among
    * them. There is no grammar to read, so there is nothing to check a value against and nothing to
@@ -1806,7 +1823,10 @@ ${arityRows.map((one) => one.replace(/: (\d),$/, (_whole, most) => `: ${Array.fr
 export type CssNumeric = ${numericRows.length === 0 ? "never" : numericRows.join(" | ")};
 
 /** Every property the engines call a shorthand — the only ones a project may switch off. */
-export type CssShorthand = ${shorthandRows.map((one) => one.slice(2, one.indexOf(":"))).join(" | ")};
+export type CssShorthand = ${shorthandRows
+  .map((one) => one.slice(2, one.indexOf(":")))
+  .filter((one) => !REFUSED.has(JSON.parse(one)))
+  .join(" | ")};
 
 export type Narrowed<K extends string, V> =
   | K

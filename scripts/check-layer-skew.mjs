@@ -83,7 +83,7 @@ const CASES = [
  * did not see.
  *
  * A conditional rule's layer path is `c`, five digit levels, then the breadth step, and the digit
- * levels are named `d0`…`d9`. When a derived step became `d1`, the code choosing which names to
+ * levels are named `d0`…`d9`. When a derived step became `d1` (it is `p` now), the code choosing which names to
  * declare above a level read the first child's initial and handed the conditional level the DIGITS
  * — so `u` sat in a level its own statement had never declared. Every case here was unconditional,
  * so the gate had nothing to say about it.

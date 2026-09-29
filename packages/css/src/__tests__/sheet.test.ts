@@ -490,27 +490,24 @@ describe("the layers", () => {
   });
 
   /**
-   * The derived levels are declared beyond the one in use, and that is the whole of why.
+   * A split's pieces have ONE layer, and nothing is held in reserve beside it.
    *
-   * **A layer name cannot be added later.** A stylesheet built before the name existed does not
-   * list it, and CSS appends an unseen name to the END of the order — the strongest position.
-   * Measured with two sheets one release apart, the newer one's derived rules BEAT the older one's
-   * written longhands, the exact reverse of what the name means. So the room has to be shipped with
-   * the first release that has any of it.
+   * There used to be `d1`…`d8`, seven of them empty, for pieces of pieces a split never makes —
+   * `grammarShapes.test.ts` asserts it reaches leaves, for every family. A guarantee is a test that
+   * fails the build, not room.
    */
-  test("every derived level is declared, not only the one anything uses", () => {
-    for (const level of [1, 2, 3, 4, 5, 6, 7, 8]) expect(BREADTH_LAYERS).toContain(`d${level}`);
+  test("a split's pieces have one layer, and nothing is held in reserve", () => {
+    expect(BREADTH_LAYERS).toContain("p");
+    expect(BREADTH_LAYERS.filter((one) => /^d\d$/.test(one))).toEqual([]);
   });
 
   /**
    * The statement above a level must declare the names that level HOLDS.
    *
-   * The two lists share an alphabet now: the digit levels under `c` are `d0`…`d9`, and a derived
-   * breadth step is `d1`. Reading the first child's name to tell them apart was right while the
-   * conditional breadth step was `b…`, and it stopped being right the moment a breadth step could
-   * begin with `d` — the level holding `d1` and `u` was declared with the DIGITS, so `u` was a name
-   * its own statement had never seen. That is the fault `LAYER_ORDER` exists to prevent, one level
-   * down.
+   * The pieces' step was `d1` once, which shares an initial with the digit levels under `c`, and
+   * reading the first child's name to tell them apart declared the level holding `d1` and `u` with
+   * the DIGITS — so `u` was a name its own statement had never seen. It is `p` now, and the level
+   * is still chosen by DEPTH, which is what this holds.
    */
   test("a conditional level declares the breadth names it holds, not the digits", () => {
     const sheet = new Sheet();
@@ -530,11 +527,11 @@ describe("the layers", () => {
       .split(",");
 
     // The level really does hold both, or the statement above it would be a claim about nothing.
-    expect(css).toContain("@layer d1 {");
+    expect(css).toContain("@layer p {");
     expect(css).toContain("@layer u {");
     // And the statement that governs them declares both, rather than the ten digits.
     expect(governing).toContain("u");
-    expect(governing).toContain("d1");
+    expect(governing).toContain("p");
   });
 
   /**

@@ -2233,7 +2233,7 @@ function holeAsAVariableName(block: Block, findings: Finding[]): void {
  * which the merge settles by clearing.
  */
 function narrowerAfterAVarShorthand(block: Block, findings: Finding[]): void {
-  // SPLIT, as the sheet receives it: a narrower shorthand that splits is pieces in `d1`, stronger
+  // SPLIT, as the sheet receives it: a narrower shorthand that splits is pieces in `p`, stronger
   // than `v`, and is not the fault. `flatten` gives what the author wrote, which would report it.
   const flat = segments(block, { split: true }).flatMap((one) => (one.kind === "declarations" ? one.items : []));
   const stepOf = (one: (typeof flat)[number]) =>
