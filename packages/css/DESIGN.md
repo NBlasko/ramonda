@@ -4785,6 +4785,46 @@ ramonda.u      a longhand somebody TYPED — one name, because every longhand is
 ramonda.c      every conditional rule, with the digit layers inside it
 ```
 
+##### The plan: every layer a word, and `s##` deleted — AGREED 2026-09-28, NOT built
+
+The goal was agreed on 2026-09-24: split every shorthand, with no compromise. A word layer means the
+same thing in every version, including through a `<link>` from a CDN. A count moves whenever CSS
+adds a longhand to a family (`animation` went 11 → 12). So `s##` is not the strategy. It holds what
+does not split YET, and it is deleted once nothing lands in it. That has to happen before 1.0.
+
+**When a layer decides at all.** The merge removes an earlier class that a later one covers. A layer
+decides only when the merge keeps BOTH classes on one element. For a shorthand that cannot split,
+such as `border: var(--x)`, there are three cases:
+
+```
+border: var(--x);        then border-top-color: red   both stay; the longhand must win
+border: 1px solid red;   then border: var(--x)        merge removes the first; no conflict
+border: var(--x);        then border-top: var(--y)    both stay; the NARROWER must win
+```
+
+**The plan:**
+
+1. A shorthand whose value holds `var()` or a hole goes into ONE word layer, `ramonda.v`. It is
+   declared weaker than `d1…d8` and `u`. That settles the first case, and the name never moves.
+2. Two unsplittable shorthands where the narrower comes later (the third case) is an ERROR: "set
+   these longhands on their own". It is the only case that would still need a count, so it is not
+   allowed. It is reported at compile time inside a block, by the checker across blocks it can see,
+   and by `compose` in development for the rest.
+3. Everything else splits:
+   - the families that do not split yet: 11 that do not open, 8 rejected, `mask`, and the
+     `container` slash form (see `CONTRIBUTING.md`);
+   - `match` arms, which are known values and are refused today only because nothing splits them.
+4. The breadth inside the `c` path (`b${breadth}`) is a count too, and goes the same way.
+5. Then the statement is words only: `i, a, v, d1…d8, u, c`. `s##`, `layer-counts.json` and the
+   "moved" check in `check-layer-names` are deleted.
+
+**Optional, and not needed for correctness:** a config switch `shorthands: "never"`, enforced by the
+types, for projects that want only longhands. The default stays: shorthands are supported.
+
+**Measure BEFORE building.** Everything above is reasoned from what the merge does. The first step is
+the three cases in all three engines, against the same lines written by hand. If a case
+disagrees, the plan changes.
+
 ##### `!important` reads the order backwards, and that was wrong for as long as there were layers
 
 Not about splitting, not about packages, not about joining. The ordinary path, one block, one file,
