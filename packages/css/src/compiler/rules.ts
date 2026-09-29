@@ -10,7 +10,9 @@ import {
   covers,
   exclusive,
   flatten,
+  layerPathFor,
   onlyTheModeDecides,
+  segments,
   sheetRank,
   standardFormOf,
   widthSlot,
@@ -117,6 +119,7 @@ export const RULE_IDS = [
   "value-not-allowed",
   "shorthand-not-allowed",
   "word-out-of-its-longhand",
+  "narrower-after-a-var-shorthand",
   "string-not-allowed",
   "property-not-a-name",
   "non-canonical-spelling",
@@ -356,6 +359,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   const findings: Finding[] = [];
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
+  narrowerAfterAVarShorthand(block, findings);
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
   spelling(block, findings);
@@ -2168,6 +2172,53 @@ function holeAsAVariableName(block: Block, findings: Finding[]): void {
  * Only the SELECTOR has to match, because a selector adds specificity and that beats source order
  * on its own — measured, and it is why the rule would otherwise report correct CSS.
  */
+/**
+ * A narrower shorthand written after a wider one that holds a `var()`, in the same context.
+ *
+ * The wider one can never split, so it reaches the sheet whole, in the word layer `v`. The narrower
+ * one reaches it whole too — in `v` if it holds a `var()` as well, in a counted layer below `v` if
+ * its family does not split — and nothing puts it ABOVE the wider one. Through the merge both
+ * classes stay, since a narrower shorthand does not clear a wider one, and the stylesheet decides
+ * by which file the build read first. Measured in all three engines, `border: var(--x)` then
+ * `border-top: var(--y)`: right in one load order and wrong in the other.
+ *
+ * A count would order them, and a count is exactly what cannot be used: it moves when CSS adds a
+ * longhand, and two releases then disagree. So the shape is refused, the way `override-out-of-order`
+ * refuses two conditions no single position can serve.
+ *
+ * Asked through `layerPathFor` itself, so the rule and the sheet cannot disagree about where the two
+ * went. A split or a longhand after it is stronger and is not reported; nor is the other order,
+ * which the merge settles by clearing.
+ */
+function narrowerAfterAVarShorthand(block: Block, findings: Finding[]): void {
+  // SPLIT, as the sheet receives it: a narrower shorthand that splits is pieces in `d1`, stronger
+  // than `v`, and is not the fault. `flatten` gives what the author wrote, which would report it.
+  const flat = segments(block, { split: true }).flatMap((one) => (one.kind === "declarations" ? one.items : []));
+  const stepOf = (one: (typeof flat)[number]) =>
+    layerPathFor({ ...one, holdsVar: holdsVar(one.canonical) }).at(-1) ?? "";
+
+  for (const [index, later] of flat.entries()) {
+    const laterStep = stepOf(later);
+    if (laterStep !== "v" && !/^s\d+$/.test(laterStep)) continue;
+
+    for (const earlier of flat.slice(0, index)) {
+      if (stepOf(earlier) !== "v") continue;
+      if (earlier.selector !== later.selector || earlier.conditions.join("|") !== later.conditions.join("|")) continue;
+      if (!covers(earlier.property, later.property)) continue;
+
+      findings.push({
+        rule: "narrower-after-a-var-shorthand",
+        at: later.at ?? 0,
+        length: later.property.length,
+        message:
+          `\`${later.property}\` comes after \`${earlier.property}\`, which holds a \`var()\`, and no stylesheet ` +
+          `order keeps \`${later.property}\` winning on every page. Set its longhands instead.`,
+      });
+      break;
+    }
+  }
+}
+
 function overrideOutOfOrder(block: Block, findings: Finding[]): void {
   const flat = flatten(block);
 

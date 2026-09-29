@@ -58,6 +58,22 @@ const CASES = [
   ["a shorthand that splits", "padding: 8px;", "padding-left: 40px;", "paddingLeft", "40px"],
   ["a split REFUSED for a var()", "padding: var(--w);", "padding-left: 40px;", "paddingLeft", "40px"],
   ["`all` against a shorthand", "all: unset;", "background: red;", "backgroundColor", "rgb(255, 0, 0)"],
+  // A shorthand holding a var() never splits and sits in `v`, a word: a longhand beats it, and it
+  // beats a counted shorthand wider than itself.
+  [
+    "a var() shorthand against a longhand",
+    "border: var(--b);",
+    "border-top-color: blue;",
+    "borderTopColor",
+    "rgb(0, 0, 255)",
+  ],
+  [
+    "a narrower var() shorthand against a wider counted one",
+    "background: red url(a.png);",
+    "background-position: var(--p);",
+    "backgroundPositionX",
+    "7px",
+  ],
 ];
 
 /**
@@ -162,7 +178,7 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
             // A DOCTYPE, because quirks mode is a different CSS and no real page is in it.
             document.documentElement.innerHTML =
               `<head>${written.map((one) => `<style>${one}</style>`).join("")}</head>` +
-              `<body><div id=x style="--w:1px" class="${merged}"></div></body>`;
+              `<body><div id=x style="--w:1px;--b:3px solid red;--p:7px 9px" class="${merged}"></div></body>`;
             const found = document.getElementById("x");
             return found === null ? "" : getComputedStyle(found)[read];
           },

@@ -452,6 +452,27 @@ describe("the layers", () => {
   });
 
   /**
+   * A shorthand holding a `var()` can never split, and it goes in ONE word layer, `v`.
+   *
+   * A count moves when CSS adds a longhand to the family, and a package built before that names the
+   * old count — so a count cannot order two releases. A word can. `v` sits above every counted
+   * shorthand and below the split pieces and the written longhands: measured in all three engines,
+   * through the merge, a longhand written after `border: var(--x)` wins, and so does a split one.
+   */
+  test("a shorthand holding a var() goes in `v`, between the counted shorthands and the splits", () => {
+    const at = (one: { property?: string; from?: string; holdsVar?: boolean }) =>
+      BREADTH_LAYERS.indexOf(layerPathFor(one)[0]);
+
+    expect(layerPathFor({ property: "border", holdsVar: true })).toEqual(["v"]);
+    expect(layerPathFor({ property: "padding-left", holdsVar: true })).toEqual(["u"]);
+    expect(at({ property: "border" })).toBeLessThan(at({ property: "border-top", holdsVar: true }));
+    expect(at({ property: "border", holdsVar: true })).toBeLessThan(
+      at({ property: "border-top-color", from: "border" }),
+    );
+    expect(BREADTH_LAYERS.indexOf("v")).toBe(BREADTH_LAYERS.indexOf("s01") + 1);
+  });
+
+  /**
    * The derived levels are declared beyond the one in use, and that is the whole of why.
    *
    * **A layer name cannot be added later.** A stylesheet built before the name existed does not

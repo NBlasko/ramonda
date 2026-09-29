@@ -1,9 +1,12 @@
+import { holdsVar } from "../holdsVar";
 import { GRAMMAR_SHAPES, type GrammarLeaf, type GrammarShape } from "./grammarShapes.generated";
 import { INITIAL_VALUES } from "./initials.generated";
 import { KEYWORDS, UNIT_TYPE } from "./keywords.generated";
 import { matchValue } from "./matchValue";
 import { type Shape, SHAPES } from "./shapes.generated";
 import type { Term } from "./valueSyntax";
+
+export { holdsVar };
 
 /**
  * Splitting a POSITIONAL shorthand into its longhands, from a learned shape and nothing else.
@@ -52,18 +55,6 @@ export function tokensOf(value: string, separator = /\s/): string[] {
   }
   if (at !== "") out.push(at);
   return out;
-}
-
-/**
- * Whether a value holds a `var()`, which no split may touch — see `splitPositional`.
- *
- * ONE test for every place that asks. There were two, and they disagreed: the positional splitter
- * matched the lower-case spelling only, and CSS function names are case-insensitive, so
- * `padding: VAR(--p)` was split and every longhand came out invalid. The `-` before the name is
- * excluded because `--my-var(` is a custom function, not a `var()`.
- */
-export function holdsVar(value: string): boolean {
-  return /(^|[^\w-])var\(/i.test(value);
 }
 
 /**

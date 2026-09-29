@@ -715,3 +715,49 @@ describe("the table the merge carries", () => {
     expect(wrong).toEqual([]);
   });
 });
+
+/**
+ * `narrower-after-a-var-shorthand`, for what the compiler cannot see: two blocks, composed.
+ *
+ * Inside one block the compiler refuses it. Across blocks only the merge holds both, so it says so in
+ * development. It reads the `var()` in the class name, which is written as the author wrote it; a
+ * value long enough to be hashed hides it, and then it says nothing rather than guessing.
+ */
+describe("a narrower shorthand composed after a var() one", () => {
+  const said: string[] = [];
+  const real = console.warn;
+  beforeEach(() => {
+    said.length = 0;
+    console.warn = (message: string) => void said.push(message);
+  });
+  afterEach(() => {
+    console.warn = real;
+  });
+
+  const border = classOf("border", "var(--x)");
+  const top = classOf("border-top", "var(--y)");
+
+  test("is said, once, naming both classes", () => {
+    mergeClassNames(border, top);
+    mergeClassNames(border, top);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain(border);
+    expect(said[0]).toContain(top);
+  });
+
+  test("and not the other way round, which the merge settles by clearing", () => {
+    expect(mergeClassNames(top, border)).toBe(border);
+    expect(said).toEqual([]);
+  });
+
+  test("nor for a longhand or a split after it, which are stronger", () => {
+    mergeClassNames(border, classOf("border-top-color", "red"));
+    mergeClassNames(border, `r-bt- ${classOf("border-top-color", "red")}`);
+    expect(said).toEqual([]);
+  });
+
+  test("nor for a wider one without a var()", () => {
+    mergeClassNames(classOf("background", "red_url(a.png)"), classOf("background-position", "var(--p)"));
+    expect(said).toEqual([]);
+  });
+});

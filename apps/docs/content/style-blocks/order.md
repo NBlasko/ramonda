@@ -196,7 +196,7 @@ Two things will look unfamiliar. Both are deliberate and neither is anything you
 **A shorthand becomes the longhands it sets.** `padding: 8px` is four rules, not one:
 
 ```css
-@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
+@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.v, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
 @layer ramonda {
   @layer u {
     .r-pt-8px { padding-top:8px; }
@@ -217,13 +217,21 @@ Some shorthands cannot be split — `background`, `font` and `grid` among them, 
 slash in the value means no table can say which part goes where. Those keep their shorthand, and the
 layers are what order them against the longhands they cover.
 
-**The layer names are counts.** `ramonda.s10` holds shorthands that set ten longhands, `ramonda.d1`
-holds a longhand this split out of one, `ramonda.u` holds every longhand you typed yourself,
-`ramonda.a` holds `all`, and `ramonda.c` holds everything conditional. The order reads as *the more
-precisely you said it, the stronger it is*. The
-name is a fact about the property rather than its position in a list, so a stylesheet built today
-and one built two years ago agree about it — which is what makes a published package safe to drop
-into an application.
+**What each layer holds.** `ramonda.s10` holds shorthands that set ten longhands and do not split
+yet, `ramonda.v` holds a shorthand whose value has a `var()`, `ramonda.d1` holds a longhand this
+split out of one, `ramonda.u` holds every longhand you typed yourself, `ramonda.a` holds `all`, and
+`ramonda.c` holds everything conditional. The order reads as *the more precisely you said it, the
+stronger it is*.
+
+Every name but the counts is a word, and a word means the same in every release — which is what
+makes a published package safe to drop into an application. A count can move when CSS adds a
+longhand to a family, so the counts are on their way out: each family that learns to split leaves
+them. A `var()` can never split, which is why it has a word of its own.
+
+One thing follows from that, and the build refuses it: a narrower shorthand after a wider one that
+holds a `var()` — `border: var(--x)` and then `border-top: var(--y)`. Both reach the stylesheet
+whole, and no order keeps the second one winning on every page. Set the longhands of the second
+one instead.
 
 You never write against these names. **`ramonda` is the name to put in your own `@layer` statement**,
 and it orders everything inside it — see [composing](/style-blocks/composing#the-one-place-this-is-not-plain-css).

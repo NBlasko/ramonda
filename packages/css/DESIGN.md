@@ -4774,12 +4774,13 @@ for as long as any family goes unsplit.
 **What it is instead:**
 
 ```css
-@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
+@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.v, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
 ```
 
 ```
 ramonda.a      `all` — it covers every property, so it is weaker than every shorthand there can be
 ramonda.s##    a shorthand, named by HOW MANY longhands it covers; weakest (widest) first
+ramonda.v      a shorthand holding a `var()`, which can never split — a word, so it never moves
 ramonda.d#     a longhand a SPLIT produced, by how many splits it came through
 ramonda.u      a longhand somebody TYPED — one name, because every longhand is equally narrow
 ramonda.c      every conditional rule, with the digit layers inside it

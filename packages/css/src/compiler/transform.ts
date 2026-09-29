@@ -2,6 +2,7 @@ import MagicString from "magic-string";
 import { segments } from "./flatten";
 import type { AtomicDeclaration } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
+import { holdsVar } from "./split";
 import { keyIn } from "../key";
 import { classNameFor, markerFor, nameForSite, nameFor, substitute, variableNameFor, writableProperty } from "./names";
 import type { Config } from "../config";
@@ -94,6 +95,8 @@ export interface EmittedBlock {
   readonly from?: string;
   /** Whether it is `!important`, which MIRRORS its layer — CSS reads layer order backwards for those. */
   readonly important?: boolean;
+  /** Whether its value holds a `var()`, which puts a shorthand in its own layer. See `layerPathFor`. */
+  readonly holdsVar?: boolean;
   /**
    * What is appended to the class in the selector — `:hover`, ` .title`, `::before`.
    *
@@ -531,6 +534,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
             property: declaration.property,
             from: declaration.from,
             important: declaration.important,
+            holdsVar: holdsVar(declaration.canonical),
             selector: declaration.selector,
             conditions: declaration.conditions,
           });

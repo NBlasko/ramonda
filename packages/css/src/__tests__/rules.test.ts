@@ -4753,3 +4753,39 @@ describe("`!important` is not one of the values", () => {
     expect(found(css)).toContain("too-many-values");
   });
 });
+
+/**
+ * A narrower shorthand written after a WIDER one holding a `var()`.
+ *
+ * The wider one cannot split and sits in the word layer `v`. The narrower one sits in `v` too, or
+ * in a counted layer below it — and neither is above it. Through the merge both classes stay, and
+ * the stylesheet decides. Measured in all three engines, `border: var(--x)` then
+ * `border-top: var(--y)`: the right answer in one load order and the wrong one in the other.
+ */
+describe("a narrower shorthand after a var() shorthand", () => {
+  const found = (css: string) => {
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {}).map((one) => one.rule);
+  };
+
+  test.each([
+    ["two var() shorthands", "border: var(--x); border-top: var(--y);"],
+    ["a family and its own member", "background: var(--b); background-position: var(--q);"],
+    ["the same inside a condition", "@media (min-width: 40rem) { border: var(--x); border-top: var(--y); }"],
+  ])("%s is reported", (_what, css) => {
+    expect(found(css)).toContain("narrower-after-a-var-shorthand");
+  });
+
+  test.each([
+    ["the other order, which the merge settles", "border-top: var(--y); border: var(--x);"],
+    ["a longhand after it, which is stronger", "border: var(--x); border-top-color: red;"],
+    ["a split after it, which is stronger", "border: var(--x); border-top: 1px solid red;"],
+    ["a wider one WITHOUT a var(), which sits below `v`", "background: red url(a.png); background-position: var(--p);"],
+    ["under different conditions", "border: var(--x); @media (min-width: 40rem) { border-top: var(--y); }"],
+    ["two families that do not cover each other", "border: var(--x); padding: var(--p);"],
+  ])("%s is not", (_what, css) => {
+    expect(found(css)).not.toContain("narrower-after-a-var-shorthand");
+  });
+});

@@ -266,11 +266,28 @@ const DERIVED_LEVELS = 8;
 const DERIVED = "d1";
 
 /**
+ * A shorthand holding a `var()`, which can NEVER split — its value is unknown until the page
+ * computes it, and may be several values.
+ *
+ * One WORD, not its count, and that is the point: a count moves when CSS adds a longhand to the
+ * family, a package built before that names the old count, and two releases then disagree about
+ * which rule is stronger. A word means the same in every release. It sits above every counted
+ * shorthand, so a narrower one written with a `var()` beats a wider one without, and below the
+ * split pieces and the written longhands, which beat it. Measured in all three engines, through the
+ * merge, against the same lines written by hand.
+ *
+ * What a word cannot do is order two of these against each other — `border: var(--x)` and then
+ * `border-top: var(--y)`. That one is refused: see `narrower-after-a-var-shorthand` in `rules.ts`.
+ */
+const WHOLE_WITH_VAR = "v";
+
+/**
  * Where a declaration's rule goes, as a layer path.
  *
  * ```
  * a longhand, unconditional      u                every longhand is equally narrow, so one name
  * a shorthand, unconditional     s25 … s02        its own count, weakest first
+ * one holding a `var()`          v                a word: it never splits, and a count would move
  * `all`                          a                weaker than every shorthand there can be
  * anything conditional           c.d0.d5.…  + the same last step
  * ```
@@ -291,6 +308,7 @@ export function layerPathFor(declaration: {
   conditions?: readonly string[];
   from?: string;
   important?: boolean;
+  holdsVar?: boolean;
 }): string[] {
   const breadth = breadthOf(declaration);
   const step =
@@ -300,7 +318,9 @@ export function layerPathFor(declaration: {
         ? "u"
         : breadth > WIDEST
           ? EVERYTHING
-          : `s${String(breadth).padStart(2, "0")}`;
+          : declaration.holdsVar === true
+            ? WHOLE_WITH_VAR
+            : `s${String(breadth).padStart(2, "0")}`;
   const slot = widthSlot(declaration.conditions);
   const path =
     slot === 0
@@ -355,6 +375,7 @@ export const DIGIT_LAYERS: readonly string[] = [...Array(10).keys()].map((one) =
 export const BREADTH_LAYERS: readonly string[] = [
   EVERYTHING,
   ...[...Array(WIDEST).keys()].map((one) => `s${String(WIDEST - one).padStart(2, "0")}`),
+  WHOLE_WITH_VAR,
   ...[...Array(DERIVED_LEVELS).keys()].map((one) => `d${DERIVED_LEVELS - one}`),
   "u",
 ];
