@@ -4789,3 +4789,34 @@ describe("a narrower shorthand after a var() shorthand", () => {
     expect(found(css)).not.toContain("narrower-after-a-var-shorthand");
   });
 });
+
+/**
+ * A shorthand the engines RESET differently — `RESETS_DIFFER`, measured by
+ * `build-shorthand-leaves.mjs`. `-webkit-mask` resets `mask-clip`, `mask-composite` and `mask-mode`
+ * in Chromium and Firefox and keeps them in WebKit, so the author's own line renders two ways and no
+ * split can fix that. It is refused, and `mask` is named, which every engine has.
+ */
+describe("a shorthand the engines reset differently", () => {
+  const found = (css: string) => {
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {});
+  };
+
+  test("is reported, naming the longhands and the standard property", () => {
+    const [finding] = found("-webkit-mask: url(a.png);").filter((one) => one.rule === "resets-differ-across-engines");
+    expect(finding?.message).toContain("mask-mode");
+    expect(finding?.message).toContain("`mask`");
+  });
+
+  test("and so it is inside a condition", () => {
+    expect(found("@media (min-width: 40rem) { -webkit-mask: none; }").map((one) => one.rule)).toContain(
+      "resets-differ-across-engines",
+    );
+  });
+
+  test.each(["mask: url(a.png);", "-webkit-mask-image: url(a.png);", "background: red;"])("%s is not", (css) => {
+    expect(found(css).map((one) => one.rule)).not.toContain("resets-differ-across-engines");
+  });
+});

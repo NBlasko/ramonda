@@ -101,6 +101,8 @@ const counts = [];
  * a platform that once answered "longhand" is not overruled by one that did not run.
  */
 const longhandSomewhere = new Set();
+/** What each engine answered, whole, for the comparison below. */
+const perEngine = {};
 
 for (const engine of ["chromium", "firefox", "webkit"]) {
   let browser;
@@ -110,6 +112,7 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
     // A DOCTYPE, because quirks mode is a different CSS and no real page is in it.
     await tab.setContent("<!doctype html><html><body></body></html>");
     const found = await tab.evaluate(enumerate, names);
+    perEngine[engine] = found;
     counts.push([engine, Object.values(found).filter((one) => one.length > 0).length]);
     for (const [name, leaves] of Object.entries(found)) {
       if (leaves.length === 0) {
@@ -132,6 +135,32 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 const file = join(HERE, "..", "packages", "css", "src", "compiler", "leaves.generated.ts");
 
 /**
+ * Shorthands the engines RESET differently: a longhand one engine resets and another HAS and keeps.
+ *
+ * `-webkit-mask` is the measured case — Chromium and Firefox reset `mask-clip`, `mask-composite` and
+ * `mask-mode`, and WebKit keeps them. No split can write one page for all three, and neither can the
+ * shorthand itself: the author's own line already renders two ways. `rules.ts` refuses these, and
+ * names the longhands in question.
+ *
+ * Only engines that EXPAND the shorthand are compared, and only for a longhand the engine has; an
+ * alias counts as what it expands to — Firefox resets `-webkit-mask-position-x` by resetting
+ * `mask-position-x`, and that is not a disagreement.
+ */
+const resetsDiffer = {};
+for (const name of Object.keys(union)) {
+  for (const leaf of union[name]) {
+    const keeps = [];
+    for (const [engine, found] of Object.entries(perEngine)) {
+      const mine = found[name];
+      if (mine === undefined || mine.length < 2 || !(leaf in found)) continue;
+      const as = found[leaf].length > 0 ? found[leaf] : [leaf];
+      if (!as.every((one) => mine.includes(one))) keeps.push(engine);
+    }
+    if (keeps.length > 0) (resetsDiffer[name] ??= []).push(leaf);
+  }
+}
+
+/**
  * What is committed, kept — see `engine-facts.mjs`. A shorthand a platform does not HAVE reports no
  * leaves there, and dropping its row would stop the merge clearing them where the property exists.
  */
@@ -145,7 +174,13 @@ const sorted = Object.keys(merged);
  * `-webkit-mask-clip` is `mask-clip` in Chromium — and treating it as a longhand took it out of what
  * `mask` clears, which the first run of this did.
  */
-// The first run after this list was added finds a file without it, which is not a parse failure.
+// The first run after a list was added finds a file without it, which is not a parse failure.
+const differ = unionOfMap(
+  existsSync(file) && readFileSync(file, "utf8").includes("RESETS_DIFFER")
+    ? previousFrom(file, /RESETS_DIFFER: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\})\s*;/, {})
+    : {},
+  resetsDiffer,
+);
 const listed = existsSync(file) && readFileSync(file, "utf8").includes("LONGHAND_IN_SOME_ENGINE");
 const inSomeEngine = unionOf(
   listed ? previousFrom(file, /LONGHAND_IN_SOME_ENGINE: readonly string\[\] = (\[[\s\S]*?\])\s*;/, []) : [],
@@ -179,7 +214,14 @@ const wrote = writeOrCheck(
     ` * disagree about what they reset, and one calling it a longhand is enough. \`all\` is never here —\n` +
     ` * it covers everything by definition and has a layer of its own.\n` +
     ` */\n` +
-    `export const LONGHAND_IN_SOME_ENGINE: readonly string[] = ${JSON.stringify(inSomeEngine)};\n`,
+    `export const LONGHAND_IN_SOME_ENGINE: readonly string[] = ${JSON.stringify(inSomeEngine)};\n` +
+    `\n` +
+    `/**\n` +
+    ` * Shorthands the engines reset DIFFERENTLY, and the longhands in question — a longhand one engine\n` +
+    ` * resets and another has and keeps. The author's own line renders two ways, so \`rules.ts\`\n` +
+    ` * refuses it.\n` +
+    ` */\n` +
+    `export const RESETS_DIFFER: Readonly<Record<string, readonly string[]>> = ${JSON.stringify(differ)};\n`,
   "build-shorthand-leaves",
   check,
 );

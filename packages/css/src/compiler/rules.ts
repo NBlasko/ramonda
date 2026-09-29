@@ -1,5 +1,6 @@
 import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
+import { RESETS_DIFFER } from "./leaves.generated";
 import { SHAPES } from "./shapes.generated";
 import { holdsVar, misplacedWord } from "./split";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
@@ -120,6 +121,7 @@ export const RULE_IDS = [
   "shorthand-not-allowed",
   "word-out-of-its-longhand",
   "narrower-after-a-var-shorthand",
+  "resets-differ-across-engines",
   "string-not-allowed",
   "property-not-a-name",
   "non-canonical-spelling",
@@ -360,6 +362,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
   narrowerAfterAVarShorthand(block, findings);
+  resetsDifferAcrossEngines(block, findings);
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
   spelling(block, findings);
@@ -1249,6 +1252,45 @@ function matchArms(block: Block, findings: Finding[]): void {
  * The message names the longhands, because that is the whole of the fix and the project chose this
  * setting to be asked for them.
  */
+/**
+ * A shorthand the engines RESET differently — see `RESETS_DIFFER`, measured by
+ * `build-shorthand-leaves.mjs`.
+ *
+ * `-webkit-mask` is the case: Chromium and Firefox reset `mask-clip`, `mask-composite` and
+ * `mask-mode`, and WebKit keeps them. The author's own line renders two ways before anything here
+ * touches it, and no split can write one page for all three — so it is refused, the way a value
+ * CSS would drop is. The standard property is named where there is one, and here there is: every
+ * engine has `mask`.
+ */
+function resetsDifferAcrossEngines(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      const kept = RESETS_DIFFER[property];
+      if (kept === undefined) continue;
+
+      const standard = standardFormOf(property);
+      const instead =
+        standard !== undefined && RESETS_DIFFER[standard] === undefined
+          ? `Write \`${standard}\`, or set the longhands yourself.`
+          : "Set the longhands yourself.";
+      findings.push({
+        rule: "resets-differ-across-engines",
+        at: item.at ?? 0,
+        length: item.property.length,
+        message:
+          `\`${property}\` resets ${kept.map((one) => `\`${one}\``).join(", ")} in some browsers and not in ` +
+          `others, so this line renders differently in each. ${instead}`,
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
 function shorthandNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
   if (rules === undefined) return;
 

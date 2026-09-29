@@ -167,6 +167,11 @@ engines disagree about what they reset, so no split could write one page for all
 `build-shorthand-leaves.mjs` records them as `LONGHAND_IN_SOME_ENGINE` and `SHORTHANDS` leaves them
 out, so they sit in `u` with every other longhand.
 
+**One is refused outright**: `-webkit-mask`. Chromium and Firefox reset `mask-clip`,
+`mask-composite` and `mask-mode` with it, and WebKit keeps them, so the author's own line renders
+two ways before any split is asked. The leaves generator records it as `RESETS_DIFFER`, and
+`resets-differ-across-engines` refuses it and names `mask`, which every engine has.
+
 Of the families that reach the grammar table's generator and are not split by hand, 6 do not make
 it, and they fail at two different places. `ONLY=flex WHY_FAMILY=flex node scripts/build-grammar-shapes.mjs` says why for
 one family, and writes nothing.
