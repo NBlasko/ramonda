@@ -238,7 +238,7 @@ test("and every file already compiled is checked against the new config", async 
 
   const { saveConfig, firstLoad, server } = await serve(block, units("rem"));
   // It compiles under the config it was written for, which is the control.
-  expect((await firstLoad()).js).toEqual(["r-pt-2rem", "r-pr-2rem", "r-pb-2rem", "r-pl-2rem"]);
+  expect((await firstLoad()).js).toEqual(["r-p-", "r-pt-2rem", "r-pr-2rem", "r-pb-2rem", "r-pl-2rem"]);
 
   await saveConfig(units("px"));
 

@@ -53,9 +53,14 @@ outline-offset: 4px      r-outline_offset-4px
 **A shorthand is several classes, because it reaches the stylesheet as the longhands it sets:**
 
 ```
-padding: 12px            r-pt-12px r-pr-12px r-pb-12px r-pl-12px
-padding: 4px 0           r-pt-4px r-pr-0 r-pb-4px r-pl-0
+padding: 12px            r-p- r-pt-12px r-pr-12px r-pb-12px r-pl-12px
+padding: 4px 0           r-p- r-pt-4px r-pr-0 r-pb-4px r-pl-0
 ```
+
+The first one, `r-p-`, has no rule and sets nothing — its value is empty, which is how you can
+tell it apart. It tells a merge that a whole `padding` was
+written here, so everything `padding` covers is cleared first. That matters for a package built by
+an older release, whose classes may not match the ones this release writes.
 
 That is what lets two blocks settle their own conflicts without the stylesheet: no two classes on an
 element set the same property, so a `padding-left` written after a `padding` simply replaces it —

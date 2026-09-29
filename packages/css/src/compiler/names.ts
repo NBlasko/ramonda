@@ -360,6 +360,27 @@ function contextOf(selector: string, conditions: readonly string[]): string | un
 }
 
 /**
+ * The class that goes in front of a split's pieces: the FAMILY's key and an EMPTY value, `r-p-`.
+ *
+ * It has no rule, so it sets nothing on a page. It is there for the merge, which reads a key out of
+ * every class: this one says a whole shorthand was written here, so everything the family covers,
+ * written earlier, is cleared before the pieces land. Without it the pieces clear only their own
+ * keys, and two things are left standing that CSS would reset. Both measured in all three engines:
+ *
+ * - a longhand this release's split has no piece for — a package built before CSS added it;
+ * - a class an older release wrote for the WHOLE property, when it was still a longhand — `overflow`
+ *   before `overflow-x` and `overflow-y`. The key is the same, so the marker replaces it.
+ *
+ * **The empty value is what makes it recognisable**, and nothing else would: no declaration has an
+ * empty value, while a class with no value at all is also what a named site compiles to. So a class
+ * ending in `-` is a marker, always — which is how `check-css-splitting` tells it from a class
+ * whose rule is missing.
+ */
+export function markerFor(family: string, selector: string, conditions: readonly string[]): string {
+  return `r-${keyToken({ property: family, selector, conditions })}-`;
+}
+
+/**
  * The KEY a class name carries: **what this declaration sets**, written into the name itself.
  *
  * ## Why a class has to carry it

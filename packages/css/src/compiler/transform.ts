@@ -3,7 +3,7 @@ import { segments } from "./flatten";
 import type { AtomicDeclaration } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
 import { keyIn } from "../key";
-import { classNameFor, nameForSite, nameFor, substitute, variableNameFor, writableProperty } from "./names";
+import { classNameFor, markerFor, nameForSite, nameFor, substitute, variableNameFor, writableProperty } from "./names";
 import type { Config } from "../config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
@@ -605,6 +605,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
        */
       type Part = { kind: "classes"; written: string[] } | { kind: "match"; group: AtomicDeclaration[] };
       const parts: Part[] = [];
+      /** The families whose marker this segment already carries — see `markerFor`. */
+      const marked = new Set<string>();
 
       for (let index = 0; index < segment.items.length; index++) {
         const group = armsFrom(index);
@@ -631,9 +633,18 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         namesFor(declaration);
         clears(declaration);
 
+        // A split's pieces go in after their family's marker, which has to come FIRST: the merge
+        // reads left to right, and the marker clears what the pieces are about to set.
+        const marker =
+          declaration.from === undefined
+            ? undefined
+            : markerFor(declaration.from, declaration.selector, declaration.conditions);
+        const written = marker === undefined || marked.has(marker) ? [own] : [marker, own];
+        if (marker !== undefined) marked.add(marker);
+
         const last = parts[parts.length - 1];
-        if (last !== undefined && last.kind === "classes") last.written.push(own);
-        else parts.push({ kind: "classes", written: [own] });
+        if (last !== undefined && last.kind === "classes") last.written.push(...written);
+        else parts.push({ kind: "classes", written });
       }
 
       /** An empty group sets nothing, and an empty string is what a merge skips. */

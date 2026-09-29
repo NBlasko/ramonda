@@ -121,6 +121,8 @@ describe("what a module registers", () => {
     expect(theCard.split(" ").sort()).toEqual(
       [
         ...theBase.split(" ").filter((one) => !one.startsWith("r-pl-")),
+        // The family's marker, which carries no rule — see `markerFor`.
+        "r-p-",
         "r-pt-8px",
         "r-pr-8px",
         "r-pb-8px",
@@ -200,7 +202,14 @@ describe("a reuse inside a reuse", () => {
     const rules = new Map((out?.blocks ?? []).map((one) => [one.className, one.css]));
     // `gap` and `padding` reach the sheet as their longhands, so the claim — each level overrides
     // the one below and nothing else — is now made one property at a time.
-    expect(named.map((one) => rules.get(one)).sort()).toEqual([
+    // A split's marker has no rule; it is there for the merge — see `markerFor`.
+    expect(named.filter((one) => !rules.has(one)).sort()).toEqual(["r-gap-", "r-p-"]);
+    expect(
+      named
+        .filter((one) => rules.has(one))
+        .map((one) => rules.get(one))
+        .sort(),
+    ).toEqual([
       "color:red;",
       "column-gap:2px;",
       "padding-bottom:3px;",
@@ -490,7 +499,7 @@ describe("the nesting shapes nothing reached", () => {
     const out = emit(`const card = @@(\n  &:hover { padding: 8px; }\n);\n`);
 
     expect(out).not.toContain("_clears");
-    expect(out).toContain('"r-:hover.pt-8px r-:hover.pr-8px r-:hover.pb-8px r-:hover.pl-8px"');
+    expect(out).toContain('"r-:hover.p- r-:hover.pt-8px r-:hover.pr-8px r-:hover.pb-8px r-:hover.pl-8px"');
   });
 
   test("and one that is not still registers its longhands, by property", () => {
@@ -658,5 +667,52 @@ describe("two conditions the code decides", () => {
     );
 
     expect(out).toMatch(/_merge\(p && "r-c-red",\s*q && "r-c-blue"\)/);
+  });
+});
+
+describe("a split meets a package built by an older release", () => {
+  /** A block compiled by THIS release, run the way a module runs it. */
+  const compiled = (block: string): string => {
+    const out = transform(`const a = @@( ${block} );\n`, { filename: "App.tsx" });
+    const code = (out?.code ?? "")
+      .split("\n")
+      .filter((line) => !line.startsWith("import "))
+      .join("\n");
+    return new Function("_merge", "_clears", "_under", "_named", `${code}\nreturn a;`)(
+      mergeClassNames,
+      shorthands,
+      conditionsOf,
+      namesOf,
+    ) as string;
+  };
+  const has = (classes: string, prefix: string) => classes.split(" ").some((one) => one.startsWith(prefix));
+
+  /**
+   * `overflow` was one property before it became `overflow-x` and `overflow-y`. A package built
+   * then carries a class for the whole property, in the layer every longhand used, and a split
+   * written LATER has to replace it. Measured in all three engines before this: the old class won.
+   */
+  test("a split replaces the class an older release wrote for the whole property", () => {
+    const older = `r-${keyToken({ property: "overflow", selector: "", conditions: [] })}-hidden`;
+    const merged = String(mergeClassNames(older, compiled("overflow: auto;")));
+
+    expect(merged.split(" ")).not.toContain(older);
+    expect(has(merged, "r-overflow_x-auto")).toBe(true);
+  });
+
+  /**
+   * And the other way: a longhand the older release never knew. Its split of `text-decoration`
+   * has no piece for `text-decoration-thickness`, so it cannot replace one — and CSS resets it.
+   * Simulated by taking that piece out of today's split.
+   */
+  test("an older split still clears a longhand it had no piece for", () => {
+    const thickness = `r-${keyToken({ property: "text-decoration-thickness", selector: "", conditions: [] })}-7px`;
+    const older = compiled("text-decoration: underline;")
+      .split(" ")
+      .filter((one) => !one.startsWith("r-text_decoration_thickness-"))
+      .join(" ");
+    const merged = String(mergeClassNames(thickness, older));
+
+    expect(merged.split(" ")).not.toContain(thickness);
   });
 });

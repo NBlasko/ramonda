@@ -145,7 +145,13 @@ describe("a build", () => {
     const named = (/"(r-[^"]+)"/.exec(js ?? "")?.[1] ?? "").split(" ");
 
     expect(named.length).toBeGreaterThan(0);
-    for (const one of named) expect(css, `${one} is named by the JavaScript`).toContain(`.${one}`);
+    // Except the marker a split puts in front of its pieces, which sets nothing and so has no rule —
+    // see `markerFor`. `gap` splits, so it is there, and only it.
+    const markers: string[] = named.filter((one) => one === "r-gap-");
+    expect(markers).toEqual(["r-gap-"]);
+    expect(css).not.toMatch(/\.r-gap-\s*\{/);
+    for (const one of named.filter((one) => !markers.includes(one)))
+      expect(css, `${one} is named by the JavaScript`).toContain(`.${one}`);
   });
 
   /**

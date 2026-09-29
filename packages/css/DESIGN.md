@@ -4821,6 +4821,22 @@ border: var(--x);        then border-top: var(--y)    both stay; the NARROWER mu
 **Optional, and not needed for correctness:** a config switch `shorthands: "never"`, enforced by the
 types, for projects that want only longhands. The default stays: shorthands are supported.
 
+**Measured 2026-09-29, and two holes found that the plan did not name.** Through the merge, the
+three cases above hold as expected: with `v`, only the third follows sheet order. But a package
+built by an OLDER release broke three ways, all engines, with or without `v`:
+
+```
+A1  app border-top-color, then an old package's border: var(--x)   the longhand survived
+A2  app text-decoration-thickness, then an old split of text-decoration   survived
+B1  an old package's overflow (a longhand then), then the app's split overflow   the old class won
+```
+
+The merge knew only what the OLD module registered. Fixed in two steps, both built: the runtime
+carries what every shorthand clears (`clears.generated.ts`, 3.2 KB gzipped — the runtime on a page is
+the application's, the newest release present), and a split puts its family's key in front of its
+pieces as a class with no rule (`markerFor`), so the merge clears the family before they land.
+Merge time measured the same within noise, 13.9 µs against 14.4.
+
 **Measure BEFORE building.** Everything above is reasoned from what the merge does. The first step is
 the three cases in all three engines, against the same lines written by hand. If a case
 disagrees, the plan changes.
