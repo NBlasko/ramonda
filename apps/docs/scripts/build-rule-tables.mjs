@@ -293,6 +293,8 @@ const CSS_LINES = {
   "word-out-of-its-longhand": "a word one longhand of a shorthand has no place for — CSS drops the whole declaration",
   "resets-differ-across-engines":
     "a shorthand browsers reset differently, like `-webkit-mask` — the line renders two ways; write `mask`",
+  "value-differs-across-engines":
+    "a value browsers read differently, like `animation: auto` — the line renders two ways",
   "narrower-after-a-whole-shorthand":
     "a narrower shorthand after a wider one, both reaching the stylesheet whole — no order keeps it winning",
   "literal-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from variables",

@@ -207,7 +207,8 @@ write half of a value the browser ignores. Four ways that happens, each refused 
 
 **And one VALUE the engines disagree about.** `animation: auto` is `animation-name: auto` in
 Firefox and touches nothing in Chromium or WebKit, so no single split writes the same page in all
-three. It is listed as `contested` on the shape and refused on its own.
+three. It is listed as `contested` on the shape, and the build refuses it as
+`value-differs-across-engines` — the author's own line renders two ways, so it is not an option.
 
 **Known and not fixed**: `container: card / inline-size` is refused. The positional learner never
 learned the slash form for `container` — its patterns are `1` to `4` — so every value with the `/`

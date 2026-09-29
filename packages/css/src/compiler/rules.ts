@@ -1,5 +1,6 @@
 import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
+import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
 import { RESETS_DIFFER } from "./leaves.generated";
 import { SHAPES } from "./shapes.generated";
 import { holdsVar, misplacedWord } from "./split";
@@ -122,6 +123,7 @@ export const RULE_IDS = [
   "word-out-of-its-longhand",
   "narrower-after-a-whole-shorthand",
   "resets-differ-across-engines",
+  "value-differs-across-engines",
   "string-not-allowed",
   "property-not-a-name",
   "non-canonical-spelling",
@@ -363,6 +365,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   overrideOutOfOrder(block, findings);
   narrowerAfterAWholeShorthand(block, findings);
   resetsDifferAcrossEngines(block, findings);
+  valueDiffersAcrossEngines(block, findings);
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
   spelling(block, findings);
@@ -1286,6 +1289,50 @@ function resetsDifferAcrossEngines(block: Block, findings: Finding[]): void {
           `\`${property}\` resets ${kept.map((one) => `\`${one}\``).join(", ")} in some browsers and not in ` +
           `others, so this line renders differently in each. ${instead}`,
       });
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A VALUE the engines read differently — `contested` on a grammar shape, which the generator
+ * measures. `animation: auto` is `animation-name: auto` in Firefox and touches nothing in Chromium
+ * or WebKit, so the author's line renders two ways. It is refused, as a shorthand the engines reset
+ * differently is: a value this package cannot make render one way is not an option.
+ */
+function valueDiffersAcrossEngines(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      const contested = GRAMMAR_SHAPES[property]?.contested;
+      if (contested === undefined) continue;
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+        // The WORD's own position — not the first place its letters appear, inside `autoslide`.
+        let word: string | undefined;
+        let at = 0;
+        for (const one of part.text.split(/([\s,]+)/)) {
+          if (contested.includes(one)) {
+            word = one;
+            break;
+          }
+          at += one.length;
+        }
+        if (word === undefined) continue;
+        findings.push({
+          rule: "value-differs-across-engines",
+          at: part.at + at,
+          length: word.length,
+          message:
+            `\`${word}\` in \`${property}\` is read differently by different browsers, so this line renders ` +
+            `differently in each. Set the longhand you mean yourself.`,
+        });
+        break;
+      }
     }
   };
   walkItems(block.items);
