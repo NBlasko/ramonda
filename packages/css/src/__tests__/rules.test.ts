@@ -4854,3 +4854,12 @@ describe("a value the engines read differently", () => {
     expect(found(css).map((one) => one.rule)).not.toContain("value-differs-across-engines");
   });
 });
+
+describe("an unspaced combinator", () => {
+  test("is reported, and the formatter is what fixes it", () => {
+    const source = `<div className={@@(\n&>span { color: red; }\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    expect(checkBlock(read.block, {}).map((one) => one.rule)).toContain("non-canonical-spelling");
+  });
+});
