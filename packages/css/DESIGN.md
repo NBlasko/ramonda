@@ -3674,21 +3674,44 @@ reaches the sheet whole, in `v`, where a longhand after it still wins. It only d
 rule; then the values above go on `check-must-split.mjs`.
 
 
-### 19. Which block gave an element a class — an IDEA, not planned
+### 19. Which block gave an element its styles — AGREED 2026-09-30, not built
 
 Dev source maps point each rule at where it was written (`order.md`, "From a rule back to the line
 that wrote it"). A class written in several places is one rule with several origins, so a style
 panel lists all of them, and nothing in the page says which one THIS element's class came from.
 
-**Why a browser extension would not know either:** it sees the element and its classes, and the
-block a class came from is known only while rendering — `mergeClassNames` joins blocks from several
-files, and a string of classes is what is left. Guessing from the element's component is wrong
-whenever a block arrives as a `css` prop or through `...{base}`.
+**Rejected first, and why:**
+- a browser extension (Chrome, Firefox) — it sees the element and its classes, and which BLOCK gave
+  a class is known only while rendering; guessing from the element's component is wrong whenever a
+  block arrives as a `css` prop or through `...{base}`. Two extensions to maintain, for a guess;
+- a dev-only custom property in every rule, `--r-src: "Card.tsx:14"` — it sits in the RULE, which
+  is shared, so it has the same several-origins problem as the map; it inherits to every child;
+- a suffix on dev class names — dev and production would carry different classes, and the merge
+  reads classes, so the two could behave differently;
+- a `data-style-src` attribute, as StyleX's debug mode spreads onto an element — a block here is a
+  string, so the framework would have to set it; the class below needs no change to core.
 
-**What would answer it:** in development only, the runtime records which block — file and line, as
-the compiler already knows — produced each class string, and `@ramonda/devtools` shows it for a
-picked element. No extension, every browser. The user asked about it on 2026-09-30 and chose to
-leave it as an idea.
+**Agreed: a dev-only class that names the block, with no rule.** Each block's class string gets one
+more class in development, `r:src:Card.tsx:10` (spelling to settle): file and line of the `@@`.
+
+- It has **no CSS rule**, so it styles nothing, and it does not start with `r-`, so the merge never
+  reads it as a style key — styles and winners are the same in development and production.
+- It has its own **prefix the merge recognises** as a source mark.
+- **A spread leaves no mark.** `const card = @@( ...{base}; … )` in `Card.tsx:10`: the element shows
+  `Card.tsx:10` only. In development the compiler passes a spread's base through a helper that drops
+  its source marks, and the block adds its own. What matters is where a block is USED, not where a
+  piece of it came from.
+- **Blocks used side by side keep all their marks.** `mergeClassNames(card, props.css)`, with
+  `props.css` written in `Page.tsx:22`, shows both `Card.tsx:10` and `Page.tsx:22`: the two are
+  equal, so both are shown (the user's decision).
+- Production has none of it.
+
+**Known costs:** a test comparing a whole `className` string sees the marks in development
+(`toHaveClass` does not); a block whose every declaration was overridden still leaves its mark,
+since the merge cannot tell a live source from a dead one; dev HTML grows by a class per block.
+
+**Open when it is built:** the exact spelling of the mark (it must be a valid class token and read
+well in the Elements panel); whether the path is relative to the project root.
 
 ### The name it ended up with
 
