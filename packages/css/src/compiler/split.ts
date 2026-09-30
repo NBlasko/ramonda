@@ -2,7 +2,7 @@ import { holdsVar } from "../holdsVar";
 import { BY_HAND } from "./splitByHand";
 import { GRAMMAR_SHAPES, type GrammarLeaf, type GrammarShape } from "./grammarShapes.generated";
 import { INITIAL_VALUES } from "./initials.generated";
-import { KEYWORDS, UNIT_TYPE } from "./keywords.generated";
+import { KEYWORDS, UNIT_TYPE, VALUE_WORDS } from "./keywords.generated";
 import { matchValue } from "./matchValue";
 import { type Shape, SHAPES } from "./shapes.generated";
 import type { Term } from "./valueSyntax";
@@ -107,6 +107,9 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
    * still past this — the boundary, and the reason the refusal path exists.
    */
   if (!shape.negative && tokensOf(value, /[\s/]/).some((one) => /^-\.?\d/.test(one))) return undefined;
+  // A percentage where the family refuses one, for the same reason: `scroll-margin: 10% 5px` sets
+  // nothing, and a split would set the 5px. Anywhere in a token, so `calc(1px + 2%)` counts too.
+  if (shape.percent === false && tokensOf(value, /[\s/]/).some((one) => one.includes("%"))) return undefined;
 
   const sides = tokensOf(value, /\//).map((one) => tokensOf(one));
   const mapping = shape.patterns[sides.map((one) => one.length).join("/")];
@@ -259,11 +262,16 @@ export function splitOf(property: string, value: string): Record<string, string>
   const bang = IMPORTANT.exec(value);
   const bare = bang === null ? value : value.slice(0, bang.index);
 
+  // An EMPTY item — `transition: 1s,`, `1s,,2s` — is invalid CSS in every family, and a browser
+  // drops the whole declaration. `tokensOf` skips empty items, so without this the split read
+  // `1s,` as `1s` and set it.
+  if (emptyItem(bare)) return undefined;
+
   const positional = SHAPES[property];
   const grammar = GRAMMAR_SHAPES[property];
   const byHand = BY_HAND[property];
   /**
-   * By hand FIRST where a family has it. Sixteen families have both — `background-position`,
+   * By hand FIRST where a family has it. Seventeen families have both — `background-position`,
    * `animation-range`, `place-*`, `grid-row`/`-column`, `border-radius` among them — and the table
    * was the weaker answer each time: learned from sentinels, it read a value unlike them wrong or
    * not at all. The hand rules are checked against all three engines, value by value, by
@@ -278,7 +286,7 @@ export function splitOf(property: string, value: string): Record<string, string>
       ? !holdsVar(bare) && !tokensOf(bare).some((one) => WIDE.includes(one.toLowerCase()))
         ? // A CSS-wide keyword is refused here rather than spread: `grid-area: inherit` would
           // otherwise read as a line NAME, and be copied into the three lines left out.
-          byHand(bare.trim())
+          byHand(keywordsFolded(property, bare.trim()))
         : undefined
       : positional !== undefined
         ? splitPositional(positional, bare)
@@ -448,6 +456,44 @@ function byGrammar(shape: GrammarShape, value: string): Record<string, string> |
   return out;
 }
 
+/** Whether a value has an empty comma-separated item, outside quotes and parentheses. */
+function emptyItem(value: string): boolean {
+  let depth = 0;
+  let quote = "";
+  let held = false;
+  let commas = 0;
+  for (const ch of value) {
+    if (quote !== "") {
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      held = true;
+    } else if (ch === "(") {
+      depth++;
+      held = true;
+    } else if (ch === ")") depth--;
+    else if (ch === "," && depth === 0) {
+      if (!held) return true;
+      commas++;
+      held = false;
+    } else if (!/\s/.test(ch)) held = true;
+  }
+  return commas > 0 && !held;
+}
+
+/**
+ * Families that are not a list, but whose LAST longhand is one — keyed by the family's longhands.
+ *
+ * The grammar table cannot say this: a longhand appears in the tree as a name, not as its own
+ * grammar. `position-try: --a, --b` reached the sheet whole until `check-must-split.mjs` asked for
+ * it. The one family measured to be shaped so; the gates check each value of it in all engines.
+ */
+const COMMA_IN_LAST: Readonly<Record<string, string>> = {
+  "position-try-fallbacks position-try-order": "position-try-fallbacks",
+};
+
 /**
  * Split by the grammar, one value or a comma-separated list of them.
  *
@@ -478,8 +524,23 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
   }
 
   if (shape.list !== true) {
-    if (tokensOf(value, /,/).length > 1) return undefined;
-    return byGrammar(shape, value);
+    const items = tokensOf(value, /,/).map((one) => one.trim());
+    if (items.length === 1) return byGrammar(shape, value);
+    const listed = COMMA_IN_LAST[shape.longhands.join(" ")];
+    if (listed === undefined || items.some((one) => one === "")) return undefined;
+    /**
+     * A family whose LAST longhand is the comma list: `position-try: most-width --a, --b` is one
+     * order and the fallbacks `--a, --b`. The first item is read whole, order and all; every later
+     * item may hold only a fallback, and `none` is a whole value, never one item of a list.
+     */
+    const per = items.map((one) => byGrammar(shape, one));
+    if (per.some((one) => one === undefined)) return undefined;
+    const read = per as Record<string, string>[];
+    for (const [at, each] of read.entries()) {
+      if ((each[listed] ?? "initial").toLowerCase() === "none") return undefined;
+      if (at > 0 && Object.entries(each).some(([one, held]) => one !== listed && held !== "initial")) return undefined;
+    }
+    return { ...read[0], [listed]: read.map((each) => each[listed]).join(", ") };
   }
 
   const items = tokensOf(value, /,/).map((one) => one.trim());
@@ -525,5 +586,49 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
     if (written === undefined) return undefined;
     out[longhand] = written;
   }
+  return out;
+}
+
+/**
+ * A value with the property's KEYWORDS in lower case, and everything else as written.
+ *
+ * The compiler folds a keyword's case only for a property whose values are a closed list, so a
+ * property that also takes names of the author's own — `grid-column`, `font`, `container` — reached
+ * the hand rules as written: `grid-column: SPAN 2` matched nothing and stayed whole, though every
+ * engine takes it, CSS keywords ignoring case. Folded here, word by word, and only a word the
+ * property lists; a quoted string, a function's contents and a name keep their case — a container's
+ * NAME is before its `/`, and only the type after it is folded.
+ */
+function keywordsFolded(property: string, value: string): string {
+  const words = new Set((VALUE_WORDS[property] ?? "").split(" ").filter((one) => one !== "" && !one.endsWith("()")));
+  if (words.size === 0) return value;
+  let out = "";
+  let word = "";
+  let depth = 0;
+  let quote = "";
+  // Before the `/`, a container's words are its NAMES, which are the author's and case-sensitive.
+  let folding = property !== "container";
+  const flush = () => {
+    out += folding && words.has(word.toLowerCase()) ? word.toLowerCase() : word;
+    word = "";
+  };
+  for (const ch of value) {
+    if (quote !== "") {
+      out += ch;
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (depth === 0 && /[\w-]/.test(ch)) {
+      word += ch;
+      continue;
+    }
+    flush();
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (depth === 0 && ch === "/") folding = true;
+    out += ch;
+  }
+  flush();
   return out;
 }

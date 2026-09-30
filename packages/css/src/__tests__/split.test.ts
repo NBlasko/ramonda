@@ -989,3 +989,89 @@ describe("what the review found in the splitter", () => {
     expect(splitOf("margin", "attr(data-m type(<length>))")).toBeUndefined();
   });
 });
+
+/**
+ * A keyword in any case, where the property also takes names of the author's own. The compiler
+ * folds a keyword's case only for a property with a closed list, so `grid-column: SPAN 2` reached
+ * the splitter as written, matched no rule, and stayed whole — every engine takes it, since CSS
+ * keywords ignore case. The third review found it; a name of the author's keeps its case.
+ */
+describe("a keyword in any case, beside names", () => {
+  test.each([
+    ["grid-column", "SPAN 2", { "grid-column-start": "span 2", "grid-column-end": "auto" }],
+    [
+      "grid-area",
+      "Auto",
+      { "grid-row-start": "auto", "grid-column-start": "auto", "grid-row-end": "auto", "grid-column-end": "auto" },
+    ],
+    ["container", "card / Inline-Size", { "container-name": "card", "container-type": "inline-size" }],
+  ])("%s: %s", (family, value, expected) => {
+    expect(splitOf(family, value)).toEqual(expected);
+  });
+
+  test("font: BOLD 12px serif splits", () => {
+    expect(splitOf("font", "BOLD 12px serif")?.["font-weight"]).toBe("bold");
+  });
+
+  test("a name of the author's keeps its case", () => {
+    expect(splitOf("container", "Size / size")).toEqual({ "container-name": "Size", "container-type": "size" });
+    expect(splitOf("grid-area", "Header")?.["grid-row-start"]).toBe("Header");
+  });
+});
+
+/**
+ * What `check-must-split.mjs` found once every family that splits was put on it. Each of these
+ * reached the sheet whole, or split where a browser drops the declaration.
+ */
+describe("what the must-split list found in every family", () => {
+  test("scroll-margin takes no percentage, and still splits a value of two lengths", () => {
+    expect(splitOf("scroll-margin", "0 8px")).toEqual({
+      "scroll-margin-top": "0",
+      "scroll-margin-right": "8px",
+      "scroll-margin-bottom": "0",
+      "scroll-margin-left": "8px",
+    });
+    expect(splitOf("scroll-margin-block", "4px -8px")).toEqual({
+      "scroll-margin-block-start": "4px",
+      "scroll-margin-block-end": "-8px",
+    });
+  });
+
+  test("a percentage where the family refuses one keeps the shorthand; where it takes one, splits", () => {
+    expect(splitOf("scroll-margin", "10% 5px")).toBeUndefined();
+    expect(splitOf("scroll-margin", "calc(1px + 2%)")).toBeUndefined();
+    expect(splitOf("margin", "10% 5px")?.["margin-top"]).toBe("10%");
+    // A colour family is never asked: `rgb(10% 0% 0%)` is a colour, not a percentage.
+    expect(splitOf("border-color", "rgb(10% 0% 0%) blue")?.["border-top-color"]).toBe("rgb(10% 0% 0%)");
+  });
+
+  test("position-try splits a list of fallbacks, with the order on the first item only", () => {
+    expect(splitOf("position-try", "--a, --b")).toEqual({
+      "position-try-order": "initial",
+      "position-try-fallbacks": "--a, --b",
+    });
+    expect(splitOf("position-try", "most-width --a, --b")).toEqual({
+      "position-try-order": "most-width",
+      "position-try-fallbacks": "--a, --b",
+    });
+    expect(splitOf("position-try", "--a, most-width --b")).toBeUndefined();
+    expect(splitOf("position-try", "none, --a")).toBeUndefined();
+    expect(splitOf("position-try", "--a, none")).toBeUndefined();
+  });
+
+  test.each([
+    ["transition", "1s,"],
+    ["transition", ",1s"],
+    ["transition", "1s,,2s"],
+    ["animation", "a 1s,"],
+    ["padding", "1px,"],
+    ["position-try", "--a,"],
+  ])("an empty item is invalid CSS and keeps the shorthand — %s: %s", (family, value) => {
+    expect(splitOf(family, value)).toBeUndefined();
+  });
+
+  test("a comma in a quote or a function is not an item", () => {
+    expect(splitOf("font", '12px "a,"')?.["font-family"]).toBe('"a,"');
+    expect(splitOf("transition", "opacity cubic-bezier(0,0,1,1)")?.["transition-property"]).toBe("opacity");
+  });
+});

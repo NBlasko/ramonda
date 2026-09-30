@@ -147,10 +147,12 @@ pnpm check                           # the whole gate, from the repo root
 `-webkit-mask`, below.
 
 `SHAPES` answers a POSITIONAL family — how many values were written decides which longhand each one
-feeds, and no grammar is needed at all. **44 families.**
+feeds, and no grammar is needed at all. **48 families.** A length family also carries whether it
+takes a negative and a percentage, asked of the engines: `scroll-margin` takes no `10%`, and a split
+of `scroll-margin: 10% 5px` would set the `5px` a browser drops with the rest.
 
 Everything else is read against the family's own grammar, opened by `openGrammar.ts` until every
-leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **30 families**, including
+leaf belongs to a longhand and carried in `grammarShapes.generated.ts`. **27 families**, including
 `animation`, `transition` and `font-variant`, none of which a flat list of slots can hold.
 
 `splitByHand.ts` answers the families that fit neither, with CSS's own rules written out: a keyword
@@ -160,7 +162,7 @@ of `<position>` for `background-position`, `mask-position` and `-webkit-mask-pos
 `background` and `mask` layer by layer on top of it, `font`, the ranges of `animation-range` and
 `timeline-trigger`, `grid` and `grid-template` with their area strings, and `mask-border`.
 **34 by hand.**
-Sixteen of them are in a table too, and the hand rules win: a table is learned from sentinels, and
+Seventeen of them are in a table too, and the hand rules win: a table is learned from sentinels, and
 a value no sentinel was ever like it read wrong or not at all. `grid-column: 2` set the end to `2`
 where every engine says `auto`; `animation-range: cover` ran to `normal`, not to `cover`; and
 `grid-column: 1 / -1`, `columns: 2`, `place-items: first baseline` did not split. The first two

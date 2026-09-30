@@ -210,6 +210,18 @@ async function measure(against) {
             a.style.cssText = `${name}: -5px`;
             return a.style.cssText !== "";
           };
+          /**
+           * Whether the family takes a PERCENTAGE, asked the same way and for the same reason.
+           *
+           * `scroll-margin` takes lengths and no percentage, where `margin` takes both — so the
+           * corpus's `10%` failed it in every engine, the family fell to the grammar table, and
+           * `scroll-margin: 0 8px` reached the sheet whole. Found by `check-must-split.mjs`.
+           */
+          const takesPercent = (name) => {
+            a.style.cssText = "";
+            a.style.cssText = `${name}: 10%`;
+            return a.style.cssText !== "";
+          };
           for (let [name, shape] of Object.entries({ ...against, ...learned })) {
             const domain = DOMAINS.find((one) => one.kind === shape.kind);
             if (domain === undefined) continue;
@@ -238,6 +250,10 @@ async function measure(against) {
                 }),
               ),
             };
+            // Measured before the corpus, so the corpus checks the shape the table will carry.
+            if (shape.kind === "length")
+              shape = { ...shape, negative: takesNegative(name), percent: takesPercent(name) };
+            else shape = { ...shape, negative: takesNegative(name) };
             let sound = true;
             for (const pattern of PATTERNS) {
               if (shape.patterns[pattern.key] === undefined || !sound) continue;
@@ -286,7 +302,12 @@ async function measure(against) {
               }
             }
             if (!sound) rejected.push(name);
-            else if (learned[name] !== undefined) kept[name] = { ...shape, negative: takesNegative(name) };
+            else if (learned[name] !== undefined)
+              kept[name] = {
+                ...shape,
+                negative: takesNegative(name),
+                ...(shape.kind === "length" ? { percent: takesPercent(name) } : {}),
+              };
           }
           return { kept, rejected, learned };
         },
@@ -350,6 +371,10 @@ for (const name of names) {
     refused.push(`${name} (the engines disagree about whether it takes a negative length)`);
     continue;
   }
+  if (saw.some((one) => perEngine[one].kept[name].percent !== first.percent)) {
+    refused.push(`${name} (the engines disagree about whether it takes a percentage)`);
+    continue;
+  }
   if (saw.some((one) => perEngine[one].kept[name].kind !== first.kind)) {
     refused.push(`${name} (the engines disagree about which sentinels it takes)`);
     continue;
@@ -389,7 +414,14 @@ for (const name of names) {
       return [longhand, alone.length === one.words.length ? bare : { ...bare, alone }];
     }),
   );
-  if (Object.keys(patterns).length > 0) agreed[name] = { kind: first.kind, negative: first.negative, takes, patterns };
+  if (Object.keys(patterns).length > 0)
+    agreed[name] = {
+      kind: first.kind,
+      negative: first.negative,
+      ...(first.percent === undefined ? {} : { percent: first.percent }),
+      takes,
+      patterns,
+    };
 }
 
 /**
@@ -453,6 +485,11 @@ const wrote = writeOrCheck(
     `  readonly takes?: Readonly<Record<string, { readonly words: readonly string[]; readonly free: boolean; readonly alone?: readonly string[] }>>;\n` +
     `  /** Whether it takes a NEGATIVE length. Where it does not, a value holding one is not split. */\n` +
     `  readonly negative: boolean;\n` +
+    `  /**\n` +
+    `   * Whether a LENGTH family takes a percentage. Where it does not, a value holding one is not\n` +
+    `   * split. Absent for any other kind: \`rgb(10% 0% 0%)\` is a colour, not a percentage.\n` +
+    `   */\n` +
+    `  readonly percent?: boolean;\n` +
     `  /** Keyed the way the value is written — \`2\`, \`2/2\`, \`1/1/1/1\`. */\n` +
     `  readonly patterns: Readonly<Record<string, Readonly<Record<string, Slot>>>>;\n` +
     `}\n` +
