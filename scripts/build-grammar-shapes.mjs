@@ -339,6 +339,9 @@ const perEngine = {};
 const disputed = {};
 /** Per engine, per family: the longhands IT resets once rather than per item. */
 const once = {};
+/** Per engine, per family: the one-word values it TAKES, and those it refuses — see `partial`. */
+const tookWords = {};
+const refusedWords = {};
 for (const engine of ENGINES) {
   let browser;
   try {
@@ -351,6 +354,8 @@ for (const engine of ENGINES) {
     const blind = [];
     disputed[engine] = {};
     once[engine] = {};
+    tookWords[engine] = {};
+    refusedWords[engine] = {};
     for (const name of candidates) {
       const shape = openedShape(name);
       if (shape === undefined) {
@@ -389,7 +394,14 @@ for (const engine of ENGINES) {
       let compared = 0;
       /** The values this engine read differently from our split, which is not yet a verdict. */
       const differed = [];
-      for (const value of await corpusFor(tab, name, asking, reorders(name))) {
+      /**
+       * And every WORD any leaf takes, alone. The corpus samples one per leaf — `balance` for
+       * `text-wrap-style` — so a word one engine lacks was never asked: `pretty`, which Firefox
+       * refuses, sat in the table split. See `partial`.
+       */
+      const words = [...new Set(asking.leaves.flatMap((leaf) => leaf.words ?? []))];
+      const corpus = [...new Set([...(await corpusFor(tab, name, asking, reorders(name))), ...words])];
+      for (const value of corpus) {
         const split = splitByGrammar(asking, value);
         if (split === undefined) {
           if (process.env.WHY_FAMILY === name)
@@ -419,6 +431,10 @@ for (const engine of ENGINES) {
           console.error(
             `[why] ${engine} ${JSON.stringify(value)} -> ${differ === null ? "motor odbija" : differ === "" ? "isto" : differ}`,
           );
+        if (!value.includes(" ") && !value.includes(",")) {
+          const into = differ === null ? refusedWords : tookWords;
+          (into[engine][name] ??= new Set()).add(value.toLowerCase());
+        }
         if (differ === null) continue; // The engine will not take the value; nothing to compare.
         compared++;
         if (differ !== "") differed.push(value);
@@ -490,6 +506,13 @@ const printed = (value) =>
  */
 const contested = {};
 const resetOnce = {};
+/**
+ * Words one engine takes and another that HAS the family refuses — `text-wrap: pretty`, which
+ * Firefox does not have. That engine drops the whole declaration, and a split would still set the
+ * rest there, so a value holding one keeps its shorthand. Not `contested`: nobody reads it
+ * differently, one engine lacks it, and the author writing it expects exactly that.
+ */
+const partial = {};
 for (const name of [...new Set(engines.flatMap((one) => Object.keys(perEngine[one].shapes)))]) {
   const holders = engines.filter((one) => perEngine[one].shapes[name] !== undefined);
   const seen = new Map();
@@ -530,6 +553,12 @@ for (const name of [...new Set(engines.flatMap((one) => Object.keys(perEngine[on
   }
   if (some.length > 0) contested[name] = [...some].sort();
 
+  const lacking = new Set();
+  for (const refuser of holders)
+    for (const word of refusedWords[refuser]?.[name] ?? [])
+      if (holders.some((taker) => taker !== refuser && tookWords[taker]?.[name]?.has(word))) lacking.add(word);
+  if (lacking.size > 0) partial[name] = [...lacking].sort();
+
   /**
    * `resetOnce` is merged here for the reason everything engine-specific is: a longhand an engine
    * does not HAVE reads as reset-once for want of an answer, and baking that into its shape made
@@ -549,6 +578,7 @@ for (const name of [...new Set(engines.flatMap((one) => Object.keys(perEngine[on
   agreed[name] = {
     ...said[0],
     ...(contested[name] === undefined ? {} : { contested: contested[name] }),
+    ...(partial[name] === undefined ? {} : { partial: partial[name] }),
     ...(resetOnce[name] === undefined ? {} : { resetOnce: resetOnce[name] }),
   };
 }
@@ -599,6 +629,11 @@ const contents =
   `   * name and the other two put it nowhere — and it costs \`animation\` nothing else.\n` +
   `   */\n` +
   `  readonly contested?: readonly string[];\n` +
+  `  /**\n` +
+  `   * Words one engine takes and another refuses — \`text-wrap: pretty\`, which Firefox lacks. A value\n` +
+  `   * holding one keeps its shorthand, so that engine drops it whole as it would the author's line.\n` +
+  `   */\n` +
+  `  readonly partial?: readonly string[];\n` +
   `  /**\n` +
   `   * Longhands a LIST family resets ONCE rather than once per item, measured.\n` +
   `   *\n` +

@@ -879,3 +879,95 @@ describe("the families the must-split list found, split by hand", () => {
     expect(splitOf(family, value)).toBeUndefined();
   });
 });
+
+/**
+ * A value one engine does not have yet — `partial` on a grammar shape, measured by the generator.
+ * `text-wrap: pretty` is taken by Chromium and WebKit and refused by Firefox, which then drops the
+ * whole declaration; a split would still set `text-wrap-mode` there. So it keeps its shorthand —
+ * and it is NOT an error, the way `animation: auto` is: the engines do not read it differently, one
+ * of them simply does not have it, which is what an author writing it expects.
+ */
+describe("a value one engine does not have", () => {
+  test("keeps its shorthand", () => {
+    expect(splitOf("text-wrap", "pretty")).toBeUndefined();
+    expect(splitOf("text-wrap", "nowrap pretty")).toBeUndefined();
+    expect(splitOf("text-wrap", "balance")).toBeDefined();
+  });
+});
+
+describe("offset and border-image, split by hand", () => {
+  test.each([
+    [
+      "none",
+      {
+        "offset-position": "normal",
+        "offset-path": "none",
+        "offset-distance": "0px",
+        "offset-rotate": "auto",
+        "offset-anchor": "auto",
+      },
+    ],
+    [
+      "10px 30px",
+      {
+        "offset-position": "10px 30px",
+        "offset-path": "none",
+        "offset-distance": "0px",
+        "offset-rotate": "auto",
+        "offset-anchor": "auto",
+      },
+    ],
+    [
+      "url(a.svg) 10% auto 90deg / left top",
+      {
+        "offset-position": "normal",
+        "offset-path": "url(a.svg)",
+        "offset-distance": "10%",
+        "offset-rotate": "auto 90deg",
+        "offset-anchor": "left top",
+      },
+    ],
+    [
+      "url(a.svg) 30deg",
+      {
+        "offset-position": "normal",
+        "offset-path": "url(a.svg)",
+        "offset-distance": "0px",
+        "offset-rotate": "30deg",
+        "offset-anchor": "auto",
+      },
+    ],
+  ])("offset: %s", (value, expected) => {
+    expect(splitOf("offset", value)).toEqual(expected);
+  });
+
+  test("border-image, with its own initial values", () => {
+    expect(splitOf("border-image", "url(a.png) 27 23 / 50px 30px / 1rem round space")).toEqual({
+      "border-image-source": "url(a.png)",
+      "border-image-slice": "27 23",
+      "border-image-width": "50px 30px",
+      "border-image-outset": "1rem",
+      "border-image-repeat": "round space",
+    });
+    expect(splitOf("border-image", "none")).toEqual({
+      "border-image-source": "none",
+      "border-image-slice": "100%",
+      "border-image-width": "1",
+      "border-image-outset": "0",
+      "border-image-repeat": "stretch",
+    });
+  });
+
+  test.each([
+    ["offset", "/ 10px"],
+    ["offset", "url(a.svg) 30deg 30deg"],
+    ["offset", "url(a.svg) 10px 20px"],
+    ["offset", "url(a.svg) / 1 / 2"],
+    ["offset", "path('M0 0') / bogus"],
+    ["offset", "bogus"],
+    ["border-image", "url(a.png) 10 /"],
+    ["border-image", "url(a.png) 1 2 3 4 5"],
+  ])("%s refuses %s", (family, value) => {
+    expect(splitOf(family, value)).toBeUndefined();
+  });
+});

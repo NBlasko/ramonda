@@ -2,7 +2,8 @@
  * The splitter, reading the generated table, against what the engines actually render.
  *
  *     node scripts/check-shorthand-split.mjs
- *     SELFTEST=slot node scripts/check-shorthand-split.mjs     # must FAIL
+ *     SELFTEST=slot node scripts/check-shorthand-split.mjs
+ *     SELFTEST=half node scripts/check-shorthand-split.mjs   # splits a value no engine takes; must fail     # must FAIL
  *
  * ## Why this is the gate and `--check` on the generator is not
  *
@@ -132,7 +133,79 @@ for (const [name, shape] of Object.entries(shapes)) {
 }
 await browser.close();
 
+/**
+ * And in EVERY engine: a value one of them refuses must not be split at all.
+ *
+ * CSS drops a declaration it refuses whole, and a split drops only the part an engine does not
+ * take — so the rest applies where the author's line would have done nothing. The check above runs
+ * in Chromium only and skips a value it refuses, so a value Chromium takes and Firefox does not was
+ * never asked: `text-wrap: pretty` was split, and in Firefox set `text-wrap-mode`. Measured in all
+ * three engines, one batch per family.
+ */
+const halfApplied = [];
+/** Per engine, per family: the values it TAKES, or `null` where it has no such family. */
+const taken = {};
+for (const engine of ["chromium", "firefox", "webkit"]) {
+  const other = await pw[engine].launch();
+  const page = await other.newPage();
+  await page.setContent("<!doctype html><html><body><div id=a></div></body></html>");
+  taken[engine] = {};
+  for (const [name, shape] of Object.entries(shapes)) {
+    if (BY_HAND[name] !== undefined) continue;
+    const values = casesFor(shape).filter((value) => splitPositional(shape, value) !== undefined);
+    taken[engine][name] = await page.evaluate(
+      ([name, values]) => {
+        const a = document.getElementById("a");
+        const takes = (value) => {
+          a.style.cssText = "";
+          a.style.setProperty(name, value);
+          return a.style.length > 0;
+        };
+        const kept = values.filter(takes);
+        return kept.length === 0 ? null : kept;
+      },
+      [name, values],
+    );
+  }
+  await other.close();
+}
+/**
+ * Only a value some engine TAKES and another refuses. One that no engine takes is invalid CSS,
+ * which the checker refuses before a build ever splits it — that is the checker's to report.
+ */
+for (const [name, shape] of Object.entries(shapes)) {
+  if (BY_HAND[name] !== undefined) continue;
+  const values = casesFor(shape).filter((value) => splitPositional(shape, value) !== undefined);
+  // The break: a value one engine takes and another does not, as if the table split it.
+  if (selftest === "half" && name === "padding") {
+    const one = taken.chromium.padding?.[0];
+    taken.firefox.padding = (taken.firefox.padding ?? []).filter((each) => each !== one);
+  }
+  for (const value of new Set(values)) {
+    const having = Object.entries(taken).filter(
+      ([, families]) => families[name] !== null && families[name] !== undefined,
+    );
+    const takers = having.filter(([, families]) => families[name].includes(value)).map(([engine]) => engine);
+    const refusers = having.filter(([, families]) => !families[name].includes(value)).map(([engine]) => engine);
+    if (takers.length > 0 && refusers.length > 0)
+      halfApplied.push(`${name}: \`${value}\` — taken by ${takers.join(", ")}, refused by ${refusers.join(", ")}`);
+  }
+}
+
 console.log(`[split] ${Object.keys(shapes).length} families, ${tried} values`);
+
+if (halfApplied.length > 0) {
+  console.error(
+    `[split] ${halfApplied.length} value(s) an engine refuses are split anyway, so the rest would apply there:`,
+  );
+  for (const one of halfApplied.slice(0, 20)) console.error(`[split]   ${one}`);
+  if (selftest === "half") process.exit(0);
+  process.exit(1);
+}
+if (selftest === "half") {
+  console.error("[split] SELFTEST=half changed nothing — this check would not catch it.");
+  process.exit(1);
+}
 
 if (wrong.length > 0) {
   console.error(`[split] ${wrong.length} of ${tried} values split into a different page:`);

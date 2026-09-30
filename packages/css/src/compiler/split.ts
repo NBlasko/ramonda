@@ -450,9 +450,15 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
    * and every other value of the family still splits, which is what refusing the whole family for
    * one value used to cost.
    */
-  if (shape.contested !== undefined) {
+  if (shape.contested !== undefined || shape.partial !== undefined) {
     const written = tokensOf(value, /[\s,]/).map((one) => one.toLowerCase());
     if (written.some((one) => shape.contested?.includes(one))) return undefined;
+    /**
+     * And a word one engine does not HAVE — `text-wrap: pretty` in Firefox. That engine drops the
+     * whole declaration and a split would still set the rest there. Kept whole, and not an error:
+     * one browser lacking a value is what its author expects, which reading it differently is not.
+     */
+    if (written.some((one) => shape.partial?.includes(one))) return undefined;
   }
 
   if (shape.list !== true) {
