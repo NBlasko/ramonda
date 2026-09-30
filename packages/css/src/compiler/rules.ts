@@ -152,6 +152,7 @@ export const RULE_IDS = [
   "registered-never-set",
   // Two blocks joined into one string, where a merge was meant. See `joinedNotMerged`.
   "blocks-joined-not-merged",
+  "allow-list-not-css",
   // A state in an allow-list typed `[{ … }]`, which constrains its first declaration only. See
   // `stateIsATuple`.
   "state-is-a-tuple",

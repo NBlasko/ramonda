@@ -1,6 +1,9 @@
 import ts from "typescript";
 import { conflict, covers } from "./flatten";
 import { AT_RULE_LINKS, NOT_IN_A_RULE, PROPERTIES, SHORTHANDS } from "./keywords.generated";
+import { readBlock } from "./read";
+import { checkBlock } from "./rules";
+import { findBlocks } from "./scan";
 import { splitOf } from "./split";
 import type { RegisteredSite } from "./variables";
 import type { VirtualFile } from "./virtual";
@@ -47,6 +50,7 @@ export const TYPED_RULES = [
   "state-is-a-tuple",
   "allow-list-is-an-interface",
   "narrower-after-a-whole-shorthand",
+  "allow-list-not-css",
 ] as const;
 
 /** A finding about a file, at an offset in the AUTHOR's own text. */
@@ -494,6 +498,7 @@ export function typedFindingsFor(
   // The compiler asks this inside ONE block; across blocks the spread is a value, and only a
   // program can follow it to the block it names.
   wholeAcrossBlocks(checker, file, helpers, report);
+  allowListNotCss(checker, file, report);
 
   return findings;
 }
@@ -1096,4 +1101,89 @@ function wholeAcrossBlocks(
     ts.forEachChild(node, visit);
   };
   visit(file);
+}
+
+/** The rules that judge a VALUE — what an allow-list's literal is asked, and nothing structural. */
+const VALUE_RULES = new Set([
+  "unknown-value",
+  "unknown-unit",
+  "too-many-values",
+  "word-out-of-its-longhand",
+  "value-differs-across-engines",
+]);
+
+/**
+ * The compiler's own verdict on one declaration, as the findings of the value rules — asked by
+ * compiling it, so an allow-list's value is refused exactly when it would be refused in a block.
+ */
+function valueFaults(property: string, value: string): string[] {
+  const source = `const x = @@( ${property}: ${value}; );`;
+  const [site] = findBlocks(source);
+  if (site === undefined) return [];
+  try {
+    const read = readBlock(source, site.open, "allow-list.tsx", { tolerant: true });
+    return checkBlock(read.block, {})
+      .filter((one) => VALUE_RULES.has(one.rule))
+      .map((one) => one.rule);
+  } catch {
+    return ["unknown-value"];
+  }
+}
+
+/**
+ * §11 — an allow-list value that is not CSS.
+ *
+ * A component narrowing its slot to `"font-weight"?: "notexisting"` refused every caller, and said
+ * nothing itself: the TYPE is well-formed, and the value only fails when somebody tries to send it.
+ * Only the component's author can fix it, so it is reported at the value, where they wrote it.
+ *
+ * Only LITERAL types are asked — a string or a number. `Var<"color">`, `Token<…>` and `string` have
+ * nothing to judge; measured in this repository, 5 of 12 allow-list entries are literals. A nested
+ * state (`"&:hover"?: { … }[]`) is read the same way. Each declaration is reported once, however
+ * many slots name its type.
+ */
+function allowListNotCss(
+  checker: ts.TypeChecker,
+  file: ts.SourceFile,
+  report: (node: ts.Node, what: Omit<TypedFinding, "file" | "at" | "length">) => void,
+): void {
+  const said = new Set<ts.Node>();
+
+  const judge = (shape: ts.Type, fallback: ts.Node): void => {
+    for (const member of shape.getProperties()) {
+      const name = member.getName();
+      if (name.startsWith("--") || name.startsWith("@")) continue;
+      const type = checker.getNonNullableType(checker.getTypeOfSymbol(member));
+      if (name.startsWith("&")) {
+        const element = checker.isArrayType(type) ? checker.getTypeArguments(type as ts.TypeReference)[0] : undefined;
+        if (element !== undefined) judge(element, fallback);
+        continue;
+      }
+      const declaration = member.getDeclarations()?.[0];
+      const where = declaration !== undefined && declaration.getSourceFile() === file ? declaration : fallback;
+      for (const one of type.isUnion() ? type.types : [type]) {
+        if (!one.isStringLiteral() && !one.isNumberLiteral()) continue;
+        const value = String(one.value);
+        if (valueFaults(name, value).length === 0) continue;
+        // Once per declaration: two bad values in one union are one line to fix.
+        if (said.has(where)) continue;
+        said.add(where);
+        report(where, {
+          rule: "allow-list-not-css",
+          message:
+            `\`${value}\` is not a value \`${name}\` takes in CSS, so every caller sending it is refused. ` +
+            `Take it out of the allow-list, or write the value you meant.`,
+        });
+      }
+    }
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isTypeReferenceNode(node) && node.typeArguments?.length === 1) {
+      const [argument] = node.typeArguments;
+      if (branded(checker.getTypeAtLocation(node)) !== undefined) judge(checker.getTypeAtLocation(argument), argument);
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(file, visit);
 }

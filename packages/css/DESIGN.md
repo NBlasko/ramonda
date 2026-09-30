@@ -3251,7 +3251,12 @@ written as plain nested CSS, produces `& > span`, `& + b` and `& ~ c` — spaced
 So the formatter is right about `:hover` and inconsistent about `>`, `+` and `~`. It is a small,
 contained fix and it belongs with the formatter rather than with anything above.
 
-### 11. An allow-list nothing checks against CSS — TODO, measured
+### 11. An allow-list nothing checks against CSS — DONE 2026-09-30
+
+**Done:** `allow-list-not-css`, a typed rule. Each LITERAL in an allow-list is compiled as a
+declaration and asked of the compiler's own value rules, so it is refused exactly when it would be
+in a block. Measured first, as below asked: in this repository 5 of 12 allow-list entries are
+literals (`400 | 600`, `"8px" | "16px"`), so the rule reads something.
 
 Found by the user while reading the playground demo. They changed
 

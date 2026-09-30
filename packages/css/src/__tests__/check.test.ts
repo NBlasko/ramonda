@@ -2546,3 +2546,40 @@ describe("a narrower whole shorthand after a wider one from another block", () =
     ).not.toContain("narrower-after-a-whole-shorthand");
   });
 });
+
+/**
+ * §11: an allow-list's literal values, judged as CSS. A component narrowing its slot to
+ * `"font-weight"?: "notexisting"` refused every caller and said nothing itself — the value is not
+ * CSS, and only the component's author can fix it. Judged by the compiler's own value rules, so a
+ * value is refused here exactly when it would be refused written in a block.
+ */
+describe("an allow-list value that is not CSS", () => {
+  const card = (allows: string) =>
+    check({
+      "Card.tsx":
+        `import type { CssBlock } from "@ramonda/css/properties";\n` +
+        `type CardStyle = ${allows};\n` +
+        `export function Card(props: { css?: CssBlock<CardStyle> }) {\n` +
+        `  return <div className={props.css}>x</div>;\n}\n`,
+    }).findings;
+
+  test("is reported, naming the value and the property", () => {
+    const found = card(`{ "font-weight"?: "notexisting" | 600 }`).filter((one) => one.code === "allow-list-not-css");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.message).toContain("notexisting");
+    expect(found[0]?.message).toContain("font-weight");
+  });
+
+  test("and one in a nested state", () => {
+    const found = card(`{ "&:hover"?: { color?: "blu" }[] }`).filter((one) => one.code === "allow-list-not-css");
+    expect(found).toHaveLength(1);
+  });
+
+  test.each([
+    `{ "font-weight"?: 400 | 600; gap?: "8px" | "16px" }`,
+    `{ color?: "red" | "var(--brand)" }`,
+    `{ width?: string }`,
+  ])("%s is not", (allows) => {
+    expect(card(allows).map((one) => one.code)).not.toContain("allow-list-not-css");
+  });
+});

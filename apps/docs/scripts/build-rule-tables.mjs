@@ -295,6 +295,7 @@ const CSS_LINES = {
     "a shorthand browsers reset differently, like `-webkit-mask` — the line renders two ways; write `mask`",
   "value-differs-across-engines":
     "a value browsers read differently, like `animation: auto` — the line renders two ways",
+  "allow-list-not-css": "a value in an allow-list that is not CSS — every caller sending it is refused",
   "narrower-after-a-whole-shorthand":
     "a narrower shorthand after a wider one, both reaching the stylesheet whole — no order keeps it winning",
   "literal-not-allowed": "a value written out where your `ramonda.css.ts` takes that kind from variables",
