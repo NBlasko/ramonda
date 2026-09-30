@@ -650,8 +650,15 @@ function itemsOf(value: string): string[] | undefined {
   const items: string[] = [];
   let depth = 0;
   let at = "";
+  let quote = "";
   for (const ch of value) {
-    if (ch === "(") depth++;
+    if (quote !== "") {
+      at += ch;
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(") depth++;
     else if (ch === ")") depth--;
     if (depth === 0 && ch === ",") {
       items.push(at.trim());
@@ -787,10 +794,17 @@ const isColour = (one: string) =>
 function slashed(value: string): string[] {
   let spaced = "";
   let depth = 0;
+  let quote = "";
   for (const ch of value) {
-    if (ch === "(") depth++;
+    if (quote !== "") {
+      spaced += ch;
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(") depth++;
     else if (ch === ")") depth--;
-    spaced += depth === 0 && ch === "/" ? " / " : ch;
+    spaced += depth === 0 && quote === "" && ch === "/" ? " / " : ch;
   }
   return tokensOf(spaced);
 }

@@ -44,10 +44,18 @@ export function tokensOf(value: string, separator = /\s/): string[] {
   const out: string[] = [];
   let depth = 0;
   let at = "";
+  // A quoted string is ONE token, whatever it holds: `"A/B"` and `'A, B'` are font names.
+  let quote = "";
   for (const ch of value) {
-    if (ch === "(") depth++;
+    if (quote !== "") {
+      at += ch;
+      if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(") depth++;
     else if (ch === ")") depth--;
-    if (depth === 0 && separator.test(ch)) {
+    if (depth === 0 && quote === "" && separator.test(ch)) {
       if (at !== "") out.push(at);
       at = "";
       continue;
@@ -80,8 +88,10 @@ export function splitPositional(shape: Shape, value: string): Record<string, str
   const longhands = Object.keys(shape.patterns[keys[0]]);
 
   const bare = value.trim();
-  if (WIDE.includes(bare)) return Object.fromEntries(longhands.map((one) => [one, bare]));
-  if (tokensOf(value).some((one) => WIDE.includes(one))) return undefined;
+  // In any case: CSS keywords are case-insensitive, and `margin: 1px INHERIT` is as invalid as its
+  // lower-case twin — a browser drops it, and a split would set the `1px`.
+  if (WIDE.includes(bare.toLowerCase())) return Object.fromEntries(longhands.map((one) => [one, bare]));
+  if (tokensOf(value).some((one) => WIDE.includes(one.toLowerCase()))) return undefined;
   if (holdsVar(value)) return undefined;
   /**
    * A NEGATIVE where the family refuses one, because CSS and a split disagree about invalid input.
@@ -252,14 +262,19 @@ export function splitOf(property: string, value: string): Record<string, string>
   const grammar = GRAMMAR_SHAPES[property];
   const byHand = BY_HAND[property];
   /**
-   * By hand FIRST where a family has it. Only `background-position` has both, and its table was
-   * the weaker answer: it learned one and two values, refused the lists and the three- and
-   * four-value forms, and split two values every engine refuses — `1px,` and `5 5`. The hand rules
-   * are checked against all three engines, value by value, by `check-hand-splits.mjs`.
+   * By hand FIRST where a family has it. Sixteen families have both — `background-position`,
+   * `animation-range`, `place-*`, `grid-row`/`-column`, `border-radius` among them — and the table
+   * was the weaker answer each time: learned from sentinels, it read a value unlike them wrong or
+   * not at all. The hand rules are checked against all three engines, value by value, by
+   * `check-hand-splits.mjs` and `check-must-split.mjs`.
+   *
+   * The table stays for what the CHECKER reads — `word-out-of-its-longhand` asks `misplacedWord` of
+   * its `takes` — which is about whether a word is valid CSS for a longhand, not about how a value
+   * is split; a review asked, and on every value those gates hold it reports nothing.
    */
   const split =
     byHand !== undefined
-      ? !holdsVar(bare) && !tokensOf(bare).some((one) => WIDE.includes(one))
+      ? !holdsVar(bare) && !tokensOf(bare).some((one) => WIDE.includes(one.toLowerCase()))
         ? // A CSS-wide keyword is refused here rather than spread: `grid-area: inherit` would
           // otherwise read as a line NAME, and be copied into the three lines left out.
           byHand(bare.trim())

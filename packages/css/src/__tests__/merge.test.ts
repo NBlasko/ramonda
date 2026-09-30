@@ -765,3 +765,20 @@ describe("a narrower shorthand composed after a whole one", () => {
     expect(said).toHaveLength(1);
   });
 });
+
+describe("what the review found in the merge", () => {
+  const said: string[] = [];
+  const real = console.warn;
+  beforeEach(() => {
+    said.length = 0;
+    console.warn = (message: string) => void said.push(message);
+  });
+  afterEach(() => {
+    console.warn = real;
+  });
+
+  test("`all` is not a whole shorthand here — it is in its own weaker layer, and anything after it wins", () => {
+    mergeClassNames(classOf("all", "unset"), classOf("border", "var(--b)"));
+    expect(said).toEqual([]);
+  });
+});

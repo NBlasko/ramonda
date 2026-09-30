@@ -4872,3 +4872,25 @@ describe("a value one engine does not have is not an error", () => {
     expect(checkBlock(read.block, {}).map((one) => one.rule)).not.toContain("value-differs-across-engines");
   });
 });
+
+describe("what the review found in the rules", () => {
+  const found = (css: string) => {
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {}).map((one) => one.rule);
+  };
+
+  test("an important wider shorthand, then an ordinary narrower one, is not the fault — `i` decides", () => {
+    expect(found("border: var(--x) !important; border-top: var(--y);")).not.toContain(
+      "narrower-after-a-whole-shorthand",
+    );
+    expect(found("border: var(--x) !important; border-top: var(--y) !important;")).toContain(
+      "narrower-after-a-whole-shorthand",
+    );
+  });
+
+  test("a contested word is reported in any case", () => {
+    expect(found("animation: AUTO;")).toContain("value-differs-across-engines");
+  });
+});

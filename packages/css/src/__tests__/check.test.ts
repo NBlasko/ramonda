@@ -2540,6 +2540,10 @@ describe("a narrower whole shorthand after a wider one from another block", () =
     ["a longhand after it", "border: var(--x);", "border-top-color: red;"],
     ["a wider one that split", "border: 1px solid red;", "border-top: var(--y);"],
     ["two families that do not cover each other", "border: var(--x);", "padding: var(--p);"],
+    // The block sets the family itself after the spread, and the merge clears the spread's whole one.
+    ["a re-set of the family between them", "border: var(--x);", "border: 1px solid red; border-top: var(--y);"],
+    // Of different importance: the important one is under the mirrored `i`, and it decides.
+    ["an important wider one", "border: var(--x) !important;", "border-top: var(--y);"],
   ])("not for %s", (_what, first, second) => {
     expect(
       codes({ "Card.tsx": `const base = @@( ${first} );\nexport const card = @@( ...{base}; ${second} );\n` }),

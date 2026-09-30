@@ -971,3 +971,21 @@ describe("offset and border-image, split by hand", () => {
     expect(splitOf(family, value)).toBeUndefined();
   });
 });
+
+describe("what the review found in the splitter", () => {
+  test("a CSS-wide keyword in any case refuses a mixed value, as the browser does", () => {
+    expect(splitOf("margin", "1px INHERIT")).toBeUndefined();
+    expect(splitOf("flex", "1 Initial")).toBeUndefined();
+  });
+
+  test("a slash or a comma inside a quoted font name is the name's own", () => {
+    expect(splitOf("font", '12px "A/B", serif')?.["font-family"]).toBe('"A/B", serif');
+    expect(splitOf("font", "12px 'A, B'")?.["font-family"]).toBe("'A, B'");
+  });
+
+  test("a custom function or attr() is as unknown as a var(), and keeps the shorthand", () => {
+    expect(splitOf("padding", "--pad()")).toBeUndefined();
+    expect(splitOf("padding", "1px --gap(2)")).toBeUndefined();
+    expect(splitOf("margin", "attr(data-m type(<length>))")).toBeUndefined();
+  });
+});

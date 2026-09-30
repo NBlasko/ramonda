@@ -251,8 +251,12 @@ function slotOf(key: string): number | undefined {
  * value long enough to be hashed is found as well as a readable one.
  */
 function warnAboutWholeShorthands(chosen: ReadonlyMap<string, string>): void {
+  // `all` is not one: it has its own weaker layer, `a`, so whatever follows it wins.
   const whole = (key: string, className: string) =>
-    className.startsWith(OURS) && !className.endsWith("-") && clearedBy(key).length > 0;
+    className.startsWith(OURS) &&
+    !className.endsWith("-") &&
+    partsOf(key).property !== "all" &&
+    clearedBy(key).length > 0;
   const entries = [...chosen];
   for (const [index, [key, className]] of entries.entries()) {
     if (!whole(key, className)) continue;

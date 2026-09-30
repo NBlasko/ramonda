@@ -1317,7 +1317,8 @@ function valueDiffersAcrossEngines(block: Block, findings: Finding[]): void {
         let word: string | undefined;
         let at = 0;
         for (const one of part.text.split(/([\s,]+)/)) {
-          if (contested.includes(one)) {
+          // In any case: the splitter lower-cases before it refuses, so the rule must too.
+          if (contested.includes(one.toLowerCase())) {
             word = one;
             break;
           }
@@ -2289,6 +2290,9 @@ function narrowerAfterAWholeShorthand(block: Block, findings: Finding[]): void {
       if (!whole(earlier)) continue;
       if (earlier.selector !== later.selector || earlier.conditions.join("|") !== later.conditions.join("|")) continue;
       if (!covers(earlier.property, later.property)) continue;
+      // Of DIFFERENT importance they are in different layers — the important one under the mirrored
+      // `i` — and that layer decides, as in CSS. Only two of the same importance share `v`.
+      if ((earlier.important === true) !== (later.important === true)) continue;
 
       findings.push({
         rule: "narrower-after-a-whole-shorthand",

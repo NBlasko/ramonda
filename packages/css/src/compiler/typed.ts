@@ -1020,25 +1020,17 @@ function wholeAcrossBlocks(
     return array !== undefined && ts.isArrayLiteralExpression(array) ? array : undefined;
   };
 
+  const IMPORTANT = /!\s*important\s*$/i;
   const whole = (property: string, value: string) =>
     property !== "all" && SHORTHANDS[property] !== undefined && splitOf(property, value) === undefined;
 
-  /** The whole shorthands a block's top level sets, its own spreads followed — once each. */
-  const wholesOf = (array: ts.ArrayLiteralExpression | undefined, seen = new Set<ts.Node>()): string[] => {
-    if (array === undefined || seen.has(array)) return [];
-    seen.add(array);
-    const out: string[] = [];
-    for (const element of array.elements) {
-      if (ts.isCallExpression(element) && element.arguments.length === 1 && !ts.isObjectLiteralExpression(element)) {
-        out.push(...wholesOf(blockOf(element.arguments[0]), seen));
-        continue;
-      }
-      for (const [property, value] of declared(element)) if (whole(property, value)) out.push(property);
-    }
-    return out;
-  };
+  /** A whole shorthand still standing, and its importance — which keeps it in its own layer. */
+  interface Standing {
+    readonly property: string;
+    readonly important: boolean;
+  }
 
-  /** A group's declarations, as written: property and literal value, nested rules left out. */
+  /** A group's declarations, as written: property, literal value and node, nested rules left out. */
   const declared = (element: ts.Expression): [string, string, ts.Node][] => {
     if (!ts.isObjectLiteralExpression(element)) return [];
     const out: [string, string, ts.Node][] = [];
@@ -1054,6 +1046,42 @@ function wholeAcrossBlocks(
     return out;
   };
 
+  /**
+   * One block's top level, in order, against what is standing — its spreads add, its declarations
+   * are checked and then CLEAR what they cover, as the merge does: a block that sets `border` itself
+   * after a spread has taken the spread's whole `border` away. `found` is told of each fault.
+   */
+  const walk = (
+    array: ts.ArrayLiteralExpression,
+    standing: Standing[],
+    found: (node: ts.Node, narrower: string, wider: string) => void,
+    seen: Set<ts.Node>,
+  ): void => {
+    if (seen.has(array)) return;
+    seen.add(array);
+    for (const element of array.elements) {
+      if (ts.isCallExpression(element) && element.arguments.length === 1 && !ts.isObjectLiteralExpression(element)) {
+        const spread = blockOf(element.arguments[0]);
+        // What a spread leaves standing is what its own block leaves — its faults are its own.
+        if (spread !== undefined) walk(spread, standing, () => {}, seen);
+        continue;
+      }
+      for (const [property, value, where] of declared(element)) {
+        const important = IMPORTANT.test(value);
+        if (whole(property, value)) {
+          const covering = standing.find((one) => one.important === important && covers(one.property, property));
+          if (covering !== undefined) found(where, property, covering.property);
+        }
+        for (let at = standing.length - 1; at >= 0; at--) {
+          const one = standing[at];
+          if (one.important === important && (one.property === property || covers(property, one.property)))
+            standing.splice(at, 1);
+        }
+        if (whole(property, value)) standing.push({ property, important });
+      }
+    }
+  };
+
   const said = (node: ts.Node, narrower: string, wider: string): void =>
     report(node, {
       rule: "narrower-after-a-whole-shorthand",
@@ -1063,24 +1091,18 @@ function wholeAcrossBlocks(
     });
 
   const visit = (node: ts.Node): void => {
-    // A block of THIS file: its spreads, then what it writes below them.
+    // A block of THIS file: its spreads, then what it writes below them. Only a declaration after a
+    // spread is this rule's — two in one block are the compiler's own.
     if (helpers !== undefined && calls(node, helpers.block)) {
       const [array] = node.arguments;
-      if (array !== undefined && ts.isArrayLiteralExpression(array)) {
-        const wider: string[] = [];
-        for (const element of array.elements) {
-          if (calls(element, helpers.from)) {
-            wider.push(...wholesOf(blockOf(element.arguments[0])));
-            continue;
-          }
-          for (const [property, value, where] of declared(element)) {
-            const covering = wider.find((one) => covers(one, property));
-            if (covering !== undefined && whole(property, value)) said(where, property, covering);
-          }
-        }
-      }
+      if (
+        array !== undefined &&
+        ts.isArrayLiteralExpression(array) &&
+        array.elements.some((one) => calls(one, helpers.from))
+      )
+        walk(array, [], said, new Set());
     }
-    // And a merge at a call site, argument by argument.
+    // And a merge at a call site, argument by argument, told at the argument.
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       let symbol = checker.getSymbolAtLocation(node.expression);
       if (symbol !== undefined && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
@@ -1088,13 +1110,22 @@ function wholeAcrossBlocks(
       // name is not asked about.
       const origin = symbol?.declarations?.[0]?.getSourceFile().fileName ?? "";
       if (symbol?.name === "mergeClassNames" && /[\\/](@ramonda[\\/]css|packages[\\/]css)[\\/]/.test(origin)) {
-        const wider: string[] = [];
+        const standing: Standing[] = [];
+        const seen = new Set<ts.Node>();
         for (const argument of node.arguments) {
           const block = blockOf(argument);
-          const here = wholesOf(block);
-          const narrower = here.find((one) => wider.some((w) => covers(w, one)));
-          if (narrower !== undefined) said(argument, narrower, wider.find((w) => covers(w, narrower)) as string);
-          wider.push(...here);
+          if (block === undefined) continue;
+          const before = standing.length;
+          let told = false;
+          walk(
+            block,
+            standing,
+            (_where, narrower, wider) => {
+              if (!told && before > 0) said(argument, narrower, wider);
+              told = true;
+            },
+            seen,
+          );
         }
       }
     }
@@ -1117,6 +1148,22 @@ const VALUE_RULES = new Set([
  * compiling it, so an allow-list's value is refused exactly when it would be refused in a block.
  */
 function valueFaults(property: string, value: string): string[] {
+  const key = `${property}\u0000${value}`;
+  const known = FAULTS.get(key);
+  if (known !== undefined) return known;
+  const found = compiledFaults(property, value);
+  FAULTS.set(key, found);
+  return found;
+}
+
+/**
+ * Each pair's verdict, once per process: an allow-list type is referenced wherever the slot is, and
+ * every reference asked again compiled the same declaration again. It is a pure function of the
+ * pair, so there is nothing to invalidate.
+ */
+const FAULTS = new Map<string, string[]>();
+
+function compiledFaults(property: string, value: string): string[] {
   const source = `const x = @@( ${property}: ${value}; );`;
   const [site] = findBlocks(source);
   if (site === undefined) return [];
