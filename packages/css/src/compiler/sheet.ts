@@ -55,7 +55,8 @@ import {
 } from "./flatten";
 import { keyIn } from "../key";
 import { escapeClass, keyTextOf } from "./names";
-import type { EmittedBlock } from "./transform";
+import { sourceMapFor } from "./cssMap";
+import type { EmittedBlock, Origin, SourceMap } from "./transform";
 
 /**
  * The at-rules that take no name, so the hash has nowhere to go.
@@ -261,6 +262,15 @@ function wrap<T extends { block: EmittedBlock }>(rules: readonly [string, T][]):
  * A class rule is found by its selector, a named one by the name the emitted JavaScript holds, and a
  * nameless one by the only thing it has — its at-rule, which a minifier may not invent or drop.
  */
+/** Where a name stands in a stylesheet as a whole name — `.r-c-red` is not the start of `.r-c-reddish`. */
+function indexOfName(css: string, name: string): number {
+  for (let at = css.indexOf(name); at !== -1; at = css.indexOf(name, at + 1)) {
+    const after = css[at + name.length];
+    if (after === undefined || !/[A-Za-z0-9_\\-]/.test(after)) return at;
+  }
+  return -1;
+}
+
 function nameIn(className: string, block: EmittedBlock): string {
   // Escaped, because that is what a stylesheet holds — looking for the raw name would find nothing
   // and fail every build the moment a name became readable.
@@ -326,6 +336,11 @@ export class Sheet {
   /** File → the classes it currently contributes, in source order. */
   private readonly byFile = new Map<string, string[]>();
   /**
+   * Where each FILE wrote each rule. A rule is shared, and its one block keeps the position in
+   * whichever file registered it first — so a file's own position is kept here, for its own map.
+   */
+  private readonly origins = new Map<string, Map<string, Origin>>();
+  /**
    * Class → the rule and every file that names it.
    *
    * Insertion order is the sheet's order. There is no owner: every one of those files serves the
@@ -379,7 +394,10 @@ export class Sheet {
     }
 
     const claimed: string[] = [];
+    const origins = new Map<string, Origin>();
+    this.origins.set(file, origins);
     for (const block of blocks) {
+      if (block.origin !== undefined && !origins.has(block.className)) origins.set(block.className, block.origin);
       const existing = this.rules.get(block.className);
 
       if (existing === undefined) {
@@ -494,6 +512,29 @@ export class Sheet {
    */
   cssFor(file: string): string {
     return wrap(this.ownOrder(file));
+  }
+
+  /**
+   * This file's stylesheet with a source map, which points each rule at the declaration that wrote
+   * it — so a browser's style panel names `Card.tsx:14` beside a rule rather than the generated CSS.
+   *
+   * Every rule is found by the name the stylesheet holds for it, on its own line; a nameless at-rule
+   * — `@font-face` — has nothing to find it by and is left unmapped. `content` is the file's own
+   * text, carried in the map so the panel can show it without asking a server for the file.
+   */
+  cssWithMapFor(file: string, content?: string): { css: string; map: SourceMap } {
+    const own = this.ownOrder(file);
+    const css = wrap(own);
+    const origins = this.origins.get(file) ?? new Map<string, Origin>();
+    const found: { at: number; origin: Origin }[] = [];
+    for (const [className, rule] of own) {
+      const origin = origins.get(className);
+      const name = nameIn(className, rule.block);
+      if (origin === undefined || name.startsWith("@")) continue;
+      const at = indexOfName(css, name);
+      if (at !== -1) found.push({ at, origin });
+    }
+    return { css, map: sourceMapFor(css, found, file, content) };
   }
 
   /** This file's own claims, in the order it wrote them, sorted by {@link sheetRank} within that. */

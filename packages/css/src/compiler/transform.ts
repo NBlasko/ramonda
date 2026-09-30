@@ -113,6 +113,18 @@ export interface EmittedBlock {
    * for the same property only if it is emitted after it.
    */
   readonly conditions?: readonly string[];
+  /**
+   * Where the author wrote it — the declaration, or a named block's `@@` — as a zero-based line and
+   * column, which is what a CSS source map points at. The first place in the file, when a file
+   * writes one rule twice.
+   */
+  readonly origin?: Origin;
+}
+
+/** A zero-based line and column in the author's file. */
+export interface Origin {
+  readonly line: number;
+  readonly column: number;
 }
 
 /**
@@ -153,6 +165,19 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   if (!mayHoldABlock(source)) return undefined;
 
   const filename = options.filename ?? "unknown.tsx";
+
+  /** Where an offset is, as a source map counts: zero-based lines and columns. */
+  let lineStarts: number[] | undefined;
+  const originOf = (offset: number | undefined): Origin | undefined => {
+    if (offset === undefined) return undefined;
+    if (lineStarts === undefined) {
+      lineStarts = [0];
+      for (let at = 0; at < source.length; at++) if (source[at] === "\n") lineStarts.push(at + 1);
+    }
+    let line = 0;
+    while (line + 1 < lineStarts.length && (lineStarts[line + 1] as number) <= offset) line++;
+    return { line, column: offset - (lineStarts[line] as number) };
+  };
 
   /**
    * A block inside a `${ … }` compiles to nothing and would reach the bundler as `@@(` — a syntax
@@ -382,7 +407,13 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * site becomes a string literal and the rule goes to the sheet under the same hashed name.
      */
     if (site.at !== undefined) {
-      const emitted: EmittedBlock = { className, css: substitute(canonical, className), properties, at: site.at };
+      const emitted: EmittedBlock = {
+        className,
+        css: substitute(canonical, className),
+        properties,
+        at: site.at,
+        origin: originOf(site.start),
+      };
       if (!named.has(className)) {
         named.set(className, emitted);
         emittedNamed.push(emitted);
@@ -555,6 +586,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
             important: declaration.important,
             selector: declaration.selector,
             conditions: declaration.conditions,
+            origin: originOf(declaration.at),
           });
         }
         return own;

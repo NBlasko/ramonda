@@ -236,6 +236,22 @@ second one instead.
 You never write against these names. **`ramonda` is the name to put in your own `@layer` statement**,
 and it orders everything inside it — see [composing](/style-blocks/composing#the-one-place-this-is-not-plain-css).
 
+## From a rule back to the line that wrote it
+
+On the Vite dev server, every rule comes with a source map. A browser's style panel shows the file
+and line beside each rule — `Card.tsx:14` rather than the generated stylesheet — and clicking it
+opens your file at the declaration. A longhand split out of a shorthand points at the shorthand you
+wrote: `.r-pl-8px` opens on `padding: 8px`.
+
+The plugin turns on Vite's `css.devSourcemap` for this. Set it to `false` in your Vite config to
+turn the maps off; a production build never carries them.
+
+**A class written in more than one place points at each of them.** A rule is shared by every
+element that carries its class, so `.r-disp-flex` in two files is one rule with two origins. Each
+file's stylesheet holds its own copy, pointing at its own line, and the style panel lists every
+copy that applies — your element's own file is among them, though not always on top. Written twice
+in one file, the class points at the first.
+
 ## Next
 
 - **[Composing](/style-blocks/composing)** — merging blocks, conditions, and your own stylesheet.

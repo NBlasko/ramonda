@@ -3673,6 +3673,23 @@ reaches the sheet whole, in `v`, where a longhand after it still wins. It only d
 **What it needs:** read a fallback item against its own grammar (as `matchValue` can), or a hand
 rule; then the values above go on `check-must-split.mjs`.
 
+
+### 19. Which block gave an element a class — an IDEA, not planned
+
+Dev source maps point each rule at where it was written (`order.md`, "From a rule back to the line
+that wrote it"). A class written in several places is one rule with several origins, so a style
+panel lists all of them, and nothing in the page says which one THIS element's class came from.
+
+**Why a browser extension would not know either:** it sees the element and its classes, and the
+block a class came from is known only while rendering — `mergeClassNames` joins blocks from several
+files, and a string of classes is what is left. Guessing from the element's component is wrong
+whenever a block arrives as a `css` prop or through `...{base}`.
+
+**What would answer it:** in development only, the runtime records which block — file and line, as
+the compiler already knows — produced each class string, and `@ramonda/devtools` shows it for a
+picked element. No extension, every browser. The user asked about it on 2026-09-30 and chose to
+leave it as an idea.
+
 ### The name it ended up with
 
 `merge` was the name through all six steps. It ships as **`mergeClassNames`**, and the reason is a

@@ -108,7 +108,7 @@ export interface CssPluginLike {
   buildStart(this: unknown): void;
   config(this: unknown, userConfig: unknown, environment: { mode?: string } | undefined): unknown;
   resolveId(this: unknown, id: string): string | null;
-  load(this: unknown, id: string): string | null;
+  load(this: unknown, id: string): string | { code: string; map: SourceMap } | null;
   transform(this: unknown, code: string, id: string): { code: string; map: SourceMap } | null;
   handleHotUpdate(this: unknown, context: HotUpdate): Promise<void>;
   hotUpdate(this: unknown, context: HotUpdate): Promise<void>;
@@ -352,7 +352,14 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       production = environment?.mode === "production";
       // The project's root, for the one question with no file to ask about — see `buildStart`.
       root = (userConfig as { root?: string } | undefined)?.root ?? root;
+      /**
+       * A stylesheet's source map reaches the browser only with `css.devSourcemap`, which Vite leaves
+       * off. Turned on for the dev server unless the project said otherwise, so a browser's style
+       * panel names the `.tsx` line beside each rule — see `load`.
+       */
+      const devSourcemap = (userConfig as { css?: { devSourcemap?: boolean } } | undefined)?.css?.devSourcemap;
       return {
+        ...(devSourcemap === undefined ? { css: { devSourcemap: true } } : {}),
         optimizeDeps: {
           esbuildOptions: {
             plugins: [
@@ -401,8 +408,23 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
       return id.endsWith(SUFFIX) ? id : null;
     },
 
+    /**
+     * A file's stylesheet — and in development its source map, which points each rule at the
+     * declaration that wrote it. The file's text goes into the map, so the browser shows it without
+     * asking the server for a path it may not serve. A build writes one sheet and needs neither.
+     */
     load(id) {
-      return id.endsWith(SUFFIX) ? sheet.cssFor(id.slice(0, -SUFFIX.length)) : null;
+      if (!id.endsWith(SUFFIX)) return null;
+      const file = id.slice(0, -SUFFIX.length);
+      if (production) return sheet.cssFor(file);
+      let content: string | undefined;
+      try {
+        content = readFileSync(file, "utf8");
+      } catch {
+        content = undefined;
+      }
+      const { css, map } = sheet.cssWithMapFor(file, content);
+      return { code: css, map };
     },
 
     transform(this: unknown, code, id) {
