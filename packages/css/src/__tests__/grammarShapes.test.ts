@@ -247,7 +247,8 @@ describe("a split reaches leaves, never another shorthand", () => {
     container: "a b / size",
     "text-decoration": "underline overline dotted 2px red",
     "text-emphasis": "filled circle red",
-    offset: "none",
+    offset: "url(a.svg) 10% auto 90deg / left top",
+    "border-image": "url(a.png) 27 / 50px / 1rem round",
     "interest-delay": "1s 2s",
   };
 

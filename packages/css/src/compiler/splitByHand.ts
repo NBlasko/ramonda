@@ -1,6 +1,5 @@
 import { KEYWORDS } from "./keywords.generated";
-import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
-import { splitByGrammar, tokensOf } from "./split";
+import { tokensOf } from "./split";
 
 /**
  * The families neither table can answer, split by rules written out by hand.
@@ -314,51 +313,76 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
   },
 
   /** Like `border-image`: a source, a slice with an optional width and outset after it, a repeat. */
-  "mask-border": (value) => {
-    const t = slashed(value);
-    let source: string | undefined;
-    let repeat: string | undefined;
-    let slice: string | undefined;
-    let width: string | undefined;
-    let outset: string | undefined;
-    for (let at = 0; at < t.length; ) {
-      const one = t[at];
-      if (IMAGE.test(one) && source === undefined) {
-        source = one;
-        at++;
-      } else if (BORDER_REPEAT.includes(one) && repeat === undefined) {
-        const two = BORDER_REPEAT.includes(t[at + 1] ?? "");
-        repeat = two ? `${one} ${t[at + 1]}` : one;
-        at += two ? 2 : 1;
-      } else if ((SLICE_PART.test(one) || one === "fill") && slice === undefined) {
-        let end = at;
-        while (end < t.length && (SLICE_PART.test(t[end]) || t[end] === "fill")) end++;
-        const part = t.slice(at, end);
-        const fills = part.filter((word) => word === "fill").length;
-        if (fills > 1 || part.length - fills < 1 || part.length - fills > 4) return undefined;
-        if (fills === 1 && part[0] !== "fill" && part[part.length - 1] !== "fill") return undefined;
-        slice = part.join(" ");
-        at = end;
-        const sides = (from: number, test: RegExp): [string | undefined, number] => {
-          let stop = from;
-          while (stop < t.length && stop - from < 4 && test.test(t[stop])) stop++;
-          return stop === from ? [undefined, from] : [t.slice(from, stop).join(" "), stop];
-        };
-        if (t[at] === "/") {
-          [width, at] = sides(at + 1, WIDTH_PART);
-          if (t[at] === "/") {
-            [outset, at] = sides(at + 1, OUTSET_PART);
-            if (outset === undefined) return undefined;
-          } else if (width === undefined) return undefined;
-        }
-      } else return undefined;
+  "mask-border": (value) =>
+    imageBorder(value, "mask-border", { slice: "0", width: "auto", outset: "0", repeat: "stretch" }),
+
+  /** The same shape as `mask-border`, and its own initial values — measured in all three engines. */
+  "border-image": (value) =>
+    imageBorder(value, "border-image", { slice: "100%", width: "1", outset: "0", repeat: "stretch" }),
+
+  /**
+   * An optional position, then an optional path with a distance and a rotation after it, and after
+   * a `/` the anchor. `offset: none` is the path alone. The grammar table could not read a position
+   * before a path, nor an anchor.
+   */
+  offset: (value) => {
+    const parts = slashed(value);
+    const slash = parts.indexOf("/");
+    if (slash !== -1 && parts.lastIndexOf("/") !== slash) return undefined;
+    const t = slash === -1 ? parts : parts.slice(0, slash);
+    const anchorWords = slash === -1 ? undefined : parts.slice(slash + 1);
+    let anchor = "auto";
+    if (anchorWords !== undefined) {
+      if (anchorWords.length === 1 && anchorWords[0] === "auto") anchor = "auto";
+      else {
+        const axes = positionOf(anchorWords.join(" "));
+        if (axes === undefined) return undefined;
+        anchor = axes.join(" ");
+      }
     }
+    let at = 0;
+    let position = "normal";
+    const pathAt = t.findIndex((one) => OFFSET_PATH.test(one));
+    const head = pathAt === -1 ? t : t.slice(0, pathAt);
+    if (head.length > 0) {
+      if (head.length === 1 && (head[0] === "auto" || head[0] === "normal")) position = head[0];
+      else {
+        const axes = positionOf(head.join(" "));
+        if (axes === undefined) return undefined;
+        position = axes.join(" ");
+      }
+      at = head.length;
+    }
+    let path = "none";
+    let distance = "0px";
+    let rotate = "auto";
+    if (pathAt !== -1) {
+      path = t[pathAt];
+      at = pathAt + 1;
+      let rotated = false;
+      let moved = false;
+      while (at < t.length) {
+        const one = t[at];
+        // An angle before a length: `30deg` would pass as a length, and it is a rotation.
+        if (!moved && isOffset(one) && !ANGLE.test(one)) {
+          distance = one;
+          moved = true;
+          at++;
+        } else if (!rotated && (one === "auto" || one === "reverse" || ANGLE.test(one))) {
+          const two = (one === "auto" || one === "reverse") && ANGLE.test(t[at + 1] ?? "");
+          rotate = two ? `${one} ${t[at + 1]}` : one;
+          rotated = true;
+          at += two ? 2 : 1;
+        } else return undefined;
+      }
+      // A position or a path has to come before the `/` — an anchor alone is not an `offset`.
+    } else if (at !== t.length || head.length === 0) return undefined;
     return {
-      "mask-border-source": source ?? "none",
-      "mask-border-slice": slice ?? "0",
-      "mask-border-width": width ?? "auto",
-      "mask-border-outset": outset ?? "0",
-      "mask-border-repeat": repeat ?? "stretch",
+      "offset-position": position,
+      "offset-path": path,
+      "offset-distance": distance,
+      "offset-rotate": rotate,
+      "offset-anchor": anchor,
     };
   },
 
@@ -504,20 +528,6 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
     const style = text ?? ([fill, shape].filter((one) => one !== undefined).join(" ") || "none");
     if (t.length === 0) return undefined;
     return { "text-emphasis-style": style, "text-emphasis-color": color ?? "currentcolor" };
-  },
-
-  /** `none` by hand — the grammar reads it as nothing — and everything else by the grammar. */
-  offset: (value) => {
-    if (value === "none")
-      return {
-        "offset-position": "normal",
-        "offset-path": "none",
-        "offset-distance": "0px",
-        "offset-rotate": "auto",
-        "offset-anchor": "auto",
-      };
-    const grammar = GRAMMAR_SHAPES.offset;
-    return grammar === undefined ? undefined : splitByGrammar(grammar, value);
   },
 
   "interest-delay": (value) => {
@@ -1204,4 +1214,65 @@ function place(
   const other = b ?? a;
   if (!takes(a, one) || !takes(other, two)) return undefined;
   return { [first]: a.join(" "), [second]: other.join(" ") };
+}
+
+const ANGLE = /^[+-]?(\d+\.?\d*|\.\d+)(deg|rad|grad|turn)$/i;
+/** What an `offset-path` may be written as: a shape function, a `url()`, a box, or `none`. */
+const OFFSET_PATH =
+  /^(none|(ray|path|url|inset|circle|ellipse|polygon|xywh|rect|shape)\(.*\)|content-box|padding-box|border-box|fill-box|stroke-box|view-box)$/i;
+
+/**
+ * `border-image` and `mask-border`: a source, a slice with its width and outset after `/`s, and a
+ * repeat — each part at most once, in any order.
+ */
+function imageBorder(
+  value: string,
+  family: "border-image" | "mask-border",
+  initial: { slice: string; width: string; outset: string; repeat: string },
+): Record<string, string> | undefined {
+  const t = slashed(value);
+  let source: string | undefined;
+  let repeat: string | undefined;
+  let slice: string | undefined;
+  let width: string | undefined;
+  let outset: string | undefined;
+  for (let at = 0; at < t.length; ) {
+    const one = t[at];
+    if (IMAGE.test(one) && source === undefined) {
+      source = one;
+      at++;
+    } else if (BORDER_REPEAT.includes(one) && repeat === undefined) {
+      const two = BORDER_REPEAT.includes(t[at + 1] ?? "");
+      repeat = two ? `${one} ${t[at + 1]}` : one;
+      at += two ? 2 : 1;
+    } else if ((SLICE_PART.test(one) || one === "fill") && slice === undefined) {
+      let end = at;
+      while (end < t.length && (SLICE_PART.test(t[end]) || t[end] === "fill")) end++;
+      const part = t.slice(at, end);
+      const fills = part.filter((word) => word === "fill").length;
+      if (fills > 1 || part.length - fills < 1 || part.length - fills > 4) return undefined;
+      if (fills === 1 && part[0] !== "fill" && part[part.length - 1] !== "fill") return undefined;
+      slice = part.join(" ");
+      at = end;
+      const sides = (from: number, test: RegExp): [string | undefined, number] => {
+        let stop = from;
+        while (stop < t.length && stop - from < 4 && test.test(t[stop])) stop++;
+        return stop === from ? [undefined, from] : [t.slice(from, stop).join(" "), stop];
+      };
+      if (t[at] === "/") {
+        [width, at] = sides(at + 1, WIDTH_PART);
+        if (t[at] === "/") {
+          [outset, at] = sides(at + 1, OUTSET_PART);
+          if (outset === undefined) return undefined;
+        } else if (width === undefined) return undefined;
+      }
+    } else return undefined;
+  }
+  return {
+    [`${family}-source`]: source ?? "none",
+    [`${family}-slice`]: slice ?? initial.slice,
+    [`${family}-width`]: width ?? initial.width,
+    [`${family}-outset`]: outset ?? initial.outset,
+    [`${family}-repeat`]: repeat ?? initial.repeat,
+  };
 }
