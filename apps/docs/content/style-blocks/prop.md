@@ -80,7 +80,7 @@ On the thing the author got wrong, never on the call:
 |---|---|
 | `color: {$.color.accent}` | nothing — it is a declared colour |
 | `color: red` | on the **value** — a bare colour where a declared one is wanted |
-| `color: inherit` | on the **value** too — see below |
+| `color: inherit` | nothing — see below |
 | `padding: 4px` | on the **property** — `padding` is not in `{ color?: …; gap?: …; "&:hover"?: … }` |
 | `&:hover { padding: 4px }` | on `padding`, **inside** the state |
 | `&:focus { … }` | on the state — this component does not offer it |
@@ -90,13 +90,10 @@ Two of those need no rule of their own. **A combinator is refused because it is 
 component's internal structure never becomes part of its API. And `!important` stops being writable
 the moment a value is narrowed to a list.
 
-**A narrowed value also refuses `inherit`**, and its three companions — `initial`, `unset` and
-`revert`. They are what CSS itself provides rather than anything a project decided, so a list that
-wants them says so:
-
-```tsx
-type CardStyle = { color?: Token<"color"> | CssGlobal };
-```
+**A narrowed value still takes `inherit`**, and its companions `initial`, `unset`, `revert` and
+`revert-layer`. They come from CSS itself, not from a project's choices, so `{ color?: Token<"color"> }`
+takes `color: inherit` without saying so. It takes nothing else extra: `color: red` and
+`color: inherit !important` are still refused.
 
 ## One prop is one element
 

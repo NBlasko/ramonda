@@ -362,6 +362,9 @@ describe("a setup that would otherwise pass silently", () => {
     // It was SIX, and `$` was the sixth. The fallback is written inline now rather than imported,
     // so that no module has to export a `$` — an export is an auto-import suggestion, and a user
     // met `import { $ } from "@ramonda/css/properties"` offered beside their own generated one.
+    //
+    // The CSS-wide keywords a narrowed value takes (§13) are written inline for the same reason, and
+    // because a name the module lacks would be `any` there, not an error.
     expect(report.findings).toHaveLength(5);
     expect(report.findings.map((one) => one.message).join(" ")).toContain("CssBlockShape");
   });
@@ -1437,6 +1440,29 @@ describe("a block a prop can constrain", () => {
 
     expect(report.findings).toHaveLength(1);
     expect(report.findings[0].message).toContain("20px");
+  });
+
+  /**
+   * The CSS-wide keywords pass a narrowed value, as `Keyword<K>` lets them pass a closed list.
+   * They are what CSS itself provides, not a value the project chose — DESIGN.md §13, decided by the
+   * user. Everything else the slot refuses still is: another value, and `!important`.
+   */
+  test.each(["inherit", "initial", "unset", "revert", "revert-layer"])("a narrowed value takes `%s`", (word) => {
+    expect(check(calling(`gap: ${word};`)).findings).toEqual([]);
+  });
+
+  test("and so does a narrowed value inside a state", () => {
+    const report = check({
+      "Card.tsx": CARD.replace(`"&:hover"?: { color?: string }[];`, `"&:hover"?: { gap?: "8px" }[];`),
+      "Use.tsx": `import { Card } from "./Card";\nconst a = <Card css={@@( &:hover { gap: inherit; } )} />;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("a keyword does not open the slot to anything else", () => {
+    expect(check(calling(`gap: inherit !important;`)).findings).toHaveLength(1);
+    expect(check(calling(`padding: inherit;`)).findings).toHaveLength(1);
   });
 
   test("a property is reported INSIDE a state, not on the state", () => {

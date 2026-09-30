@@ -3327,7 +3327,19 @@ top of a file, an editor's outline does not show comments, and a search result i
 five hundred. If the answer is *nowhere*, a longer header is a longer thing nobody reads and the
 work belongs in the `settings` page instead.
 
-### 13. A narrowed value refuses `inherit` — a DECISION to take, measured
+### 13. A narrowed value refuses `inherit` — DECIDED: it takes them, BUILT
+
+**The user's decision (2026-09-30): the keywords are allowed, always.** Built in the virtual file's
+`__block` declaration: a narrowed value takes `inherit`, `initial`, `unset`, `revert` and
+`revert-layer`, inside a state too; `!important`, another value and another property are refused
+as before. Two traps measured while building it, both in `virtual.ts`'s note:
+
+- widening EVERY value made TypeScript print `Keyword<…>` member by member on ordinary blocks, so a
+  value that already takes `inherit` is handed back unchanged;
+- importing `CssGlobal` from the properties module made the whole file `any` where the module lacks
+  it — a typo went silent — so the five keywords are written out.
+
+What follows is the question as it was put, kept for the reasoning.
 
 Found while checking the claims on the new `/style-blocks/prop` page against a real project.
 

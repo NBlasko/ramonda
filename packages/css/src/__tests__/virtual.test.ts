@@ -142,9 +142,13 @@ describe("what a block becomes", () => {
     // ONE of them. There were two, and the second carried a flag saying the block held a runtime
     // value, so a prop could refuse one. A runtime value in a declaration is refused everywhere now,
     // so there is nothing to flag and `CssBlock` lost the parameter that held it.
+    // A narrowed value takes the CSS-wide keywords too, and a state is opened to its declarations —
+    // DESIGN.md §13. A value that already takes `inherit` comes back as it was.
     expect(preamble).toContain(
-      `declare function __block<A extends import("./properties").CssBlockShape = import("./properties").CssBlockShape>` +
-        `(declarations: NoInfer<{ [P in keyof A]?: A[P] }>[]): import("./properties").CssBlock<A>;`,
+      `type __Wide<V> = [NonNullable<V>] extends [readonly (infer E)[]] ? { [K in keyof E]?: __Wide<E[K]> }[] : ` +
+        `"inherit" extends V ? V : V | "inherit" | "initial" | "unset" | "revert" | "revert-layer"; ` +
+        `declare function __block<A extends import("./properties").CssBlockShape = import("./properties").CssBlockShape>` +
+        `(declarations: NoInfer<{ [P in keyof A]?: __Wide<A[P]> }>[]): import("./properties").CssBlock<A>;`,
     );
     // `match`'s own helper: the subject, the keys it may be, and the arms — see its declaration.
     expect(preamble).toContain(

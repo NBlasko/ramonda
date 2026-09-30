@@ -324,9 +324,32 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * `hole-not-allowed` — so there is nothing left for a prop to refuse and nothing for a flag to
    * say. `CssBlock` lost its second parameter with it.
    */
+  /**
+   * **A narrowed value takes the CSS-wide keywords too** — `inherit`, `initial`, `unset`, `revert`,
+   * `revert-layer` — as `Keyword<K>` does for a closed list. They are what CSS itself provides, not
+   * a value the project chose, so `{ gap?: "8px" }` accepting `gap: inherit` is the slot meaning
+   * what it says. The user's decision, DESIGN.md §13.
+   *
+   * Only the keywords: another value, `!important` and a property outside the list are refused as
+   * before. A state is an ARRAY of declarations and is opened, not widened, so its values take the
+   * keywords as well.
+   *
+   * **A value that already takes `inherit` is handed back as it was**, and that is what keeps an
+   * ordinary block untouched. Widening it unconditionally was measured to cost every block its
+   * messages: `V | CssGlobal` is a new union, TypeScript prints it member by member, and
+   * `position: statik` stopped naming `Keyword<…>` and listed twenty-one values instead.
+   *
+   * **The keywords are written out, not imported as `CssGlobal`.** A name the virtual file takes
+   * from the properties module is a name that module must export, and one it does not is not an
+   * error here but `any` — measured: every check in the file went silent, a typo included.
+   */
+  const wide = binding(source, "__Wide");
+  const CSS_WIDE = `"inherit" | "initial" | "unset" | "revert" | "revert-layer"`;
   write(
-    `declare function ${block}<A extends import(${from}).CssBlockShape = import(${from}).CssBlockShape>` +
-      `(declarations: NoInfer<{ [P in keyof A]?: A[P] }>[]): import(${from}).CssBlock<A>;`,
+    `type ${wide}<V> = [NonNullable<V>] extends [readonly (infer E)[]] ? { [K in keyof E]?: ${wide}<E[K]> }[] : ` +
+      `"inherit" extends V ? V : V | ${CSS_WIDE}; ` +
+      `declare function ${block}<A extends import(${from}).CssBlockShape = import(${from}).CssBlockShape>` +
+      `(declarations: NoInfer<{ [P in keyof A]?: ${wide}<A[P]> }>[]): import(${from}).CssBlock<A>;`,
   );
 
   /**
