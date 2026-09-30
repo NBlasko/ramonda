@@ -215,7 +215,8 @@ const SAFE_PROPERTY = /^[a-zA-Z0-9_\u00a1-\uffff-]+$/;
  * ends it, and `p` with the value `l-40px` cannot be read as `pl` with `40px`.
  *
  * The same argument covers CONTEXT: every context form starts with a character an abbreviation
- * cannot — `:`, `.`, `_`, `@`, `[` — so a name carrying one can never be read as a name without.
+ * cannot — `:`, `.`, `_`, `@`, `[`, and `!` for importance — so a name carrying one can never be read
+ * as a name without.
  *
  * ## Why a resolved reference keeps its hash in the name
  *
@@ -234,6 +235,8 @@ export function nameFor(declaration: {
   selector: string;
   conditions: readonly string[];
   holes: readonly number[];
+  /** Whether it is `!important` — part of the key, see `keyToken`. */
+  important?: boolean;
 }): string {
   const key = keyToken(declaration);
   /**
@@ -360,6 +363,27 @@ function contextOf(selector: string, conditions: readonly string[]): string | un
 }
 
 /**
+ * The class that goes in front of a split's pieces: the FAMILY's key and an EMPTY value, `r-p-`.
+ *
+ * It has no rule, so it sets nothing on a page. It is there for the merge, which reads a key out of
+ * every class: this one says a whole shorthand was written here, so everything the family covers,
+ * written earlier, is cleared before the pieces land. Without it the pieces clear only their own
+ * keys, and two things are left standing that CSS would reset. Both measured in all three engines:
+ *
+ * - a longhand this release's split has no piece for — a package built before CSS added it;
+ * - a class an older release wrote for the WHOLE property, when it was still a longhand — `overflow`
+ *   before `overflow-x` and `overflow-y`. The key is the same, so the marker replaces it.
+ *
+ * **The empty value is what makes it recognisable**, and nothing else would: no declaration has an
+ * empty value, while a class with no value at all is also what a named site compiles to. So a class
+ * ending in `-` is a marker, always — which is how `check-css-splitting` tells it from a class
+ * whose rule is missing.
+ */
+export function markerFor(family: string, selector: string, conditions: readonly string[], important = false): string {
+  return `r-${keyToken({ property: family, selector, conditions, important })}-`;
+}
+
+/**
  * The KEY a class name carries: **what this declaration sets**, written into the name itself.
  *
  * ## Why a class has to carry it
@@ -385,7 +409,8 @@ function contextOf(selector: string, conditions: readonly string[]): string | un
  * | `0Ab3kQ` | neither could be written, so the whole key is hashed |
  *
  * **A written key never begins with `0`**, because a CSS property cannot begin with a digit and
- * every context form begins with `:`, `.`, `_`, `@` or `[`. So the leading `0` says *hashed* and
+ * every context form begins with `:`, `.`, `_`, `@`, `[` or `!` (importance, which `partsOf` takes off
+ * first). So the leading `0` says *hashed* and
  * cannot be mistaken for anything an author wrote. The `.` says where a hashed context ends: a
  * property may not hold one, so the LAST `.` is always the boundary.
  *
@@ -393,17 +418,33 @@ function contextOf(selector: string, conditions: readonly string[]): string | un
  * one key only when their context and property are the same text — or when two hashes collide, and
  * that is asserted where the sheet is assembled, with both rules named. See `Sheet.add`.
  */
-export function keyToken(declaration: { property: string; selector: string; conditions: readonly string[] }): string {
+export function keyToken(declaration: {
+  property: string;
+  selector: string;
+  conditions: readonly string[];
+  important?: boolean;
+}): string {
+  /**
+   * IMPORTANCE is part of what a class sets, written as one more context in front: `!.pl`.
+   *
+   * Without it an ordinary `padding-left` and an important one shared the key `pl`, so a merge let
+   * the later replace the earlier — `padding: 1px !important; padding-left: 2px` gave 2px where CSS
+   * gives 1px, inside one block. As a context it composes the way every context does: `!.p` clears
+   * `!.pl` and not `pl`, so an important shorthand clears the important longhands before it and an
+   * ordinary one clears none of them; two classes of different importance both stay, and the
+   * mirrored `i` layer decides between them as CSS does.
+   */
+  const bang = declaration.important === true ? "!." : "";
   const property = writableProperty(declaration.property);
   const context = contextOf(declaration.selector, declaration.conditions);
 
   if (property === undefined) {
-    return `0${shortHash(keyTextOf(declaration), 6)}`;
+    return `${bang}0${shortHash(keyTextOf(declaration), 6)}`;
   }
   if (context === undefined) {
-    return `0${shortHash(keyTextOf({ ...declaration, property: "" }), 5)}.${property}`;
+    return `${bang}0${shortHash(keyTextOf({ ...declaration, property: "" }), 5)}.${property}`;
   }
-  return context === "" ? property : `${context}.${property}`;
+  return bang + (context === "" ? property : `${context}.${property}`);
 }
 
 /** The exact text a key stands for, which is what a hash of it has to be a function of. */

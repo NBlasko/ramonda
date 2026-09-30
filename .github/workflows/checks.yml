@@ -116,6 +116,7 @@ jobs:
           node scripts/check-test-probes.mjs
           node scripts/build-package-readmes.mjs --check
           node scripts/build-css-properties.mjs --check
+          node scripts/build-clears-table.mjs --check
 
       # These two need `@ramonda/css` BUILT, which the step above already did for `pnpm lint`:
       # `check-css-blocks` imports the compiler, and `check-css-system` runs `bin.mjs codegen
@@ -202,6 +203,29 @@ jobs:
           node scripts/build-engine-keywords.mjs --check
           node scripts/build-numberless-properties.mjs --check
 
+      # The splitter's tables and the gates over it. Each one launches Chromium, Firefox and WebKit,
+      # so they cannot run in `lint`, which has none — they sat there on this branch and CI had never
+      # run them, and one named a script the branch had already deleted. Sources only, so they need
+      # no build and run before the one below.
+      - name: What the splitter is checked against
+        run: |
+          node scripts/build-shorthand-shapes.mjs --check
+          node scripts/build-initial-values.mjs --check
+          node scripts/build-grammar-shapes.mjs --check
+          SELFTEST=order node scripts/check-layer-skew.mjs
+          node scripts/check-layer-skew.mjs
+          SELFTEST=slot node scripts/check-shorthand-split.mjs
+          SELFTEST=half node scripts/check-shorthand-split.mjs
+          node scripts/check-shorthand-split.mjs
+          SELFTEST=change node scripts/check-render-equality.mjs
+          SELFTEST=joined node scripts/check-render-equality.mjs
+          node scripts/check-render-equality.mjs
+          SELFTEST=refuse node scripts/check-must-split.mjs
+          node scripts/check-must-split.mjs
+          SELFTEST=flex node scripts/check-hand-splits.mjs
+          SELFTEST=forget node scripts/check-hand-splits.mjs
+          node scripts/check-hand-splits.mjs
+
       - name: Build the playground
         run: pnpm exec turbo run build --filter=playground-core
 
@@ -217,7 +241,8 @@ jobs:
 
       # A trace and a screenshot per failure. This suite exists for differences that appear only in
       # a browser, so a red run here is the one place where re-reading the source is least likely to
-      # explain it.
+      # explain it. `check-render-equality.mjs` writes its three pictures — hand-written, blocks, and
+      # every differing pixel marked — under the same `test-results/`, so they are kept here too.
       - name: Keep what the failure left behind
         if: failure()
         uses: actions/upload-artifact@v4

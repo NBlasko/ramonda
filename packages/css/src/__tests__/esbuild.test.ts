@@ -145,7 +145,13 @@ describe("a build", () => {
     const named = (/"(r-[^"]+)"/.exec(js ?? "")?.[1] ?? "").split(" ");
 
     expect(named.length).toBeGreaterThan(0);
-    for (const one of named) expect(css, `${one} is named by the JavaScript`).toContain(`.${one}`);
+    // Except the marker a split puts in front of its pieces, which sets nothing and so has no rule —
+    // see `markerFor`. `gap` splits, so it is there, and only it.
+    const markers: string[] = named.filter((one) => one === "r-gap-");
+    expect(markers).toEqual(["r-gap-"]);
+    expect(css).not.toMatch(/\.r-gap-\s*\{/);
+    for (const one of named.filter((one) => !markers.includes(one)))
+      expect(css, `${one} is named by the JavaScript`).toContain(`.${one}`);
   });
 
   /**
@@ -408,7 +414,8 @@ describe("which config a file is measured against", () => {
 
     const { css } = outputs(await build(repo, { entryPoints: [join(repo, "packages", "admin", "index.tsx")] }));
 
-    expect(css).toContain("padding: 1em");
+    // The shorthand reaches the sheet as its longhands, so the unit shows up on each of them.
+    expect(css).toContain("padding-top: 1em");
   });
 });
 

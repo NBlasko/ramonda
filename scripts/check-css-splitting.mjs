@@ -119,6 +119,8 @@ for (const [key, entry] of Object.entries(manifest)) {
     .join("");
 
   for (const one of named) {
+    // A split's marker — a key and an EMPTY value — has no rule by design; see `markerFor`.
+    if (one.endsWith("-")) continue;
     if (!loaded.includes(`.${escapeClass(one)}`)) {
       faults.push(`${key} names \`${one}\` and loads no stylesheet holding it`);
     }

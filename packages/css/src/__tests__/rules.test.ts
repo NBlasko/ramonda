@@ -4616,3 +4616,281 @@ describe("a declaration another one on the same element switches off", () => {
     expect(found.message).toContain("display: block");
   });
 });
+
+/**
+ * A word one longhand of a shorthand has no place for, which makes the WHOLE declaration invalid.
+ *
+ * CSS drops a whole declaration when any part of it is invalid. `place-items: start space-between`
+ * sets nothing in any browser, `justify-items` having no `space-between` — so the author wrote a
+ * line that does nothing, silently, and the splitter refuses it for the same reason. Measured in
+ * Chromium, Firefox and WebKit before the rule was written.
+ *
+ * Every shape below is PLANTED and run, never reasoned about from the code — see
+ * `.claude/skills/writing-a-static-rule`.
+ */
+describe("a word the longhand has no place for", () => {
+  const found = (css: string) => {
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {}).map((one) => one.rule);
+  };
+
+  /**
+   * `left` and `legacy` are `justify-items` words; `anchor-center` is an `align-items` word. Written
+   * in this order the align slot gets one it has no place for, so the declaration is invalid and
+   * every engine ignores it — measured in Chromium, Firefox and WebKit.
+   *
+   * These are the values the rule EXISTS for. The first plants written here were
+   * `place-items: start space-between`, which `unknown-value` already names because `space-between`
+   * is not a `place-items` value either way; the rule stood down and the plants failed, which is
+   * what they should do.
+   */
+  test.each([
+    ["a word only the other longhand has", "place-items: left anchor-center;"],
+    ["another of them", "place-items: legacy anchor-center;"],
+    ["a sibling family", "place-self: left anchor-center;"],
+  ])("%s is reported", (_what, css) => {
+    expect(found(css)).toContain("word-out-of-its-longhand");
+  });
+
+  test.each([
+    ["a word both longhands have", "place-items: start end;"],
+    ["one value, which reaches both", "place-items: center;"],
+    ["the same two the other way round, which Firefox and WebKit accept", "place-items: anchor-center left;"],
+    ["a length, which is not a word", "padding: 10px 20px;"],
+    ["a family with no shape here", "background: red;"],
+    ["a longhand written on its own", "justify-items: space-between;"],
+    ["a CSS-wide keyword", "place-items: inherit;"],
+  ])("%s is silent", (_what, css) => {
+    expect(found(css)).not.toContain("word-out-of-its-longhand");
+  });
+
+  /**
+   * Said once. `unknown-value` asks whether the PROPERTY takes the word at all and gets there first
+   * for most of them, and two reports on one character is one too many. The silence is asserted
+   * WITH the other rule's report, or it would pass for having found nothing.
+   */
+  test("a word the property does not take either is left to `unknown-value`", () => {
+    expect(found("place-items: start space-between;")).toEqual(["unknown-value"]);
+  });
+
+  /**
+   * A `var()` and a HOLE are both unreadable here, and a rule that reports what the author wrote may
+   * not report what it cannot read. The word beside them is one the rule WOULD report, or the plant
+   * proves nothing — measured: with either guard removed, both of these report.
+   */
+  test.each([
+    ["a `var()`", "place-items: left var(--x);"],
+    ["a hole", "place-items: left {this.how};"],
+  ])("%s is silent, because what it holds is not written here", (_what, css) => {
+    expect(found(css)).not.toContain("word-out-of-its-longhand");
+  });
+
+  test("nested under a selector, where the walk has to reach it", () => {
+    expect(found("&:hover {\n    place-items: left anchor-center;\n  }")).toContain("word-out-of-its-longhand");
+  });
+
+  test("and inside a media query", () => {
+    expect(found("@media (min-width: 40rem) {\n    place-items: left anchor-center;\n  }")).toContain(
+      "word-out-of-its-longhand",
+    );
+  });
+
+  /**
+   * `!important` is taken off before the value is read, so the rule reads what the splitter reads.
+   * It is never an identifier, so it cannot be reported AS a word — what the stripping decides is
+   * how many values were written, and a fault beside it still has to be seen.
+   */
+  test("a value carrying `!important` is read the same as one without", () => {
+    expect(found("place-items: start end !important;")).not.toContain("word-out-of-its-longhand");
+    expect(found("place-items: left anchor-center !important;")).toContain("word-out-of-its-longhand");
+  });
+
+  test("the message names the word, the longhand, and what the browser does", () => {
+    const source = `<div className={@@(\n  place-items: left anchor-center;\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    const one = checkBlock(read.block, {}).find((each) => each.rule === "word-out-of-its-longhand");
+
+    expect(one?.message).toContain("left");
+    expect(one?.message).toContain("align-items");
+    expect(one?.message).toContain("whole declaration");
+  });
+});
+
+/**
+ * `!important` is not a value, and counting it as one refused correct CSS.
+ *
+ * `padding: 4px 0 0 0 !important` is four values and a flag; the rule counted five and said CSS
+ * gives four. Every finding these rules produce refuses the BUILD, so this stopped a page that
+ * every browser renders. Hidden until `place-items` entered the positional table — `padding` takes
+ * four, so its own flag fitted under the maximum and said nothing.
+ */
+describe("`!important` is not one of the values", () => {
+  const found = (css: string) => {
+    const source = `<div className={@@(\n  ${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {}).map((one) => one.rule);
+  };
+
+  test.each([
+    ["at the maximum", "padding: 4px 0 0 0 !important;"],
+    ["another family at its maximum", "margin: 1px 2px 3px 4px !important;"],
+    ["a family that takes two", "place-items: start end !important;"],
+    ["the spelling with a space", "padding: 4px 0 0 0 ! important;"],
+    ["and in capitals", "padding: 4px 0 0 0 !IMPORTANT;"],
+  ])("%s is silent", (_what, css) => {
+    expect(found(css)).not.toContain("too-many-values");
+  });
+
+  /** And a value that is over the maximum WITHOUT the flag is still counted. */
+  test.each([
+    ["five where CSS gives four", "padding: 4px 0 0 0 0;"],
+    ["five and a flag", "padding: 4px 0 0 0 0 !important;"],
+  ])("%s is still reported", (_what, css) => {
+    expect(found(css)).toContain("too-many-values");
+  });
+});
+
+/**
+ * A narrower shorthand written after a WIDER one holding a `var()`.
+ *
+ * The wider one cannot split and sits in the word layer `v`. The narrower one sits in `v` too, or
+ * in a counted layer below it — and neither is above it. Through the merge both classes stay, and
+ * the stylesheet decides. Measured in all three engines, `border: var(--x)` then
+ * `border-top: var(--y)`: the right answer in one load order and the wrong one in the other.
+ */
+describe("a narrower shorthand after a var() shorthand", () => {
+  const found = (css: string) => {
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {}).map((one) => one.rule);
+  };
+
+  test.each([
+    ["two var() shorthands", "border: var(--x); border-top: var(--y);"],
+    ["a family and its own member", "background: var(--b); background-position: var(--q);"],
+    ["the same inside a condition", "@media (min-width: 40rem) { border: var(--x); border-top: var(--y); }"],
+    ["a wider one a split refuses, with no var() in it", "font: caption; font-variant: var(--v);"],
+  ])("%s is reported", (_what, css) => {
+    expect(found(css)).toContain("narrower-after-a-whole-shorthand");
+  });
+
+  test.each([
+    ["the other order, which the merge settles", "border-top: var(--y); border: var(--x);"],
+    ["a longhand after it, which is stronger", "border: var(--x); border-top-color: red;"],
+    ["a split after it, which is stronger", "border: var(--x); border-top: 1px solid red;"],
+    [
+      "a wider one that splits, whose pieces are stronger",
+      "background: red url(a.png); background-position: var(--p);",
+    ],
+    ["under different conditions", "border: var(--x); @media (min-width: 40rem) { border-top: var(--y); }"],
+    ["two families that do not cover each other", "border: var(--x); padding: var(--p);"],
+  ])("%s is not", (_what, css) => {
+    expect(found(css)).not.toContain("narrower-after-a-whole-shorthand");
+  });
+});
+
+/**
+ * A shorthand the engines RESET differently — `RESETS_DIFFER`, measured by
+ * `build-shorthand-leaves.mjs`. `-webkit-mask` resets `mask-clip`, `mask-composite` and `mask-mode`
+ * in Chromium and Firefox and keeps them in WebKit, so the author's own line renders two ways and no
+ * split can fix that. It is refused, and `mask` is named, which every engine has.
+ */
+describe("a shorthand the engines reset differently", () => {
+  const found = (css: string) => {
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {});
+  };
+
+  test("is reported, naming the longhands and the standard property", () => {
+    const [finding] = found("-webkit-mask: url(a.png);").filter((one) => one.rule === "resets-differ-across-engines");
+    expect(finding?.message).toContain("mask-mode");
+    expect(finding?.message).toContain("`mask`");
+  });
+
+  test("and so it is inside a condition", () => {
+    expect(found("@media (min-width: 40rem) { -webkit-mask: none; }").map((one) => one.rule)).toContain(
+      "resets-differ-across-engines",
+    );
+  });
+
+  test.each(["mask: url(a.png);", "-webkit-mask-image: url(a.png);", "background: red;"])("%s is not", (css) => {
+    expect(found(css).map((one) => one.rule)).not.toContain("resets-differ-across-engines");
+  });
+});
+
+/**
+ * A VALUE the engines read differently — `contested` on a grammar shape, measured by the generator.
+ * `animation: auto` is `animation-name: auto` in Firefox and a duration in Chromium and WebKit, so
+ * the line renders two ways. Refused, like a shorthand the engines reset differently.
+ */
+describe("a value the engines read differently", () => {
+  const found = (css: string) => {
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {});
+  };
+
+  test.each(["animation: auto;", "animation: spin auto;", "animation: spin 1s, auto;"])("%s is reported", (css) => {
+    const finding = found(css).find((one) => one.rule === "value-differs-across-engines");
+    expect(finding?.message).toContain("`auto`");
+  });
+
+  test("the finding is on the word, not on the first place its letters appear", () => {
+    const css = "animation: autoslide auto;";
+    const finding = found(css).find((one) => one.rule === "value-differs-across-engines");
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    expect(source.slice(finding?.at ?? 0, (finding?.at ?? 0) + 5)).toBe("auto;");
+  });
+
+  test.each(["animation: spin 1s;", "animation-duration: auto;", "animation: none;"])("%s is not", (css) => {
+    expect(found(css).map((one) => one.rule)).not.toContain("value-differs-across-engines");
+  });
+});
+
+describe("an unspaced combinator", () => {
+  test("is reported, and the formatter is what fixes it", () => {
+    const source = `<div className={@@(\n&>span { color: red; }\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    expect(checkBlock(read.block, {}).map((one) => one.rule)).toContain("non-canonical-spelling");
+  });
+});
+
+describe("a value one engine does not have is not an error", () => {
+  test("text-wrap: pretty is not reported as read differently", () => {
+    const source = `<div className={@@(\ntext-wrap: pretty;\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    expect(checkBlock(read.block, {}).map((one) => one.rule)).not.toContain("value-differs-across-engines");
+  });
+});
+
+describe("what the review found in the rules", () => {
+  const found = (css: string) => {
+    const source = `<div className={@@(\n${css}\n)}>x</div>`;
+    const [site] = findBlocks(source);
+    const read = readBlock(source, site.open, "Card.tsx", { tolerant: true });
+    return checkBlock(read.block, {}).map((one) => one.rule);
+  };
+
+  test("an important wider shorthand, then an ordinary narrower one, is not the fault — `i` decides", () => {
+    expect(found("border: var(--x) !important; border-top: var(--y);")).not.toContain(
+      "narrower-after-a-whole-shorthand",
+    );
+    expect(found("border: var(--x) !important; border-top: var(--y) !important;")).toContain(
+      "narrower-after-a-whole-shorthand",
+    );
+  });
+
+  test("a contested word is reported in any case", () => {
+    expect(found("animation: AUTO;")).toContain("value-differs-across-engines");
+  });
+});

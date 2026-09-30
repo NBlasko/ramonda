@@ -1,3 +1,4 @@
+import { CLEARS_TABLE } from "./clears.generated";
 import { widthSlot } from "./conditions";
 import { keyIn, partsOf } from "./key";
 import type { StyleValue } from "./types";
@@ -39,6 +40,57 @@ import type { StyleValue } from "./types";
  */
 const CLEARS = new Map<string, readonly string[]>();
 
+/** The generated table, read on first use: each shorthand's DIRECT members, braces expanded. */
+let direct: Map<string, readonly string[]> | undefined;
+
+/** What each shorthand clears in full, once asked — the table followed down every chain. */
+const closures = new Map<string, readonly string[]>();
+
+/** `a_{b,c}_d` is `a_b_d a_c_d`, the one shorthand the generator writes. */
+const BRACES = /^(.*)\{(.*)\}(.*)$/;
+
+function readTable(): Map<string, readonly string[]> {
+  const table = new Map<string, readonly string[]>();
+  for (const line of CLEARS_TABLE.split("\n")) {
+    const at = line.indexOf(": ");
+    if (at === -1) continue;
+    const members = line.slice(at + 2).split(" ");
+    table.set(
+      line.slice(0, at),
+      members.flatMap((one) => {
+        const [, head, middle, tail] = BRACES.exec(one) ?? [];
+        return middle === undefined ? [one] : middle.split(",").map((part) => head + part + tail);
+      }),
+    );
+  }
+  return table;
+}
+
+/**
+ * What this release knows a shorthand clears — every member, and every member of a member.
+ *
+ * The walk keeps a SEEN set, and it has to: `gap` and `grid-gap` are one property under two names
+ * and each lists the other.
+ */
+function builtIn(property: string): readonly string[] {
+  const known = closures.get(property);
+  if (known !== undefined) return known;
+  direct ??= readTable();
+  const table = direct;
+  const seen = new Set<string>();
+  const walk = (from: string): void => {
+    for (const one of table.get(from) ?? NONE)
+      if (one !== property && !seen.has(one)) {
+        seen.add(one);
+        walk(one);
+      }
+  };
+  walk(property);
+  const found = seen.size === 0 ? NONE : [...seen];
+  closures.set(property, found);
+  return found;
+}
+
 /**
  * Register the shorthands a module writes. Called by emitted code; never written by hand.
  *
@@ -64,8 +116,8 @@ const CLEARS = new Map<string, readonly string[]>();
  */
 export function shorthands(table: Readonly<Record<string, readonly string[]>>): void {
   for (const property in table) {
-    const already = CLEARS.get(property);
-    CLEARS.set(property, already === undefined ? table[property] : [...new Set([...already, ...table[property]])]);
+    const already = CLEARS.get(property) ?? builtIn(property);
+    CLEARS.set(property, [...new Set([...already, ...table[property]])]);
   }
 }
 
@@ -113,9 +165,16 @@ const OURS = "r-";
 
 /** The keys one key clears, in full — its own context put back in front of each longhand. */
 function clearedBy(key: string): readonly string[] {
-  const { context, property } = partsOf(key);
-  const covered = CLEARS.get(property);
-  return covered === undefined ? NONE : covered.map((one) => context + one);
+  const { important, context, property } = partsOf(key);
+  let covered = CLEARS.get(property);
+  if (covered === undefined) {
+    // Kept where the next call finds it first: this runs for every class in every merge.
+    covered = builtIn(property);
+    CLEARS.set(property, covered);
+  }
+  // Importance back in front: an important shorthand clears the important longhands, and no others.
+  const prefix = (important ? "!." : "") + context;
+  return covered.length === 0 ? NONE : covered.map((one) => prefix + one);
 }
 
 /**
@@ -183,6 +242,40 @@ function slotOf(key: string): number | undefined {
  *
  * Said once per pair, because a render loop would otherwise say it a thousand times.
  */
+/**
+ * A narrower shorthand composed after a wider one when both are WHOLE —
+ * `narrower-after-a-whole-shorthand`, which the compiler refuses inside one block, for the blocks it
+ * cannot see together.
+ *
+ * Both classes stay, because a narrower shorthand does not clear a wider one, and both sit in the
+ * one word layer `v`: the answer follows which file the build read first. A class is whole when its
+ * key is a shorthand's and it is not a split's marker (which ends in `-`) — read off the key, so a
+ * value long enough to be hashed is found as well as a readable one.
+ */
+function warnAboutWholeShorthands(chosen: ReadonlyMap<string, string>): void {
+  // `all` is not one: it has its own weaker layer, `a`, so whatever follows it wins.
+  const whole = (key: string, className: string) =>
+    className.startsWith(OURS) &&
+    !className.endsWith("-") &&
+    partsOf(key).property !== "all" &&
+    clearedBy(key).length > 0;
+  const entries = [...chosen];
+  for (const [index, [key, className]] of entries.entries()) {
+    if (!whole(key, className)) continue;
+
+    const covered = new Set(clearedBy(key));
+    for (const [laterKey, later] of entries.slice(index + 1)) {
+      if (!covered.has(laterKey) || !whole(laterKey, later)) continue;
+      const message =
+        `[@ramonda/css] \`${later}\` is composed after \`${className}\`, and both reach the stylesheet ` +
+        `whole, so no order keeps the later one winning on every page. Set its longhands instead.`;
+      if (said.has(message)) continue;
+      said.add(message);
+      console.warn(message);
+    }
+  }
+}
+
 function warnAboutOrder(chosen: ReadonlyMap<string, string>): void {
   /** Property -> what was composed that SETS it, in composition order. */
   const byProperty = new Map<string, { key: string; property: string; slot: number }[]>();
@@ -197,9 +290,12 @@ function warnAboutOrder(chosen: ReadonlyMap<string, string>): void {
     const slot = slotOf(key);
     if (slot === undefined) continue;
 
-    const { property } = partsOf(key);
+    // Grouped by importance too: between an important declaration and an ordinary one importance
+    // decides, whatever their conditions, so the two are never compared.
+    const { important, property } = partsOf(key);
     const one = { key, property, slot };
-    register(property, one);
+    const group = (name: string) => (important ? `!${name}` : name);
+    register(group(property), one);
 
     /**
      * **And every longhand a SHORTHAND sets**, which this missed entirely — all 98 families.
@@ -215,11 +311,13 @@ function warnAboutOrder(chosen: ReadonlyMap<string, string>): void {
      */
     for (const each of clearedBy(key)) {
       const sets = partsOf(each).property;
-      if (sets !== property) register(sets, one);
+      if (sets !== property) register(group(sets), one);
     }
   }
 
-  for (const [property, list] of byProperty) {
+  for (const [group, list] of byProperty) {
+    // The group's name carries importance (`!c`); the message names the property itself.
+    const property = group.startsWith("!") ? group.slice(1) : group;
     let strongest = list[0];
     for (const one of list.slice(1)) {
       if (one.slot >= strongest.slot) {
@@ -346,7 +444,10 @@ export function mergeClassNames(...parts: readonly (string | false | null | unde
    * Only when more than one part was composed. A single block's contradictions are the compiler's
    * to report, at the author's own line, and it does — this exists for what a spread hides.
    */
-  if (given > 1 && inDevelopment()) warnAboutOrder(chosen);
+  if (given > 1 && inDevelopment()) {
+    warnAboutOrder(chosen);
+    warnAboutWholeShorthands(chosen);
+  }
 
   let className = "";
   for (const one of chosen.values()) className = className === "" ? one : `${className} ${one}`;

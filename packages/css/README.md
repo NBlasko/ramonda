@@ -151,8 +151,11 @@ nothing at all, not even the framework, which is what lets another JSX library t
 import { mergeClassNames } from "@ramonda/css";
 
 // What a block compiles to: the classes, space separated. It keeps one class per thing set.
-mergeClassNames("r-pl-40px r-cur-pointer", "r-p-8px");
-// "r-cur-pointer r-p-8px"  — `padding` cleared the `padding-left` beneath it
+// A shorthand arrives as the longhands it sets, so `padding: 8px` is four of them, after `r-p-`,
+// which has no rule and tells the merge a whole `padding` was written: everything it covers,
+// written earlier, is cleared. The `padding-left` beneath it goes.
+mergeClassNames("r-pl-40px r-cur-pointer", "r-p- r-pt-8px r-pr-8px r-pb-8px r-pl-8px");
+// "r-cur-pointer r-p- r-pt-8px r-pr-8px r-pb-8px r-pl-8px"
 ```
 
 **A block IS that string**, so `className={panel}` applies one and there is no adapter to import. No

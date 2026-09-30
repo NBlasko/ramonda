@@ -395,3 +395,38 @@ describe("a property name's case", () => {
     expect(propertyName("İ-thing")).toBe("İ-thing");
   });
 });
+
+/**
+ * A combinator is written spaced — `& > span`, `& + b`, `& ~ c` — as Prettier's own CSS formatter
+ * writes it. The descendant combinator already was (`&  :hover` → `& :hover`); the other three were
+ * left as typed, so one file held both spellings.
+ *
+ * Not inside parentheses or brackets, where the same characters are not combinators:
+ * `:nth-child(2n+1)` and `[class~="x"]` are left alone.
+ */
+describe("a combinator is written spaced", () => {
+  test.each([
+    ["&>span", "& > span"],
+    ["&+b", "& + b"],
+    ["&~c", "& ~ c"],
+    ["&  >   span", "& > span"],
+    [">span", "> span"],
+    ["& > span", "& > span"],
+    ["&>.a+.b~.c", "& > .a + .b ~ .c"],
+  ])("%s → %s", (written, canonical) => {
+    expect(canonicalSelector(written)).toBe(canonical);
+  });
+
+  test.each([
+    "+50%",
+    "+.5%",
+    ":nth-child(2n+1)",
+    "&:nth-child(-n+3)",
+    '&[class~="x"]',
+    "&[data-a>b]",
+    '&[title="a>b"]',
+    "&:is(.a+.b)",
+  ])("%s is left alone", (written) => {
+    expect(canonicalSelector(written)).toBe(written);
+  });
+});

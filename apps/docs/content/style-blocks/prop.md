@@ -139,7 +139,7 @@ and nothing left to say in an API. `CssBlock<Allow>` is the only type, and a cal
 it whatever they write. See [values that come from data](/style-blocks/dynamic) for the two doors
 that replaced the hole, and [composing](/style-blocks/composing) for `if`, `match` and the spread.
 
-## Four things the checker watches
+## Five things the checker watches
 
 **A prop that never reaches a block.** A caller sends styles, the component never puts them on an
 element, and nothing fails — the styles simply do not arrive. It is reported where the prop is
@@ -160,10 +160,13 @@ class Broken extends Component<{ css?: CssBlock<{ "padding-left"?: string }> }> 
 component that promised a property in its type and then took it back. There are two fixes and both
 are right: move the spread below, or take the property out of the type.
 
-**And two things about the allow-list itself** — `state-is-a-tuple` and
-`allow-list-is-an-interface`, both above.
+**And three things about the allow-list itself** — `state-is-a-tuple` and
+`allow-list-is-an-interface`, both above, and `allow-list-not-css`: a value in it that is not CSS.
+`"font-weight"?: "notexisting"` is a type that looks fine and refuses every caller, since nobody can
+send that value — so it is reported where you wrote it, judged by the same rules as a declaration
+in a block.
 
-All four can be switched off by id in [`ramonda.css.ts`](/style-blocks/settings), and covered for
+All five can be switched off by id in [`ramonda.css.ts`](/style-blocks/settings), and covered for
 one line by [the ignore directive](/style-blocks/checking#when-a-rule-is-wrong).
 
 ## Next

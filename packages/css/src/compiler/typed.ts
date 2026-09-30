@@ -1,6 +1,10 @@
 import ts from "typescript";
 import { conflict, covers } from "./flatten";
-import { AT_RULE_LINKS, NOT_IN_A_RULE, PROPERTIES } from "./keywords.generated";
+import { AT_RULE_LINKS, NOT_IN_A_RULE, PROPERTIES, SHORTHANDS } from "./keywords.generated";
+import { readBlock } from "./read";
+import { checkBlock } from "./rules";
+import { findBlocks } from "./scan";
+import { IMPORTANT, splitOf } from "./split";
 import type { RegisteredSite } from "./variables";
 import type { VirtualFile } from "./virtual";
 
@@ -45,6 +49,8 @@ export const TYPED_RULES = [
   "blocks-joined-not-merged",
   "state-is-a-tuple",
   "allow-list-is-an-interface",
+  "narrower-after-a-whole-shorthand",
+  "allow-list-not-css",
 ] as const;
 
 /** A finding about a file, at an offset in the AUTHOR's own text. */
@@ -62,6 +68,7 @@ interface Helpers {
   readonly block: string;
   readonly from: string;
   readonly hole: string;
+  readonly cond?: string;
 }
 
 /**
@@ -489,6 +496,10 @@ export function typedFindingsFor(
   // The one rule here that REPLACES the compiler rather than answering past it — see its docstring,
   // and `inOrder` in `check.ts` for where the `TS2344` it stands in for is dropped.
   allowListIsAnInterface(checker, file, report);
+  // The compiler asks this inside ONE block; across blocks the spread is a value, and only a
+  // program can follow it to the block it names.
+  wholeAcrossBlocks(checker, file, helpers, report);
+  allowListNotCss(checker, file, report);
 
   return findings;
 }
@@ -700,6 +711,26 @@ function joinedNotMerged(
     return seen.size > 1;
   };
 
+  /**
+   * A part NAMED `className`, which carries classes by convention and may carry a block.
+   *
+   * The type cannot tell: a block arriving as a `string` looks exactly like a foreign class name,
+   * and reporting those is a false report on the shape the documentation teaches. The NAME can —
+   * `className` is what classes travel under, and a component joining its caller's into a string
+   * is the one place the merge never runs. Measured, that is also where the shorthand SPLIT changed
+   * an answer: the caller's `padding` arrives as four longhand classes, the component's own
+   * `padding-left` is a fifth, and which wins follows whichever stylesheet the bundler put first.
+   */
+  const carriesClasses = (node: ts.Expression): boolean => {
+    if (ts.isPropertyAccessExpression(node)) return node.name.text === "className";
+    if (ts.isIdentifier(node)) return node.text === "className";
+    return false;
+  };
+
+  /** Two different blocks, or one block beside something classes travel under. */
+  const joined = (blocks: readonly ts.Expression[], parts: readonly ts.Expression[]): boolean =>
+    blocks.length > 0 && (distinct(blocks) || parts.some(carriesClasses));
+
   /** Every operand of a `+` chain, flattened — `a + " " + b` is three, not two. */
   const addends = (node: ts.Expression, into: ts.Expression[]): void => {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
@@ -723,8 +754,8 @@ function joinedNotMerged(
 
   const visit = (node: ts.Node): void => {
     if (ts.isTemplateExpression(node)) {
-      const blocks = node.templateSpans.map((span) => span.expression).filter(isBlock);
-      if (blocks.length > 1 && distinct(blocks)) said(node);
+      const parts = node.templateSpans.map((span) => span.expression);
+      if (joined(parts.filter(isBlock), parts)) said(node);
     } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
       /**
        * Only the OUTERMOST `+` of a chain, or `a + " " + b` would be reported twice — once for the
@@ -734,8 +765,7 @@ function joinedNotMerged(
       if (outer) {
         const parts: ts.Expression[] = [];
         addends(node, parts);
-        const blocks = parts.filter(isBlock);
-        if (blocks.length > 1 && distinct(blocks)) said(node);
+        if (joined(parts.filter(isBlock), parts)) said(node);
       }
     } else if (
       ts.isCallExpression(node) &&
@@ -744,8 +774,8 @@ function joinedNotMerged(
       ts.isArrayLiteralExpression(node.expression.expression)
     ) {
       // `[a, b].join(" ")`, which is the third way to write the same mistake.
-      const blocks = node.expression.expression.elements.filter(isBlock);
-      if (blocks.length > 1 && distinct(blocks)) said(node);
+      const parts = node.expression.expression.elements;
+      if (joined(parts.filter(isBlock), parts)) said(node);
     }
 
     ts.forEachChild(node, visit);
@@ -952,5 +982,295 @@ function allowListIsAnInterface(
     ts.forEachChild(node, visit);
   };
 
+  ts.forEachChild(file, visit);
+}
+
+/**
+ * `narrower-after-a-whole-shorthand` across blocks — a spread, or `mergeClassNames(a, b)`.
+ *
+ * The compiler refuses a narrower whole shorthand after a wider one inside one block. A spread is a
+ * VALUE to it, so a wider one arriving through `...{base}` was never seen, and the merge could only
+ * warn in development. A program can follow the name to the block it was written as, and read what
+ * that block sets the way the compiler reads its own — as the author wrote it, one declaration each.
+ *
+ * WHOLE is what the sheet does with it: a shorthand that does not split (`splitOf` refuses it). A
+ * narrower one that splits is pieces in `p`, stronger than `v`, and is not the fault. Only the top
+ * level of each block is compared: a nested rule is its own context, as in the compiler's rule, and
+ * a spread may only stand at the top. A name the program cannot follow to a block — a prop, a
+ * parameter — says nothing, rather than guessing.
+ */
+function wholeAcrossBlocks(
+  checker: ts.TypeChecker,
+  file: ts.SourceFile,
+  helpers: Helpers | undefined,
+  report: (node: ts.Node, finding: Omit<TypedFinding, "file" | "at" | "length">) => void,
+): void {
+  /** The block a name was written as — its array of declarations — or nothing. */
+  const blockOf = (expression: ts.Expression): ts.ArrayLiteralExpression | undefined => {
+    let node: ts.Expression = expression;
+    while (ts.isParenthesizedExpression(node)) node = node.expression;
+    if (!ts.isIdentifier(node)) return undefined;
+    let symbol = checker.getSymbolAtLocation(node);
+    if (symbol !== undefined && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+    const declaration = symbol?.valueDeclaration;
+    if (declaration === undefined || !ts.isVariableDeclaration(declaration)) return undefined;
+    const initial = declaration.initializer;
+    if (initial === undefined || !ts.isCallExpression(initial) || !isBlock(checker, checker.getTypeAtLocation(initial)))
+      return undefined;
+    const [array] = initial.arguments;
+    return array !== undefined && ts.isArrayLiteralExpression(array) ? array : undefined;
+  };
+
+  const whole = (property: string, value: string) =>
+    property !== "all" && SHORTHANDS[property] !== undefined && splitOf(property, value) === undefined;
+
+  /**
+   * A whole shorthand still standing, its importance — which keeps it in its own layer — and where
+   * it came from: this block's own declarations, a spread, or a `mergeClassNames` argument. Only
+   * one that came from ELSEWHERE is this rule's; two in one block are the compiler's own.
+   */
+  interface Standing {
+    readonly property: string;
+    readonly important: boolean;
+    readonly from: number;
+  }
+
+  /** A group's declarations, as written: property, literal value and node, nested rules left out. */
+  const declared = (element: ts.Expression): [string, string, ts.Node][] => {
+    if (!ts.isObjectLiteralExpression(element)) return [];
+    const out: [string, string, ts.Node][] = [];
+    for (const property of element.properties) {
+      if (!ts.isPropertyAssignment(property)) continue;
+      // The name's OWN file: a spread's block is usually declared in another one.
+      const written = ts.isStringLiteral(property.name) ? property.name.text : property.name.getText();
+      if (written.startsWith("&") || written.startsWith("@")) continue;
+      const value = property.initializer;
+      if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value))
+        out.push([written, value.text, property.name]);
+    }
+    return out;
+  };
+
+  /** Which helper a call in a block's array is — by name, since another file's block names its own. */
+  const helper = (element: ts.Expression): "from" | "cond" | undefined => {
+    if (!ts.isCallExpression(element) || !ts.isIdentifier(element.expression)) return undefined;
+    const name = element.expression.text;
+    if (name === helpers?.from || /^__from\d*$/.test(name)) return "from";
+    if (name === helpers?.cond || /^__cond\d*$/.test(name)) return "cond";
+    return undefined;
+  };
+
+  /**
+   * One block's top level, in order, against what is standing — its spreads add, its declarations
+   * are checked and then CLEAR what they cover, as the merge does: a block that sets `border` itself
+   * after a spread has taken the spread's whole `border` away.
+   *
+   * A GUARDED group ends the walk. The virtual file writes `if` as a marker followed by the group's
+   * declarations with nothing where the group closes, so whether a later re-set is guarded cannot
+   * be read here — and a rule that guesses reports correct code. The merge's development warning
+   * still sees what is left. A `match`'s arms each set the family, so they clear like one
+   * declaration. `path` stops a cycle and nothing else: a block spread twice counts twice, as its
+   * classes land twice.
+   */
+  const walk = (
+    array: ts.ArrayLiteralExpression,
+    standing: Standing[],
+    /** Where this block's own declarations come from, and where what it spreads comes from. */
+    origin: { readonly own: number; readonly spread: number },
+    found: (node: ts.Node, narrower: string, covering: Standing) => void,
+    path: Set<ts.Node>,
+  ): void => {
+    if (path.has(array)) return;
+    path.add(array);
+    for (const element of array.elements) {
+      const kind = helper(element);
+      if (kind === "cond") break;
+      if (kind === "from") {
+        const inner = blockOf((element as ts.CallExpression).arguments[0]);
+        if (inner !== undefined) walk(inner, standing, { own: origin.spread, spread: origin.spread }, () => {}, path);
+        continue;
+      }
+      for (const [property, value, where] of declared(element)) {
+        const important = IMPORTANT.test(value);
+        const isWhole = whole(property, value);
+        if (isWhole) {
+          const covering = standing.find((one) => one.important === important && covers(one.property, property));
+          if (covering !== undefined) found(where, property, covering);
+        }
+        for (let at = standing.length - 1; at >= 0; at--) {
+          const one = standing[at];
+          if (one.important === important && (one.property === property || covers(property, one.property)))
+            standing.splice(at, 1);
+        }
+        if (isWhole) standing.push({ property, important, from: origin.own });
+      }
+    }
+    path.delete(array);
+  };
+
+  const said = (node: ts.Node, narrower: string, wider: string): void =>
+    report(node, {
+      rule: "narrower-after-a-whole-shorthand",
+      message:
+        `\`${narrower}\` comes after \`${wider}\`, and both reach the stylesheet whole, so no order keeps ` +
+        `\`${narrower}\` winning on every page. Set its longhands instead.`,
+    });
+
+  const visit = (node: ts.Node): void => {
+    // A block of THIS file: what its spreads leave standing, against what it writes below them.
+    if (helpers !== undefined && calls(node, helpers.block)) {
+      const [array] = node.arguments;
+      if (
+        array !== undefined &&
+        ts.isArrayLiteralExpression(array) &&
+        array.elements.some((one) => helper(one) === "from")
+      )
+        walk(
+          array,
+          [],
+          { own: 0, spread: 1 },
+          (where, narrower, covering) => {
+            if (covering.from === 1) said(where, narrower, covering.property);
+          },
+          new Set(),
+        );
+    }
+    // And a merge at a call site, argument by argument: told at the argument, and only for a wider
+    // shorthand an EARLIER argument left — one inside the argument's own block is its file's.
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      let symbol = checker.getSymbolAtLocation(node.expression);
+      if (symbol !== undefined && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+      // The package's own `mergeClassNames`, by where it is DECLARED — an app's function of that
+      // name is not asked about.
+      const origin = symbol?.declarations?.[0]?.getSourceFile().fileName ?? "";
+      if (symbol?.name === "mergeClassNames" && /[\\/](@ramonda[\\/]css|packages[\\/]css)[\\/]/.test(origin)) {
+        const standing: Standing[] = [];
+        node.arguments.forEach((argument, index) => {
+          const block = blockOf(argument);
+          if (block === undefined) return;
+          let told = false;
+          walk(
+            block,
+            standing,
+            { own: index, spread: index },
+            (_where, narrower, covering) => {
+              if (!told && covering.from < index) said(argument, narrower, covering.property);
+              told = true;
+            },
+            new Set(),
+          );
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+}
+
+/** The rules that judge a VALUE — what an allow-list's literal is asked, and nothing structural. */
+const VALUE_RULES = new Set([
+  "unknown-value",
+  "unknown-unit",
+  "too-many-values",
+  "word-out-of-its-longhand",
+  "value-differs-across-engines",
+]);
+
+/**
+ * The compiler's own verdict on one declaration, as the findings of the value rules — asked by
+ * compiling it, so an allow-list's value is refused exactly when it would be refused in a block.
+ */
+function valueFaults(property: string, value: string): string[] {
+  const key = `${property}\u0000${value}`;
+  const known = FAULTS.get(key);
+  if (known !== undefined) return known;
+  const found = compiledFaults(property, value);
+  FAULTS.set(key, found);
+  return found;
+}
+
+/**
+ * Each pair's verdict, once per process: an allow-list type is referenced wherever the slot is, and
+ * every reference asked again compiled the same declaration again. It is a pure function of the
+ * pair, so there is nothing to invalidate.
+ */
+const FAULTS = new Map<string, string[]>();
+
+function compiledFaults(property: string, value: string): string[] {
+  /**
+   * A literal the probe cannot hold as ONE value is not judged: a `;`, a brace or an unbalanced
+   * parenthesis would end the declaration early or open a hole, and the verdict would be about some
+   * other text. Nor is a failure to read or check it a verdict — saying "not CSS" for a compiler
+   * fault would send the author after a value that may be right.
+   */
+  if (/[;{}]/.test(value) || value.split("(").length !== value.split(")").length) return [];
+  const source = `const x = @@( ${property}: ${value}; );`;
+  const [site] = findBlocks(source);
+  if (site === undefined) return [];
+  try {
+    const read = readBlock(source, site.open, "allow-list.tsx", { tolerant: true });
+    return checkBlock(read.block, {})
+      .filter((one) => VALUE_RULES.has(one.rule))
+      .map((one) => one.rule);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * §11 — an allow-list value that is not CSS.
+ *
+ * A component narrowing its slot to `"font-weight"?: "notexisting"` refused every caller, and said
+ * nothing itself: the TYPE is well-formed, and the value only fails when somebody tries to send it.
+ * Only the component's author can fix it, so it is reported at the value, where they wrote it.
+ *
+ * Only LITERAL types are asked — a string or a number. `Var<"color">`, `Token<…>` and `string` have
+ * nothing to judge; measured in this repository, 5 of 12 allow-list entries are literals. A nested
+ * state (`"&:hover"?: { … }[]`) is read the same way. Each declaration is reported once, however
+ * many slots name its type.
+ */
+function allowListNotCss(
+  checker: ts.TypeChecker,
+  file: ts.SourceFile,
+  report: (node: ts.Node, what: Omit<TypedFinding, "file" | "at" | "length">) => void,
+): void {
+  const said = new Set<ts.Node>();
+
+  const judge = (shape: ts.Type, fallback: ts.Node): void => {
+    for (const member of shape.getProperties()) {
+      const name = member.getName();
+      if (name.startsWith("--") || name.startsWith("@")) continue;
+      const type = checker.getNonNullableType(checker.getTypeOfSymbol(member));
+      if (name.startsWith("&")) {
+        const element = checker.isArrayType(type) ? checker.getTypeArguments(type as ts.TypeReference)[0] : undefined;
+        if (element !== undefined) judge(element, fallback);
+        continue;
+      }
+      const declaration = member.getDeclarations()?.[0];
+      const where = declaration !== undefined && declaration.getSourceFile() === file ? declaration : fallback;
+      for (const one of type.isUnion() ? type.types : [type]) {
+        if (!one.isStringLiteral() && !one.isNumberLiteral()) continue;
+        const value = String(one.value);
+        if (valueFaults(name, value).length === 0) continue;
+        // Once per declaration: two bad values in one union are one line to fix.
+        if (said.has(where)) continue;
+        said.add(where);
+        report(where, {
+          rule: "allow-list-not-css",
+          message:
+            `\`${value}\` is not a value \`${name}\` takes in CSS, so every caller sending it is refused. ` +
+            `Take it out of the allow-list, or write the value you meant.`,
+        });
+      }
+    }
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isTypeReferenceNode(node) && node.typeArguments?.length === 1) {
+      const [argument] = node.typeArguments;
+      if (branded(checker.getTypeAtLocation(node)) !== undefined) judge(checker.getTypeAtLocation(argument), argument);
+    }
+    ts.forEachChild(node, visit);
+  };
   ts.forEachChild(file, visit);
 }

@@ -26,8 +26,12 @@ import { conditionsOf, forget, mergeClassNames, namesOf, shorthands } from "../m
  */
 
 /** A class the compiler would have produced, so the two halves are asked the same question. */
-const classOf = (property: string, value: string, context: { selector?: string; conditions?: string[] } = {}) =>
-  `r-${keyToken({ property, selector: context.selector ?? "", conditions: context.conditions ?? [] })}-${value}`;
+const classOf = (
+  property: string,
+  value: string,
+  context: { selector?: string; conditions?: string[]; important?: boolean } = {},
+) =>
+  `r-${keyToken({ property, selector: context.selector ?? "", conditions: context.conditions ?? [], important: context.important })}-${value}`;
 
 /**
  * What the emitted module registers, done here the same way — see `clears` in `transform.ts`.
@@ -53,8 +57,8 @@ const registerName = (property: string): void => {
 };
 
 /** And the conditions a key sits under, which only the development warning reads. */
-const registerConditions = (property: string, conditions: readonly string[]): string => {
-  const key = keyToken({ property, selector: "", conditions: [...conditions] });
+const registerConditions = (property: string, conditions: readonly string[], important = false): string => {
+  const key = keyToken({ property, selector: "", conditions: [...conditions], important });
   conditionsOf({ [key]: conditions.join("|") });
   return key;
 };
@@ -655,5 +659,166 @@ describe("a shorthand composed under a condition", () => {
     } finally {
       process.env.NODE_ENV = was;
     }
+  });
+});
+
+describe("a package built by an older release", () => {
+  /**
+   * A published package is frozen: what its module registers is the table of the release that built
+   * it. When CSS adds a longhand to a family, that list does not have it, and the page's merge must
+   * still clear it — so the merge carries the table of the release the APPLICATION runs.
+   *
+   * Measured in all three engines before this existed: `border-top-color: red` written first, an old
+   * package's `border: var(--x)` written later, and the page showed red where CSS shows the border.
+   */
+  test("a shorthand clears a longhand its own module never registered", () => {
+    const longhand = classOf("border-top-color", "red");
+    const whole = classOf("border", "var(--x)");
+    const old = (SHORTHANDS.border ?? []).map(writableProperty).filter((one) => one !== "border_top_color");
+    shorthands({ [writableProperty("border") ?? ""]: old as string[] });
+
+    expect(mergeClassNames(longhand, whole)).toBe(whole);
+  });
+
+  test("and with nothing registered at all", () => {
+    const longhand = classOf("padding-left", "4px");
+    const whole = classOf("padding", "var(--p)");
+
+    expect(mergeClassNames(longhand, whole)).toBe(whole);
+  });
+});
+
+describe("the table the merge carries", () => {
+  /**
+   * Written by `build-clears-table.mjs` with each family's DIRECT members and braces, so what the
+   * merge reads back is not the generated shorthand table — and a mistake in either half, the
+   * writing or the reading, would only show here. Every family, and every property any family
+   * names: a family clears exactly its own members, and every other class survives.
+   */
+  test("every shorthand clears exactly what CSS says it covers", () => {
+    const universe = [...new Set([...Object.keys(SHORTHANDS), ...Object.values(SHORTHANDS).flat()])].filter(
+      (one) => writableProperty(one) !== undefined,
+    );
+    const wrong: string[] = [];
+    for (const [family, members] of Object.entries(SHORTHANDS)) {
+      if (writableProperty(family) === undefined || members.some((one) => writableProperty(one) === undefined))
+        continue;
+      // Merged once on their own first, because shorthands among them clear each other.
+      const before = String(
+        mergeClassNames(
+          universe
+            .filter((one) => one !== family)
+            .map((one) => classOf(one, "x"))
+            .join(" "),
+        ),
+      );
+      const cleared = new Set(members.map((one) => classOf(one, "x")));
+      const expected = [...before.split(" ").filter((one) => !cleared.has(one)), classOf(family, "x")];
+      if (mergeClassNames(before, classOf(family, "x")) !== expected.join(" ")) wrong.push(family);
+    }
+    expect(wrong).toEqual([]);
+  });
+});
+
+/**
+ * `narrower-after-a-whole-shorthand`, for what the compiler cannot see: two blocks, composed.
+ *
+ * Inside one block the compiler refuses it. Across blocks only the merge holds both, so it says so in
+ * development. A class is whole when its key is a shorthand's and it is not a split's marker.
+ */
+describe("a narrower shorthand composed after a whole one", () => {
+  const said: string[] = [];
+  const real = console.warn;
+  beforeEach(() => {
+    said.length = 0;
+    console.warn = (message: string) => void said.push(message);
+  });
+  afterEach(() => {
+    console.warn = real;
+  });
+
+  const border = classOf("border", "var(--x)");
+  const top = classOf("border-top", "var(--y)");
+
+  test("is said, once, naming both classes", () => {
+    mergeClassNames(border, top);
+    mergeClassNames(border, top);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain(border);
+    expect(said[0]).toContain(top);
+  });
+
+  test("and not the other way round, which the merge settles by clearing", () => {
+    expect(mergeClassNames(top, border)).toBe(border);
+    expect(said).toEqual([]);
+  });
+
+  test("nor for a longhand or a split after it, which are stronger", () => {
+    mergeClassNames(border, classOf("border-top-color", "red"));
+    mergeClassNames(border, `r-bt- ${classOf("border-top-color", "red")}`);
+    expect(said).toEqual([]);
+  });
+
+  test("and for a wider one without a var(), since it reached the sheet whole too", () => {
+    mergeClassNames(classOf("font", "caption"), classOf("font-variant", "var(--v)"));
+    expect(said).toHaveLength(1);
+  });
+
+  test("and whatever the value is spelt as — a hashed one has no var( in it to read", () => {
+    mergeClassNames(classOf("border", "Qb0fRLj5j"), classOf("border-top", "Zk3pWq8mN"));
+    expect(said).toHaveLength(1);
+  });
+});
+
+describe("what the review found in the merge", () => {
+  const said: string[] = [];
+  const real = console.warn;
+  beforeEach(() => {
+    said.length = 0;
+    console.warn = (message: string) => void said.push(message);
+  });
+  afterEach(() => {
+    console.warn = real;
+  });
+
+  test("`all` is not a whole shorthand here — it is in its own weaker layer, and anything after it wins", () => {
+    mergeClassNames(classOf("all", "unset"), classOf("border", "var(--b)"));
+    expect(said).toEqual([]);
+  });
+});
+
+/**
+ * The order warning and `!important`. Importance is a context of the key (`!.c`) and not a
+ * condition: an important declaration with no condition is slot 0 like any other, and two of
+ * DIFFERENT importance are never compared — importance decides between them, whatever the order.
+ */
+describe("the order warning, and importance", () => {
+  const spoke: string[] = [];
+  const real = console.warn;
+  beforeEach(() => {
+    spoke.length = 0;
+    console.warn = (message: string) => void spoke.push(message);
+    registerName("color");
+  });
+  afterEach(() => {
+    console.warn = real;
+  });
+
+  const wide = "@media (min-width: 60rem)";
+
+  test("two important ones warn as two ordinary ones do", () => {
+    registerConditions("color", [wide], true);
+    mergeClassNames(
+      classOf("color", "blue", { conditions: [wide], important: true }),
+      classOf("color", "red", { important: true }),
+    );
+    expect(spoke).toHaveLength(1);
+    expect(spoke[0]).not.toContain("which sets it too");
+  });
+
+  test("an important one and an ordinary one do not", () => {
+    registerConditions("color", [wide]);
+    mergeClassNames(classOf("color", "blue", { conditions: [wide] }), classOf("color", "red", { important: true }));
+    expect(spoke).toEqual([]);
   });
 });

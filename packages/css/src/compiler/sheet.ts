@@ -44,7 +44,15 @@ export function messageFor(one: UnknownVariable): string {
     `fallback — \`var(${one.read.name}, <value>)\` — which says it may be absent.`
   );
 }
-import { BREADTH_LAYERS, DIGIT_LAYERS, LAYER_ORDER, layerPathFor, sheetRank, withParent } from "./flatten";
+import {
+  BREADTH_LAYERS,
+  DIGIT_LAYERS,
+  IMPORTANT_LAYER,
+  LAYER_ORDER,
+  layerPathFor,
+  sheetRank,
+  withParent,
+} from "./flatten";
 import { keyIn } from "../key";
 import { escapeClass, keyTextOf } from "./names";
 import type { EmittedBlock } from "./transform";
@@ -159,14 +167,31 @@ const level = (): Level => ({ own: [], under: new Map() });
 /**
  * The names a level's children MAY hold, in order — which is what two files have to agree on.
  *
- * Read off the children rather than counted from the depth: every child of one level is the same
- * kind of step, because {@link layerPathFor} builds the path that way. The top level needs none —
- * {@link LAYER_ORDER} declares those, fully qualified, at the very start of the stylesheet.
+ * Counted from the DEPTH, never read off the children's names. The pieces' step was once `d1`, which
+ * shares an initial with the digit levels under `c` (`d0`…`d9`), and telling them apart by the first
+ * child's initial declared the level holding `d1` and `u` with the DIGITS — so `u` was a name its own
+ * statement had never seen. That is the fault {@link LAYER_ORDER} exists to prevent, one level down.
+ *
+ * `digits` is how many digit levels are still to come: 5 on entering `c`, counted down, and `0` at
+ * the level that holds the breadth step. The top level needs no statement at all, because
+ * {@link LAYER_ORDER} declares those fully qualified at the very start of the stylesheet.
  */
-function namesUnder(under: Map<string, Level>): readonly string[] {
-  const [first] = under.keys();
-  if (first === undefined || first.startsWith("u") || first === "c") return [];
-  return first.startsWith("d") ? DIGIT_LAYERS : BREADTH_LAYERS.map((one) => `b${one}`);
+function namesUnder(under: Map<string, Level>, digits: number, mirrored: boolean): readonly string[] {
+  if (digits < 0 || under.size === 0) return [];
+  if (digits > 0) return mirrored ? [...DIGIT_LAYERS].reverse() : DIGIT_LAYERS;
+  /**
+   * Backwards under {@link IMPORTANT_LAYER}, because CSS reads layer order backwards for important
+   * declarations: among them the layer declared FIRST wins. Reversing the list is what makes the
+   * same declaration win in both, so an author sees one answer rather than two.
+   *
+   * **`c` is in the mirrored list and not in the ordinary one**, and leaving it out was half the
+   * fix: at the top {@link LAYER_ORDER} names `ramonda.c` itself, so nothing below has to. Inside
+   * `i` there is no such statement, so a conditional rule sat in a name its level never declared,
+   * was appended, and under the reversal an appended name is the WEAKEST — which made a `@media`
+   * lose to the unconditional rule it was written to override. Deeper levels hold no `c` and
+   * declaring one there costs a name nobody uses.
+   */
+  return mirrored ? [...BREADTH_LAYERS, "c"].reverse() : BREADTH_LAYERS;
 }
 
 /**
@@ -199,17 +224,35 @@ function wrap<T extends { block: EmittedBlock }>(rules: readonly [string, T][]):
     here.own.push(write(className, rule.block));
   }
 
-  const written = (here: Level): string => {
+  /** How many digit levels sit under a step: five under `c`, none under anything else. */
+  const DIGITS_UNDER_C = 5;
+
+  const written = (here: Level, digits: number, mirrored = false): string => {
     let out = here.own.join("");
     if (here.under.size === 0) return out;
 
-    const names = namesUnder(here.under);
+    const names = namesUnder(here.under, digits, mirrored);
     if (names.length > 0) out += `@layer ${names.join(",")};\n`;
-    for (const [step, under] of here.under) out += `@layer ${step} {\n${written(under)}}\n`;
+    for (const [step, under] of here.under) {
+      const inside = step === IMPORTANT_LAYER || mirrored;
+      /**
+       * `i` holds a whole tree of its own, and it starts at a BREADTH level rather than at the top.
+       * {@link LAYER_ORDER} names `ramonda.i` and nothing inside it, so the level below it has to
+       * declare its own names — written `-1` first, which is the value that means "the top level,
+       * already declared", and left everything under `i` undeclared.
+       */
+      const below =
+        step === IMPORTANT_LAYER
+          ? 0
+          : (mirrored || digits < 0) && step === "c"
+            ? DIGITS_UNDER_C
+            : Math.max(digits - 1, 0);
+      out += `@layer ${step} {\n${written(under, below, inside)}}\n`;
+    }
     return out;
   };
 
-  return `${LAYER_ORDER}\n@layer ramonda {\n${written(root)}}\n`;
+  return `${LAYER_ORDER}\n@layer ramonda {\n${written(root, -1)}}\n`;
 }
 
 /**

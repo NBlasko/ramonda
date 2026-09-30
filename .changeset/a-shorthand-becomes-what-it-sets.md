@@ -1,0 +1,59 @@
+---
+"@ramonda/css": minor
+---
+
+**A shorthand now reaches the stylesheet as the longhands it sets**, and the eighteen numbered
+cascade layers become one.
+
+```
+padding: 12px          r-pt-12px r-pr-12px r-pb-12px r-pl-12px   (was r-p-12px)
+border-top: 1px solid red
+                       r-border_top_color-red r-border_top_style-solid r-border_top_width-1px
+background: red        r-bg-red                                  (unchanged — see below)
+```
+
+```css
+@layer ramonda.i, ramonda.a, ramonda.s64, …, ramonda.s01, ramonda.d8, …, ramonda.d1, ramonda.u, ramonda.c;
+/* was: @layer ramonda.u00, …, ramonda.u17, ramonda.c; */
+```
+
+**Why.** Two classes on one element could set the same property — a `padding` and a `padding-left` —
+and only the stylesheet's order could decide between them. That is what the numbered layers were
+for. Split the shorthand and the question disappears: every declaration is a longhand, no two
+classes collide, and the merge settles everything by key where you wrote it. A `padding-left` after a
+`padding` simply replaces it.
+
+**Which families split.** 42 positional ones, answered by how many values were written, and 19
+bag-of-tokens ones answered by what each token IS — the whole `border` family, `outline`,
+`column-rule`, `flex-flow`, `list-style`, `text-decoration`. Both tables are measured in Chromium,
+Firefox and WebKit and a family is written only where all three agree and it reproduces its own
+corpus.
+
+**Which do not, and it is a fact rather than a shortfall.** A grammar with a comma, a slash or a
+repetition cannot say which part goes where, so `background`, `font`, `grid`, `animation`,
+`transition` and `mask` keep their shorthand. So does any value the compiler cannot vouch for: one
+holding a `var()`, a runtime value, an arm of a `match`, or a negative length where the family
+refuses one — because CSS drops a whole declaration when any part of it is invalid while a split
+would drop only the part.
+
+**The layer names are counts now, not positions.** `ramonda.s10` holds shorthands that set ten
+longhands, and `ramonda.d1` holds a longhand the compiler DERIVED by splitting one — weaker than a
+`padding-left` you typed, stronger than the `padding` it came from. That last shelf matters where
+two blocks are joined into a string instead of merged: nothing there knows which you wrote later,
+so the stylesheet decides alone, and without it a caller's `padding` could beat your own
+`padding-left` depending on which file the bundler put first. A position moved every family below it whenever CSS gained a property, so two stylesheets
+built a year apart disagreed about which layer `padding` was in; a count is a fact about the
+property and does not move. That is what makes a published package safe to drop into an application,
+and `scripts/check-layer-skew.mjs` holds it: the real compiler, the real sheet and the real merge, in
+all three engines and both load orders.
+
+**`!important` behaves like CSS now, and did not before.** Two important declarations on opposite
+sides of a layer boundary came out reversed — `background: red !important; background-color: blue
+!important` gave red where the same two lines in one hand-written rule give blue, in all three
+engines. CSS reads layer order backwards for important declarations, so they go under a mirrored
+set of layers and land on the order you meant. It cost nothing you can see: the mirrored subtree is
+only emitted where an important declaration exists.
+
+**If you wrote CSS against these class names, it will need updating** — a rule targeting `.r-p-12px`
+has four classes to match now. Nothing else changes: the same declarations reach the page, and
+`@layer ramonda` is still the name to put in your own statement.

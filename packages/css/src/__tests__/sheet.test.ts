@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { type EmittedBlock, transform } from "../compiler/transform";
 import { CssBlockError } from "../compiler/errors";
 import { BREADTH_LAYERS, LAYER_ORDER, layerPathFor } from "../compiler/flatten";
+import { SHORTHANDS } from "../compiler/keywords.generated";
 import { forget, mergeClassNames, shorthands } from "../merge";
 
 /**
@@ -344,39 +345,166 @@ describe("the layers", () => {
 
     const declared = sheet.cssFor("a.tsx").split("\n")[0];
     expect(declared).toBe(LAYER_ORDER);
-    // Every breadth an unconditional rule can have, and one for everything conditional.
-    expect(declared.match(/ramonda\.u/g)).toHaveLength(BREADTH_LAYERS.length);
+    // Every name a shorthand's count can be, then the ONE the longhands share, then the
+    // conditional one. The range is pre-declared whole so a later release cannot introduce a name
+    // an earlier one never listed.
+    // Every breadth name, plus `c` for the conditional ones and `i` for the important ones.
+    expect(declared.split(",")).toHaveLength(BREADTH_LAYERS.length + 2);
+    expect(declared).toContain("ramonda.i,");
+    expect(declared.match(/ramonda\.u\b/g)).toHaveLength(1);
+    expect(declared).toContain("ramonda.a,");
     expect(declared).toContain("ramonda.c;");
   });
 
   /**
-   * **A longhand's layer comes after its shorthand's, which is what decides between two classes an
-   * element really carries.**
+   * **A longhand's layer comes after a whole shorthand's, which is what decides between two classes
+   * an element really carries.**
    *
    * The merge clears in one direction only: a `padding` written after a `padding-left` takes it
-   * away, and a `padding-left` written after a `padding` does NOT — measured, the element keeps
-   * `r-p-8px r-pl-40px`. Both selectors are one class, so specificity is a tie at (0,1,0) and the
-   * order of names in a `class` attribute decides nothing. The LAYER is the whole answer.
+   * away, and a `padding-left` written after a `padding` does NOT — the element keeps both. Both
+   * selectors are one class, so specificity ties and the order of names in a `class` attribute
+   * decides nothing. The LAYER is the whole answer, and CSS's answer is the longhand.
    *
-   * Nothing asserted it. The layers are asserted to exist, to be declared whole, and to separate a
-   * conditional rule from an unconditional one — but no test compared two breadths, which is the
-   * property every reuse in this package rests on.
-   *
-   * Asked of the index rather than the name, so this is about the ordering rather than about the
-   * generated data — and of three families, because `border-left-color` under `border-left` under
-   * `border` is where a single comparison would not have been enough.
+   * A shorthand reaches the sheet WHOLE only when it does not split — a `var()`, a value a split
+   * refuses, like `font: caption`. Every such one is in `v`: one WORD, weaker than every longhand,
+   * written or split, and stronger than `all`.
    */
   test.each([
+    ["font", "font-size"],
+    ["background", "background-color"],
     ["padding", "padding-left"],
-    ["margin", "margin-inline"],
-    ["margin-inline", "margin-left"],
-    ["border", "border-left"],
     ["border-left", "border-left-color"],
-  ])("`%s` is in an earlier layer than `%s`", (broad, narrow) => {
-    const at = (property: string) => BREADTH_LAYERS.indexOf(layerPathFor({ property })[0].slice(1));
+  ])("a whole `%s` is in `v`, before `%s`", (broad, narrow) => {
+    const at = (one: { property: string; from?: string }) => BREADTH_LAYERS.indexOf(layerPathFor(one)[0]);
 
-    expect(at(broad)).toBeLessThan(at(narrow));
+    expect(layerPathFor({ property: broad })).toEqual(["v"]);
+    expect(at({ property: broad })).toBeLessThan(at({ property: narrow, from: broad }));
+    expect(at({ property: broad })).toBeLessThan(at({ property: narrow }));
+    expect(at({ property: "all" })).toBeLessThan(at({ property: broad }));
   });
+
+  /**
+   * **No layer is named by a count.** They were — `s64`…`s01`, a shorthand's name the number of
+   * longhands it covers — and a count moves when CSS adds a longhand to the family, so a package
+   * built before that named a different layer than the application built after. Every name left is
+   * a word, and a word means the same in every release.
+   *
+   * What a count did that a word cannot: order two WHOLE shorthands, a wider and a narrower. Both
+   * are in `v` now, so that pair is refused — see `narrower-after-a-whole-shorthand`.
+   */
+  test("every layer is a word, and none is a count", () => {
+    expect(BREADTH_LAYERS).toEqual(["a", "v", "p", "u"]);
+    expect(layerPathFor({ property: "mask" })).toEqual(layerPathFor({ property: "mask-border" }));
+  });
+
+  /**
+   * A longhand a SPLIT produced is weaker than one an author typed, and stronger than its shorthand.
+   *
+   * It is the one case a merge cannot answer. Two groups of classes joined into a string never meet
+   * in `mergeClassNames`, so nothing knows which the author wrote later and the stylesheet decides
+   * alone. Measured, with a package's `padding: 8px` against an application's `padding-left: 40px`:
+   * both are `padding-left` classes after splitting, and before this they shared a layer, so which
+   * won depended on whichever sheet the bundler put first — 40px one way and 8px the other.
+   */
+  test("a longhand from a split sits between the shorthand and a written longhand", () => {
+    const at = (one: { property?: string; from?: string }) => BREADTH_LAYERS.indexOf(layerPathFor(one)[0]);
+
+    expect(at({ property: "padding" })).toBeLessThan(at({ property: "padding-left", from: "padding" }));
+    expect(at({ property: "padding-left", from: "padding" })).toBeLessThan(at({ property: "padding-left" }));
+  });
+
+  /**
+   * A property some engine treats as a LONGHAND is one here, whatever the others say.
+   *
+   * Measured in all three: `transform-origin` and `perspective-origin` are longhands in Chromium and
+   * Firefox, `vertical-align` in Chromium and WebKit, `border-spacing` in Firefox. What they "cover"
+   * elsewhere is internal or prefixed — `transform-origin-x` is nothing anybody writes — and the
+   * engines disagree about what they reset, so no split could write one page for all three. As a
+   * longhand it sits in `u`, a word, and leaves the counted layers for good.
+   */
+  test.each(["transform-origin", "perspective-origin", "vertical-align", "border-spacing"])(
+    "%s is a longhand",
+    (property) => {
+      expect(layerPathFor({ property })).toEqual(["u"]);
+      expect(SHORTHANDS[property]).toBeUndefined();
+    },
+  );
+
+  /**
+   * A split's pieces have ONE layer, and nothing is held in reserve beside it.
+   *
+   * There used to be `d1`…`d8`, seven of them empty, for pieces of pieces a split never makes —
+   * `grammarShapes.test.ts` asserts it reaches leaves, for every family. A guarantee is a test that
+   * fails the build, not room.
+   */
+  test("a split's pieces have one layer, and nothing is held in reserve", () => {
+    expect(BREADTH_LAYERS).toContain("p");
+    expect(BREADTH_LAYERS.filter((one) => /^d\d$/.test(one))).toEqual([]);
+  });
+
+  /**
+   * The statement above a level must declare the names that level HOLDS.
+   *
+   * The pieces' step was `d1` once, which shares an initial with the digit levels under `c`, and
+   * reading the first child's name to tell them apart declared the level holding `d1` and `u` with
+   * the DIGITS — so `u` was a name its own statement had never seen. It is `p` now, and the level
+   * is still chosen by DEPTH, which is what this holds.
+   */
+  test("a conditional level declares the breadth names it holds, not the digits", () => {
+    const sheet = new Sheet();
+    const media = (property: string, value: string, from?: string) => ({
+      ...FLEX,
+      className: `r-${property}-${value}`,
+      css: `${property}:${value};`,
+      property,
+      from,
+      conditions: ["@media (min-width: 40rem)"],
+    });
+    sheet.add("a.tsx", [media("padding-left", "8px", "padding"), media("padding-left", "40px")]);
+
+    const css = sheet.cssFor("a.tsx");
+    const governing = (css.split("\n").findLast((line) => line.startsWith("@layer ") && line.endsWith(";")) ?? "")
+      .replace(/^@layer |;$/g, "")
+      .split(",");
+
+    // The level really does hold both, or the statement above it would be a claim about nothing.
+    expect(css).toContain("@layer p {");
+    expect(css).toContain("@layer u {");
+    // And the statement that governs them declares both, rather than the ten digits.
+    expect(governing).toContain("u");
+    expect(governing).toContain("p");
+  });
+
+  /**
+   * An `!important` declaration goes under a MIRROR, because CSS reads layer order backwards for it.
+   *
+   * Among important declarations the layer declared FIRST wins, so a rule left in its ordinary
+   * layer comes out reversed. Measured in all three engines on the ordinary path — one block, no
+   * packages, nothing joined — `background: red !important; background-color: blue !important` gave
+   * red where the same two lines in one hand-written rule give blue. Every boundary was affected:
+   * a shorthand against its longhand, `all` against a shorthand, a `@media` against an
+   * unconditional rule, and two breakpoints against each other.
+   */
+  test("an important declaration is mirrored, and an ordinary one is not", () => {
+    expect(layerPathFor({ property: "background" })).toEqual(["v"]);
+    expect(layerPathFor({ property: "background", important: true })).toEqual(["i", "v"]);
+  });
+
+  test("and the mirror wraps the conditional path whole", () => {
+    const media = { conditions: ["@media (min-width: 1px)"], property: "color" };
+
+    expect(layerPathFor(media)[0]).toBe("c");
+    expect(layerPathFor({ ...media, important: true })[0]).toBe("i");
+    expect(layerPathFor({ ...media, important: true })[1]).toBe("c");
+  });
+
+  /** Every longhand shares ONE layer, which is the whole of what splitting bought. */
+  test.each(["padding-top", "color", "background-color", "border-left-width"])(
+    "`%s` is a longhand, so it is in the one layer they all share",
+    (property) => {
+      expect(layerPathFor({ property })).toEqual(["u"]);
+    },
+  );
 
   /**
    * And the pair really does land on one element, or the ordering above would be a claim about
@@ -414,7 +542,7 @@ describe("the layers", () => {
     const card = sheet.cssFor("Card.tsx");
     // The unconditional one is one level down; the conditional one is under `c`, which is declared
     // after every `u`, so it wins wherever it applies.
-    expect(card).toMatch(/@layer u\d+ \{\n\.r-6666/);
+    expect(card).toMatch(/@layer u \{\n\.r-6666/);
     expect(card).toContain("@layer c {");
     expect(card.indexOf("@layer c {")).toBeGreaterThan(card.indexOf(".r-6666"));
 

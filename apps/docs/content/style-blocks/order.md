@@ -191,18 +191,47 @@ than emitted and quietly wrong.
 
 ## If you read the output
 
-You will see numbered layers inside `ramonda`:
+Two things will look unfamiliar. Both are deliberate and neither is anything you write against.
+
+**A shorthand becomes the longhands it sets.** `padding: 8px` is four rules, not one:
 
 ```css
-@layer ramonda.u00, …, ramonda.u17, ramonda.c;
+@layer ramonda.i, ramonda.a, ramonda.v, ramonda.p, ramonda.u, ramonda.c;
 @layer ramonda {
-  @layer u09 { .r-p-8px { padding: 8px; } }
+  @layer p {
+    .r-pt-8px { padding-top:8px; }
+    .r-pr-8px { padding-right:8px; }
+    .r-pb-8px { padding-bottom:8px; }
+    .r-pl-8px { padding-left:8px; }
+  }
   @layer c { … @media (min-width: 40rem) { … } … }
 }
 ```
 
-That is the list above, made into cascade layers — a layer's place is decided by that statement
-rather than by where its rules sit, which is what keeps the order the same however the files load.
+That is what lets two blocks settle their own conflicts: no two classes on an element set the same
+property, so the one you wrote later simply wins and the stylesheet is never asked. A `padding` and
+a `padding-left` used to be a question for the cascade; now they are the same key, answered where
+you wrote them.
+
+A few values are not split. A `var()` never is, because its parts are unknown until the page
+computes them; nor is a value one browser would drop whole, like `text-box: cap`, or a system font,
+like `font: caption`. Those keep their shorthand, and the layers are what order them against the
+longhands they cover.
+
+**What each layer holds.** `ramonda.a` holds `all`, `ramonda.v` a shorthand that reached the
+stylesheet whole, `ramonda.p` a longhand this split out of a shorthand, `ramonda.u` every longhand
+you typed yourself, and `ramonda.c` everything conditional. The order reads as *the more precisely
+you said it, the stronger it is* — so a longhand you write after a whole shorthand wins, as it does
+in plain CSS.
+
+Every name is a word, and a word means the same in every release — which is what makes a published
+package safe to drop into an application. None is a count of what a shorthand covers: a count moves
+when CSS adds a longhand, and two releases would disagree.
+
+One thing follows from that, and the build refuses it: a narrower shorthand after a wider one when
+both reach the stylesheet whole — `border: var(--x)` and then `border-top: var(--y)`. Both are in
+`ramonda.v`, and no order keeps the second one winning on every page. Set the longhands of the
+second one instead.
 
 You never write against these names. **`ramonda` is the name to put in your own `@layer` statement**,
 and it orders everything inside it — see [composing](/style-blocks/composing#the-one-place-this-is-not-plain-css).

@@ -49,9 +49,10 @@
  * the list is right only until a browser release and nobody finds out.
  */
 
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { previousFrom, unionOfMap, writeOrCheck } from "./engine-facts.mjs";
+import { previousFrom, unionOf, unionOfMap, writeOrCheck } from "./engine-facts.mjs";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -82,12 +83,26 @@ const enumerate = (given) => {
     for (let index = 0; index < element.style.length; index++) held.push(element.style.item(index));
     // A property that holds only itself is a longhand, and a longhand resets nothing.
     if (held.length > 1 || (held.length === 1 && held[0] !== name)) out[name] = held;
+    else if (held.length === 1) out[name] = [];
   }
   return out;
 };
 
 const union = {};
 const counts = [];
+/**
+ * Properties SOME engine holds as a longhand, where another expands them.
+ *
+ * `transform-origin` and `perspective-origin` are longhands in Chromium and Firefox and expand in
+ * WebKit into internal `-x`/`-y` parts nobody writes; `vertical-align` expands only in Firefox,
+ * `border-spacing` everywhere but Firefox. The engines disagree about what these reset, so no split
+ * can write one page for all three — and one engine calling it a longhand is enough to treat it as
+ * one: `build-css-properties.mjs` leaves these out of `SHORTHANDS`. A union, like everything here:
+ * a platform that once answered "longhand" is not overruled by one that did not run.
+ */
+const longhandSomewhere = new Set();
+/** What each engine answered, whole, for the comparison below. */
+const perEngine = {};
 
 for (const engine of ["chromium", "firefox", "webkit"]) {
   let browser;
@@ -97,8 +112,13 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
     // A DOCTYPE, because quirks mode is a different CSS and no real page is in it.
     await tab.setContent("<!doctype html><html><body></body></html>");
     const found = await tab.evaluate(enumerate, names);
-    counts.push([engine, Object.keys(found).length]);
+    perEngine[engine] = found;
+    counts.push([engine, Object.values(found).filter((one) => one.length > 0).length]);
     for (const [name, leaves] of Object.entries(found)) {
+      if (leaves.length === 0) {
+        longhandSomewhere.add(name);
+        continue;
+      }
       union[name] ??= new Set();
       for (const leaf of leaves) if (leaf !== name) union[name].add(leaf);
     }
@@ -115,6 +135,32 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 const file = join(HERE, "..", "packages", "css", "src", "compiler", "leaves.generated.ts");
 
 /**
+ * Shorthands the engines RESET differently: a longhand one engine resets and another HAS and keeps.
+ *
+ * `-webkit-mask` is the measured case — Chromium and Firefox reset `mask-clip`, `mask-composite` and
+ * `mask-mode`, and WebKit keeps them. No split can write one page for all three, and neither can the
+ * shorthand itself: the author's own line already renders two ways. `rules.ts` refuses these, and
+ * names the longhands in question.
+ *
+ * Only engines that EXPAND the shorthand are compared, and only for a longhand the engine has; an
+ * alias counts as what it expands to — Firefox resets `-webkit-mask-position-x` by resetting
+ * `mask-position-x`, and that is not a disagreement.
+ */
+const resetsDiffer = {};
+for (const name of Object.keys(union)) {
+  for (const leaf of union[name]) {
+    const keeps = [];
+    for (const [engine, found] of Object.entries(perEngine)) {
+      const mine = found[name];
+      if (mine === undefined || mine.length < 2 || !(leaf in found)) continue;
+      const as = found[leaf].length > 0 ? found[leaf] : [leaf];
+      if (!as.every((one) => mine.includes(one))) keeps.push(engine);
+    }
+    if (keeps.length > 0) (resetsDiffer[name] ??= []).push(leaf);
+  }
+}
+
+/**
  * What is committed, kept — see `engine-facts.mjs`. A shorthand a platform does not HAVE reports no
  * leaves there, and dropping its row would stop the merge clearing them where the property exists.
  */
@@ -123,6 +169,23 @@ const merged = unionOfMap(
   Object.fromEntries(Object.entries(union).map(([name, leaves]) => [name, [...leaves]])),
 );
 const sorted = Object.keys(merged);
+/**
+ * Only a name some engine expands into TWO or more. One that expands into one is an ALIAS —
+ * `-webkit-mask-clip` is `mask-clip` in Chromium — and treating it as a longhand took it out of what
+ * `mask` clears, which the first run of this did.
+ */
+// The first run after a list was added finds a file without it, which is not a parse failure.
+const differ = unionOfMap(
+  existsSync(file) && readFileSync(file, "utf8").includes("RESETS_DIFFER")
+    ? previousFrom(file, /RESETS_DIFFER: Readonly<Record<string, readonly string\[\]>> = (\{[\s\S]*?\})\s*;/, {})
+    : {},
+  resetsDiffer,
+);
+const listed = existsSync(file) && readFileSync(file, "utf8").includes("LONGHAND_IN_SOME_ENGINE");
+const inSomeEngine = unionOf(
+  listed ? previousFrom(file, /LONGHAND_IN_SOME_ENGINE: readonly string\[\] = (\[[\s\S]*?\])\s*;/, []) : [],
+  [...longhandSomewhere].filter((one) => (merged[one]?.length ?? 0) > 1 && one !== "all"),
+);
 
 const wrote = writeOrCheck(
   file,
@@ -144,7 +207,21 @@ const wrote = writeOrCheck(
     ` */\n` +
     `export const LEAVES: Readonly<Record<string, readonly string[]>> = {\n` +
     sorted.map((name) => `  ${JSON.stringify(name)}: ${JSON.stringify(merged[name])},\n`).join("") +
-    `};\n`,
+    `};\n` +
+    `\n` +
+    `/**\n` +
+    ` * Of those, the ones SOME engine holds as a longhand. \`SHORTHANDS\` leaves them out: the engines\n` +
+    ` * disagree about what they reset, and one calling it a longhand is enough. \`all\` is never here —\n` +
+    ` * it covers everything by definition and has a layer of its own.\n` +
+    ` */\n` +
+    `export const LONGHAND_IN_SOME_ENGINE: readonly string[] = ${JSON.stringify(inSomeEngine)};\n` +
+    `\n` +
+    `/**\n` +
+    ` * Shorthands the engines reset DIFFERENTLY, and the longhands in question — a longhand one engine\n` +
+    ` * resets and another has and keeps. The author's own line renders two ways, so \`rules.ts\`\n` +
+    ` * refuses it.\n` +
+    ` */\n` +
+    `export const RESETS_DIFFER: Readonly<Record<string, readonly string[]>> = ${JSON.stringify(differ)};\n`,
   "build-shorthand-leaves",
   check,
 );

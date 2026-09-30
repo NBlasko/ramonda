@@ -3,7 +3,7 @@ import { segments } from "./flatten";
 import type { AtomicDeclaration } from "./flatten";
 import { SHORTHANDS } from "./keywords.generated";
 import { keyIn } from "../key";
-import { classNameFor, nameForSite, nameFor, substitute, variableNameFor, writableProperty } from "./names";
+import { classNameFor, markerFor, nameForSite, nameFor, substitute, variableNameFor, writableProperty } from "./names";
 import type { Config } from "../config";
 import { type Imported, importedSites, namedSites, syntaxesIn } from "./references";
 import { normalise } from "./normalise";
@@ -67,6 +67,9 @@ export interface TransformOptions {
 
 /** One rule the stylesheet now owes. Assembly (dedupe, `@layer`, the collision assertion) is track E. */
 
+/** The otherwise arm's place among the arms — a key no arm can be written as, since an arm is text. */
+const OTHERWISE = "\u0000otherwise";
+
 export interface EmittedBlock {
   /** `r-` plus 16 hex — see CONTRACT.md. */
   readonly className: string;
@@ -90,6 +93,10 @@ export interface EmittedBlock {
    * the author put first loses to it. See {@link Sheet}.
    */
   readonly property?: string;
+  /** The shorthand a split produced this from, which puts it in a weaker layer. See `layerPathFor`. */
+  readonly from?: string;
+  /** Whether it is `!important`, which MIRRORS its layer — CSS reads layer order backwards for those. */
+  readonly important?: boolean;
   /**
    * What is appended to the class in the selector — `:hover`, ` .title`, `::before`.
    *
@@ -424,7 +431,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
      * is only correct because merging is associative and later still wins — the property `compose`
      * is built around.
      */
-    const all = [...segments(read.block)];
+    const all = [...segments(read.block, { split: true })];
 
     /**
      * Whether a guard needs a merge of its own, or may simply join the conjunction.
@@ -498,9 +505,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       }
 
       /**
-       * Every arm of one `match` is its own rule and its own class, and they share a key — so a run
-       * of them is ONE call that chooses between their classes rather than a class. `register` below
-       * still runs for each, because each has a rule to emit.
+       * Every arm of one `match` is its own rule — or, split, its own several — so a run of them is
+       * ONE call that chooses between their classes rather than a class. Grouped by the SUBJECT'S
+       * hole, which is one per `match`: a split arm's pieces have different keys, and grouping by the
+       * key cut one match into several. `register` below still runs for each, because each has a
+       * rule to emit.
        */
       const armsFrom = (from: number): AtomicDeclaration[] => {
         const first = segment.items[from];
@@ -508,10 +517,27 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         const group = [first];
         while (from + group.length < segment.items.length) {
           const next = segment.items[from + group.length];
-          if (next.arm === undefined || next.key !== first.key) break;
+          if (next.arm === undefined || next.arm.hole !== first.arm.hole) break;
           group.push(next);
         }
         return group;
+      };
+
+      /**
+       * Each arm's classes, as the ONE string `pick` hands back: a split arm is the family's marker
+       * and then its pieces — the marker first, because the merge reads left to right.
+       */
+      const armClasses = (group: readonly AtomicDeclaration[]): Map<string, string[]> => {
+        const out = new Map<string, string[]>();
+        for (const one of group) {
+          const arm = one.arm?.otherwise === true ? OTHERWISE : (one.arm?.is ?? "");
+          const list = out.get(arm) ?? [];
+          if (one.from !== undefined && list.length === 0)
+            list.push(markerFor(one.from, one.selector, one.conditions, one.important === true));
+          list.push(nameFor(one));
+          out.set(arm, list);
+        }
+        return out;
       };
 
       /** The atom a declaration becomes, registered once however many times it is written. */
@@ -525,6 +551,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
             css: substitute(declaration.canonical, own),
             properties: declaration.holes.map((_hole, index) => variableNameFor(own, index)),
             property: declaration.property,
+            from: declaration.from,
+            important: declaration.important,
             selector: declaration.selector,
             conditions: declaration.conditions,
           });
@@ -599,6 +627,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
        */
       type Part = { kind: "classes"; written: string[] } | { kind: "match"; group: AtomicDeclaration[] };
       const parts: Part[] = [];
+      /** The families whose marker this segment already carries — see `markerFor`. */
+      const marked = new Set<string>();
 
       for (let index = 0; index < segment.items.length; index++) {
         const group = armsFrom(index);
@@ -606,8 +636,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
           for (const one of group) {
             conditionsUnder(one, register(one));
             namesFor(one);
+            clears(one);
           }
-          clears(group[0]);
           parts.push({ kind: "match", group });
           index += group.length - 1;
           continue;
@@ -625,9 +655,18 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         namesFor(declaration);
         clears(declaration);
 
+        // A split's pieces go in after their family's marker, which has to come FIRST: the merge
+        // reads left to right, and the marker clears what the pieces are about to set.
+        const marker =
+          declaration.from === undefined
+            ? undefined
+            : markerFor(declaration.from, declaration.selector, declaration.conditions, declaration.important === true);
+        const written = marker === undefined || marked.has(marker) ? [own] : [marker, own];
+        if (marker !== undefined) marked.add(marker);
+
         const last = parts[parts.length - 1];
-        if (last !== undefined && last.kind === "classes") last.written.push(own);
-        else parts.push({ kind: "classes", written: [own] });
+        if (last !== undefined && last.kind === "classes") last.written.push(...written);
+        else parts.push({ kind: "classes", written });
       }
 
       /** An empty group sets nothing, and an empty string is what a merge skips. */
@@ -648,17 +687,18 @@ export function transform(source: string, options: TransformOptions = {}): Trans
           continue;
         }
 
-        const fallback = part.group.find((one) => one.arm?.otherwise === true);
+        const arms = armClasses(part.group);
+        const fallback = arms.get(OTHERWISE);
         picked = true;
         piece += `${lookup}(`;
         expression();
         piece += ",{";
-        for (const one of part.group) {
-          if (one.arm?.otherwise === true) continue;
-          piece += `${JSON.stringify(one.arm?.is ?? "")}:${JSON.stringify(nameFor(one))},`;
+        for (const [is, classes] of arms) {
+          if (is === OTHERWISE) continue;
+          piece += `${JSON.stringify(is)}:${JSON.stringify(classes.join(" "))},`;
         }
         piece += "}";
-        if (fallback !== undefined) piece += `,${JSON.stringify(nameFor(fallback))}`;
+        if (fallback !== undefined) piece += `,${JSON.stringify(fallback.join(" "))}`;
         piece += ")";
       }
       if (wrapped) piece += ")";

@@ -4,6 +4,7 @@ import { HOLE, canonicalValue, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, PROPERTIES, SHORTHANDS } from "./keywords.generated";
 import { widthSlot } from "../conditions";
 import { CONDITION, SPREAD, holeIn } from "./read";
+import { IMPORTANT, splitOf } from "./split";
 
 /**
  * One declaration, taken out of the block it was written in.
@@ -58,8 +59,25 @@ export interface AtomicDeclaration {
    * entry that chooses between the classes. See `MatchPart`.
    */
   readonly arm?: { readonly hole: number; readonly is: string; readonly otherwise: boolean };
+  /**
+   * Whether the value ends in `!important`, which MIRRORS the layer it goes in.
+   *
+   * CSS reverses layer order for important declarations: among them the layer declared FIRST wins.
+   * So an important rule kept in its ordinary layer comes out backwards — measured in all three
+   * engines, `background: red !important; background-color: blue !important` gave red where the
+   * same two lines in one hand-written rule give blue. See {@link layerPathFor}.
+   */
+  readonly important?: boolean;
   /** Where it was written, so a finding lands on it. */
   readonly at?: number;
+  /**
+   * The shorthand a SPLIT produced this from, when one did.
+   *
+   * It decides the layer and nothing else: a `padding-left` the compiler derived from `padding` is
+   * weaker than one an author typed, so a written longhand wins even where the two never meet in a
+   * merge — which is the one place the merge cannot answer. See {@link layerPathFor}.
+   */
+  readonly from?: string;
 }
 
 /**
@@ -196,36 +214,144 @@ export function sheetRank(declaration: { property?: string; conditions?: readonl
  * Measured in Chromium through the real sheet: 600 load orders of random rule sets across three
  * files, each through no minifier, esbuild and lightningcss, zero wrong. See `prototype-layers.mjs`.
  */
-export function layerPathFor(declaration: { property?: string; conditions?: readonly string[] }): string[] {
-  const breadth = String(BREADTHS.indexOf(breadthOf(declaration))).padStart(2, "0");
-  const slot = widthSlot(declaration.conditions);
-  if (slot === 0) return [`u${breadth}`];
 
-  return [
-    "c",
-    ...String(slot)
-      .padStart(5, "0")
-      .split("")
-      .map((digit) => `d${digit}`),
-    `b${breadth}`,
-  ];
+/**
+ * `all`, the weakest layer of all.
+ *
+ * It covers every property, so it is weaker than every other shorthand by definition, and one
+ * fixed name says that exactly.
+ */
+const EVERYTHING = "a";
+
+/**
+ * The PIECES of a split: weaker than a `padding-left` an author typed, stronger than a shorthand
+ * that reaches the sheet whole.
+ *
+ * ONE name, and no room beside it. A layer name cannot be added later — a stylesheet built before
+ * it does not list it, and CSS appends an unseen name to the END, the strongest position — and that
+ * once bought seven empty levels, `d2`…`d8`, for a split that might one day produce pieces of
+ * pieces. It cannot: a split always reaches LEAVES, and `grammarShapes.test.ts` asserts it for every
+ * family, the hand-split ones included. That test failing is the answer to such a CSS, not a
+ * reserve: the fix is to split further, down to the leaves.
+ *
+ * Not `d`: the digit levels under `c` are `d0`…`d9`, and one letter for two things made a reader of
+ * the output unable to tell them apart.
+ */
+const PIECES = "p";
+
+/**
+ * A shorthand that reaches the sheet WHOLE — one that does not split: a `var()`, whose parts are
+ * unknown until the page computes them, or a value a split refuses, like `font: caption`.
+ *
+ * One WORD, where these were once named by the COUNT of longhands they cover. A count moves when CSS
+ * adds a longhand to the family, a package built before that names the old count, and two releases
+ * then disagree about which rule is stronger. A word means the same in every release. It sits below
+ * the split pieces and the written longhands, which beat it — as a longhand written after its
+ * shorthand does in CSS — and above `all`. Measured in all three engines, through the merge,
+ * against the same lines written by hand.
+ *
+ * What a word cannot do is order two of these against each other — `border: var(--x)` and then
+ * `border-top: var(--y)`. That is what a count did, and it is refused instead: see
+ * `narrower-after-a-whole-shorthand` in `rules.ts`.
+ */
+const WHOLE = "v";
+
+/**
+ * Where a declaration's rule goes, as a layer path.
+ *
+ * ```
+ * a longhand, unconditional      u                every longhand is equally narrow, so one name
+ * a split's piece                p                weaker than a longhand an author wrote
+ * a shorthand that stays whole   v                weaker than every longhand
+ * `all`                          a                weaker than every shorthand there can be
+ * anything conditional           c.d0.d5.…  + the same last step
+ * ```
+ *
+ * **Every longhand shares one layer, and that is the whole of what splitting bought.** The names
+ * used to be an INDEX into the table of distinct breadths, so a property CSS added anywhere moved
+ * `padding` from `u09` to `u10` and two stylesheets built a year apart disagreed about which layer
+ * `padding` was in. After splitting there is no wide unconditional declaration left to separate:
+ * every one is a longhand, every longhand is equally narrow, and a name that is the same for
+ * everybody separates nobody. Seventeen shelves stood empty and are gone.
+ *
+ * And every shorthand splits now, so a shorthand reaches the sheet whole only for a value that
+ * cannot split. Every name is a word; none is a count.
+ */
+export function layerPathFor(declaration: {
+  property?: string;
+  conditions?: readonly string[];
+  from?: string;
+  important?: boolean;
+}): string[] {
+  const step =
+    declaration.from !== undefined
+      ? PIECES
+      : breadthOf(declaration) === 0
+        ? "u"
+        : declaration.property === "all"
+          ? EVERYTHING
+          : WHOLE;
+  const slot = widthSlot(declaration.conditions);
+  const path =
+    slot === 0
+      ? [step]
+      : [
+          "c",
+          ...String(slot)
+            .padStart(5, "0")
+            .split("")
+            .map((digit) => `d${digit}`),
+          step,
+        ];
+
+  /**
+   * An IMPORTANT declaration goes under {@link IMPORTANT_LAYER}, whose every level is declared in
+   * the REVERSE order.
+   *
+   * CSS reverses layer order for important declarations — among them the layer declared FIRST wins
+   * — so a rule left in its ordinary layer comes out backwards. Measured in all three engines, on
+   * the ordinary path with no package and no joining: `background: red !important;
+   * background-color: blue !important` gave red, where the same two lines in one hand-written rule
+   * give blue. Every boundary was affected, a shorthand against its longhand, `all` against a
+   * shorthand, a `@media` against an unconditional rule, and two breakpoints against each other.
+   *
+   * Mirroring costs one more name at the top and the reversed lists below it — about 35 gzipped
+   * bytes on a real stylesheet, because the repetition compresses.
+   */
+  return declaration.important === true ? [IMPORTANT_LAYER, ...path] : path;
 }
+
+/**
+ * The one layer every important declaration sits under, and its levels read backwards.
+ *
+ * Where it sits among the others does not matter: importance beats non-importance whatever the
+ * layer, so nothing normal is ever compared with anything under here.
+ */
+export const IMPORTANT_LAYER = "i";
 
 /** The names one level of the digit path may hold, in order. */
 export const DIGIT_LAYERS: readonly string[] = [...Array(10).keys()].map((one) => `d${one}`);
 
-/** The names a breadth level may hold, in order — widest first. */
-export const BREADTH_LAYERS: readonly string[] = BREADTHS.map((_, at) => String(at).padStart(2, "0"));
+/**
+ * Every name a step may hold, weakest first — four WORDS, and the whole of them. A name cannot be
+ * added later (CSS appends an unseen one to the END, the strongest position), so this list is a
+ * promise; that is why every name on it is one that does not depend on the shorthand table.
+ */
+export const BREADTH_LAYERS: readonly string[] = [EVERYTHING, WHOLE, PIECES, "u"];
 
 /**
- * The statement every stylesheet begins with: each unconditional breadth, then everything
- * conditional.
+ * The statement every stylesheet begins with, and it lists the WHOLE range.
  *
- * The whole list, and that is not caution. Measured: a stylesheet declaring only the layers it uses
- * put a shorthand's layer AFTER a longhand's, because a file holding just `margin-left` loaded first
- * and CSS appends an unseen name to the end of the order — `margin-left: 4px` became `0px`.
+ * Not caution. Measured: a stylesheet declaring only the layers it uses put a shorthand's layer
+ * AFTER a longhand's, because a file holding just `margin-left` loaded first and CSS appends an
+ * unseen name to the END of the order — `margin-left: 4px` became `0px`. Every name a later release
+ * might use has to be in the statement an earlier release already emitted, or the two disagree.
  */
-export const LAYER_ORDER = `@layer ${[...BREADTH_LAYERS.map((one) => `ramonda.u${one}`), "ramonda.c"].join(",")};`;
+export const LAYER_ORDER = `@layer ${[
+  `ramonda.${IMPORTANT_LAYER}`,
+  ...BREADTH_LAYERS.map((one) => `ramonda.${one}`),
+  "ramonda.c",
+].join(",")};`;
 
 /** Whether a shorthand sets everything another property sets, so a later one CLEARS it in the merge. */
 export function covers(shorthand: string, other: string): boolean {
@@ -328,7 +454,6 @@ export type AtomicSegment =
  * `!important`, however it is spelt — the same pattern `rules.ts` matches for a custom property's
  * value, because it is the same question asked of the same text.
  */
-const IMPORTANT = /!\s*important\s*$/i;
 
 export function flatten(block: Block): AtomicDeclaration[] {
   return segments(block).flatMap((one) => (one.kind === "declarations" ? one.items : []));
@@ -340,10 +465,18 @@ export function flatten(block: Block): AtomicDeclaration[] {
  * `flatten` answers *what does this set*; this answers *how is it composed*. Two functions because
  * most of the package only needs the first — the rules, the sheet and the checker all ask what a
  * block sets and never how it was assembled.
+ *
+ * ## `split`, and why only the sheet asks for it
+ *
+ * A shorthand reaches the STYLESHEET as its longhands, so that no two classes on an element ever set
+ * the same property. It must not reach the CHECKER that way. The checker reports at the author's own
+ * line and names the property in its message, and after a split the property is one the author never
+ * wrote: `display: block; gap: 12px` would be reported as two findings about `row-gap` and
+ * `column-gap`, on a line that says `gap`. So the split is the emit path's, and off by default.
  */
-export function segments(block: Block): AtomicSegment[] {
+export function segments(block: Block, options?: { readonly split?: boolean }): AtomicSegment[] {
   const out: AtomicSegment[] = [];
-  walk(block.items, "", [], [], out);
+  walk(block.items, "", [], [], out, options?.split === true);
   return out;
 }
 
@@ -353,6 +486,7 @@ function walk(
   conditions: readonly string[],
   guards: readonly number[],
   out: AtomicSegment[],
+  split: boolean,
 ): void {
   /** The run being built, so declarations under one guard are one map rather than one each. */
   const run = (): AtomicDeclaration[] => {
@@ -368,7 +502,7 @@ function walk(
       const condition = holeIn(item.prelude, CONDITION);
       if (condition !== undefined) {
         const before = out.length;
-        walk(item.items, selector, conditions, [...guards, condition], out);
+        walk(item.items, selector, conditions, [...guards, condition], out, split);
         /**
          * A group that produced NOTHING still emits its guard, as an empty run.
          *
@@ -389,10 +523,10 @@ function walk(
         continue;
       }
       if (item.prelude.trimStart().startsWith("@")) {
-        walk(item.items, selector, [...conditions, collapse(item.prelude)], guards, out);
+        walk(item.items, selector, [...conditions, collapse(item.prelude)], guards, out, split);
         continue;
       }
-      walk(item.items, nested(selector, selectorOf(item.prelude)), conditions, guards, out);
+      walk(item.items, nested(selector, selectorOf(item.prelude)), conditions, guards, out, split);
       continue;
     }
 
@@ -402,7 +536,7 @@ function walk(
       continue;
     }
 
-    run().push(...declarationsOf(item, selector, conditions));
+    run().push(...declarationsOf(item, selector, conditions, split));
   }
 }
 
@@ -417,14 +551,66 @@ function declarationsOf(
   item: Extract<BlockItem, { kind: "declaration" }>,
   selector: string,
   conditions: readonly string[],
+  split: boolean,
 ): AtomicDeclaration[] {
   const found = item.value.find((part) => part.kind === "match");
   if (found !== undefined && found.kind === "match") {
-    return found.arms.map((one) =>
-      built(item, one.value, selector, conditions, { hole: found.hole, is: one.key, otherwise: one.otherwise }),
+    return found.arms.flatMap((one) =>
+      maybeSplit(
+        item,
+        one.value,
+        selector,
+        conditions,
+        { hole: found.hole, is: one.key, otherwise: one.otherwise },
+        split,
+      ),
     );
   }
-  return [built(item, item.value, selector, conditions, undefined)];
+  return maybeSplit(item, item.value, selector, conditions, undefined, split);
+}
+
+/**
+ * One declaration, or the longhands it really sets.
+ *
+ * A shorthand reaches the sheet as its longhands wherever a measured table can say what they are,
+ * because then no two classes on an element ever set the same property and the cascade is never
+ * asked to choose. `splitOf` refuses whatever it cannot answer, and a refusal is one declaration,
+ * unchanged.
+ *
+ * **A HOLE is the refusal this file has to make itself.** `padding: ${gap}` is a value that does not
+ * exist yet — a custom property filled on the element at run time — and at this point it is a marker
+ * in the text rather than a `var()`, so the splitter's own guard does not see it. Split anyway and
+ * `padding: ${gap}` becomes four longhands each holding the whole marker, which is four wrong
+ * declarations built out of a value nobody has read.
+ */
+function maybeSplit(
+  item: Extract<BlockItem, { kind: "declaration" }>,
+  value$: readonly ValuePart[],
+  selector: string,
+  conditions: readonly string[],
+  arm: AtomicDeclaration["arm"],
+  split: boolean,
+): AtomicDeclaration[] {
+  const whole = built(item, value$, selector, conditions, arm);
+  if (!split || whole.holes.length > 0) return [whole];
+  /**
+   * A `match` ARM splits like anything else, and every piece carries the arm it came from — the
+   * emit groups them back into ONE string of classes per arm, which `pick` returns and the merge
+   * splits on its spaces. It used to keep its shorthand, which put `padding: match(…)` in a layer
+   * named by `padding`'s count.
+   */
+  const longhands = splitOf(whole.property, valueOf(whole.canonical));
+  if (longhands === undefined) return [whole];
+
+  return Object.entries(longhands).map(([property, value]) => ({
+    ...built(item, [{ kind: "text", text: value }], selector, conditions, arm, property),
+    from: whole.property,
+  }));
+}
+
+/** The value out of a `property:value;` — the canonical text, which is what was split. */
+function valueOf(canonical: string): string {
+  return canonical.slice(canonical.indexOf(":") + 1, -1);
 }
 
 function built(
@@ -433,8 +619,10 @@ function built(
   selector: string,
   conditions: readonly string[],
   arm: AtomicDeclaration["arm"],
+  /** Set only by a split: the longhand this piece sets, in place of the shorthand that was written. */
+  instead?: string,
 ): AtomicDeclaration {
-  const property = propertyName(item.property);
+  const property = instead ?? propertyName(item.property);
   /** Local to this declaration, so the same declaration anywhere is the same text. See above. */
   const holes: number[] = [];
   let value = "";
@@ -493,9 +681,23 @@ function built(
    * reached the stylesheet.
    *
    * With its own key both classes land and **CSS decides**, which is this package's whole premise.
-   * That includes the layer REVERSAL `!important` causes, which was measured in the real layer
-   * scheme rather than reasoned about: four cases, all agreeing with plain CSS, one across a media
-   * query.
+   *
+   * **This used to claim the layer REVERSAL was measured and agreed with plain CSS in four cases,
+   * and it did not.** Those four cannot have included two important declarations that sit on
+   * opposite sides of a layer boundary, because every such pair disagreed. Measured again in all
+   * three engines, on the ordinary path, against the same two lines written by hand:
+   *
+   *     @@( background: red !important; background-color: blue !important; )
+   *     ours red, hand-written CSS blue
+   *
+   * A shorthand against its longhand, `all` against a shorthand, a `@media` against the
+   * unconditional rule it was written to override, two breakpoints against each other — all
+   * reversed. What made it invisible is that a split against a written longhand AGREES, because
+   * splitting gives them one key and the merge settles them before a layer is asked.
+   *
+   * The reversal is real and now answered: an important declaration goes under a MIRROR whose
+   * levels are declared backwards, so the reversal lands on the order that was meant. See
+   * {@link layerPathFor}.
    *
    * The spelling is the one `rules.ts` already uses for the same question on a custom property —
    * optional whitespace after the bang, and case-insensitive, because both are valid CSS and a
@@ -513,6 +715,7 @@ function built(
     conditions: sorted,
     holes,
     arm,
+    important,
     at: item.at,
   };
 }

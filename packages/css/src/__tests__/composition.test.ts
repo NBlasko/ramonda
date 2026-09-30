@@ -75,7 +75,9 @@ describe("a spread", () => {
  */
 describe("what a module registers", () => {
   test("the registration is emitted above the merge that needs it", () => {
-    const out = emit("const a = @@( padding-left: 4px; padding: 8px; );\n");
+    // A `var()`, because a shorthand the compiler SPLITS registers nothing at all — there is no
+    // shorthand left in the sheet for anything to clear.
+    const out = emit("const a = @@( background-color: red; background: var(--b); );\n");
     const clears = out.indexOf("_clears(");
     const merged = out.indexOf('_merge("r-');
 
@@ -110,9 +112,22 @@ describe("what a module registers", () => {
     const theBase = run(base, {}) as string;
     const theCard = run(card, { base: theBase }) as string;
 
-    // `padding` cleared the base's `padding-left`, and left the cursor it does not set.
+    /**
+     * The base's `padding-left` is gone and the cursor it does not set is kept — but by a different
+     * route than this test was written for. `padding: 8px` is four longhand classes, one of them
+     * `padding-left`, so the merge settles it by KEY and no registration is consulted. The machinery
+     * did not get better at the question; the question stopped being asked.
+     */
     expect(theCard.split(" ").sort()).toEqual(
-      [...theBase.split(" ").filter((one) => !one.startsWith("r-pl-")), "r-p-8px"].sort(),
+      [
+        ...theBase.split(" ").filter((one) => !one.startsWith("r-pl-")),
+        // The family's marker, which carries no rule — see `markerFor`.
+        "r-p-",
+        "r-pt-8px",
+        "r-pr-8px",
+        "r-pb-8px",
+        "r-pl-8px",
+      ].sort(),
     );
   });
 
@@ -185,7 +200,24 @@ describe("a reuse inside a reuse", () => {
 
     const named = value.split(" ");
     const rules = new Map((out?.blocks ?? []).map((one) => [one.className, one.css]));
-    expect(named.map((one) => rules.get(one)).sort()).toEqual(["color:red;", "gap:2px;", "padding:3px;"]);
+    // `gap` and `padding` reach the sheet as their longhands, so the claim — each level overrides
+    // the one below and nothing else — is now made one property at a time.
+    // A split's marker has no rule; it is there for the merge — see `markerFor`.
+    expect(named.filter((one) => !rules.has(one)).sort()).toEqual(["r-gap-", "r-p-"]);
+    expect(
+      named
+        .filter((one) => rules.has(one))
+        .map((one) => rules.get(one))
+        .sort(),
+    ).toEqual([
+      "color:red;",
+      "column-gap:2px;",
+      "padding-bottom:3px;",
+      "padding-left:3px;",
+      "padding-right:3px;",
+      "padding-top:3px;",
+      "row-gap:2px;",
+    ]);
   });
 
   test("and the innermost one is still a constant, so the chain costs one allocation per level", () => {
@@ -240,11 +272,11 @@ describe("a conditional group", () => {
   });
 
   test("declarations around a group keep their place", () => {
-    const out = emit(`const card = @@(\n  color: red;\n  if ({c}) { color: blue; }\n  background: white;\n);\n`);
+    const out = emit(`const card = @@(\n  color: red;\n  if ({c}) { color: blue; }\n  cursor: pointer;\n);\n`);
     const args = out.slice(out.indexOf("_merge("));
 
     expect(args.indexOf('"r-c-red"')).toBeLessThan(args.indexOf("c &&"));
-    expect(args.indexOf("c &&")).toBeLessThan(args.indexOf('"r-bg-white"'));
+    expect(args.indexOf("c &&")).toBeLessThan(args.indexOf('"r-cur-pointer"'));
   });
 
   test("a selector inside a group is still a selector on its own rule", () => {
@@ -401,7 +433,7 @@ describe("a condition head with something extra in it", () => {
 describe("the nesting shapes nothing reached", () => {
   test("two nested merges live at once", () => {
     const out = emit(
-      `const card = @@(\n  color: red;\n  if ({a}) {\n    opacity: 0.5;\n    if ({b}) {\n      gap: 8px;\n      if ({c}) { padding: 4px; }\n    }\n  }\n);\n`,
+      `const card = @@(\n  color: red;\n  if ({a}) {\n    opacity: 0.5;\n    if ({b}) {\n      row-gap: 8px;\n      if ({c}) { padding-top: 4px; }\n    }\n  }\n);\n`,
     );
 
     // Counted in GUARD POSITION, because a bare `\bc\b` also matches the `c` in the class name
@@ -411,7 +443,7 @@ describe("the nesting shapes nothing reached", () => {
     }
     expect(out).toMatch(/a\s*&&\s*_merge\(/);
     expect(out).toMatch(/b\s*&&\s*_merge\(/);
-    expect(out).toMatch(/c\s*&&\s*"r-p-/);
+    expect(out).toMatch(/c\s*&&\s*"r-pt-/);
   });
 
   test("and two of them close on one segment", () => {
@@ -422,10 +454,10 @@ describe("the nesting shapes nothing reached", () => {
 
   test("a run resumed after a nested group, still inside a guard", () => {
     const out = emit(
-      `const card = @@(\n  if ({a}) {\n    color: red;\n    if ({b}) { gap: 8px; }\n    opacity: 0.5;\n  }\n);\n`,
+      `const card = @@(\n  if ({a}) {\n    color: red;\n    if ({b}) { row-gap: 8px; }\n    opacity: 0.5;\n  }\n);\n`,
     );
 
-    expect(out).toMatch(/b\s*&&\s*"r-gap-[^"]*"\s*,\s*"r-o-/);
+    expect(out).toMatch(/b\s*&&\s*"r-row_gap-[^"]*"\s*,\s*"r-o-/);
     expect(out.match(/\ba\b/g)).toHaveLength(1);
     expect(out.match(/\bb\b/g)).toHaveLength(1);
   });
@@ -455,12 +487,27 @@ describe("the nesting shapes nothing reached", () => {
    * answers for every context the shorthand is written in, which is what keeps the registration to
    * the shorthands a file writes rather than one per context it writes them in.
    */
-  test("a shorthand registers its longhands once, by property, whatever context it sits in", () => {
+  /**
+   * The registration is for the shorthands that CANNOT be split, and there is nothing else left.
+   *
+   * A shorthand the compiler splits never reaches the sheet, so no class sets `padding` and nothing
+   * has to be told that `padding` clears `padding-left` — which is the point of splitting, seen from
+   * the runtime: the machinery is not made cleverer, it is made unnecessary. What keeps it alive is
+   * the families no table can answer, `background` among them.
+   */
+  test("a shorthand that is split registers nothing, because no class sets it", () => {
     const out = emit(`const card = @@(\n  &:hover { padding: 8px; }\n);\n`);
 
-    expect(out).toContain('_clears({"p":[');
-    expect(out).toContain('"pl"');
-    expect(out).toContain('"r-:hover.p-8px"');
+    expect(out).not.toContain("_clears");
+    expect(out).toContain('"r-:hover.p- r-:hover.pt-8px r-:hover.pr-8px r-:hover.pb-8px r-:hover.pl-8px"');
+  });
+
+  test("and one that is not still registers its longhands, by property", () => {
+    // A `var()`, because that is what can never split — every `background` without one does now.
+    const out = emit(`const card = @@(\n  &:hover { background: var(--b); }\n);\n`);
+
+    expect(out).toContain('_clears({"bg":[');
+    expect(out).toContain('"bgi"');
   });
 });
 
@@ -621,5 +668,110 @@ describe("two conditions the code decides", () => {
     );
 
     expect(out).toMatch(/_merge\(p && "r-c-red",\s*q && "r-c-blue"\)/);
+  });
+});
+
+describe("a split meets a package built by an older release", () => {
+  /** A block compiled by THIS release, run the way a module runs it. */
+  const compiled = (block: string): string => {
+    const out = transform(`const a = @@( ${block} );\n`, { filename: "App.tsx" });
+    const code = (out?.code ?? "")
+      .split("\n")
+      .filter((line) => !line.startsWith("import "))
+      .join("\n");
+    return new Function("_merge", "_clears", "_under", "_named", `${code}\nreturn a;`)(
+      mergeClassNames,
+      shorthands,
+      conditionsOf,
+      namesOf,
+    ) as string;
+  };
+  const has = (classes: string, prefix: string) => classes.split(" ").some((one) => one.startsWith(prefix));
+
+  /**
+   * `overflow` was one property before it became `overflow-x` and `overflow-y`. A package built
+   * then carries a class for the whole property, in the layer every longhand used, and a split
+   * written LATER has to replace it. Measured in all three engines before this: the old class won.
+   */
+  test("a split replaces the class an older release wrote for the whole property", () => {
+    const older = `r-${keyToken({ property: "overflow", selector: "", conditions: [] })}-hidden`;
+    const merged = String(mergeClassNames(older, compiled("overflow: auto;")));
+
+    expect(merged.split(" ")).not.toContain(older);
+    expect(has(merged, "r-overflow_x-auto")).toBe(true);
+  });
+
+  /**
+   * And the other way: a longhand the older release never knew. Its split of `text-decoration`
+   * has no piece for `text-decoration-thickness`, so it cannot replace one — and CSS resets it.
+   * Simulated by taking that piece out of today's split.
+   */
+  test("an older split still clears a longhand it had no piece for", () => {
+    const thickness = `r-${keyToken({ property: "text-decoration-thickness", selector: "", conditions: [] })}-7px`;
+    const older = compiled("text-decoration: underline;")
+      .split(" ")
+      .filter((one) => !one.startsWith("r-text_decoration_thickness-"))
+      .join(" ");
+    const merged = String(mergeClassNames(thickness, older));
+
+    expect(merged.split(" ")).not.toContain(thickness);
+  });
+});
+
+/**
+ * `!important` is part of what a class SETS, so the merge must not let an ordinary declaration
+ * replace an important one. It did: both carried the key `pl`, the later won, and
+ * `padding: 1px !important; padding-left: 2px` gave 2px where CSS gives 1px — in ONE block, since a
+ * block is merged at load too. The key now carries importance as a context (`!.pl`), so the two
+ * stay side by side and the mirrored `i` layer decides, as CSS does.
+ */
+describe("an important declaration and an ordinary one", () => {
+  const compiled = (block: string): string => {
+    const out = transform(`const a = @@( ${block} );\n`, { filename: "Imp.tsx" });
+    const code = (out?.code ?? "")
+      .split("\n")
+      .filter((line) => !line.startsWith("import "))
+      .join("\n");
+    return new Function("_merge", "_clears", "_under", "_named", `${code}\nreturn a;`)(
+      mergeClassNames,
+      shorthands,
+      conditionsOf,
+      namesOf,
+    ) as string;
+  };
+  const has = (classes: string, prefix: string) => classes.split(" ").some((one) => one.startsWith(prefix));
+
+  test("an ordinary longhand after an important split keeps the important piece", () => {
+    const merged = compiled("padding: 1px !important; padding-left: 2px;");
+    expect(has(merged, "r-!.pl-1px")).toBe(true);
+    expect(has(merged, "r-pl-2px")).toBe(true);
+  });
+
+  test("and two longhands", () => {
+    const merged = compiled("color: red !important; color: blue;");
+    expect(merged.split(" ")).toHaveLength(2);
+  });
+
+  test("an important one after an important one still replaces it", () => {
+    const merged = compiled("color: red !important; color: blue !important;");
+    expect(merged.split(" ")).toHaveLength(1);
+    expect(merged).toContain("blue");
+  });
+
+  test("and across blocks the same", () => {
+    const merged = String(mergeClassNames(compiled("padding: 1px !important;"), compiled("padding-left: 2px;")));
+    expect(has(merged, "r-!.pl-1px")).toBe(true);
+    expect(has(merged, "r-pl-2px")).toBe(true);
+  });
+
+  test("an important shorthand clears an earlier important longhand, and leaves an ordinary one", () => {
+    const merged = String(
+      mergeClassNames(
+        compiled("padding-left: 9px !important; padding-top: 7px;"),
+        compiled("padding: 1px !important;"),
+      ),
+    );
+    expect(has(merged, "r-!.pl-9px")).toBe(false);
+    expect(has(merged, "r-pt-7px")).toBe(true);
   });
 });

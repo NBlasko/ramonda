@@ -200,7 +200,35 @@ function string(text: string, start: number, write: (chunk: string) => void): nu
  * written, which costs a second class and reports nothing.
  */
 export function canonicalSelector(selector: string): string {
-  return overCode(selector, (code) => tightenedCounts(lowered(code)));
+  return overCode(selector, (code) => spacedCombinators(tightenedCounts(lowered(code))));
+}
+
+/**
+ * `>`, `+` and `~` with one space either side — `& > span` — as Prettier's CSS formatter writes them.
+ * The descendant combinator already was one space; these three were left as typed, so a file held
+ * both `&>span` and `& > span`.
+ *
+ * Only at the top level: inside parentheses and brackets the same characters are not combinators —
+ * `:nth-child(2n+1)`, `[class~="x"]`.
+ */
+function spacedCombinators(code: string): string {
+  let out = "";
+  let depth = 0;
+  for (let at = 0; at < code.length; at++) {
+    const ch = code[at];
+    if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
+    // A sign before a number is not a combinator — `+50%` is a keyframe selector.
+    const number = /^(\d|\.\d)/.test(code.slice(at + 1, at + 3));
+    if (depth === 0 && (ch === ">" || ch === "+" || ch === "~") && !number) {
+      out = out.trimEnd();
+      out += out === "" ? `${ch} ` : ` ${ch} `;
+      while (code[at + 1] === " " || code[at + 1] === "\t") at++;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
 }
 
 /**

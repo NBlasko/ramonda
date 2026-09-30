@@ -138,3 +138,17 @@ export const LEAVES: Readonly<Record<string, readonly string[]>> = {
   "white-space": ["text-wrap-mode","white-space-collapse"],
   "word-wrap": ["overflow-wrap"],
 };
+
+/**
+ * Of those, the ones SOME engine holds as a longhand. `SHORTHANDS` leaves them out: the engines
+ * disagree about what they reset, and one calling it a longhand is enough. `all` is never here —
+ * it covers everything by definition and has a layer of its own.
+ */
+export const LONGHAND_IN_SOME_ENGINE: readonly string[] = ["border-spacing","perspective-origin","transform-origin","vertical-align"];
+
+/**
+ * Shorthands the engines reset DIFFERENTLY, and the longhands in question — a longhand one engine
+ * resets and another has and keeps. The author's own line renders two ways, so `rules.ts`
+ * refuses it.
+ */
+export const RESETS_DIFFER: Readonly<Record<string, readonly string[]>> = {"-webkit-mask":["mask-clip","mask-composite","mask-mode"]};

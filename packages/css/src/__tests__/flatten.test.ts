@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { flatten, sheetRank, widthSlot } from "../compiler/flatten";
+import { flatten, segments, sheetRank, widthSlot } from "../compiler/flatten";
 import { readBlock } from "../compiler/read";
 import { findBlocks } from "../compiler/scan";
 
@@ -24,6 +24,15 @@ const of = (css: string) => {
 };
 
 const keys = (css: string) => of(css).map((one) => one.key);
+
+/** The EMIT path, which is the only one that splits a shorthand — see `segments`. */
+const emitted = (css: string) => {
+  const source = `const x = @@(\n${css}\n);`;
+  const [site] = findBlocks(source);
+  return segments(readBlock(source, site.open, "", { tolerant: true }).block, { split: true }).flatMap((one) =>
+    one.kind === "declarations" ? one.items : [],
+  );
+};
 
 describe("what a block sets", () => {
   test("a flat block sets one thing per declaration", () => {
@@ -562,5 +571,104 @@ describe("an important declaration", () => {
     const underMedia = keys("  @media (min-width: 1px) { color: red !important; }")[0];
 
     expect(underMedia).not.toBe(plain);
+  });
+});
+
+/**
+ * A shorthand reaches the sheet as its longhands, which is what removes the cascade question.
+ *
+ * If every declaration is a longhand, no two classes on an element set the same property, and
+ * `mergeClassNames` settles every conflict by key — `DESIGN.md`, "The way out: split every
+ * shorthand". The two tables behind it are measured in the engines; what is asserted here is that
+ * the compiler USES them, and where it must not.
+ */
+describe("a shorthand is split into what it sets", () => {
+  const splitKeys = (css: string) => emitted(css).map((one) => one.key);
+  const splitCss = (css: string) => emitted(css).map((one) => one.canonical);
+
+  test("a positional family, by how many values were written", () => {
+    expect(splitKeys("padding: 10px 20px;")).toEqual([
+      "padding-top",
+      "padding-right",
+      "padding-bottom",
+      "padding-left",
+    ]);
+  });
+
+  /** The order is the table's, which is sorted — the engines write the same longhands in different orders. */
+  test("a bag-of-tokens family, by what each token is", () => {
+    expect(splitCss("border-top: 1px solid red;")).toEqual([
+      "border-top-color:red;",
+      "border-top-style:solid;",
+      "border-top-width:1px;",
+    ]);
+  });
+
+  test("a longhand no token reached is still written, because the shorthand resets it", () => {
+    expect(splitCss("border-top: solid;")).toEqual([
+      "border-top-color:initial;",
+      "border-top-style:solid;",
+      "border-top-width:initial;",
+    ]);
+  });
+
+  /** A family with no shape keeps its shorthand, and that is the answer that cannot be wrong. */
+  test("a value no table and no rule can read is left alone", () => {
+    expect(splitKeys("background: bogus;")).toEqual(["background"]);
+  });
+
+  /**
+   * A HOLE is a value that does not exist yet.
+   *
+   * `padding: ${gap}` is a custom property filled on the element at run time, so no table can say
+   * which longhand its parts belong to — the splitter's `var()` guard does not see it, because the
+   * text at this point is a marker rather than a `var()`.
+   */
+  test("a value with a hole in it is not split", () => {
+    expect(splitKeys("padding: ${x};")).toEqual(["padding"]);
+  });
+
+  test("nor is one that is partly a hole", () => {
+    expect(splitKeys("padding: 10px ${x};")).toEqual(["padding"]);
+  });
+
+  /**
+   * An arm of a `match` splits like any declaration, each piece carrying its arm.
+   *
+   * It used to keep its shorthand, because one arm is one choice at run time and three longhands
+   * looked like three. The emit groups an arm's pieces back into ONE string of classes, which `pick`
+   * hands back and the merge splits on its spaces — see `match.test.ts`.
+   */
+  test("an arm of a match is split, and every piece keeps its arm", () => {
+    expect(splitKeys("border-left: match({t}) { loud => 4px solid red; quiet => 1px dashed grey; };")).toEqual([
+      "border-left-color",
+      "border-left-style",
+      "border-left-width",
+      "border-left-color",
+      "border-left-style",
+      "border-left-width",
+    ]);
+  });
+
+  /** A declared variable is a `var()` in the sheet, and what is inside it is unknown here. */
+  test("nor is one reading a declared variable", () => {
+    expect(splitKeys("padding: $.space.md;")).toEqual(["padding"]);
+  });
+
+  test("nor one where a variable stands beside written values", () => {
+    expect(splitKeys("border-top: $.line.thin solid red;")).toEqual(["border-top"]);
+  });
+
+  /**
+   * `!important` comes off before the split and goes back on EVERY longhand, which is what CSS
+   * means by it. Left in, it is a token no slot accepts and the whole declaration is refused.
+   */
+  test("and `!important` is carried onto each longhand", () => {
+    expect(splitCss("padding: 10px !important;")).toEqual([
+      "padding-top:10px !important;",
+      "padding-right:10px !important;",
+      "padding-bottom:10px !important;",
+      "padding-left:10px !important;",
+    ]);
   });
 });

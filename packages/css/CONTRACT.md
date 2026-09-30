@@ -234,7 +234,7 @@ context joins the property with a `.`.
 | value, hashed | **9** base62 characters of `sha256(normalised)` |
 
 ```
-padding: 12px                            r-p-12px
+padding-top: 12px                        r-pt-12px
 display: flex                            r-disp-flex
 &:hover { color: red }                   r-:hover.c-red
 outline-offset: 4px                      r-outline_offset-4px

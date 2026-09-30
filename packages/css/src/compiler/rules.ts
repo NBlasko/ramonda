@@ -1,5 +1,9 @@
 import { NARROW, namesIn, ruleFor, variablesOnlyKinds } from "../codegen";
 import { nearest } from "./nearest";
+import { GRAMMAR_SHAPES } from "./grammarShapes.generated";
+import { RESETS_DIFFER } from "./leaves.generated";
+import { SHAPES } from "./shapes.generated";
+import { holdsVar, misplacedWord } from "./split";
 import type { Config, PropertyRules, UnitsByFamily } from "../config";
 import type { Block, BlockItem, Declaration, NestedRule, ValuePart } from "./ast";
 import { runtimeValuesIn } from "./ast";
@@ -8,7 +12,9 @@ import {
   covers,
   exclusive,
   flatten,
+  layerPathFor,
   onlyTheModeDecides,
+  segments,
   sheetRank,
   standardFormOf,
   widthSlot,
@@ -114,6 +120,10 @@ export const RULE_IDS = [
   "unit-not-allowed",
   "value-not-allowed",
   "shorthand-not-allowed",
+  "word-out-of-its-longhand",
+  "narrower-after-a-whole-shorthand",
+  "resets-differ-across-engines",
+  "value-differs-across-engines",
   "string-not-allowed",
   "property-not-a-name",
   "non-canonical-spelling",
@@ -142,6 +152,7 @@ export const RULE_IDS = [
   "registered-never-set",
   // Two blocks joined into one string, where a merge was meant. See `joinedNotMerged`.
   "blocks-joined-not-merged",
+  "allow-list-not-css",
   // A state in an allow-list typed `[{ … }]`, which constrains its first declaration only. See
   // `stateIsATuple`.
   "state-is-a-tuple",
@@ -353,6 +364,9 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   const findings: Finding[] = [];
   walk(block.items, findings, at === undefined ? undefined : at.toLowerCase());
   overrideOutOfOrder(block, findings);
+  narrowerAfterAWholeShorthand(block, findings);
+  resetsDifferAcrossEngines(block, findings);
+  valueDiffersAcrossEngines(block, findings);
   holeAsAVariableName(block, findings);
   mediaFeatures(block, findings);
   spelling(block, findings);
@@ -384,6 +398,9 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   tooManyValues(block, config?.properties, findings);
   literalNotAllowed(block, config?.properties, findings);
   doesNothing(block, findings);
+  // After every rule that reads a VALUE, because it stays quiet where one has already named the
+  // same word — see its own note.
+  wordOutOfItsLonghand(block, findings);
   // LAST, because it stays quiet wherever another rule has already spoken — see its own note.
   unclosedCall(block, findings);
   missingSemicolon(block, findings);
@@ -550,7 +567,25 @@ function tooManyValues(block: Block, rules: PropertyRules | undefined, findings:
        */
       if (item.value.some((part) => part.kind === "text" && bareColon(part.text) !== -1)) continue;
 
-      const values = topLevelValues(item.value).length;
+      /**
+       * `!important` is a FLAG, not a value, and counting it as one refused correct CSS.
+       *
+       * `padding: 4px 0 0 0 !important` is four values; this counted five and said CSS gives four,
+       * and every finding these rules produce refuses the build — so a page every browser renders
+       * did not compile. It stayed hidden because the families whose maximum is four had room for
+       * the flag underneath it; `place-items`, which takes two, showed it the day it entered the
+       * positional table.
+       *
+       * The spelling is the one `split.ts` already uses, where `!important` is taken off before a
+       * value is read at all: optional space after the bang, any case.
+       */
+      const written = topLevelValues(item.value);
+      const last = (written.at(-1)?.text ?? "").trim();
+      const before = (written.at(-2)?.text ?? "").trim();
+      // `! important` is two values to a splitter and one flag to CSS — measured honoured in all
+      // three engines, which is why `split.ts` puts every spelling of it back verbatim.
+      const flag = /^!\s*important$/i.test(last) ? 1 : last.toLowerCase() === "important" && before === "!" ? 2 : 0;
+      const values = written.length - flag;
       if (values <= limit.most) continue;
 
       const takes = limit.most === 1 ? "one value" : `at most ${limit.most} values`;
@@ -957,6 +992,68 @@ function unitNotAllowedPerProperty(block: Block, rules: PropertyRules | undefine
 }
 
 /**
+ * A word one longhand of a shorthand has no place for, which makes the WHOLE declaration invalid.
+ *
+ * CSS drops a whole declaration when any part of it is invalid. `place-items: start space-between`
+ * sets nothing in any browser — `justify-items` has no `space-between` — so the line the author
+ * wrote does nothing, and nothing says so. Measured in Chromium, Firefox and WebKit.
+ *
+ * This is the reading half of a question the SPLITTER already asks: `misplacedWord` refuses the
+ * value there and names it here, so the two cannot drift apart. The words each longhand takes are
+ * measured into `shapes.generated.ts` beside the family's shape.
+ *
+ * It says nothing about a value it cannot READ. A hole is not the text the author wrote — the
+ * reason written above `non-canonical-spelling` — and what a `var()` holds is unknown until the
+ * browser reads it, which is the same reason the splitter refuses to split one.
+ *
+ * `!important` is taken off first. It is part of the value's text here, and a rule that read it as
+ * a word would report `important` as a value `place-items` has no place for.
+ */
+function wordOutOfItsLonghand(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const shape = SHAPES[propertyName(item.property)];
+      if (shape === undefined) continue;
+
+      const [part] = item.value;
+      if (item.value.length !== 1 || part === undefined || part.kind !== "text" || part.at === undefined) continue;
+      if (holdsVar(part.text)) continue;
+
+      const bare = part.text.replace(/!\s*important\s*$/i, "");
+      const misplaced = misplacedWord(shape, bare.trim());
+      if (misplaced === undefined) continue;
+
+      // Where the WORD is, not where the value starts: the reader is looking for the one token.
+      const offset = bare.indexOf(misplaced.word);
+      const at = part.at + (offset < 0 ? 0 : offset);
+      /**
+       * Said once. `unknown-value` asks whether the PROPERTY takes the word at all and gets there
+       * first for most of them — `place-items: start space-between` is not a `place-items` value
+       * either way, and two reports on one character is one too many. What is left for this rule is
+       * the word the property DOES take and the longhand it lands on does not: measured over every
+       * family in the table, five values, and `place-items: left anchor-center` is one — ignored by
+       * all three engines and named by nothing else.
+       */
+      if (findings.some((one) => one.at === at)) continue;
+      findings.push({
+        rule: "word-out-of-its-longhand",
+        at,
+        length: misplaced.word.length,
+        message:
+          `\`${misplaced.longhand}\` has no \`${misplaced.word}\`, and that is the part of the value ` +
+          `reaching it. A browser drops the whole declaration, so this line sets nothing — set each ` +
+          `longhand on its own.`,
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
  * A value outside the closed list a project gave this property — `z-index: 5` under `[0, 1, 10]`.
  *
  * `var()` and the CSS-wide keywords go in, because neither is a value somebody chose: one is the
@@ -1159,6 +1256,90 @@ function matchArms(block: Block, findings: Finding[]): void {
  * The message names the longhands, because that is the whole of the fix and the project chose this
  * setting to be asked for them.
  */
+/**
+ * A shorthand the engines RESET differently — see `RESETS_DIFFER`, measured by
+ * `build-shorthand-leaves.mjs`.
+ *
+ * `-webkit-mask` is the case: Chromium and Firefox reset `mask-clip`, `mask-composite` and
+ * `mask-mode`, and WebKit keeps them. The author's own line renders two ways before anything here
+ * touches it, and no split can write one page for all three — so it is refused, the way a value
+ * CSS would drop is. The standard property is named where there is one, and here there is: every
+ * engine has `mask`.
+ */
+function resetsDifferAcrossEngines(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      const kept = RESETS_DIFFER[property];
+      if (kept === undefined) continue;
+
+      const standard = standardFormOf(property);
+      const instead =
+        standard !== undefined && RESETS_DIFFER[standard] === undefined
+          ? `Write \`${standard}\`, or set the longhands yourself.`
+          : "Set the longhands yourself.";
+      findings.push({
+        rule: "resets-differ-across-engines",
+        at: item.at ?? 0,
+        length: item.property.length,
+        message:
+          `\`${property}\` resets ${kept.map((one) => `\`${one}\``).join(", ")} in some browsers and not in ` +
+          `others, so this line renders differently in each. ${instead}`,
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/**
+ * A VALUE the engines read differently — `contested` on a grammar shape, which the generator
+ * measures. `animation: auto` is `animation-name: auto` in Firefox and touches nothing in Chromium
+ * or WebKit, so the author's line renders two ways. It is refused, as a shorthand the engines reset
+ * differently is: a value this package cannot make render one way is not an option.
+ */
+function valueDiffersAcrossEngines(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind === "rule") {
+        walkItems(item.items);
+        continue;
+      }
+      const property = propertyName(item.property);
+      const contested = GRAMMAR_SHAPES[property]?.contested;
+      if (contested === undefined) continue;
+      for (const part of item.value) {
+        if (part.kind !== "text" || part.at === undefined) continue;
+        // The WORD's own position — not the first place its letters appear, inside `autoslide`.
+        let word: string | undefined;
+        let at = 0;
+        for (const one of part.text.split(/([\s,]+)/)) {
+          // In any case: the splitter lower-cases before it refuses, so the rule must too.
+          if (contested.includes(one.toLowerCase())) {
+            word = one;
+            break;
+          }
+          at += one.length;
+        }
+        if (word === undefined) continue;
+        findings.push({
+          rule: "value-differs-across-engines",
+          at: part.at + at,
+          length: word.length,
+          message:
+            `\`${word}\` in \`${property}\` is read differently by different browsers, so this line renders ` +
+            `differently in each. Set the longhand you mean yourself.`,
+        });
+        break;
+      }
+    }
+  };
+  walkItems(block.items);
+}
+
 function shorthandNotAllowed(block: Block, rules: PropertyRules | undefined, findings: Finding[]): void {
   if (rules === undefined) return;
 
@@ -1586,7 +1767,7 @@ function againstRegisteredSyntax(block: Block, syntaxes: ReadonlyMap<string, str
        * `var(` escape was matched with no `i` while `variableReads` beside it explains at length why
        * it matches `var` case-insensitively. One question, two answers, in one file.
        */
-      if (written === "" || GLOBAL.has(written.toLowerCase()) || /(^|[^\w-])var\(/i.test(written)) continue;
+      if (written === "" || GLOBAL.has(written.toLowerCase()) || holdsVar(written)) continue;
 
       const components = syntax.split("|").map((one) => one.trim());
       if (components.some((one) => /[+#]$/.test(one) || (one.startsWith("<") && ACCEPTS[one] === undefined))) continue;
@@ -2082,6 +2263,50 @@ function holeAsAVariableName(block: Block, findings: Finding[]): void {
  * Only the SELECTOR has to match, because a selector adds specificity and that beats source order
  * on its own — measured, and it is why the rule would otherwise report correct CSS.
  */
+/**
+ * A narrower shorthand written after a wider one, in the same context, when both reach the sheet
+ * WHOLE — `border: var(--x)` then `border-top: var(--y)`, or `font: caption` then `font-variant:
+ * var(--v)`.
+ *
+ * Both are in the word layer `v`, and nothing puts the narrower one above: through the merge both
+ * classes stay, since a narrower shorthand does not clear a wider one, and the stylesheet decides by
+ * which file the build read first. Measured in all three engines: right in one load order and wrong
+ * in the other. A count once ordered them, and a count is exactly what cannot be used — it moves when
+ * CSS adds a longhand, and two releases then disagree. So the shape is refused, the way
+ * `override-out-of-order` refuses two conditions no single position can serve.
+ *
+ * Asked through `layerPathFor` itself, of the declarations as the sheet receives them — SPLIT — so
+ * the rule and the sheet cannot disagree: a narrower shorthand that splits is pieces in `p`, stronger
+ * than `v`, and is not the fault. Nor is the other order, which the merge settles by clearing.
+ */
+function narrowerAfterAWholeShorthand(block: Block, findings: Finding[]): void {
+  const flat = segments(block, { split: true }).flatMap((one) => (one.kind === "declarations" ? one.items : []));
+  const whole = (one: (typeof flat)[number]) => layerPathFor(one).at(-1) === "v";
+
+  for (const [index, later] of flat.entries()) {
+    if (!whole(later)) continue;
+
+    for (const earlier of flat.slice(0, index)) {
+      if (!whole(earlier)) continue;
+      if (earlier.selector !== later.selector || earlier.conditions.join("|") !== later.conditions.join("|")) continue;
+      if (!covers(earlier.property, later.property)) continue;
+      // Of DIFFERENT importance they are in different layers — the important one under the mirrored
+      // `i` — and that layer decides, as in CSS. Only two of the same importance share `v`.
+      if ((earlier.important === true) !== (later.important === true)) continue;
+
+      findings.push({
+        rule: "narrower-after-a-whole-shorthand",
+        at: later.at ?? 0,
+        length: later.property.length,
+        message:
+          `\`${later.property}\` comes after \`${earlier.property}\`, and both reach the stylesheet whole, so no ` +
+          `order keeps \`${later.property}\` winning on every page. Set its longhands instead.`,
+      });
+      break;
+    }
+  }
+}
+
 function overrideOutOfOrder(block: Block, findings: Finding[]): void {
   const flat = flatten(block);
 

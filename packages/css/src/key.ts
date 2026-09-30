@@ -29,7 +29,17 @@ export function keyIn(className: string): string {
  * readable property either; both come back with an empty context, which is the honest answer for
  * the second and the true one for the first.
  */
-export function partsOf(key: string): { context: string; property: string } {
-  const at = key.lastIndexOf(".");
-  return at === -1 ? { context: "", property: key } : { context: key.slice(0, at + 1), property: key.slice(at + 1) };
+export function partsOf(key: string): { important: boolean; context: string; property: string } {
+  /**
+   * IMPORTANCE is taken off first and returned on its own — see `keyToken`, which writes it as `!.`
+   * in front. It is not a condition and not a selector, and a reader of `context` that had to know
+   * that got it wrong twice: the order warning dropped every important key with no condition, and
+   * compared an important declaration's condition with an ordinary one's.
+   */
+  const important = key.startsWith("!.");
+  const rest = important ? key.slice(2) : key;
+  const at = rest.lastIndexOf(".");
+  return at === -1
+    ? { important, context: "", property: rest }
+    : { important, context: rest.slice(0, at + 1), property: rest.slice(at + 1) };
 }
