@@ -3614,7 +3614,13 @@ Steps 4 to 6 are the architecture; 1 to 3 are what an author sees. Nothing after
 before it.
 
 
-### 16. A selftest's log looks like a failure — TODO
+### 16. A selftest's log looks like a failure — DONE
+
+**Built:** every gate whose selftest printed its break as a failure now prints one line on stdout
+when the break is caught — `scripts/lib-selftest.mjs` — with the count and the first thing found, so
+a reader sees the planted break and not something else. Six gates changed: the five browser gates
+and `check-changesets`; the rest already printed one line. A selftest that plants nothing still
+exits 1, measured. The question as it was put:
 
 Asked by the user reading a green CI run: the `SELFTEST=` runs print what they found — the break
 they planted — in the same words as a real failure, so a green log is full of lines that read as

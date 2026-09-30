@@ -90,10 +90,15 @@ WHY=1 node scripts/build-grammar-shapes.mjs                    # what each engin
 WHY_FAMILY=animation node scripts/build-grammar-shapes.mjs     # every value of one family
 ```
 
-Three of them carry their own selftests, run through the `SELFTEST` environment variable —
-`collide`, `drift`, `crowd`, `moved` for layer names, `order` for skew, `slot` for the split. Each
-one plants a specific fault and asserts the gate catches it. They run in `pnpm check` as separate
+Every browser gate carries its own selftests, run through the `SELFTEST` environment variable —
+`order` for skew, `slot` and `half` for the positional split, `change` and `joined` for render
+equality, `refuse` for must-split, `flex` and `forget` for the hand splits. Each one plants a
+specific fault and asserts the gate catches it. They run in `pnpm check` and in CI as separate
 steps, right before the gate itself.
+
+A selftest that catches its break prints ONE line, on stdout — `[must-split] SELFTEST=refuse caught
+its break, as it must: 45 reported — the first: …` — so every detailed difference in a log is a real
+one. A selftest that catches nothing fails, with its reason. `scripts/lib-selftest.mjs` is the line.
 
 ## Four rules the code cannot state about itself
 

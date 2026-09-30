@@ -29,6 +29,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTs } from "./lib-load-ts.mjs";
+import { caughtIt } from "./lib-selftest.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const selftest = process.env.SELFTEST;
@@ -208,10 +209,11 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 
 console.log(`[skew] ${tried} arrangements across three engines`);
 
+if (wrong.length > 0 && selftest) caughtIt("skew", selftest, wrong);
 if (wrong.length > 0) {
   console.error(`[skew] ${wrong.length} of ${tried} gave the page the wrong declaration:`);
   for (const one of wrong.slice(0, 6)) console.error(`[skew]   ${one}`);
-  process.exit(selftest ? 0 : 1);
+  process.exit(1);
 }
 
 if (selftest) {

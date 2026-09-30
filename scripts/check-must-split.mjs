@@ -23,6 +23,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTs } from "./lib-load-ts.mjs";
+import { caughtIt } from "./lib-selftest.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const selftest = process.env.SELFTEST;
@@ -440,10 +441,11 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
   }
 }
 
+if (wrong.length > 0 && selftest) caughtIt("must-split", selftest, wrong);
 if (wrong.length > 0) {
   console.error(`[must-split] ${wrong.length} of ${asked}:`);
   for (const one of process.env.WHY ? wrong : wrong.slice(0, 20)) console.error(`[must-split]   ${one}`);
-  process.exit(selftest ? 0 : 1);
+  process.exit(1);
 }
 if (selftest) {
   console.error(`[must-split] SELFTEST=${selftest} changed nothing — this check would not catch it.`);

@@ -27,6 +27,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTs } from "./lib-load-ts.mjs";
+import { caughtIt } from "./lib-selftest.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const selftest = process.env.SELFTEST;
@@ -182,12 +183,12 @@ for (const [name, shape] of Object.entries(shapes)) {
 
 console.log(`[split] ${Object.keys(shapes).length} families, ${tried} values`);
 
+if (halfApplied.length > 0 && selftest === "half") caughtIt("split", selftest, halfApplied);
 if (halfApplied.length > 0) {
   console.error(
     `[split] ${halfApplied.length} value(s) an engine refuses are split anyway, so the rest would apply there:`,
   );
   for (const one of halfApplied.slice(0, 20)) console.error(`[split]   ${one}`);
-  if (selftest === "half") process.exit(0);
   process.exit(1);
 }
 if (selftest === "half") {
@@ -195,6 +196,7 @@ if (selftest === "half") {
   process.exit(1);
 }
 
+if (wrong.length > 0 && selftest) caughtIt("split", selftest, wrong, (one) => `${one.name}: \`${one.value}\``);
 if (wrong.length > 0) {
   console.error(`[split] ${wrong.length} of ${tried} values split into a different page:`);
   const per = new Map();
@@ -208,7 +210,7 @@ if (wrong.length > 0) {
     }
   }
   console.error(`[split] regenerate with \`node scripts/build-shorthand-shapes.mjs\`, or fix the splitter.`);
-  process.exit(selftest ? 0 : 1);
+  process.exit(1);
 }
 
 if (selftest) {
