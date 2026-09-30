@@ -108,8 +108,8 @@ set. Those consumers are not in the program, so there is nothing for it to see. 
 
 ## Declared once, read anywhere
 
-A declared property is **one variable however many declarations read it**. Measured on a block
-reading one property twice:
+A declared property is **one variable however many declarations read it**. A block reading one
+property twice compiles to:
 
 ```
 @property --r-pHqJVsKzI { syntax:"<length>"; initial-value:0px; }

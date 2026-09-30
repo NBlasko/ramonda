@@ -65,8 +65,8 @@ export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
 ```
 
 **Set `filter` on esbuild.** esbuild hands a plugin a *path* rather than the code, so a file has to
-be read before it can be asked whether it holds a block — measured at 17 µs a file. Pointing the
-plugin at the tree that holds them means nothing else is opened at all.
+be read before it can be asked whether it holds a block. Pointing the plugin at the tree that holds
+them means nothing else is opened at all.
 
 ### If you declare variables
 

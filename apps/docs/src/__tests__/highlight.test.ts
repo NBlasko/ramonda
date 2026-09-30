@@ -57,3 +57,27 @@ const after = 1;
     expect(colourOf(FENCE, "tsx", "1")).toBe(colourOf("const after = 1;\n", "tsx", "1"));
   });
 });
+
+/**
+ * A length is ONE colour, as the editor shows it. The GitHub themes colour a unit as a keyword, so
+ * `4px` came out a blue `4` and a red `px` — on this site only, which is what a reader noticed.
+ */
+describe("a number and its unit", () => {
+  const colours = (code: string, lang: BundledLanguage, theme: "--shiki-light" | "--shiki-dark") =>
+    highlighter
+      .codeToTokens(code, { lang, themes: { light: "github-light", dark: "github-dark" }, defaultColor: false })
+      .tokens.flat()
+      .filter((token) => token.content.trim() !== "")
+      .map((token) => [token.content, token.htmlStyle?.[theme]]);
+
+  test.each([
+    ["in a block", "const a = @@( padding: 4px; margin: 1.5rem; );", "tsx"],
+    ["in a CSS fence", ".a { padding: 4px; margin: 1.5rem; }", "css"],
+  ] as const)("are one colour %s, in both themes", (_where, code, lang) => {
+    for (const theme of ["--shiki-light", "--shiki-dark"] as const) {
+      const found = Object.fromEntries(colours(code, lang, theme));
+      expect(found.px).toBe(found["4"]);
+      expect(found.rem).toBe(found["1.5"]);
+    }
+  });
+});

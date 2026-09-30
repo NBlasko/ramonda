@@ -77,9 +77,9 @@ and the check follows that:
 | `opacity: 0` outside any frame | reported — it belongs to no time, so the browser drops it |
 | `@@font-face` with no `src` | reported — the descriptor is required, and the face would load nothing |
 | `font-familly: "Brand"` | reported, with the descriptor you meant |
-| `@@property` with no `inherits` | reported — measured, the browser drops the whole rule without it |
-| `initial-value` its `syntax` does not accept | reported — measured, the browser drops the whole rule for that too |
-| a registered property set to a value its `syntax` refuses | reported — measured, the browser keeps the `initial-value` and says nothing |
+| `@@property` with no `inherits` | reported — the browser drops the whole rule without it |
+| `initial-value` its `syntax` does not accept | reported — the browser drops the whole rule for that too |
+| a registered property set to a value its `syntax` refuses | reported — the browser keeps the `initial-value` and says nothing |
 | `&:hover { … }` in either | reported — a descriptor list has no element to select against |
 
 An expression may not go in one of these at all: these name something the whole stylesheet uses, and

@@ -97,8 +97,7 @@ The `_` before `.title` is the space in `& .title` — which is what separates a
 later — and a block handed to another component arrives as a class string and nothing else. So what
 a class sets has to be readable out of the class itself, or the merge has nothing to decide with.
 
-That is also why no class name is *only* a hash any more. Measured on this repository when the first
-half was added: 23 of 91 class names had nothing readable in them, and none do now.
+That is also why no class name is *only* a hash.
 
 ## When a half is a hash
 

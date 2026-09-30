@@ -126,13 +126,13 @@ reach for either.
 
 ### Why a hole is not simply allowed
 
-It cost something on every element, and it could not be shared. Measured, the same colour written two
-ways: `color: red` emits `r-c-red { color:red; }` and the element carries a class, while
-`color: {this.brand}` emitted `color:var(--r-…-0)` with the value written on every instance. A list
-of ten thousand rows was ten thousand style attributes.
+A value written in a block becomes a class, shared by every element that carries it: `color: red`
+emits `r-c-red { color:red; }`. A value from data cannot be a class, so a hole in a declaration
+would have to be written on every element instead — a list of ten thousand rows, ten thousand style
+attributes.
 
-And a hole belonged to the declaration it stood in, so two declarations wanting one value got two
-custom properties:
+And a hole would belong to the declaration it stood in, so two declarations wanting one value would
+get two custom properties:
 
 ```
 padding-left: {v}; padding-right: {v};             TWO variables, two classes
@@ -240,8 +240,8 @@ characters go into the stylesheet as they stand:
   color:red;gap:8px;}
 ```
 
-and the CSS compiler refuses the **whole file** — measured, `SyntaxError: Unexpected token
-Semicolon` — naming nothing about the block, the file, or the line it came from. A build that fails
+and the CSS compiler refuses the **whole file** — `SyntaxError: Unexpected token Semicolon` —
+naming nothing about the block, the file, or the line it came from. A build that fails
 somewhere else entirely, because of a comment. So it is reported before it gets there, as
 `line-comment`, on the `//` itself.
 

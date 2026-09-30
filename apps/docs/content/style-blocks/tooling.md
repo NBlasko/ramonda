@@ -78,8 +78,8 @@ nothing at all — so it is **reported** rather than compiled to silence.
 
 **A value you set yourself still goes through `toStyle`**, and that is where the one rule lives: a
 value holding a `;` is refused rather than written, because a `style` attribute is parsed back out of
-HTML on a server-rendered page and, measured, such a value came out of the round trip as real,
-applied declarations.
+HTML on a server-rendered page, and such a value would come out of that round trip as real, applied
+declarations.
 
 ## What it does not do
 
