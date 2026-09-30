@@ -3648,7 +3648,13 @@ false one: the merge's development warning still sees it at run time.
 **What it needs:** read a `__vars` access as a `var()` value, and a checker test with variables
 declared — no test in `check.test.ts` declares any yet, which is why it was left.
 
-### 18. A `position-try` item of several words stays whole — TODO
+### 18. A `position-try` item of several words stays whole — DONE
+
+**Built as a hand rule** in `splitByHand.ts`, from the engines rather than the grammar: every pair
+of area words and every run of tactics — 3549 items — was put to all three engines, which agreed on
+each one, and the rule matches them exactly. Two things the grammar gets wrong: no engine takes
+`x-self-start` and its kin, and all three take `flip-x` and `flip-y`. The comma-in-the-last-longhand
+path in `split.ts` went with it. The question as it was put:
 
 Found by the fourth review, measured in all three engines. `position-try: --a, --b` splits, and so
 does an item of one word; an item of two — `--a, top left`, `--a, flip-block flip-inline`,

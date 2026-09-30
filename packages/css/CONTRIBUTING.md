@@ -165,9 +165,9 @@ standing for several longhands (`white-space: pre`, `flex: none`), a word that s
 (`font-synthesis: weight`), a part copied into the parts left out (`grid-area: a`), and every form
 of `<position>` for `background-position`, `mask-position` and `-webkit-mask-position`, and
 `background` and `mask` layer by layer on top of it, `font`, the ranges of `animation-range` and
-`timeline-trigger`, `grid` and `grid-template` with their area strings, and `mask-border`.
-**34 by hand.**
-Seventeen of them are in a table too, and the hand rules win: a table is learned from sentinels, and
+`timeline-trigger`, `grid` and `grid-template` with their area strings, `mask-border`, and the
+fallbacks of `position-try`. **35 by hand.**
+Eighteen of them are in a table too, and the hand rules win: a table is learned from sentinels, and
 a value no sentinel was ever like it read wrong or not at all. `grid-column: 2` set the end to `2`
 where every engine says `auto`; `animation-range: cover` ran to `normal`, not to `cover`; and
 `grid-column: 1 / -1`, `columns: 2`, `place-items: first baseline` did not split. The first two

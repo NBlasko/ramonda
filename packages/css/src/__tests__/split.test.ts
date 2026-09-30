@@ -1086,3 +1086,38 @@ describe("what the must-split list found in every family", () => {
     expect(splitOf("transition", "opacity cubic-bezier(0,0,1,1)")?.["transition-property"]).toBe("opacity");
   });
 });
+
+/**
+ * §18: a `position-try` item of several words. The grammar splitter read an item word by word, so
+ * `--a, top left` and `flip-block flip-inline` stayed whole though every engine takes them. By hand
+ * now, from what the engines take — measured over 3549 items, with no difference.
+ */
+describe("position-try, split by hand", () => {
+  test.each([
+    ["--a, top left", "initial", "--a, top left"],
+    ["most-width --a, flip-block flip-inline", "most-width", "--a, flip-block flip-inline"],
+    ["block-start inline-end", "initial", "block-start inline-end"],
+    ["span-all center", "initial", "span-all center"],
+    ["start end", "initial", "start end"],
+    ["flip-x flip-y --a", "initial", "flip-x flip-y --a"],
+    ["most-width none", "most-width", "none"],
+  ])("%s", (value, order, fallbacks) => {
+    expect(splitOf("position-try", value)).toEqual({
+      "position-try-order": order,
+      "position-try-fallbacks": fallbacks,
+    });
+  });
+
+  test.each([
+    ["an order alone", "normal"],
+    ["two words on one axis", "left right"],
+    ["words of two kinds of axis", "block-start top"],
+    ["a word the engines do not have", "x-self-start"],
+    ["a name between tactics", "flip-block --a flip-inline"],
+    ["two names", "--a --b"],
+    ["a tactic twice", "flip-block flip-block"],
+    ["a logical word beside a self one", "start self-end"],
+  ])("keeps the shorthand for %s: %s", (_what, value) => {
+    expect(splitOf("position-try", value)).toBeUndefined();
+  });
+});
