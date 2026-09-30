@@ -116,6 +116,8 @@ export interface VirtualFile {
     readonly hole: string;
     /** The guard's marker — `if ({on})` — which a typed rule reads as "what follows may not apply". */
     readonly cond?: string;
+    /** What `$` is bound to — `__vars.border.thin` is a `var()` in the sheet. */
+    readonly vars?: string;
   };
   /**
    * The names this file declared for itself — the block helper, composition's two, the hole's type,
@@ -635,7 +637,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     code,
     preamble,
     bindings,
-    helpers: { block, from: spread, hole, cond: condition },
+    helpers: { block, from: spread, hole, cond: condition, vars: variables },
     homeOf: (offset) => homeOf(segments, offset),
     spanOf: (start, length) => spanOf(segments, start, length),
     virtualOf: (offset) => virtualOf(bySource, offset) ?? slotFor(slots, offset),

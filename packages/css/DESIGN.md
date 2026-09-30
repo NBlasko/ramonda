@@ -3632,7 +3632,12 @@ red. But a reader should not have to know that.
 difference in a log is a real one. Every gate with a `SELFTEST` mode, the same way.
 
 
-### 17. A `$` variable in the cross-block check — TODO
+### 17. A `$` variable in the cross-block check — DONE
+
+**Built:** the virtual file hands the checker the name it bound `$` to, and the cross-block walk reads
+a `$` path as a `var()` — alone, or inside a template when it is part of a value. The first checker
+tests with variables declared are in `check.test.ts`: a config declaring them, and a properties
+module exporting `$`, as codegen writes one. The question as it was put:
 
 Found by the second review of `wholeAcrossBlocks` (`typed.ts`). The virtual file writes a variable
 value as `__vars.border.thin`, a property access, and the walk reads only literal values — so

@@ -2578,6 +2578,52 @@ describe("a narrower whole shorthand after a wider one from another block", () =
 });
 
 /**
+ * §17: a `$` variable is a `var()` to the sheet, so a shorthand holding one reaches it WHOLE — in a
+ * spread's block and in the block after it. The virtual file writes it as a property access,
+ * `__vars.border.thin`, or inside a template when it is part of a value, and the walk read only
+ * string literals, so these went unreported.
+ *
+ * The project declares its variables the way codegen does: its properties module exports `$`.
+ */
+describe("a `$` variable in a whole shorthand from another block", () => {
+  const PROPS =
+    `export * from ${JSON.stringify(join(PACKAGE, "src", "properties"))};\n` +
+    `export declare const $: { border: { thin: string; top: string }; color: { a: string } };\n`;
+  const CONFIG =
+    `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
+    `export default { variables: {\n` +
+    `  border: kind("any", { thin: "1px solid red", top: "2px solid blue" }),\n` +
+    `  color: kind("color", { a: "#000" }),\n} };\n`;
+  const findings = (base: string, card: string) =>
+    checkProject(
+      project(
+        {
+          "props.ts": PROPS,
+          "ramonda.css.ts": CONFIG,
+          "Card.tsx": `const base = @@( ${base} );\nexport const card = @@( ...{base}; ${card} );\n`,
+        },
+        "src/props.ts",
+      ),
+    ).findings;
+
+  test("the project's variables resolve, so nothing else is reported", () => {
+    expect(findings("border: $.border.thin;", "border-top-color: $.color.a;")).toEqual([]);
+  });
+
+  test.each([
+    ["a variable in each", "border: $.border.thin;", "border-top: $.border.top;"],
+    ["a variable as part of each value", "border: 2px solid $.color.a;", "border-top: 1px solid $.color.a;"],
+    ["a variable as part of the wider one only", "border: 2px solid $.color.a;", "border-top: $.border.top;"],
+  ])("is reported: %s", (_what, base, card) => {
+    expect(findings(base, card).map((one) => one.code)).toEqual(["narrower-after-a-whole-shorthand"]);
+  });
+
+  test("not for a longhand after it", () => {
+    expect(findings("border: $.border.thin;", "border-top-color: $.color.a;")).toEqual([]);
+  });
+});
+
+/**
  * §11: an allow-list's literal values, judged as CSS. A component narrowing its slot to
  * `"font-weight"?: "notexisting"` refused every caller and said nothing itself — the value is not
  * CSS, and only the component's author can fix it. Judged by the compiler's own value rules, so a
