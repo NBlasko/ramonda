@@ -3613,6 +3613,18 @@ red. But a reader should not have to know that.
 3 values differ, as it should` — and the details only when it did NOT catch it. Then every detailed
 difference in a log is a real one. Every gate with a `SELFTEST` mode, the same way.
 
+
+### 17. A `$` variable in the cross-block check — TODO
+
+Found by the second review of `wholeAcrossBlocks` (`typed.ts`). The virtual file writes a variable
+value as `__vars.border.thin`, a property access, and the walk reads only literal values — so
+`...{base}; border-top: $.border.thin` after a base holding `border: var(--x)` is not reported,
+though the compiler makes that value a `var()` and it reaches the sheet whole. A MISSED fault, not a
+false one: the merge's development warning still sees it at run time.
+
+**What it needs:** read a `__vars` access as a `var()` value, and a checker test with variables
+declared — no test in `check.test.ts` declares any yet, which is why it was left.
+
 ### The name it ended up with
 
 `merge` was the name through all six steps. It ships as **`mergeClassNames`**, and the reason is a
