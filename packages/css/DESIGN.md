@@ -3625,6 +3625,19 @@ false one: the merge's development warning still sees it at run time.
 **What it needs:** read a `__vars` access as a `var()` value, and a checker test with variables
 declared — no test in `check.test.ts` declares any yet, which is why it was left.
 
+### 18. A `position-try` item of several words stays whole — TODO
+
+Found by the fourth review, measured in all three engines. `position-try: --a, --b` splits, and so
+does an item of one word; an item of two — `--a, top left`, `--a, flip-block flip-inline`,
+`--b flip-block` — keeps the shorthand, though every engine takes it. Not a wrong page: the value
+reaches the sheet whole, in `v`, where a longhand after it still wins. It only does not split.
+
+**Why:** the grammar splitter reads an item of `position-try-fallbacks` word by word, and
+`<dashed-ident> || <try-tactic>` and a two-word `<position-area>` are not one leaf each.
+
+**What it needs:** read a fallback item against its own grammar (as `matchValue` can), or a hand
+rule; then the values above go on `check-must-split.mjs`.
+
 ### The name it ended up with
 
 `merge` was the name through all six steps. It ships as **`mergeClassNames`**, and the reason is a
