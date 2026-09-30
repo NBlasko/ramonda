@@ -7,6 +7,9 @@
  * classes on an element are merged in that order, so a later block wins as a later rule does.
  * `markup` uses the class names; on the block page each name becomes its compiled classes.
  *
+ * `shared` is source written above every block's module — a `@@keyframes` a block names. A block may
+ * spread another of the pair, `...{base}`, and it is then imported from that block's own module.
+ *
  * Every element is sized and outlined, so a declaration that goes wrong moves or recolours
  * something the picture shows. A pair earns its place by a fault it would have caught — the
  * comment says which.
@@ -132,6 +135,27 @@ export const PAIRS = [
     hand: `.a { text-decoration: underline overline wavy red 2px; }`,
     blocks: { a: "text-decoration: underline overline wavy red 2px;" },
     markup: `<div class="a" style="${BOX}">decorated</div>`,
+  },
+  {
+    // `animation` split — name, duration, fill mode — and the picture taken at the last frame, which
+    // only `forwards` keeps. The keyframes are the author's in one and a compiled `@@keyframes` in
+    // the other, named by a hash.
+    name: "an animation that fills forwards",
+    hand: `@keyframes grow { from { width: 10px; } to { width: 120px; } } .a { background: #9cf; height: 20px; animation: grow 1s ease-in forwards; }`,
+    shared: "const grow = @@keyframes( from { width: 10px; } to { width: 120px; } );\n",
+    blocks: { a: "background: #9cf; height: 20px; animation: {grow} 1s ease-in forwards;" },
+    markup: `<div class="a"></div>`,
+  },
+  {
+    // A spread of a block from ANOTHER module, then a longhand below it — the base's split pieces
+    // against the card's written longhand, each from its own stylesheet.
+    name: "a spread from another module, then a longhand",
+    hand: `.card { padding: 8px; border: 2px solid #999; background: #eee; padding-left: 40px; }`,
+    blocks: {
+      base: "padding: 8px; border: 2px solid #999; background: #eee;",
+      card: "...{base}; padding-left: 40px;",
+    },
+    markup: `<div class="card" style="${BOX}">text</div>`,
   },
   {
     // A state the test has to drive.

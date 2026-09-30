@@ -63,10 +63,18 @@ const HELPERS = {
   pick: runtime.pick,
 };
 
-/** One block as its own module: the classes it hands back, and the stylesheet it imports. */
-function compile(name, source) {
+/**
+ * One block as its own module: the classes it hands back, and the stylesheet it imports.
+ *
+ * `shared` is written above the block in every module — a `@@keyframes` it names, say. A spread of
+ * another block of the pair, `...{base}`, is that block IMPORTED from its own module, the way an
+ * application spreads a base from another file: its classes are handed in as the import would.
+ */
+function compile(name, source, shared, compiled) {
   const file = `${name}.tsx`;
-  const built = transform(`export const ${name} = @@( ${source} );\n`, { filename: file });
+  const imports = Object.keys(compiled).filter((other) => source.includes(`...{${other}}`));
+  const header = imports.map((other) => `import { ${other} } from "./${other}";\n`).join("");
+  const built = transform(`${header}${shared}export const ${name} = @@( ${source} );\n`, { filename: file });
   if (built === undefined) throw new Error(`${name}: nothing compiled`);
   const imported = /^import \{([^}]*)\} from "@ramonda\/css";$/m.exec(built.code)?.[1] ?? "";
   const bound = imported
@@ -79,8 +87,9 @@ function compile(name, source) {
     .filter((line) => !line.startsWith("import "))
     .join("\n")
     .replace(/^export /gm, "");
-  const classes = new Function(...bound.map(([, local]) => local), `${body}\nreturn ${name};`)(
+  const classes = new Function(...bound.map(([, local]) => local), ...imports, `${body}\nreturn ${name};`)(
     ...bound.map(([exported]) => HELPERS[exported]),
+    ...imports.map((other) => compiled[other].classes),
   );
   const sheet = new Sheet();
   sheet.add(file, built.blocks);
@@ -108,9 +117,10 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
     };
 
     for (const pair of pairs) {
-      const compiled = Object.fromEntries(
-        Object.entries(pair.blocks).map(([name, source]) => [name, compile(name, source)]),
-      );
+      // In the order written, so a block spreading another comes after it, as an import would.
+      const compiled = {};
+      for (const [name, source] of Object.entries(pair.blocks))
+        compiled[name] = compile(name, source, pair.shared ?? "", compiled);
       const markup = pair.markup.replace(/class="([^"]*)"/g, (_all, names) => {
         const merged = runtime.mergeClassNames(...names.split(/\s+/).map((one) => compiled[one].classes));
         return `class="${merged}"`;
