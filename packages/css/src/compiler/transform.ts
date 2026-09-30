@@ -532,7 +532,8 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         for (const one of group) {
           const arm = one.arm?.otherwise === true ? OTHERWISE : (one.arm?.is ?? "");
           const list = out.get(arm) ?? [];
-          if (one.from !== undefined && list.length === 0) list.push(markerFor(one.from, one.selector, one.conditions));
+          if (one.from !== undefined && list.length === 0)
+            list.push(markerFor(one.from, one.selector, one.conditions, one.important === true));
           list.push(nameFor(one));
           out.set(arm, list);
         }
@@ -659,7 +660,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         const marker =
           declaration.from === undefined
             ? undefined
-            : markerFor(declaration.from, declaration.selector, declaration.conditions);
+            : markerFor(declaration.from, declaration.selector, declaration.conditions, declaration.important === true);
         const written = marker === undefined || marked.has(marker) ? [own] : [marker, own];
         if (marker !== undefined) marked.add(marker);
 

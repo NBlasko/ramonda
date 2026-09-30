@@ -717,3 +717,61 @@ describe("a split meets a package built by an older release", () => {
     expect(merged.split(" ")).not.toContain(thickness);
   });
 });
+
+/**
+ * `!important` is part of what a class SETS, so the merge must not let an ordinary declaration
+ * replace an important one. It did: both carried the key `pl`, the later won, and
+ * `padding: 1px !important; padding-left: 2px` gave 2px where CSS gives 1px — in ONE block, since a
+ * block is merged at load too. The key now carries importance as a context (`!.pl`), so the two
+ * stay side by side and the mirrored `i` layer decides, as CSS does.
+ */
+describe("an important declaration and an ordinary one", () => {
+  const compiled = (block: string): string => {
+    const out = transform(`const a = @@( ${block} );\n`, { filename: "Imp.tsx" });
+    const code = (out?.code ?? "")
+      .split("\n")
+      .filter((line) => !line.startsWith("import "))
+      .join("\n");
+    return new Function("_merge", "_clears", "_under", "_named", `${code}\nreturn a;`)(
+      mergeClassNames,
+      shorthands,
+      conditionsOf,
+      namesOf,
+    ) as string;
+  };
+  const has = (classes: string, prefix: string) => classes.split(" ").some((one) => one.startsWith(prefix));
+
+  test("an ordinary longhand after an important split keeps the important piece", () => {
+    const merged = compiled("padding: 1px !important; padding-left: 2px;");
+    expect(has(merged, "r-!.pl-1px")).toBe(true);
+    expect(has(merged, "r-pl-2px")).toBe(true);
+  });
+
+  test("and two longhands", () => {
+    const merged = compiled("color: red !important; color: blue;");
+    expect(merged.split(" ")).toHaveLength(2);
+  });
+
+  test("an important one after an important one still replaces it", () => {
+    const merged = compiled("color: red !important; color: blue !important;");
+    expect(merged.split(" ")).toHaveLength(1);
+    expect(merged).toContain("blue");
+  });
+
+  test("and across blocks the same", () => {
+    const merged = String(mergeClassNames(compiled("padding: 1px !important;"), compiled("padding-left: 2px;")));
+    expect(has(merged, "r-!.pl-1px")).toBe(true);
+    expect(has(merged, "r-pl-2px")).toBe(true);
+  });
+
+  test("an important shorthand clears an earlier important longhand, and leaves an ordinary one", () => {
+    const merged = String(
+      mergeClassNames(
+        compiled("padding-left: 9px !important; padding-top: 7px;"),
+        compiled("padding: 1px !important;"),
+      ),
+    );
+    expect(has(merged, "r-!.pl-9px")).toBe(false);
+    expect(has(merged, "r-pt-7px")).toBe(true);
+  });
+});

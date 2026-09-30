@@ -41,6 +41,14 @@ export const PAIRS = [
     markup: `<div class="a b" style="${BOX} height: 40px;"></div>`,
   },
   {
+    // An ordinary longhand after an important split: the important piece must stay. The merge once
+    // keyed both `pl` and kept the later, ordinary one.
+    name: "!important split, then an ordinary longhand",
+    hand: `.a { padding: 4px !important; background: #ddd; } .b { padding-left: 40px; }`,
+    blocks: { a: "padding: 4px !important; background: #ddd;", b: "padding-left: 40px;" },
+    markup: `<div class="a b" style="${BOX}">text</div>`,
+  },
+  {
     name: "a condition over the unconditional rule",
     hand: `.a { color: red; } @media (min-width: 1px) { .b { color: blue; } }`,
     blocks: { a: "color: red;", b: "@media (min-width: 1px) { color: blue; }" },

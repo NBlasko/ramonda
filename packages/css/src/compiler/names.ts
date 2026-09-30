@@ -234,6 +234,8 @@ export function nameFor(declaration: {
   selector: string;
   conditions: readonly string[];
   holes: readonly number[];
+  /** Whether it is `!important` — part of the key, see `keyToken`. */
+  important?: boolean;
 }): string {
   const key = keyToken(declaration);
   /**
@@ -376,8 +378,8 @@ function contextOf(selector: string, conditions: readonly string[]): string | un
  * ending in `-` is a marker, always — which is how `check-css-splitting` tells it from a class
  * whose rule is missing.
  */
-export function markerFor(family: string, selector: string, conditions: readonly string[]): string {
-  return `r-${keyToken({ property: family, selector, conditions })}-`;
+export function markerFor(family: string, selector: string, conditions: readonly string[], important = false): string {
+  return `r-${keyToken({ property: family, selector, conditions, important })}-`;
 }
 
 /**
@@ -414,17 +416,33 @@ export function markerFor(family: string, selector: string, conditions: readonly
  * one key only when their context and property are the same text — or when two hashes collide, and
  * that is asserted where the sheet is assembled, with both rules named. See `Sheet.add`.
  */
-export function keyToken(declaration: { property: string; selector: string; conditions: readonly string[] }): string {
+export function keyToken(declaration: {
+  property: string;
+  selector: string;
+  conditions: readonly string[];
+  important?: boolean;
+}): string {
+  /**
+   * IMPORTANCE is part of what a class sets, written as one more context in front: `!.pl`.
+   *
+   * Without it an ordinary `padding-left` and an important one shared the key `pl`, so a merge let
+   * the later replace the earlier — `padding: 1px !important; padding-left: 2px` gave 2px where CSS
+   * gives 1px, inside one block. As a context it composes the way every context does: `!.p` clears
+   * `!.pl` and not `pl`, so an important shorthand clears the important longhands before it and an
+   * ordinary one clears none of them; two classes of different importance both stay, and the
+   * mirrored `i` layer decides between them as CSS does.
+   */
+  const bang = declaration.important === true ? "!." : "";
   const property = writableProperty(declaration.property);
   const context = contextOf(declaration.selector, declaration.conditions);
 
   if (property === undefined) {
-    return `0${shortHash(keyTextOf(declaration), 6)}`;
+    return `${bang}0${shortHash(keyTextOf(declaration), 6)}`;
   }
   if (context === undefined) {
-    return `0${shortHash(keyTextOf({ ...declaration, property: "" }), 5)}.${property}`;
+    return `${bang}0${shortHash(keyTextOf({ ...declaration, property: "" }), 5)}.${property}`;
   }
-  return context === "" ? property : `${context}.${property}`;
+  return bang + (context === "" ? property : `${context}.${property}`);
 }
 
 /** The exact text a key stands for, which is what a hash of it has to be a function of. */
