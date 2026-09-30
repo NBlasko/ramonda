@@ -74,6 +74,7 @@ node scripts/build-shorthand-shapes.mjs --check  # fail if it is stale
 | `check-shorthand-split.mjs` | the positional splitter disagreeing with what an engine renders |
 | `check-hand-splits.mjs` | a family split by hand disagreeing with any engine, or splitting a value one refuses |
 | `check-must-split.mjs` | a value people write that silently stopped splitting, or splits wrong |
+| `check-render-equality.mjs` | a block page whose PIXELS are not the hand-written page's — the pairs are in `scripts/render-pairs.mjs` |
 | `check-css-splitting.mjs` | the CSS not following its JavaScript chunk, on a real build |
 
 **The grammar table has no gate beside it, because the gate is inside the generator.** Every family

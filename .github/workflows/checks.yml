@@ -216,6 +216,8 @@ jobs:
           node scripts/check-layer-skew.mjs
           SELFTEST=slot node scripts/check-shorthand-split.mjs
           node scripts/check-shorthand-split.mjs
+          SELFTEST=change node scripts/check-render-equality.mjs
+          node scripts/check-render-equality.mjs
           SELFTEST=refuse node scripts/check-must-split.mjs
           node scripts/check-must-split.mjs
           SELFTEST=flex node scripts/check-hand-splits.mjs
@@ -237,7 +239,8 @@ jobs:
 
       # A trace and a screenshot per failure. This suite exists for differences that appear only in
       # a browser, so a red run here is the one place where re-reading the source is least likely to
-      # explain it.
+      # explain it. `check-render-equality.mjs` writes its three pictures — hand-written, blocks, and
+      # every differing pixel marked — under the same `test-results/`, so they are kept here too.
       - name: Keep what the failure left behind
         if: failure()
         uses: actions/upload-artifact@v4
