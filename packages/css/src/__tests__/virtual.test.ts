@@ -49,6 +49,8 @@ export interface CssProperties {
   color: string;
 }
 
+export type CssGlobal = "inherit" | "initial" | "unset" | "revert" | "revert-layer";
+
 export type CssBlockShape = Partial<CssProperties> & {
   [nested: \`&\${string}\`]: CssBlockShape[];
 } & { [at: \`@\${string}\`]: CssBlockShape[] } & { [custom: \`--\${string}\`]: string | number };
@@ -143,13 +145,13 @@ describe("what a block becomes", () => {
     // value, so a prop could refuse one. A runtime value in a declaration is refused everywhere now,
     // so there is nothing to flag and `CssBlock` lost the parameter that held it.
     // A narrowed value takes the CSS-wide keywords too, and a state is opened to its declarations —
-    // DESIGN.md §13. A value that already takes `inherit` comes back as it was.
+    // DESIGN.md §13. Written level by level, with no named type: in a script a name is global.
     expect(preamble).toContain(
-      `type __Wide<V> = [NonNullable<V>] extends [readonly (infer E)[]] ? { [K in keyof E]?: __Wide<E[K]> }[] : ` +
-        `"inherit" extends V ? V : V | "inherit" | "initial" | "unset" | "revert" | "revert-layer"; ` +
-        `declare function __block<A extends import("./properties").CssBlockShape = import("./properties").CssBlockShape>` +
-        `(declarations: NoInfer<{ [P in keyof A]?: __Wide<A[P]> }>[]): import("./properties").CssBlock<A>;`,
+      `declare function __block<A extends import("./properties").CssBlockShape = import("./properties").CssBlockShape>` +
+        `(declarations: NoInfer<{ [P in keyof A]?: (0 extends 1 & A[P] ? A[P] : `,
     );
+    expect(preamble).toContain(`import("./properties").CssGlobal`);
+    expect(preamble).not.toMatch(/\btype __|interface __/);
     // `match`'s own helper: the subject, the keys it may be, and the arms — see its declaration.
     expect(preamble).toContain(
       `declare function __match<S, const K extends readonly S[]>(subject: S, keys: K): never;`,

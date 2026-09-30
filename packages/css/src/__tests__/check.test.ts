@@ -355,17 +355,14 @@ describe("a setup that would otherwise pass silently", () => {
       ),
     );
 
-    // Five, because the virtual file names five things from that module — the block's shape, what a
-    // block IS, composition's two, and what a hole in a value must be. Each missing one is its own
-    // setup fault, and each is reported.
+    // Six, because the virtual file names six things from that module — the block's shape, what a
+    // block IS, composition's two, what a hole in a value must be, and `CssGlobal`, the keywords a
+    // narrowed value also takes (§13). Each missing one is its own setup fault, and each is reported.
     //
-    // It was SIX, and `$` was the sixth. The fallback is written inline now rather than imported,
-    // so that no module has to export a `$` — an export is an auto-import suggestion, and a user
-    // met `import { $ } from "@ramonda/css/properties"` offered beside their own generated one.
-    //
-    // The CSS-wide keywords a narrowed value takes (§13) are written inline for the same reason, and
-    // because a name the module lacks would be `any` there, not an error.
-    expect(report.findings).toHaveLength(5);
+    // It was six once before, and `$` was the sixth. The fallback is written inline now rather than
+    // imported, so that no module has to export a `$` — an export is an auto-import suggestion, and
+    // a user met `import { $ } from "@ramonda/css/properties"` offered beside their own generated one.
+    expect(report.findings).toHaveLength(6);
     expect(report.findings.map((one) => one.message).join(" ")).toContain("CssBlockShape");
   });
 
@@ -1455,6 +1452,46 @@ describe("a block a prop can constrain", () => {
     const report = check({
       "Card.tsx": CARD.replace(`"&:hover"?: { color?: string }[];`, `"&:hover"?: { gap?: "8px" }[];`),
       "Use.tsx": `import { Card } from "./Card";\nconst a = <Card css={@@( &:hover { gap: inherit; } )} />;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  /**
+   * `any` in an allow-list is left as it is. The widening asked whether a value is an array — a
+   * state — and `any` answers yes to that, so `width?: any` became an array and `width: 10px` a
+   * false error. A review of §13 found it.
+   */
+  test("a value typed `any` still takes anything", () => {
+    const report = check({
+      "Card.tsx": CARD.replace(`gap?: "8px" | "16px";`, `gap?: "8px" | "16px";\n  width?: any;`),
+      "Use.tsx": `import { Card } from "./Card";\nconst a = <Card css={@@( width: 10px; )} />;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("and a state inside a state, which is where `@media` holding a `&:hover` puts it", () => {
+    const report = check({
+      "Card.tsx": CARD.replace(
+        `"&:hover"?: { color?: string }[];`,
+        `"@media (width > 1px)"?: { "&:hover"?: { gap?: "8px" }[] }[];`,
+      ),
+      "Use.tsx": `import { Card } from "./Card";\nconst a = <Card css={@@( @media (width > 1px) { &:hover { gap: inherit; } } )} />;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  /**
+   * A file with no `import` or `export` is a SCRIPT, and what the virtual file declares in it is
+   * global — so two of them declaring one name is `TS2300`. A named type for the widening did that,
+   * and `declare const` for `$` did it before §13. A review of §13 found both.
+   */
+  test("two script files, each with a block, do not collide", () => {
+    const report = check({
+      "A.tsx": `const a = <div className={@@( color: red; )}>x</div>;\n`,
+      "B.tsx": `const b = <div className={@@( color: blue; )}>y</div>;\n`,
     });
 
     expect(report.findings).toEqual([]);

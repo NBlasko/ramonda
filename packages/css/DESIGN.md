@@ -3337,7 +3337,13 @@ as before. Two traps measured while building it, both in `virtual.ts`'s note:
 - widening EVERY value made TypeScript print `Keyword<…>` member by member on ordinary blocks, so a
   value that already takes `inherit` is handed back unchanged;
 - importing `CssGlobal` from the properties module made the whole file `any` where the module lacks
-  it — a typo went silent — so the five keywords are written out.
+  it — a typo went silent — so it is guarded, and such a module gets the five words written out.
+
+A review of it found three more, all fixed: `any` in an allow-list was opened as if it were a state
+(`width?: any` refused `width: 10px`); a NAMED type for the widening is global in a file that is a
+script, so two such files were `TS2300` — it is written out level by level now, four deep; and the
+same collision had been there before §13 for `$`, `declare const __vars`, now a `var`. The messages
+name `CssGlobal` rather than listing its five words in front of the author's own values.
 
 What follows is the question as it was put, kept for the reasoning.
 

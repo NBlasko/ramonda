@@ -341,17 +341,31 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * messages: `V | CssGlobal` is a new union, TypeScript prints it member by member, and
    * `position: statik` stopped naming `Keyword<…>` and listed twenty-one values instead.
    *
-   * **The keywords are written out, not imported as `CssGlobal`.** A name the virtual file takes
-   * from the properties module is a name that module must export, and one it does not is not an
-   * error here but `any` — measured: every check in the file went silent, a typo included.
+   * **`CssGlobal` is taken from the properties module, and guarded.** Named, a message reads
+   * `'"8px" | "16px" | CssGlobal'`, the author's own list first; written out, five keywords stood in
+   * front of it. But a name the module does not export is `any` here, not an error, and `any`
+   * silenced every check in the file — measured — so a module without it gets the words instead.
+   *
+   * **`any` in the list is handed back as it is.** It answers yes to "is this an array", so it was
+   * opened like a state and `width?: any` refused `width: 10px`. A review found it.
+   *
+   * **No type is NAMED here.** In a file that is a script, a name the virtual file declares is
+   * global, and a second script declaring it again was `TS2300` — measured, for a type alias and for
+   * an interface alike. So the widening is written out level by level, `WIDENED_DEPTH` deep.
    */
-  const wide = binding(source, "__Wide");
-  const CSS_WIDE = `"inherit" | "initial" | "unset" | "revert" | "revert-layer"`;
+  const global = `import(${from}).CssGlobal`;
+  // A module without `CssGlobal` — one generated before it was exported — gets the words written out.
+  const keywords = `(0 extends 1 & ${global} ? "inherit" | "initial" | "unset" | "revert" | "revert-layer" : ${global})`;
+  /** One level of the widening, around `value`; a state opens into the next level, `depth` of them. */
+  const widened = (value: string, depth: number): string =>
+    depth === 0
+      ? value
+      : `(0 extends 1 & ${value} ? ${value} : [NonNullable<${value}>] extends [readonly (infer E${depth})[]] ? ` +
+        `{ [K${depth} in keyof E${depth}]?: ${widened(`E${depth}[K${depth}]`, depth - 1)} }[] : ` +
+        `"inherit" extends ${value} ? ${value} : ${value} | ${keywords})`;
   write(
-    `type ${wide}<V> = [NonNullable<V>] extends [readonly (infer E)[]] ? { [K in keyof E]?: ${wide}<E[K]> }[] : ` +
-      `"inherit" extends V ? V : V | ${CSS_WIDE}; ` +
-      `declare function ${block}<A extends import(${from}).CssBlockShape = import(${from}).CssBlockShape>` +
-      `(declarations: NoInfer<{ [P in keyof A]?: ${wide}<A[P]> }>[]): import(${from}).CssBlock<A>;`,
+    `declare function ${block}<A extends import(${from}).CssBlockShape = import(${from}).CssBlockShape>` +
+      `(declarations: NoInfer<{ [P in keyof A]?: ${widened("A[P]", WIDENED_DEPTH)} }>[]): import(${from}).CssBlock<A>;`,
   );
 
   /**
@@ -400,7 +414,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * 'color' does not exist on type 'never'*, and this says what to do.
    */
   write(
-    `declare const ${variables}: typeof import(${from}) extends { $: infer V } ? V : ` +
+    `declare var ${variables}: typeof import(${from}) extends { $: infer V } ? V : ` +
       `"Declare your variables in ramonda.css.ts, then run \`ramonda-css codegen\`.";`,
   );
 
@@ -1219,6 +1233,14 @@ function quoted(text: string): string {
 function key(property: string): string {
   return IDENTIFIER.test(property) ? property : quoted(property);
 }
+
+/**
+ * How deep a narrowed block's states take the CSS-wide keywords: the block, a state in it, and two
+ * more — `@media` holding a `&:hover` is three. Written out level by level, because a named
+ * recursive type is a GLOBAL in a file that is a script, and two such files declared it twice
+ * (`TS2300`), measured. Below the last level a value is checked as written, without the keywords.
+ */
+const WIDENED_DEPTH = 4;
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
