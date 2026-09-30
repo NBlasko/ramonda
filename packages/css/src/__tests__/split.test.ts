@@ -1013,6 +1013,17 @@ describe("a keyword in any case, beside names", () => {
     expect(splitOf("font", "BOLD 12px serif")?.["font-weight"]).toBe("bold");
   });
 
+  test("a grid line NAME in brackets keeps its case, though it is spelled like a keyword", () => {
+    expect(splitOf("grid", "[Dense] 10px / auto-flow")?.["grid-template-rows"]).toBe("[Dense] 10px");
+    expect(splitOf("grid-template", "[None] 10px / [Min-Content] auto")).toEqual({
+      "grid-template-rows": "[None] 10px",
+      "grid-template-columns": "[Min-Content] auto",
+      "grid-template-areas": "none",
+    });
+    // Outside the brackets the same word is a keyword, and is folded.
+    expect(splitOf("grid-template", "[a] MIN-CONTENT / auto")?.["grid-template-rows"]).toBe("[a] min-content");
+  });
+
   test("a name of the author's keeps its case", () => {
     expect(splitOf("container", "Size / size")).toEqual({ "container-name": "Size", "container-type": "size" });
     expect(splitOf("grid-area", "Header")?.["grid-row-start"]).toBe("Header");

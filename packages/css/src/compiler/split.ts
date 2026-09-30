@@ -597,7 +597,9 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
  * the hand rules as written: `grid-column: SPAN 2` matched nothing and stayed whole, though every
  * engine takes it, CSS keywords ignoring case. Folded here, word by word, and only a word the
  * property lists; a quoted string, a function's contents and a name keep their case — a container's
- * NAME is before its `/`, and only the type after it is folded.
+ * NAME is before its `/`, and only the type after it is folded. So does a grid line name in
+ * brackets: `[Dense]` and `[None]` are names spelled like keywords, and folding them made the split
+ * name a different line than the shorthand, in all three engines. A review found it.
  */
 function keywordsFolded(property: string, value: string): string {
   const words = new Set((VALUE_WORDS[property] ?? "").split(" ").filter((one) => one !== "" && !one.endsWith("()")));
@@ -624,8 +626,8 @@ function keywordsFolded(property: string, value: string): string {
     }
     flush();
     if (ch === '"' || ch === "'") quote = ch;
-    else if (ch === "(") depth++;
-    else if (ch === ")") depth--;
+    else if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") depth--;
     else if (depth === 0 && ch === "/") folding = true;
     out += ch;
   }

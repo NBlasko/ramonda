@@ -64,6 +64,9 @@ const MUST = {
   "white-space": ["nowrap", "pre-wrap"],
   "interest-delay": ["normal normal", "1s", "1s 2s"],
   "timeline-trigger": ["--a --b", "--a --b cover", "--a view()"],
+  // Line names spelled like keywords: a name keeps its case, and `[None]` is not `[none]`.
+  "grid-template": ["[None] 10px / [Min-Content] auto", "[a] MIN-CONTENT / auto"],
+  grid: ["[Dense] 10px / auto-flow"],
   // Every other family that splits, so each is also asked value after value — the grammar families
   // above all, which no other gate asks in pairs.
   "padding-block": ["8px", "4px 8px"],
