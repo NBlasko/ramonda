@@ -3344,7 +3344,7 @@ Documented as the first for now, because a review is not where a design changes.
 deciding:** how often `inherit` is written into a constrained prop at all — if the honest answer is
 *almost never*, the union stays a footnote and nothing needs building.
 
-### 14. A block rebuilt every render — AGREED for `if`, OPEN for variables
+### 14. A block rebuilt every render — AGREED for `if`; variables CLOSED by §15
 
 Reported by the user from the playground as `RMD020` on `Chip.labelCss`: two renders in one tick
 produced values with identical contents and different identity, so the child re-renders for nothing.
@@ -3407,7 +3407,7 @@ next; the values stay correct throughout).
 somewhere proposed so far has been ruled out for a reason that holds. To be continued with the user
 on Tuesday, on the variables alone — the `if` half is closed.
 
-### 15. `match`, and a block with no room for a runtime value — DECIDED, not built
+### 15. `match`, and a block with no room for a runtime value — DONE
 
 The user's decision, 2026-09-22, after the `RMD020` thread ran out of answers in §14: **`@@` has no
 room for dynamism.** A value that varies per element is not a thing a compiled class can hold, so it
@@ -3586,6 +3586,18 @@ a block position. The merge cannot be bypassed with `+`, which today is not even
 
 Steps 4 to 6 are the architecture; 1 to 3 are what an author sees. Nothing after 3 is possible
 before it.
+
+
+### 16. A selftest's log looks like a failure — TODO
+
+Asked by the user reading a green CI run: the `SELFTEST=` runs print what they found — the break
+they planted — in the same words as a real failure, so a green log is full of lines that read as
+faults. They are assertions all the same: a selftest that finds NOTHING exits 1 and the job goes
+red. But a reader should not have to know that.
+
+**The fix:** a selftest that caught its break prints ONE line — `[split] SELFTEST=slot caught it:
+3 values differ, as it should` — and the details only when it did NOT catch it. Then every detailed
+difference in a log is a real one. Every gate with a `SELFTEST` mode, the same way.
 
 ### The name it ended up with
 
