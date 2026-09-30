@@ -2587,3 +2587,46 @@ describe("an allow-list value that is not CSS", () => {
     expect(card(allows).map((one) => one.code)).not.toContain("allow-list-not-css");
   });
 });
+
+/** What the second review found in the cross-block and allow-list checks. */
+describe("the cross-block check, second review", () => {
+  const found = (files: Record<string, string>) =>
+    check(files).findings.filter((one) => one.code === "narrower-after-a-whole-shorthand");
+
+  test("a pair inside one block after a spread is the compiler's, and is said once", () => {
+    const report = found({
+      "Card.tsx": `const base = @@( color: red; );\nexport const card = @@( ...{base}; border: var(--x); border-top: var(--y); );\n`,
+    });
+    expect(report).toHaveLength(1);
+  });
+
+  test("a block spread a second time counts a second time", () => {
+    const report = found({
+      "Card.tsx":
+        `const a = @@( border: var(--x); );\nconst b = @@( ...{a}; color: red; );\n` +
+        `export const card = @@( ...{a}; border: 1px solid red; ...{b}; border-top: var(--y); );\n`,
+    });
+    expect(report).toHaveLength(1);
+  });
+
+  test("after a guarded group nothing is said, since where the group ends is not known here", () => {
+    const report = found({
+      "Card.tsx":
+        `declare const on: boolean;\nconst base = @@( border: var(--x); );\n` +
+        `export const card = @@( ...{base}; if ({on}) { border: 1px solid red; } border-top: var(--y); );\n`,
+    });
+    expect(report).toEqual([]);
+  });
+});
+
+describe("the allow-list check, second review", () => {
+  test("a literal that would change how the probe reads is not judged", () => {
+    const report = check({
+      "Card.tsx":
+        `import type { CssBlock } from "@ramonda/css/properties";\n` +
+        `export function Card(props: { css?: CssBlock<{ "background-image"?: "url(a;b.png)" }> }) {\n` +
+        `  return <div className={props.css}>x</div>;\n}\n`,
+    }).findings.map((one) => one.code);
+    expect(report).not.toContain("allow-list-not-css");
+  });
+});

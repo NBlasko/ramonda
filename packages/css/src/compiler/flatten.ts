@@ -4,7 +4,7 @@ import { HOLE, canonicalValue, collapse, propertyName } from "./normalise";
 import { MAY_CLEAR, PROPERTIES, SHORTHANDS } from "./keywords.generated";
 import { widthSlot } from "../conditions";
 import { CONDITION, SPREAD, holeIn } from "./read";
-import { splitOf } from "./split";
+import { IMPORTANT, splitOf } from "./split";
 
 /**
  * One declaration, taken out of the block it was written in.
@@ -454,7 +454,6 @@ export type AtomicSegment =
  * `!important`, however it is spelt — the same pattern `rules.ts` matches for a custom property's
  * value, because it is the same question asked of the same text.
  */
-const IMPORTANT = /!\s*important\s*$/i;
 
 export function flatten(block: Block): AtomicDeclaration[] {
   return segments(block).flatMap((one) => (one.kind === "declarations" ? one.items : []));

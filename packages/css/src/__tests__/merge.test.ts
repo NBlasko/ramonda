@@ -26,8 +26,12 @@ import { conditionsOf, forget, mergeClassNames, namesOf, shorthands } from "../m
  */
 
 /** A class the compiler would have produced, so the two halves are asked the same question. */
-const classOf = (property: string, value: string, context: { selector?: string; conditions?: string[] } = {}) =>
-  `r-${keyToken({ property, selector: context.selector ?? "", conditions: context.conditions ?? [] })}-${value}`;
+const classOf = (
+  property: string,
+  value: string,
+  context: { selector?: string; conditions?: string[]; important?: boolean } = {},
+) =>
+  `r-${keyToken({ property, selector: context.selector ?? "", conditions: context.conditions ?? [], important: context.important })}-${value}`;
 
 /**
  * What the emitted module registers, done here the same way — see `clears` in `transform.ts`.
@@ -53,8 +57,8 @@ const registerName = (property: string): void => {
 };
 
 /** And the conditions a key sits under, which only the development warning reads. */
-const registerConditions = (property: string, conditions: readonly string[]): string => {
-  const key = keyToken({ property, selector: "", conditions: [...conditions] });
+const registerConditions = (property: string, conditions: readonly string[], important = false): string => {
+  const key = keyToken({ property, selector: "", conditions: [...conditions], important });
   conditionsOf({ [key]: conditions.join("|") });
   return key;
 };
@@ -780,5 +784,41 @@ describe("what the review found in the merge", () => {
   test("`all` is not a whole shorthand here — it is in its own weaker layer, and anything after it wins", () => {
     mergeClassNames(classOf("all", "unset"), classOf("border", "var(--b)"));
     expect(said).toEqual([]);
+  });
+});
+
+/**
+ * The order warning and `!important`. Importance is a context of the key (`!.c`) and not a
+ * condition: an important declaration with no condition is slot 0 like any other, and two of
+ * DIFFERENT importance are never compared — importance decides between them, whatever the order.
+ */
+describe("the order warning, and importance", () => {
+  const spoke: string[] = [];
+  const real = console.warn;
+  beforeEach(() => {
+    spoke.length = 0;
+    console.warn = (message: string) => void spoke.push(message);
+    registerName("color");
+  });
+  afterEach(() => {
+    console.warn = real;
+  });
+
+  const wide = "@media (min-width: 60rem)";
+
+  test("two important ones warn as two ordinary ones do", () => {
+    registerConditions("color", [wide], true);
+    mergeClassNames(
+      classOf("color", "blue", { conditions: [wide], important: true }),
+      classOf("color", "red", { important: true }),
+    );
+    expect(spoke).toHaveLength(1);
+    expect(spoke[0]).not.toContain("which sets it too");
+  });
+
+  test("an important one and an ordinary one do not", () => {
+    registerConditions("color", [wide]);
+    mergeClassNames(classOf("color", "blue", { conditions: [wide] }), classOf("color", "red", { important: true }));
+    expect(spoke).toEqual([]);
   });
 });

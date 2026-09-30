@@ -165,14 +165,16 @@ const OURS = "r-";
 
 /** The keys one key clears, in full — its own context put back in front of each longhand. */
 function clearedBy(key: string): readonly string[] {
-  const { context, property } = partsOf(key);
+  const { important, context, property } = partsOf(key);
   let covered = CLEARS.get(property);
   if (covered === undefined) {
     // Kept where the next call finds it first: this runs for every class in every merge.
     covered = builtIn(property);
     CLEARS.set(property, covered);
   }
-  return covered.length === 0 ? NONE : covered.map((one) => context + one);
+  // Importance back in front: an important shorthand clears the important longhands, and no others.
+  const prefix = (important ? "!." : "") + context;
+  return covered.length === 0 ? NONE : covered.map((one) => prefix + one);
 }
 
 /**
@@ -288,9 +290,12 @@ function warnAboutOrder(chosen: ReadonlyMap<string, string>): void {
     const slot = slotOf(key);
     if (slot === undefined) continue;
 
-    const { property } = partsOf(key);
+    // Grouped by importance too: between an important declaration and an ordinary one importance
+    // decides, whatever their conditions, so the two are never compared.
+    const { important, property } = partsOf(key);
     const one = { key, property, slot };
-    register(property, one);
+    const group = (name: string) => (important ? `!${name}` : name);
+    register(group(property), one);
 
     /**
      * **And every longhand a SHORTHAND sets**, which this missed entirely — all 98 families.
@@ -306,11 +311,13 @@ function warnAboutOrder(chosen: ReadonlyMap<string, string>): void {
      */
     for (const each of clearedBy(key)) {
       const sets = partsOf(each).property;
-      if (sets !== property) register(sets, one);
+      if (sets !== property) register(group(sets), one);
     }
   }
 
-  for (const [property, list] of byProperty) {
+  for (const [group, list] of byProperty) {
+    // The group's name carries importance (`!c`); the message names the property itself.
+    const property = group.startsWith("!") ? group.slice(1) : group;
     let strongest = list[0];
     for (const one of list.slice(1)) {
       if (one.slot >= strongest.slot) {

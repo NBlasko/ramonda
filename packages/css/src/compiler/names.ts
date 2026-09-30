@@ -215,7 +215,8 @@ const SAFE_PROPERTY = /^[a-zA-Z0-9_\u00a1-\uffff-]+$/;
  * ends it, and `p` with the value `l-40px` cannot be read as `pl` with `40px`.
  *
  * The same argument covers CONTEXT: every context form starts with a character an abbreviation
- * cannot — `:`, `.`, `_`, `@`, `[` — so a name carrying one can never be read as a name without.
+ * cannot — `:`, `.`, `_`, `@`, `[`, and `!` for importance — so a name carrying one can never be read
+ * as a name without.
  *
  * ## Why a resolved reference keeps its hash in the name
  *
@@ -408,7 +409,8 @@ export function markerFor(family: string, selector: string, conditions: readonly
  * | `0Ab3kQ` | neither could be written, so the whole key is hashed |
  *
  * **A written key never begins with `0`**, because a CSS property cannot begin with a digit and
- * every context form begins with `:`, `.`, `_`, `@` or `[`. So the leading `0` says *hashed* and
+ * every context form begins with `:`, `.`, `_`, `@`, `[` or `!` (importance, which `partsOf` takes off
+ * first). So the leading `0` says *hashed* and
  * cannot be mistaken for anything an author wrote. The `.` says where a hashed context ends: a
  * property may not hold one, so the LAST `.` is always the boundary.
  *

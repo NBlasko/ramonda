@@ -4,7 +4,7 @@ import { AT_RULE_LINKS, NOT_IN_A_RULE, PROPERTIES, SHORTHANDS } from "./keywords
 import { readBlock } from "./read";
 import { checkBlock } from "./rules";
 import { findBlocks } from "./scan";
-import { splitOf } from "./split";
+import { IMPORTANT, splitOf } from "./split";
 import type { RegisteredSite } from "./variables";
 import type { VirtualFile } from "./virtual";
 
@@ -68,6 +68,7 @@ interface Helpers {
   readonly block: string;
   readonly from: string;
   readonly hole: string;
+  readonly cond?: string;
 }
 
 /**
@@ -1020,14 +1021,18 @@ function wholeAcrossBlocks(
     return array !== undefined && ts.isArrayLiteralExpression(array) ? array : undefined;
   };
 
-  const IMPORTANT = /!\s*important\s*$/i;
   const whole = (property: string, value: string) =>
     property !== "all" && SHORTHANDS[property] !== undefined && splitOf(property, value) === undefined;
 
-  /** A whole shorthand still standing, and its importance — which keeps it in its own layer. */
+  /**
+   * A whole shorthand still standing, its importance — which keeps it in its own layer — and where
+   * it came from: this block's own declarations, a spread, or a `mergeClassNames` argument. Only
+   * one that came from ELSEWHERE is this rule's; two in one block are the compiler's own.
+   */
   interface Standing {
     readonly property: string;
     readonly important: boolean;
+    readonly from: number;
   }
 
   /** A group's declarations, as written: property, literal value and node, nested rules left out. */
@@ -1046,40 +1051,61 @@ function wholeAcrossBlocks(
     return out;
   };
 
+  /** Which helper a call in a block's array is — by name, since another file's block names its own. */
+  const helper = (element: ts.Expression): "from" | "cond" | undefined => {
+    if (!ts.isCallExpression(element) || !ts.isIdentifier(element.expression)) return undefined;
+    const name = element.expression.text;
+    if (name === helpers?.from || /^__from\d*$/.test(name)) return "from";
+    if (name === helpers?.cond || /^__cond\d*$/.test(name)) return "cond";
+    return undefined;
+  };
+
   /**
    * One block's top level, in order, against what is standing — its spreads add, its declarations
    * are checked and then CLEAR what they cover, as the merge does: a block that sets `border` itself
-   * after a spread has taken the spread's whole `border` away. `found` is told of each fault.
+   * after a spread has taken the spread's whole `border` away.
+   *
+   * A GUARDED group ends the walk. The virtual file writes `if` as a marker followed by the group's
+   * declarations with nothing where the group closes, so whether a later re-set is guarded cannot
+   * be read here — and a rule that guesses reports correct code. The merge's development warning
+   * still sees what is left. A `match`'s arms each set the family, so they clear like one
+   * declaration. `path` stops a cycle and nothing else: a block spread twice counts twice, as its
+   * classes land twice.
    */
   const walk = (
     array: ts.ArrayLiteralExpression,
     standing: Standing[],
-    found: (node: ts.Node, narrower: string, wider: string) => void,
-    seen: Set<ts.Node>,
+    /** Where this block's own declarations come from, and where what it spreads comes from. */
+    origin: { readonly own: number; readonly spread: number },
+    found: (node: ts.Node, narrower: string, covering: Standing) => void,
+    path: Set<ts.Node>,
   ): void => {
-    if (seen.has(array)) return;
-    seen.add(array);
+    if (path.has(array)) return;
+    path.add(array);
     for (const element of array.elements) {
-      if (ts.isCallExpression(element) && element.arguments.length === 1 && !ts.isObjectLiteralExpression(element)) {
-        const spread = blockOf(element.arguments[0]);
-        // What a spread leaves standing is what its own block leaves — its faults are its own.
-        if (spread !== undefined) walk(spread, standing, () => {}, seen);
+      const kind = helper(element);
+      if (kind === "cond") break;
+      if (kind === "from") {
+        const inner = blockOf((element as ts.CallExpression).arguments[0]);
+        if (inner !== undefined) walk(inner, standing, { own: origin.spread, spread: origin.spread }, () => {}, path);
         continue;
       }
       for (const [property, value, where] of declared(element)) {
         const important = IMPORTANT.test(value);
-        if (whole(property, value)) {
+        const isWhole = whole(property, value);
+        if (isWhole) {
           const covering = standing.find((one) => one.important === important && covers(one.property, property));
-          if (covering !== undefined) found(where, property, covering.property);
+          if (covering !== undefined) found(where, property, covering);
         }
         for (let at = standing.length - 1; at >= 0; at--) {
           const one = standing[at];
           if (one.important === important && (one.property === property || covers(property, one.property)))
             standing.splice(at, 1);
         }
-        if (whole(property, value)) standing.push({ property, important });
+        if (isWhole) standing.push({ property, important, from: origin.own });
       }
     }
+    path.delete(array);
   };
 
   const said = (node: ts.Node, narrower: string, wider: string): void =>
@@ -1091,18 +1117,26 @@ function wholeAcrossBlocks(
     });
 
   const visit = (node: ts.Node): void => {
-    // A block of THIS file: its spreads, then what it writes below them. Only a declaration after a
-    // spread is this rule's — two in one block are the compiler's own.
+    // A block of THIS file: what its spreads leave standing, against what it writes below them.
     if (helpers !== undefined && calls(node, helpers.block)) {
       const [array] = node.arguments;
       if (
         array !== undefined &&
         ts.isArrayLiteralExpression(array) &&
-        array.elements.some((one) => calls(one, helpers.from))
+        array.elements.some((one) => helper(one) === "from")
       )
-        walk(array, [], said, new Set());
+        walk(
+          array,
+          [],
+          { own: 0, spread: 1 },
+          (where, narrower, covering) => {
+            if (covering.from === 1) said(where, narrower, covering.property);
+          },
+          new Set(),
+        );
     }
-    // And a merge at a call site, argument by argument, told at the argument.
+    // And a merge at a call site, argument by argument: told at the argument, and only for a wider
+    // shorthand an EARLIER argument left — one inside the argument's own block is its file's.
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       let symbol = checker.getSymbolAtLocation(node.expression);
       if (symbol !== undefined && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
@@ -1111,22 +1145,21 @@ function wholeAcrossBlocks(
       const origin = symbol?.declarations?.[0]?.getSourceFile().fileName ?? "";
       if (symbol?.name === "mergeClassNames" && /[\\/](@ramonda[\\/]css|packages[\\/]css)[\\/]/.test(origin)) {
         const standing: Standing[] = [];
-        const seen = new Set<ts.Node>();
-        for (const argument of node.arguments) {
+        node.arguments.forEach((argument, index) => {
           const block = blockOf(argument);
-          if (block === undefined) continue;
-          const before = standing.length;
+          if (block === undefined) return;
           let told = false;
           walk(
             block,
             standing,
-            (_where, narrower, wider) => {
-              if (!told && before > 0) said(argument, narrower, wider);
+            { own: index, spread: index },
+            (_where, narrower, covering) => {
+              if (!told && covering.from < index) said(argument, narrower, covering.property);
               told = true;
             },
-            seen,
+            new Set(),
           );
-        }
+        });
       }
     }
     ts.forEachChild(node, visit);
@@ -1164,6 +1197,13 @@ function valueFaults(property: string, value: string): string[] {
 const FAULTS = new Map<string, string[]>();
 
 function compiledFaults(property: string, value: string): string[] {
+  /**
+   * A literal the probe cannot hold as ONE value is not judged: a `;`, a brace or an unbalanced
+   * parenthesis would end the declaration early or open a hole, and the verdict would be about some
+   * other text. Nor is a failure to read or check it a verdict — saying "not CSS" for a compiler
+   * fault would send the author after a value that may be right.
+   */
+  if (/[;{}]/.test(value) || value.split("(").length !== value.split(")").length) return [];
   const source = `const x = @@( ${property}: ${value}; );`;
   const [site] = findBlocks(source);
   if (site === undefined) return [];
@@ -1173,7 +1213,7 @@ function compiledFaults(property: string, value: string): string[] {
       .filter((one) => VALUE_RULES.has(one.rule))
       .map((one) => one.rule);
   } catch {
-    return ["unknown-value"];
+    return [];
   }
 }
 

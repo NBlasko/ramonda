@@ -187,7 +187,8 @@ export function misplacedWord(
 const COLOUR_WORDS = new Set((KEYWORDS.color ?? "").split(" ").filter((one) => one !== ""));
 const COLOUR_CALL = /^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/i;
 /** The spelling `rules.ts` and `flatten.ts` already use: optional space after the bang, any case. */
-const IMPORTANT = /!\s*important\s*$/i;
+/** `!important`, however it is spelt — ONE pattern for the split, the flattener and the checker. */
+export const IMPORTANT = /!\s*important\s*$/i;
 const A_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 const A_DIMENSION = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?([a-z%]+)$/i;
 
