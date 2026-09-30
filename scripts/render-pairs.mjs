@@ -18,6 +18,12 @@
 /** A frame that makes a box's padding, border and size visible. */
 const BOX = "outline: 1px solid black; width: 160px; font: 16px/1.2 serif;";
 
+/**
+ * An image that is really there, so a layer that goes wrong — its position, size or repeat — moves
+ * something the picture shows. A missing file draws nothing, and a split could get all of it wrong.
+ */
+const IMAGE = `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><rect width='6' height='6' fill='red'/></svg>")`;
+
 export const PAIRS = [
   {
     // A longhand written after its shorthand wins — the layer is what decides it.
@@ -55,17 +61,27 @@ export const PAIRS = [
     markup: `<div class="a b" style="${BOX}">text</div>`,
   },
   {
+    // A condition that does NOT hold: the block's rule must stay out, as the hand-written one does.
+    // Every other condition here is true, so a condition dropped on the way would pass them all.
+    name: "a condition that does not hold",
+    hand: `.a { color: red; padding: 4px; } @media (max-width: 1px) { .b { color: blue; padding-left: 40px; } }`,
+    blocks: { a: "color: red; padding: 4px;", b: "@media (max-width: 1px) { color: blue; padding-left: 40px; }" },
+    markup: `<div class="a b" style="${BOX}">text</div>`,
+  },
+  {
     // Layers, each read on its own; the colour only from the last.
     name: "background in layers",
-    hand: `.a { background: linear-gradient(red, blue) no-repeat 10px 10px / 30px 20px, url(missing.png), #ffc; }`,
-    blocks: { a: "background: linear-gradient(red, blue) no-repeat 10px 10px / 30px 20px, url(missing.png), #ffc;" },
+    hand: `.a { background: linear-gradient(red, blue) no-repeat 10px 10px / 30px 20px, ${IMAGE} repeat-x 0 30px, #ffc; }`,
+    blocks: {
+      a: `background: linear-gradient(red, blue) no-repeat 10px 10px / 30px 20px, ${IMAGE} repeat-x 0 30px, #ffc;`,
+    },
     markup: `<div class="a" style="${BOX} height: 60px;"></div>`,
   },
   {
     // A whole `background` in `v`, a longhand after it in `u`.
     name: "background, then a longhand",
-    hand: `.a { background: #ccc url(missing.png); } .b { background-color: #9cf; }`,
-    blocks: { a: "background: #ccc url(missing.png);", b: "background-color: #9cf;" },
+    hand: `.a { background: #ccc ${IMAGE} no-repeat 4px 4px; } .b { background-color: #9cf; }`,
+    blocks: { a: `background: #ccc ${IMAGE} no-repeat 4px 4px;`, b: "background-color: #9cf;" },
     markup: `<div class="a b" style="${BOX} height: 40px;"></div>`,
   },
   {

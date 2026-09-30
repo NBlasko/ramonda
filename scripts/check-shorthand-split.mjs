@@ -78,100 +78,88 @@ if (selftest === "slot") {
   }
 }
 
-const browser = await pw.chromium.launch();
-const tab = await browser.newPage();
-await tab.setContent(
-  "<!doctype html><html><body><style>#a,#b{--x:1px 2px;--c:red blue;--s:solid dashed;--o:auto hidden;" +
-    "--i:url(a.png);--a:start end;--k:round bevel;--w:pre nowrap;--v:sub super;--n:1 2}</style>" +
-    "<div id=a></div><div id=b></div></body></html>",
-);
-
 const wrong = [];
 let tried = 0;
-
-for (const [name, shape] of Object.entries(shapes)) {
-  if (BY_HAND[name] !== undefined) continue;
-  for (const value of casesFor(shape)) {
-    const mine = splitPositional(shape, value);
-    if (mine === undefined) continue;
-    const answer = await tab.evaluate(
-      ([name, value, mine]) => {
-        const a = document.getElementById("a");
-        const b = document.getElementById("b");
-        a.style.cssText = "";
-        b.style.cssText = "";
-        a.style.setProperty(name, value);
-        if (a.style.length === 0) return null;
-        for (const [longhand, held] of Object.entries(mine)) b.style.setProperty(longhand, held);
-        /**
-         * The WHOLE computed style, not the longhands this engine names.
-         *
-         * Reading `a.style` for the list asked the engine what IT expands the shorthand into, and
-         * returned `null` — not checked — when the answer was empty. A family this engine does not
-         * expand was therefore never checked, which is how `transform-origin` and `border-spacing`
-         * sat in the table: their longhands exist in one engine only, and everywhere else the split
-         * writes declarations that are dropped and sets nothing at all.
-         */
-        const seen = getComputedStyle(a);
-        const ours = getComputedStyle(b);
-        const differ = [];
-        for (let index = 0; index < seen.length; index++) {
-          const one = seen[index];
-          if (seen.getPropertyValue(one) !== ours.getPropertyValue(one))
-            differ.push(`${one}: ${seen.getPropertyValue(one)} vs ${ours.getPropertyValue(one)}`);
-        }
-        return differ.slice(0, 4);
-      },
-      [name, value, mine],
-    );
-    if (answer === null) continue;
-    tried++;
-    if (answer.length === 0) continue;
-    if (wrong.length < 6) wrong.push({ name, value, differ: answer, mine });
-    else wrong.push({ name, value });
-  }
-}
-await browser.close();
-
-/**
- * And in EVERY engine: a value one of them refuses must not be split at all.
- *
- * CSS drops a declaration it refuses whole, and a split drops only the part an engine does not
- * take — so the rest applies where the author's line would have done nothing. The check above runs
- * in Chromium only and skips a value it refuses, so a value Chromium takes and Firefox does not was
- * never asked: `text-wrap: pretty` was split, and in Firefox set `text-wrap-mode`. Measured in all
- * three engines, one batch per family.
- */
 const halfApplied = [];
 /** Per engine, per family: the values it TAKES, or `null` where it has no such family. */
 const taken = {};
+
+/**
+ * In EVERY engine, one batch per family: whether it has the family, which values it takes, and for
+ * each of those whether our longhands compute what the shorthand computes.
+ *
+ * Chromium alone used to be asked the last question, and Firefox and WebKit only the first two — so
+ * a slot mapped to a longhand one of them drops, or computes differently, passed.
+ *
+ * "Has the family" is asked directly, by `initial`, rather than read off the values taken: an engine
+ * that has the family and refuses every candidate would otherwise count as not having it, and its
+ * refusals would be heard nowhere.
+ */
 for (const engine of ["chromium", "firefox", "webkit"]) {
-  const other = await pw[engine].launch();
-  const page = await other.newPage();
-  await page.setContent("<!doctype html><html><body><div id=a></div></body></html>");
+  const browser = await pw[engine].launch();
+  const tab = await browser.newPage();
+  await tab.setContent(
+    "<!doctype html><html><body><style>#a,#b{--x:1px 2px;--c:red blue;--s:solid dashed;--o:auto hidden;" +
+      "--i:url(a.png);--a:start end;--k:round bevel;--w:pre nowrap;--v:sub super;--n:1 2}</style>" +
+      "<div id=a></div><div id=b></div></body></html>",
+  );
   taken[engine] = {};
   for (const [name, shape] of Object.entries(shapes)) {
     if (BY_HAND[name] !== undefined) continue;
-    const values = casesFor(shape).filter((value) => splitPositional(shape, value) !== undefined);
-    taken[engine][name] = await page.evaluate(
-      ([name, values]) => {
+    const cases = casesFor(shape)
+      .map((value) => [value, splitPositional(shape, value)])
+      .filter(([, mine]) => mine !== undefined);
+    const answer = await tab.evaluate(
+      ([name, cases]) => {
         const a = document.getElementById("a");
-        const takes = (value) => {
+        const b = document.getElementById("b");
+        a.style.cssText = "";
+        a.style.setProperty(name, "initial");
+        if (a.style.length === 0) return null;
+        const kept = [];
+        const differs = [];
+        for (const [value, mine] of cases) {
           a.style.cssText = "";
+          b.style.cssText = "";
           a.style.setProperty(name, value);
-          return a.style.length > 0;
-        };
-        const kept = values.filter(takes);
-        return kept.length === 0 ? null : kept;
+          if (a.style.length === 0) continue;
+          kept.push(value);
+          for (const [longhand, held] of Object.entries(mine)) b.style.setProperty(longhand, held);
+          /**
+           * The WHOLE computed style, not the longhands this engine names — a family this engine
+           * does not expand is still checked, which is how `transform-origin` and `border-spacing`
+           * were found: their longhands exist in one engine only.
+           */
+          const seen = getComputedStyle(a);
+          const ours = getComputedStyle(b);
+          const differ = [];
+          for (let index = 0; index < seen.length; index++) {
+            const one = seen[index];
+            if (seen.getPropertyValue(one) !== ours.getPropertyValue(one))
+              differ.push(`${one}: ${seen.getPropertyValue(one)} vs ${ours.getPropertyValue(one)}`);
+          }
+          if (differ.length > 0) differs.push([value, differ.slice(0, 4), mine]);
+        }
+        return { kept, differs };
       },
-      [name, values],
+      [name, cases],
     );
+    taken[engine][name] = answer === null ? null : answer.kept;
+    if (answer === null) continue;
+    tried += answer.kept.length;
+    for (const [value, differ, mine] of answer.differs)
+      wrong.push(
+        wrong.length < 6 ? { name: `${engine} ${name}`, value, differ, mine } : { name: `${engine} ${name}`, value },
+      );
   }
-  await other.close();
+  await browser.close();
 }
+
 /**
- * Only a value some engine TAKES and another refuses. One that no engine takes is invalid CSS,
- * which the checker refuses before a build ever splits it — that is the checker's to report.
+ * And a value one engine takes and another that HAS the family refuses must not be split at all.
+ * CSS drops a declaration it refuses whole, and a split drops only the part an engine does not
+ * take — so the rest applies where the author's line would have done nothing: `text-wrap: pretty`
+ * in Firefox. One that no engine takes is invalid CSS, which the checker refuses before a build.
  */
 for (const [name, shape] of Object.entries(shapes)) {
   if (BY_HAND[name] !== undefined) continue;

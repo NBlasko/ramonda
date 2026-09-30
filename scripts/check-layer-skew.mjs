@@ -37,14 +37,23 @@ const pw = createRequire(join(HERE, "..", "apps", "playground-core", "package.js
 const COMPILER = join(HERE, "..", "packages", "css", "src", "compiler");
 const { Sheet } = await loadTs(join(COMPILER, "sheet.ts"));
 const { transform } = await loadTs(join(COMPILER, "transform.ts"));
-const { mergeClassNames } = await loadTs(join(HERE, "..", "packages", "css", "src", "merge.ts"));
+const { mergeClassNames, shorthands } = await loadTs(join(HERE, "..", "packages", "css", "src", "merge.ts"));
 
 /** One release's stylesheet, through the real compiler and the real sheet. */
 function sheetFor(name, css) {
   const sheet = new Sheet();
-  const built = transform(`const a = @@( ${css} );\nexport default a;\n`, `/${name}.ts`, {});
-  sheet.add(`${name}.ts`, built?.blocks ?? []);
-  return { css: sheet.cssFor(`${name}.ts`), classes: (built?.blocks ?? []).map((one) => one.className) };
+  const built = transform(`const a = @@( ${css} );\nexport default a;\n`, { filename: `${name}.tsx` });
+  sheet.add(`${name}.tsx`, built?.blocks ?? []);
+  /**
+   * The classes the MODULE hands the page — the emitted `_merge("…")`, split's markers and all —
+   * not the list of rules. The markers have no rule and are what the merge clears by, so reading
+   * the rules instead handed the merge something no page ever gets. The module's own registration
+   * of what its shorthands clear runs too, as it would on load.
+   */
+  const table = /_clears\((\{.*?\})\);/.exec(built?.code ?? "");
+  if (table) shorthands(JSON.parse(table[1]));
+  const emitted = /_merge\("([^"]*)"\)/.exec(built?.code ?? "")?.[1] ?? "";
+  return { css: sheet.cssFor(`${name}.tsx`), classes: String(mergeClassNames(emitted)).split(" ").filter(Boolean) };
 }
 
 /**
@@ -141,6 +150,11 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
   try {
     browser = await pw[engine].launch();
     const tab = await browser.newPage();
+    // A doctype, once: replacing `documentElement.innerHTML` keeps the page's mode, and about:blank
+    // is QUIRKS — measured, every arrangement here used to run in `BackCompat`.
+    await tab.setContent("<!doctype html><html><head></head><body></body></html>");
+    if ((await tab.evaluate(() => document.compatMode)) !== "CSS1Compat")
+      throw new Error("the page is in quirks mode, and no real page is");
 
     for (const [what, packageCss, appCss, read, wanted, joinedInstead] of ALL_CASES) {
       const fromPackage = sheetFor("package", packageCss);

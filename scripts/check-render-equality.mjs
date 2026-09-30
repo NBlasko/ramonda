@@ -3,6 +3,7 @@
  *
  *     node scripts/check-render-equality.mjs
  *     SELFTEST=change node scripts/check-render-equality.mjs   # one block off by a pixel; must fail
+ *     SELFTEST=joined node scripts/check-render-equality.mjs   # classes joined, not merged; must fail
  *
  * ## Why pixels
  *
@@ -122,7 +123,9 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
       for (const [name, source] of Object.entries(pair.blocks))
         compiled[name] = compile(name, source, pair.shared ?? "", compiled);
       const markup = pair.markup.replace(/class="([^"]*)"/g, (_all, names) => {
-        const merged = runtime.mergeClassNames(...names.split(/\s+/).map((one) => compiled[one].classes));
+        const each = names.split(/\s+/).map((one) => compiled[one].classes);
+        // Without the merge, a shorthand written after its longhand no longer clears it.
+        const merged = selftest === "joined" ? each.join(" ") : runtime.mergeClassNames(...each);
         return `class="${merged}"`;
       });
       const sheets = Object.values(compiled).map((one) => one.css);

@@ -64,6 +64,63 @@ const MUST = {
   "white-space": ["nowrap", "pre-wrap"],
   "interest-delay": ["normal normal", "1s", "1s 2s"],
   "timeline-trigger": ["--a --b", "--a --b cover", "--a view()"],
+  // Every other family that splits, so each is also asked value after value — the grammar families
+  // above all, which no other gate asks in pairs.
+  "padding-block": ["8px", "4px 8px"],
+  "padding-inline": ["0 16px", "8px"],
+  "margin-block": ["0 16px", "auto"],
+  "margin-inline": ["auto", "0 auto", "-4px 8px"],
+  "inset-block": ["0", "10px auto"],
+  "inset-inline": ["0", "auto 10px"],
+  "scroll-padding": ["8px", "4px 8px 12px 16px", "auto"],
+  "scroll-padding-block": ["8px", "4px 8px"],
+  "scroll-padding-inline": ["8px", "auto 8px"],
+  "scroll-margin": ["8px", "4px 8px 12px 16px"],
+  "scroll-margin-block": ["8px", "4px 8px"],
+  "scroll-margin-inline": ["8px", "0 8px"],
+  "grid-gap": ["8px", "8px 16px"],
+  "border-width": ["1px", "1px 2px", "thin medium thick 3px"],
+  "border-style": ["solid", "solid dashed", "none dotted double groove"],
+  "border-color": ["red", "red blue", "red green blue #000"],
+  "border-block-width": ["1px", "1px 2px"],
+  "border-block-style": ["solid", "solid dashed"],
+  "border-block-color": ["red", "red blue"],
+  "border-inline-width": ["1px", "1px 2px"],
+  "border-inline-style": ["solid", "solid dashed"],
+  "border-inline-color": ["red", "red blue"],
+  "border-top": ["1px solid red", "none", "2px dashed"],
+  "border-right": ["1px solid red", "thick"],
+  "border-bottom": ["1px solid #ccc", "none"],
+  "border-left": ["4px solid blue", "dotted"],
+  "border-block": ["1px solid red", "none"],
+  "border-block-start": ["1px solid red", "2px dashed"],
+  "border-block-end": ["1px solid red", "blue"],
+  "border-inline": ["1px solid red", "none"],
+  "border-inline-start": ["4px solid blue", "dotted"],
+  "border-inline-end": ["1px solid red", "thick double"],
+  "column-rule": ["1px solid #ccc", "none", "thick dotted red"],
+  "font-synthesis": ["none", "weight", "weight style", "style small-caps"],
+  "-webkit-text-stroke": ["1px red", "2px", "blue"],
+  "contain-intrinsic-size": ["100px", "100px 200px", "auto 300px", "none", "auto 100px auto 200px"],
+  "text-box": ["normal", "trim-both", "cap alphabetic", "trim-start text"],
+  "animation-range": ["normal", "entry", "entry 10% exit 90%", "cover 0% cover 100%", "10% 90%"],
+  "mask-border": ['url("b.png") 30 round', "none"],
+  "mask-position": ["center", "left top", "10px 20px", "right 10px bottom 20px"],
+  "-webkit-mask-position": ["center", "10px 20px"],
+  "-webkit-border-before": ["1px solid red", "none"],
+  marker: ["none", 'url("#m")'],
+  "position-try": ["none", "--a", "--a, --b", "most-width --a", "most-height --a, --b, flip-block", "flip-block"],
+  "scroll-timeline": ["--a", "--a block", "--a x, --b y"],
+  "view-timeline": ["--a", "--a inline", "--a block auto"],
+  "corner-shape": ["round", "bevel", "squircle notch", "scoop bevel round square"],
+  "corner-top-shape": ["round", "bevel scoop"],
+  "corner-right-shape": ["round", "bevel scoop"],
+  "corner-bottom-shape": ["round", "bevel scoop"],
+  "corner-left-shape": ["round", "bevel scoop"],
+  "corner-block-start-shape": ["round", "bevel scoop"],
+  "corner-block-end-shape": ["round", "bevel scoop"],
+  "corner-inline-start-shape": ["round", "bevel scoop"],
+  "corner-inline-end-shape": ["round", "bevel scoop"],
 };
 
 /**
@@ -332,7 +389,10 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
             return x.style.length > 0;
           });
           // An engine without the family says nothing about it — Firefox has no `interest-delay`.
-          if (!takes.some(Boolean)) return values.map(() => "absent");
+          // Asked directly: an engine that HAS the family and takes none of these is not "absent".
+          x.style.cssText = "";
+          x.style.setProperty(property, "initial");
+          if (x.style.length === 0) return values.map(() => "absent");
           return values.map((value, at) => {
             // CSS drops a value it refuses whole; a split would still apply the rest of it.
             if (!takes[at] && splits[at] !== null) return "this engine refuses it, and it was split anyway";

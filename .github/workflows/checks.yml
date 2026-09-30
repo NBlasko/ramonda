@@ -218,6 +218,7 @@ jobs:
           SELFTEST=half node scripts/check-shorthand-split.mjs
           node scripts/check-shorthand-split.mjs
           SELFTEST=change node scripts/check-render-equality.mjs
+          SELFTEST=joined node scripts/check-render-equality.mjs
           node scripts/check-render-equality.mjs
           SELFTEST=refuse node scripts/check-must-split.mjs
           node scripts/check-must-split.mjs

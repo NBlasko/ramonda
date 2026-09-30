@@ -807,11 +807,19 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
         },
         [family, values, splits],
       );
+      let here = 0;
       for (const { at, what } of found) {
         if (what === "refused") refused.push(`${engine} ${family}: ${values[at]}`);
         else if (what !== "") wrong.push(`${engine} ${family}: \`${values[at]}\` — ${what}`);
-        else compared++;
+        else here++;
       }
+      compared += here;
+      /**
+       * A family that splits NOTHING here is a fault too. A refusal is silent and safe, so a hand
+       * rule that stopped reading every value of its family would pass every row above — and each
+       * value would reach the sheet whole, which is what splitting exists to end.
+       */
+      if (here === 0) wrong.push(`${engine} ${family}: no value of its corpus split at all`);
     }
   } catch (error) {
     console.error(`[hand] ${engine} would not launch, or the code failed: ${String(error).slice(0, 160)}`);

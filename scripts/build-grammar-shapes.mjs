@@ -460,8 +460,10 @@ for (const engine of ENGINES) {
         `${rejected.length} rejected, ${blind.length} unmeasured`,
     );
   } catch (error) {
-    console.error(`[grammar] ${engine} would not launch: ${String(error).slice(0, 90)}`);
-    process.exitCode = 1;
+    // Stop BEFORE anything is written: a table built without one engine's veto holds rows that
+    // engine refuses, and a file already rewritten is a file that gets committed.
+    console.error(`[grammar] ${engine} would not launch, or the code failed: ${String(error).slice(0, 90)}`);
+    process.exit(1);
   } finally {
     await browser?.close();
   }
