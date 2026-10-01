@@ -296,16 +296,21 @@ And a theme switch done per element is a **render**: every element carrying the 
 again to change it. A `var()` reading `:root` changes when the attribute on `<html>` changes, which
 is not a render at all.
 
-## `:root` does not work inside a block
+## `:root` does not go inside a block
 
-```
-:root { --accent: red; }        ✗  inside a block
+```tsx expect-report:root-in-a-block
+const card = @@(
+  :root { --accent: red; }
+);
 ```
 
-It compiles, and then does nothing. A block is one element's rule, so everything in it is nested
-inside that rule — and `:root` there flattens to `.r-… :root`, a descendant selector. `:root` is the
-`<html>` element, which is nobody's descendant. A theme's own declarations belong in a stylesheet,
-and this project's own belong in `ramonda.css.ts`.
+A block is one element's rule, so everything in it is nested inside that rule — and `:root` there
+means `.r-… :root`, the root under the element. `:root` is the `<html>` element, which is nobody's
+descendant, so the rule would apply nowhere; it is reported instead. A theme's own declarations
+belong in a stylesheet, and this project's own belong in `ramonda.css.ts`.
+
+The other way round is fine: `:root.dark & { … }` is the element under the root, which is how a
+theme reaches a block.
 
 ## Next
 

@@ -128,6 +128,8 @@ export const RULE_IDS = [
   "property-not-a-name",
   "non-canonical-spelling",
   "layer-in-a-block",
+  // `:root` or `html` as a descendant of the element, which nothing is. See `rootInABlock`.
+  "root-in-a-block",
   "spread-out-of-place",
   "hole-in-a-named-block",
   "unknown-named-block",
@@ -371,6 +373,7 @@ export function checkBlock(block: Block, options: CheckOptions = {}): Finding[] 
   mediaFeatures(block, findings);
   spelling(block, findings);
   layerInABlock(block, findings);
+  rootInABlock(block, findings);
   spreadOutOfPlace(block, findings);
   if (at !== undefined) holeInANamedBlock(block, at, findings);
   if (at !== undefined) compositionInANamedBlock(block, at, findings);
@@ -1907,6 +1910,58 @@ function layerInABlock(block: Block, findings: Finding[]): void {
     }
   };
   walkItems(block.items);
+}
+
+/**
+ * The ROOT written where it would have to be a descendant of the element — which it never is.
+ *
+ * Everything in a block is nested in the element's own rule, so `:root { … }` there compiles to
+ * `.r-… :root`: the root, under the element. The root is the `<html>` element and is nobody's
+ * descendant, so the rule applies nowhere — it compiles, ships, and does nothing, which is the shape
+ * a theme written into a block takes. `html` is the same element by its tag.
+ *
+ * What stays silent is every way the root is NOT a descendant: the element under it,
+ * `:root.dark & { … }`, which is how a theme reaches a block; the element being it, `&:root`, a block
+ * on `<html>`; and `:root` inside a function's argument, `&:not(:root)`. Read per selector of a list,
+ * and only after the last `&` — what comes before it is an ancestor, and an ancestor may be the root.
+ */
+function rootInABlock(block: Block, findings: Finding[]): void {
+  const walkItems = (items: readonly BlockItem[]): void => {
+    for (const item of items) {
+      if (item.kind !== "rule") continue;
+      walkItems(item.items);
+
+      const prelude = item.prelude.trim();
+      if (item.at === undefined || prelude.startsWith("@") || !prelude.split(",").some(rootUnderTheElement)) continue;
+
+      findings.push({
+        rule: "root-in-a-block",
+        at: item.at,
+        length: item.prelude.length,
+        message:
+          `\`${prelude}\` inside a block means the root under this element, and the root is nobody's ` +
+          "descendant, so this rule applies nowhere. Set a theme's values in your own stylesheet, and " +
+          "this project's variables in `ramonda.css.ts`.",
+      });
+    }
+  };
+  walkItems(block.items);
+}
+
+/** Whether one selector of a list puts the root BELOW the element — see {@link rootInABlock}. */
+function rootUnderTheElement(selector: string): boolean {
+  // A function's argument is not a compound of this selector: `:not(:root)` names no root.
+  let flat = selector.trim();
+  for (let before = ""; before !== flat; ) {
+    before = flat;
+    flat = flat.replace(/\([^()]*\)/g, "()");
+  }
+  const amp = flat.lastIndexOf("&");
+  const tail = amp === -1 ? flat : flat.slice(amp + 1);
+  const compounds = tail.split(/[\s>+~]+/).filter((one) => one !== "");
+  // A compound glued to `&` is the element itself — `&:root` is a block on `<html>`.
+  if (amp !== -1 && !/^[\s>+~]/.test(tail)) compounds.shift();
+  return compounds.some((one) => /^(?::root|html)(?![\w-])/i.test(one));
 }
 
 /**

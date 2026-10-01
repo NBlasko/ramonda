@@ -2352,6 +2352,44 @@ describe("a spelling that is the same CSS and a different class", () => {
  *
  * Refused rather than sorted or renamed. There is no spelling of it that means what it looks like.
  */
+/**
+ * The ROOT as a descendant of the element. Everything in a block is nested in the element's rule, so
+ * `:root { … }` there is `.r-… :root` — the root under the element, which nothing is. It compiles and
+ * applies nowhere. Where the element sits UNDER the root — `:root.dark & { … }`, how a theme is
+ * written — or IS the root, `&:root` on `<html>`, it does apply, and stays silent.
+ */
+describe("the root inside a block", () => {
+  test.each([
+    ["`:root` alone", "  :root { --accent: red; }"],
+    ["`html` alone", "  html { color: red; }"],
+    ["after the element", "  & :root { color: red; }"],
+    ["further down", "  & .a > html { color: red; }"],
+    ["with a class of its own", "  :root.dark { color: red; }"],
+    ["in one part of a list", "  .a, :root { color: red; }"],
+    ["inside a condition", "  @media print { :root { color: red; } }"],
+    ["inside a state", "  &:hover { :root { color: red; } }"],
+  ])("%s is refused", (_what, css) => {
+    expect(rules(css)).toEqual(["root-in-a-block"]);
+  });
+
+  test.each([
+    ["the element under the root", "  :root.dark & { color: red; }"],
+    ["the element under `html`", "  html[data-theme=dark] & { color: red; }"],
+    ["the element that is the root", "  &:root { color: red; }"],
+    ["`:root` only inside a function", "  &:not(:root) { color: red; }"],
+    ["a name that only starts the same", "  & htmlish { color: red; }"],
+  ])("%s is silent", (_what, css) => {
+    expect(rules(css)).not.toContain("root-in-a-block");
+  });
+
+  test("the message says where it goes instead", () => {
+    const [message] = messages("  :root { --accent: red; }");
+
+    expect(message).toContain("stylesheet");
+    expect(message).toContain("ramonda.css.ts");
+  });
+});
+
 describe("`@layer` inside a block", () => {
   test("is refused", () => {
     expect(rules("  @layer a { color: red; }")).toEqual(["layer-in-a-block"]);
