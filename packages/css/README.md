@@ -183,19 +183,20 @@ The transform is what turns
 <div className={@@( display: flex; border-left: 4px solid red; )}>
 ```
 
-into one class per declaration, plus one rule per declaration for the sheet:
+into a class per declaration — a shorthand as its longhands, after a marker with no rule — plus one
+rule each for the sheet:
 
 ```tsx
-import { mergeClassNames as _merge, shorthands as _clears } from "@ramonda/css";
-_clears({"bl":["blc","bls","blw"]});
-const _s0 = _merge("r-disp-flex r-bl-4px_solid_red");
+import { mergeClassNames as _merge } from "@ramonda/css";
+const _s0 = _merge("r-disp-flex r-bl- r-border_left_color-red r-border_left_style-solid r-border_left_width-4px");
 
 <div className={_s0}>
-``` **Only the CSS between the expressions is replaced** — every expression's own
-bytes stay where they were written, which is what makes the source map exact.
+```
 
-A file that uses none of this pays one substring search: 1,290 files and 10.73 MB of this repository
-in 0.84 ms.
+**Only the CSS between the expressions is replaced** — every expression's own bytes stay where they
+were written, which is what makes the source map exact.
+
+A file that holds no block is passed through untouched, after one substring search.
 
 ## How it is type-checked
 

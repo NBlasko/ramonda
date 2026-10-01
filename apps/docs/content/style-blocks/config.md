@@ -2,7 +2,7 @@
 title: The config file
 description: What ramonda.css.ts holds — the variables a project declares, and the CSS it decides not to allow.
 section: Style blocks
-order: 115
+order: 116
 ---
 
 # The config file
@@ -137,8 +137,9 @@ properties: {
 }
 ```
 
-A shorthand that is off is **removed** from the property map, so writing it is an unknown property
-rather than a wrong value — which is the report you want, because the fix is to write the longhands.
+Writing a shorthand that is off is reported as `shorthand-not-allowed`, and the message lists the
+longhands to write instead. It is also **removed** from the property map, so your editor no longer
+completes it.
 
 ### `arity` — how many values go in
 

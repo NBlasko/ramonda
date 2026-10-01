@@ -1,8 +1,8 @@
 ---
 title: Styles a caller may send
-description: A prop that takes a style block, and a type that says which declarations a caller may put in it — including whether they may compute one at run time.
+description: A prop that takes a style block, and a type that says which declarations a caller may put in it, and which values.
 section: Style blocks
-order: 114
+order: 115
 ---
 
 # Styles a caller may send
@@ -78,7 +78,7 @@ On the thing the author got wrong, never on the call:
 
 | a caller writes | what they are told |
 |---|---|
-| `color: {$.color.accent}` | nothing — it is a declared colour |
+| `color: $.color.accent` | nothing — it is a declared colour |
 | `color: red` | on the **value** — a bare colour where a declared one is wanted |
 | `color: inherit` | nothing — see below |
 | `padding: 4px` | on the **property** — `padding` is not in `{ color?: …; gap?: …; "&:hover"?: … }` |
@@ -117,24 +117,21 @@ class Card extends Component<{
 ```
 
 `css` is the element the component **is**, and `<part>Css` is a part it promises. The name is the
-component's own — there is no `css` prop on a `<div>` any more, a block is a string and goes on
-`className` — and it is worth keeping for what it says: *styles for this element*, told apart from
-the class names a caller might also have.
+component's own — a `<div>` has no `css` prop, since a block is a string and goes on `className` —
+and it is worth keeping for what it says: *styles for this element*, told apart from the class names
+a caller might also have.
 
 Reaching a part through a combinator would be reaching into a structure the component is free to
 change tomorrow. A named prop is the opposite: it is promised, and the component has to keep it
 working.
 
-## ~~`StaticCssBlock`~~ — every block is static
+## A caller cannot send a run-time value
 
-There used to be a second type here. `CssBlock<Allow>` let a caller compute a value and
-`StaticCssBlock<Allow>` did not, so a component that renders ten thousand rows could refuse the one
-thing in a block with a per-element cost.
-
-**A runtime value in a declaration is refused everywhere now**, so there is nothing left to refuse
-and nothing left to say in an API. `CssBlock<Allow>` is the only type, and a caller cannot get past
-it whatever they write. See [values that come from data](/style-blocks/dynamic) for the two doors
-that replaced the hole, and [composing](/style-blocks/composing) for `if`, `match` and the spread.
+A value computed while rendering cannot go into a declaration in any block — a hole is refused
+everywhere — so nothing a caller writes into `css` costs anything per element, and the allow-list is
+the whole of what they may change. A value that really varies per element is sent as data instead:
+see [values that come from data](/style-blocks/dynamic), and [composing](/style-blocks/composing)
+for `if`, `match` and the spread.
 
 ## Five things the checker watches
 

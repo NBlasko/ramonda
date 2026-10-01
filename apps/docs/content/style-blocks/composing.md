@@ -2,7 +2,7 @@
 title: Composing, and who wins
 description: Merging one block into another, conditions that bring whole groups, and the cascade layer that decides against your own stylesheet.
 section: Style blocks
-order: 113
+order: 114
 ---
 
 # Composing, and who wins
@@ -148,7 +148,8 @@ a selector mean the same thing, so write whichever reads better.
 One thing worth knowing, because CSS itself works this way: a **shorthand written later clears the
 longhands it covers**. If a base sets `padding-left: 40px` and a modifier sets `padding: 8px`, the
 modifier wins completely — which is what those two declarations would do in a plain stylesheet. The
-other direction leaves both standing, also as CSS does.
+other direction leaves both standing, also as CSS does. [Shorthands](/style-blocks/shorthands) covers the rest — the
+few that stay whole, and the few that are refused.
 
 That holds across the logical spellings too: `margin` sets all four sides whichever way the text
 runs, so it clears `margin-inline`, `margin-block-start` and the rest.

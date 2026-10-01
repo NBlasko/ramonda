@@ -33,7 +33,7 @@ as it stands.
   pick — is left alone. A `url()` or a quoted string in the value does not make it one:
   `cursor: url(a.cur), pointerr` is still reported, on `pointerr`.
 - **A runtime value in a declaration is refused** — `color: {this.brand}` — and the message names
-  the two things that replaced it: a [`match`](/style-blocks/composing#match-one-value-several-outcomes) for a value that is one
+  the two things to use instead: a [`match`](/style-blocks/composing#match-one-value-several-outcomes) for a value that is one
   of a few, and [`@@property`](/style-blocks/dynamic) for one that really comes from data.
 - **An expression is checked in the scope where it was written**, wherever braces are still allowed:
   a condition, a spread, a `match` subject. `this.loud` resolves to the field beside it, because the

@@ -112,9 +112,9 @@ A declared property is **one variable however many declarations read it**. A blo
 property twice compiles to:
 
 ```
-@property --r-pHqJVsKzI { syntax:"<length>"; initial-value:0px; }
-.r-pl-var(--r-pHqJVsKzI) { padding-left: var(--r-pHqJVsKzI); }
-.r-pr-var(--r-pHqJVsKzI) { padding-right: var(--r-pHqJVsKzI); }
+@property --r-pHqJVsKzI { syntax:"<length>";initial-value:0px;inherits:false; }
+.r-pl-var\(--r-pHqJVsKzI\) { padding-left:var(--r-pHqJVsKzI); }
+.r-pr-var\(--r-pHqJVsKzI\) { padding-right:var(--r-pHqJVsKzI); }
 ```
 
 One name, two classes reading it. So you set it once and every declaration that reads it moves
