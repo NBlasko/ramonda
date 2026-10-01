@@ -689,9 +689,9 @@ describe("a file's stylesheet, with its source map", () => {
     expect(map.mappings).not.toBe("");
   });
 
-  test("a build gets the CSS alone", () => {
+  test.each(["production", "staging"])("a build gets the CSS alone, in mode %s", (mode) => {
     const plugin = ramondaCss();
-    plugin.config.call({}, {}, { mode: "production" });
+    plugin.config.call({}, {}, { mode, command: "build" });
     plugin.transform.call({}, STYLED, "/src/Card.tsx");
 
     expect(typeof plugin.load.call({}, "/src/Card.tsx?ramonda-css.css")).toBe("string");
@@ -711,17 +711,44 @@ describe("a file's stylesheet, with its source map", () => {
  * A build and a test run have none — a test comparing a whole `className` must see what ships.
  */
 describe("source marks", () => {
-  const compiledIn = (mode: string, root = "/p") => {
-    const plugin = ramondaCss();
-    plugin.config.call({}, { root }, { mode });
-    return plugin.transform.call({}, STYLED, "/p/src/Card.tsx")?.code ?? "";
+  /**
+   * `inVitest: false` steps out of the runner this file is in. The plugin also refuses marks
+   * whenever Vitest is running, in any mode a project starts it in — which is right for a project's
+   * tests and would make the dev server's own case untestable here.
+   */
+  const compiledIn = (command: "serve" | "build", mode: string, inVitest = false) => {
+    const was = process.env.VITEST;
+    if (!inVitest) delete process.env.VITEST;
+    try {
+      const plugin = ramondaCss();
+      plugin.config.call({}, { root: "/p" }, { mode, command });
+      return plugin.transform.call({}, STYLED, "/p/src/Card.tsx")?.code ?? "";
+    } finally {
+      if (was !== undefined) process.env.VITEST = was;
+    }
   };
 
   test("the dev server marks each block with its path from the project root", () => {
-    expect(compiledIn("development")).toContain(`"r:src:src/Card.tsx:1"`);
+    expect(compiledIn("serve", "development")).toContain(`"r:src:src/Card.tsx:1"`);
   });
 
-  test.each(["production", "test"])("%s has none", (mode) => {
-    expect(compiledIn(mode)).not.toContain("r:src:");
+  /**
+   * In ANY mode the dev server is started in. Keyed on the mode's name first, `vite --mode staging`
+   * served pages with no marks; a review found it. What decides is the command.
+   */
+  test("and in a mode of the project's own", () => {
+    expect(compiledIn("serve", "staging")).toContain(`"r:src:src/Card.tsx:1"`);
+  });
+
+  test.each([
+    ["a build", "build", "production"],
+    ["a build in a mode of its own", "build", "staging"],
+    ["a test run", "serve", "test"],
+  ] as const)("%s has none", (_what, command, mode) => {
+    expect(compiledIn(command, mode)).not.toContain("r:src:");
+  });
+
+  test("nor does a test run started in a mode of the project's own", () => {
+    expect(compiledIn("serve", "staging", true)).not.toContain("r:src:");
   });
 });

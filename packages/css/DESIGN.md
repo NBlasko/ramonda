@@ -3677,9 +3677,12 @@ rule; then the values above go on `check-must-split.mjs`.
 ### 19. Which block gave an element its styles — BUILT 2026-10-01
 
 **Built as agreed below**, with the two open points settled by the user: the mark is
-`r:src:<path>:<line>`, and the path is from the project root. On the Vite dev server only — a build
-and a test run (Vitest's mode is `test`) have none, so a test comparing a whole `className` sees what
-ships. `withoutSourceMarks` is the runtime helper a spread calls; it takes an absent part as the merge
+`r:src:<path>:<line>`, and the path is from the project root. On the Vite dev server only, in any
+mode it is started in — decided by Vite's `command`, after a review found `vite --mode staging`
+served none when the mode's NAME decided. A build has none, in any mode, and neither has a test run
+(mode `test`, or Vitest running at all), so a test comparing a whole `className` sees what ships.
+Measured on a scaffolded SSR app: the server and the client carry the same marks, hydration reports
+nothing, and an edit moves the line in both. Two blocks on one line share one mark — one place. `withoutSourceMarks` is the runtime helper a spread calls; it takes an absent part as the merge
 does — found on the playground, where `...{props.css}` with no prop threw.
 
 Dev source maps point each rule at where it was written (`order.md`, "From a rule back to the line

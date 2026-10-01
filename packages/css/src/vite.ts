@@ -106,7 +106,7 @@ export interface CssPluginLike {
   enforce: "pre";
   /** Rollup's own, and the one hook that runs before anything is resolved — see its use below. */
   buildStart(this: unknown): void;
-  config(this: unknown, userConfig: unknown, environment: { mode?: string } | undefined): unknown;
+  config(this: unknown, userConfig: unknown, environment: { mode?: string; command?: string } | undefined): unknown;
   resolveId(this: unknown, id: string): string | null;
   load(this: unknown, id: string): string | { code: string; map: SourceMap } | null;
   transform(this: unknown, code: string, id: string): { code: string; map: SourceMap } | null;
@@ -152,10 +152,13 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   let root = process.cwd();
   /**
    * The dev server, and only it: source marks are for a person looking at a page. Not a build, and
-   * not a test run — Vitest's mode is `test`, and a test comparing a whole `className` would
-   * otherwise see marks its build never has.
+   * not a test run — Vitest serves in mode `test`, and a test comparing a whole `className` would
+   * otherwise see marks its build never has. Decided by the COMMAND, in whatever mode the server
+   * runs: keyed on the name `development`, `vite --mode staging` served no marks.
    */
   let developing = false;
+  /** `vite build`, in whatever mode — a build writes one sheet and wants no map beside each file's. */
+  let building = false;
 
   // Said once, when the built package is behind its sources — see `warnIfStale` for the day it cost.
   // `fileURLToPath`, not a string replace: a `file://` url PERCENT-ENCODES, so a checkout at
@@ -364,7 +367,8 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     config(userConfig, environment) {
       // Vite's own `isProduction` is exactly this, and it is the answer a config asks for.
       production = environment?.mode === "production";
-      developing = environment?.mode === "development";
+      developing = environment?.command === "serve" && environment.mode !== "test" && process.env.VITEST === undefined;
+      building = environment?.command === "build";
       // The project's root, for the one question with no file to ask about — see `buildStart`.
       root = (userConfig as { root?: string } | undefined)?.root ?? root;
       /**
@@ -431,7 +435,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     load(id) {
       if (!id.endsWith(SUFFIX)) return null;
       const file = id.slice(0, -SUFFIX.length);
-      if (production) return sheet.cssFor(file);
+      if (production || building) return sheet.cssFor(file);
       let content: string | undefined;
       try {
         content = readFileSync(file, "utf8");
