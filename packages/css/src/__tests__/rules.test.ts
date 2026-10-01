@@ -2378,6 +2378,9 @@ describe("the root inside a block", () => {
     ["the element that is the root", "  &:root { color: red; }"],
     ["`:root` only inside a function", "  &:not(:root) { color: red; }"],
     ["a name that only starts the same", "  & htmlish { color: red; }"],
+    // A comma inside a function or a quote does not end a selector — found by a review.
+    ["`:root` as one choice of `:is`", "  &:is(.a, :root) { color: red; }"],
+    ["`:root` inside an attribute's quoted value", '  & [data-x="a, :root"] { color: red; }'],
   ])("%s is silent", (_what, css) => {
     expect(rules(css)).not.toContain("root-in-a-block");
   });

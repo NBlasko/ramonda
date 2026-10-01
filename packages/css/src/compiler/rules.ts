@@ -1932,7 +1932,7 @@ function rootInABlock(block: Block, findings: Finding[]): void {
       walkItems(item.items);
 
       const prelude = item.prelude.trim();
-      if (item.at === undefined || prelude.startsWith("@") || !prelude.split(",").some(rootUnderTheElement)) continue;
+      if (item.at === undefined || prelude.startsWith("@") || !selectorsOf(prelude).some(rootUnderTheElement)) continue;
 
       findings.push({
         rule: "root-in-a-block",
@@ -1948,10 +1948,40 @@ function rootInABlock(block: Block, findings: Finding[]): void {
   walkItems(block.items);
 }
 
+/**
+ * The selectors of a list, split at a comma only where it ends one — not inside a function's
+ * argument, an attribute's brackets or a quote: `&:is(.a, :root)` is ONE selector.
+ */
+function selectorsOf(list: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote = "";
+  let at = "";
+  for (const ch of list) {
+    if (quote !== "") {
+      if (ch === quote) quote = "";
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === "(" || ch === "[") depth++;
+    else if (ch === ")" || ch === "]") depth--;
+    else if (ch === "," && depth === 0) {
+      out.push(at);
+      at = "";
+      continue;
+    }
+    at += ch;
+  }
+  out.push(at);
+  return out;
+}
+
 /** Whether one selector of a list puts the root BELOW the element — see {@link rootInABlock}. */
 function rootUnderTheElement(selector: string): boolean {
-  // A function's argument is not a compound of this selector: `:not(:root)` names no root.
-  let flat = selector.trim();
+  // A quoted value and an attribute's brackets hold no compound: `[data-x="a :root"]` names no root.
+  // Nor does a function's argument: `:not(:root)`, `:is(.a, :root)`.
+  let flat = selector
+    .trim()
+    .replace(/"[^"]*"|'[^']*'/g, '""')
+    .replace(/\[[^\]]*\]/g, "[]");
   for (let before = ""; before !== flat; ) {
     before = flat;
     flat = flat.replace(/\([^()]*\)/g, "()");
