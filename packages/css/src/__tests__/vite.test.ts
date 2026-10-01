@@ -705,3 +705,23 @@ describe("a file's stylesheet, with its source map", () => {
     expect(asked({ css: { devSourcemap: false } })).toBeUndefined();
   });
 });
+
+/**
+ * Source marks (DESIGN.md §19) on the dev server only, with the file's path from the project root.
+ * A build and a test run have none — a test comparing a whole `className` must see what ships.
+ */
+describe("source marks", () => {
+  const compiledIn = (mode: string, root = "/p") => {
+    const plugin = ramondaCss();
+    plugin.config.call({}, { root }, { mode });
+    return plugin.transform.call({}, STYLED, "/p/src/Card.tsx")?.code ?? "";
+  };
+
+  test("the dev server marks each block with its path from the project root", () => {
+    expect(compiledIn("development")).toContain(`"r:src:src/Card.tsx:1"`);
+  });
+
+  test.each(["production", "test"])("%s has none", (mode) => {
+    expect(compiledIn(mode)).not.toContain("r:src:");
+  });
+});

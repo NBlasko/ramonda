@@ -1,6 +1,6 @@
 import { CssBlockError } from "./compiler/errors";
 import { readFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { basename, dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { knownNames, type Config, configReader, environmentOf } from "./config";
@@ -150,6 +150,12 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
   const configFor = configReader(ts, () => environmentOf(production));
   /** Where this project is, as Vite reports it. See `buildStart`. */
   let root = process.cwd();
+  /**
+   * The dev server, and only it: source marks are for a person looking at a page. Not a build, and
+   * not a test run — Vitest's mode is `test`, and a test comparing a whole `className` would
+   * otherwise see marks its build never has.
+   */
+  let developing = false;
 
   // Said once, when the built package is behind its sources — see `warnIfStale` for the day it cost.
   // `fileURLToPath`, not a string replace: a `file://` url PERCENT-ENCODES, so a checkout at
@@ -209,7 +215,15 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
 
     let result: ReturnType<typeof transform>;
     try {
-      result = transform(code, { filename: file, runtime: options.runtime, read: readModule, config });
+      result = transform(code, {
+        filename: file,
+        runtime: options.runtime,
+        read: readModule,
+        config,
+        // Relative to the project, with `/` on every platform: a mark names a file a person knows,
+        // and an absolute path would print their disk's layout into every element.
+        marks: developing ? relative(resolve(root), file).split(sep).join("/") : undefined,
+      });
     } catch (error) {
       if (!(error instanceof CssBlockError)) throw error;
       /**
@@ -350,6 +364,7 @@ export function ramondaCss(options: CssPluginOptions = {}): CssPluginLike {
     config(userConfig, environment) {
       // Vite's own `isProduction` is exactly this, and it is the answer a config asks for.
       production = environment?.mode === "production";
+      developing = environment?.mode === "development";
       // The project's root, for the one question with no file to ask about — see `buildStart`.
       root = (userConfig as { root?: string } | undefined)?.root ?? root;
       /**

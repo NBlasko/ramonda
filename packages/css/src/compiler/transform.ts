@@ -63,7 +63,20 @@ export interface TransformOptions {
   readonly read?: Imported["read"];
   /** The project's own settings, from `ramonda.css.ts`. The bundler plugin reads it once. */
   readonly config?: Config;
+  /**
+   * DEVELOPMENT ONLY: the file's path from the project root, which turns on SOURCE MARKS.
+   *
+   * Each block's classes then carry one more, `r:src:<path>:<line>`, naming where the block was
+   * written. It has no rule and is not a key — it does not start with `r-` — so the merge keeps it
+   * beside the others and it styles nothing; an element shows in the browser's Elements panel which
+   * blocks gave it its classes. A spread's base loses its marks: what is named is where a block is
+   * USED. Blocks merged side by side keep all of theirs. A build passes nothing, and has none.
+   */
+  readonly marks?: string;
 }
+
+/** What starts a source mark — see {@link TransformOptions.marks}. */
+export const SOURCE_MARK = "r:src:";
 
 /** One rule the stylesheet now owes. Assembly (dedupe, `@layer`, the collision assertion) is track E. */
 
@@ -228,6 +241,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
   const naming = binding(source, "_named");
   /** Whether any block used one, so a file with no lookup imports nothing it does not call. */
   let picked = false;
+  /** What drops a spread base's source marks, and whether any block spread one with marks on. */
+  const unmark = binding(source, "_unsrc");
+  let unmarked = false;
+  /** A class token cannot hold whitespace, and a path can. */
+  const markPath = options.marks?.replace(/\s/g, "%20");
   const prefix = identifierPrefix(source);
 
   /** Class -> the atomic rule, so a declaration written a hundred times is one rule. */
@@ -531,7 +549,13 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         if (segment.selector !== "" || segment.conditions.length > 0) {
           throw new Error(`a spread inside \`${segment.selector || segment.conditions.join(" ")}\` reached emission`);
         }
+        // With source marks on, the base's go: what is named is where THIS block is used.
+        if (markPath !== undefined) {
+          piece += `${unmark}(`;
+          unmarked = true;
+        }
         expression();
+        if (markPath !== undefined) piece += ")";
         continue;
       }
 
@@ -740,6 +764,11 @@ export function transform(source: string, options: TransformOptions = {}): Trans
       piece += ")";
       open.pop();
     }
+    // The block's own source mark, last, so it outlives nothing it should not: see `marks`.
+    if (markPath !== undefined) {
+      const line = (originOf(site.start)?.line ?? 0) + 1;
+      piece += `${first ? "" : ","}${JSON.stringify(`${SOURCE_MARK}${markPath}:${line}`)}`;
+    }
     pieces.push(piece);
 
     written.push({ site, pieces, holes: read.holes, end: read.end });
@@ -811,6 +840,7 @@ export function transform(source: string, options: TransformOptions = {}): Trans
         // `C:\Users\…`, and interpolating that emitted `from "C:\Users\x\dist\index.js"`: a
         // syntax error, since `\x` starts a hex escape. Measured. A quote ended the string early.
         `import { mergeClassNames as ${block}${picked ? `, pick as ${lookup}` : ""}` +
+        `${unmarked ? `, withoutSourceMarks as ${unmark}` : ""}` +
         `${shorthandsUsed.size > 0 ? `, shorthands as ${clearing}` : ""}` +
         `${conditionsUsed.size > 0 ? `, conditionsOf as ${conditions}` : ""}` +
         `${namesUsed.size > 0 ? `, namesOf as ${naming}` : ""}` +

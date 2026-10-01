@@ -59,3 +59,5 @@ export type { Setting } from "./value";
  * the surface because a build imports them by name, which is the same reason `mergeClassNames` and `pick` are.
  */
 export { conditionsOf, mergeClassNames, namesOf, pick, shorthands } from "./merge";
+/** Called by a development build's emitted code for a spread — see `sources.ts`. */
+export { withoutSourceMarks } from "./sources";

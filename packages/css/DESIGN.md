@@ -3674,7 +3674,13 @@ reaches the sheet whole, in `v`, where a longhand after it still wins. It only d
 rule; then the values above go on `check-must-split.mjs`.
 
 
-### 19. Which block gave an element its styles — AGREED 2026-09-30, not built
+### 19. Which block gave an element its styles — BUILT 2026-10-01
+
+**Built as agreed below**, with the two open points settled by the user: the mark is
+`r:src:<path>:<line>`, and the path is from the project root. On the Vite dev server only — a build
+and a test run (Vitest's mode is `test`) have none, so a test comparing a whole `className` sees what
+ships. `withoutSourceMarks` is the runtime helper a spread calls; it takes an absent part as the merge
+does — found on the playground, where `...{props.css}` with no prop threw.
 
 Dev source maps point each rule at where it was written (`order.md`, "From a rule back to the line
 that wrote it"). A class written in several places is one rule with several origins, so a style
@@ -3710,8 +3716,6 @@ more class in development, `r:src:Card.tsx:10` (spelling to settle): file and li
 (`toHaveClass` does not); a block whose every declaration was overridden still leaves its mark,
 since the merge cannot tell a live source from a dead one; dev HTML grows by a class per block.
 
-**Open when it is built:** the exact spelling of the mark (it must be a valid class token and read
-well in the Elements panel); whether the path is relative to the project root.
 
 ### The name it ended up with
 

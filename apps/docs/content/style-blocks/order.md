@@ -252,6 +252,18 @@ file's stylesheet holds its own copy, pointing at its own line, and the style pa
 copy that applies — your element's own file is among them, though not always on top. Written twice
 in one file, the class points at the first.
 
+**The element itself says which blocks it came from.** On the dev server every block adds one class
+that names where it was written, and nothing else:
+
+```html
+<div class="r:src:src/Card.tsx:10 r-c-blue r:src:src/Page.tsx:22">
+```
+
+That element merged a block from `Card.tsx` with one its parent sent from `Page.tsx`, so it names
+both. A spread leaves no mark: a block that spreads `...{base}` names its own line, not `base`'s,
+because what you look for is where a block was used. These classes have no rule and change nothing
+about the styles; a build and a test run do not have them.
+
 ## Next
 
 - **[Composing](/style-blocks/composing)** — merging blocks, conditions, and your own stylesheet.
