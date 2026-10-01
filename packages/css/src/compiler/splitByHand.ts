@@ -537,6 +537,24 @@ export const BY_HAND: Readonly<Record<string, (value: string) => Record<string, 
     return { "interest-delay-start": t[0], "interest-delay-end": t[1] ?? t[0] };
   },
 
+  /**
+   * An optional ORDER, then a comma list of fallbacks. Each item is an AREA — one word, or two from
+   * different axes — or TACTICS with at most one name; `none` is a whole value. Written from what
+   * the engines take, which is not the grammar mdn-data carries: all three refuse `x-self-start` and
+   * its kin, and all three take `flip-x` and `flip-y`, which it lacks. Measured over 3549 items, and
+   * the three engines agreed on every one of them. DESIGN.md §18: two-word items stayed whole.
+   */
+  "position-try": (value) => {
+    const items = itemsOf(value);
+    if (items === undefined) return undefined;
+    const first = tokensOf(items[0] as string);
+    const order = TRY_ORDER.includes((first[0] ?? "").toLowerCase()) && first.length > 1 ? first.shift() : undefined;
+    const fallbacks = [first.join(" "), ...items.slice(1)];
+    const none = fallbacks.length === 1 && (fallbacks[0] as string).toLowerCase() === "none";
+    if (!none && !fallbacks.every((one) => tryArea(tokensOf(one)) || tryTactics(tokensOf(one)))) return undefined;
+    return { "position-try-order": order ?? "initial", "position-try-fallbacks": fallbacks.join(", ") };
+  },
+
   "background-position": (value) => positions(value, "background-position-x", "background-position-y", true),
   /**
    * Into the PREFIXED longhands, the only names all three engines have: Chromium and WebKit expand
@@ -643,6 +661,62 @@ function positions(value: string, x: string, y: string, threeValues: boolean): R
   if (axes.some((one) => one === undefined)) return undefined;
   const pairs = axes as [string, string][];
   return { [x]: pairs.map((one) => one[0]).join(", "), [y]: pairs.map((one) => one[1]).join(", ") };
+}
+
+const TRY_ORDER = ["normal", "most-width", "most-height", "most-block-size", "most-inline-size"];
+const TRY_TACTICS = ["flip-block", "flip-inline", "flip-start", "flip-x", "flip-y"];
+/** A `position-area` word's axis. `center` and `span-all` have none and sit beside any word. */
+const TRY_AXIS: Readonly<Record<string, string>> = Object.fromEntries([
+  ...["left", "right", "span-left", "span-right", "x-start", "x-end", "span-x-start", "span-x-end"].map((w) => [
+    w,
+    "x",
+  ]),
+  ...["top", "bottom", "span-top", "span-bottom", "y-start", "y-end", "span-y-start", "span-y-end"].map((w) => [
+    w,
+    "y",
+  ]),
+  ...["block-start", "block-end", "span-block-start", "span-block-end"].map((w) => [w, "block"]),
+  ...["inline-start", "inline-end", "span-inline-start", "span-inline-end"].map((w) => [w, "inline"]),
+  ...["self-block-start", "self-block-end", "span-self-block-start", "span-self-block-end"].map((w) => [
+    w,
+    "self-block",
+  ]),
+  ...["self-inline-start", "self-inline-end", "span-self-inline-start", "span-self-inline-end"].map((w) => [
+    w,
+    "self-inline",
+  ]),
+  ...["start", "end", "span-start", "span-end"].map((w) => [w, "logical"]),
+  ...["self-start", "self-end", "span-self-start", "span-self-end"].map((w) => [w, "self-logical"]),
+  ["center", ""],
+  ["span-all", ""],
+]);
+/** The axes two words may pair: one of each, in either order — or two of the same, for these two. */
+const TRY_PAIRS = ["x y", "y x", "block inline", "inline block", "self-block self-inline", "self-inline self-block"];
+const TRY_SAME = ["logical", "self-logical"];
+
+/** One fallback that is a `position-area`: a word, or two whose axes pair. */
+function tryArea(tokens: string[]): boolean {
+  const axes = tokens.map((one) => TRY_AXIS[one.toLowerCase()]);
+  if (tokens.length === 0 || tokens.length > 2 || axes.some((one) => one === undefined)) return false;
+  const [a, b] = axes as string[];
+  return (
+    b === undefined || a === "" || b === "" || TRY_PAIRS.includes(`${a} ${b}`) || (a === b && TRY_SAME.includes(a))
+  );
+}
+
+/**
+ * One fallback of tactics, each at most once, with at most one name of the author's — first or
+ * last, since the tactics are one group: `flip-block --a flip-inline` is refused by every engine.
+ */
+function tryTactics(tokens: string[]): boolean {
+  const words = tokens.map((one) => (one.startsWith("--") ? "--" : one.toLowerCase()));
+  const name = words.indexOf("--");
+  return (
+    words.length > 0 &&
+    new Set(words).size === words.length &&
+    words.every((one) => one === "--" || TRY_TACTICS.includes(one)) &&
+    (name <= 0 || name === words.length - 1)
+  );
 }
 
 /** The items of a comma list, or nothing when one of them is empty — which CSS refuses. */

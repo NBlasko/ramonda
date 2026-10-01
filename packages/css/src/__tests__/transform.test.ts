@@ -656,7 +656,9 @@ describe("a block written as a value", () => {
     const attribute = emit(`const a = <div className={@@( display: flex; )}>y</div>;\n`);
     const value = emit(`const panel = @@( display: flex; );\n`);
 
-    expect(value?.blocks).toEqual(attribute?.blocks);
+    // Where each was written differs, and is the source map's business, not the rule's.
+    const rules = (result: typeof value) => result?.blocks.map(({ origin: _origin, ...rule }) => rule);
+    expect(rules(value)).toEqual(rules(attribute));
   });
 });
 

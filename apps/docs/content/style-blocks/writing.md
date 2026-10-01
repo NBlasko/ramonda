@@ -40,17 +40,20 @@ stylesheet break the tie.
 **Nothing about a block requires JSX.** `const panel = @@( … )` is a value like any other, and a
 block in a `.ts` file with no markup in it works the same way — this extends TypeScript, not JSX.
 
-## Each declaration becomes one class
+## Each declaration becomes a class
 
 ```tsx
-const row = <div className={@@( display: flex; gap: 8px; )}>x</div>;
+const row = <div className={@@( display: flex; color: #333; )}>x</div>;
 ```
 
 ships as
 
 ```html
-<div class="r-disp-flex r-gap-8px">x</div>
+<div class="r-disp-flex r-c-#333">x</div>
 ```
+
+A shorthand becomes the longhands it sets, each a class of its own — `padding: 8px` is four of them.
+[Shorthands](/style-blocks/shorthands) is what that changes, which is less than it sounds.
 
 Two files that write `display: flex` get **the same class**, without knowing about each other,
 because the name is derived from the declaration and from nothing else. That is also what makes
@@ -84,14 +87,14 @@ Two of CSS's own rules surprise people, so they are worth saying out loud:
 
 ## A value in a declaration is written out
 
-Everything in a block is decided when the block compiles. `{ … }` in a declaration's value — a hole —
-was how a TypeScript expression used to get in, and it is refused:
+Everything in a block is decided when the block compiles. A TypeScript expression in a declaration's
+value — `{ … }`, a hole — is refused:
 
 ```
 color: {this.brand};             ✗  hole-not-allowed
 ```
 
-Two things replaced it, and between them they cover what a hole was reached for.
+Two things cover what a hole would be reached for.
 
 **If the value is one of a few, write them out.** [`match`](/style-blocks/composing#match-one-value-several-outcomes) makes each
 arm its own rule and its own class, so the subject only picks between classes that already exist:
@@ -126,13 +129,13 @@ reach for either.
 
 ### Why a hole is not simply allowed
 
-It cost something on every element, and it could not be shared. Measured, the same colour written two
-ways: `color: red` emits `r-c-red { color:red; }` and the element carries a class, while
-`color: {this.brand}` emitted `color:var(--r-…-0)` with the value written on every instance. A list
-of ten thousand rows was ten thousand style attributes.
+A value written in a block becomes a class, shared by every element that carries it: `color: red`
+emits `r-c-red { color:red; }`. A value from data cannot be a class, so a hole in a declaration
+would have to be written on every element instead — a list of ten thousand rows, ten thousand style
+attributes.
 
-And a hole belonged to the declaration it stood in, so two declarations wanting one value got two
-custom properties:
+And a hole would belong to the declaration it stood in, so two declarations wanting one value would
+get two custom properties:
 
 ```
 padding-left: {v}; padding-right: {v};             TWO variables, two classes
@@ -232,17 +235,9 @@ const card = @@(
 );
 ```
 
-**`//` is not a comment here, and it does not fail quietly.** CSS has no line comment, so the
-characters go into the stylesheet as they stand:
-
-```
-.r-3f96…{// why
-  color:red;gap:8px;}
-```
-
-and the CSS compiler refuses the **whole file** — measured, `SyntaxError: Unexpected token
-Semicolon` — naming nothing about the block, the file, or the line it came from. A build that fails
-somewhere else entirely, because of a comment. So it is reported before it gets there, as
+**`//` is not a comment here.** CSS has no line comment, so the characters would go into the
+stylesheet as they stand, and the CSS compiler would refuse the **whole file** — naming nothing about
+the block, the file, or the line it came from. So it is reported before it gets there, as
 `line-comment`, on the `//` itself.
 
 Inside braces a comment is TypeScript's, because that is what the braces hold:

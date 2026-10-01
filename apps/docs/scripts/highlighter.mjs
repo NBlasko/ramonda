@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { createHighlighter } from "shiki";
+import { bundledThemes, createHighlighter } from "shiki";
 
 /**
  * The site's syntax highlighter, kept apart from the content build so it can be measured.
@@ -24,8 +24,25 @@ const grammar = (name) =>
  * of the fence. The same injections that colour it in the editor colour it here, which is also the
  * only way the two can agree.
  */
+/**
+ * A GitHub theme, with a length's unit given its number's colour.
+ *
+ * The GitHub themes colour `keyword.other.unit` as a keyword, so `4px` read as a blue `4` and a red
+ * `px` — on this site only, since the editor's own themes give a length one colour. The theme keeps
+ * its name, so every call site and the CSS variables it emits are unchanged.
+ */
+async function withUnitsAsNumbers(name) {
+  const theme = structuredClone((await bundledThemes[name]()).default);
+  const numeric = theme.tokenColors.find((rule) =>
+    [rule.scope].flat().some((scope) => scope === "constant.numeric" || scope === "constant"),
+  );
+  if (numeric?.settings?.foreground === undefined) throw new Error(`${name}: no colour for a number`);
+  theme.tokenColors.push({ scope: "keyword.other.unit", settings: { foreground: numeric.settings.foreground } });
+  return theme;
+}
+
 export const highlighter = await createHighlighter({
-  themes: ["github-light", "github-dark"],
+  themes: [await withUnitsAsNumbers("github-light"), await withUnitsAsNumbers("github-dark")],
   langs: [
     "tsx",
     "ts",

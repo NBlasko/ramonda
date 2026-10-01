@@ -334,6 +334,7 @@ const CSS_LINES = {
   "rule-out-of-place": "a nested rule where only declarations belong",
   "at-rule-out-of-place": "an at-rule that names something for the whole stylesheet",
   "layer-in-a-block": "`@layer` inside a block, which the sheet already decides",
+  "root-in-a-block": "`:root` or `html` inside a block, which puts the root under the element — it applies nowhere",
   "hole-out-of-place": "a hole where CSS needs text, like a property name",
   "hole-as-a-variable-name": "a hole naming a custom property rather than holding a value",
   "hole-in-a-named-block": "a hole in `@@keyframes( … )` and its kind, which have no element",

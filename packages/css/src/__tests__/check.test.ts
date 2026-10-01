@@ -355,14 +355,14 @@ describe("a setup that would otherwise pass silently", () => {
       ),
     );
 
-    // Five, because the virtual file names five things from that module — the block's shape, what a
-    // block IS, composition's two, and what a hole in a value must be. Each missing one is its own
-    // setup fault, and each is reported.
+    // Six, because the virtual file names six things from that module — the block's shape, what a
+    // block IS, composition's two, what a hole in a value must be, and `CssGlobal`, the keywords a
+    // narrowed value also takes (§13). Each missing one is its own setup fault, and each is reported.
     //
-    // It was SIX, and `$` was the sixth. The fallback is written inline now rather than imported,
-    // so that no module has to export a `$` — an export is an auto-import suggestion, and a user
-    // met `import { $ } from "@ramonda/css/properties"` offered beside their own generated one.
-    expect(report.findings).toHaveLength(5);
+    // It was six once before, and `$` was the sixth. The fallback is written inline now rather than
+    // imported, so that no module has to export a `$` — an export is an auto-import suggestion, and
+    // a user met `import { $ } from "@ramonda/css/properties"` offered beside their own generated one.
+    expect(report.findings).toHaveLength(6);
     expect(report.findings.map((one) => one.message).join(" ")).toContain("CssBlockShape");
   });
 
@@ -1437,6 +1437,69 @@ describe("a block a prop can constrain", () => {
 
     expect(report.findings).toHaveLength(1);
     expect(report.findings[0].message).toContain("20px");
+  });
+
+  /**
+   * The CSS-wide keywords pass a narrowed value, as `Keyword<K>` lets them pass a closed list.
+   * They are what CSS itself provides, not a value the project chose — DESIGN.md §13, decided by the
+   * user. Everything else the slot refuses still is: another value, and `!important`.
+   */
+  test.each(["inherit", "initial", "unset", "revert", "revert-layer"])("a narrowed value takes `%s`", (word) => {
+    expect(check(calling(`gap: ${word};`)).findings).toEqual([]);
+  });
+
+  test("and so does a narrowed value inside a state", () => {
+    const report = check({
+      "Card.tsx": CARD.replace(`"&:hover"?: { color?: string }[];`, `"&:hover"?: { gap?: "8px" }[];`),
+      "Use.tsx": `import { Card } from "./Card";\nconst a = <Card css={@@( &:hover { gap: inherit; } )} />;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  /**
+   * `any` in an allow-list is left as it is. The widening asked whether a value is an array — a
+   * state — and `any` answers yes to that, so `width?: any` became an array and `width: 10px` a
+   * false error. A review of §13 found it.
+   */
+  test("a value typed `any` still takes anything", () => {
+    const report = check({
+      "Card.tsx": CARD.replace(`gap?: "8px" | "16px";`, `gap?: "8px" | "16px";\n  width?: any;`),
+      "Use.tsx": `import { Card } from "./Card";\nconst a = <Card css={@@( width: 10px; )} />;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("and a state inside a state, which is where `@media` holding a `&:hover` puts it", () => {
+    const report = check({
+      "Card.tsx": CARD.replace(
+        `"&:hover"?: { color?: string }[];`,
+        `"@media (width > 1px)"?: { "&:hover"?: { gap?: "8px" }[] }[];`,
+      ),
+      "Use.tsx": `import { Card } from "./Card";\nconst a = <Card css={@@( @media (width > 1px) { &:hover { gap: inherit; } } )} />;\nexport default a;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  /**
+   * A file with no `import` or `export` is a SCRIPT, and what the virtual file declares in it is
+   * global — so two of them declaring one name is `TS2300`. A named type for the widening did that,
+   * and `declare const` for `$` did it before §13. A review of §13 found both.
+   */
+  test("two script files, each with a block, do not collide", () => {
+    const report = check({
+      "A.tsx": `const a = <div className={@@( color: red; )}>x</div>;\n`,
+      "B.tsx": `const b = <div className={@@( color: blue; )}>y</div>;\n`,
+    });
+
+    expect(report.findings).toEqual([]);
+  });
+
+  test("a keyword does not open the slot to anything else", () => {
+    expect(check(calling(`gap: inherit !important;`)).findings).toHaveLength(1);
+    expect(check(calling(`padding: inherit;`)).findings).toHaveLength(1);
   });
 
   test("a property is reported INSIDE a state, not on the state", () => {
@@ -2548,6 +2611,52 @@ describe("a narrower whole shorthand after a wider one from another block", () =
     expect(
       codes({ "Card.tsx": `const base = @@( ${first} );\nexport const card = @@( ...{base}; ${second} );\n` }),
     ).not.toContain("narrower-after-a-whole-shorthand");
+  });
+});
+
+/**
+ * §17: a `$` variable is a `var()` to the sheet, so a shorthand holding one reaches it WHOLE — in a
+ * spread's block and in the block after it. The virtual file writes it as a property access,
+ * `__vars.border.thin`, or inside a template when it is part of a value, and the walk read only
+ * string literals, so these went unreported.
+ *
+ * The project declares its variables the way codegen does: its properties module exports `$`.
+ */
+describe("a `$` variable in a whole shorthand from another block", () => {
+  const PROPS =
+    `export * from ${JSON.stringify(join(PACKAGE, "src", "properties"))};\n` +
+    `export declare const $: { border: { thin: string; top: string }; color: { a: string } };\n`;
+  const CONFIG =
+    `import { kind } from ${JSON.stringify(join(PACKAGE, "dist", "config.js"))};\n` +
+    `export default { variables: {\n` +
+    `  border: kind("any", { thin: "1px solid red", top: "2px solid blue" }),\n` +
+    `  color: kind("color", { a: "#000" }),\n} };\n`;
+  const findings = (base: string, card: string) =>
+    checkProject(
+      project(
+        {
+          "props.ts": PROPS,
+          "ramonda.css.ts": CONFIG,
+          "Card.tsx": `const base = @@( ${base} );\nexport const card = @@( ...{base}; ${card} );\n`,
+        },
+        "src/props.ts",
+      ),
+    ).findings;
+
+  test("the project's variables resolve, so nothing else is reported", () => {
+    expect(findings("border: $.border.thin;", "border-top-color: $.color.a;")).toEqual([]);
+  });
+
+  test.each([
+    ["a variable in each", "border: $.border.thin;", "border-top: $.border.top;"],
+    ["a variable as part of each value", "border: 2px solid $.color.a;", "border-top: 1px solid $.color.a;"],
+    ["a variable as part of the wider one only", "border: 2px solid $.color.a;", "border-top: $.border.top;"],
+  ])("is reported: %s", (_what, base, card) => {
+    expect(findings(base, card).map((one) => one.code)).toEqual(["narrower-after-a-whole-shorthand"]);
+  });
+
+  test("not for a longhand after it", () => {
+    expect(findings("border: $.border.thin;", "border-top-color: $.color.a;")).toEqual([]);
   });
 });
 

@@ -1,6 +1,6 @@
 ---
 title: Style blocks
-description: Real CSS beside your markup, compiled before the build into one class per declaration and type-checked throughout. Install it, wire one plugin, write a block.
+description: Real CSS beside your markup, compiled before the build into classes and type-checked throughout. Install it, wire one plugin, write a block.
 section: Style blocks
 order: 106
 ---
@@ -26,9 +26,10 @@ does not use are all reported where you wrote them, before the build runs.
 
 What it COMPILES to is a string, which is why it goes on `className`. That is the next paragraph.
 
-It compiles away. Each declaration becomes one class in a stylesheet, so the element above ships as
-`class="r-disp-flex r-gap-8px …"` and the CSS is a file the browser caches. There is no runtime, and
-nothing is computed while your page renders.
+It compiles away. Each declaration becomes a class in a stylesheet — a shorthand like `gap` becomes
+one per longhand it sets — so the element above ships as `class="r-disp-flex r-gap- r-row_gap-8px …"`, and
+the CSS is a file the browser caches. No CSS is generated in the browser: what runs there is a small
+merge that puts class strings together.
 
 `@ramonda/css` is a **separate package**. The framework's own position on styling — a `className`, a
 `style`, stylesheets the way they have always arrived — is on [Styling](/styling), and it does not
@@ -42,7 +43,7 @@ npm install @ramonda/css
 
 The checking is TypeScript's own, so the package needs yours — it writes a virtual file your compiler
 reads, and a fault in a block arrives as an ordinary `tsc` diagnostic rather than as a report from a
-tool you have to run separately. Any TypeScript 5 will do.
+tool you have to run separately. TypeScript 5.4 or later.
 
 ## One plugin in the build
 
@@ -65,8 +66,8 @@ export const plugins = [ramondaCss({ filter: /src\/.*\.tsx$/ })];
 ```
 
 **Set `filter` on esbuild.** esbuild hands a plugin a *path* rather than the code, so a file has to
-be read before it can be asked whether it holds a block — measured at 17 µs a file. Pointing the
-plugin at the tree that holds them means nothing else is opened at all.
+be read before it can be asked whether it holds a block. Pointing the plugin at the tree that holds
+them means nothing else is opened at all.
 
 ### If you declare variables
 
@@ -185,9 +186,13 @@ being asked — that is the setting above.
   with `$`, keyframes and font faces, and what a theme is.
 - **[Which declaration wins](/style-blocks/order)** — two declarations of one property, and the rule
   that decides between them.
+- **[Shorthands](/style-blocks/shorthands)** — what a shorthand becomes, and the few that stay
+  whole.
 - **[Composing](/style-blocks/composing)** — reusing a block, conditions, and your own stylesheet.
 - **[The config file](/style-blocks/config)** — `ramonda.css.ts` end to end, and what a project can
   decide not to allow.
 - **[Project settings](/style-blocks/settings)** — the names a block emits, and who reads them.
+- **[In the browser](/style-blocks/browser)** — from an element or a rule back to the line that
+  wrote it.
 - **[Tooling](/style-blocks/tooling)** — formatters, linters, other JSX libraries, and what this
   does not do.

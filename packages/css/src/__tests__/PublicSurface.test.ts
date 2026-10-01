@@ -45,6 +45,8 @@ const RUNTIME = [
   "read",
   "shorthands",
   "toStyle",
+  // What a development build's emitted code calls for a spread when source marks are on.
+  "withoutSourceMarks",
 ];
 
 /**

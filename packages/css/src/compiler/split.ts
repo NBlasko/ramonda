@@ -271,7 +271,7 @@ export function splitOf(property: string, value: string): Record<string, string>
   const grammar = GRAMMAR_SHAPES[property];
   const byHand = BY_HAND[property];
   /**
-   * By hand FIRST where a family has it. Seventeen families have both — `background-position`,
+   * By hand FIRST where a family has it. Eighteen families have both — `background-position`,
    * `animation-range`, `place-*`, `grid-row`/`-column`, `border-radius` among them — and the table
    * was the weaker answer each time: learned from sentinels, it read a value unlike them wrong or
    * not at all. The hand rules are checked against all three engines, value by value, by
@@ -484,17 +484,6 @@ function emptyItem(value: string): boolean {
 }
 
 /**
- * Families that are not a list, but whose LAST longhand is one — keyed by the family's longhands.
- *
- * The grammar table cannot say this: a longhand appears in the tree as a name, not as its own
- * grammar. `position-try: --a, --b` reached the sheet whole until `check-must-split.mjs` asked for
- * it. The one family measured to be shaped so; the gates check each value of it in all engines.
- */
-const COMMA_IN_LAST: Readonly<Record<string, string>> = {
-  "position-try-fallbacks position-try-order": "position-try-fallbacks",
-};
-
-/**
  * Split by the grammar, one value or a comma-separated list of them.
  *
  * The list case is `byGrammar` per item joined back per longhand, and the reason it is a few lines
@@ -524,23 +513,8 @@ export function splitByGrammar(shape: GrammarShape, value: string): Record<strin
   }
 
   if (shape.list !== true) {
-    const items = tokensOf(value, /,/).map((one) => one.trim());
-    if (items.length === 1) return byGrammar(shape, value);
-    const listed = COMMA_IN_LAST[shape.longhands.join(" ")];
-    if (listed === undefined || items.some((one) => one === "")) return undefined;
-    /**
-     * A family whose LAST longhand is the comma list: `position-try: most-width --a, --b` is one
-     * order and the fallbacks `--a, --b`. The first item is read whole, order and all; every later
-     * item may hold only a fallback, and `none` is a whole value, never one item of a list.
-     */
-    const per = items.map((one) => byGrammar(shape, one));
-    if (per.some((one) => one === undefined)) return undefined;
-    const read = per as Record<string, string>[];
-    for (const [at, each] of read.entries()) {
-      if ((each[listed] ?? "initial").toLowerCase() === "none") return undefined;
-      if (at > 0 && Object.entries(each).some(([one, held]) => one !== listed && held !== "initial")) return undefined;
-    }
-    return { ...read[0], [listed]: read.map((each) => each[listed]).join(", ") };
+    if (tokensOf(value, /,/).length > 1) return undefined;
+    return byGrammar(shape, value);
   }
 
   const items = tokensOf(value, /,/).map((one) => one.trim());

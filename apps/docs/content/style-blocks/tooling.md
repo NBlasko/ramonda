@@ -2,7 +2,7 @@
 title: Tooling, and what it does not do
 description: Why your formatter and linter cannot read a file holding a block, what to run instead, and using a block in another JSX library.
 section: Style blocks
-order: 117
+order: 119
 ---
 
 # Tooling, and what it does not do
@@ -60,10 +60,8 @@ const panel = @@(
 const row = <div className={panel}>a row</div>;
 ```
 
-There is no adapter to import, no wrapper component to write and nothing to copy. `toStyleObject`
-used to be that adapter, turning a block into `{ className, style }` for the custom properties a
-`{expr}` hole put on the element; a runtime value in a declaration is refused now, so a block sets
-nothing of its own and there is nothing left for a `style` to carry.
+There is no adapter to import, no wrapper component to write and nothing to copy: a block carries no
+value of its own for a `style` attribute, only classes.
 
 **A block beside a class of your own goes through `mergeClassNames`:**
 
@@ -78,8 +76,8 @@ nothing at all — so it is **reported** rather than compiled to silence.
 
 **A value you set yourself still goes through `toStyle`**, and that is where the one rule lives: a
 value holding a `;` is refused rather than written, because a `style` attribute is parsed back out of
-HTML on a server-rendered page and, measured, such a value came out of the round trip as real,
-applied declarations.
+HTML on a server-rendered page, and such a value would come out of that round trip as real, applied
+declarations.
 
 ## What it does not do
 

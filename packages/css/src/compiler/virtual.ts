@@ -116,6 +116,8 @@ export interface VirtualFile {
     readonly hole: string;
     /** The guard's marker — `if ({on})` — which a typed rule reads as "what follows may not apply". */
     readonly cond?: string;
+    /** What `$` is bound to — `__vars.border.thin` is a `var()` in the sheet. */
+    readonly vars?: string;
   };
   /**
    * The names this file declared for itself — the block helper, composition's two, the hole's type,
@@ -324,9 +326,46 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * `hole-not-allowed` — so there is nothing left for a prop to refuse and nothing for a flag to
    * say. `CssBlock` lost its second parameter with it.
    */
+  /**
+   * **A narrowed value takes the CSS-wide keywords too** — `inherit`, `initial`, `unset`, `revert`,
+   * `revert-layer` — as `Keyword<K>` does for a closed list. They are what CSS itself provides, not
+   * a value the project chose, so `{ gap?: "8px" }` accepting `gap: inherit` is the slot meaning
+   * what it says. The user's decision, DESIGN.md §13.
+   *
+   * Only the keywords: another value, `!important` and a property outside the list are refused as
+   * before. A state is an ARRAY of declarations and is opened, not widened, so its values take the
+   * keywords as well.
+   *
+   * **A value that already takes `inherit` is handed back as it was**, and that is what keeps an
+   * ordinary block untouched. Widening it unconditionally was measured to cost every block its
+   * messages: `V | CssGlobal` is a new union, TypeScript prints it member by member, and
+   * `position: statik` stopped naming `Keyword<…>` and listed twenty-one values instead.
+   *
+   * **`CssGlobal` is taken from the properties module, and guarded.** Named, a message reads
+   * `'"8px" | "16px" | CssGlobal'`, the author's own list first; written out, five keywords stood in
+   * front of it. But a name the module does not export is `any` here, not an error, and `any`
+   * silenced every check in the file — measured — so a module without it gets the words instead.
+   *
+   * **`any` in the list is handed back as it is.** It answers yes to "is this an array", so it was
+   * opened like a state and `width?: any` refused `width: 10px`. A review found it.
+   *
+   * **No type is NAMED here.** In a file that is a script, a name the virtual file declares is
+   * global, and a second script declaring it again was `TS2300` — measured, for a type alias and for
+   * an interface alike. So the widening is written out level by level, `WIDENED_DEPTH` deep.
+   */
+  const global = `import(${from}).CssGlobal`;
+  // A module without `CssGlobal` — one generated before it was exported — gets the words written out.
+  const keywords = `(0 extends 1 & ${global} ? "inherit" | "initial" | "unset" | "revert" | "revert-layer" : ${global})`;
+  /** One level of the widening, around `value`; a state opens into the next level, `depth` of them. */
+  const widened = (value: string, depth: number): string =>
+    depth === 0
+      ? value
+      : `(0 extends 1 & ${value} ? ${value} : [NonNullable<${value}>] extends [readonly (infer E${depth})[]] ? ` +
+        `{ [K${depth} in keyof E${depth}]?: ${widened(`E${depth}[K${depth}]`, depth - 1)} }[] : ` +
+        `"inherit" extends ${value} ? ${value} : ${value} | ${keywords})`;
   write(
     `declare function ${block}<A extends import(${from}).CssBlockShape = import(${from}).CssBlockShape>` +
-      `(declarations: NoInfer<{ [P in keyof A]?: A[P] }>[]): import(${from}).CssBlock<A>;`,
+      `(declarations: NoInfer<{ [P in keyof A]?: ${widened("A[P]", WIDENED_DEPTH)} }>[]): import(${from}).CssBlock<A>;`,
   );
 
   /**
@@ -375,7 +414,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
    * 'color' does not exist on type 'never'*, and this says what to do.
    */
   write(
-    `declare const ${variables}: typeof import(${from}) extends { $: infer V } ? V : ` +
+    `declare var ${variables}: typeof import(${from}) extends { $: infer V } ? V : ` +
       `"Declare your variables in ramonda.css.ts, then run \`ramonda-css codegen\`.";`,
   );
 
@@ -612,7 +651,7 @@ export function virtualFile(source: string, options: VirtualFileOptions = {}): V
     code,
     preamble,
     bindings,
-    helpers: { block, from: spread, hole, cond: condition },
+    helpers: { block, from: spread, hole, cond: condition, vars: variables },
     homeOf: (offset) => homeOf(segments, offset),
     spanOf: (start, length) => spanOf(segments, start, length),
     virtualOf: (offset) => virtualOf(bySource, offset) ?? slotFor(slots, offset),
@@ -1194,6 +1233,14 @@ function quoted(text: string): string {
 function key(property: string): string {
   return IDENTIFIER.test(property) ? property : quoted(property);
 }
+
+/**
+ * How deep a narrowed block's states take the CSS-wide keywords: the block, a state in it, and two
+ * more — `@media` holding a `&:hover` is three. Written out level by level, because a named
+ * recursive type is a GLOBAL in a file that is a script, and two such files declared it twice
+ * (`TS2300`), measured. Below the last level a value is checked as written, without the keywords.
+ */
+const WIDENED_DEPTH = 4;
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 

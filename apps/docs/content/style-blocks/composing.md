@@ -2,7 +2,7 @@
 title: Composing, and who wins
 description: Merging one block into another, conditions that bring whole groups, and the cascade layer that decides against your own stylesheet.
 section: Style blocks
-order: 113
+order: 114
 ---
 
 # Composing, and who wins
@@ -148,7 +148,8 @@ a selector mean the same thing, so write whichever reads better.
 One thing worth knowing, because CSS itself works this way: a **shorthand written later clears the
 longhands it covers**. If a base sets `padding-left: 40px` and a modifier sets `padding: 8px`, the
 modifier wins completely — which is what those two declarations would do in a plain stylesheet. The
-other direction leaves both standing, also as CSS does.
+other direction leaves both standing, also as CSS does. [Shorthands](/style-blocks/shorthands) covers the rest — the
+few that stay whole, and the few that are refused.
 
 That holds across the logical spellings too: `margin` sets all four sides whichever way the text
 runs, so it clears `margin-inline`, `margin-block-start` and the rest.
@@ -235,8 +236,7 @@ Without that statement the order is whichever layer the browser meets first, whi
 
 **And the statement has to be seen FIRST.** A layer's place is fixed the first time the browser meets
 its name, so a statement that arrives after `ramonda` is already established cannot move it — it can
-only say where `app` goes, and `app` ends up last. Measured in Chromium, Firefox and WebKit, the same
-`@layer app, ramonda;` either way round:
+only say where `app` goes, and `app` ends up last. The same `@layer app, ramonda;`, either way round:
 
 ```
 your stylesheet first    12px    the block wins, which is what the statement asked for

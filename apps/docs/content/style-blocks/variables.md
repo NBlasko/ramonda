@@ -8,8 +8,8 @@ order: 110
 # Names the stylesheet sees
 
 A block is **one element's rule**. Anything that names something for the whole stylesheet is not
-that — and written inside a block it compiles, nests inside the class rule, and does nothing at all.
-`@keyframes slide { … }` becomes `.r-…{@keyframes slide{…}}`, which no browser resolves.
+that: inside a block it would nest inside the element's class rule, as `.r-…{@keyframes slide{…}}`,
+which no browser resolves. So it is reported:
 
 ```
 @media (min-width: 40rem) { … }     ✓  a condition on this element's rule
@@ -289,24 +289,28 @@ A [registered property](/style-blocks/dynamic) set from `style` is the right ans
 per **instance** — a value this element has and the one beside it does not. A theme is the opposite
 of that, and the difference is **who sets it**.
 
-A value set per element travels in the markup, once per element: on a server-rendered list of 500
-rows, one themed value is **41 bytes on every one of them**, and doubles the HTML. On `:root` it
-costs nothing at all, because each element inherits it.
+A value set per element travels in the markup, once on every element that carries it — on a long
+server-rendered list, once per row. On `:root` it is written once, and every element inherits it.
 
 And a theme switch done per element is a **render**: every element carrying the value has to render
 again to change it. A `var()` reading `:root` changes when the attribute on `<html>` changes, which
 is not a render at all.
 
-## `:root` does not work inside a block
+## `:root` does not go inside a block
 
-```
-:root { --accent: red; }        ✗  inside a block
+```tsx expect-report:root-in-a-block
+const card = @@(
+  :root { --accent: red; }
+);
 ```
 
-It compiles, and then does nothing. A block is one element's rule, so everything in it is nested
-inside that rule — and `:root` there flattens to `.r-… :root`, a descendant selector. `:root` is the
-`<html>` element, which is nobody's descendant. A theme's own declarations belong in a stylesheet,
-and this project's own belong in `ramonda.css.ts`.
+A block is one element's rule, so everything in it is nested inside that rule — and `:root` there
+means `.r-… :root`, the root under the element. `:root` is the `<html>` element, which is nobody's
+descendant, so the rule would apply nowhere; it is reported instead. A theme's own declarations
+belong in a stylesheet, and this project's own belong in `ramonda.css.ts`.
+
+The other way round is fine: `:root.dark & { … }` is the element under the root, which is how a
+theme reaches a block.
 
 ## Next
 

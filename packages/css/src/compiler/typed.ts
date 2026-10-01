@@ -69,6 +69,7 @@ interface Helpers {
   readonly from: string;
   readonly hole: string;
   readonly cond?: string;
+  readonly vars?: string;
 }
 
 /**
@@ -1035,7 +1036,34 @@ function wholeAcrossBlocks(
     readonly from: number;
   }
 
-  /** A group's declarations, as written: property, literal value and node, nested rules left out. */
+  /**
+   * Whether an expression is a `$` path — `__vars.border.thin` — by the name the virtual file bound
+   * `$` to. A spread's block is usually in another file, which binds its own, hence the pattern.
+   */
+  const variable = (node: ts.Expression): boolean => {
+    let root: ts.Expression = node;
+    while (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root)) root = root.expression;
+    return root !== node && ts.isIdentifier(root) && (root.text === helpers?.vars || /^_*__vars$/.test(root.text));
+  };
+
+  /**
+   * A value as the SHEET gets it, as far as this rule asks: a `$` path is a `var()` there, alone or
+   * as part of a value — `1px solid $.color.a` is written as a template. §17: reading only string
+   * literals missed every shorthand a variable keeps whole. Anything else is not read.
+   */
+  const valueOf = (value: ts.Expression): string | undefined => {
+    if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) return value.text;
+    if (variable(value)) return "var(--a)";
+    if (!ts.isTemplateExpression(value)) return undefined;
+    let text = value.head.text;
+    for (const span of value.templateSpans) {
+      if (!variable(span.expression)) return undefined;
+      text += `var(--a)${span.literal.text}`;
+    }
+    return text;
+  };
+
+  /** A group's declarations, as written: property, value and node, nested rules left out. */
   const declared = (element: ts.Expression): [string, string, ts.Node][] => {
     if (!ts.isObjectLiteralExpression(element)) return [];
     const out: [string, string, ts.Node][] = [];
@@ -1044,9 +1072,8 @@ function wholeAcrossBlocks(
       // The name's OWN file: a spread's block is usually declared in another one.
       const written = ts.isStringLiteral(property.name) ? property.name.text : property.name.getText();
       if (written.startsWith("&") || written.startsWith("@")) continue;
-      const value = property.initializer;
-      if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value))
-        out.push([written, value.text, property.name]);
+      const value = valueOf(property.initializer);
+      if (value !== undefined) out.push([written, value, property.name]);
     }
     return out;
   };

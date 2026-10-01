@@ -1,6 +1,6 @@
 ---
 title: Which declaration wins
-description: Two declarations of one property, and the rule that decides between them — the more specific case wins, whatever order you wrote it in.
+description: Two declarations of one property, and what decides between them — the later one, as in CSS, and where conditions differ, the more specific condition.
 section: Style blocks
 order: 112
 ---
@@ -8,8 +8,12 @@ order: 112
 # Which declaration wins
 
 Two declarations of the same property, and both apply. Plain CSS answers with whichever was written
-last. A block answers with a rule, and it is the one every atomic CSS framework arrived at: **the
-more specific case wins, whatever order you wrote it in.**
+last, and so does a block — under the same condition, **the later one wins**. That includes a
+shorthand and its longhand: `padding: 8px; padding-left: 40px` leaves `40px` on the left, and written
+the other way round, `padding` sets all four. [Shorthands](/style-blocks/shorthands) has the detail.
+
+Where the two sit under **different** conditions, a block answers with a rule instead: **the more
+specific case wins, whatever order you wrote it in.**
 
 ## The four things that decide it
 
@@ -17,10 +21,9 @@ In this order:
 
 ```
 1  a condition beats no condition          padding: 8px          then  @media … { padding: 40px }
-2  a longhand beats its shorthand          padding: 8px          then  padding-left: 40px
-3  a narrower max-width beats a wider one  max-width: 64rem      then  max-width: 40rem
-4  a wider min-width beats a narrower one  min-width: 40rem      then  min-width: 64rem
-5  a standard property beats its prefix    -webkit-box-shadow    then  box-shadow
+2  a narrower max-width beats a wider one  max-width: 64rem      then  max-width: 40rem
+3  a wider min-width beats a narrower one  min-width: 40rem      then  min-width: 64rem
+4  a standard property beats its prefix    -webkit-box-shadow    then  box-shadow
 ```
 
 So this does what you meant, and the order you wrote the two breakpoints in does not matter:
@@ -209,14 +212,11 @@ Two things will look unfamiliar. Both are deliberate and neither is anything you
 ```
 
 That is what lets two blocks settle their own conflicts: no two classes on an element set the same
-property, so the one you wrote later simply wins and the stylesheet is never asked. A `padding` and
-a `padding-left` used to be a question for the cascade; now they are the same key, answered where
-you wrote them.
+property, so the one you wrote later simply wins and the stylesheet is never asked.
 
-A few values are not split. A `var()` never is, because its parts are unknown until the page
-computes them; nor is a value one browser would drop whole, like `text-box: cap`, or a system font,
-like `font: caption`. Those keep their shorthand, and the layers are what order them against the
-longhands they cover.
+A few values are not split — a `var()`, a value one browser would drop whole, a system font. Those
+keep their shorthand, and the layers below are what order them against the longhands they cover;
+[Shorthands](/style-blocks/shorthands#what-stays-whole) lists them.
 
 **What each layer holds.** `ramonda.a` holds `all`, `ramonda.v` a shorthand that reached the
 stylesheet whole, `ramonda.p` a longhand this split out of a shorthand, `ramonda.u` every longhand
@@ -229,14 +229,15 @@ package safe to drop into an application. None is a count of what a shorthand co
 when CSS adds a longhand, and two releases would disagree.
 
 One thing follows from that, and the build refuses it: a narrower shorthand after a wider one when
-both reach the stylesheet whole — `border: var(--x)` and then `border-top: var(--y)`. Both are in
-`ramonda.v`, and no order keeps the second one winning on every page. Set the longhands of the
-second one instead.
+both reach the stylesheet whole — see [Shorthands](/style-blocks/shorthands#two-whole-shorthands).
 
 You never write against these names. **`ramonda` is the name to put in your own `@layer` statement**,
 and it orders everything inside it — see [composing](/style-blocks/composing#the-one-place-this-is-not-plain-css).
 
 ## Next
 
+- **[Shorthands](/style-blocks/shorthands)** — what a shorthand becomes, and the few that stay whole.
+- **[In the browser](/style-blocks/browser)** — from a rule or an element back to the line that
+  wrote it.
 - **[Composing](/style-blocks/composing)** — merging blocks, conditions, and your own stylesheet.
 - **[What is checked](/style-blocks/checking)** — every rule, including the two above.

@@ -90,10 +90,15 @@ WHY=1 node scripts/build-grammar-shapes.mjs                    # what each engin
 WHY_FAMILY=animation node scripts/build-grammar-shapes.mjs     # every value of one family
 ```
 
-Three of them carry their own selftests, run through the `SELFTEST` environment variable —
-`collide`, `drift`, `crowd`, `moved` for layer names, `order` for skew, `slot` for the split. Each
-one plants a specific fault and asserts the gate catches it. They run in `pnpm check` as separate
+Every browser gate carries its own selftests, run through the `SELFTEST` environment variable —
+`order` for skew, `slot` and `half` for the positional split, `change` and `joined` for render
+equality, `refuse` for must-split, `flex` and `forget` for the hand splits. Each one plants a
+specific fault and asserts the gate catches it. They run in `pnpm check` and in CI as separate
 steps, right before the gate itself.
+
+A selftest that catches its break prints ONE line, on stdout — `[must-split] SELFTEST=refuse caught
+its break, as it must: 45 reported — the first: …` — so every detailed difference in a log is a real
+one. A selftest that catches nothing fails, with its reason. `scripts/lib-selftest.mjs` is the line.
 
 ## Four rules the code cannot state about itself
 
@@ -160,9 +165,9 @@ standing for several longhands (`white-space: pre`, `flex: none`), a word that s
 (`font-synthesis: weight`), a part copied into the parts left out (`grid-area: a`), and every form
 of `<position>` for `background-position`, `mask-position` and `-webkit-mask-position`, and
 `background` and `mask` layer by layer on top of it, `font`, the ranges of `animation-range` and
-`timeline-trigger`, `grid` and `grid-template` with their area strings, and `mask-border`.
-**34 by hand.**
-Seventeen of them are in a table too, and the hand rules win: a table is learned from sentinels, and
+`timeline-trigger`, `grid` and `grid-template` with their area strings, `mask-border`, and the
+fallbacks of `position-try`. **35 by hand.**
+Eighteen of them are in a table too, and the hand rules win: a table is learned from sentinels, and
 a value no sentinel was ever like it read wrong or not at all. `grid-column: 2` set the end to `2`
 where every engine says `auto`; `animation-range: cover` ran to `normal`, not to `cover`; and
 `grid-column: 1 / -1`, `columns: 2`, `place-items: first baseline` did not split. The first two

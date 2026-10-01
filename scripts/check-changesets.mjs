@@ -175,6 +175,11 @@ const plan = releasePlan();
 if (selftest("floor")) plan.changesets = plan.changesets.slice(1);
 
 if (plan.changesets.length !== files.length) {
+  // A selftest that caught its break says so in one line: its details would read as a failure.
+  if (selftest("floor")) {
+    console.log("[changesets] SELFTEST floor: the plan losing a changeset was reported, as it must be");
+    process.exit(0);
+  }
   // The floor under the check below: it can only speak about changesets the plan actually returned.
   // If those two numbers disagree, the plan is not describing this `.changeset/` directory and every
   // verdict drawn from it is about some other tree.
@@ -182,10 +187,6 @@ if (plan.changesets.length !== files.length) {
     `\n[changesets] the plan describes ${plan.changesets.length} changeset(s) but ${files.length} are\n` +
       `  pending on disk. Nothing below can be trusted until those agree.\n`,
   );
-  if (selftest("floor")) {
-    console.log("[changesets] SELFTEST floor: the plan losing a changeset was reported, as it must be");
-    process.exit(0);
-  }
   process.exit(1);
 }
 
@@ -224,6 +225,11 @@ const stuck = nothingWillConsume(
 );
 
 if (stuck.length > 0) {
+  // A selftest that caught its break says so in one line: its details would read as a failure.
+  if (selftest("ignored")) {
+    console.log("[changesets] SELFTEST ignored: the planted changeset was reported, as it must be");
+    process.exit(0);
+  }
   console.error(`\n[changesets] ${stuck.length} changeset(s) the release can never consume:\n`);
   for (const changeset of stuck) {
     console.error(`  .changeset/${changeset.id}.md — names only ${changeset.releases.map((r) => r.name).join(", ")}`);
@@ -235,10 +241,6 @@ if (stuck.length > 0) {
       `  Delete the file. If the change deserves a note, it belongs in the changeset of a package that\n` +
       `  IS released, or in the site's own pages.\n`,
   );
-  if (selftest("ignored")) {
-    console.log("[changesets] SELFTEST ignored: the planted changeset was reported, as it must be");
-    process.exit(0);
-  }
   process.exit(1);
 }
 
@@ -290,6 +292,11 @@ const scaffolded = scaffoldedPackages().filter((name) => released.has(name));
 if (selftest("scaffold")) released.delete("create-ramonda");
 
 if (scaffolded.length > 0 && !released.has("create-ramonda")) {
+  // A selftest that caught its break says so in one line: its details would read as a failure.
+  if (selftest("scaffold")) {
+    console.log("[changesets] SELFTEST scaffold: the missing scaffolder bump was reported, as it must be");
+    process.exit(0);
+  }
   console.error(
     `\n[changesets] ${scaffolded.join(", ")} ${scaffolded.length === 1 ? "is" : "are"} being released and ` +
       `\`create-ramonda\` is not.\n\n` +
@@ -298,10 +305,6 @@ if (scaffolded.length > 0 && !released.has("create-ramonda")) {
       `  changeset for it, \`npm create ramonda\` keeps pinning the release before this one.\n\n` +
       `  Add \`.changeset/…\`: \`"create-ramonda": patch\`, saying the pins now match what ships.\n`,
   );
-  if (selftest("scaffold")) {
-    console.log("[changesets] SELFTEST scaffold: the missing scaffolder bump was reported, as it must be");
-    process.exit(0);
-  }
   process.exit(1);
 }
 

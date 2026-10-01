@@ -2,14 +2,14 @@
 title: Project settings
 description: ramonda.css.ts, the rules your project makes stricter than CSS is, and what the class names say.
 section: Style blocks
-order: 116
+order: 117
 ---
 
 # Project settings
 
-Most of this package has no settings, on purpose. A class name is a hash of what the block does, and
-two projects that named one block differently would emit two rules for the same thing with nothing to
-notice. So identity is fixed, and the rest is not.
+Most of this package has no settings, on purpose. A class name is derived from the declaration it
+holds, and two projects that named one declaration differently would emit two rules for the same
+thing with nothing to notice. So identity is fixed, and the rest is not.
 
 ## Two places, because they have different audiences
 
@@ -64,7 +64,7 @@ an older release, whose classes may not match the ones this release writes.
 
 That is what lets two blocks settle their own conflicts without the stylesheet: no two classes on an
 element set the same property, so a `padding-left` written after a `padding` simply replaces it —
-see [order](/style-blocks/order#if-you-read-the-output). A shorthand that is not split, like
+see [Shorthands](/style-blocks/shorthands). A shorthand that is not split, like
 `background: var(--b)`, keeps its own class — `r-bg-var(--b)`.
 
 About sixty properties have a short spelling — `p`, `m`, `w`, `h`, `bg`, `c`, `gap`, `items`,
@@ -97,8 +97,7 @@ The `_` before `.title` is the space in `& .title` — which is what separates a
 later — and a block handed to another component arrives as a class string and nothing else. So what
 a class sets has to be readable out of the class itself, or the merge has nothing to decide with.
 
-That is also why no class name is *only* a hash any more. Measured on this repository when the first
-half was added: 23 of 91 class names had nothing readable in them, and none do now.
+That is also why no class name is *only* a hash.
 
 ## When a half is a hash
 
@@ -107,19 +106,19 @@ Each half falls back on its own, and the other one still reads.
 **The value**, when it cannot be written:
 
 ```
-transition: border-left-width .15s ease-in-out   r-tr-QbofRLj5j
-content: "a b"                                   r-content-5dEHlFqj2
+grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr))   r-gtc-cb29PN6m0
+content: "a b"                                                 r-content-PQPLyG60W
 ```
 
-- **over 32 characters** — in practice a `transition` or a `grid-template` with several parts;
+- **over 32 characters** — in practice a value with several parts, like the track list above;
 - **a character a class name cannot hold** — a quote, most often.
 
 **The context**, marked by a leading `0`:
 
 ```
-&:hover, &:focus { color: red }          r-0dG3Pq.c-red
-&[data-on] { color: red }                r-0W6pfz.c-red
-@media (min-width: 40rem) { gap: 8px }   r-03noXL.gap-8px
+&:hover, &:focus { color: red }            r-0SjJ3F.c-red
+&[data-on] { color: red }                  r-0dG3Pq.c-red
+@media (min-width: 40rem) { color: red }   r-03noXL.c-red
 ```
 
 - **a selector list** — `&:hover, &:focus` is two selectors sharing a body, and there is no one
@@ -134,12 +133,18 @@ context begins with `:`, `.`, `_`, `@` or `[`. So the `0` says *hashed* and can 
 ## In the stylesheet they look escaped
 
 ```css
-.r-bg-\#10b981 { background: #10b981 }
+.r-c-\#10b981 { color:#10b981; }
 ```
 
 That backslash is CSS's own: in a selector a `#` starts an id, so a class name holding one has to say
 it means a `#`. The markup carries the name without it, which is what you see in devtools and what
 you would grep for.
+
+## In development, one more
+
+On the dev server every block also carries a class that names where it was written —
+`r:src:src/Card.tsx:10`. It has no rule and is not a key, so it changes nothing; a build has none.
+[In the browser](/style-blocks/browser) is what it is for.
 
 ## Next
 

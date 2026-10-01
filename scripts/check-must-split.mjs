@@ -23,6 +23,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTs } from "./lib-load-ts.mjs";
+import { caughtIt } from "./lib-selftest.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const selftest = process.env.SELFTEST;
@@ -112,7 +113,20 @@ const MUST = {
   "-webkit-mask-position": ["center", "10px 20px"],
   "-webkit-border-before": ["1px solid red", "none"],
   marker: ["none", 'url("#m")'],
-  "position-try": ["none", "--a", "--a, --b", "most-width --a", "most-height --a, --b, flip-block", "flip-block"],
+  "position-try": [
+    "none",
+    "--a",
+    "--a, --b",
+    "most-width --a",
+    "most-height --a, --b, flip-block",
+    "flip-block",
+    // Items of several words, which stayed whole until §18.
+    "--a, top left",
+    "--a, flip-block flip-inline",
+    "--b flip-block",
+    "--a, span-left top",
+    "most-width bottom span-x-end, --a flip-start",
+  ],
   "scroll-timeline": ["--a", "--a block", "--a x, --b y"],
   "view-timeline": ["--a", "--a inline", "--a block auto"],
   "corner-shape": ["round", "bevel", "squircle notch", "scoop bevel round square"],
@@ -440,10 +454,11 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
   }
 }
 
+if (wrong.length > 0 && selftest) caughtIt("must-split", selftest, wrong);
 if (wrong.length > 0) {
   console.error(`[must-split] ${wrong.length} of ${asked}:`);
   for (const one of process.env.WHY ? wrong : wrong.slice(0, 20)) console.error(`[must-split]   ${one}`);
-  process.exit(selftest ? 0 : 1);
+  process.exit(1);
 }
 if (selftest) {
   console.error(`[must-split] SELFTEST=${selftest} changed nothing — this check would not catch it.`);

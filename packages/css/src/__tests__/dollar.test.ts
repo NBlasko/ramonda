@@ -166,7 +166,9 @@ describe("what the virtual file makes of it", () => {
   test("`$` needs no import, because the virtual file binds it", () => {
     const written = code("color: $.color.primary.main;");
 
-    expect(written).toContain("declare const __vars: typeof import");
+    // `var`, not `const`: in a file that is a script it is global, and a second script declaring it
+    // again is allowed for a `var` of the same type and `TS2451` for a `const`.
+    expect(written).toContain("declare var __vars: typeof import");
     // Under a name of ours, so an author who uses `$` for something else is untouched.
     expect(written).not.toContain("declare const $;");
   });

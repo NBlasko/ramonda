@@ -19,11 +19,16 @@ afterEach(() => {
  * below is about what the hooks do once the ordering is right.
  */
 
+const cssText = (loaded: string | { code: string } | null): string | null =>
+  loaded === null || typeof loaded === "string" ? loaded : loaded.code;
+
 /** Every hook this asserts on, narrowed off the structural plugin type. */
 function hooks() {
   const plugin = ramondaCss();
   const transform = plugin.transform as (this: unknown, code: string, id: string) => { code: string } | null;
-  const load = plugin.load as (this: unknown, id: string) => string | null;
+  // The stylesheet's TEXT: in development `load` hands back a source map beside it, which the tests
+  // of the map read on their own — see "a file's stylesheet, with its source map".
+  const load = (id: string): string | null => cssText(plugin.load(id));
   const resolveId = plugin.resolveId as (this: unknown, id: string) => string | null;
   return { plugin, transform, load, resolveId };
 }
@@ -123,7 +128,7 @@ describe("the stylesheet, one module per file", () => {
     const { transform, load } = hooks();
     transform.call({}, STYLED, "/src/Card.tsx");
 
-    const css = load.call({}, cssOf("/src/Card.tsx"));
+    const css = load(cssOf("/src/Card.tsx"));
     expect(css).toContain("@layer ramonda.");
     expect(css).toContain("display:flex;");
   });
@@ -131,7 +136,7 @@ describe("the stylesheet, one module per file", () => {
   test("and nothing else is loaded by this plugin", () => {
     const { load } = hooks();
 
-    expect(load.call({}, "/src/Card.tsx")).toBeNull();
+    expect(load("/src/Card.tsx")).toBeNull();
   });
 
   test("its own stylesheet coming back round is not transformed again", () => {
@@ -154,8 +159,8 @@ describe("the stylesheet, one module per file", () => {
     transform.call({}, STYLED, "/src/One.tsx");
     transform.call({}, STYLED, "/src/Two.tsx");
 
-    expect(load.call({}, cssOf("/src/One.tsx"))).toContain("display:flex;");
-    expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("display:flex;");
+    expect(load(cssOf("/src/One.tsx"))).toContain("display:flex;");
+    expect(load(cssOf("/src/Two.tsx"))).toContain("display:flex;");
   });
 
   test("and the second file still gets the class, which is the point of deduping", () => {
@@ -177,7 +182,7 @@ describe("a save, which is what a dev server does all day", () => {
     transform.call({}, `const a = <div className={@@( display: flex; )}>x</div>;\n`, "/src/Card.tsx");
     transform.call({}, `const a = <div className={@@( display: grid; )}>x</div>;\n`, "/src/Card.tsx");
 
-    const css = load.call({}, cssOf("/src/Card.tsx"));
+    const css = load(cssOf("/src/Card.tsx"));
     expect(css).toContain("display:grid;");
     expect(css).not.toContain("display:flex;");
   });
@@ -205,12 +210,12 @@ describe("a save, which is what a dev server does all day", () => {
 
     transform.call(context, STYLED, "/src/One.tsx");
     transform.call(context, STYLED, "/src/Two.tsx");
-    expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("display:flex;");
+    expect(load(cssOf("/src/Two.tsx"))).toContain("display:flex;");
 
     reloaded.length = 0;
     transform.call(context, `const a = <div>x</div>;\n`, "/src/One.tsx");
 
-    expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("display:flex;");
+    expect(load(cssOf("/src/Two.tsx"))).toContain("display:flex;");
     // Nothing to tell anyone: Two's CSS is what it always was.
     expect(reloaded).toEqual([]);
   });
@@ -249,14 +254,14 @@ describe("a save, which is what a dev server does all day", () => {
       "/src/One.tsx",
     );
     transform.call(context, `const c = <div className={@@( color: red; )}>z</div>;\n`, "/src/Two.tsx");
-    expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("color:red;");
+    expect(load(cssOf("/src/Two.tsx"))).toContain("color:red;");
 
     reloaded.length = 0;
     // One.tsx keeps `display:flex` and drops `color:red`, so it still has blocks — a different path
     // from losing every one of them.
     transform.call(context, `const a = <div className={@@( display: flex; )}>x</div>;\n`, "/src/One.tsx");
 
-    expect(load.call({}, cssOf("/src/Two.tsx"))).toContain("color:red;");
+    expect(load(cssOf("/src/Two.tsx"))).toContain("color:red;");
     expect(reloaded).toEqual([]);
   });
 
@@ -340,7 +345,7 @@ describe("the assembled stylesheet", () => {
   const built = () => {
     const plugin = ramondaCss();
     plugin.transform.call({}, SOURCE, "/src/Card.tsx");
-    return { plugin, css: plugin.load.call({}, "/src/Card.tsx?ramonda-css.css") ?? "" };
+    return { plugin, css: cssText(plugin.load("/src/Card.tsx?ramonda-css.css")) ?? "" };
   };
 
   const bundleOf = (css: string) => ({
@@ -648,5 +653,102 @@ describe("which config a transform is measured against", () => {
     writeFileSync(join(repo, "packages", "admin", "ramonda.css.ts"), `export default { units: { length: ["px"] } };\n`);
 
     expect(run()).toContain("px");
+  });
+});
+
+/**
+ * In development a file's stylesheet comes with a source map, so a browser's style panel names the
+ * `.tsx` line beside each rule. A build writes one sheet and gets none.
+ */
+describe("a file's stylesheet, with its source map", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  const onDisk = (source: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "ramonda-vite-map-"));
+    dirs.push(dir);
+    const file = join(dir, "Card.tsx");
+    writeFileSync(file, source);
+    return file;
+  };
+
+  test("the dev server hands the map beside the CSS, with the file's own text in it", () => {
+    const file = onDisk(STYLED);
+    const plugin = ramondaCss();
+    plugin.config.call({}, {}, { mode: "development" });
+    plugin.transform.call({}, STYLED, file);
+    const loaded = plugin.load.call({}, `${file}?ramonda-css.css`);
+
+    if (loaded === null || typeof loaded === "string") throw new Error("the dev server handed back no map");
+    const { code, map } = loaded;
+    expect(code).toContain("display:flex;");
+    expect(map.sources).toEqual([file]);
+    expect(map.sourcesContent).toEqual([STYLED]);
+    expect(map.mappings).not.toBe("");
+  });
+
+  test.each(["production", "staging"])("a build gets the CSS alone, in mode %s", (mode) => {
+    const plugin = ramondaCss();
+    plugin.config.call({}, {}, { mode, command: "build" });
+    plugin.transform.call({}, STYLED, "/src/Card.tsx");
+
+    expect(typeof plugin.load.call({}, "/src/Card.tsx?ramonda-css.css")).toBe("string");
+  });
+
+  test("the dev server is told to pass the map on, unless the project said otherwise", () => {
+    const asked = (userConfig: unknown) =>
+      (ramondaCss().config.call({}, userConfig, { mode: "development" }) as { css?: { devSourcemap?: boolean } }).css;
+
+    expect(asked({})).toEqual({ devSourcemap: true });
+    expect(asked({ css: { devSourcemap: false } })).toBeUndefined();
+  });
+});
+
+/**
+ * Source marks (DESIGN.md §19) on the dev server only, with the file's path from the project root.
+ * A build and a test run have none — a test comparing a whole `className` must see what ships.
+ */
+describe("source marks", () => {
+  /**
+   * `inVitest: false` steps out of the runner this file is in. The plugin also refuses marks
+   * whenever Vitest is running, in any mode a project starts it in — which is right for a project's
+   * tests and would make the dev server's own case untestable here.
+   */
+  const compiledIn = (command: "serve" | "build", mode: string, inVitest = false) => {
+    const was = process.env.VITEST;
+    if (!inVitest) delete process.env.VITEST;
+    try {
+      const plugin = ramondaCss();
+      plugin.config.call({}, { root: "/p" }, { mode, command });
+      return plugin.transform.call({}, STYLED, "/p/src/Card.tsx")?.code ?? "";
+    } finally {
+      if (was !== undefined) process.env.VITEST = was;
+    }
+  };
+
+  test("the dev server marks each block with its path from the project root", () => {
+    expect(compiledIn("serve", "development")).toContain(`"r:src:src/Card.tsx:1"`);
+  });
+
+  /**
+   * In ANY mode the dev server is started in. Keyed on the mode's name first, `vite --mode staging`
+   * served pages with no marks; a review found it. What decides is the command.
+   */
+  test("and in a mode of the project's own", () => {
+    expect(compiledIn("serve", "staging")).toContain(`"r:src:src/Card.tsx:1"`);
+  });
+
+  test.each([
+    ["a build", "build", "production"],
+    ["a build in a mode of its own", "build", "staging"],
+    ["a test run", "serve", "test"],
+  ] as const)("%s has none", (_what, command, mode) => {
+    expect(compiledIn(command, mode)).not.toContain("r:src:");
+  });
+
+  test("nor does a test run started in a mode of the project's own", () => {
+    expect(compiledIn("serve", "staging", true)).not.toContain("r:src:");
   });
 });

@@ -3327,7 +3327,25 @@ top of a file, an editor's outline does not show comments, and a search result i
 five hundred. If the answer is *nowhere*, a longer header is a longer thing nobody reads and the
 work belongs in the `settings` page instead.
 
-### 13. A narrowed value refuses `inherit` — a DECISION to take, measured
+### 13. A narrowed value refuses `inherit` — DECIDED: it takes them, BUILT
+
+**The user's decision (2026-09-30): the keywords are allowed, always.** Built in the virtual file's
+`__block` declaration: a narrowed value takes `inherit`, `initial`, `unset`, `revert` and
+`revert-layer`, inside a state too; `!important`, another value and another property are refused
+as before. Two traps measured while building it, both in `virtual.ts`'s note:
+
+- widening EVERY value made TypeScript print `Keyword<…>` member by member on ordinary blocks, so a
+  value that already takes `inherit` is handed back unchanged;
+- importing `CssGlobal` from the properties module made the whole file `any` where the module lacks
+  it — a typo went silent — so it is guarded, and such a module gets the five words written out.
+
+A review of it found three more, all fixed: `any` in an allow-list was opened as if it were a state
+(`width?: any` refused `width: 10px`); a NAMED type for the widening is global in a file that is a
+script, so two such files were `TS2300` — it is written out level by level now, four deep; and the
+same collision had been there before §13 for `$`, `declare const __vars`, now a `var`. The messages
+name `CssGlobal` rather than listing its five words in front of the author's own values.
+
+What follows is the question as it was put, kept for the reasoning.
 
 Found while checking the claims on the new `/style-blocks/prop` page against a real project.
 
@@ -3602,7 +3620,13 @@ Steps 4 to 6 are the architecture; 1 to 3 are what an author sees. Nothing after
 before it.
 
 
-### 16. A selftest's log looks like a failure — TODO
+### 16. A selftest's log looks like a failure — DONE
+
+**Built:** every gate whose selftest printed its break as a failure now prints one line on stdout
+when the break is caught — `scripts/lib-selftest.mjs` — with the count and the first thing found, so
+a reader sees the planted break and not something else. Six gates changed: the five browser gates
+and `check-changesets`; the rest already printed one line. A selftest that plants nothing still
+exits 1, measured. The question as it was put:
 
 Asked by the user reading a green CI run: the `SELFTEST=` runs print what they found — the break
 they planted — in the same words as a real failure, so a green log is full of lines that read as
@@ -3614,7 +3638,12 @@ red. But a reader should not have to know that.
 difference in a log is a real one. Every gate with a `SELFTEST` mode, the same way.
 
 
-### 17. A `$` variable in the cross-block check — TODO
+### 17. A `$` variable in the cross-block check — DONE
+
+**Built:** the virtual file hands the checker the name it bound `$` to, and the cross-block walk reads
+a `$` path as a `var()` — alone, or inside a template when it is part of a value. The first checker
+tests with variables declared are in `check.test.ts`: a config declaring them, and a properties
+module exporting `$`, as codegen writes one. The question as it was put:
 
 Found by the second review of `wholeAcrossBlocks` (`typed.ts`). The virtual file writes a variable
 value as `__vars.border.thin`, a property access, and the walk reads only literal values — so
@@ -3625,7 +3654,13 @@ false one: the merge's development warning still sees it at run time.
 **What it needs:** read a `__vars` access as a `var()` value, and a checker test with variables
 declared — no test in `check.test.ts` declares any yet, which is why it was left.
 
-### 18. A `position-try` item of several words stays whole — TODO
+### 18. A `position-try` item of several words stays whole — DONE
+
+**Built as a hand rule** in `splitByHand.ts`, from the engines rather than the grammar: every pair
+of area words and every run of tactics — 3549 items — was put to all three engines, which agreed on
+each one, and the rule matches them exactly. Two things the grammar gets wrong: no engine takes
+`x-self-start` and its kin, and all three take `flip-x` and `flip-y`. The comma-in-the-last-longhand
+path in `split.ts` went with it. The question as it was put:
 
 Found by the fourth review, measured in all three engines. `position-try: --a, --b` splits, and so
 does an item of one word; an item of two — `--a, top left`, `--a, flip-block flip-inline`,
@@ -3637,6 +3672,53 @@ reaches the sheet whole, in `v`, where a longhand after it still wins. It only d
 
 **What it needs:** read a fallback item against its own grammar (as `matchValue` can), or a hand
 rule; then the values above go on `check-must-split.mjs`.
+
+
+### 19. Which block gave an element its styles — BUILT 2026-10-01
+
+**Built as agreed below**, with the two open points settled by the user: the mark is
+`r:src:<path>:<line>`, and the path is from the project root. On the Vite dev server only, in any
+mode it is started in — decided by Vite's `command`, after a review found `vite --mode staging`
+served none when the mode's NAME decided. A build has none, in any mode, and neither has a test run
+(mode `test`, or Vitest running at all), so a test comparing a whole `className` sees what ships.
+Measured on a scaffolded SSR app: the server and the client carry the same marks, hydration reports
+nothing, and an edit moves the line in both. Two blocks on one line share one mark — one place. `withoutSourceMarks` is the runtime helper a spread calls; it takes an absent part as the merge
+does — found on the playground, where `...{props.css}` with no prop threw.
+
+Dev source maps point each rule at where it was written (`order.md`, "From a rule back to the line
+that wrote it"). A class written in several places is one rule with several origins, so a style
+panel lists all of them, and nothing in the page says which one THIS element's class came from.
+
+**Rejected first, and why:**
+- a browser extension (Chrome, Firefox) — it sees the element and its classes, and which BLOCK gave
+  a class is known only while rendering; guessing from the element's component is wrong whenever a
+  block arrives as a `css` prop or through `...{base}`. Two extensions to maintain, for a guess;
+- a dev-only custom property in every rule, `--r-src: "Card.tsx:14"` — it sits in the RULE, which
+  is shared, so it has the same several-origins problem as the map; it inherits to every child;
+- a suffix on dev class names — dev and production would carry different classes, and the merge
+  reads classes, so the two could behave differently;
+- a `data-style-src` attribute, as StyleX's debug mode spreads onto an element — a block here is a
+  string, so the framework would have to set it; the class below needs no change to core.
+
+**Agreed: a dev-only class that names the block, with no rule.** Each block's class string gets one
+more class in development, `r:src:Card.tsx:10` (spelling to settle): file and line of the `@@`.
+
+- It has **no CSS rule**, so it styles nothing, and it does not start with `r-`, so the merge never
+  reads it as a style key — styles and winners are the same in development and production.
+- It has its own **prefix the merge recognises** as a source mark.
+- **A spread leaves no mark.** `const card = @@( ...{base}; … )` in `Card.tsx:10`: the element shows
+  `Card.tsx:10` only. In development the compiler passes a spread's base through a helper that drops
+  its source marks, and the block adds its own. What matters is where a block is USED, not where a
+  piece of it came from.
+- **Blocks used side by side keep all their marks.** `mergeClassNames(card, props.css)`, with
+  `props.css` written in `Page.tsx:22`, shows both `Card.tsx:10` and `Page.tsx:22`: the two are
+  equal, so both are shown (the user's decision).
+- Production has none of it.
+
+**Known costs:** a test comparing a whole `className` string sees the marks in development
+(`toHaveClass` does not); a block whose every declaration was overridden still leaves its mark,
+since the merge cannot tell a live source from a dead one; dev HTML grows by a class per block.
+
 
 ### The name it ended up with
 

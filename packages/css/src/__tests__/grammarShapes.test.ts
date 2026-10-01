@@ -250,6 +250,7 @@ describe("a split reaches leaves, never another shorthand", () => {
     offset: "url(a.svg) 10% auto 90deg / left top",
     "border-image": "url(a.png) 27 / 50px / 1rem round",
     "interest-delay": "1s 2s",
+    "position-try": "most-width --a, top left",
   };
 
   test("every family split by hand has a sample here", () => {

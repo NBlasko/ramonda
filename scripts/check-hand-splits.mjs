@@ -24,6 +24,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadTs } from "./lib-load-ts.mjs";
+import { caughtIt } from "./lib-selftest.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const selftest = process.env.SELFTEST;
@@ -82,6 +83,7 @@ const PROBE = {
   offset: "none",
   "border-image": "none",
   "interest-delay": "normal",
+  "position-try": "--a",
   "background-position": "1px 2px",
   "mask-position": "1px 2px",
   "-webkit-mask-position": "1px 2px",
@@ -706,6 +708,41 @@ const CORPUS = {
     "bogus",
   ],
   "interest-delay": ["normal", "1s", "1s 2s", "normal normal", "200ms normal", "1s 2s 3s", "red"],
+  // Every shape of item, and each way one is refused. The whole item list — 3549, every pair of
+  // area words and every run of tactics — was measured once against the rule, with no difference.
+  "position-try": [
+    "none",
+    "--a",
+    "--a, --b",
+    "most-width --a, --b",
+    "most-height top left, --a",
+    "--a, top left",
+    "top, center, span-all left",
+    "block-start inline-end",
+    "self-block-start self-inline-end",
+    "start end",
+    "span-self-start self-end",
+    "--a, flip-block flip-inline",
+    "flip-block flip-inline flip-start",
+    "flip-x flip-y --a",
+    "--a flip-start",
+    "most-width none",
+    "normal --a",
+    // Refused by every engine:
+    "normal",
+    "none, --a",
+    "--a, none",
+    "--a --b",
+    "flip-block --a flip-inline",
+    "flip-block flip-block",
+    "left right",
+    "block-start top",
+    "x-self-start",
+    "start self-end",
+    "--a,",
+    "most-width, --a",
+    "--a, most-width --b",
+  ],
   "background-position": POSITIONS,
   "mask-position": POSITIONS,
   "-webkit-mask-position": POSITIONS,
@@ -832,10 +869,11 @@ for (const engine of ["chromium", "firefox", "webkit"]) {
 console.log(`[hand] ${Object.keys(BY_HAND).length} families, ${compared} splits identical to the shorthand`);
 if (process.env.WHY) for (const one of refused) console.log(`[hand]   refused, kept whole: ${one}`);
 
+if (wrong.length > 0 && selftest) caughtIt("hand", selftest, wrong);
 if (wrong.length > 0) {
   console.error(`[hand] ${wrong.length} split(s) differ from what the shorthand does:`);
   for (const one of process.env.WHY ? wrong : wrong.slice(0, 20)) console.error(`[hand]   ${one}`);
-  process.exit(selftest ? 0 : 1);
+  process.exit(1);
 }
 if (selftest) {
   console.error(`[hand] SELFTEST=${selftest} changed nothing — this check would not catch it.`);
