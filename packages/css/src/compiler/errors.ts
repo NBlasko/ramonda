@@ -12,13 +12,18 @@ export class CssBlockError extends Error {
   readonly line: number;
   /** 1-based. */
   readonly column: number;
+  /** The offset in the source, and the sentence without its position — what an editor shows. */
+  readonly offset?: number;
+  readonly reason?: string;
 
-  constructor(message: string, filename: string, line: number, column: number) {
+  constructor(message: string, filename: string, line: number, column: number, offset?: number) {
     super(`${filename}:${line}:${column}  ${message}`);
     this.name = "CssBlockError";
     this.filename = filename;
     this.line = line;
     this.column = column;
+    this.offset = offset;
+    this.reason = message;
   }
 }
 
@@ -68,5 +73,5 @@ export function positionOf(source: string, offset: number): { line: number; colu
 
 export function refuse(message: string, source: string, offset: number, filename: string): never {
   const { line, column } = positionOf(source, offset);
-  throw new CssBlockError(message, filename, line, column);
+  throw new CssBlockError(message, filename, line, column, offset);
 }

@@ -24,6 +24,9 @@ refused with an error that names its replacement.
   which groups it has.
 - The checker now reads the value in every match arm and every branch of a choice, which it did not
   before: `color: match $(t) { a => redd; }` is reported like `color: redd`.
+- **What the build refuses, the editor now shows**, in the build's own words (`block-refused`):
+  an `else` out of place, `when $(a) $(b)`, a condition inside a match arm, a choice with no `:`.
+  It cannot be switched off, and neither can `block-in-a-template`, since the build refuses both.
 - A condition holding operators — `when $(p ? q : r)` — compiled to the wrong expression. It is one
   condition now.
 

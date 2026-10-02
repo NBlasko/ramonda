@@ -993,6 +993,16 @@ function validate(config: Record<string, unknown>, path: string): void {
       if (severity !== "off" && severity !== "error") {
         refuse(`sets \`${id}\` to ${describe(severity)}. A rule is "error" or "off".`);
       }
+      /**
+       * What the BUILD refuses cannot be switched off: the build stops on it whatever this says, so
+       * "off" would only quiet the editor and promise a build that cannot happen.
+       */
+      if (severity === "off" && (id === "block-refused" || id === "block-in-a-template")) {
+        refuse(
+          `silences \`${id}\`, and the build refuses it whatever a config says — switching it off ` +
+            "would only quiet the editor. Fix the block instead.",
+        );
+      }
       if (severity === "off") {
         const turnedOn = whatTurnedOn(id, config);
         if (turnedOn !== undefined) {

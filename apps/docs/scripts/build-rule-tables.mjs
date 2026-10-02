@@ -303,6 +303,7 @@ const CSS_LINES = {
     "a declaration another one on the same element switches off — valid CSS the browser ignores",
   "unknown-variable": "`$group.…` naming a variable your `ramonda.css.ts` does not declare",
   "variable-by-hand": "`var(--…)` written by hand for a variable your `ramonda.css.ts` declares — write `$group.…`",
+  "block-refused": "what the build refuses, shown in the editor in the build's own words — it cannot be switched off",
   "too-many-values": "more values than the property takes — in CSS, or in your `ramonda.css.ts`",
   "missing-semicolon": "a declaration with no `;`, which swallows the line written under it",
   "string-not-allowed": "a quoted value where the property takes a keyword",

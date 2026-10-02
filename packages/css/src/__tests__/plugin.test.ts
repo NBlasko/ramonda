@@ -3088,3 +3088,19 @@ describe("the typed rules where nothing can be compiled", () => {
     expect(said.filter((one) => one.includes("style-prop"))).toEqual([]);
   });
 });
+
+/** What the build refuses, the editor shows — see `editorRefusals.test.ts` for the shapes. */
+describe("a block the build refuses", () => {
+  test("is an error in the editor, on the word, in the build's words", () => {
+    const marked = `const a = <div className={@@(\n  else { color: red; }\n)}>x</div>;\n`;
+    const { service, source } = editor(marked);
+    const found = service
+      .getSemanticDiagnostics(FILE)
+      .filter((one) => ts.flattenDiagnosticMessageText(one.messageText, " ").includes("[block-refused]"));
+
+    expect(found).toHaveLength(1);
+    expect(found[0].start).toBe(source.indexOf("else"));
+    expect(found[0].category).toBe(ts.DiagnosticCategory.Error);
+    expect(ts.flattenDiagnosticMessageText(found[0].messageText, " ")).toContain("`else` belongs right after");
+  });
+});

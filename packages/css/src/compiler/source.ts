@@ -1,3 +1,4 @@
+import { CssBlockError } from "./errors";
 import type { Config } from "../config";
 import { type Imported, namedSites, syntaxesIn } from "./references";
 import { readBlock } from "./read";
@@ -97,8 +98,27 @@ export function checkedSource(
    */
   const unsilenceable = checkTemplates(source);
 
+  /** What the build would refuse, found by an editor's forgiving read — see the loop below. */
+  const refused: Finding[] = [];
+
   for (const site of findBlocks(source)) {
     const read = readBlock(source, site.open, fileName, { tolerant, resolve: (name) => references.get(name) });
+    /**
+     * A forgiving read still asks the STRICT one, so the editor says what the build will.
+     *
+     * An editor reads a half-typed block without refusing it, which is what keeps completion alive —
+     * and which also let a block the build refuses outright come back clean: \`else\` first in a
+     * block, \`when $(a) $(b)\`, a condition inside a match arm. The sentence is the reader's own, so
+     * the two cannot drift; where a rule already names the fault at that spot, the rule says it.
+     */
+    if (tolerant) {
+      try {
+        readBlock(source, site.open, fileName, { resolve: (name) => references.get(name) });
+      } catch (error) {
+        if (!(error instanceof CssBlockError) || error.offset === undefined) throw error;
+        refused.push({ rule: "block-refused", at: error.offset, length: 1, message: error.reason ?? error.message });
+      }
+    }
     /**
      * A site whose NAME is not one this compiles gets that one finding and no more.
      *
@@ -161,8 +181,21 @@ export function checkedSource(
    * site handed back rather than swallowed.
    */
   const { ignored, findings } = ignoredIn(source);
+  /**
+   * A refusal is said once: not where a rule already reports that very character. And never
+   * silenced — the build refuses whatever a comment or a config says, so an editor that went quiet
+   * would promise a build that cannot happen.
+   */
+  const named = refused.filter(
+    (one) => !out.some((other) => other.at <= one.at && one.at < other.at + Math.max(other.length, 1)),
+  );
   return {
-    findings: [...findings, ...unsilenceable, ...out.filter((finding) => !isIgnored(source, ignored, finding))],
+    findings: [
+      ...findings,
+      ...unsilenceable,
+      ...named,
+      ...out.filter((finding) => !isIgnored(source, ignored, finding)),
+    ],
     /**
      * A registration counts as SETTING the name, because it carries an initial value and so always
      * resolves — that is what `Sheet.unknownVariables` asks. It is composed here rather than pushed

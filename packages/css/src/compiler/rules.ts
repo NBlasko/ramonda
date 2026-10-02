@@ -208,6 +208,7 @@ export const RULE_IDS = [
   "unclosed-call",
   "unknown-variable",
   "variable-by-hand",
+  "block-refused",
   "too-many-values",
   "missing-semicolon",
   "literal-not-allowed",

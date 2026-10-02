@@ -265,6 +265,17 @@ describe("a config this cannot use", () => {
     ["an async config", 'export default async () => ({ units: { length: ["px"] } });', "is async"],
     ["units as a string", 'export default { units: "px" };', "takes families"],
     ["a setting that is not one", 'export default { unitz: ["px"] };', "not a setting"],
+    // The build refuses these whatever the config says, so switching one off would only quiet the editor.
+    [
+      "a refusal switched off",
+      'export default { rules: { "block-refused": "off" } };',
+      "the build refuses it whatever",
+    ],
+    [
+      "a block in a template switched off",
+      'export default { rules: { "block-in-a-template": "off" } };',
+      "the build refuses it whatever",
+    ],
     ["exporting a number", "export default 5;", "must export an object"],
   ])("%s is said as a sentence, not thrown", (_what, config, expected) => {
     const { status, output } = withConfig(config);
