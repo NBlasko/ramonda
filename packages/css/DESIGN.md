@@ -671,7 +671,10 @@ This is the repository's recurring fault in its purest form: one question — *w
 hold* — with two consumers, the type and the completion, and a design that lets only one of them read
 the answer.
 
-### A `$.color.primary.main` syntax for variables — OPEN, and better than I first judged
+### A `$.color.primary.main` syntax for variables — BUILT
+
+**Status 2026-10-02:** built and shipped — `$` paths in a block, codegen's `css-system/`, and the
+pages in `style-blocks/variables.md`. What follows is the reasoning as it was weighed.
 
 The user's proposal: a third spelling for a custom property, `$.color.primary.main` instead of
 `var(--color-primary-main)`, with three reasons. Two of them turn out to stand differently than
@@ -1167,7 +1170,11 @@ question rather than a design one, so it belongs with the documentation work rat
 one row with evidence behind it today is the 124 vendor-prefixed properties whose unprefixed form
 also exists, measured above.
 
-### Two things the user found while using it, both OPEN
+### Two things the user found while using it — both CLOSED
+
+**Status 2026-10-02:** the token's value is split from what it may become — `kind(…, { value,
+range })`, documented in `variables.md` under *A range, when the value is meant to move*; and the
+path's colouring shipped in the extension's 0.2.0. The question as it was put:
 
 #### A token's type carries its declared VALUE, and a theme changes that value
 
@@ -2544,12 +2551,15 @@ own maximum, which is a report a project may genuinely not want.
 
 ---
 
-## For the NEXT pull request — asked for, measured where possible, not built
+## Asked for after the first pull request — each item says where it stands
 
 None of these blocks the merge. Each is written down with what was measured, so the next session
 starts from a fact rather than from a recollection.
 
-### 1. Two rules on one fault, since passes 4 and 6
+### 1. Two rules on one fault, since passes 4 and 6 — FIXED
+
+**Status 2026-10-02, measured:** each of the three below now gets one rule — `literal-not-allowed`,
+`shorthand-not-allowed` and `too-many-values` respectively.
 
 Measured after both passes, on a config that narrows several things at once:
 
@@ -2567,7 +2577,7 @@ answers for the compiler's word: the most SPECIFIC finding at a position should 
 `unit-not-allowed` says which unit; `literal-not-allowed` says the kind comes from variables. Both
 are true; only one is the thing to fix first.
 
-### 2. Class names — shorter, more readable, and one approach rather than two
+### 2. Class names — shorter, more readable, and one approach rather than two — CLOSED
 
 The user's words: *"mislim da neke mogu da budu jos krace ili citljvije"*, and — the part that
 decides — *"mislim da cemo morati da iskljucimo onu opciju da ih generisemo sa hash uvek."*
@@ -2607,7 +2617,7 @@ turned up (`text-overflow`, `scroll-margin-top`, `will-change`, `object-fit`) is
 conventional short spelling, and the abbreviation table's own note answers that: *an abbreviation
 nobody recognises is worse than the property's own name — it is shorter and it has to be learned.*
 
-### 3. `ramonda.graph.json` — a build artefact saying what a package needs and gives
+### 3. `ramonda.graph.json` — a build artefact saying what a package needs and gives — NOT built
 
 **Not built. Measured, scoped, and then widened by the user in a way that changes the shape** — so
 this is the record a next session starts from, and the shape below is not final.
@@ -2743,7 +2753,10 @@ three it has nest — `"*"` then `"<kind>"` then a property name, each a narrowi
 A selector is not a narrowing of a property; it would be a second axis, and that is a cost to pay
 when somebody wants it and not before.
 
-### 7. A block a PROP can constrain — DESIGNED, not built
+### 7. A block a PROP can constrain — SHIPPED
+
+**Status 2026-10-02:** shipped as `CssBlock<Allow>`, documented in `style-blocks/prop.md`, with the
+CSS-wide keywords taken by every narrowed value since §13. The design as it was agreed:
 
 The user asked for a type on `@@` that limits what may be sent through a prop, drawing the
 comparison with a typed `sx`:
@@ -3158,7 +3171,7 @@ belong to item 9.
 This is the family `unknown-media-feature` and `override-out-of-order` already belong to — *compiles,
 ships, does nothing*. What is new is that these report a broken LAYOUT rather than broken CSS.
 
-### 9. Across blocks — what is knowable, and what the graph would have to carry
+### 9. Across blocks — what is knowable, and what the graph would have to carry — ANALYSED, not built
 
 Item 8 stops at one element. The question the user asked next is the harder half: *"desava se cesto
 u CSS da ja nesto promenim kod roditelja i tako sredim child"* — a change to a parent whose effect
@@ -3376,7 +3389,11 @@ Documented as the first for now, because a review is not where a design changes.
 deciding:** how often `inherit` is written into a constrained prop at all — if the honest answer is
 *almost never*, the union stays a footnote and nothing needs building.
 
-### 14. A block rebuilt every render — AGREED for `if`; variables CLOSED by §15
+### 14. A block rebuilt every render — CLOSED by §15
+
+**Status 2026-10-02:** neither half below was built, because §15 removed the cause: a block is a
+string, equal by value, so two renders of one block are the same value whatever its `if`s chose,
+and a runtime value in a declaration is refused. The two halves as they stood:
 
 Reported by the user from the playground as `RMD020` on `Chip.labelCss`: two renders in one tick
 produced values with identical contents and different identity, so the child re-renders for nothing.
@@ -3384,7 +3401,7 @@ produced values with identical contents and different identity, so the child re-
 **A block with no runtime value was already fine** — it is hoisted to a module constant, measured.
 Two shapes are not, and they were settled separately.
 
-#### AGREED — a block holding an `if`
+#### SUPERSEDED — a block holding an `if`
 
     <Chip labelCss={@@( font-weight: 400; if ({this.loud}) { font-weight: 600; } )} />
       ->  _merge({"font-weight":"r-fw-400",}, this.loud && {"font-weight":"r-fw-600",})
@@ -3406,7 +3423,7 @@ merging at the site. `n` is one to three in practice.
 
 Does not apply to a block carrying a hole — see below.
 
-#### OPEN — a block carrying a runtime value
+#### CLOSED — a block carrying a runtime value (the hole is refused)
 
     @@( color: {this.brand}; )   ->   _merge({"color":["r-x", this.brand],})
 
@@ -4131,7 +4148,11 @@ mistake that harness note records making once already: *the first repair was a l
 what one reaches for when the cause is a guess. It made the window smaller and left the race.* If it
 returns, the thing to measure first is whether shiki's registry is safe to share across tests at all.
 
-### 12. `match` takes a STRING subject, and says so as a `TS2322` — NOT for this PR
+### 12. `match` takes a STRING subject, and says so as a `TS2322` — boolean DECIDED, number OPEN
+
+**Status 2026-10-02:** a boolean subject is an `if`, and `composing.md` says so (*A boolean subject is
+an `if`*). A NUMBER subject is still refused with a raw `TS2322` that names neither `match` nor the
+fix — the open half, below.
 
 Asked while the splitter work was running: *"da li nasa match funkcija prima samo string? nekada je
 potrebno da imamo true / false slucaj"*. It does, and it is not only booleans.
