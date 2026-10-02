@@ -324,7 +324,8 @@ const CSS_LINES = {
   "match-with-no-arms": "a `match` that sets nothing whatever its subject is",
   "variable-set-by-another-name": "a `var()` reading a name set with different capitals",
   "value-and-registered-syntax": "a value a registered custom property cannot hold",
-  "initial-value-and-syntax": "`@@property` with a syntax and no initial value",
+  "initial-value-and-syntax":
+    "`@@property` with no `initial-value`, or one its `syntax` does not accept — the browser drops the rule",
   "line-comment": "a `//` comment, which CSS does not have",
   "run-on-declaration": "a missing `;`, so the next line joined this value",
   "block-in-a-template":

@@ -1739,6 +1739,20 @@ describe("an initial-value its own syntax does not accept", () => {
   const rules = (source: string) => of(source).map((one) => one.rule);
   const property = (body: string) => `const t = @@property(\n  ${body}\n);`;
 
+  /**
+   * No `initial-value` at all. CSS requires one for every syntax but `"*"`, and without it the
+   * browser drops the whole registration — measured in Chromium, Firefox and WebKit. The type cannot
+   * say so, since `"*"` is a string like any other, so the rule does.
+   */
+  test("no initial-value, where the syntax needs one", () => {
+    expect(rules(property(`syntax: "<percentage>"; inherits: false;`))).toEqual(["initial-value-and-syntax"]);
+    expect(rules(property(`syntax: "<custom-ident>+"; inherits: false;`))).toEqual(["initial-value-and-syntax"]);
+  });
+
+  test("and none is needed for the universal syntax", () => {
+    expect(rules(property(`syntax: "*"; inherits: false;`))).toEqual([]);
+  });
+
   test("a length where a colour was declared", () => {
     expect(rules(property(`syntax: "<color>"; inherits: false; initial-value: 12px;`))).toEqual([
       "initial-value-and-syntax",

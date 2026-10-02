@@ -1629,10 +1629,14 @@ const ACCEPTS: Readonly<Record<string, (value: string) => boolean>> = {
  */
 function initialValueAndSyntax(block: Block, findings: Finding[]): void {
   let syntax: string | undefined;
+  let syntaxAt = 0;
   let value: { text: string; at: number } | undefined;
+  /** Whether an `initial-value` is written at all, readable or not. */
+  let initial = false;
 
   for (const item of block.items) {
     if (item.kind !== "declaration") continue;
+    if (item.property === "initial-value") initial = true;
     // A descriptor written with a hole cannot be read, and a hole is the author's business.
     const text = item.value.every((part) => part.kind === "text")
       ? item.value
@@ -1642,8 +1646,28 @@ function initialValueAndSyntax(block: Block, findings: Finding[]): void {
       : undefined;
     if (text === undefined) continue;
 
-    if (item.property === "syntax") syntax = text.replace(/^["']|["']$/g, "");
+    if (item.property === "syntax") {
+      syntax = text.replace(/^["']|["']$/g, "");
+      syntaxAt = item.at ?? 0;
+    }
     if (item.property === "initial-value") value = { text, at: item.valueAt ?? item.at ?? 0 };
+  }
+
+  /**
+   * No `initial-value` at all. CSS requires one for every syntax but the universal `"*"`, and the
+   * browser drops the registration without it — measured in Chromium, Firefox and WebKit. The type
+   * cannot say this, because `"*"` is a string like any other.
+   */
+  if (syntax !== undefined && syntax !== "*" && !initial) {
+    findings.push({
+      rule: "initial-value-and-syntax",
+      at: syntaxAt,
+      length: "syntax".length,
+      message:
+        `\`syntax: "${syntax}"\` needs an \`initial-value\`, and without one the browser drops the whole ` +
+        `registration. Add the value the property starts at, or write \`syntax: "*"\` if it takes anything.`,
+    });
+    return;
   }
 
   if (syntax === undefined || value === undefined || syntax === "*") return;
@@ -1661,8 +1685,7 @@ function initialValueAndSyntax(block: Block, findings: Finding[]): void {
     length: value.text.length,
     message:
       `\`syntax: "${syntax}"\` does not accept \`${value.text}\`, so the browser drops the whole ` +
-      `registration — measured, the name then holds any value at all, with no interpolation and no ` +
-      `fall back to this one. Fix whichever of the two is wrong.`,
+      `registration, and the name then holds any value at all. Fix whichever of the two is wrong.`,
   });
 }
 

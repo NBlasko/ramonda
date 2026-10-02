@@ -78,6 +78,7 @@ and the check follows that:
 | `@@font-face` with no `src` | reported — the descriptor is required, and the face would load nothing |
 | `font-familly: "Brand"` | reported, with the descriptor you meant |
 | `@@property` with no `inherits` | reported — the browser drops the whole rule without it |
+| `@@property` with no `initial-value` | reported — the browser drops the whole rule, unless the `syntax` is `"*"` |
 | `initial-value` its `syntax` does not accept | reported — the browser drops the whole rule for that too |
 | a registered property set to a value its `syntax` refuses | reported — the browser keeps the `initial-value` and says nothing |
 | `&:hover { … }` in either | reported — a descriptor list has no element to select against |
@@ -164,7 +165,7 @@ Every one of them fails the build. 58 of them, and each is a key you can switch 
 | `override-out-of-order` | a declaration written to override one that will win anyway |
 | `variable-set-by-another-name` | a `var()` reading a name set with different capitals |
 | `hole-as-a-variable-name` | a hole naming a custom property rather than holding a value |
-| `initial-value-and-syntax` | `@@property` with a syntax and no initial value |
+| `initial-value-and-syntax` | `@@property` with no `initial-value`, or one its `syntax` does not accept — the browser drops the rule |
 | `unknown-media-feature` | a media feature that will never match |
 | `value-and-registered-syntax` | a value a registered custom property cannot hold |
 | `unit-not-allowed` | a unit your `ramonda.css.ts` does not allow |
