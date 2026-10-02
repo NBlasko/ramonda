@@ -1,6 +1,7 @@
 import prettier from "prettier";
 import { describe, expect, test } from "vitest";
 import plugin from "../prettier";
+import { formatText } from "../tooling";
 
 /**
  * Prettier, measured rather than described.
@@ -55,12 +56,12 @@ describe("with it", () => {
     expect(out).toContain("display: flex;");
   });
 
-  test("the CSS inside is returned as written, holes and nesting and all", async () => {
+  test("the CSS inside is laid out, and an expression is kept as written", async () => {
     const source = `const panel = @@(\n  border-left: $(\`\${w}px\`) solid #ff0055;\n  &:hover { color: red; }\n);\n`;
     const out = await format(source);
 
     expect(out).toContain("border-left: $(`${w}px`) solid #ff0055;");
-    expect(out).toContain("&:hover { color: red; }");
+    expect(out).toMatch(/( +)&:hover \{\n\1  color: red;\n\1\}/);
   });
 
   /** A formatter that does not settle is worse than one that refuses: it rewrites the file forever. */
@@ -181,5 +182,70 @@ describe("a declared variable", () => {
     const source = `const b = <div className={@@( width: calc($size.control.md * 2); )}>x</div>;\n`;
 
     expect(await format(source)).toContain("calc($size.control.md * 2)");
+  });
+});
+
+/**
+ * The CSS inside a block, laid out the way `ramonda-css format` lays it out.
+ *
+ * The plugin used to hand a block's inside back as written, leaving the CSS to `ramonda-css format`
+ * — which a project on Prettier has no road to. So a Prettier project never got `} else {`, the arms
+ * of a match lined up, a chain of choices as a table, or the parens taken off a branch, while the
+ * tooling page says formatting works everywhere with the plugin. One layout, two formatters, and
+ * now both give the same text.
+ */
+describe("the inside of a block", () => {
+  const WRITTEN = `export const a = (on: boolean, t: "a" | "b", w: boolean) => @@(
+  display:flex;   gap:8px;
+  &:hover {color:red;}
+  when $( on ) { color: red; }
+  else { color: blue; }
+  border: $(on) ? (2px solid red) : 1px solid #ccc;
+  color: $(on) ? red : $(w) ? orange : gray;
+  background: match $(t) { a => red; _ => blue; };
+  match $(t) {
+  a =>( padding: 1px;);
+      _ => ( padding: 2px; );
+  }
+);
+`;
+
+  /** The block's lines alone, between its parens — the JavaScript around it is each tool's own. */
+  const inside = (text: string) => {
+    const lines = text.split("\n");
+    const open = lines.findIndex((line) => line.includes("@@("));
+    const close = lines.findIndex((line, index) => index > open && line.trim().startsWith(")"));
+    const body = lines.slice(open + 1, close);
+    // Each tool places the block at its own depth; the shape inside is the question.
+    const base = Math.min(
+      ...body.filter((line) => line.trim() !== "").map((line) => line.length - line.trimStart().length),
+    );
+    return body.map((line) => line.slice(base)).join("\n");
+  };
+
+  test("is what `ramonda-css format` writes", async () => {
+    expect(inside(await format(WRITTEN))).toBe(inside(formatText(WRITTEN, "a.tsx", (text) => text)));
+  });
+
+  test.each([
+    ["`} else {` on one line", "} else {"],
+    ["the arms of a match lined up", "a => ( padding: 1px; );"],
+    ["a chain of choices as a table", "     : $(w)  ? orange"],
+    ["the parens off a branch", "border: $(on) ? 2px solid red : 1px solid #ccc;"],
+    ["a declaration on its own line", "display:flex;\n"],
+  ])("%s", async (_what, line) => {
+    expect(await format(WRITTEN)).toContain(line);
+  });
+
+  test("and settles", async () => {
+    const once = await format(WRITTEN);
+
+    expect(await format(once)).toBe(once);
+  });
+
+  test("with tabs, the step is a tab", async () => {
+    const out = await prettier.format(WRITTEN, { parser: "typescript", plugins: [plugin], useTabs: true });
+
+    expect(out).toMatch(/(\t+)&:hover \{\n\1\tcolor:red;\n\1\}/);
   });
 });

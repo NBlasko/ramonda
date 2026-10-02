@@ -171,7 +171,7 @@ export function readsIn(parts: readonly ValuePart[], into: VariableRead[]): void
        * The name ran to the end of this part, so it is NOT FINISHED — the next part is a hole, or
        * the text simply stops.
        *
-       * `var(--brand-{n})` is refused by `glued-hole`, and this reported `--brand-` as well: one
+       * `var(--brand-$(n))` is refused by `hole-not-allowed`, and this reported `--brand-` as well: one
        * fault came back as two, and the second named a variable nobody wrote. An unreadable call is
        * not evidence of a missing name either way, which is what the note below already says about
        * the character after it.

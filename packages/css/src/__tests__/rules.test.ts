@@ -526,7 +526,7 @@ describe("a property that takes no keywords", () => {
  */
 describe("a hole and the text glued to it", () => {
   /** The two rules that fire on a hole without reading a word of it — see the assertion below. */
-  const SAYS_NOTHING_ABOUT_WORDS = new Set(["glued-hole", "hole-not-allowed"]);
+  const SAYS_NOTHING_ABOUT_WORDS = new Set(["hole-not-allowed"]);
 
   test.each([
     ["a unit after a hole", `gap: $(n)px;`],
@@ -535,9 +535,8 @@ describe("a hole and the text glued to it", () => {
     ["a unit in the middle of a shorthand", `border-left: $(w)px solid red;`],
     ["a word before a hole", `grid-template-columns: minmax(0,$(n)fr);`],
   ])("%s says nothing about the WORD", (_what, css) => {
-    // The glued piece is not a value of its own, so no rule that reads words may judge it. It IS
-    // reported, by `glued-hole` — see that section — because the CSS it produces does not work, and
-    // by `hole-not-allowed`, which refuses every runtime value. Neither of those reads the word.
+    // The glued piece is not a value of its own, so no rule that reads words may judge it. The hole
+    // IS reported, by `hole-not-allowed`, which refuses every runtime value and does not read the word.
     expect(check(css).filter((finding) => !SAYS_NOTHING_ABOUT_WORDS.has(finding.rule))).toEqual([]);
   });
 
@@ -782,51 +781,23 @@ describe("a unit that is nearly one", () => {
 });
 
 /**
- * Text glued to a hole, which reads like the obvious way to write a length and does not work.
+ * Text glued to a hole is ONE fault, and it is the hole.
  *
- * ## Measured in a real browser, and it fails in the worst way
- *
- * A hole becomes one custom property, so `$(n)px` becomes `var(--r-…-0)px`. Chromium, with
- * `--w: 12`:
- *
- * | written | computed |
- * |---|---|
- * | `padding-left: var(--w)px` | **`0px`** |
- * | `padding-left: 8px; padding-left: var(--w)px` | **`0px`** — the fallback above it is lost too |
- * | `padding-left: calc(var(--w) * 1px)` | `12px` |
- * | `--w: 12px; padding-left: var(--w)` | `12px` |
- *
- * A `var()` is substituted as TOKENS, so the `12` and the `px` never become one length. The
- * declaration is invalid at computed-value time, which is worse than being dropped at parse time:
- * the property falls back to its initial value and takes any earlier declaration of it with it.
- *
- * The word reader already steps over a glued piece — it has to, or `px` would be reported as a value
- * `padding` does not accept. That silence was measured as a false report and is now known to have
- * been a TRUE one with the wrong message, which is what this rule is.
+ * A runtime value in a declaration is refused, so text written against one has no value to be part
+ * of — the fix is the hole's, whatever is beside it. There used to be a second rule here,
+ * `glued-hole`, about what the text did to a value that became a custom property; that value is
+ * refused now, and the rule fired only beside `hole-not-allowed`, advising a change that landed on
+ * the same refusal.
  */
 describe("text glued to a hole", () => {
   test.each([
-    ["a unit after", `padding-left: $(n)px;`],
-    ["inside a shorthand", `border-left: $(w)px solid red;`],
-    ["a suffix that is not a unit", `grid-area: $(name)-start;`],
-    ["something in front", `color: #$(hex);`],
-    ["two holes with nothing between", `margin: $(a)$(b);`],
-  ])("%s is reported", (_what, css) => {
-    const found = check(css).filter((finding) => finding.rule === "glued-hole");
-
-    expect(found).toHaveLength(1);
-    expect(found[0].message).toContain("calc(");
-  });
-
-  test.each([
-    ["a hole with a space after it", `border-left: $(w) solid red;`],
-    ["a whole value", `display: $(how);`],
-    ["inside calc, spaced", `padding-left: calc($(n) * 1px);`],
-    ["two holes with a space", `margin: $(a) $(b);`],
-    ["the unit inside the hole", "padding-left: $(`${n}px`);"],
-    ["a hole ending a declaration", `color: $(c);`],
-  ])("%s is fine", (_what, css) => {
-    expect(check(css).filter((finding) => finding.rule === "glued-hole")).toEqual([]);
+    ["a unit after", `padding-left: $(n)px;`, 1],
+    ["inside a shorthand", `border-left: $(w)px solid red;`, 1],
+    ["a suffix that is not a unit", `grid-area: $(name)-start;`, 1],
+    ["something in front", `color: #$(hex);`, 1],
+    ["two holes with nothing between", `margin: $(a)$(b);`, 2],
+  ])("%s is the hole, said once per hole", (_what, css, holes) => {
+    expect(check(css).map((finding) => finding.rule)).toEqual(Array(holes).fill("hole-not-allowed"));
   });
 });
 
@@ -2910,7 +2881,7 @@ describe("a keyword written in capitals", () => {
  * And the data was already there. `HolePart` carries `at` and `length`, and its own note says why:
  * *"for a squiggle over the hole itself … it is what lets a rule about a hole's POSITION point at
  * the hole rather than at the declaration holding it."* `hole-as-a-variable-name` reads it.
- * `hole-in-a-named-block` and `glued-hole` did not — one question, two answers, which is this
+ * `hole-in-a-named-block` did not — one question, two answers, which is this
  * repository's recurring fault.
  *
  * Measured, `@@font-face( src: url($(n)); )`:
@@ -2963,20 +2934,20 @@ describe("a squiggle about a hole", () => {
 
   describe("glued to text", () => {
     test.each([
-      ["a unit after it", "const w = 1;\nconst a = @@(\n  gap: 8px$(w);\n);\n", "$(w)"],
+      ["a unit before it", "const w = 1;\nconst a = @@(\n  gap: 8px$(w);\n);\n", "$(w)"],
       ["a unit written after", "const w = 1;\nconst a = @@(\n  gap: $(w)px;\n);\n", "$(w)"],
       ["a longer name", "const spacing = 1;\nconst a = @@(\n  gap: $(spacing)px;\n);\n", "$(spacing)"],
     ])("%s is squiggled over the hole", (_what, source, hole) => {
-      const [found] = checkSource(source, "/a.tsx").filter((one) => one.rule === "glued-hole");
+      const found = checkSource(source, "/a.tsx", { tolerant: true }).filter((one) => one.rule === "hole-not-allowed");
 
-      expect(found).toBeDefined();
-      expect(covered(source, found)).toBe(hole);
+      expect(found).toHaveLength(1);
+      expect(covered(source, found[0])).toBe(hole);
     });
 
     test("every glued hole is reported", () => {
       const source = "const w = 1;\nconst h = 2;\nconst a = @@(\n  margin: $(w)px $(h)px;\n);\n";
 
-      const found = checkSource(source, "/a.tsx").filter((one) => one.rule === "glued-hole");
+      const found = checkSource(source, "/a.tsx", { tolerant: true }).filter((one) => one.rule === "hole-not-allowed");
 
       expect(found.map((one) => covered(source, one))).toEqual(["$(w)", "$(h)"]);
     });

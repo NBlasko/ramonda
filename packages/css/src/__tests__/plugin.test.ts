@@ -1969,6 +1969,30 @@ describe("hover", () => {
     expect(signature).toContain("...");
   });
 
+  /** Every word the block's logic is written in says what it does — not only the first one. */
+  const LOGIC =
+    `const a = <div className={@@(\n` +
+    `  when $(on) { opacity: 0.5; } else when $(off) { opacity: 1; } else { opacity: 0.8; }\n` +
+    `  match $(size) { s => ( padding: 2px; ); _ => ( padding: 4px; ); }\n` +
+    `  color: match $(tone) { hot => red; _ => blue; };\n` +
+    `)}>x</div>;\n`;
+
+  test.each([
+    ["`else when`", "else when", "else when $( … )", "first"],
+    ["`else`", "else {", "else", "first"],
+    ["`match` over groups", "match $(size)", "match $( … )", "arm"],
+    ["`match` in a value", "match $(tone)", "match $( … )", "arm"],
+  ])("%s says what it does", (_what, at, signature, words) => {
+    const said = hovered(LOGIC, at);
+
+    expect(said.signature).toContain(signature);
+    expect(said.documentation).toContain(words);
+  });
+
+  test("and the spread's note no longer says there is no `else`", () => {
+    expect(hovered(BLOCK, "...$(base)").documentation).not.toContain("@else");
+  });
+
   test("an at-rule condition says which at-rule it is", () => {
     const { signature } = hovered(BLOCK, "@media");
 

@@ -27,6 +27,11 @@ refused with an error that names its replacement.
 - **What the build refuses, the editor now shows**, in the build's own words (`block-refused`):
   an `else` out of place, `when $(a) $(b)`, a condition inside a match arm, a choice with no `:`.
   It cannot be switched off, and neither can `block-in-a-template`, since the build refuses both.
+- **The Prettier plugin lays out a block's inside** as `ramonda-css format` does — it used to hand
+  the CSS back as written — and the editor's hover explains `else`, `else when` and `match` too.
+- **`glued-hole` is gone.** It fired only beside `hole-not-allowed`, about a value that is refused
+  anyway, and its advice led to that same refusal. A `rules` entry naming it is now refused as not a
+  rule; take it out.
 - A condition holding operators — `when $(p ? q : r)` — compiled to the wrong expression. It is one
   condition now.
 

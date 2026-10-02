@@ -341,7 +341,6 @@ const CSS_LINES = {
   "hole-out-of-place": "a hole where CSS needs text, like a property name",
   "hole-as-a-variable-name": "a hole naming a custom property rather than holding a value",
   "hole-in-a-named-block": "a hole in `@@keyframes( … )` and its kind, which have no element",
-  "glued-hole": "text written against a hole, which is not part of its value",
   "spread-out-of-place": "`...$(block)` somewhere a whole block cannot go",
   "composition-in-a-named-block": "`...$(block)` or `when` inside a named site, which composes nothing",
   "ignore-without-a-reason": "`ramonda-css-ignore` with nothing after it",

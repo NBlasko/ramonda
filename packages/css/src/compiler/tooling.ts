@@ -388,6 +388,19 @@ function relaid(
 }
 
 /**
+ * A whole block — \`@@(\` to \`)\` — with its inside laid out one \`step\` in, the way \`relaid\` lays
+ * it out in a file. For a printer that places the block itself and wants the CSS done the same way:
+ * the Prettier plugin, which handed the inside back as written until a review found a Prettier
+ * project had no road to this layout at all. A one-line block is returned untouched, as there.
+ */
+export function relaidInside(block: string, step: string): string {
+  const lines = block.split(/\r?\n/);
+  if (lines.length === 1) return block;
+  const body = lines.slice(1, -1).join("\n");
+  return [lines[0], ...layout(body, step, step, undefined), lines[lines.length - 1].trim()].join("\n");
+}
+
+/**
  * The CSS between a block's parens, one declaration to a line and a nested rule's body one step in.
  *
  * ## Why it works on the TEXT rather than on the parse

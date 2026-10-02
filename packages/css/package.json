@@ -1,7 +1,7 @@
 {
   "name": "@ramonda/css",
   "version": "0.5.0",
-  "description": "A style block written in real CSS beside the markup, compiled to a class and custom properties.",
+  "description": "A style block written in real CSS beside the markup, compiled to classes before the build.",
   "license": "MIT",
   "author": "Nikola Blagojević",
   "homepage": "https://ramonda.dev/style-blocks",
